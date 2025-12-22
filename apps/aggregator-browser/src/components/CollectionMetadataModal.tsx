@@ -49,18 +49,6 @@ export function CollectionMetadataModal({ onSave, onCancel, defaultTitle = '' }:
 
         {/* Content */}
         <div className="p-6 space-y-6">
-          {/* Title */}
-          <div>
-            <label className="block text-white font-medium mb-2">Title *</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Collection title"
-            />
-          </div>
-
           {/* Visibility */}
           <div>
             <label className="block text-white font-medium mb-3">Visibility</label>
@@ -108,6 +96,18 @@ export function CollectionMetadataModal({ onSave, onCancel, defaultTitle = '' }:
                 </div>
               </button>
             </div>
+          </div>
+
+          {/* Name/Title */}
+          <div>
+            <label className="block text-white font-medium mb-2">Name</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Collection name"
+            />
           </div>
 
           {/* Description */}

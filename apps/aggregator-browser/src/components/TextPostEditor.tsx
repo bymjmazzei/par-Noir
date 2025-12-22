@@ -719,7 +719,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
     setShowMetadataModal(true);
   };
   
-  const handleMetadataSave = (metadata: { caption: string; tags: string[]; visibility: 'public' | 'private' | 'friends' }) => {
+  const handleMetadataSave = (metadata: { name: string; description: string; tags: string[]; visibility: 'public' | 'private' | 'friends'; isTopPost: boolean }) => {
     setShowMetadataModal(false);
     
     // Convert all pages to TextPostData format
@@ -742,11 +742,14 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           padding: page.padding,
         },
         metadata: {
-          description: metadata.caption,
+          name: metadata.name,
+          title: metadata.name,
+          description: metadata.description,
           keywords: metadata.tags,
           tags: metadata.tags,
           isPublic: metadata.visibility === 'public',
           visibility: metadata.visibility,
+          isTopPost: metadata.isTopPost,
         }
       }));
     

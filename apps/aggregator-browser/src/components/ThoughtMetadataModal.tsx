@@ -1,27 +1,32 @@
 /**
  * Thought Metadata Modal
- * Allows users to add caption and tags before submitting a thought
+ * Allows users to add name, description, tags, and visibility before submitting a thought
+ * Matches the style and structure of EditFileModal
  */
 
 import React, { useState } from 'react';
-import { X, Globe, Lock, Users } from 'lucide-react';
+import { X, Globe, Lock, Users, Star } from 'lucide-react';
 
 interface ThoughtMetadataModalProps {
-  onSave: (metadata: { caption: string; tags: string[]; visibility: 'public' | 'private' | 'friends' }) => void;
+  onSave: (metadata: { name: string; description: string; tags: string[]; visibility: 'public' | 'private' | 'friends'; isTopPost: boolean }) => void;
   onCancel: () => void;
 }
 
 export function ThoughtMetadataModal({ onSave, onCancel }: ThoughtMetadataModalProps) {
-  const [caption, setCaption] = useState('');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
   const [visibility, setVisibility] = useState<'public' | 'private' | 'friends'>('public');
+  const [isTopPost, setIsTopPost] = useState(false);
 
   const handleSave = () => {
     const tagsArray = tags.split(',').map(t => t.trim()).filter(Boolean);
     onSave({
-      caption: caption.trim(),
+      name: name.trim(),
+      description: description.trim(),
       tags: tagsArray,
-      visibility
+      visibility,
+      isTopPost
     });
   };
 
@@ -90,15 +95,27 @@ export function ThoughtMetadataModal({ onSave, onCancel }: ThoughtMetadataModalP
             </div>
           </div>
 
-          {/* Caption */}
+          {/* Name */}
           <div>
-            <label className="block text-white font-medium mb-2">Caption</label>
+            <label className="block text-white font-medium mb-2">Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Thought name"
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-white font-medium mb-2">Description</label>
             <textarea
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
               rows={3}
               className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              placeholder="Add a caption..."
+              placeholder="Add a description..."
             />
           </div>
 
@@ -114,6 +131,29 @@ export function ThoughtMetadataModal({ onSave, onCancel }: ThoughtMetadataModalP
             />
             <p className="text-xs text-neutral-400 mt-1">Separate tags with commas</p>
           </div>
+
+          {/* Top Post */}
+          <div>
+            <label className="block text-white font-medium mb-3">Top Post</label>
+            <button
+              onClick={() => setIsTopPost(!isTopPost)}
+              className={`w-full flex items-center space-x-3 p-3 rounded-lg border transition-colors ${
+                isTopPost
+                  ? 'border-yellow-500 bg-yellow-500/20'
+                  : 'border-neutral-700 bg-neutral-800 hover:bg-neutral-750'
+              }`}
+            >
+              <Star className={`h-5 w-5 ${isTopPost ? 'text-yellow-400 fill-yellow-400' : 'text-neutral-400'}`} />
+              <div className="flex-1 text-left">
+                <div className="text-white font-medium">Set as Top Post</div>
+                <div className="text-xs text-neutral-400">
+                  {isTopPost 
+                    ? 'This post will appear at the top of your profile and be used as your profile icon'
+                    : 'Pin this post to the top of your profile feeds'}
+                </div>
+              </div>
+            </button>
+          </div>
         </div>
 
         {/* Footer */}
@@ -126,7 +166,7 @@ export function ThoughtMetadataModal({ onSave, onCancel }: ThoughtMetadataModalP
           </button>
           <button
             onClick={handleSave}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Submit
           </button>
