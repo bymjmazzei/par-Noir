@@ -1258,16 +1258,56 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           })
         );
         
+        // Build set of thought fileIds that are part of collections (to exclude them from individual display)
+        // Only filter out thoughts that are in collections (multi-page thoughts), not media files
+        // This way manually created collections still show their individual files
+        const thoughtFilesInCollections = new Set<string>();
+        collectionFilesWithMetadata.forEach((collectionFile: any) => {
+          const collectionData = collectionFile.collection;
+          if (collectionData?.collectionFileIds && Array.isArray(collectionData.collectionFileIds)) {
+            // Check each fileId in the collection - if it's a thought file, add it to the exclusion set
+            collectionData.collectionFileIds.forEach((fileId: string) => {
+              // Check if this fileId corresponds to a thought file
+              // First check in allFiles
+              const fileInCollection = allFiles.find((f: DriveFile) => f.id === fileId);
+              if (fileInCollection) {
+                const fileName = fileInCollection.name.toLowerCase();
+                // Only exclude thought files that are part of collections (multi-page thoughts)
+                if (fileName.startsWith('thought-') && (fileName.endsWith('.thought.encrypted') || fileName.endsWith('.png.encrypted'))) {
+                  thoughtFilesInCollections.add(fileId);
+                }
+              } else {
+                // Also check if it's a mainFileId in thoughtThumbnailEntries (thoughts are shown via thumbnails)
+                const thoughtThumbnail = thoughtThumbnailEntries.find((entry: any) => entry.mainFileId === fileId);
+                if (thoughtThumbnail) {
+                  thoughtFilesInCollections.add(fileId);
+                }
+              }
+            });
+          }
+        });
+        
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
+        // Also filter out thought thumbnails whose mainFileId is in a collection
+        const filteredThoughtThumbnailEntries = thoughtThumbnailEntries.filter((entry: any) => {
+          return !thoughtFilesInCollections.has(entry.mainFileId);
+        });
         const collectionFileIds = new Set(collectionFiles.map((f: any) => f.id));
-        const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
+        const mediaFiles = thumbnailEntries.concat(filteredThoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
           
           // Exclude collections - they're already added via collectionFilesWithMetadata
           if (collectionFileIds.has(file.id)) {
+            return false;
+          }
+          
+          // Exclude thought files that are part of collections (multi-page thoughts)
+          // This prevents showing individual pages when they're already in a collection
+          // Media files in collections are NOT excluded (so manually created collections still show their files)
+          if (thoughtFilesInCollections.has(file.id)) {
             return false;
           }
           
@@ -1426,16 +1466,56 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           })
         );
         
+        // Build set of thought fileIds that are part of collections (to exclude them from individual display)
+        // Only filter out thoughts that are in collections (multi-page thoughts), not media files
+        // This way manually created collections still show their individual files
+        const thoughtFilesInCollections = new Set<string>();
+        collectionFilesWithMetadata.forEach((collectionFile: any) => {
+          const collectionData = collectionFile.collection;
+          if (collectionData?.collectionFileIds && Array.isArray(collectionData.collectionFileIds)) {
+            // Check each fileId in the collection - if it's a thought file, add it to the exclusion set
+            collectionData.collectionFileIds.forEach((fileId: string) => {
+              // Check if this fileId corresponds to a thought file
+              // First check in allFiles
+              const fileInCollection = allFiles.find((f: DriveFile) => f.id === fileId);
+              if (fileInCollection) {
+                const fileName = fileInCollection.name.toLowerCase();
+                // Only exclude thought files that are part of collections (multi-page thoughts)
+                if (fileName.startsWith('thought-') && (fileName.endsWith('.thought.encrypted') || fileName.endsWith('.png.encrypted'))) {
+                  thoughtFilesInCollections.add(fileId);
+                }
+              } else {
+                // Also check if it's a mainFileId in thoughtThumbnailEntries (thoughts are shown via thumbnails)
+                const thoughtThumbnail = thoughtThumbnailEntries.find((entry: any) => entry.mainFileId === fileId);
+                if (thoughtThumbnail) {
+                  thoughtFilesInCollections.add(fileId);
+                }
+              }
+            });
+          }
+        });
+        
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
+        // Also filter out thought thumbnails whose mainFileId is in a collection
+        const filteredThoughtThumbnailEntries = thoughtThumbnailEntries.filter((entry: any) => {
+          return !thoughtFilesInCollections.has(entry.mainFileId);
+        });
         const collectionFileIds = new Set(collectionFiles.map((f: any) => f.id));
-        const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
+        const mediaFiles = thumbnailEntries.concat(filteredThoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
           
           // Exclude collections - they're already added via collectionFilesWithMetadata
           if (collectionFileIds.has(file.id)) {
+            return false;
+          }
+          
+          // Exclude thought files that are part of collections (multi-page thoughts)
+          // This prevents showing individual pages when they're already in a collection
+          // Media files in collections are NOT excluded (so manually created collections still show their files)
+          if (thoughtFilesInCollections.has(file.id)) {
             return false;
           }
           
