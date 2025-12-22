@@ -131,33 +131,6 @@ export function EditMetadataModal({
         </div>
         
         <div className="space-y-4 overflow-y-auto pr-2 -mr-2 flex-1">
-          {/* Categories at the top */}
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Categories <span className="text-red-400">*</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {FEED_CATEGORY_LIST.map(category => {
-                const isSelected = editForm.categories?.includes(category.id) || false;
-                return (
-                  <button
-                    key={category.id}
-                    type="button"
-                    onClick={() => toggleCategory(category.id)}
-                    className={`px-3 py-2 text-sm rounded-lg border transition-colors text-left ${
-                      isSelected
-                        ? 'border-blue-500 bg-blue-500/20 text-white'
-                        : 'border-neutral-600 bg-neutral-700 text-text-primary hover:border-neutral-500'
-                    }`}
-                  >
-                    {category.name}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-xs text-text-secondary mt-2">Select one or more categories</p>
-          </div>
-
           {/* Name */}
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">
@@ -184,6 +157,33 @@ export function EditMetadataModal({
               placeholder="Caption"
               rows={3}
             />
+          </div>
+
+          {/* Categories below caption */}
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-2">
+              Categories <span className="text-red-400">*</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {FEED_CATEGORY_LIST.map(category => {
+                const isSelected = editForm.categories?.includes(category.id) || false;
+                return (
+                  <button
+                    key={category.id}
+                    type="button"
+                    onClick={() => toggleCategory(category.id)}
+                    className={`px-3 py-2 text-sm rounded-lg border transition-colors whitespace-nowrap ${
+                      isSelected
+                        ? 'border-blue-500 bg-blue-500/20 text-white'
+                        : 'border-neutral-600 bg-neutral-700 text-text-primary hover:border-neutral-500'
+                    }`}
+                  >
+                    {category.name}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-text-secondary mt-2">Select one or more categories</p>
           </div>
 
           {/* Expand/Collapse button */}
