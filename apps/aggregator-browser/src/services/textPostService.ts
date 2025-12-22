@@ -174,7 +174,7 @@ export async function createTextPost(
     isPublic?: boolean;
     isNSFW?: boolean;
   }
-): Promise<{ fileId: string; success: boolean; error?: string }> {
+): Promise<{ fileId: string; thumbnailFileId?: string; thumbnailShareToken?: any; success: boolean; error?: string }> {
   try {
     const accessToken = await PNOAuthService.getValidAccessToken();
     if (!accessToken) {
@@ -518,11 +518,13 @@ export async function createTextPost(
       }
     }
 
-    return { fileId, success: true };
+    return { fileId, thumbnailFileId, thumbnailShareToken, success: true };
   } catch (error: any) {
     console.error('❌ [TextPost] Failed to create text post:', error);
     return {
       fileId: '',
+      thumbnailFileId: undefined,
+      thumbnailShareToken: undefined,
       success: false,
       error: error?.message || 'Failed to create text post'
     };

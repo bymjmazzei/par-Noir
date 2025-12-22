@@ -117,8 +117,10 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         
         console.log(`[UploadModal] Creating multi-page thought with ${pages.length} pages`);
         
-        // Save each page as a separate thought
-        const pageFileIds: string[] = [];
+        // Save each page as a separate thought and collect thumbnail fileIds (like PDFs)
+        const thumbnailFileIds: string[] = [];
+        const thumbnailTokens: Record<string, string> = {};
+        
         for (let i = 0; i < pages.length; i++) {
           const page = pages[i];
           const pageTitle = pages.length > 1 
@@ -138,19 +140,30 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
           );
           
           if (result.success && result.fileId) {
-            pageFileIds.push(result.fileId);
-            console.log(`[UploadModal] Saved page ${i + 1}/${pages.length}, fileId: ${result.fileId}`);
+            // Use thumbnail fileId if available (like PDFs use thumbnail fileIds)
+            if (result.thumbnailFileId) {
+              thumbnailFileIds.push(result.thumbnailFileId);
+              // Store thumbnail share token if available (for instant thumbnail loading)
+              if (result.thumbnailShareToken) {
+                thumbnailTokens[result.thumbnailFileId] = JSON.stringify(result.thumbnailShareToken);
+              }
+              console.log(`[UploadModal] Saved page ${i + 1}/${pages.length}, thought fileId: ${result.fileId}, thumbnail fileId: ${result.thumbnailFileId}`);
+            } else {
+              console.warn(`[UploadModal] Page ${i + 1} has no thumbnail fileId, using thought fileId as fallback`);
+              thumbnailFileIds.push(result.fileId);
+            }
           } else {
             throw new Error(`Failed to save page ${i + 1}: ${result.error || 'Unknown error'}`);
           }
         }
         
-        // Create collection with all page fileIds
-        if (pageFileIds.length > 0) {
+        // Create collection with thumbnail fileIds (like PDFs use thumbnail fileIds)
+        if (thumbnailFileIds.length > 0) {
           const collectionResult = await createCollection(
             {
-              collectionFileIds: pageFileIds,
-              title: metadata.name || `Thought Collection (${pageFileIds.length} pages)`
+              collectionFileIds: thumbnailFileIds,
+              title: metadata.name || `Thought Collection (${thumbnailFileIds.length} pages)`,
+              thumbnailTokens: thumbnailTokens // Include tokens for instant thumbnail loading
             },
             accountId,
             {
