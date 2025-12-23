@@ -1207,28 +1207,41 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'));
         });
         
-        const thoughtThumbnailEntries = thoughtThumbnails.map((thumb: DriveFile) => {
-          // Remove "thumb_" prefix, ".encrypted" suffix, and file extension to get base name
-          const thumbNameBase = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
-          
-          // Find the corresponding thought file by comparing base names (ignoring extension differences)
-          const thoughtFile = thoughtFiles.find((tf: DriveFile) => {
-            const thoughtFileNameBase = tf.name.replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
-            return thoughtFileNameBase === thumbNameBase;
-          });
-          
-          // Clean display name: remove thumb_ prefix and file extension
-          let displayName = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
-          // Remove file extension
-          displayName = displayName.replace(/\.[^.]+$/, '');
-          
-          return {
-            ...thumb,
-            isThumbnail: true,
-            mainFileId: thoughtFile?.id || thumb.id, // Use thought file ID if found, fallback to thumb ID
-            displayName: displayName
-          };
-        });
+        // Map thought thumbnails to thought files and load metadata to check if they're part of collections
+        const thoughtThumbnailEntries = await Promise.all(
+          thoughtThumbnails.map(async (thumb: DriveFile) => {
+            // Remove "thumb_" prefix, ".encrypted" suffix, and file extension to get base name
+            const thumbNameBase = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
+            
+            // Find the corresponding thought file by comparing base names (ignoring extension differences)
+            const thoughtFile = thoughtFiles.find((tf: DriveFile) => {
+              const thoughtFileNameBase = tf.name.replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
+              return thoughtFileNameBase === thumbNameBase;
+            });
+            
+            // Check thumbnail metadata to see if it's part of a collection
+            let isPartOfCollection = false;
+            try {
+              const thumbMetadata = await loadFileMetadata(thumb.id);
+              isPartOfCollection = thumbMetadata?.isPartOfCollection === true;
+            } catch (err) {
+              // If metadata load fails, continue without the flag
+            }
+            
+            // Clean display name: remove thumb_ prefix and file extension
+            let displayName = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+            // Remove file extension
+            displayName = displayName.replace(/\.[^.]+$/, '');
+            
+            return {
+              ...thumb,
+              isThumbnail: true,
+              mainFileId: thoughtFile?.id || thumb.id, // Use thought file ID if found, fallback to thumb ID
+              displayName: displayName,
+              isPartOfCollection: isPartOfCollection
+            };
+          })
+        );
         
         // Detect collections by filename pattern
         const collectionFiles = allFiles.filter((file: DriveFile) => {
@@ -1302,10 +1315,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
-        // Also filter out thought thumbnails that are in collections (by thumbnail ID or mainFileId)
+        // Also filter out thought thumbnails that are in collections (by thumbnail ID, mainFileId, or isPartOfCollection flag)
         const filteredThoughtThumbnailEntries = thoughtThumbnailEntries.filter((entry: any) => {
-          // Exclude if thumbnail ID is in a collection OR if mainFileId is in a collection
-          return !thumbnailIdsInCollections.has(entry.id) && !thoughtFilesInCollections.has(entry.mainFileId);
+          // Exclude if:
+          // 1. Thumbnail ID is in a collection
+          // 2. mainFileId is in a collection
+          // 3. Thumbnail metadata indicates it's part of a collection
+          return !thumbnailIdsInCollections.has(entry.id) && 
+                 !thoughtFilesInCollections.has(entry.mainFileId) &&
+                 !entry.isPartOfCollection;
         });
         const collectionFileIds = new Set(collectionFiles.map((f: any) => f.id));
         const mediaFiles = thumbnailEntries.concat(filteredThoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
@@ -1429,28 +1447,41 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'));
         });
         
-        const thoughtThumbnailEntries = thoughtThumbnails.map((thumb: DriveFile) => {
-          // Remove "thumb_" prefix, ".encrypted" suffix, and file extension to get base name
-          const thumbNameBase = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
-          
-          // Find the corresponding thought file by comparing base names (ignoring extension differences)
-          const thoughtFile = thoughtFiles.find((tf: DriveFile) => {
-            const thoughtFileNameBase = tf.name.replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
-            return thoughtFileNameBase === thumbNameBase;
-          });
-          
-          // Clean display name: remove thumb_ prefix and file extension
-          let displayName = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
-          // Remove file extension
-          displayName = displayName.replace(/\.[^.]+$/, '');
-          
-          return {
-            ...thumb,
-            isThumbnail: true,
-            mainFileId: thoughtFile?.id || thumb.id, // Use thought file ID if found, fallback to thumb ID
-            displayName: displayName
-          };
-        });
+        // Map thought thumbnails to thought files and load metadata to check if they're part of collections
+        const thoughtThumbnailEntries = await Promise.all(
+          thoughtThumbnails.map(async (thumb: DriveFile) => {
+            // Remove "thumb_" prefix, ".encrypted" suffix, and file extension to get base name
+            const thumbNameBase = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
+            
+            // Find the corresponding thought file by comparing base names (ignoring extension differences)
+            const thoughtFile = thoughtFiles.find((tf: DriveFile) => {
+              const thoughtFileNameBase = tf.name.replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
+              return thoughtFileNameBase === thumbNameBase;
+            });
+            
+            // Check thumbnail metadata to see if it's part of a collection
+            let isPartOfCollection = false;
+            try {
+              const thumbMetadata = await loadFileMetadata(thumb.id);
+              isPartOfCollection = thumbMetadata?.isPartOfCollection === true;
+            } catch (err) {
+              // If metadata load fails, continue without the flag
+            }
+            
+            // Clean display name: remove thumb_ prefix and file extension
+            let displayName = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+            // Remove file extension
+            displayName = displayName.replace(/\.[^.]+$/, '');
+            
+            return {
+              ...thumb,
+              isThumbnail: true,
+              mainFileId: thoughtFile?.id || thumb.id, // Use thought file ID if found, fallback to thumb ID
+              displayName: displayName,
+              isPartOfCollection: isPartOfCollection
+            };
+          })
+        );
         
         // Detect collections by filename pattern
         const collectionFiles = allFiles.filter((file: DriveFile) => {
@@ -1524,10 +1555,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
-        // Also filter out thought thumbnails that are in collections (by thumbnail ID or mainFileId)
+        // Also filter out thought thumbnails that are in collections (by thumbnail ID, mainFileId, or isPartOfCollection flag)
         const filteredThoughtThumbnailEntries = thoughtThumbnailEntries.filter((entry: any) => {
-          // Exclude if thumbnail ID is in a collection OR if mainFileId is in a collection
-          return !thumbnailIdsInCollections.has(entry.id) && !thoughtFilesInCollections.has(entry.mainFileId);
+          // Exclude if:
+          // 1. Thumbnail ID is in a collection
+          // 2. mainFileId is in a collection
+          // 3. Thumbnail metadata indicates it's part of a collection
+          return !thumbnailIdsInCollections.has(entry.id) && 
+                 !thoughtFilesInCollections.has(entry.mainFileId) &&
+                 !entry.isPartOfCollection;
         });
         const collectionFileIds = new Set(collectionFiles.map((f: any) => f.id));
         const mediaFiles = thumbnailEntries.concat(filteredThoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
@@ -2335,10 +2371,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       if (isCollection && collectionFileIds.length > 0) {
         console.log(`[FileStorageAggregator] Deleting collection with ${collectionFileIds.length} associated files`);
         
-        // Delete all files in the collection
-        for (const fileId of collectionFileIds) {
+        // For multi-page thoughts, collectionFileIds are thumbnail IDs
+        // We need to delete both the thumbnails AND the thought files they reference
+        const thoughtFileIdsToDelete = new Set<string>();
+        
+        // First, load metadata for each thumbnail to get mainFileId (the thought file)
+        for (const thumbnailId of collectionFileIds) {
           try {
-            const deleteResponse = await fetch(`${apiEndpoint}/api/drive/files/${fileId}?accountId=${accountId}`, {
+            const thumbnailMetadata = await loadFileMetadata(thumbnailId);
+            if (thumbnailMetadata?.mainFileId) {
+              thoughtFileIdsToDelete.add(thumbnailMetadata.mainFileId);
+            }
+          } catch (err) {
+            console.warn(`[FileStorageAggregator] Failed to load metadata for thumbnail ${thumbnailId}:`, err);
+          }
+        }
+        
+        // Delete all thought files first
+        for (const thoughtFileId of thoughtFileIdsToDelete) {
+          try {
+            const deleteResponse = await fetch(`${apiEndpoint}/api/drive/files/${thoughtFileId}?accountId=${accountId}`, {
               method: 'DELETE',
               headers: {
                 'Authorization': `Bearer ${accessToken}`
@@ -2346,10 +2398,32 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             });
             
             if (!deleteResponse.ok) {
-              console.warn(`[FileStorageAggregator] Failed to delete collection file ${fileId}`);
+              console.warn(`[FileStorageAggregator] Failed to delete thought file ${thoughtFileId}`);
+            } else {
+              console.log(`[FileStorageAggregator] Deleted thought file ${thoughtFileId}`);
             }
           } catch (err: any) {
-            console.warn(`[FileStorageAggregator] Error deleting collection file ${fileId}:`, err);
+            console.warn(`[FileStorageAggregator] Error deleting thought file ${thoughtFileId}:`, err);
+          }
+        }
+        
+        // Then delete all thumbnails
+        for (const thumbnailId of collectionFileIds) {
+          try {
+            const deleteResponse = await fetch(`${apiEndpoint}/api/drive/files/${thumbnailId}?accountId=${accountId}`, {
+              method: 'DELETE',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            });
+            
+            if (!deleteResponse.ok) {
+              console.warn(`[FileStorageAggregator] Failed to delete thumbnail ${thumbnailId}`);
+            } else {
+              console.log(`[FileStorageAggregator] Deleted thumbnail ${thumbnailId}`);
+            }
+          } catch (err: any) {
+            console.warn(`[FileStorageAggregator] Error deleting thumbnail ${thumbnailId}:`, err);
           }
         }
       }
