@@ -497,7 +497,8 @@ export async function createTextPost(
             // No description - thoughts don't show captions by default (can be added later via metadata edit)
             keywords: metadata?.keywords || [],
             tags: metadata?.tags || [],
-            fileType: 'image', // Thumbnail is an image
+            // Use different fileType for thumbnails of collection thoughts vs single thoughts
+            fileType: isPartOfCollection ? 'thought-collection-thumbnail' : 'image', // Separate type for collection thought thumbnails
             isPublic: thumbnailIsPublic, // Private if part of collection (like PDF page thumbnails)
             uploadDate: new Date().toISOString(),
             isNSFW: metadata?.isNSFW || false,

@@ -717,6 +717,37 @@ function App() {
       indexedFilesCount: indexedFiles.length
     });
     
+    // Build sets of fileIds to exclude (individual thought pages from multi-page thought collections)
+    // Only filter out thoughts that are in thought collections (multi-page thoughts), not regular collections or single thoughts
+    const thoughtThumbnailIdsInCollections = new Set<string>();
+    const thoughtFileIdsInCollections = new Set<string>();
+    
+    // Find all thought collections and mark their constituent files for exclusion
+    indexedFiles.forEach((file: IndexedFile) => {
+      const isThoughtCollection = (file.metadata as any).isThoughtCollection === true;
+      if (isThoughtCollection && file.metadata.collection?.collectionFileIds) {
+        const collectionFileIds = file.metadata.collection.collectionFileIds;
+        console.log(`[App] Found thought collection ${file.metadata.fileId} with ${collectionFileIds.length} files`);
+        
+        // For thought collections, collectionFileIds are thumbnail IDs
+        collectionFileIds.forEach((thumbnailId: string) => {
+          thoughtThumbnailIdsInCollections.add(thumbnailId);
+          
+          // Find the main thought file for this thumbnail (if it exists in indexedFiles)
+          const thumbnailFile = indexedFiles.find(f => f.metadata.fileId === thumbnailId);
+          if (thumbnailFile?.metadata.mainFileId) {
+            thoughtFileIdsInCollections.add(thumbnailFile.metadata.mainFileId);
+            console.log(`[App] Marking thumbnail ${thumbnailId} and thought file ${thumbnailFile.metadata.mainFileId} as part of thought collection`);
+          } else {
+            // If thumbnail not found in indexedFiles, still mark the thumbnail ID for exclusion
+            console.log(`[App] Marking thumbnail ${thumbnailId} as part of thought collection (main file not in indexedFiles)`);
+          }
+        });
+      }
+    });
+    
+    console.log(`[App] Filtering: ${thoughtThumbnailIdsInCollections.size} thought thumbnails in collections, ${thoughtFileIdsInCollections.size} thought files in collections`);
+    
     const showNSFW = userState.preferences.showNSFW;
     const hasAgeZKP = userState.preferences.hasAgeZKP;
     const isOver18 = userState.preferences.isOver18;
@@ -740,11 +771,33 @@ function App() {
       // Show public (non-NSFW) content
       return true;
     };
+    
+    // Helper to check if file should be excluded (individual thought pages from multi-page thought collections)
+    const shouldExcludeThoughtPage = (file: IndexedFile): boolean => {
+      const fileType = file.metadata.fileType;
+      
+      // Exclude if fileType is 'thought-collection-thumbnail' or 'thought-collection-page'
+      // These are the new types for thoughts that are part of collections
+      if (fileType === 'thought-collection-thumbnail' || fileType === 'thought-collection-page') {
+        console.log(`[App] Excluding ${fileType} ${file.metadata.fileId} - collection thought`);
+        return true;
+      }
+      
+      // Fallback for existing data: check if in collections
+      const fileId = file.metadata.fileId;
+      if (thoughtThumbnailIdsInCollections.has(fileId) || thoughtFileIdsInCollections.has(fileId)) {
+        console.log(`[App] Excluding thought ${fileId} - part of thought collection (fallback)`);
+        return true;
+      }
+      
+      return false;
+    };
 
     if (activeFeedId === 'public') {
       // Public feed: ALWAYS filter out NSFW content unless user has it enabled
       // This ensures NSFW content never appears in public feed unless explicitly enabled
-      const filtered = indexedFiles.filter(shouldShowFile);
+      // Also filter out individual thought pages from multi-page thought collections
+      const filtered = indexedFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
       
       // Helper function to detect images - check fileType, name, title, mimeType, encodingFormat, and @type
       const isImageFile = (f: IndexedFile): boolean => {
@@ -807,6 +860,11 @@ function App() {
       }
       
       return indexedFiles.filter(file => {
+        // Exclude individual thought pages from multi-page thought collections
+        if (shouldExcludeThoughtPage(file)) {
+          return false;
+        }
+        
         // Check if file matches blocked categories
         // Check both feedCategories (array) and category (single string) fields
         const fileCategoriesArray = file.metadata.feedCategories || [];
@@ -884,6 +942,11 @@ function App() {
     if (activeFeedId.startsWith('niche-')) {
       const categoryId = activeFeedId.replace('niche-', '');
       let filtered = indexedFiles.filter(file => {
+        // Exclude individual thought pages from multi-page thought collections
+        if (shouldExcludeThoughtPage(file)) {
+          return false;
+        }
+        
         // Check if file has this category in its feedCategories
         // Handle nested arrays by flattening (in case feedCategories contains arrays of arrays)
         const fileCategories = file.metadata.feedCategories || [];
@@ -907,9 +970,16 @@ function App() {
     }
     
     // Individual feed: ALWAYS filter by NSFW preference
-    let filtered = indexedFiles.filter(file => 
-      file.metadata.feedIds?.includes(activeFeedId)
-    );
+    // Also filter out individual thought pages from multi-page thought collections
+    let filtered = indexedFiles.filter(file => {
+      if (!file.metadata.feedIds?.includes(activeFeedId)) {
+        return false;
+      }
+      if (shouldExcludeThoughtPage(file)) {
+        return false;
+      }
+      return true;
+    });
     filtered = filtered.filter(shouldShowFile);
     
     // Thoughts should appear in all feeds - no filtering needed

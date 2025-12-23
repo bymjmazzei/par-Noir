@@ -14,11 +14,9 @@ import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { useViewportHeightCSS } from '../hooks/useViewportHeight';
 import { formatTimestamp } from '../utils/formatTimestamp';
-import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
+import { ShareToken } from '../utils/tokenDecryption';
 import { cleanTitle } from '../utils/cleanTitle';
-import { CollectionFeed } from './CollectionFeed';
-import { PNOAuthService } from '../services/pnOAuthService';
-import { calculateMediaScaling, getContainerDimensions, type MediaDimensions } from '../utils/mediaScaling';
+import { calculateMediaScaling, getContainerDimensions } from '../utils/mediaScaling';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -593,8 +591,6 @@ export function FullScreenFeed({
       const thumbnailFiles = files.filter((indexedFile) => {
         const fileName = (indexedFile.metadata?.name || indexedFile.metadata?.title || '').toLowerCase();
         const isThumbnail = fileName.startsWith('thumb_');
-        const fileType = indexedFile.metadata?.fileType;
-        const thumbnailFileId = indexedFile.metadata?.thumbnailFileId;
         if (isThumbnail) {
           console.log(`[FullScreenFeed] Found thumbnail file: ${fileName} (${indexedFile.metadata?.fileId})`);
         }
@@ -904,10 +900,11 @@ export function FullScreenFeed({
         // Cache it if not already cached
         if (!collectionDataCache.has(fileId)) {
           collectionDataCache.set(fileId, collectionDataFromMetadata);
+          const thumbnailTokens = (collectionDataFromMetadata as any).thumbnailTokens;
           console.log(`[FullScreenFeed] Cached collection data from metadata API for ${fileId} (PRIORITY)`, {
             collectionFileIdsCount: collectionDataFromMetadata.collectionFileIds.length,
-            hasThumbnailTokens: !!collectionDataFromMetadata.thumbnailTokens,
-            tokenCount: collectionDataFromMetadata.thumbnailTokens ? Object.keys(collectionDataFromMetadata.thumbnailTokens).length : 0
+            hasThumbnailTokens: !!thumbnailTokens,
+            tokenCount: thumbnailTokens ? Object.keys(thumbnailTokens).length : 0
           });
         }
         
@@ -935,10 +932,11 @@ export function FullScreenFeed({
             // Cache it if not already cached
             if (!collectionDataCache.has(fileId)) {
               collectionDataCache.set(fileId, collectionDataFromMetadata);
+              const thumbnailTokens = (collectionDataFromMetadata as any).thumbnailTokens;
               console.log(`[FullScreenFeed] Cached collection data from metadata API for ${fileId}`, {
                 collectionFileIdsCount: collectionDataFromMetadata.collectionFileIds.length,
-                hasThumbnailTokens: !!collectionDataFromMetadata.thumbnailTokens,
-                tokenCount: collectionDataFromMetadata.thumbnailTokens ? Object.keys(collectionDataFromMetadata.thumbnailTokens).length : 0
+                hasThumbnailTokens: !!thumbnailTokens,
+                tokenCount: thumbnailTokens ? Object.keys(thumbnailTokens).length : 0
               });
             }
             
@@ -1638,12 +1636,12 @@ export function FullScreenFeed({
         });
         
         // Debug: Log all files in the array with their indices
-        const allFilesWithIndices = files.map((f, idx) => ({
-          index: idx,
-          fileId: f.metadata.fileId,
-          fileType: f.metadata.fileType,
-          fileName: f.metadata.name || f.metadata.title
-        }));
+        // const allFilesWithIndices = files.map((f, idx) => ({
+        //   index: idx,
+        //   fileId: f.metadata.fileId,
+        //   fileType: f.metadata.fileType,
+        //   fileName: f.metadata.name || f.metadata.title
+        // }));
         // Only log in development mode
         if (process.env.NODE_ENV === 'development') {
           console.log(`[FullScreenFeed] ${files.length} files, currentIndex: ${currentIndex}`);
@@ -1793,6 +1791,8 @@ export function FullScreenFeed({
                   console.log(`[FullScreenFeed] IMMEDIATE LOAD: Starting to load thumbnail for collection file ${cfId}`);
                   
                   let success = false;
+                  let collectionFileMetadata: any = null;
+                  let accountId: string | null = null;
                   
                   try {
                     // Fetch metadata for this collection file (try with auth if available, but should work without for public files)
@@ -1832,7 +1832,7 @@ export function FullScreenFeed({
                     }
                     
                     const metadataData = await metadataResponse.json();
-                    const collectionFileMetadata = metadataData.metadata || metadataData;
+                    collectionFileMetadata = metadataData.metadata || metadataData;
                     
                     // Log FULL metadata to see what we're working with
                     console.log(`[FullScreenFeed] IMMEDIATE LOAD: FULL Metadata for ${cfId}:`, collectionFileMetadata);
@@ -1848,7 +1848,7 @@ export function FullScreenFeed({
                     });
                     
                     // Get accountId
-                    let accountId = collectionFileMetadata.accountId || collectionFileMetadata.backendFileId;
+                    accountId = collectionFileMetadata.accountId || collectionFileMetadata.backendFileId;
                     if (!accountId || !accountId.includes('::')) {
                       const pnIdentifier = collectionFileMetadata.creatorId || collectionFileMetadata.creator?.identifier?.value || 
                                            collectionFileMetadata.creator?.["@id"] || collectionFileMetadata.author?.did;
@@ -2078,15 +2078,15 @@ export function FullScreenFeed({
                   }
                   
                   // Final fallback: if all else failed and file is image/video, try loading the file itself
-                  if (!success) {
+                  if (!success && collectionFileMetadata && accountId) {
                     try {
-                      const fileType = collectionFileMetadata?.fileType || '';
+                      const fileType = collectionFileMetadata.fileType || '';
                       const isImageOrVideo = fileType === 'image' || fileType === 'video';
                       
-                      if (isImageOrVideo && accountId) {
+                      if (isImageOrVideo) {
                         console.log(`[FullScreenFeed] IMMEDIATE LOAD: Trying final fallback - load file directly for ${cfId}`);
                         let fileUrl = `${apiEndpoint}/api/drive/files/${cfId}?thumbnail=true`;
-                        if (accountId && accountId.includes('::')) {
+                        if (accountId.includes('::')) {
                           fileUrl += `&accountId=${encodeURIComponent(accountId)}`;
                         }
                         
@@ -2560,7 +2560,7 @@ export function FullScreenFeed({
                               style={scalingStyles.background}
                               loading="eager"
                               decoding="async"
-                              onError={(e) => {
+                              onError={() => {
                                 console.error(`[FullScreenFeed] Background image failed to load for collection ${fileId}, index ${idx}:`, thumbnailUrl);
                               }}
                             />
@@ -2634,6 +2634,7 @@ export function FullScreenFeed({
                     likes: getLikeCount(fileId, indexedFile.metadata.engagement?.likes || 0),
                     comments: getComments(fileId).length + (indexedFile.metadata.engagement?.comments || 0),
                     shares: getShareCount(fileId, indexedFile.metadata.engagement?.shares || 0),
+                    saves: indexedFile.metadata.engagement?.saves || 0,
                     lastUpdated: indexedFile.metadata.engagement?.lastUpdated || new Date().toISOString()
                   }
                 }
