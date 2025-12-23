@@ -1258,29 +1258,42 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           })
         );
         
-        // Build set of thought fileIds that are part of collections (to exclude them from individual display)
+        // Build set of fileIds (thumbnails and thought files) that are part of collections (to exclude them from individual display)
+        // For multi-page thoughts, collections use thumbnail fileIds, so we need to exclude those thumbnails
         // Only filter out thoughts that are in collections (multi-page thoughts), not media files
         // This way manually created collections still show their individual files
         const thoughtFilesInCollections = new Set<string>();
+        const thumbnailIdsInCollections = new Set<string>(); // Track thumbnail IDs that are in collections
+        
         collectionFilesWithMetadata.forEach((collectionFile: any) => {
           const collectionData = collectionFile.collection;
           if (collectionData?.collectionFileIds && Array.isArray(collectionData.collectionFileIds)) {
-            // Check each fileId in the collection - if it's a thought file, add it to the exclusion set
+            // Check each fileId in the collection
             collectionData.collectionFileIds.forEach((fileId: string) => {
-              // Check if this fileId corresponds to a thought file
-              // First check in allFiles
-              const fileInCollection = allFiles.find((f: DriveFile) => f.id === fileId);
-              if (fileInCollection) {
-                const fileName = fileInCollection.name.toLowerCase();
-                // Only exclude thought files that are part of collections (multi-page thoughts)
-                if (fileName.startsWith('thought-') && (fileName.endsWith('.thought.encrypted') || fileName.endsWith('.png.encrypted'))) {
-                  thoughtFilesInCollections.add(fileId);
+              // Check if this fileId is a thumbnail (for multi-page thoughts, collections use thumbnail fileIds)
+              const isThumbnail = thoughtThumbnailEntries.some((entry: any) => entry.id === fileId);
+              if (isThumbnail) {
+                thumbnailIdsInCollections.add(fileId);
+                // Also add the mainFileId to exclude the thought file
+                const thoughtThumbnail = thoughtThumbnailEntries.find((entry: any) => entry.id === fileId);
+                if (thoughtThumbnail?.mainFileId) {
+                  thoughtFilesInCollections.add(thoughtThumbnail.mainFileId);
                 }
               } else {
-                // Also check if it's a mainFileId in thoughtThumbnailEntries (thoughts are shown via thumbnails)
-                const thoughtThumbnail = thoughtThumbnailEntries.find((entry: any) => entry.mainFileId === fileId);
-                if (thoughtThumbnail) {
-                  thoughtFilesInCollections.add(fileId);
+                // Check if this fileId corresponds to a thought file
+                const fileInCollection = allFiles.find((f: DriveFile) => f.id === fileId);
+                if (fileInCollection) {
+                  const fileName = fileInCollection.name.toLowerCase();
+                  // Only exclude thought files that are part of collections (multi-page thoughts)
+                  if (fileName.startsWith('thought-') && (fileName.endsWith('.thought.encrypted') || fileName.endsWith('.png.encrypted'))) {
+                    thoughtFilesInCollections.add(fileId);
+                  }
+                } else {
+                  // Also check if it's a mainFileId in thoughtThumbnailEntries (thoughts are shown via thumbnails)
+                  const thoughtThumbnail = thoughtThumbnailEntries.find((entry: any) => entry.mainFileId === fileId);
+                  if (thoughtThumbnail) {
+                    thoughtFilesInCollections.add(fileId);
+                  }
                 }
               }
             });
@@ -1289,9 +1302,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
-        // Also filter out thought thumbnails whose mainFileId is in a collection
+        // Also filter out thought thumbnails that are in collections (by thumbnail ID or mainFileId)
         const filteredThoughtThumbnailEntries = thoughtThumbnailEntries.filter((entry: any) => {
-          return !thoughtFilesInCollections.has(entry.mainFileId);
+          // Exclude if thumbnail ID is in a collection OR if mainFileId is in a collection
+          return !thumbnailIdsInCollections.has(entry.id) && !thoughtFilesInCollections.has(entry.mainFileId);
         });
         const collectionFileIds = new Set(collectionFiles.map((f: any) => f.id));
         const mediaFiles = thumbnailEntries.concat(filteredThoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
@@ -1466,29 +1480,42 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           })
         );
         
-        // Build set of thought fileIds that are part of collections (to exclude them from individual display)
+        // Build set of fileIds (thumbnails and thought files) that are part of collections (to exclude them from individual display)
+        // For multi-page thoughts, collections use thumbnail fileIds, so we need to exclude those thumbnails
         // Only filter out thoughts that are in collections (multi-page thoughts), not media files
         // This way manually created collections still show their individual files
         const thoughtFilesInCollections = new Set<string>();
+        const thumbnailIdsInCollections = new Set<string>(); // Track thumbnail IDs that are in collections
+        
         collectionFilesWithMetadata.forEach((collectionFile: any) => {
           const collectionData = collectionFile.collection;
           if (collectionData?.collectionFileIds && Array.isArray(collectionData.collectionFileIds)) {
-            // Check each fileId in the collection - if it's a thought file, add it to the exclusion set
+            // Check each fileId in the collection
             collectionData.collectionFileIds.forEach((fileId: string) => {
-              // Check if this fileId corresponds to a thought file
-              // First check in allFiles
-              const fileInCollection = allFiles.find((f: DriveFile) => f.id === fileId);
-              if (fileInCollection) {
-                const fileName = fileInCollection.name.toLowerCase();
-                // Only exclude thought files that are part of collections (multi-page thoughts)
-                if (fileName.startsWith('thought-') && (fileName.endsWith('.thought.encrypted') || fileName.endsWith('.png.encrypted'))) {
-                  thoughtFilesInCollections.add(fileId);
+              // Check if this fileId is a thumbnail (for multi-page thoughts, collections use thumbnail fileIds)
+              const isThumbnail = thoughtThumbnailEntries.some((entry: any) => entry.id === fileId);
+              if (isThumbnail) {
+                thumbnailIdsInCollections.add(fileId);
+                // Also add the mainFileId to exclude the thought file
+                const thoughtThumbnail = thoughtThumbnailEntries.find((entry: any) => entry.id === fileId);
+                if (thoughtThumbnail?.mainFileId) {
+                  thoughtFilesInCollections.add(thoughtThumbnail.mainFileId);
                 }
               } else {
-                // Also check if it's a mainFileId in thoughtThumbnailEntries (thoughts are shown via thumbnails)
-                const thoughtThumbnail = thoughtThumbnailEntries.find((entry: any) => entry.mainFileId === fileId);
-                if (thoughtThumbnail) {
-                  thoughtFilesInCollections.add(fileId);
+                // Check if this fileId corresponds to a thought file
+                const fileInCollection = allFiles.find((f: DriveFile) => f.id === fileId);
+                if (fileInCollection) {
+                  const fileName = fileInCollection.name.toLowerCase();
+                  // Only exclude thought files that are part of collections (multi-page thoughts)
+                  if (fileName.startsWith('thought-') && (fileName.endsWith('.thought.encrypted') || fileName.endsWith('.png.encrypted'))) {
+                    thoughtFilesInCollections.add(fileId);
+                  }
+                } else {
+                  // Also check if it's a mainFileId in thoughtThumbnailEntries (thoughts are shown via thumbnails)
+                  const thoughtThumbnail = thoughtThumbnailEntries.find((entry: any) => entry.mainFileId === fileId);
+                  if (thoughtThumbnail) {
+                    thoughtFilesInCollections.add(fileId);
+                  }
                 }
               }
             });
@@ -1497,9 +1524,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
-        // Also filter out thought thumbnails whose mainFileId is in a collection
+        // Also filter out thought thumbnails that are in collections (by thumbnail ID or mainFileId)
         const filteredThoughtThumbnailEntries = thoughtThumbnailEntries.filter((entry: any) => {
-          return !thoughtFilesInCollections.has(entry.mainFileId);
+          // Exclude if thumbnail ID is in a collection OR if mainFileId is in a collection
+          return !thumbnailIdsInCollections.has(entry.id) && !thoughtFilesInCollections.has(entry.mainFileId);
         });
         const collectionFileIds = new Set(collectionFiles.map((f: any) => f.id));
         const mediaFiles = thumbnailEntries.concat(filteredThoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
@@ -2272,7 +2300,27 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   // Handle file delete
   const handleDelete = async (file: DriveFile, accountId: string) => {
     if (!authenticatedUser?.id || !accountId) return;
-    if (!confirm(`Are you sure you want to delete "${file.name}"?`)) return;
+    
+    // Check if this is a collection - if so, we need to delete all associated files
+    let isCollection = false;
+    let collectionFileIds: string[] = [];
+    
+    try {
+      const metadata = await loadFileMetadata(file.id);
+      if (metadata?.fileType === 'collection' && metadata?.collection?.collectionFileIds) {
+        isCollection = true;
+        collectionFileIds = metadata.collection.collectionFileIds;
+      }
+    } catch (err) {
+      console.warn('[FileStorageAggregator] Failed to load metadata for delete check:', err);
+    }
+    
+    const fileCount = isCollection ? collectionFileIds.length + 1 : 1; // +1 for the collection file itself
+    const confirmMessage = isCollection 
+      ? `Are you sure you want to delete this collection and all ${collectionFileIds.length} associated files?`
+      : `Are you sure you want to delete "${file.name}"?`;
+    
+    if (!confirm(confirmMessage)) return;
 
     setIsLoading(true);
     setError(null);
@@ -2283,6 +2331,30 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         throw new Error('No valid access token');
       }
 
+      // If it's a collection, delete all associated files first
+      if (isCollection && collectionFileIds.length > 0) {
+        console.log(`[FileStorageAggregator] Deleting collection with ${collectionFileIds.length} associated files`);
+        
+        // Delete all files in the collection
+        for (const fileId of collectionFileIds) {
+          try {
+            const deleteResponse = await fetch(`${apiEndpoint}/api/drive/files/${fileId}?accountId=${accountId}`, {
+              method: 'DELETE',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            });
+            
+            if (!deleteResponse.ok) {
+              console.warn(`[FileStorageAggregator] Failed to delete collection file ${fileId}`);
+            }
+          } catch (err: any) {
+            console.warn(`[FileStorageAggregator] Error deleting collection file ${fileId}:`, err);
+          }
+        }
+      }
+
+      // Delete the collection file itself (or the single file if not a collection)
       const response = await fetch(`${apiEndpoint}/api/drive/files/${file.id}?accountId=${accountId}`, {
         method: 'DELETE',
         headers: {
