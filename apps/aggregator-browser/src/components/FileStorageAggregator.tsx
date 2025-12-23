@@ -1258,6 +1258,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 ...file,
                 fileType: metadata?.fileType || 'collection',
                 collection: metadata?.collection,
+                isThoughtCollection: metadata?.isThoughtCollection || false, // Preserve thought collection flag
                 displayName: metadata?.name || metadata?.title || file.name.replace(/\.encrypted$/i, '').replace(/\.collection$/i, '')
               };
             } catch (err) {
@@ -1505,6 +1506,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 ...file,
                 fileType: metadata?.fileType || 'collection',
                 collection: metadata?.collection,
+                isThoughtCollection: metadata?.isThoughtCollection || false, // Preserve thought collection flag
                 displayName: metadata?.name || metadata?.title || file.name.replace(/\.encrypted$/i, '').replace(/\.collection$/i, '')
               };
             } catch (err) {
