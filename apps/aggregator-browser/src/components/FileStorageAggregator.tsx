@@ -1254,11 +1254,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           collectionFiles.map(async (file: DriveFile) => {
             try {
               const metadata = await loadFileMetadata(file.id);
+              const isThoughtCollection = metadata?.isThoughtCollection === true;
+              console.log(`[FileStorageAggregator] Loaded collection metadata for ${file.id}:`, {
+                name: metadata?.name || metadata?.title,
+                isThoughtCollection: isThoughtCollection,
+                metadataIsThoughtCollection: metadata?.isThoughtCollection,
+                collectionFileIds: metadata?.collection?.collectionFileIds?.length || 0
+              });
               return {
                 ...file,
                 fileType: metadata?.fileType || 'collection',
                 collection: metadata?.collection,
-                isThoughtCollection: metadata?.isThoughtCollection || false, // Preserve thought collection flag
+                isThoughtCollection: isThoughtCollection, // Preserve thought collection flag
                 displayName: metadata?.name || metadata?.title || file.name.replace(/\.encrypted$/i, '').replace(/\.collection$/i, '')
               };
             } catch (err) {
@@ -1515,11 +1522,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           collectionFiles.map(async (file: DriveFile) => {
             try {
               const metadata = await loadFileMetadata(file.id);
+              const isThoughtCollection = metadata?.isThoughtCollection === true;
+              console.log(`[FileStorageAggregator] Loaded collection metadata for ${file.id}:`, {
+                name: metadata?.name || metadata?.title,
+                isThoughtCollection: isThoughtCollection,
+                metadataIsThoughtCollection: metadata?.isThoughtCollection,
+                collectionFileIds: metadata?.collection?.collectionFileIds?.length || 0
+              });
               return {
                 ...file,
                 fileType: metadata?.fileType || 'collection',
                 collection: metadata?.collection,
-                isThoughtCollection: metadata?.isThoughtCollection || false, // Preserve thought collection flag
+                isThoughtCollection: isThoughtCollection, // Preserve thought collection flag
                 displayName: metadata?.name || metadata?.title || file.name.replace(/\.encrypted$/i, '').replace(/\.collection$/i, '')
               };
             } catch (err) {
