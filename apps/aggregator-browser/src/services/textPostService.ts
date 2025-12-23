@@ -173,6 +173,7 @@ export async function createTextPost(
     tags?: string[];
     isPublic?: boolean;
     isNSFW?: boolean;
+    isPartOfCollection?: boolean; // If true, thumbnail will be private (only collection shows in feeds)
   }
 ): Promise<{ fileId: string; thumbnailFileId?: string; thumbnailShareToken?: any; success: boolean; error?: string }> {
   try {
@@ -473,12 +474,17 @@ export async function createTextPost(
     
     // If thought is public and we have a thumbnail, submit thumbnail to public index
     // This makes thoughts render instantly in feeds (just like images/videos)
+    // For multi-page thoughts (isPartOfCollection), thumbnails are private - only the collection shows
     const isPublic = metadata?.isPublic ?? true;
-    if (isPublic && thumbnailFileId) {
+    const isPartOfCollection = metadata?.isPartOfCollection ?? false;
+    const thumbnailIsPublic = isPublic && !isPartOfCollection; // Private if part of collection
+    
+    if (thumbnailFileId) {
       try {
         const thumbnailPublicToken = thumbnailShareToken ? JSON.stringify(thumbnailShareToken) : undefined;
         
-        // Submit thumbnail to public index (this is what appears in feeds)
+        // Submit thumbnail to metadata index
+        // If part of collection, thumbnail is private (only collection shows in feeds)
         const thumbnailMetadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}`, {
           method: 'PUT',
           headers: {
@@ -492,11 +498,13 @@ export async function createTextPost(
             keywords: metadata?.keywords || [],
             tags: metadata?.tags || [],
             fileType: 'image', // Thumbnail is an image
-            isPublic: true, // Thumbnail is public
+            isPublic: thumbnailIsPublic, // Private if part of collection (like PDF page thumbnails)
             uploadDate: new Date().toISOString(),
             isNSFW: metadata?.isNSFW || false,
             // Mark as thought thumbnail so UI knows to render title only (no caption)
             isThoughtThumbnail: true,
+            // Mark if part of collection (for filtering)
+            isPartOfCollection: isPartOfCollection,
             // Store reference to main file for editing
             mainFileId: fileId, // Reference to JSON file for editing
             publicToken: thumbnailPublicToken,

@@ -136,6 +136,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
               isNSFW: false,
               keywords: metadata.keywords || metadata.tags || [],
               tags: metadata.tags || metadata.keywords || [],
+              isPartOfCollection: true, // Mark as part of collection - thumbnail will be private
             }
           );
           
