@@ -329,52 +329,6 @@ export function FullScreenFeed({
     snapThreshold: 0.2
   });
 
-
-  // Helper function to get accountId with caching
-  const getAccountId = async (indexedFile: IndexedFile, accessToken: string | null): Promise<string | null> => {
-    // Return cached accountId if available
-    if (accountIdCacheRef.current) {
-      return accountIdCacheRef.current;
-    }
-    
-    // Try to get from indexedFile metadata first (if available)
-    const fileMetadata = indexedFile.metadata as any;
-    let accountId = fileMetadata?.accountId || fileMetadata?.backendFileId;
-    if (accountId && accountId.includes('::')) {
-      accountIdCacheRef.current = accountId;
-      return accountId;
-    }
-    
-    // Fetch from API if needed and we have access token
-    if (accessToken) {
-      try {
-        const { PNOAuthService } = await import('../services/pnOAuthService');
-        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-        const session = PNOAuthService.loadSession();
-        if (session?.did || session?.pnIdentifier) {
-          const userId = session.pnIdentifier || session.did;
-          const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
-            headers: { 'Authorization': `Bearer ${accessToken}` }
-          });
-          if (accountsResponse.ok) {
-            const accountsData = await accountsResponse.json();
-            const accounts = accountsData.accounts || [];
-            if (accounts.length > 0) {
-              accountId = accounts[0].accountId;
-              accountIdCacheRef.current = accountId;
-              return accountId;
-            }
-          }
-        }
-      } catch (err) {
-        console.warn(`[FullScreenFeed] Failed to fetch accountId:`, err);
-      }
-    }
-    
-    return accountId || null;
-  };
-
-
   // Function to get popular comments for a file
   const getPopularComments = useCallback((fileId: string): any[] => {
     const allComments = getComments(fileId);
