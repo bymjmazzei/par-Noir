@@ -1219,11 +1219,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               return thoughtFileNameBase === thumbNameBase;
             });
             
-            // Check thumbnail metadata to see if it's part of a collection
+            // Check thumbnail metadata to see if it's part of a collection and get fileType
             let isPartOfCollection = false;
+            let fileType: string | undefined;
             try {
               const thumbMetadata = await loadFileMetadata(thumb.id);
               isPartOfCollection = thumbMetadata?.isPartOfCollection === true;
+              fileType = thumbMetadata?.fileType; // Capture fileType for filtering
             } catch (err) {
               // If metadata load fails, continue without the flag
             }
@@ -1238,7 +1240,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               isThumbnail: true,
               mainFileId: thoughtFile?.id || thumb.id, // Use thought file ID if found, fallback to thumb ID
               displayName: displayName,
-              isPartOfCollection: isPartOfCollection
+              isPartOfCollection: isPartOfCollection,
+              fileType: fileType // Store fileType for filtering
             };
           })
         );
@@ -1349,9 +1352,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Exclude thought-collection-thumbnail fileType (these are pages in multi-page thought collections)
         // Single thoughts (fileType: 'image' with isThoughtThumbnail) should remain visible
         const filteredThoughtThumbnailEntries = thoughtThumbnailEntries.filter((entry: any) => {
-          // Load metadata to check fileType
-          const metadata = fileMetadataMap.get(entry.id);
-          const fileType = metadata?.fileType;
+          // Use fileType from entry (loaded during mapping) or fallback to fileMetadataMap
+          const fileType = entry.fileType || fileMetadataMap.get(entry.id)?.fileType;
           
           // Exclude if:
           // 1. fileType is 'thought-collection-thumbnail' (collection thought pages)
@@ -1519,11 +1521,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               return thoughtFileNameBase === thumbNameBase;
             });
             
-            // Check thumbnail metadata to see if it's part of a collection
+            // Check thumbnail metadata to see if it's part of a collection and get fileType
             let isPartOfCollection = false;
+            let fileType: string | undefined;
             try {
               const thumbMetadata = await loadFileMetadata(thumb.id);
               isPartOfCollection = thumbMetadata?.isPartOfCollection === true;
+              fileType = thumbMetadata?.fileType; // Capture fileType for filtering
             } catch (err) {
               // If metadata load fails, continue without the flag
             }
@@ -1538,7 +1542,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               isThumbnail: true,
               mainFileId: thoughtFile?.id || thumb.id, // Use thought file ID if found, fallback to thumb ID
               displayName: displayName,
-              isPartOfCollection: isPartOfCollection
+              isPartOfCollection: isPartOfCollection,
+              fileType: fileType // Store fileType for filtering
             };
           })
         );
@@ -1649,9 +1654,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Exclude thought-collection-thumbnail fileType (these are pages in multi-page thought collections)
         // Single thoughts (fileType: 'image' with isThoughtThumbnail) should remain visible
         const filteredThoughtThumbnailEntries = thoughtThumbnailEntries.filter((entry: any) => {
-          // Load metadata to check fileType
-          const metadata = fileMetadataMap.get(entry.id);
-          const fileType = metadata?.fileType;
+          // Use fileType from entry (loaded during mapping) or fallback to fileMetadataMap
+          const fileType = entry.fileType || fileMetadataMap.get(entry.id)?.fileType;
           
           // Exclude if:
           // 1. fileType is 'thought-collection-thumbnail' (collection thought pages)
