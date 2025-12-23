@@ -177,7 +177,8 @@ export async function createTextPost(
   }
 ): Promise<{ fileId: string; thumbnailFileId?: string; thumbnailShareToken?: any; success: boolean; error?: string }> {
   try {
-    const accessToken = await PNOAuthService.getValidAccessToken();
+    // Force refresh token to ensure it's fresh for the entire upload process
+    const accessToken = await PNOAuthService.getValidAccessToken(true);
     if (!accessToken) {
       throw new Error('No valid access token');
     }
@@ -280,7 +281,8 @@ export async function createTextPost(
     });
 
     // Get fresh access token right before upload to ensure it's valid
-    const uploadToken = await PNOAuthService.getValidAccessToken();
+    // Force refresh to prevent expiration during long-running multi-page uploads
+    const uploadToken = await PNOAuthService.getValidAccessToken(true);
     if (!uploadToken) {
       throw new Error('No valid access token for upload');
     }
@@ -409,7 +411,8 @@ export async function createTextPost(
     }
 
     // Get fresh access token right before metadata update to ensure it's valid
-    const metadataToken = await PNOAuthService.getValidAccessToken();
+    // Force refresh to prevent expiration during long-running multi-page uploads
+    const metadataToken = await PNOAuthService.getValidAccessToken(true);
     if (!metadataToken) {
       throw new Error('No valid access token for metadata update');
     }

@@ -127,6 +127,15 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
             ? `${metadata.name || 'Thought'} (Page ${i + 1})`
             : (metadata.name || page.content.substring(0, 50));
           
+          // Refresh token before each page to prevent expiration during multi-page uploads
+          try {
+            const { PNOAuthService } = await import('../services/pnOAuthService');
+            await PNOAuthService.getValidAccessToken(true); // Force refresh to prevent expiration
+          } catch (tokenErr) {
+            console.warn(`[UploadModal] Token refresh warning before page ${i + 1}:`, tokenErr);
+            // Continue anyway - createTextPost will try to get a token
+          }
+          
           const result = await createTextPost(
             page,
             accountId,
