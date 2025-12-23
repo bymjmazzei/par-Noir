@@ -9,11 +9,13 @@ import { TextPostEditor } from './TextPostEditor';
 import { ContentPreferencesPanel } from './ContentPreferencesPanel';
 import { useUserState } from '../contexts/UserStateContext';
 import { TextPostData, Feed } from '../types/aggregator';
-import { createTextPost } from '../services/textPostService';
+import { createTextPost, convertThoughtPagesToPDF } from '../services/textPostService';
 import { createCollection } from '../services/collectionService';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { FeedService } from '../services/feedService';
 import { Settings } from 'lucide-react';
+import { EncryptionManager } from '../utils/encryptionManager';
+import { getEncryptionService } from '../services/encryptionService';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -111,95 +113,312 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
       const isMultiPage = (textPost as any).isMultiPage && (textPost as any).pages && Array.isArray((textPost as any).pages) && (textPost as any).pages.length > 1;
       
       if (isMultiPage) {
-        // Multi-page thought: save each page as a separate thought, then create a collection
+        // Multi-page thought: convert to PDF, process pages, upload, then create collection
         const pages = (textPost as any).pages as TextPostData[];
         const metadata = textPost.metadata || {};
         
-        console.log(`[UploadModal] Creating multi-page thought with ${pages.length} pages`);
+        console.log(`[UploadModal] Converting ${pages.length} thought pages to PDF`);
         
-        // Save each page as a separate thought and collect thumbnail fileIds (like PDFs)
-        const thumbnailFileIds: string[] = [];
-        const thumbnailTokens: Record<string, string> = {};
+        // Convert thought pages to PDF
+        const pdfBlob = await convertThoughtPagesToPDF(pages);
         
-        for (let i = 0; i < pages.length; i++) {
-          const page = pages[i];
-          const pageTitle = pages.length > 1 
-            ? `${metadata.name || 'Thought'} (Page ${i + 1})`
-            : (metadata.name || page.content.substring(0, 50));
-          
-          // Refresh token before each page to prevent expiration during multi-page uploads
+        // Create File object from PDF blob
+        const pdfFileName = `${metadata.name || 'Thought Collection'}.pdf`;
+        const pdfFile = new File([pdfBlob], pdfFileName, { type: 'application/pdf' });
+        
+        // Get session and encryption setup
+        const accessToken = await PNOAuthService.getValidAccessToken(true);
+        if (!accessToken) {
+          throw new Error('No valid access token');
+        }
+
+        const session = PNOAuthService.loadSession();
+        if (!session?.did) {
+          throw new Error('No DID in session for encryption');
+        }
+
+        let publicKey = session?.publicKey;
+        if (!publicKey && session.accessToken) {
           try {
-            const { PNOAuthService } = await import('../services/pnOAuthService');
-            await PNOAuthService.getValidAccessToken(true); // Force refresh to prevent expiration
-          } catch (tokenErr) {
-            console.warn(`[UploadModal] Token refresh warning before page ${i + 1}:`, tokenErr);
-            // Continue anyway - createTextPost will try to get a token
-          }
-          
-          const result = await createTextPost(
-            page,
-            accountId,
-            {
-              title: pageTitle,
-              description: i === 0 ? metadata.description : undefined, // Only add description to first page
-              isNSFW: false,
-              keywords: metadata.keywords || metadata.tags || [],
-              tags: metadata.tags || metadata.keywords || [],
-              isPartOfCollection: true, // Mark as part of collection - thumbnail will be private
+            const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
+            if (userInfo.public_key) {
+              publicKey = userInfo.public_key;
+              const updatedSession = { ...session, publicKey };
+              PNOAuthService.saveSession(updatedSession);
             }
-          );
-          
-          if (result.success && result.fileId) {
-            // Use thumbnail fileId if available (like PDFs use thumbnail fileIds)
-            if (result.thumbnailFileId) {
-              thumbnailFileIds.push(result.thumbnailFileId);
-              // Store thumbnail share token if available (for instant thumbnail loading)
-              if (result.thumbnailShareToken) {
-                thumbnailTokens[result.thumbnailFileId] = JSON.stringify(result.thumbnailShareToken);
-              }
-              console.log(`[UploadModal] Saved page ${i + 1}/${pages.length}, thought fileId: ${result.fileId}, thumbnail fileId: ${result.thumbnailFileId}`);
-            } else {
-              console.warn(`[UploadModal] Page ${i + 1} has no thumbnail fileId, using thought fileId as fallback`);
-              thumbnailFileIds.push(result.fileId);
-            }
-          } else {
-            throw new Error(`Failed to save page ${i + 1}: ${result.error || 'Unknown error'}`);
+          } catch (err) {
+            // Silent fail
           }
         }
         
-        // Create collection with thumbnail fileIds (like PDFs use thumbnail fileIds)
-        if (thumbnailFileIds.length > 0) {
+        if (!publicKey) {
+          throw new Error('No publicKey available for encryption. Please unlock your pN.');
+        }
+
+        const encryptionManager = new EncryptionManager();
+
+        // Process PDF pages to create thumbnails (like FileStorageAggregator does)
+        const pdfjsLib = await import('pdfjs-dist');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+        
+        const arrayBuffer = await pdfFile.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+        const pdf = await loadingTask.promise;
+        const numPages = pdf.numPages;
+        
+        const pdfThumbnailFileIds: string[] = [];
+        const pdfThumbnailTokens: Record<string, string> = {};
+        const baseFileName = pdfFile.name.replace(/\.pdf$/i, '');
+        
+        console.log(`[UploadModal] Processing ${numPages} PDF pages...`);
+        
+        // Helper to upload thumbnail
+        const uploadThumbnail = async (thumbnailBlob: Blob, originalFileName: string): Promise<string | undefined> => {
+          try {
+            const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
+            const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
+            const encryptedThumbnail = await encryptionManager.encrypt(thumbnailData, session.did, publicKey);
+            
+            const thumbnailPackage = {
+              encrypted: encryptedThumbnail.encrypted,
+              iv: encryptedThumbnail.iv,
+              salt: encryptedThumbnail.salt,
+              metadata: {
+                originalName: `thumb_${originalFileName}`,
+                originalSize: thumbnailBlob.size,
+                originalMimeType: 'image/jpeg',
+              },
+            };
+            
+            const thumbnailBlobJson = new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' });
+            const thumbnailBase64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const result = reader.result as string;
+                resolve(result.includes(',') ? result.split(',')[1] : result);
+              };
+              reader.onerror = () => reject(new Error('Failed to read thumbnail'));
+              reader.readAsDataURL(thumbnailBlobJson);
+            });
+            
+            const thumbnailFileName = `thumb_${originalFileName}.encrypted`;
+            const thumbnailResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+              },
+              body: JSON.stringify({
+                fileData: thumbnailBase64,
+                fileName: thumbnailFileName,
+                mimeType: 'application/json',
+                accountId: accountId
+              })
+            });
+            
+            if (thumbnailResponse.ok) {
+              const thumbnailResult = await thumbnailResponse.json();
+              return thumbnailResult.file?.id;
+            }
+            return undefined;
+          } catch (error: any) {
+            console.error('[UploadModal] Thumbnail upload failed:', error);
+            return undefined;
+          }
+        };
+        
+        // Process each PDF page
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 1.0 });
+          const scale = Math.min(800 / viewport.width, 800 / viewport.height, 1.0);
+          const scaledViewport = page.getViewport({ scale });
+          
+          const canvas = document.createElement('canvas');
+          canvas.width = scaledViewport.width;
+          canvas.height = scaledViewport.height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) continue;
+          
+          await page.render({ canvasContext: ctx, viewport: scaledViewport } as any).promise;
+          
+          const thumbnailBlob = await new Promise<Blob>((resolve, reject) => {
+            canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Failed to create blob')), 'image/jpeg', 0.85);
+          });
+          
+          const thumbnailFileName = `${baseFileName}-page-${pageNum}.png`;
+          const thumbnailFileId = await uploadThumbnail(thumbnailBlob, thumbnailFileName);
+          
+          if (thumbnailFileId) {
+            // Generate share token for thumbnail
+            try {
+              const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
+              const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
+              const encryptedThumbnail = await encryptionManager.encrypt(thumbnailData, session.did, publicKey);
+              const thumbnailPackage = {
+                encrypted: encryptedThumbnail.encrypted,
+                iv: encryptedThumbnail.iv,
+                salt: encryptedThumbnail.salt,
+                metadata: {
+                  originalName: `thumb_${thumbnailFileName}`,
+                  originalSize: thumbnailBlob.size,
+                  originalMimeType: 'image/jpeg',
+                },
+              };
+              
+              const encryptionService = getEncryptionService();
+              const thumbnailShareToken = await encryptionService.generateShareToken(thumbnailPackage, {
+                id: session.did,
+                publicKey: publicKey
+              });
+              
+              pdfThumbnailTokens[thumbnailFileId] = JSON.stringify(thumbnailShareToken);
+              
+              // Create metadata for thumbnail
+              await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}?accountId=${accountId}`, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify({
+                  name: `thumb_${thumbnailFileName}`,
+                  fileType: 'image',
+                  isPublic: false,
+                  publicToken: JSON.stringify(thumbnailShareToken)
+                })
+              });
+            } catch (err) {
+              console.warn(`[UploadModal] Failed to process thumbnail for page ${pageNum}:`, err);
+            }
+            
+            pdfThumbnailFileIds.push(thumbnailFileId);
+            console.log(`[UploadModal] Processed page ${pageNum}/${numPages}`);
+          }
+        }
+        
+        // Upload PDF file
+        const fileArrayBuffer = await pdfFile.arrayBuffer();
+        const fileData = new Uint8Array(fileArrayBuffer);
+        const encrypted = await encryptionManager.encrypt(fileData, session.did, publicKey);
+        
+        const packageData = {
+          encrypted: encrypted.encrypted,
+          iv: encrypted.iv,
+          salt: encrypted.salt,
+          metadata: {
+            originalName: pdfFile.name,
+            originalSize: pdfFile.size,
+            originalMimeType: 'application/pdf',
+          },
+        };
+        
+        let shareToken: any = undefined;
+        try {
+          const encryptionService = getEncryptionService();
+          shareToken = await encryptionService.generateShareToken(packageData, {
+            id: session.did,
+            publicKey: publicKey
+          });
+        } catch (tokenError) {
+          console.warn('[UploadModal] Share token generation failed:', tokenError);
+        }
+        
+        const encryptedBlob = new Blob([JSON.stringify(packageData)], { type: 'application/json' });
+        const base64File = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result as string;
+            resolve(result.includes(',') ? result.split(',')[1] : result);
+          };
+          reader.onerror = () => reject(new Error('Failed to read encrypted file'));
+          reader.readAsDataURL(encryptedBlob);
+        });
+        
+        const encryptedFileName = `${pdfFile.name}.encrypted`;
+        const uploadResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            fileData: base64File,
+            fileName: encryptedFileName,
+            mimeType: 'application/json',
+            accountId: accountId
+          })
+        });
+        
+        if (!uploadResponse.ok) {
+          const errorText = await uploadResponse.text().catch(() => 'Unknown error');
+          throw new Error(`Upload failed: ${errorText}`);
+        }
+        
+        const uploadResult = await uploadResponse.json();
+        const uploadedFile = uploadResult.file;
+        
+        if (!uploadedFile || !uploadedFile.id) {
+          throw new Error('Upload succeeded but no file ID returned');
+        }
+        
+        const fileId = uploadedFile.id;
+        console.log(`[UploadModal] PDF uploaded successfully, fileId: ${fileId}`);
+        
+        // Create metadata for PDF
+        await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            name: metadata.name || pdfFileName.replace('.pdf', ''),
+            title: metadata.name || pdfFileName.replace('.pdf', ''),
+            description: metadata.description || '',
+            keywords: metadata.keywords || metadata.tags || [],
+            tags: metadata.tags || metadata.keywords || [],
+            fileType: 'document',
+            isPublic: false, // PDF file itself is private
+            isNSFW: false,
+            publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
+            uploadDate: new Date().toISOString(),
+          }),
+        });
+        
+        // Create collection from thumbnails
+        if (pdfThumbnailFileIds.length > 0) {
           const collectionResult = await createCollection(
             {
-              collectionFileIds: thumbnailFileIds,
-              title: metadata.name || `Thought Collection (${thumbnailFileIds.length} pages)`,
-              thumbnailTokens: thumbnailTokens // Include tokens for instant thumbnail loading
+              collectionFileIds: pdfThumbnailFileIds,
+              title: metadata.name || pdfFileName.replace('.pdf', ''),
+              thumbnailTokens: pdfThumbnailTokens
             },
             accountId,
             {
-              title: metadata.name || `Thought Collection`,
+              title: metadata.name || pdfFileName.replace('.pdf', ''),
               description: metadata.description || '',
               keywords: metadata.keywords || metadata.tags || [],
               tags: metadata.tags || metadata.keywords || [],
               isPublic: true,
-              isNSFW: false,
-              isThoughtCollection: true // Mark as thought collection to distinguish from regular collections
+              isNSFW: false
             }
           );
           
           if (collectionResult.success) {
-            console.log(`[UploadModal] Created collection with ${thumbnailFileIds.length} pages, fileId: ${collectionResult.fileId}`);
-            setShowTextEditor(false);
-            if (onUploadComplete) {
-              onUploadComplete();
-            }
-            setTimeout(() => {
-              onClose();
-            }, 500);
+            console.log(`[UploadModal] Created collection with ${pdfThumbnailFileIds.length} pages`);
           } else {
-            throw new Error(`Failed to create collection: ${collectionResult.error || 'Unknown error'}`);
+            console.warn('[UploadModal] Failed to create collection:', collectionResult.error);
           }
         }
+        
+        setShowTextEditor(false);
+        if (onUploadComplete) {
+          onUploadComplete();
+        }
+        setTimeout(() => {
+          onClose();
+        }, 500);
       } else {
         // Single page thought - save normally
         const result = await createTextPost(

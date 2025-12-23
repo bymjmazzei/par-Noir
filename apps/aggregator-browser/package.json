@@ -10,6 +10,7 @@
   "dependencies": {
     "@types/dompurify": "^3.0.5",
     "dompurify": "^3.3.0",
+    "jspdf": "^3.0.4",
     "lucide-react": "^0.263.1",
     "pdfjs-dist": "^5.4.394",
     "react": "^18.2.0",

@@ -22,6 +22,54 @@ interface EncryptedFilePackage {
 }
 
 /**
+ * Convert multiple thought pages to a PDF document
+ * @param pages - Array of text post data to render as PDF pages
+ * @returns PDF blob
+ */
+export async function convertThoughtPagesToPDF(pages: TextPostData[]): Promise<Blob> {
+  const { jsPDF } = await import('jspdf');
+  
+  // Render each page to a canvas/image
+  const pageImages: string[] = []; // Array of data URLs
+  
+  for (const page of pages) {
+    // Render at full quality (scale 1.0) for PDF
+    const imageBlob = await renderTextPostToBlob(page, 1.0);
+    // Convert blob to data URL
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(imageBlob);
+    });
+    pageImages.push(dataUrl);
+  }
+  
+  // Create PDF - each page is 1080x1080 pixels (square)
+  // Convert to mm: 1080px at 96 DPI ≈ 286mm (11.25 inches)
+  const PAGE_SIZE_MM = 286;
+  const pdf = new jsPDF({
+    unit: 'mm',
+    format: [PAGE_SIZE_MM, PAGE_SIZE_MM],
+    orientation: 'portrait'
+  });
+  
+  // Add first page with first image
+  if (pageImages.length > 0) {
+    pdf.addImage(pageImages[0], 'PNG', 0, 0, PAGE_SIZE_MM, PAGE_SIZE_MM);
+  }
+  
+  // Add remaining pages
+  for (let i = 1; i < pageImages.length; i++) {
+    pdf.addPage([PAGE_SIZE_MM, PAGE_SIZE_MM], 'portrait');
+    pdf.addImage(pageImages[i], 'PNG', 0, 0, PAGE_SIZE_MM, PAGE_SIZE_MM);
+  }
+  
+  // Return PDF as blob
+  return pdf.output('blob');
+}
+
+/**
  * Render text post to canvas and return as blob
  * @param textPost - The text post data to render
  * @param scale - Optional scale factor (default: 1.0). Use smaller values for thumbnails (e.g., 0.3 for ~300px thumbnails)
