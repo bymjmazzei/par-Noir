@@ -1280,6 +1280,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         collectionFilesWithMetadata.forEach((collectionFile: any) => {
           // Only filter files from thought collections, not regular collections
+          // IMPORTANT: Only collections explicitly marked as thought collections should filter their files
+          // Regular collections (manually created) and collections without the flag should not filter
           const isThoughtCollection = collectionFile.isThoughtCollection === true;
           if (!isThoughtCollection) {
             return; // Skip regular collections - their files should still be visible
@@ -1287,6 +1289,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           
           const collectionData = collectionFile.collection;
           if (collectionData?.collectionFileIds && Array.isArray(collectionData.collectionFileIds)) {
+            console.log(`[FileStorageAggregator] Processing thought collection with ${collectionData.collectionFileIds.length} files`);
             // Check each fileId in the collection
             collectionData.collectionFileIds.forEach((fileId: string) => {
               // Check if this fileId is a thumbnail (for multi-page thoughts, collections use thumbnail fileIds)
@@ -1297,6 +1300,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const thoughtThumbnail = thoughtThumbnailEntries.find((entry: any) => entry.id === fileId);
                 if (thoughtThumbnail?.mainFileId) {
                   thoughtFilesInCollections.add(thoughtThumbnail.mainFileId);
+                  console.log(`[FileStorageAggregator] Marking thumbnail ${fileId} and thought file ${thoughtThumbnail.mainFileId} as part of thought collection`);
                 }
               } else {
                 // Check if this fileId corresponds to a thought file
@@ -1306,12 +1310,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   // Only exclude thought files that are part of thought collections (multi-page thoughts)
                   if (fileName.startsWith('thought-') && (fileName.endsWith('.thought.encrypted') || fileName.endsWith('.png.encrypted'))) {
                     thoughtFilesInCollections.add(fileId);
+                    console.log(`[FileStorageAggregator] Marking thought file ${fileId} as part of thought collection`);
                   }
                 } else {
                   // Also check if it's a mainFileId in thoughtThumbnailEntries (thoughts are shown via thumbnails)
                   const thoughtThumbnail = thoughtThumbnailEntries.find((entry: any) => entry.mainFileId === fileId);
                   if (thoughtThumbnail) {
                     thoughtFilesInCollections.add(fileId);
+                    console.log(`[FileStorageAggregator] Marking thought file ${fileId} (via thumbnail) as part of thought collection`);
                   }
                 }
               }
@@ -1319,20 +1325,27 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           }
         });
         
+        console.log(`[FileStorageAggregator] Filtering: ${thoughtThumbnailEntries.length} total thought thumbnails, ${thumbnailIdsInCollections.size} in collections, ${thoughtFilesInCollections.size} thought files in collections`);
+        
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
         // Only filter out thought thumbnails that are in THOUGHT COLLECTIONS (multi-page thoughts)
-        // Single thoughts should remain visible
+        // Single thoughts should remain visible - they won't be in thumbnailIdsInCollections or thoughtFilesInCollections
         const filteredThoughtThumbnailEntries = thoughtThumbnailEntries.filter((entry: any) => {
           // Exclude if:
-          // 1. Thumbnail ID is in a thought collection
-          // 2. mainFileId is in a thought collection
-          // 3. Thumbnail metadata indicates it's part of a collection (only for thought collections)
-          // Note: isPartOfCollection flag is only set for multi-page thoughts, so single thoughts won't be filtered
-          return !thumbnailIdsInCollections.has(entry.id) && 
-                 !thoughtFilesInCollections.has(entry.mainFileId) &&
-                 !entry.isPartOfCollection;
+          // 1. Thumbnail ID is in a thought collection (multi-page thoughts only)
+          // 2. mainFileId is in a thought collection (multi-page thoughts only)
+          // Note: We removed the isPartOfCollection check because it's redundant and might cause issues
+          // Single thoughts won't be in any thought collection, so they'll pass this filter
+          const isInThoughtCollection = thumbnailIdsInCollections.has(entry.id) || 
+                                        thoughtFilesInCollections.has(entry.mainFileId);
+          if (isInThoughtCollection) {
+            console.log(`[FileStorageAggregator] Filtering out thought thumbnail ${entry.id} (mainFileId: ${entry.mainFileId}) - part of thought collection`);
+          }
+          return !isInThoughtCollection;
         });
+        
+        console.log(`[FileStorageAggregator] After filtering: ${filteredThoughtThumbnailEntries.length} thought thumbnails will be displayed`);
         const collectionFileIds = new Set(collectionFiles.map((f: any) => f.id));
         const mediaFiles = thumbnailEntries.concat(filteredThoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
           allFiles.filter((file: DriveFile) => {
@@ -1528,6 +1541,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         collectionFilesWithMetadata.forEach((collectionFile: any) => {
           // Only filter files from thought collections, not regular collections
+          // IMPORTANT: Only collections explicitly marked as thought collections should filter their files
+          // Regular collections (manually created) and collections without the flag should not filter
           const isThoughtCollection = collectionFile.isThoughtCollection === true;
           if (!isThoughtCollection) {
             return; // Skip regular collections - their files should still be visible
@@ -1535,6 +1550,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           
           const collectionData = collectionFile.collection;
           if (collectionData?.collectionFileIds && Array.isArray(collectionData.collectionFileIds)) {
+            console.log(`[FileStorageAggregator] Processing thought collection with ${collectionData.collectionFileIds.length} files`);
             // Check each fileId in the collection
             collectionData.collectionFileIds.forEach((fileId: string) => {
               // Check if this fileId is a thumbnail (for multi-page thoughts, collections use thumbnail fileIds)
@@ -1545,6 +1561,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const thoughtThumbnail = thoughtThumbnailEntries.find((entry: any) => entry.id === fileId);
                 if (thoughtThumbnail?.mainFileId) {
                   thoughtFilesInCollections.add(thoughtThumbnail.mainFileId);
+                  console.log(`[FileStorageAggregator] Marking thumbnail ${fileId} and thought file ${thoughtThumbnail.mainFileId} as part of thought collection`);
                 }
               } else {
                 // Check if this fileId corresponds to a thought file
@@ -1554,12 +1571,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   // Only exclude thought files that are part of thought collections (multi-page thoughts)
                   if (fileName.startsWith('thought-') && (fileName.endsWith('.thought.encrypted') || fileName.endsWith('.png.encrypted'))) {
                     thoughtFilesInCollections.add(fileId);
+                    console.log(`[FileStorageAggregator] Marking thought file ${fileId} as part of thought collection`);
                   }
                 } else {
                   // Also check if it's a mainFileId in thoughtThumbnailEntries (thoughts are shown via thumbnails)
                   const thoughtThumbnail = thoughtThumbnailEntries.find((entry: any) => entry.mainFileId === fileId);
                   if (thoughtThumbnail) {
                     thoughtFilesInCollections.add(fileId);
+                    console.log(`[FileStorageAggregator] Marking thought file ${fileId} (via thumbnail) as part of thought collection`);
                   }
                 }
               }
@@ -1567,20 +1586,27 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           }
         });
         
+        console.log(`[FileStorageAggregator] Filtering: ${thoughtThumbnailEntries.length} total thought thumbnails, ${thumbnailIdsInCollections.size} in collections, ${thoughtFilesInCollections.size} thought files in collections`);
+        
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
         // Only filter out thought thumbnails that are in THOUGHT COLLECTIONS (multi-page thoughts)
-        // Single thoughts should remain visible
+        // Single thoughts should remain visible - they won't be in thumbnailIdsInCollections or thoughtFilesInCollections
         const filteredThoughtThumbnailEntries = thoughtThumbnailEntries.filter((entry: any) => {
           // Exclude if:
-          // 1. Thumbnail ID is in a thought collection
-          // 2. mainFileId is in a thought collection
-          // 3. Thumbnail metadata indicates it's part of a collection (only for thought collections)
-          // Note: isPartOfCollection flag is only set for multi-page thoughts, so single thoughts won't be filtered
-          return !thumbnailIdsInCollections.has(entry.id) && 
-                 !thoughtFilesInCollections.has(entry.mainFileId) &&
-                 !entry.isPartOfCollection;
+          // 1. Thumbnail ID is in a thought collection (multi-page thoughts only)
+          // 2. mainFileId is in a thought collection (multi-page thoughts only)
+          // Note: We removed the isPartOfCollection check because it's redundant and might cause issues
+          // Single thoughts won't be in any thought collection, so they'll pass this filter
+          const isInThoughtCollection = thumbnailIdsInCollections.has(entry.id) || 
+                                        thoughtFilesInCollections.has(entry.mainFileId);
+          if (isInThoughtCollection) {
+            console.log(`[FileStorageAggregator] Filtering out thought thumbnail ${entry.id} (mainFileId: ${entry.mainFileId}) - part of thought collection`);
+          }
+          return !isInThoughtCollection;
         });
+        
+        console.log(`[FileStorageAggregator] After filtering: ${filteredThoughtThumbnailEntries.length} thought thumbnails will be displayed`);
         const collectionFileIds = new Set(collectionFiles.map((f: any) => f.id));
         const mediaFiles = thumbnailEntries.concat(filteredThoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
           allFiles.filter((file: DriveFile) => {
