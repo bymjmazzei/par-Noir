@@ -173,7 +173,8 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
               keywords: metadata.keywords || metadata.tags || [],
               tags: metadata.tags || metadata.keywords || [],
               isPublic: true,
-              isNSFW: false
+              isNSFW: false,
+              isThoughtCollection: true // Mark as thought collection to distinguish from regular collections
             }
           );
           

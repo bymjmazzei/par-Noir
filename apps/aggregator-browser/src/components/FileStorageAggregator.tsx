@@ -1271,14 +1271,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           })
         );
         
-        // Build set of fileIds (thumbnails and thought files) that are part of collections (to exclude them from individual display)
-        // For multi-page thoughts, collections use thumbnail fileIds, so we need to exclude those thumbnails
-        // Only filter out thoughts that are in collections (multi-page thoughts), not media files
-        // This way manually created collections still show their individual files
+        // Build set of fileIds (thumbnails and thought files) that are part of THOUGHT COLLECTIONS (to exclude them from individual display)
+        // Only filter out thoughts that are in thought collections (multi-page thoughts), not regular collections or single thoughts
+        // This way manually created collections still show their individual files, and single thoughts are visible
         const thoughtFilesInCollections = new Set<string>();
-        const thumbnailIdsInCollections = new Set<string>(); // Track thumbnail IDs that are in collections
+        const thumbnailIdsInCollections = new Set<string>(); // Track thumbnail IDs that are in thought collections
         
         collectionFilesWithMetadata.forEach((collectionFile: any) => {
+          // Only filter files from thought collections, not regular collections
+          const isThoughtCollection = collectionFile.isThoughtCollection === true;
+          if (!isThoughtCollection) {
+            return; // Skip regular collections - their files should still be visible
+          }
+          
           const collectionData = collectionFile.collection;
           if (collectionData?.collectionFileIds && Array.isArray(collectionData.collectionFileIds)) {
             // Check each fileId in the collection
@@ -1297,7 +1302,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const fileInCollection = allFiles.find((f: DriveFile) => f.id === fileId);
                 if (fileInCollection) {
                   const fileName = fileInCollection.name.toLowerCase();
-                  // Only exclude thought files that are part of collections (multi-page thoughts)
+                  // Only exclude thought files that are part of thought collections (multi-page thoughts)
                   if (fileName.startsWith('thought-') && (fileName.endsWith('.thought.encrypted') || fileName.endsWith('.png.encrypted'))) {
                     thoughtFilesInCollections.add(fileId);
                   }
@@ -1315,12 +1320,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
-        // Also filter out thought thumbnails that are in collections (by thumbnail ID, mainFileId, or isPartOfCollection flag)
+        // Only filter out thought thumbnails that are in THOUGHT COLLECTIONS (multi-page thoughts)
+        // Single thoughts should remain visible
         const filteredThoughtThumbnailEntries = thoughtThumbnailEntries.filter((entry: any) => {
           // Exclude if:
-          // 1. Thumbnail ID is in a collection
-          // 2. mainFileId is in a collection
-          // 3. Thumbnail metadata indicates it's part of a collection
+          // 1. Thumbnail ID is in a thought collection
+          // 2. mainFileId is in a thought collection
+          // 3. Thumbnail metadata indicates it's part of a collection (only for thought collections)
+          // Note: isPartOfCollection flag is only set for multi-page thoughts, so single thoughts won't be filtered
           return !thumbnailIdsInCollections.has(entry.id) && 
                  !thoughtFilesInCollections.has(entry.mainFileId) &&
                  !entry.isPartOfCollection;
@@ -1511,14 +1518,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           })
         );
         
-        // Build set of fileIds (thumbnails and thought files) that are part of collections (to exclude them from individual display)
-        // For multi-page thoughts, collections use thumbnail fileIds, so we need to exclude those thumbnails
-        // Only filter out thoughts that are in collections (multi-page thoughts), not media files
-        // This way manually created collections still show their individual files
+        // Build set of fileIds (thumbnails and thought files) that are part of THOUGHT COLLECTIONS (to exclude them from individual display)
+        // Only filter out thoughts that are in thought collections (multi-page thoughts), not regular collections or single thoughts
+        // This way manually created collections still show their individual files, and single thoughts are visible
         const thoughtFilesInCollections = new Set<string>();
-        const thumbnailIdsInCollections = new Set<string>(); // Track thumbnail IDs that are in collections
+        const thumbnailIdsInCollections = new Set<string>(); // Track thumbnail IDs that are in thought collections
         
         collectionFilesWithMetadata.forEach((collectionFile: any) => {
+          // Only filter files from thought collections, not regular collections
+          const isThoughtCollection = collectionFile.isThoughtCollection === true;
+          if (!isThoughtCollection) {
+            return; // Skip regular collections - their files should still be visible
+          }
+          
           const collectionData = collectionFile.collection;
           if (collectionData?.collectionFileIds && Array.isArray(collectionData.collectionFileIds)) {
             // Check each fileId in the collection
@@ -1537,7 +1549,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const fileInCollection = allFiles.find((f: DriveFile) => f.id === fileId);
                 if (fileInCollection) {
                   const fileName = fileInCollection.name.toLowerCase();
-                  // Only exclude thought files that are part of collections (multi-page thoughts)
+                  // Only exclude thought files that are part of thought collections (multi-page thoughts)
                   if (fileName.startsWith('thought-') && (fileName.endsWith('.thought.encrypted') || fileName.endsWith('.png.encrypted'))) {
                     thoughtFilesInCollections.add(fileId);
                   }
@@ -1555,12 +1567,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
-        // Also filter out thought thumbnails that are in collections (by thumbnail ID, mainFileId, or isPartOfCollection flag)
+        // Only filter out thought thumbnails that are in THOUGHT COLLECTIONS (multi-page thoughts)
+        // Single thoughts should remain visible
         const filteredThoughtThumbnailEntries = thoughtThumbnailEntries.filter((entry: any) => {
           // Exclude if:
-          // 1. Thumbnail ID is in a collection
-          // 2. mainFileId is in a collection
-          // 3. Thumbnail metadata indicates it's part of a collection
+          // 1. Thumbnail ID is in a thought collection
+          // 2. mainFileId is in a thought collection
+          // 3. Thumbnail metadata indicates it's part of a collection (only for thought collections)
+          // Note: isPartOfCollection flag is only set for multi-page thoughts, so single thoughts won't be filtered
           return !thumbnailIdsInCollections.has(entry.id) && 
                  !thoughtFilesInCollections.has(entry.mainFileId) &&
                  !entry.isPartOfCollection;

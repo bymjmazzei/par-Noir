@@ -21,6 +21,7 @@ export async function createCollection(
     tags?: string[];
     isPublic?: boolean;
     isNSFW?: boolean;
+    isThoughtCollection?: boolean; // Flag to distinguish thought collections from regular collections
   }
 ): Promise<{ fileId: string; success: boolean; error?: string }> {
   try {
@@ -153,6 +154,7 @@ export async function createCollection(
           collectionFileIds: collectionData.collectionFileIds
         },
         isNSFW: metadata?.isNSFW || false,
+        isThoughtCollection: metadata?.isThoughtCollection || false, // Mark if this is a thought collection
       }),
     });
 
