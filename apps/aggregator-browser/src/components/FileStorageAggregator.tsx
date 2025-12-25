@@ -1389,8 +1389,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const fileMetadata = fileMetadataMap.get(file.id);
           const fileType = fileMetadata?.fileType;
           
-          // Exclude if fileType is 'thought-collection-page' (collection thought pages)
-          if (fileType === 'thought-collection-page') {
+          // Exclude if fileType is 'thought-collection-page' or 'thought-collection' (collection thought pages or main collection file)
+          if (fileType === 'thought-collection-page' || fileType === 'thought-collection') {
             return false;
           }
           
@@ -1403,7 +1403,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           // Only include single thoughts (fileType: 'thought'), not collection thoughts
           if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
             // Exclude if it's a collection thought
-            if (fileType === 'thought-collection-page') {
+            if (fileType === 'thought-collection-page' || fileType === 'thought-collection') {
               return false;
             }
             
@@ -1691,8 +1691,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const fileMetadata = fileMetadataMap.get(file.id);
           const fileType = fileMetadata?.fileType;
           
-          // Exclude if fileType is 'thought-collection-page' (collection thought pages)
-          if (fileType === 'thought-collection-page') {
+          // Exclude if fileType is 'thought-collection-page' or 'thought-collection' (collection thought pages or main collection file)
+          if (fileType === 'thought-collection-page' || fileType === 'thought-collection') {
             return false;
           }
           
@@ -1705,7 +1705,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           // Only include single thoughts (fileType: 'thought'), not collection thoughts
           if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
             // Exclude if it's a collection thought
-            if (fileType === 'thought-collection-page') {
+            if (fileType === 'thought-collection-page' || fileType === 'thought-collection') {
               return false;
             }
             

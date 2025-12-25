@@ -776,9 +776,9 @@ function App() {
     const shouldExcludeThoughtPage = (file: IndexedFile): boolean => {
       const fileType = file.metadata.fileType;
       
-      // Exclude if fileType is 'thought-collection-thumbnail' or 'thought-collection-page'
+      // Exclude if fileType is 'thought-collection-thumbnail', 'thought-collection-page', or 'thought-collection'
       // These are the new types for thoughts that are part of collections
-      if (fileType === 'thought-collection-thumbnail' || fileType === 'thought-collection-page') {
+      if (fileType === 'thought-collection-thumbnail' || fileType === 'thought-collection-page' || fileType === 'thought-collection') {
         console.log(`[App] Excluding ${fileType} ${file.metadata.fileId} - collection thought`);
         return true;
       }
