@@ -302,6 +302,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const setPadding = (value: number) => updateCurrentPage({ padding: value });
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textInputContainerRef = useRef<HTMLDivElement>(null);
   const [textareaHeight, setTextareaHeight] = useState(60); // Starting height
   const [showTextColorPicker, setShowTextColorPicker] = useState(false);
   const [showBackgroundColorPicker, setShowBackgroundColorPicker] = useState(false);
@@ -392,6 +393,29 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       setTextareaHeight(initialHeight + 32); // Add padding (16px top + 16px bottom)
     }
   }, []);
+
+  // Measure actual container height and update railways positions
+  useEffect(() => {
+    if (textInputContainerRef.current) {
+      const updateHeight = () => {
+        if (textInputContainerRef.current) {
+          const containerHeight = textInputContainerRef.current.offsetHeight;
+          setTextareaHeight(containerHeight);
+        }
+      };
+      
+      // Initial measurement
+      updateHeight();
+      
+      // Update on resize
+      const resizeObserver = new ResizeObserver(updateHeight);
+      resizeObserver.observe(textInputContainerRef.current);
+      
+      return () => {
+        resizeObserver.disconnect();
+      };
+    }
+  }, [content]); // Re-measure when content changes
 
   // Center active font in font selector
   useEffect(() => {
@@ -1555,6 +1579,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
 
       {/* Text Input - Sticky above bottom nav, auto-expanding */}
       <div 
+        ref={textInputContainerRef}
         className="fixed left-0 right-0 bg-neutral-900 border-t border-neutral-800 z-50" 
         style={{ bottom: '64px' }}
       >
