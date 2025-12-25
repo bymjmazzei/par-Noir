@@ -1223,22 +1223,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             let isPartOfCollection = false;
             let fileType: string | undefined;
             let mainFileType: string | undefined;
+            let mainFileIdFromMetadata: string | undefined;
             try {
               const thumbMetadata = await loadFileMetadata(thumb.id);
               isPartOfCollection = thumbMetadata?.isPartOfCollection === true;
               fileType = thumbMetadata?.fileType; // Capture fileType for filtering
+              mainFileIdFromMetadata = thumbMetadata?.mainFileId; // Get mainFileId from metadata
               
-              // Also check the main file's type if mainFileId exists
-              if (thoughtFile?.id) {
+              // Also check the main file's type if mainFileId exists (from metadata or thoughtFile)
+              const actualMainFileId = mainFileIdFromMetadata || thoughtFile?.id;
+              if (actualMainFileId) {
                 try {
-                  const mainMetadata = await loadFileMetadata(thoughtFile.id);
+                  const mainMetadata = await loadFileMetadata(actualMainFileId);
                   mainFileType = mainMetadata?.fileType;
+                  console.log(`[FileStorageAggregator] Loaded main file metadata for thumbnail ${thumb.id}: mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
                 } catch (err) {
-                  // Silent fail
+                  console.warn(`[FileStorageAggregator] Failed to load main file metadata for ${actualMainFileId}:`, err);
                 }
               }
+              
+              console.log(`[FileStorageAggregator] Thumbnail ${thumb.id} (${thumb.name}): fileType=${fileType}, isPartOfCollection=${isPartOfCollection}, mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
             } catch (err) {
-              // If metadata load fails, continue without the flag
+              console.warn(`[FileStorageAggregator] Failed to load thumbnail metadata for ${thumb.id}:`, err);
             }
             
             // Clean display name: remove thumb_ prefix and file extension
@@ -1249,7 +1255,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             return {
               ...thumb,
               isThumbnail: true,
-              mainFileId: thoughtFile?.id || thumb.id, // Use thought file ID if found, fallback to thumb ID
+              mainFileId: mainFileIdFromMetadata || thoughtFile?.id || thumb.id, // Prefer mainFileId from metadata
               displayName: displayName,
               isPartOfCollection: isPartOfCollection,
               fileType: fileType, // Store fileType for filtering
@@ -1368,17 +1374,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const fileType = entry.fileType || fileMetadataMap.get(entry.id)?.fileType;
           const mainFileType = entry.mainFileType || (entry.mainFileId ? fileMetadataMap.get(entry.mainFileId)?.fileType : undefined);
           
+          // Also check filename pattern as a fallback - thought collection thumbnails have "-page-" in the name
+          const isPageThumbnail = entry.name && /thumb_.*-page-\d+\.(png|jpg|jpeg)\.encrypted$/i.test(entry.name.toLowerCase());
+          
           // Exclude if:
           // 1. fileType is 'thought-collection-thumbnail' (collection thought pages)
           // 2. mainFileType is 'thought-collection' (thumbnails from thought collections)
-          // 3. Thumbnail ID is in a thought collection (fallback for existing data)
-          // 4. mainFileId is in a thought collection (fallback for existing data)
+          // 3. Filename matches page thumbnail pattern (thumb_*-page-N.png.encrypted) AND it's a thought thumbnail
+          // 4. Thumbnail ID is in a thought collection (fallback for existing data)
+          // 5. mainFileId is in a thought collection (fallback for existing data)
           const isCollectionThought = fileType === 'thought-collection-thumbnail' ||
                                      mainFileType === 'thought-collection' ||
+                                     (isPageThumbnail && entry.name.toLowerCase().includes('thumb_thought')) ||
                                      thumbnailIdsInCollections.has(entry.id) || 
                                      thoughtFilesInCollections.has(entry.mainFileId);
           if (isCollectionThought) {
-            console.log(`[FileStorageAggregator] Filtering out thought thumbnail ${entry.id} (fileType: ${fileType}, mainFileId: ${entry.mainFileId}) - collection thought`);
+            console.log(`[FileStorageAggregator] Filtering out thought thumbnail ${entry.id} (name: ${entry.name}, fileType: ${fileType}, mainFileId: ${entry.mainFileId}, mainFileType: ${mainFileType}, isPageThumbnail: ${isPageThumbnail}) - collection thought`);
           }
           return !isCollectionThought;
         });
@@ -1540,22 +1551,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             let isPartOfCollection = false;
             let fileType: string | undefined;
             let mainFileType: string | undefined;
+            let mainFileIdFromMetadata: string | undefined;
             try {
               const thumbMetadata = await loadFileMetadata(thumb.id);
               isPartOfCollection = thumbMetadata?.isPartOfCollection === true;
               fileType = thumbMetadata?.fileType; // Capture fileType for filtering
+              mainFileIdFromMetadata = thumbMetadata?.mainFileId; // Get mainFileId from metadata
               
-              // Also check the main file's type if mainFileId exists
-              if (thoughtFile?.id) {
+              // Also check the main file's type if mainFileId exists (from metadata or thoughtFile)
+              const actualMainFileId = mainFileIdFromMetadata || thoughtFile?.id;
+              if (actualMainFileId) {
                 try {
-                  const mainMetadata = await loadFileMetadata(thoughtFile.id);
+                  const mainMetadata = await loadFileMetadata(actualMainFileId);
                   mainFileType = mainMetadata?.fileType;
+                  console.log(`[FileStorageAggregator] Loaded main file metadata for thumbnail ${thumb.id}: mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
                 } catch (err) {
-                  // Silent fail
+                  console.warn(`[FileStorageAggregator] Failed to load main file metadata for ${actualMainFileId}:`, err);
                 }
               }
+              
+              console.log(`[FileStorageAggregator] Thumbnail ${thumb.id} (${thumb.name}): fileType=${fileType}, isPartOfCollection=${isPartOfCollection}, mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
             } catch (err) {
-              // If metadata load fails, continue without the flag
+              console.warn(`[FileStorageAggregator] Failed to load thumbnail metadata for ${thumb.id}:`, err);
             }
             
             // Clean display name: remove thumb_ prefix and file extension
@@ -1566,7 +1583,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             return {
               ...thumb,
               isThumbnail: true,
-              mainFileId: thoughtFile?.id || thumb.id, // Use thought file ID if found, fallback to thumb ID
+              mainFileId: mainFileIdFromMetadata || thoughtFile?.id || thumb.id, // Prefer mainFileId from metadata
               displayName: displayName,
               isPartOfCollection: isPartOfCollection,
               fileType: fileType, // Store fileType for filtering
@@ -1685,17 +1702,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const fileType = entry.fileType || fileMetadataMap.get(entry.id)?.fileType;
           const mainFileType = entry.mainFileType || (entry.mainFileId ? fileMetadataMap.get(entry.mainFileId)?.fileType : undefined);
           
+          // Also check filename pattern as a fallback - thought collection thumbnails have "-page-" in the name
+          const isPageThumbnail = entry.name && /thumb_.*-page-\d+\.(png|jpg|jpeg)\.encrypted$/i.test(entry.name.toLowerCase());
+          
           // Exclude if:
           // 1. fileType is 'thought-collection-thumbnail' (collection thought pages)
           // 2. mainFileType is 'thought-collection' (thumbnails from thought collections)
-          // 3. Thumbnail ID is in a thought collection (fallback for existing data)
-          // 4. mainFileId is in a thought collection (fallback for existing data)
+          // 3. Filename matches page thumbnail pattern (thumb_*-page-N.png.encrypted) AND it's a thought thumbnail
+          // 4. Thumbnail ID is in a thought collection (fallback for existing data)
+          // 5. mainFileId is in a thought collection (fallback for existing data)
           const isCollectionThought = fileType === 'thought-collection-thumbnail' ||
                                      mainFileType === 'thought-collection' ||
+                                     (isPageThumbnail && entry.name.toLowerCase().includes('thumb_thought')) ||
                                      thumbnailIdsInCollections.has(entry.id) || 
                                      thoughtFilesInCollections.has(entry.mainFileId);
           if (isCollectionThought) {
-            console.log(`[FileStorageAggregator] Filtering out thought thumbnail ${entry.id} (fileType: ${fileType}, mainFileId: ${entry.mainFileId}) - collection thought`);
+            console.log(`[FileStorageAggregator] Filtering out thought thumbnail ${entry.id} (name: ${entry.name}, fileType: ${fileType}, mainFileId: ${entry.mainFileId}, mainFileType: ${mainFileType}, isPageThumbnail: ${isPageThumbnail}) - collection thought`);
           }
           return !isCollectionThought;
         });
