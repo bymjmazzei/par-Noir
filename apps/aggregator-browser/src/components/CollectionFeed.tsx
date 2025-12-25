@@ -41,6 +41,8 @@ export function CollectionFeed({
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const loadedFilesRef = useRef<Set<string>>(new Set());
   const loadingFilesRef = useRef<Set<string>>(new Set());
+  // For thought collections: store the main thought-collection file data and page mapping
+  const thoughtCollectionDataRef = useRef<{ mainFileId: string; pages: any[]; thumbnailToPageIndex: Map<string, number> } | null>(null);
 
   const viewportHeightCSS = useViewportHeightCSS(true);
   // #region agent log
@@ -55,7 +57,14 @@ export function CollectionFeed({
       const accessToken = await PNOAuthService.getValidAccessToken();
       if (!accessToken) return;
 
-      for (const fileId of collectionFileIds) {
+      // Check if this is a thought collection (all fileIds are thought-collection-thumbnail)
+      let isThoughtCollection = false;
+      let mainFileId: string | null = null;
+      const thumbnailToPageIndex = new Map<string, number>();
+
+      // First pass: load metadata and detect if it's a thought collection
+      for (let i = 0; i < collectionFileIds.length; i++) {
+        const fileId = collectionFileIds[i];
         if (fileMetadata.has(fileId)) continue;
         
         try {
@@ -65,20 +74,68 @@ export function CollectionFeed({
           
           if (response.ok) {
             const data = await response.json();
+            const metadata = data.metadata || data;
             setFileMetadata(prev => {
               const newMap = new Map(prev);
-              newMap.set(fileId, data.metadata || data);
+              newMap.set(fileId, metadata);
               return newMap;
             });
+
+            // Check if this is a thought-collection-thumbnail
+            if (metadata.fileType === 'thought-collection-thumbnail' && metadata.mainFileId) {
+              isThoughtCollection = true;
+              if (!mainFileId) {
+                mainFileId = metadata.mainFileId;
+              }
+              // Map thumbnail ID to page index (by order in collectionFileIds)
+              thumbnailToPageIndex.set(fileId, i);
+            }
           }
         } catch (err) {
           console.error(`Failed to load metadata for ${fileId}:`, err);
         }
       }
+
+      // If this is a thought collection, load the main thought-collection file
+      if (isThoughtCollection && mainFileId && !thoughtCollectionDataRef.current) {
+        try {
+          const accountIdToUse = await getAccountId();
+          const mainMetadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${mainFileId}`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+
+          if (mainMetadataResponse.ok) {
+            const mainMetadataData = await mainMetadataResponse.json();
+            const mainMetadata = mainMetadataData.metadata || mainMetadataData;
+            const publicToken = mainMetadata.publicToken;
+            
+            if (publicToken) {
+              const token: ShareToken = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
+              const decryptedBlob = await decryptWithToken(token);
+              const text = await decryptedBlob.text();
+              const thoughtCollectionData = JSON.parse(text);
+              
+              // Extract pages array from thought collection
+              const pages = thoughtCollectionData.textPost?.pages || 
+                           (thoughtCollectionData.textPost ? [thoughtCollectionData.textPost] : []);
+              
+              thoughtCollectionDataRef.current = {
+                mainFileId,
+                pages,
+                thumbnailToPageIndex
+              };
+
+              console.log(`[CollectionFeed] Loaded thought collection with ${pages.length} pages`);
+            }
+          }
+        } catch (err) {
+          console.error(`[CollectionFeed] Failed to load thought collection file ${mainFileId}:`, err);
+        }
+      }
     };
 
     loadMetadata();
-  }, [collectionFileIds, fileMetadata]);
+  }, [collectionFileIds, fileMetadata, getAccountId]);
 
   // Get accountId helper
   const getAccountId = useCallback(async (): Promise<string | null> => {
@@ -134,13 +191,24 @@ export function CollectionFeed({
       const fileType = metadata.fileType;
       const fileName = metadata.name || metadata.title || '';
       const hasTextPost = !!(metadata.textPost || metadata.thought);
+      const isThoughtCollectionThumbnail = fileType === 'thought-collection-thumbnail';
       const isThought = fileType === 'thought' || fileType === 'text' || hasTextPost;
-      const isImage = !isThought && (fileType === 'image' || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i.test(fileName));
-      const isVideo = !isThought && (fileType === 'video' || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName));
+      const isImage = !isThought && !isThoughtCollectionThumbnail && (fileType === 'image' || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i.test(fileName));
+      const isVideo = !isThought && !isThoughtCollectionThumbnail && (fileType === 'video' || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName));
 
       let content: FileContent | null = null;
 
-      if (isThought) {
+      // Handle thought-collection-thumbnail: render as thought from pages array
+      if (isThoughtCollectionThumbnail && thoughtCollectionDataRef.current) {
+        const pageIndex = thoughtCollectionDataRef.current.thumbnailToPageIndex.get(fileId);
+        if (pageIndex !== undefined && thoughtCollectionDataRef.current.pages[pageIndex]) {
+          const pageData = thoughtCollectionDataRef.current.pages[pageIndex];
+          content = {
+            type: 'thought',
+            data: pageData
+          };
+        }
+      } else if (isThought) {
         // For thoughts, try to load thumbnail first (thoughts should render as images)
         const thumbnailFileId = metadata.thumbnailFileId;
         if (thumbnailFileId) {
