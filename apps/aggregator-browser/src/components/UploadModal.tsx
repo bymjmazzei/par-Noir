@@ -161,7 +161,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
           isMultiPage: true
         };
         
-        const fileName = `thought-collection-${Date.now()}.thought`;
+        const fileName = `thought-collection-${Date.now()}.thought-collection`;
         const fileContent = JSON.stringify(thoughtCollectionData);
         const thoughtFile = new File([fileContent], fileName, { type: 'application/json' });
 

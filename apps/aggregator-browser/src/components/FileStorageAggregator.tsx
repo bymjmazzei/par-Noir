@@ -1202,10 +1202,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         });
         
         // Map thought thumbnails to thought files
+        // Exclude thought-collection files (they're handled separately)
         const thoughtFiles = mainFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
-          return name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'));
+          return name.startsWith('thought-') && 
+                 (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted')) &&
+                 !name.endsWith('.thought-collection.encrypted'); // Exclude thought collections
         });
+        
+        // Filter out thought-collection files from main files (they should never appear individually)
+        const thoughtCollectionFiles = mainFiles.filter((file: DriveFile) => {
+          const name = file.name.toLowerCase();
+          return name.endsWith('.thought-collection.encrypted');
+        });
+        
+        console.log(`[FileStorageAggregator] Found ${thoughtCollectionFiles.length} thought-collection files (will be excluded)`);
         
         // Map thought thumbnails to thought files and load metadata to check if they're part of collections
         const thoughtThumbnailEntries = await Promise.all(
@@ -1425,10 +1436,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             return false;
           }
           
+          // Exclude thought-collection files by extension (they should never appear individually)
+          if (name.endsWith('.thought-collection.encrypted')) {
+            console.log(`[FileStorageAggregator] Filtering out thought-collection file ${file.id} by extension`);
+            return false;
+          }
+          
           // Include thoughts that don't have thumbnails (legacy thoughts)
           // Only include single thoughts (fileType: 'thought'), not collection thoughts
           if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
-            // Exclude if it's a collection thought
+            // Exclude if it's a collection thought (by fileType check as fallback)
             if (fileType === 'thought-collection-page' || fileType === 'thought-collection') {
               return false;
             }
@@ -1530,10 +1547,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         });
         
         // Map thought thumbnails to thought files
+        // Exclude thought-collection files (they're handled separately)
         const thoughtFiles = mainFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
-          return name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'));
+          return name.startsWith('thought-') && 
+                 (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted')) &&
+                 !name.endsWith('.thought-collection.encrypted'); // Exclude thought collections
         });
+        
+        // Filter out thought-collection files from main files (they should never appear individually)
+        const thoughtCollectionFiles = mainFiles.filter((file: DriveFile) => {
+          const name = file.name.toLowerCase();
+          return name.endsWith('.thought-collection.encrypted');
+        });
+        
+        console.log(`[FileStorageAggregator] Found ${thoughtCollectionFiles.length} thought-collection files (will be excluded)`);
         
         // Map thought thumbnails to thought files and load metadata to check if they're part of collections
         const thoughtThumbnailEntries = await Promise.all(
@@ -1753,10 +1781,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             return false;
           }
           
+          // Exclude thought-collection files by extension (they should never appear individually)
+          if (name.endsWith('.thought-collection.encrypted')) {
+            console.log(`[FileStorageAggregator] Filtering out thought-collection file ${file.id} by extension`);
+            return false;
+          }
+          
           // Include thoughts that don't have thumbnails (legacy thoughts)
           // Only include single thoughts (fileType: 'thought'), not collection thoughts
           if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
-            // Exclude if it's a collection thought
+            // Exclude if it's a collection thought (by fileType check as fallback)
             if (fileType === 'thought-collection-page' || fileType === 'thought-collection') {
               return false;
             }
