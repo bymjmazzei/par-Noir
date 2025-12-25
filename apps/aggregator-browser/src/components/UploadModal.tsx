@@ -335,11 +335,12 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
                 },
                 body: JSON.stringify({
                   name: `thumb_${baseFileName}-page-${i + 1}.png`,
-                  fileType: 'image',
+                  fileType: 'thought-collection-thumbnail', // Explicit fileType for filtering
                   isPublic: false, // Private - only collection shows
                   publicToken: JSON.stringify(thumbnailShareToken),
                   isThoughtThumbnail: true,
-                  mainFileId: thoughtFileId // Reference to the main thought collection file
+                  mainFileId: thoughtFileId, // Reference to the main thought collection file
+                  isPartOfCollection: true // Mark as part of collection
                 })
               });
             } catch (err) {

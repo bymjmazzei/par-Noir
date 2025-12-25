@@ -1222,10 +1222,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             // Check thumbnail metadata to see if it's part of a collection and get fileType
             let isPartOfCollection = false;
             let fileType: string | undefined;
+            let mainFileType: string | undefined;
             try {
               const thumbMetadata = await loadFileMetadata(thumb.id);
               isPartOfCollection = thumbMetadata?.isPartOfCollection === true;
               fileType = thumbMetadata?.fileType; // Capture fileType for filtering
+              
+              // Also check the main file's type if mainFileId exists
+              if (thoughtFile?.id) {
+                try {
+                  const mainMetadata = await loadFileMetadata(thoughtFile.id);
+                  mainFileType = mainMetadata?.fileType;
+                } catch (err) {
+                  // Silent fail
+                }
+              }
             } catch (err) {
               // If metadata load fails, continue without the flag
             }
@@ -1241,7 +1252,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               mainFileId: thoughtFile?.id || thumb.id, // Use thought file ID if found, fallback to thumb ID
               displayName: displayName,
               isPartOfCollection: isPartOfCollection,
-              fileType: fileType // Store fileType for filtering
+              fileType: fileType, // Store fileType for filtering
+              mainFileType: mainFileType // Store main file's fileType for filtering
             };
           })
         );
@@ -1354,12 +1366,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         const filteredThoughtThumbnailEntries = thoughtThumbnailEntries.filter((entry: any) => {
           // Use fileType from entry (loaded during mapping) or fallback to fileMetadataMap
           const fileType = entry.fileType || fileMetadataMap.get(entry.id)?.fileType;
+          const mainFileType = entry.mainFileType || (entry.mainFileId ? fileMetadataMap.get(entry.mainFileId)?.fileType : undefined);
           
           // Exclude if:
           // 1. fileType is 'thought-collection-thumbnail' (collection thought pages)
-          // 2. Thumbnail ID is in a thought collection (fallback for existing data)
-          // 3. mainFileId is in a thought collection (fallback for existing data)
+          // 2. mainFileType is 'thought-collection' (thumbnails from thought collections)
+          // 3. Thumbnail ID is in a thought collection (fallback for existing data)
+          // 4. mainFileId is in a thought collection (fallback for existing data)
           const isCollectionThought = fileType === 'thought-collection-thumbnail' ||
+                                     mainFileType === 'thought-collection' ||
                                      thumbnailIdsInCollections.has(entry.id) || 
                                      thoughtFilesInCollections.has(entry.mainFileId);
           if (isCollectionThought) {
@@ -1524,10 +1539,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             // Check thumbnail metadata to see if it's part of a collection and get fileType
             let isPartOfCollection = false;
             let fileType: string | undefined;
+            let mainFileType: string | undefined;
             try {
               const thumbMetadata = await loadFileMetadata(thumb.id);
               isPartOfCollection = thumbMetadata?.isPartOfCollection === true;
               fileType = thumbMetadata?.fileType; // Capture fileType for filtering
+              
+              // Also check the main file's type if mainFileId exists
+              if (thoughtFile?.id) {
+                try {
+                  const mainMetadata = await loadFileMetadata(thoughtFile.id);
+                  mainFileType = mainMetadata?.fileType;
+                } catch (err) {
+                  // Silent fail
+                }
+              }
             } catch (err) {
               // If metadata load fails, continue without the flag
             }
@@ -1543,7 +1569,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               mainFileId: thoughtFile?.id || thumb.id, // Use thought file ID if found, fallback to thumb ID
               displayName: displayName,
               isPartOfCollection: isPartOfCollection,
-              fileType: fileType // Store fileType for filtering
+              fileType: fileType, // Store fileType for filtering
+              mainFileType: mainFileType // Store main file's fileType for filtering
             };
           })
         );
@@ -1656,12 +1683,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         const filteredThoughtThumbnailEntries = thoughtThumbnailEntries.filter((entry: any) => {
           // Use fileType from entry (loaded during mapping) or fallback to fileMetadataMap
           const fileType = entry.fileType || fileMetadataMap.get(entry.id)?.fileType;
+          const mainFileType = entry.mainFileType || (entry.mainFileId ? fileMetadataMap.get(entry.mainFileId)?.fileType : undefined);
           
           // Exclude if:
           // 1. fileType is 'thought-collection-thumbnail' (collection thought pages)
-          // 2. Thumbnail ID is in a thought collection (fallback for existing data)
-          // 3. mainFileId is in a thought collection (fallback for existing data)
+          // 2. mainFileType is 'thought-collection' (thumbnails from thought collections)
+          // 3. Thumbnail ID is in a thought collection (fallback for existing data)
+          // 4. mainFileId is in a thought collection (fallback for existing data)
           const isCollectionThought = fileType === 'thought-collection-thumbnail' ||
+                                     mainFileType === 'thought-collection' ||
                                      thumbnailIdsInCollections.has(entry.id) || 
                                      thoughtFilesInCollections.has(entry.mainFileId);
           if (isCollectionThought) {
