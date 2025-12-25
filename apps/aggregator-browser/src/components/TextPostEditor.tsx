@@ -1386,7 +1386,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       </div>
 
       {/* Main Railway with Icon Buttons - Sticky (above font selector, overlays media) */}
-      <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: `calc(64px + ${textareaHeight}px + 16px + 48px + 16px)` }}>
+      <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: `calc(64px + ${textareaHeight}px - 24px + 48px + 16px)` }}>
         <div className="flex items-center gap-4 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
 
           {/* Font Size - Small A next to large A */}
@@ -1522,7 +1522,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       </div>
 
       {/* Font Selector Railway - Sticky (above text input, overlays media) */}
-      <div className="fixed left-0 right-0 h-12 flex items-center justify-center z-40" style={{ bottom: `calc(64px + ${textareaHeight}px + 16px)` }}>
+      <div className="fixed left-0 right-0 h-12 flex items-center justify-center z-40" style={{ bottom: `calc(64px + ${textareaHeight}px - 24px)` }}>
         <div 
           ref={fontSelectorRef}
           className="flex items-center overflow-x-auto w-full px-4"
