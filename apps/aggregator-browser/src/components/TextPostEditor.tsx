@@ -1023,28 +1023,6 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
               ))}
             </div>
           );
-        case 'fontSize':
-          return (
-            <div className="p-3 min-w-[200px]">
-              <div className="flex items-center gap-2">
-                <label className="text-white text-xs whitespace-nowrap">Size</label>
-                <input
-                  type="range"
-                  min="12"
-                  max="200"
-                  value={fontSize}
-                  onChange={(e) => setFontSize(Number(e.target.value))}
-                  className="flex-1"
-                  disabled={!!content.trim()} // Disable manual control when text exists
-                  title={content.trim() ? "Font size auto-adjusts to fit text" : "Adjust font size"}
-                />
-                <span className="text-white text-xs w-12 text-right">{Math.round(fontSize)}px</span>
-              </div>
-              {content.trim() && (
-                <p className="text-xs text-neutral-400 mt-1">Auto-sizing enabled</p>
-              )}
-            </div>
-          );
         case 'shadow':
           return (
             <div className="p-3 min-w-[280px]">
@@ -1422,24 +1400,6 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       {/* Main Railway with Icon Buttons - Sticky (above font selector, overlays media) */}
       <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: `calc(64px + ${textareaHeight}px + 12px + 48px + 8px)` }}>
         <div className="flex items-center gap-4 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-
-          {/* Font Size - Small A next to large A */}
-          <button
-            ref={(el) => menuButtonRefs.current.set('fontSize', el)}
-            onClick={(e) => {
-              const button = e.currentTarget;
-              if (openMenu === 'fontSize') {
-                closeMenu();
-              } else {
-                openPopupMenu('fontSize', button);
-              }
-            }}
-            className="px-2 py-1 transition-opacity hover:opacity-80 flex items-baseline gap-1"
-            style={{ color: 'white' }}
-          >
-            <span className="text-xs">A</span>
-            <span className="text-lg font-bold">A</span>
-          </button>
 
           {/* Text Color - A with colored line under */}
           <button
