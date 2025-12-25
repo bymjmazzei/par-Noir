@@ -1231,13 +1231,10 @@ export function FullScreenFeed({
             console.warn(`[FullScreenFeed] Failed to fetch metadata for collection file ${fileId}:`, metadataResponse.status);
             return;
           }
-
-          const metadataData = await metadataResponse.json();
-          const metadata = metadataData.metadata || metadataData;
-          const isThoughtCollectionThumbnail = metadata.fileType === 'thought-collection-thumbnail';
           
           const metadataData = await metadataResponse.json();
           const collectionFileMetadata = metadataData.metadata || metadataData;
+          const isThoughtCollectionThumbnail = collectionFileMetadata.fileType === 'thought-collection-thumbnail';
           
           console.log(`[FullScreenFeed] Fetched metadata for collection file ${fileId}:`, {
             fileId,
