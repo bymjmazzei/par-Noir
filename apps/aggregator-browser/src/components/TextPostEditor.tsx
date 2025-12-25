@@ -364,7 +364,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       padding: prev[prev.length - 1].padding,
     }]);
     setCurrentPageIndex(newPageIndex);
-    // Scroll to new page after state updates
+    // Scroll to new page and focus textarea after state updates
     setTimeout(() => {
       if (previewContainerRef.current) {
         const viewportWidth = previewContainerRef.current.clientWidth;
@@ -373,6 +373,10 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           behavior: 'smooth'
         });
       }
+      // Focus the textarea after a short delay to ensure it's rendered
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 100);
     }, 0);
   };
   
