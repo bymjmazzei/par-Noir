@@ -385,12 +385,18 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
     }
   };
 
-  // Initialize textarea height on mount
+  // Initialize textarea height on mount and focus the textarea
   useEffect(() => {
     if (textareaRef.current) {
       const initialHeight = 44; // Single row height
       textareaRef.current.style.height = `${initialHeight}px`;
       setTextareaHeight(initialHeight + 32); // Add padding (16px top + 16px bottom)
+      
+      // Focus the textarea after a short delay to ensure it's rendered
+      // This works better on mobile devices for opening the keyboard
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 100);
     }
   }, []);
 
@@ -1615,6 +1621,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           
           <textarea
             ref={textareaRef}
+            autoFocus
             value={content}
             onChange={(e) => {
               setContent(e.target.value);
