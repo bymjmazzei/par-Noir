@@ -298,7 +298,9 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         for (let i = 0; i < pages.length; i++) {
           const page = pages[i];
           // Render at full size (scale 1.0 for 1080x1080 thumbnails, same as single thoughts)
+          console.log(`[UploadModal] Rendering thumbnail for page ${i + 1}/${pages.length} at scale 1.0 (1080x1080)`);
           const thumbnailBlob = await renderTextPostToBlob(page, 1.0);
+          console.log(`[UploadModal] Thumbnail blob size: ${thumbnailBlob.size} bytes`);
           const thumbnailFileId = await uploadThumbnail(thumbnailBlob, i + 1);
           
           if (thumbnailFileId) {
