@@ -1231,6 +1231,10 @@ export function FullScreenFeed({
             console.warn(`[FullScreenFeed] Failed to fetch metadata for collection file ${fileId}:`, metadataResponse.status);
             return;
           }
+
+          const metadataData = await metadataResponse.json();
+          const metadata = metadataData.metadata || metadataData;
+          const isThoughtCollectionThumbnail = metadata.fileType === 'thought-collection-thumbnail';
           
           const metadataData = await metadataResponse.json();
           const collectionFileMetadata = metadataData.metadata || metadataData;
@@ -1378,8 +1382,11 @@ export function FullScreenFeed({
             }
           }
           
-          // PRIORITY 3: Try API endpoint with ?thumbnail=true
-          let thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true`;
+          // PRIORITY 3: Try API endpoint
+          // For thought-collection-thumbnails, they ARE the image files, so use download=true
+          // For regular images, thumbnail=true might generate a thumbnail, but for collection thumbnails we want the full file
+          const useDownload = isThoughtCollectionThumbnail;
+          let thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?${useDownload ? 'download' : 'thumbnail'}=true`;
           if (accountId && accountId.includes('::')) {
             thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
           }

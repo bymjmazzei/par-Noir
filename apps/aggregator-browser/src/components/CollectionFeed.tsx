@@ -234,7 +234,10 @@ export function CollectionFeed({
         }
       } else if (isImage) {
         // Load image
-        let imageUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true`;
+        // For thought-collection-thumbnails, they ARE the image files, so use download=true
+        // For regular images, thumbnail=true might generate a thumbnail, but for collection thumbnails we want the full file
+        const useDownload = isThoughtCollectionThumbnail;
+        let imageUrl = `${apiEndpoint}/api/drive/files/${fileId}?${useDownload ? 'download' : 'thumbnail'}=true`;
         if (accountIdToUse) {
           imageUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
         }
