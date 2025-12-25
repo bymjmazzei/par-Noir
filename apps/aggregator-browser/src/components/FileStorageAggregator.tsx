@@ -2577,14 +2577,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       console.warn('[FileStorageAggregator] Failed to load metadata for delete check:', err);
     }
     
-    // For thought collections, we need to count: collection + thumbnails + thought files
+    // For thought collections, we need to count: collection + thumbnails + main thought-collection file
     // For regular collections, we count: collection + collectionFileIds
     let totalFilesToDelete = 1; // Collection file itself
     if (isCollection) {
       if (isThoughtCollection) {
-        // For thought collections: collection + thumbnails + thought files
-        // We'll count thumbnails and thought files separately below
-        totalFilesToDelete = collectionFileIds.length * 2 + 1; // Each thumbnail has a corresponding thought file
+        // For thought collections: collection + thumbnails + main thought-collection file
+        totalFilesToDelete = collectionFileIds.length + 1 + 1; // thumbnails + thought-collection file + collection
       } else {
         // For regular collections: just the collectionFileIds
         totalFilesToDelete = collectionFileIds.length + 1;
@@ -2593,7 +2592,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     
     const confirmMessage = isCollection 
       ? isThoughtCollection
-        ? `Are you sure you want to delete this thought collection and all ${totalFilesToDelete - 1} associated files (${collectionFileIds.length} pages with their thumbnails and thought files)?`
+        ? `Are you sure you want to delete this thought collection and all ${totalFilesToDelete - 1} associated files (${collectionFileIds.length} thumbnails and the main thought-collection file)?`
         : `Are you sure you want to delete this collection and all ${collectionFileIds.length} associated files?`
       : `Are you sure you want to delete "${file.name}"?`;
     
@@ -2612,43 +2611,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       if (isCollection && collectionFileIds.length > 0) {
         console.log(`[FileStorageAggregator] Deleting collection with ${collectionFileIds.length} associated files`);
         
-        // For multi-page thoughts, collectionFileIds are thumbnail IDs
-        // We need to delete both the thumbnails AND the thought files they reference
-        const thoughtFileIdsToDelete = new Set<string>();
+        let thoughtCollectionFileId: string | null = null;
         
-        // First, load metadata for each thumbnail to get mainFileId (the thought file)
-        for (const thumbnailId of collectionFileIds) {
+        // For thought collections, collectionFileIds are thumbnail IDs
+        // All thumbnails point to the same main thought-collection file
+        if (isThoughtCollection && collectionFileIds.length > 0) {
+          // Load metadata from first thumbnail to get mainFileId (the thought-collection file)
           try {
-            const thumbnailMetadata = await loadFileMetadata(thumbnailId);
-            if (thumbnailMetadata?.mainFileId) {
-              thoughtFileIdsToDelete.add(thumbnailMetadata.mainFileId);
-            }
+            const firstThumbnailMetadata = await loadFileMetadata(collectionFileIds[0]);
+            thoughtCollectionFileId = firstThumbnailMetadata?.mainFileId || null;
+            console.log(`[FileStorageAggregator] Found thought-collection file ID: ${thoughtCollectionFileId}`);
           } catch (err) {
-            console.warn(`[FileStorageAggregator] Failed to load metadata for thumbnail ${thumbnailId}:`, err);
+            console.warn(`[FileStorageAggregator] Failed to load metadata for first thumbnail:`, err);
           }
         }
         
-        // Delete all thought files first
-        for (const thoughtFileId of thoughtFileIdsToDelete) {
-          try {
-            const deleteResponse = await fetch(`${apiEndpoint}/api/drive/files/${thoughtFileId}?accountId=${accountId}`, {
-              method: 'DELETE',
-              headers: {
-                'Authorization': `Bearer ${accessToken}`
-              }
-            });
-            
-            if (!deleteResponse.ok) {
-              console.warn(`[FileStorageAggregator] Failed to delete thought file ${thoughtFileId}`);
-            } else {
-              console.log(`[FileStorageAggregator] Deleted thought file ${thoughtFileId}`);
-            }
-          } catch (err: any) {
-            console.warn(`[FileStorageAggregator] Error deleting thought file ${thoughtFileId}:`, err);
-          }
-        }
-        
-        // Then delete all thumbnails
+        // Delete all thumbnail files first
         for (const thumbnailId of collectionFileIds) {
           try {
             const deleteResponse = await fetch(`${apiEndpoint}/api/drive/files/${thumbnailId}?accountId=${accountId}`, {
@@ -2665,6 +2643,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             }
           } catch (err: any) {
             console.warn(`[FileStorageAggregator] Error deleting thumbnail ${thumbnailId}:`, err);
+          }
+        }
+        
+        // Delete the main thought-collection file (for thought collections)
+        if (isThoughtCollection && thoughtCollectionFileId) {
+          try {
+            const deleteResponse = await fetch(`${apiEndpoint}/api/drive/files/${thoughtCollectionFileId}?accountId=${accountId}`, {
+              method: 'DELETE',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            });
+            
+            if (!deleteResponse.ok) {
+              console.warn(`[FileStorageAggregator] Failed to delete thought-collection file ${thoughtCollectionFileId}`);
+            } else {
+              console.log(`[FileStorageAggregator] Deleted thought-collection file ${thoughtCollectionFileId}`);
+            }
+          } catch (err: any) {
+            console.warn(`[FileStorageAggregator] Error deleting thought-collection file ${thoughtCollectionFileId}:`, err);
           }
         }
       }
