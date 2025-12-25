@@ -117,7 +117,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         const pages = (textPost as any).pages as TextPostData[];
         const metadata = textPost.metadata || {};
         
-        console.log(`[UploadModal] Creating multi-page thought with ${pages.length} pages`);
+        console.log(`[UploadModal] NEW CODE: Creating multi-page thought with ${pages.length} pages - will create ONE thought-collection file, NOT individual thought files`);
         
         // Get session and encryption setup
         const accessToken = await PNOAuthService.getValidAccessToken(true);
