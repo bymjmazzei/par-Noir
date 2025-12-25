@@ -656,8 +656,10 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
     const maxWidth = width - (padding * 2);
     const lines = wrapText(ctx, content, maxWidth, textAlign === 'justify');
     const lineHeight = fontSize * 1.2;
-    const totalHeight = lines.length * lineHeight;
-    const startY = (height - totalHeight) / 2;
+    // Calculate the height from first line center to last line center
+    const blockHeight = lines.length > 0 ? (lines.length - 1) * lineHeight : 0;
+    // Center the text block: first line center at height/2 - half of block height
+    const startY = lines.length > 0 ? (height - blockHeight) / 2 : height / 2;
 
     lines.forEach((line, index) => {
       const y = startY + (index * lineHeight);
