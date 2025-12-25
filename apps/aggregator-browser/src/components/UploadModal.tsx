@@ -19,6 +19,17 @@ import { getEncryptionService } from '../services/encryptionService';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
+interface EncryptedFilePackage {
+  encrypted: string;
+  iv: string;
+  salt: string;
+  metadata: {
+    originalName: string;
+    originalSize: number;
+    originalMimeType: string;
+  };
+}
+
 interface UploadModalProps {
   feeds?: Feed[];
   onClose: () => void;
@@ -239,25 +250,74 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         const thumbnailTokens: Record<string, string> = {};
         const baseFileName = metadata.name || 'thought-collection';
         
-        // Helper to upload thumbnail
-        const uploadThumbnail = async (thumbnailBlob: Blob, pageNum: number): Promise<string | undefined> => {
+        // Helper function to extract title from content (same as single thoughts)
+        const getFirstLine = (text: string): string => {
+          // Remove HTML tags if present
+          const textWithoutHtml = text.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ');
+          // Get first line (split by newline or <br>)
+          const lines = textWithoutHtml.split(/\n|<br\s*\/?>/i);
+          const firstLine = lines[0] || textWithoutHtml;
+          // Trim and limit length
+          return firstLine.trim().substring(0, 100);
+        };
+        
+        // Extract subjects helper (will be imported and used per page)
+        const { extractSubjects } = await import('../utils/subjectExtractor');
+        
+        // Generate thumbnail for each page - using same exact flow as single thoughts
+        for (let i = 0; i < pages.length; i++) {
+          const page = pages[i];
+          let thumbnailFileId: string | undefined = undefined;
+          let thumbnailShareToken: any = undefined;
+          
           try {
+            // Generate full-size PNG thumbnail (1080x1080) - this is what users see in feeds (same as single thoughts)
+            console.log(`[UploadModal] Rendering thumbnail for page ${i + 1}/${pages.length} at scale 1.0 (1080x1080)`);
+            const thumbnailBlob = await renderTextPostToBlob(page, 1.0);
+            console.log(`[UploadModal] Thumbnail blob size: ${thumbnailBlob.size} bytes`);
+            
+            // Encrypt thumbnail (same as single thoughts)
             const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
             const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
-            const encryptedThumbnail = await encryptionManager.encrypt(thumbnailData, session.did, publicKey);
+            const encryptedThumbnail = await encryptionManager.encrypt(
+              thumbnailData,
+              session.did,
+              publicKey
+            );
             
-            const thumbnailPackage = {
+            // Create encrypted thumbnail package (same as single thoughts)
+            const thumbnailPackage: EncryptedFilePackage = {
               encrypted: encryptedThumbnail.encrypted,
               iv: encryptedThumbnail.iv,
               salt: encryptedThumbnail.salt,
               metadata: {
-                originalName: `thumb_${baseFileName}-page-${pageNum}.png`,
+                originalName: `thumb_${baseFileName}-page-${i + 1}.png`,
                 originalSize: thumbnailBlob.size,
                 originalMimeType: 'image/png',
               },
             };
             
-            const thumbnailBlobJson = new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' });
+            // Generate share token for thumbnail (same as single thoughts - BEFORE upload)
+            try {
+              const encryptionService = getEncryptionService();
+              thumbnailShareToken = await encryptionService.generateShareToken(
+                thumbnailPackage,
+                {
+                  id: session.did,
+                  publicKey: publicKey
+                }
+              );
+              console.log(`✅ [UploadModal] Thumbnail share token generated successfully for page ${i + 1}`);
+            } catch (tokenError: any) {
+              console.error(`❌ [UploadModal] Thumbnail share token generation failed for page ${i + 1}:`, tokenError?.message || tokenError);
+              thumbnailShareToken = undefined;
+            }
+            
+            // Convert to base64 (same as single thoughts)
+            const thumbnailBlobJson = new Blob([JSON.stringify(thumbnailPackage)], {
+              type: 'application/json',
+            });
+            
             const thumbnailBase64 = await new Promise<string>((resolve, reject) => {
               const reader = new FileReader();
               reader.onload = () => {
@@ -268,8 +328,9 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
               reader.readAsDataURL(thumbnailBlobJson);
             });
             
-            const thumbnailFileName = `thumb_${baseFileName}-page-${pageNum}.png.encrypted`;
-            const thumbnailResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+            // Upload encrypted thumbnail (same as single thoughts)
+            const thumbnailFileName = `thumb_${baseFileName}-page-${i + 1}.png.encrypted`;
+            const thumbnailUploadResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -283,52 +344,42 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
               })
             });
             
-            if (thumbnailResponse.ok) {
-              const thumbnailResult = await thumbnailResponse.json();
-              return thumbnailResult.file?.id;
+            if (thumbnailUploadResponse.ok) {
+              const thumbnailResult = await thumbnailUploadResponse.json();
+              thumbnailFileId = thumbnailResult.file?.id;
+              if (thumbnailFileId) {
+                console.log(`✅ [UploadModal] Thumbnail uploaded successfully for page ${i + 1}, thumbnailFileId: ${thumbnailFileId}`);
+              }
+            } else {
+              const errorText = await thumbnailUploadResponse.text().catch(() => 'Unknown error');
+              console.warn(`⚠️ [UploadModal] Thumbnail upload failed for page ${i + 1}, continuing without thumbnail:`, errorText);
             }
-            return undefined;
-          } catch (error: any) {
-            console.error(`[UploadModal] Thumbnail upload failed for page ${pageNum}:`, error);
-            return undefined;
+          } catch (thumbnailError: any) {
+            console.error(`❌ [UploadModal] Thumbnail generation/upload failed for page ${i + 1}:`, thumbnailError);
+            // Continue without thumbnail for this page
           }
-        };
-        
-        // Generate thumbnail for each page
-        for (let i = 0; i < pages.length; i++) {
-          const page = pages[i];
-          // Render at full size (scale 1.0 for 1080x1080 thumbnails, same as single thoughts)
-          console.log(`[UploadModal] Rendering thumbnail for page ${i + 1}/${pages.length} at scale 1.0 (1080x1080)`);
-          const thumbnailBlob = await renderTextPostToBlob(page, 1.0);
-          console.log(`[UploadModal] Thumbnail blob size: ${thumbnailBlob.size} bytes`);
-          const thumbnailFileId = await uploadThumbnail(thumbnailBlob, i + 1);
           
           if (thumbnailFileId) {
-            // Generate share token for thumbnail
-            try {
-              const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
-              const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
-              const encryptedThumbnail = await encryptionManager.encrypt(thumbnailData, session.did, publicKey);
-              const thumbnailPackage = {
-                encrypted: encryptedThumbnail.encrypted,
-                iv: encryptedThumbnail.iv,
-                salt: encryptedThumbnail.salt,
-                metadata: {
-                  originalName: `thumb_${baseFileName}-page-${i + 1}.png`,
-                  originalSize: thumbnailBlob.size,
-                  originalMimeType: 'image/png',
-                },
-              };
-              
-              const encryptionService = getEncryptionService();
-              const thumbnailShareToken = await encryptionService.generateShareToken(thumbnailPackage, {
-                id: session.did,
-                publicKey: publicKey
-              });
-              
+            // Store share token for this thumbnail
+            if (thumbnailShareToken) {
               thumbnailTokens[thumbnailFileId] = JSON.stringify(thumbnailShareToken);
+            }
+            
+            // Extract title from page content (same as single thoughts)
+            const titleFromContent = getFirstLine(page.content || '');
+            
+            // Extract subjects from page content and metadata (same as single thoughts)
+            const subjects = extractSubjects(
+              metadata?.description || page.content,
+              metadata?.tags || [],
+              metadata?.keywords || []
+            );
+            
+            // Create metadata for thumbnail (private, only collection shows)
+            // Use same exact flow and standards as single thought thumbnails
+            try {
+              const thumbnailPublicToken = thumbnailShareToken ? JSON.stringify(thumbnailShareToken) : undefined;
               
-              // Create metadata for thumbnail (private, only collection shows)
               await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}?accountId=${accountId}`, {
                 method: 'PUT',
                 headers: {
@@ -337,16 +388,31 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
                 },
                 body: JSON.stringify({
                   name: `thumb_${baseFileName}-page-${i + 1}.png`,
+                  title: metadata?.title || titleFromContent || 'Thought',
+                  // No description - thoughts don't show captions by default (can be added later via metadata edit)
+                  keywords: metadata?.keywords || [],
+                  tags: metadata?.tags || [],
+                  // Use different fileType for thumbnails of collection thoughts vs single thoughts
                   fileType: 'thought-collection-thumbnail', // Explicit fileType for filtering
-                  isPublic: false, // Private - only collection shows
-                  publicToken: JSON.stringify(thumbnailShareToken),
+                  isPublic: false, // Private if part of collection (like PDF page thumbnails)
+                  uploadDate: new Date().toISOString(),
+                  isNSFW: metadata?.isNSFW || false,
+                  // Mark as thought thumbnail so UI knows to render title only (no caption)
                   isThoughtThumbnail: true,
-                  mainFileId: thoughtFileId, // Reference to the main thought collection file
-                  isPartOfCollection: true // Mark as part of collection
+                  // Mark if part of collection (for filtering)
+                  isPartOfCollection: true,
+                  // Store reference to main file for editing
+                  mainFileId: thoughtFileId, // Reference to JSON file for editing
+                  publicToken: thumbnailPublicToken,
+                  feedCategories: metadata?.keywords && metadata.keywords.length > 0 ? metadata.keywords : undefined,
+                  category: metadata?.keywords && metadata.keywords.length > 0 ? metadata.keywords[0] : undefined,
+                  subjects: subjects.length > 0 ? subjects : undefined,
                 })
               });
+              
+              console.log(`✅ [UploadModal] Thumbnail metadata created for page ${i + 1}`);
             } catch (err) {
-              console.warn(`[UploadModal] Failed to process thumbnail for page ${i + 1}:`, err);
+              console.warn(`[UploadModal] Failed to create metadata for thumbnail page ${i + 1}:`, err);
             }
             
             thumbnailFileIds.push(thumbnailFileId);
