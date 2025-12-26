@@ -8352,7 +8352,9 @@ class ProductionServer {
         }
 
         const recipientAccount = recipientGoogleDriveAccounts[0];
-        const recipientAccountId = (recipientAccount as any).accountId || (recipientAccount as any).id;
+        // Try backendId first, then keyPrefix, then accountId/id for backward compatibility
+        const recipientAccountId = (recipientAccount as any).backendId || (recipientAccount as any).keyPrefix || (recipientAccount as any).accountId || (recipientAccount as any).id || undefined;
+        // If accountId is not found, getAccessToken will use the first account automatically
         const recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientDid, recipientAccountId, [recipientDid]);
 
         // Get or create recipient's metadata folder
