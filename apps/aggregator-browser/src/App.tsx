@@ -1299,8 +1299,6 @@ function App() {
       const paginationInfo = Array.isArray(publicFilesResult)
         ? { total: publicFiles.length, hasMore: false }
         : { total: publicFilesResult.total, hasMore: publicFilesResult.hasMore };
-        fileTypes: publicFiles.slice(0, 5).map((f: any) => f.metadata?.fileType)
-      });
       
       // If user has age ZKP, is over 18, AND has NSFW enabled, also load NSFW index
       let nsfwFiles: IndexedFile[] = [];
@@ -1378,8 +1376,6 @@ function App() {
       setIndexedFiles(prev => {
         if (page === 0 || !append) {
           // First page or force refresh - replace all files
-            fileTypes: discoveredFiles.slice(0, 5).map((f: any) => f.metadata?.fileType)
-          });
           return discoveredFiles;
         } else {
           // Subsequent pages - append new files (avoid duplicates)

@@ -138,15 +138,6 @@ export class CentralMetadataAggregator {
       if (response.ok) {
         const data: CentralIndexResponse & { total?: number; hasMore?: boolean } = await response.json();
         
-          hasMore: data.hasMore || false,
-          firstFile: data.files?.[0] ? {
-            fileId: data.files[0].fileId || data.files[0].metadata?.fileId,
-            fileType: data.files[0].metadata?.fileType,
-            name: data.files[0].metadata?.name || data.files[0].metadata?.title,
-            isPublic: data.files[0].metadata?.isPublic
-          } : null
-        });
-        
         // Warn if NSFW files are found in public index (should never happen)
         if (data.files && data.files.length > 0) {
           data.files.forEach((file: any) => {

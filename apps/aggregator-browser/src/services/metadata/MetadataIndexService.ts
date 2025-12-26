@@ -71,15 +71,6 @@ export class MetadataIndexService {
       // result.files are CentralIndexEntry objects from the API
       // Backend already filters for public files, so we trust what the API returns
       // But we also check: isPublic !== false OR has publicToken (means it's meant to be public)
-        hasMore: result.hasMore || false,
-        firstFile: result.files?.[0] ? {
-          fileId: result.files[0].fileId || result.files[0].metadata?.fileId,
-          fileType: result.files[0].metadata?.fileType,
-          name: result.files[0].metadata?.name || result.files[0].metadata?.title,
-          isPublic: result.files[0].metadata?.isPublic,
-          hasPublicToken: !!result.files[0].metadata?.publicToken
-        } : null
-      });
       let files: IndexedFile[] = result.files
         .filter((entry: any) => {
           const metadata = entry.metadata || {};
@@ -127,17 +118,8 @@ export class MetadataIndexService {
           const fileName = metadata.name || metadata.title || '';
           const isThumbnailFile = fileName.toLowerCase().startsWith('thumb_');
           
-              collectionFromMetadata: metadata.collection,
-              collectionType: typeof metadata.collection,
-              collectionKeys: metadata.collection ? Object.keys(metadata.collection) : [],
-              // Check ALL possible locations for collection data
-              entryLevelCollection: entry.collection,
-              metadataKeys: Object.keys(metadata),
-              entryKeys: Object.keys(entry),
-              fullMetadata: JSON.stringify(metadata, null, 2),
-              fullEntry: JSON.stringify(entry, null, 2)
-            });
-            
+          // DEBUG: Log collection data from API
+          if (metadata.fileType === 'collection' || metadata.collection) {
             // If collection data is missing, try to fetch it separately
             if (metadata.fileType === 'collection' && !metadata.collection) {
               console.warn(`[MetadataIndexService] Collection file ${metadata.fileId || entry.fileId} has fileType='collection' but no collection data in metadata!`);
@@ -176,8 +158,6 @@ export class MetadataIndexService {
             pnIdentifier: entry.pnIdentifier || normalizedPnId
           };
         });
-        fileTypes: files.slice(0, 5).map((f: any) => f.metadata?.fileType)
-      });
 
       // Apply filters
       const beforeFilters = files.length;
