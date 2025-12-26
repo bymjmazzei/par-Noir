@@ -8229,7 +8229,7 @@ class ProductionServer {
 
       // Create pN folder if it doesn't exist
       if (!pnFolderId) {
-        const createPnFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+        let createPnFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${accessToken}`,
@@ -8240,6 +8240,15 @@ class ProductionServer {
             mimeType: 'application/vnd.google-apps.folder'
           })
         });
+
+        // If we get a 401, the token might be expired - try refreshing and retry once
+        if (createPnFolderResponse.status === 401) {
+          console.warn(`[getOrCreateMetadataFolder] Got 401 when creating pN folder, token may be expired. Attempting to refresh...`);
+          // Note: We can't refresh here directly, but getAccessToken should have refreshed it
+          // This might be a race condition. For now, throw a clearer error.
+          const errorText = await createPnFolderResponse.text().catch(() => 'Unknown error');
+          throw new Error(`Google Drive access token expired. Please reconnect your Google Drive account. Error: ${errorText.substring(0, 200)}`);
+        }
 
         if (!createPnFolderResponse.ok) {
           const errorText = await createPnFolderResponse.text().catch(() => 'Unknown error');
@@ -8278,6 +8287,13 @@ class ProductionServer {
           parents: [pnFolderId]
         })
       });
+
+      // If we get a 401, the token might be expired
+      if (createMetadataResponse.status === 401) {
+        console.warn(`[getOrCreateMetadataFolder] Got 401 when creating _metadata folder, token may be expired.`);
+        const errorText = await createMetadataResponse.text().catch(() => 'Unknown error');
+        throw new Error(`Google Drive access token expired. Please reconnect your Google Drive account. Error: ${errorText.substring(0, 200)}`);
+      }
 
       if (!createMetadataResponse.ok) {
         const errorText = await createMetadataResponse.text().catch(() => 'Unknown error');
