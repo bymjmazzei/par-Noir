@@ -3412,6 +3412,36 @@ class ProductionServer {
         // SECURITY: Use sanitized identityId in logs
         console.log(`[StorageCredentials PUT] Successfully saved credentials for identityId: ${sanitizedIdentityId}`);
 
+        // Initialize Google Drive folder structure if this is a new Google Drive connection
+        const hasGoogleDrive = credentials?.googleDriveAccounts?.length > 0 || credentials?.googleDrive;
+        if (hasGoogleDrive) {
+          try {
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            
+            // Get the first Google Drive account
+            const googleDriveAccounts = credentials.googleDriveAccounts || 
+              (credentials.googleDrive ? [credentials.googleDrive] : []);
+            
+            if (googleDriveAccounts.length > 0) {
+              const account = googleDriveAccounts[0];
+              const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+              
+              // Get access token
+              const accessToken = await googleDriveProxyService.getAccessToken(identityId, accountId, [identityId]);
+              
+              // Initialize folder structure (creates pN folder and _metadata folder if they don't exist)
+              console.log(`[StorageCredentials PUT] Initializing folder structure for identityId: ${sanitizedIdentityId}`);
+              await this.getOrCreateMetadataFolder(accessToken, identityId);
+              
+              console.log(`[StorageCredentials PUT] Successfully initialized folder structure for identityId: ${sanitizedIdentityId}`);
+            }
+          } catch (folderInitError: any) {
+            // Don't fail the credential save if folder initialization fails
+            // This is non-critical - folders will be created on-demand if needed
+            console.warn(`[StorageCredentials PUT] Failed to initialize folder structure for identityId: ${sanitizedIdentityId}`, folderInitError?.message || folderInitError);
+          }
+        }
+
         return res.json({
           success: true,
           identityId: record.identityId,
