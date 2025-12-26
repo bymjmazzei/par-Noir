@@ -103,8 +103,20 @@ export async function acceptConnectionRequest(
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to accept connection request');
+      let errorMessage = 'Failed to accept connection request';
+      try {
+        const error = await response.json();
+        errorMessage = error.error || error.error_description || errorMessage;
+        if (error.details) {
+          errorMessage += ` - ${error.details}`;
+        }
+        console.error('Accept connection request API error:', error);
+      } catch (e) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        errorMessage = `HTTP ${response.status}: ${errorText}`;
+        console.error('Accept connection request API error (non-JSON):', response.status, errorText);
+      }
+      throw new Error(errorMessage);
     }
   } catch (error) {
     console.error('Failed to accept connection request:', error);
@@ -129,8 +141,20 @@ export async function rejectConnectionRequest(
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to reject connection request');
+      let errorMessage = 'Failed to reject connection request';
+      try {
+        const error = await response.json();
+        errorMessage = error.error || error.error_description || errorMessage;
+        if (error.details) {
+          errorMessage += ` - ${error.details}`;
+        }
+        console.error('Reject connection request API error:', error);
+      } catch (e) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        errorMessage = `HTTP ${response.status}: ${errorText}`;
+        console.error('Reject connection request API error (non-JSON):', response.status, errorText);
+      }
+      throw new Error(errorMessage);
     }
   } catch (error) {
     console.error('Failed to reject connection request:', error);
