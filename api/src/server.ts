@@ -130,6 +130,124 @@ class ProductionServer {
     this.setupWebSockets();
   }
 
+  /**
+   * Helper function to get or create metadata folder for a user
+   * Creates pN folder if needed, then creates _metadata folder inside it
+   * Follows standard pattern: accepts accessToken as parameter
+   */
+  private async getOrCreateMetadataFolder(
+    accessToken: string,
+    pnIdentifier: string
+  ): Promise<string> {
+    // Normalize pn identifier
+    const normalizedPn = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+    
+    // First, try to find _metadata folder at root level (for backward compatibility)
+    for (const folderName of ['_metadata', 'Metadata']) {
+      const rootFolderQuery = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const rootFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(rootFolderQuery)}&fields=files(id)&pageSize=1`;
+      const rootFolderResponse = await fetch(rootFolderUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+
+      if (rootFolderResponse.ok) {
+        const rootFolderData = await rootFolderResponse.json() as { files?: Array<{ id: string }> };
+        if (rootFolderData.files && rootFolderData.files.length > 0) {
+          return rootFolderData.files[0].id;
+        }
+      }
+    }
+
+    // If not found at root, try inside pN folder
+    const pnFolderName = `par Noir - ${normalizedPn}`;
+    const pnFolderQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const pnFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderQuery)}&fields=files(id)&pageSize=1`;
+    const pnFolderResponse = await fetch(pnFolderUrl, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+
+    let pnFolderId: string | null = null;
+    if (pnFolderResponse.ok) {
+      const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string }> };
+      if (pnFolderData.files && pnFolderData.files.length > 0) {
+        pnFolderId = pnFolderData.files[0].id;
+      }
+    }
+
+    // Create pN folder if it doesn't exist
+    if (!pnFolderId) {
+      console.log('[getOrCreateMetadataFolder] Creating pN folder:', pnFolderName);
+      const createPnFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: pnFolderName,
+          mimeType: 'application/vnd.google-apps.folder'
+        })
+      });
+
+      console.log('[getOrCreateMetadataFolder] Create pN folder response status:', createPnFolderResponse.status);
+
+      if (!createPnFolderResponse.ok) {
+        const errorText = await createPnFolderResponse.text().catch(() => 'Unknown error');
+        let errorJson = null;
+        try {
+          errorJson = JSON.parse(errorText);
+        } catch (e) {
+          // Not JSON, use as text
+        }
+        console.error(`[getOrCreateMetadataFolder] Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText}`);
+        console.error(`[getOrCreateMetadataFolder] Full error response text:`, errorText);
+        console.error(`[getOrCreateMetadataFolder] Parsed error JSON:`, errorJson);
+        console.error(`[getOrCreateMetadataFolder] Token used (first 50 chars):`, accessToken.substring(0, 50));
+        throw new Error(`Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText} - ${errorText.substring(0, 500)}`);
+      }
+
+      const createdPnFolder = await createPnFolderResponse.json() as { id: string };
+      pnFolderId = createdPnFolder.id;
+    }
+
+    // Now search for _metadata folder inside pN folder
+    const metadataFolderQuery = `name='_metadata' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const metadataFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataFolderQuery)}&fields=files(id)&pageSize=1`;
+    const metadataFolderResponse = await fetch(metadataFolderUrl, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+
+    if (metadataFolderResponse.ok) {
+      const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
+      if (metadataFolderData.files && metadataFolderData.files.length > 0) {
+        return metadataFolderData.files[0].id;
+      }
+    }
+
+    // Create _metadata folder inside pN folder
+    const createMetadataResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: '_metadata',
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [pnFolderId]
+      })
+    });
+
+    if (!createMetadataResponse.ok) {
+      const errorText = await createMetadataResponse.text().catch(() => 'Unknown error');
+      console.error(`Failed to create _metadata folder: ${createMetadataResponse.status} ${createMetadataResponse.statusText}`, errorText);
+      throw new Error(`Failed to create _metadata folder: ${createMetadataResponse.status} ${createMetadataResponse.statusText} - ${errorText.substring(0, 200)}`);
+    }
+
+    const createdMetadata = await createMetadataResponse.json() as { id: string };
+    return createdMetadata.id;
+  }
+
   private setupMiddleware(): void {
     // Security middleware
     this.app.use(helmet({
@@ -3611,7 +3729,7 @@ class ProductionServer {
                 const account = googleDriveAccounts[0];
                 const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
                 const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-                const userMetadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+                const userMetadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
 
                 // Record activity for liker
                 await ActivityLedgerService.recordActivity(
@@ -3639,7 +3757,7 @@ class ProductionServer {
                 const ownerAccount = ownerGoogleDriveAccounts[0];
                 const ownerAccountId = (ownerAccount as any).backendId || (ownerAccount as any).keyPrefix || (ownerAccount as any).accountId || (ownerAccount as any).id || undefined;
                 const ownerAccessToken = await googleDriveProxyService.getAccessToken(ownerCredentials.identityId, ownerAccountId, [ownerCredentials.identityId]);
-                const ownerMetadataFolderId = await getOrCreateMetadataFolder(ownerAccessToken, ownerCredentials.identityId);
+                const ownerMetadataFolderId = await this.getOrCreateMetadataFolder(ownerAccessToken, ownerCredentials.identityId);
 
                 // Record activity for file owner
                 await ActivityLedgerService.recordActivity(
@@ -3846,7 +3964,7 @@ class ProductionServer {
                 const account = googleDriveAccounts[0];
                 const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
                 const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-                const userMetadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+                const userMetadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
 
                 // Record activity for commenter
                 await ActivityLedgerService.recordActivity(
@@ -3874,7 +3992,7 @@ class ProductionServer {
                 const ownerAccount = ownerGoogleDriveAccounts[0];
                 const ownerAccountId = (ownerAccount as any).backendId || (ownerAccount as any).keyPrefix || (ownerAccount as any).accountId || (ownerAccount as any).id || undefined;
                 const ownerAccessToken = await googleDriveProxyService.getAccessToken(ownerCredentials.identityId, ownerAccountId, [ownerCredentials.identityId]);
-                const ownerMetadataFolderId = await getOrCreateMetadataFolder(ownerAccessToken, ownerCredentials.identityId);
+                const ownerMetadataFolderId = await this.getOrCreateMetadataFolder(ownerAccessToken, ownerCredentials.identityId);
 
                 // Record activity for file owner
                 await ActivityLedgerService.recordActivity(
@@ -4156,7 +4274,7 @@ class ProductionServer {
                 const account = googleDriveAccounts[0];
                 const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
                 const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-                const userMetadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+                const userMetadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
 
                 // Record activity for sharer
                 await ActivityLedgerService.recordActivity(
@@ -4184,7 +4302,7 @@ class ProductionServer {
                 const ownerAccount = ownerGoogleDriveAccounts[0];
                 const ownerAccountId = (ownerAccount as any).backendId || (ownerAccount as any).keyPrefix || (ownerAccount as any).accountId || (ownerAccount as any).id || undefined;
                 const ownerAccessToken = await googleDriveProxyService.getAccessToken(ownerCredentials.identityId, ownerAccountId, [ownerCredentials.identityId]);
-                const ownerMetadataFolderId = await getOrCreateMetadataFolder(ownerAccessToken, ownerCredentials.identityId);
+                const ownerMetadataFolderId = await this.getOrCreateMetadataFolder(ownerAccessToken, ownerCredentials.identityId);
 
                 // Record activity for file owner
                 await ActivityLedgerService.recordActivity(
@@ -7959,12 +8077,14 @@ class ProductionServer {
           return res.status(400).json({ error: 'fromDid, toDid, and content are required' });
         }
 
+        // Import services at the top
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
         // Check if users are connected (unless this is a connection request)
         if (!isConnectionRequest) {
           try {
-            const { ConnectionsService } = await import('./server/modules/connectionsService');
-            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
             
             // Get sender's credentials and metadata folder
             const senderCredentials = await storageCredentialsService.getCredentials(fromDid);
@@ -8041,7 +8161,7 @@ class ProductionServer {
               const senderAccount = senderGoogleDriveAccounts[0];
               const senderAccountId = (senderAccount as any).backendId || (senderAccount as any).keyPrefix || (senderAccount as any).accountId || (senderAccount as any).id || undefined;
               const senderAccessToken = await googleDriveProxyService.getAccessToken(senderCredentials.identityId, senderAccountId, [senderCredentials.identityId]);
-              const senderMetadataFolderId = await getOrCreateMetadataFolder(senderAccessToken, senderCredentials.identityId);
+              const senderMetadataFolderId = await this.getOrCreateMetadataFolder(senderAccessToken, senderCredentials.identityId);
 
               // Record activity for sender
               await MessagingLedgerService.recordMessagingActivity(
@@ -8071,7 +8191,7 @@ class ProductionServer {
               const recipientAccount = recipientGoogleDriveAccounts[0];
               const recipientAccountId = (recipientAccount as any).backendId || (recipientAccount as any).keyPrefix || (recipientAccount as any).accountId || (recipientAccount as any).id || undefined;
               const recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientCredentials.identityId, recipientAccountId, [recipientCredentials.identityId]);
-              const recipientMetadataFolderId = await getOrCreateMetadataFolder(recipientAccessToken, recipientCredentials.identityId);
+              const recipientMetadataFolderId = await this.getOrCreateMetadataFolder(recipientAccessToken, recipientCredentials.identityId);
 
               // Record activity for recipient
               await MessagingLedgerService.recordMessagingActivity(
@@ -8517,124 +8637,6 @@ class ProductionServer {
     // Connections APIs
     // ============================================================================
 
-    /**
-     * Helper function to get or create metadata folder for a user
-     * Creates pN folder if needed, then creates _metadata folder inside it
-     * Follows standard pattern: accepts accessToken as parameter
-     */
-    const getOrCreateMetadataFolder = async (
-      accessToken: string,
-      pnIdentifier: string
-    ): Promise<string> => {
-      // Normalize pn identifier
-      const normalizedPn = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-      
-      // First, try to find _metadata folder at root level (for backward compatibility)
-      for (const folderName of ['_metadata', 'Metadata']) {
-        const rootFolderQuery = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const rootFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(rootFolderQuery)}&fields=files(id)&pageSize=1`;
-        const rootFolderResponse = await fetch(rootFolderUrl, {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        });
-
-        if (rootFolderResponse.ok) {
-          const rootFolderData = await rootFolderResponse.json() as { files?: Array<{ id: string }> };
-          if (rootFolderData.files && rootFolderData.files.length > 0) {
-            return rootFolderData.files[0].id;
-          }
-        }
-      }
-
-      // If not found at root, try inside pN folder
-      const pnFolderName = `par Noir - ${normalizedPn}`;
-      const pnFolderQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-      const pnFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderQuery)}&fields=files(id)&pageSize=1`;
-      const pnFolderResponse = await fetch(pnFolderUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-
-      let pnFolderId: string | null = null;
-      if (pnFolderResponse.ok) {
-        const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string }> };
-        if (pnFolderData.files && pnFolderData.files.length > 0) {
-          pnFolderId = pnFolderData.files[0].id;
-        }
-      }
-
-      // Create pN folder if it doesn't exist
-      if (!pnFolderId) {
-        console.log('[getOrCreateMetadataFolder] Creating pN folder:', pnFolderName);
-        const createPnFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            name: pnFolderName,
-            mimeType: 'application/vnd.google-apps.folder'
-          })
-        });
-
-        console.log('[getOrCreateMetadataFolder] Create pN folder response status:', createPnFolderResponse.status);
-
-        if (!createPnFolderResponse.ok) {
-          const errorText = await createPnFolderResponse.text().catch(() => 'Unknown error');
-          let errorJson = null;
-          try {
-            errorJson = JSON.parse(errorText);
-          } catch (e) {
-            // Not JSON, use as text
-          }
-          console.error(`[getOrCreateMetadataFolder] Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText}`);
-          console.error(`[getOrCreateMetadataFolder] Full error response text:`, errorText);
-          console.error(`[getOrCreateMetadataFolder] Parsed error JSON:`, errorJson);
-          console.error(`[getOrCreateMetadataFolder] Token used (first 50 chars):`, accessToken.substring(0, 50));
-          throw new Error(`Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText} - ${errorText.substring(0, 500)}`);
-        }
-
-        const createdPnFolder = await createPnFolderResponse.json() as { id: string };
-        pnFolderId = createdPnFolder.id;
-      }
-
-      // Now search for _metadata folder inside pN folder
-      const metadataFolderQuery = `name='_metadata' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-      const metadataFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataFolderQuery)}&fields=files(id)&pageSize=1`;
-      const metadataFolderResponse = await fetch(metadataFolderUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-
-      if (metadataFolderResponse.ok) {
-        const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-        if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-          return metadataFolderData.files[0].id;
-        }
-      }
-
-      // Create _metadata folder inside pN folder
-      const createMetadataResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: '_metadata',
-          mimeType: 'application/vnd.google-apps.folder',
-          parents: [pnFolderId]
-        })
-      });
-
-      if (!createMetadataResponse.ok) {
-        const errorText = await createMetadataResponse.text().catch(() => 'Unknown error');
-        console.error(`Failed to create _metadata folder: ${createMetadataResponse.status} ${createMetadataResponse.statusText}`, errorText);
-        throw new Error(`Failed to create _metadata folder: ${createMetadataResponse.status} ${createMetadataResponse.statusText} - ${errorText.substring(0, 200)}`);
-      }
-
-      const createdMetadata = await createMetadataResponse.json() as { id: string };
-      return createdMetadata.id;
-    };
-
     // POST /api/connections/request - Send connection request
     this.app.post('/api/connections/request', async (req, res) => {
       try {
@@ -8691,7 +8693,7 @@ class ProductionServer {
         console.log('[ConnectionRequest] About to get/create requester metadata folder');
         let requesterMetadataFolderId: string;
         try {
-          requesterMetadataFolderId = await getOrCreateMetadataFolder(requesterAccessToken, requesterDid);
+          requesterMetadataFolderId = await this.getOrCreateMetadataFolder(requesterAccessToken, requesterDid);
           console.log('[ConnectionRequest] Successfully got/created requester metadata folder:', requesterMetadataFolderId);
         } catch (error: any) {
           console.error('[ConnectionRequest] Error getting/creating requester metadata folder:', error);
@@ -8745,7 +8747,7 @@ class ProductionServer {
         // Get or create recipient's metadata folder
         let recipientMetadataFolderId: string;
         try {
-          recipientMetadataFolderId = await getOrCreateMetadataFolder(recipientAccessToken, recipientDid);
+          recipientMetadataFolderId = await this.getOrCreateMetadataFolder(recipientAccessToken, recipientDid);
         } catch (error: any) {
           console.error('Error getting/creating recipient metadata folder:', error);
           const errorDetails = error.message || 'Unknown error';
@@ -8895,7 +8897,7 @@ class ProductionServer {
         // Get or create metadata folder
         let metadataFolderId: string;
         try {
-          metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
+          metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
         } catch (error: any) {
           console.error('Error getting/creating metadata folder:', error);
           return res.status(500).json({ error: 'Failed to get or create metadata folder', error_description: error.message });
@@ -8971,7 +8973,7 @@ class ProductionServer {
 
               // Get or create other user's metadata folder
               try {
-                const otherMetadataFolderId = await getOrCreateMetadataFolder(otherAccessToken, otherUserCredentials.identityId);
+                const otherMetadataFolderId = await this.getOrCreateMetadataFolder(otherAccessToken, otherUserCredentials.identityId);
                 
                 await ConnectionsService.updateOtherUserConnectionStatus(
                   otherAccessToken,
@@ -9025,7 +9027,7 @@ class ProductionServer {
                 const otherAccount = otherGoogleDriveAccounts[0];
                 const otherAccountId = (otherAccount as any).backendId || (otherAccount as any).keyPrefix || (otherAccount as any).accountId || (otherAccount as any).id || undefined;
                 const otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherAccountId, [otherUserCredentials.identityId]);
-                const otherMetadataFolderId = await getOrCreateMetadataFolder(otherAccessToken, otherUserCredentials.identityId);
+                const otherMetadataFolderId = await this.getOrCreateMetadataFolder(otherAccessToken, otherUserCredentials.identityId);
 
                 await ActivityLedgerService.recordActivity(
                   otherAccessToken,
@@ -9105,7 +9107,7 @@ class ProductionServer {
         // Get or create metadata folder
         let metadataFolderId: string;
         try {
-          metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
+          metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
         } catch (error: any) {
           console.error('Error getting/creating metadata folder:', error);
           return res.status(500).json({ error: 'Failed to get or create metadata folder', error_description: error.message });
@@ -9161,7 +9163,7 @@ class ProductionServer {
         // Get or create metadata folder
         let metadataFolderId: string;
         try {
-          metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userDid as string);
+          metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userDid as string);
         } catch (error: any) {
           console.error('Error getting/creating metadata folder:', error);
           // Return empty connections array if folder creation fails
@@ -9224,7 +9226,7 @@ class ProductionServer {
         // Get or create metadata folder
         let metadataFolderId: string;
         try {
-          metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userDid as string);
+          metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userDid as string);
         } catch (error: any) {
           console.error('Error getting/creating metadata folder:', error);
           // Return empty arrays if folder creation fails
@@ -9276,7 +9278,7 @@ class ProductionServer {
         // Get or create metadata folder
         let metadataFolderId: string;
         try {
-          metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userDid as string);
+          metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userDid as string);
         } catch (error: any) {
           console.error('Error getting/creating metadata folder:', error);
           // Return not_connected if folder creation fails
@@ -9337,7 +9339,7 @@ class ProductionServer {
         // Get or create metadata folder
         let metadataFolderId: string;
         try {
-          metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
+          metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
         } catch (error: any) {
           console.error('Error getting/creating metadata folder:', error);
           return res.status(500).json({ error: 'Failed to get or create metadata folder', error_description: error.message });
@@ -10534,7 +10536,7 @@ class ProductionServer {
         const account = googleDriveAccounts[0];
         const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
 
         const limit = parseInt(req.query.limit as string) || 50;
         const offset = parseInt(req.query.offset as string) || 0;
@@ -10598,7 +10600,7 @@ class ProductionServer {
         const account = googleDriveAccounts[0];
         const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
 
         const count = await NotificationService.getUnreadCount(userAccessToken, metadataFolderId);
 
@@ -10648,7 +10650,7 @@ class ProductionServer {
         const account = googleDriveAccounts[0];
         const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
 
         const success = await NotificationService.markAsRead(userAccessToken, metadataFolderId, userCredentials.identityId, notificationId);
 
@@ -10704,7 +10706,7 @@ class ProductionServer {
         const account = googleDriveAccounts[0];
         const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
 
         const count = await NotificationService.markAllAsRead(userAccessToken, metadataFolderId, userCredentials.identityId);
 
@@ -10754,7 +10756,7 @@ class ProductionServer {
         const account = googleDriveAccounts[0];
         const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
 
         const success = await NotificationService.deleteNotification(userAccessToken, metadataFolderId, userCredentials.identityId, notificationId);
 
@@ -10834,7 +10836,7 @@ class ProductionServer {
         const account = googleDriveAccounts[0];
         const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
 
         const preferences = await NotificationService.getPreferences(userAccessToken, metadataFolderId, userCredentials.identityId);
 
@@ -10883,7 +10885,7 @@ class ProductionServer {
         const account = googleDriveAccounts[0];
         const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
 
         const { user_did, ...preferencesUpdate } = req.body;
         const preferences = await NotificationService.updatePreferences(
