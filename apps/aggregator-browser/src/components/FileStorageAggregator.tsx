@@ -16,6 +16,7 @@ import { FeedCategory } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { cleanTitle } from '../utils/cleanTitle';
 import { EditMetadataModal, MetadataFormData } from './EditMetadataModal';
+import { accountsCacheService } from '../services/accountsCacheService';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -1053,9 +1054,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       if (!authenticatedUser?.id) {
         console.log('[FileStorageAggregator] No authenticatedUser.id, clearing accounts');
         setDriveAccounts([]);
+        accountsCacheService.clearAll(); // Clear cache on logout
         return;
       }
 
+      // Check cache first
+      const cached = accountsCacheService.get(authenticatedUser.id);
+      if (cached) {
+        console.log('[FileStorageAggregator] Using cached accounts:', cached.length);
+        setDriveAccounts(cached);
+        if (cached.length > 0 && !selectedAccountId) {
+          setSelectedAccountId(cached[0].accountId);
+        }
+        return;
+      }
+
+      // Cache miss - fetch from API
       try {
         const accessToken = await PNOAuthService.getValidAccessToken();
         if (!accessToken) {
@@ -1076,6 +1090,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const data = await response.json();
           const accounts = data.accounts || [];
           console.log('[FileStorageAggregator] Loaded accounts:', accounts.length);
+          // Cache the result
+          accountsCacheService.set(authenticatedUser.id, accounts);
           setDriveAccounts(accounts);
           if (accounts.length > 0 && !selectedAccountId) {
             setSelectedAccountId(accounts[0].accountId);

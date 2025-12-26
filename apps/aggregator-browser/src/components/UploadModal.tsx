@@ -16,6 +16,7 @@ import { FeedService } from '../services/feedService';
 import { Settings } from 'lucide-react';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
+import { accountsCacheService } from '../services/accountsCacheService';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -57,9 +58,22 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
     const loadAccounts = async () => {
       if (!authenticatedUser?.id) return;
 
+      // Check cache first
+      const cached = accountsCacheService.get(authenticatedUser.id);
+      if (cached && cached.length > 0) {
+        // Use the first account's ID
+        setAccountId(cached[0].id || cached[0].accountId || authenticatedUser.id);
+        return;
+      }
+
+      // Cache miss - fetch from API
       try {
         const accessToken = await PNOAuthService.getValidAccessToken();
-        if (!accessToken) return;
+        if (!accessToken) {
+          // Fallback to authenticated user ID
+          setAccountId(authenticatedUser.id);
+          return;
+        }
 
         const response = await fetch(`${apiEndpoint}/api/storage/accounts/${authenticatedUser.id}`, {
           headers: {
@@ -70,6 +84,8 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         if (response.ok) {
           const data = await response.json();
           const accounts = data.accounts || [];
+          // Cache the result
+          accountsCacheService.set(authenticatedUser.id, accounts);
           if (accounts.length > 0) {
             // Use the first account's ID
             setAccountId(accounts[0].id || accounts[0].accountId || authenticatedUser.id);

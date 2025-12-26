@@ -9,6 +9,7 @@ import { Cloud, RefreshCw, Image, Video, FileText, File, Lock, Globe, Grid, List
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
 import { PNOAuthService } from '../services/pnOAuthService';
+import { accountsCacheService } from '../services/accountsCacheService';
 
 interface CloudFile {
   id: string;
@@ -37,9 +38,19 @@ export function BrowseCloud({ onClose, onUploadClick }: { onClose: () => void; o
   useEffect(() => {
     const loadCloudAccounts = async () => {
       if (!userState.isUnlocked || !userState.pnIdentifier) {
+        setCloudAccounts([]);
         return;
       }
 
+      // Check cache first
+      const cached = accountsCacheService.get(userState.pnIdentifier);
+      if (cached) {
+        console.log('[BrowseCloud] Using cached accounts:', cached.length);
+        setCloudAccounts(cached);
+        return;
+      }
+
+      // Cache miss - fetch from API
       try {
         // Get valid access token (will refresh if expired)
         const accessToken = await PNOAuthService.getValidAccessToken();
@@ -59,7 +70,10 @@ export function BrowseCloud({ onClose, onUploadClick }: { onClose: () => void; o
 
         if (response.ok) {
           const data = await response.json();
-          setCloudAccounts(data.accounts || []);
+          const accounts = data.accounts || [];
+          // Cache the result
+          accountsCacheService.set(userState.pnIdentifier, accounts);
+          setCloudAccounts(accounts);
         }
       } catch (error) {
         console.error('[BrowseCloud] Failed to load cloud accounts:', error);

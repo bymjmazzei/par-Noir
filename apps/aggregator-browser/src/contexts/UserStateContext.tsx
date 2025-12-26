@@ -5,6 +5,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Feed } from '../types/aggregator';
+import { accountsCacheService } from '../services/accountsCacheService';
 
 export interface UserPreferences {
   // Age verification (for NSFW access)
@@ -398,6 +399,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
   };
 
   const setLocked = () => {
+    // Clear accounts cache on logout
+    accountsCacheService.clearAll();
     setUserState(prev => ({
       ...prev,
       isUnlocked: false,
