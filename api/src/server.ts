@@ -8242,7 +8242,9 @@ class ProductionServer {
         });
 
         if (!createPnFolderResponse.ok) {
-          throw new Error('Failed to create pN folder');
+          const errorText = await createPnFolderResponse.text().catch(() => 'Unknown error');
+          console.error(`Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText}`, errorText);
+          throw new Error(`Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText} - ${errorText.substring(0, 200)}`);
         }
 
         const createdPnFolder = await createPnFolderResponse.json() as { id: string };
@@ -8278,7 +8280,9 @@ class ProductionServer {
       });
 
       if (!createMetadataResponse.ok) {
-        throw new Error('Failed to create _metadata folder');
+        const errorText = await createMetadataResponse.text().catch(() => 'Unknown error');
+        console.error(`Failed to create _metadata folder: ${createMetadataResponse.status} ${createMetadataResponse.statusText}`, errorText);
+        throw new Error(`Failed to create _metadata folder: ${createMetadataResponse.status} ${createMetadataResponse.statusText} - ${errorText.substring(0, 200)}`);
       }
 
       const createdMetadata = await createMetadataResponse.json() as { id: string };
@@ -8324,7 +8328,14 @@ class ProductionServer {
           requesterMetadataFolderId = await getOrCreateMetadataFolder(requesterAccessToken, requesterDid);
         } catch (error: any) {
           console.error('Error getting/creating requester metadata folder:', error);
-          return res.status(500).json({ error: 'Failed to get or create requester metadata folder', error_description: error.message });
+          const errorDetails = error.message || 'Unknown error';
+          const errorResponse = error.response ? await error.response.text().catch(() => '') : '';
+          console.error('Error details:', { errorDetails, errorResponse, requesterDid });
+          return res.status(500).json({ 
+            error: 'Failed to get or create requester metadata folder', 
+            error_description: errorDetails,
+            details: errorResponse || undefined
+          });
         }
 
         // Get recipient's credentials
@@ -8350,20 +8361,36 @@ class ProductionServer {
           recipientMetadataFolderId = await getOrCreateMetadataFolder(recipientAccessToken, recipientDid);
         } catch (error: any) {
           console.error('Error getting/creating recipient metadata folder:', error);
-          return res.status(500).json({ error: 'Failed to get or create recipient metadata folder', error_description: error.message });
+          const errorDetails = error.message || 'Unknown error';
+          const errorResponse = error.response ? await error.response.text().catch(() => '') : '';
+          console.error('Error details:', { errorDetails, errorResponse, recipientDid });
+          return res.status(500).json({ 
+            error: 'Failed to get or create recipient metadata folder', 
+            error_description: errorDetails,
+            details: errorResponse || undefined
+          });
         }
 
         // Send connection request
-        const connection = await ConnectionsService.sendConnectionRequest(
-          requesterAccessToken,
-          requesterMetadataFolderId,
-          requesterDid,
-          recipientAccessToken,
-          recipientMetadataFolderId,
-          recipientDid
-        );
+        let connection;
+        try {
+          connection = await ConnectionsService.sendConnectionRequest(
+            requesterAccessToken,
+            requesterMetadataFolderId,
+            requesterDid,
+            recipientAccessToken,
+            recipientMetadataFolderId,
+            recipientDid
+          );
+        } catch (connectionError: any) {
+          console.error('Error in ConnectionsService.sendConnectionRequest:', connectionError);
+          return res.status(500).json({
+            error: 'Failed to send connection request',
+            error_description: connectionError.message || 'Failed to create connection in Google Drive'
+          });
+        }
 
-        // Send connection request as message
+        // Send connection request as message (optional - don't fail if this fails)
         try {
           await fetch(`${req.protocol}://${req.get('host')}/api/messages/send`, {
             method: 'POST',
@@ -8390,9 +8417,11 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error sending connection request:', error);
+        console.error('Error stack:', error.stack);
         return res.status(500).json({
           error: 'Failed to send connection request',
-          error_description: error.message || 'Failed to send connection request'
+          error_description: error.message || 'Failed to send connection request',
+          details: error.stack ? error.stack.substring(0, 500) : undefined
         });
       }
     });
