@@ -138,10 +138,6 @@ export class CentralMetadataAggregator {
       if (response.ok) {
         const data: CentralIndexResponse & { total?: number; hasMore?: boolean } = await response.json();
         
-        // Log API response
-        console.log('🔍 [CentralMetadataAggregator] API Response:', {
-          filesCount: data.files?.length || 0,
-          total: data.totalFiles || data.total || 0,
           hasMore: data.hasMore || false,
           firstFile: data.files?.[0] ? {
             fileId: data.files[0].fileId || data.files[0].metadata?.fileId,

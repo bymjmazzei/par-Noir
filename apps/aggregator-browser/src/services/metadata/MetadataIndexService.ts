@@ -71,11 +71,6 @@ export class MetadataIndexService {
       // result.files are CentralIndexEntry objects from the API
       // Backend already filters for public files, so we trust what the API returns
       // But we also check: isPublic !== false OR has publicToken (means it's meant to be public)
-      
-      // CRITICAL DEBUG: Log API result
-      console.log('🔍 [MetadataIndexService] API Result:', {
-        filesCount: result.files?.length || 0,
-        total: result.total || 0,
         hasMore: result.hasMore || false,
         firstFile: result.files?.[0] ? {
           fileId: result.files[0].fileId || result.files[0].metadata?.fileId,
@@ -132,11 +127,6 @@ export class MetadataIndexService {
           const fileName = metadata.name || metadata.title || '';
           const isThumbnailFile = fileName.toLowerCase().startsWith('thumb_');
           
-          // DEBUG: Log collection data from API
-          if (metadata.fileType === 'collection' || metadata.collection) {
-            console.log(`[MetadataIndexService] Collection file found:`, {
-              fileId: metadata.fileId || entry.fileId,
-              fileType: metadata.fileType,
               collectionFromMetadata: metadata.collection,
               collectionType: typeof metadata.collection,
               collectionKeys: metadata.collection ? Object.keys(metadata.collection) : [],
@@ -186,10 +176,6 @@ export class MetadataIndexService {
             pnIdentifier: entry.pnIdentifier || normalizedPnId
           };
         });
-      
-      console.log('🔍 [MetadataIndexService] Files after transformation:', {
-        count: files.length,
-        fileIds: files.slice(0, 5).map((f: any) => f.metadata?.fileId),
         fileTypes: files.slice(0, 5).map((f: any) => f.metadata?.fileType)
       });
 

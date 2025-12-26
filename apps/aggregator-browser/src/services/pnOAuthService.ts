@@ -468,7 +468,6 @@ export class PNOAuthService {
     const session = this.loadSession();
     
     if (!session) {
-      console.log('[PNOAuth] No session found');
       return null;
     }
 

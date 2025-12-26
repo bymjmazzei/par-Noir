@@ -72,8 +72,7 @@ export function FullScreenFeed({
   thumbnails: externalThumbnails,
   videoBlobs: externalVideoBlobs
 }: FullScreenFeedProps) {
-  // CACHE BUSTER: If you see this log, the new code is running! Version: 2024-12-19-v4
-  console.log('%c[FullScreenFeed] NEW CODE LOADED - Version 2024-12-19-v4', 'color: red; font-size: 20px; font-weight: bold;');
+  // CACHE BUSTER: Version: 2024-12-19-v4
   (window as any).__fullScreenFeedVersion = '2024-12-19-v4';
   
   // Debug function to test thumbnail loading for a specific file ID
@@ -161,25 +160,7 @@ export function FullScreenFeed({
     return () => clearInterval(interval);
   }, []);
   
-  // DEBUG: Log files passed to FullScreenFeed
   useEffect(() => {
-    console.log(`[FullScreenFeed] Component mounted/received files:`, {
-      filesCount: files.length,
-      files: files.map(f => ({
-        fileId: f.metadata?.fileId,
-        fileType: f.metadata?.fileType,
-        name: f.metadata?.name || f.metadata?.title,
-        hasCollection: !!f.metadata?.collection,
-        collectionFileIds: f.metadata?.collection?.collectionFileIds?.length || 0,
-        // FULL metadata dump for debugging
-        fullMetadata: f.metadata
-      })),
-      thumbnailsMapSize: thumbnails.size,
-      externalThumbnailsSize: externalThumbnails?.size || 0,
-      thumbnailsMapKeys: Array.from(thumbnails.keys()),
-      externalThumbnailsKeys: externalThumbnails ? Array.from(externalThumbnails.keys()) : []
-    });
-    
     // Check for collections specifically - check ALL possible locations
     const collections = files.filter(f => {
       const hasCollection = (f.metadata?.collection?.collectionFileIds?.length ?? 0) > 0;
@@ -544,14 +525,8 @@ export function FullScreenFeed({
       // Process ALL files in the feed to find thumbnail files
       const thumbnailFiles = files.filter((indexedFile) => {
         const fileName = (indexedFile.metadata?.name || indexedFile.metadata?.title || '').toLowerCase();
-        const isThumbnail = fileName.startsWith('thumb_');
-        if (isThumbnail) {
-          console.log(`[FullScreenFeed] Found thumbnail file: ${fileName} (${indexedFile.metadata?.fileId})`);
-        }
-        return isThumbnail;
+        return fileName.startsWith('thumb_');
       });
-
-      console.log(`[FullScreenFeed] loadThumbnails: Processing ${thumbnailFiles.length} thumbnail files`);
 
       // Load each thumbnail file
       await Promise.all(thumbnailFiles.map(async (indexedFile) => {
@@ -560,12 +535,7 @@ export function FullScreenFeed({
         const fileName = file.name || file.title || '';
         
         // Skip if already loaded or provided externally
-        if (thumbnails.has(fileId)) {
-          console.log(`[FullScreenFeed] Thumbnail ${fileId} already loaded`);
-          return;
-        }
-        if (externalThumbnails && externalThumbnails.has(fileId)) {
-          console.log(`[FullScreenFeed] Thumbnail ${fileId} provided externally`);
+        if (thumbnails.has(fileId) || (externalThumbnails && externalThumbnails.has(fileId))) {
           return;
         }
 
@@ -576,18 +546,11 @@ export function FullScreenFeed({
           return;
         }
 
-        console.log(`[FullScreenFeed] Loading thumbnail ${fileId} (${fileName}) with publicToken`);
-
         try {
           // Parse publicToken
           let token: ShareToken;
           try {
             token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
-            console.log(`[FullScreenFeed] Parsed token for ${fileId}:`, {
-              hasShareEncrypted: !!token.shareEncrypted,
-              hasShareKey: !!token.shareKey,
-              fileId: token.fileId
-            });
           } catch (e) {
             console.warn(`[FullScreenFeed] Failed to parse token for thumbnail ${fileId}:`, e);
             return;
@@ -598,8 +561,6 @@ export function FullScreenFeed({
           const { decryptWithToken } = await import('../utils/tokenDecryption');
           const decryptedBlob = await decryptWithToken(token);
           const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
-          
-          console.log(`[FullScreenFeed] Successfully decrypted thumbnail ${fileId} (${fileName})`);
           
           setThumbnails(prev => {
             const newMap = new Map(prev);
@@ -640,8 +601,6 @@ export function FullScreenFeed({
 
     if (missingThumbnailIds.length === 0) return;
 
-    console.log(`[FullScreenFeed] Authentication available, retrying thumbnail load for ${missingThumbnailIds.length} files:`, missingThumbnailIds);
-
     // Trigger thumbnail loading by clearing the "already triggered" flag
     // This will cause the immediate load check to run again
     triggeredImmediateLoadRef.current.delete(fileId);
@@ -674,7 +633,6 @@ export function FullScreenFeed({
     );
     
     if (missingThumbnailIds.length > 0 && !triggeredImmediateLoadRef.current.has(fileId)) {
-      console.log(`[FullScreenFeed] Triggering immediate thumbnail load for collection ${fileId} (${missingThumbnailIds.length} thumbnails, hasTokens: ${!!collectionData.thumbnailTokens})`);
       triggeredImmediateLoadRef.current.add(fileId);
       
       // Mark as loading
@@ -689,16 +647,8 @@ export function FullScreenFeed({
           const { decryptWithToken } = await import('../utils/tokenDecryption');
           
           // FIRST: Try to use tokens from collection data (fastest - no API call)
-          const thumbnailsWithTokens = missingThumbnailIds.filter((cfId: string) => {
-            const hasToken = !!thumbnailTokens[cfId];
-            if (!hasToken) {
-              console.log(`[FullScreenFeed] Thumbnail ${cfId} has no token in thumbnailTokens object`);
-            }
-            return hasToken;
-          });
-          console.log(`[FullScreenFeed] Token filter result: ${thumbnailsWithTokens.length} thumbnails have tokens out of ${missingThumbnailIds.length} missing`);
+          const thumbnailsWithTokens = missingThumbnailIds.filter((cfId: string) => !!thumbnailTokens[cfId]);
           if (thumbnailsWithTokens.length > 0) {
-            console.log(`[FullScreenFeed] Loading ${thumbnailsWithTokens.length} thumbnails using tokens from collection data (tokens available for: ${thumbnailsWithTokens.length}/${missingThumbnailIds.length})`);
             
             // PRIORITY: Decrypt the first thumbnail immediately to show it ASAP
             const firstThumbnailId = thumbnailsWithTokens[0];
@@ -819,12 +769,6 @@ export function FullScreenFeed({
         } catch (err) {
           console.error(`[FullScreenFeed] Error in thumbnail load batch:`, err);
         } finally {
-          // Log summary after all thumbnails are processed
-          console.log(`[FullScreenFeed] IMMEDIATE LOAD: Completed processing ${missingThumbnailIds.length} thumbnails`);
-          missingThumbnailIds.forEach((cfId: string) => {
-            const loaded = thumbnails.has(cfId) || (externalThumbnails?.has(cfId));
-            console.log(`[FullScreenFeed] IMMEDIATE LOAD: ${cfId} - ${loaded ? 'LOADED' : 'FAILED'}`);
-          });
         }
       })();
     }
@@ -1131,53 +1075,24 @@ export function FullScreenFeed({
 
   // Load thumbnails for collection files when a collection is visible
   useEffect(() => {
-    console.log(`[FullScreenFeed] loadCollectionThumbnails useEffect triggered:`, {
-      visibleFileId,
-      currentIndex,
-      filesLength: files.length,
-      currentFileId: files[currentIndex]?.metadata?.fileId
-    });
-    
     const loadCollectionThumbnails = async () => {
       // Use visibleFileId if available, otherwise use currentIndex
       const targetFileId = visibleFileId || (files[currentIndex]?.metadata?.fileId);
       
-      console.log(`[FullScreenFeed] loadCollectionThumbnails: starting with targetFileId=${targetFileId}`);
-      
       if (!targetFileId) {
-        console.log(`[FullScreenFeed] loadCollectionThumbnails: no targetFileId (visibleFileId=${visibleFileId}, currentIndex=${currentIndex})`);
         return;
       }
       
       const indexedFile = files.find(f => f.metadata.fileId === targetFileId);
       if (!indexedFile) {
-        console.log(`[FullScreenFeed] loadCollectionThumbnails: no indexedFile for ${targetFileId}`);
         return;
       }
       
       const file = indexedFile.metadata;
       const collectionData = file.collection || collectionDataCache.get(targetFileId);
       
-      console.log(`[FullScreenFeed] loadCollectionThumbnails: checking ${targetFileId}`, {
-        targetFileId,
-        visibleFileId,
-        currentIndex,
-        fileId: file.fileId,
-        fileType: file.fileType,
-        hasCollection: !!file.collection,
-        hasCachedCollection: !!collectionDataCache.get(targetFileId),
-        collectionData: collectionData ? {
-          hasCollectionFileIds: !!collectionData.collectionFileIds,
-          collectionFileIdsLength: collectionData.collectionFileIds?.length,
-          collectionFileIds: collectionData.collectionFileIds
-        } : null,
-        thumbnailsSize: thumbnails.size,
-        thumbnailsKeys: Array.from(thumbnails.keys())
-      });
-      
       // Check if this is a collection
       if (!collectionData?.collectionFileIds || !Array.isArray(collectionData.collectionFileIds)) {
-        console.log(`[FullScreenFeed] loadCollectionThumbnails: not a collection or no collectionFileIds`);
         return;
       }
       
@@ -1190,15 +1105,11 @@ export function FullScreenFeed({
       );
       
       if (missingThumbnailIds.length === 0) {
-        console.log(`[FullScreenFeed] loadCollectionThumbnails: All thumbnails already loaded or loading for ${targetFileId}`);
         return; // All thumbnails already loaded or loading
       }
       
-      console.log(`[FullScreenFeed] Loading ${missingThumbnailIds.length} missing thumbnails for collection ${targetFileId}:`, missingThumbnailIds);
-      
       // Check if user is authenticated before attempting to load
       if (!userState.isUnlocked) {
-        console.log(`[FullScreenFeed] loadCollectionThumbnails: User not authenticated, will retry when authenticated`);
         return; // Will retry when userState.isUnlocked becomes true
       }
       
@@ -1210,7 +1121,6 @@ export function FullScreenFeed({
       
       // Load thumbnails for missing collection files
       await Promise.all(missingThumbnailIds.map(async (fileId: string) => {
-        console.log(`[FullScreenFeed] loadCollectionThumbnails: Starting to load thumbnail for collection file ${fileId}`);
         try {
           const { PNOAuthService } = await import('../services/pnOAuthService');
           const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
@@ -1236,14 +1146,6 @@ export function FullScreenFeed({
           const collectionFileMetadata = metadataData.metadata || metadataData;
           const isThoughtCollectionThumbnail = collectionFileMetadata.fileType === 'thought-collection-thumbnail';
           
-          console.log(`[FullScreenFeed] Fetched metadata for collection file ${fileId}:`, {
-            fileId,
-            fileName: collectionFileMetadata.name || collectionFileMetadata.title,
-            hasPublicToken: !!collectionFileMetadata.publicToken,
-            hasThumbnailFileId: !!collectionFileMetadata.thumbnailFileId,
-            fileType: collectionFileMetadata.fileType,
-            isThumbnailFile: (collectionFileMetadata.name || collectionFileMetadata.title || '').toLowerCase().startsWith('thumb_')
-          });
           
           // Get accountId for the collection file (try from metadata first, then API)
           let accountId: string | null = collectionFileMetadata.accountId || collectionFileMetadata.backendFileId;
@@ -1586,24 +1488,6 @@ export function FullScreenFeed({
     >
       {/* Only render visible files (currentIndex ± 1) for better performance */}
       {(() => {
-        // CRITICAL DEBUG: Log FullScreenFeed rendering
-        console.log('🔍 [FullScreenFeed] Rendering:', {
-          filesCount: files.length,
-          fileIds: files.slice(0, 5).map((f: any) => f.metadata?.fileId),
-          currentIndex
-        });
-        
-        // Debug: Log all files in the array with their indices
-        // const allFilesWithIndices = files.map((f, idx) => ({
-        //   index: idx,
-        //   fileId: f.metadata.fileId,
-        //   fileType: f.metadata.fileType,
-        //   fileName: f.metadata.name || f.metadata.title
-        // }));
-        // Only log in development mode
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`[FullScreenFeed] ${files.length} files, currentIndex: ${currentIndex}`);
-        }
         // Show currentIndex and next 2 files (or previous if at start)
         // This ensures we always show at least 3 files when available
         // Expand to show more files so we can see all thumbnails that are loaded
@@ -1615,17 +1499,6 @@ export function FullScreenFeed({
         const file = indexedFile.metadata;
         const fileId = file.fileId;
         
-        // DEBUG: Log every file being processed, especially if it has collection data
-        if (indexedFile.metadata?.collection) {
-          console.log(`[FullScreenFeed] Processing file with collection data:`, {
-            fileId,
-            fileName: file.name || file.title,
-            fileType: file.fileType,
-            collection: indexedFile.metadata.collection,
-            collectionFileIds: indexedFile.metadata.collection?.collectionFileIds,
-            collectionFileIdsLength: indexedFile.metadata.collection?.collectionFileIds?.length
-          });
-        }
         
         // Thoughts now render as images (thumbnails) - no special detection needed!
         // Just detect images, videos, and collections
@@ -1667,46 +1540,14 @@ export function FullScreenFeed({
                                 Array.isArray(collectionData.collectionFileIds) &&
                                 collectionData.collectionFileIds.length > 0;
         
-        // Debug: Log collection detection state
-        if (actualFileType === 'collection' || collectionData) {
-          console.log(`[FullScreenFeed] Collection detection check for ${fileId}:`, {
-            actualFileType,
-            hasCollectionData: !!collectionData,
-            collectionDataType: typeof collectionData,
-            hasCollectionFileIds: !!collectionData?.collectionFileIds,
-            collectionFileIdsType: Array.isArray(collectionData?.collectionFileIds),
-            collectionFileIdsLength: collectionData?.collectionFileIds?.length,
-            isCollectionFile
-          });
-        }
-        
         // Trigger thumbnail loading for collection files immediately when collection is detected
         // (don't wait for visibleFileId to be set)
-        console.log(`[FullScreenFeed] PRE-CHECK: fileId=${fileId}, isCollectionFile=${isCollectionFile}, hasCollectionData=${!!collectionData}, hasCollectionFileIds=${!!collectionData?.collectionFileIds}`);
         
         if (isCollectionFile && collectionData?.collectionFileIds) {
           const collectionFileIds = collectionData.collectionFileIds;
           
           // Check if we've already triggered loading for this collection
           const alreadyTriggered = triggeredImmediateLoadRef.current.has(fileId);
-          
-          console.log(`[FullScreenFeed] IMMEDIATE LOAD CHECK: Collection ${fileId}`, {
-            isCollectionFile,
-            hasCollectionData: !!collectionData,
-            hasCollectionFileIds: !!collectionData?.collectionFileIds,
-            collectionFileIdsLength: collectionFileIds?.length,
-            alreadyTriggered,
-            thumbnailsMapSize: thumbnails.size
-          });
-          
-          // Debug: Log the state of all collection file IDs
-          const thumbnailStates = collectionFileIds.map((cfId: string) => ({
-            fileId: cfId,
-            inThumbnails: thumbnails.has(cfId),
-            inExternalThumbnails: externalThumbnails?.has(cfId) || false,
-            inLoadingRef: loadingCollectionThumbnailsRef.current.has(cfId)
-          }));
-          console.log(`[FullScreenFeed] IMMEDIATE LOAD: Collection ${fileId} thumbnail states:`, thumbnailStates);
           
           const missingThumbnailIds = collectionFileIds.filter(
             (cfId: string) => 
@@ -1715,17 +1556,7 @@ export function FullScreenFeed({
               !loadingCollectionThumbnailsRef.current.has(cfId)
           );
           
-          console.log(`[FullScreenFeed] IMMEDIATE LOAD: Collection ${fileId} missing thumbnails check:`, {
-            totalCollectionFileIds: collectionFileIds.length,
-            missingCount: missingThumbnailIds.length,
-            missingIds: missingThumbnailIds,
-            thumbnailsMapSize: thumbnails.size,
-            loadingRefSize: loadingCollectionThumbnailsRef.current.size,
-            loadingRefIds: Array.from(loadingCollectionThumbnailsRef.current)
-          });
-          
           if (missingThumbnailIds.length > 0 && !alreadyTriggered) {
-            console.log(`[FullScreenFeed] IMMEDIATE LOAD: Triggering thumbnail load for collection ${fileId} (${missingThumbnailIds.length} missing):`, missingThumbnailIds);
             triggeredImmediateLoadRef.current.add(fileId);
             // Mark as loading
             missingThumbnailIds.forEach((cfId: string) => {
@@ -1743,10 +1574,7 @@ export function FullScreenFeed({
                 // Try to get access token (optional - may not be available for public files)
                 const accessToken = await PNOAuthService.getValidAccessToken().catch(() => null);
                 
-                console.log(`[FullScreenFeed] IMMEDIATE LOAD: Attempting to load ${missingThumbnailIds.length} thumbnails (accessToken: ${!!accessToken})`);
-                
                 await Promise.all(missingThumbnailIds.map(async (cfId: string) => {
-                  console.log(`[FullScreenFeed] IMMEDIATE LOAD: Starting to load thumbnail for collection file ${cfId}`);
                   
                   let success = false;
                   let collectionFileMetadata: any = null;
@@ -1763,12 +1591,6 @@ export function FullScreenFeed({
                       headers
                     });
                     
-                    console.log(`[FullScreenFeed] IMMEDIATE LOAD: Response for ${cfId}:`, {
-                      status: metadataResponse.status,
-                      statusText: metadataResponse.statusText,
-                      ok: metadataResponse.ok,
-                      headers: Object.fromEntries(metadataResponse.headers.entries())
-                    });
                     
                     if (!metadataResponse.ok) {
                       const errorText = await metadataResponse.text().catch(() => 'Could not read error response');
@@ -1792,18 +1614,6 @@ export function FullScreenFeed({
                     const metadataData = await metadataResponse.json();
                     collectionFileMetadata = metadataData.metadata || metadataData;
                     
-                    // Log FULL metadata to see what we're working with
-                    console.log(`[FullScreenFeed] IMMEDIATE LOAD: FULL Metadata for ${cfId}:`, collectionFileMetadata);
-                    console.log(`[FullScreenFeed] IMMEDIATE LOAD: Metadata summary for ${cfId}:`, {
-                      hasPublicToken: !!collectionFileMetadata.publicToken,
-                      hasThumbnailFileId: !!collectionFileMetadata.thumbnailFileId,
-                      thumbnailFileId: collectionFileMetadata.thumbnailFileId,
-                      fileName: collectionFileMetadata.name || collectionFileMetadata.title,
-                      fileType: collectionFileMetadata.fileType,
-                      isThumbnailFile: (collectionFileMetadata.name || collectionFileMetadata.title || '').toLowerCase().startsWith('thumb_'),
-                      accountId: collectionFileMetadata.accountId || collectionFileMetadata.backendFileId,
-                      allKeys: Object.keys(collectionFileMetadata)
-                    });
                     
                     // Get accountId
                     accountId = collectionFileMetadata.accountId || collectionFileMetadata.backendFileId;
@@ -1860,7 +1670,6 @@ export function FullScreenFeed({
                           return newMap;
                         });
                         
-                        console.log(`[FullScreenFeed] IMMEDIATE LOAD: Loaded thumbnail for collection file ${cfId} via publicToken`);
                         clearLoadingState(cfId);
                         return;
                       } catch (decryptErr) {
@@ -2154,46 +1963,9 @@ export function FullScreenFeed({
           })();
         }
         
-        // DEBUG: Log collection detection
-        if (collectionData) {
-          console.log(`[FullScreenFeed] Collection check for ${fileId}:`, {
-            hasCollectionData: !!collectionData,
-            collectionDataType: typeof collectionData,
-            hasCollectionFileIds: !!collectionData.collectionFileIds,
-            collectionFileIdsType: Array.isArray(collectionData.collectionFileIds),
-            collectionFileIdsLength: collectionData.collectionFileIds?.length,
-            isCollectionFile,
-            actualFileType,
-            fileType: file.fileType,
-            collectionData: JSON.stringify(collectionData)
-          });
-        }
-        
         // Final detection (collections take precedence)
         const isVideoFinal = isCollectionFile ? false : isVideo;
         const isImageFinal = isCollectionFile ? false : isImage;
-        
-        // DEBUG: Log final detection results for ALL files (especially images)
-        const debugFileName = file.name || file.title || '';
-        // Log ALL files to see what's happening
-        console.log(`[FullScreenFeed] Final detection for ${fileId} (${debugFileName}):`, {
-          fileType: file.fileType,
-          fileName: debugFileName,
-          hasImageExtension,
-          hasImageMimeType,
-          isImageObject,
-          isImage,
-          isCollectionFile,
-          isVideo,
-          isVideoFinal,
-          isImageFinal,
-          hasThumbnail: thumbnails.has(fileId),
-          thumbnailUrl: thumbnails.get(fileId) ? (thumbnails.get(fileId)!.substring(0, 50) + '...') : 'NOT FOUND',
-          willRenderCollection: isCollectionFile && collectionData?.collectionFileIds,
-          willRenderVideo: isVideoFinal,
-          willRenderImage: isImageFinal,
-          willRenderFallback: !isImageFinal && !isVideoFinal && !isCollectionFile
-        });
         
         // NO THOUGHT DETECTION - thoughts are just images (thumbnails) now!
         
@@ -2358,14 +2130,6 @@ export function FullScreenFeed({
             {/* Show image if detected as image (show placeholder if thumbnail not loaded yet) */}
             {isImageFinal && (() => {
               const thumbnailUrl = thumbnails.get(fileId);
-              console.log(`[FullScreenFeed] Rendering image for ${fileId}:`, {
-                fileName: file.name || file.title,
-                isImageFinal,
-                hasThumbnailUrl: !!thumbnailUrl,
-                thumbnailUrl: thumbnailUrl?.substring(0, 50) + '...',
-                thumbnailsMapSize: thumbnails.size,
-                thumbnailsMapKeys: Array.from(thumbnails.keys())
-              });
               
               if (!thumbnailUrl) {
                 // Show placeholder while thumbnail loads
@@ -2442,37 +2206,12 @@ export function FullScreenFeed({
                 // Use cached collection data if available
                 const finalCollectionData = collectionData || collectionDataCache.get(fileId);
                 
-                console.log(`[FullScreenFeed] RENDERING COLLECTION for ${fileId}:`, {
-                  fileId,
-                  collectionFileIds: finalCollectionData.collectionFileIds,
-                  collectionFileIdsLength: finalCollectionData.collectionFileIds.length,
-                  thumbnailsMapSize: thumbnails.size,
-                  thumbnailsMapKeys: Array.from(thumbnails.keys()),
-                  isCollectionFile,
-                  hasCollectionData: !!finalCollectionData,
-                  fromCache: !!collectionDataCache.get(fileId)
-                });
-                
                 // Get thumbnails from Map for collection file IDs
                 const collectionThumbnails = finalCollectionData.collectionFileIds
-                  .map((fileId: string): string | undefined => {
-                    const thumbnail = thumbnails.get(fileId);
-                    console.log(`[FullScreenFeed] Thumbnail lookup for collection file ${fileId}:`, {
-                      found: !!thumbnail,
-                      url: thumbnail || 'NOT FOUND'
-                    });
-                    return thumbnail;
-                  })
+                  .map((fileId: string): string | undefined => thumbnails.get(fileId))
                   .filter((url: string | undefined): url is string => url !== undefined);
                 
-                console.log(`[FullScreenFeed] Collection thumbnails result for ${fileId}:`, {
-                  requestedCount: finalCollectionData.collectionFileIds.length,
-                  foundCount: collectionThumbnails.length,
-                  thumbnailUrls: collectionThumbnails
-                });
-                
                 if (collectionThumbnails.length > 0) {
-                  console.log(`[FullScreenFeed] Rendering slideshow with ${collectionThumbnails.length} thumbnails for ${fileId}`);
                   const containerDims = getContainerDimensions(64);
                   
                   // Render horizontal slideshow of thumbnails with individual scaling

@@ -711,11 +711,6 @@ function App() {
   // The only place thoughts are excluded is the me page "media" tab, which handles it separately
 
   const filteredFilesByFeed = useMemo(() => {
-    // CRITICAL DEBUG: Log filteredFilesByFeed start
-    console.log('🔍 [App] filteredFilesByFeed useMemo start:', {
-      activeFeedId,
-      indexedFilesCount: indexedFiles.length
-    });
     
     // Build sets of fileIds to exclude (individual thought pages from multi-page thought collections)
     // Only filter out thoughts that are in thought collections (multi-page thoughts), not regular collections or single thoughts
@@ -727,7 +722,6 @@ function App() {
       const isThoughtCollection = (file.metadata as any).isThoughtCollection === true;
       if (isThoughtCollection && file.metadata.collection?.collectionFileIds) {
         const collectionFileIds = file.metadata.collection.collectionFileIds;
-        console.log(`[App] Found thought collection ${file.metadata.fileId} with ${collectionFileIds.length} files`);
         
         // For thought collections, collectionFileIds are thumbnail IDs
         collectionFileIds.forEach((thumbnailId: string) => {
@@ -737,16 +731,10 @@ function App() {
           const thumbnailFile = indexedFiles.find(f => f.metadata.fileId === thumbnailId);
           if (thumbnailFile?.metadata.mainFileId) {
             thoughtFileIdsInCollections.add(thumbnailFile.metadata.mainFileId);
-            console.log(`[App] Marking thumbnail ${thumbnailId} and thought file ${thumbnailFile.metadata.mainFileId} as part of thought collection`);
-          } else {
-            // If thumbnail not found in indexedFiles, still mark the thumbnail ID for exclusion
-            console.log(`[App] Marking thumbnail ${thumbnailId} as part of thought collection (main file not in indexedFiles)`);
           }
         });
       }
     });
-    
-    console.log(`[App] Filtering: ${thoughtThumbnailIdsInCollections.size} thought thumbnails in collections, ${thoughtFileIdsInCollections.size} thought files in collections`);
     
     const showNSFW = userState.preferences.showNSFW;
     const hasAgeZKP = userState.preferences.hasAgeZKP;
@@ -1311,11 +1299,6 @@ function App() {
       const paginationInfo = Array.isArray(publicFilesResult)
         ? { total: publicFiles.length, hasMore: false }
         : { total: publicFilesResult.total, hasMore: publicFilesResult.hasMore };
-      
-      // CRITICAL DEBUG: Log discovered files
-      console.log('🔍 [App] Files discovered from API:', {
-        count: publicFiles.length,
-        fileIds: publicFiles.slice(0, 5).map((f: any) => f.metadata?.fileId),
         fileTypes: publicFiles.slice(0, 5).map((f: any) => f.metadata?.fileType)
       });
       
@@ -1395,10 +1378,6 @@ function App() {
       setIndexedFiles(prev => {
         if (page === 0 || !append) {
           // First page or force refresh - replace all files
-          // CRITICAL DEBUG: Log setting indexedFiles
-          console.log('🔍 [App] Setting indexedFiles (replace):', {
-            count: discoveredFiles.length,
-            fileIds: discoveredFiles.slice(0, 5).map((f: any) => f.metadata?.fileId),
             fileTypes: discoveredFiles.slice(0, 5).map((f: any) => f.metadata?.fileType)
           });
           return discoveredFiles;
