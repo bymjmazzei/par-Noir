@@ -8696,11 +8696,21 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(userDid as string);
+        // Normalize userDid to pn identifier format
+        const userPnIdentifier = (userDid as string).startsWith('pn-') ? (userDid as string) : `pn-${userDid}`;
+        console.log(`[PendingRequests] User DID: ${userDid}, Normalized: ${userPnIdentifier}`);
+        
+        // Get user's credentials - try both formats
+        let userCredentials = await storageCredentialsService.getCredentials(userPnIdentifier);
+        if (!userCredentials?.credentials && userDid !== userPnIdentifier) {
+          // Try original format if normalized didn't work
+          userCredentials = await storageCredentialsService.getCredentials(userDid as string);
+        }
         if (!userCredentials?.credentials) {
+          console.error(`[PendingRequests] No credentials found. Tried: ${userPnIdentifier}, ${userDid}`);
           return res.json({ sent: [], received: [] });
         }
+        console.log(`[PendingRequests] Found credentials under: ${userCredentials.identityId}`);
 
         const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
@@ -8710,8 +8720,10 @@ class ProductionServer {
         }
 
         const account = googleDriveAccounts[0];
-        const accountId = (account as any).accountId || (account as any).id;
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid as string, accountId, [userDid as string]);
+        // Try backendId first, then keyPrefix, then accountId/id for backward compatibility
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        // Use the identityId from credentials (the actual stored identifier)
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
 
         // Get or create metadata folder
         let metadataFolderId: string;

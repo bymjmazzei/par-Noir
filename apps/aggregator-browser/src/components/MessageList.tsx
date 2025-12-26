@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { MessageCircle, UserPlus, Check, X, Clock } from 'lucide-react';
 import { MessageThread as MessageThreadType, MessageRequest } from '../services/messageService';
 import { getMessageThreads, getMessageRequests, respondToRequest } from '../services/messageService';
+import { getPendingRequests as getConnectionPendingRequests, acceptConnectionRequest, rejectConnectionRequest } from '../services/connectionService';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
 
@@ -29,12 +30,27 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [threadsData, requestsData] = await Promise.all([
+        const [threadsData, requestsData, connectionRequests] = await Promise.all([
           getMessageThreads(userState.pnIdentifier!),
-          getMessageRequests(userState.pnIdentifier!)
+          getMessageRequests(userState.pnIdentifier!),
+          getConnectionPendingRequests(userState.pnIdentifier!)
         ]);
         setThreads(threadsData);
-        setRequests(requestsData.filter(r => r.status === 'pending'));
+        
+        // Combine message requests and connection requests
+        const messageRequests = requestsData.filter(r => r.status === 'pending');
+        const connectionRequestsList = connectionRequests.received.map(conn => ({
+          requestId: conn.connectionId,
+          fromDid: conn.userDid,
+          toDid: userState.pnIdentifier!,
+          content: `Connection request from ${conn.userDid.substring(0, 8)}...`,
+          timestamp: conn.createdAt,
+          status: 'pending' as const,
+          isConnectionRequest: true,
+          connectionId: conn.connectionId
+        }));
+        
+        setRequests([...messageRequests, ...connectionRequestsList]);
       } catch (error) {
         console.error('Failed to load messages:', error);
       } finally {
@@ -49,13 +65,20 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
     return () => clearInterval(interval);
   }, [userState.isUnlocked, userState.pnIdentifier]);
 
-  const handleAcceptRequest = async (requestId: string) => {
+  const handleAcceptRequest = async (request: MessageRequest & { isConnectionRequest?: boolean; connectionId?: string }) => {
     if (!userState.pnIdentifier) return;
 
     try {
-      await respondToRequest(requestId, userState.pnIdentifier, true);
-      success('Message request accepted');
-      setRequests(prev => prev.filter(r => r.requestId !== requestId));
+      if (request.isConnectionRequest && request.connectionId) {
+        // Handle connection request
+        await acceptConnectionRequest(request.connectionId, userState.pnIdentifier);
+        success('Connection request accepted');
+      } else {
+        // Handle message request
+        await respondToRequest(request.requestId, userState.pnIdentifier, true);
+        success('Message request accepted');
+      }
+      setRequests(prev => prev.filter(r => r.requestId !== request.requestId));
       // Reload threads to show new conversation
       const threadsData = await getMessageThreads(userState.pnIdentifier!);
       setThreads(threadsData);
@@ -64,12 +87,18 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
     }
   };
 
-  const handleDeclineRequest = async (requestId: string) => {
+  const handleDeclineRequest = async (request: MessageRequest & { isConnectionRequest?: boolean; connectionId?: string }) => {
     if (!userState.pnIdentifier) return;
 
     try {
-      await respondToRequest(requestId, userState.pnIdentifier, false);
-      setRequests(prev => prev.filter(r => r.requestId !== requestId));
+      if (request.isConnectionRequest && request.connectionId) {
+        // Handle connection request
+        await rejectConnectionRequest(request.connectionId, userState.pnIdentifier);
+      } else {
+        // Handle message request
+        await respondToRequest(request.requestId, userState.pnIdentifier, false);
+      }
+      setRequests(prev => prev.filter(r => r.requestId !== request.requestId));
     } catch (error: any) {
       showError(error.message || 'Failed to decline request');
     }
@@ -206,14 +235,14 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
                   </div>
                   <div className="flex items-center space-x-2">
                     <button
-                      onClick={() => handleAcceptRequest(request.requestId)}
+                      onClick={() => handleAcceptRequest(request)}
                       className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
                     >
                       <Check className="h-4 w-4" />
                       <span>Accept</span>
                     </button>
                     <button
-                      onClick={() => handleDeclineRequest(request.requestId)}
+                      onClick={() => handleDeclineRequest(request)}
                       className="flex-1 px-4 py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 transition-colors flex items-center justify-center space-x-2"
                     >
                       <X className="h-4 w-4" />
