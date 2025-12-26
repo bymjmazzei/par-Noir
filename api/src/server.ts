@@ -8515,7 +8515,34 @@ class ProductionServer {
 
         const connection = connectionsFile.connections.find(c => c.connectionId === connectionId);
         if (!connection) {
+          console.error(`[AcceptConnection] Connection ${connectionId} not found in user's connections file`);
+          console.error(`[AcceptConnection] Available connections:`, connectionsFile.connections.map(c => ({
+            connectionId: c.connectionId,
+            userDid: c.userDid,
+            status: c.status
+          })));
           return res.status(404).json({ error: 'Connection request not found' });
+        }
+
+        console.log(`[AcceptConnection] Found connection:`, {
+          connectionId: connection.connectionId,
+          userDid: connection.userDid,
+          status: connection.status,
+          expectedStatus: 'pending_received'
+        });
+
+        // Check status - allow accepting if it's pending_received or if it's already accepted (idempotent)
+        if (connection.status === 'accepted') {
+          console.log(`[AcceptConnection] Connection already accepted, returning success`);
+          return res.json({ success: true, message: 'Connection already accepted' });
+        }
+
+        if (connection.status !== 'pending_received') {
+          console.error(`[AcceptConnection] Connection status is '${connection.status}', expected 'pending_received'`);
+          return res.status(400).json({ 
+            error: 'Connection request is not in pending_received status',
+            error_description: `Current status: ${connection.status}. Only pending_received connections can be accepted.`
+          });
         }
 
         const otherUserDid = connection.userDid;
