@@ -8319,7 +8319,9 @@ class ProductionServer {
         }
 
         const requesterAccount = requesterGoogleDriveAccounts[0];
-        const requesterAccountId = (requesterAccount as any).accountId || (requesterAccount as any).id;
+        // Try backendId first, then keyPrefix, then accountId/id for backward compatibility
+        const requesterAccountId = (requesterAccount as any).backendId || (requesterAccount as any).keyPrefix || (requesterAccount as any).accountId || (requesterAccount as any).id || undefined;
+        // If accountId is not found, getAccessToken will use the first account automatically
         const requesterAccessToken = await googleDriveProxyService.getAccessToken(requesterDid, requesterAccountId, [requesterDid]);
 
         // Get or create requester's metadata folder
