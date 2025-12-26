@@ -8863,13 +8863,18 @@ class ProductionServer {
         }
 
         const account = googleDriveAccounts[0];
-        const accountId = (account as any).accountId || (account as any).id;
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid as string, accountId, [userDid as string]);
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
 
         // Get or create metadata folder
         let metadataFolderId: string;
         try {
-          metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userDid as string);
+          metadataFolderId = await getOrCreateMetadataFolder(
+            userCredentials.identityId,
+            accountId,
+            googleDriveProxyService,
+            userDid as string
+          );
         } catch (error: any) {
           console.error('Error getting/creating metadata folder:', error);
           // Return not_connected if folder creation fails
