@@ -60,8 +60,20 @@ export async function sendConnectionRequest(
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to send connection request');
+      let errorMessage = 'Failed to send connection request';
+      try {
+        const error = await response.json();
+        errorMessage = error.error || error.error_description || errorMessage;
+        if (error.details) {
+          errorMessage += ` - ${error.details}`;
+        }
+        console.error('Connection request API error:', error);
+      } catch (e) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        errorMessage = `HTTP ${response.status}: ${errorText}`;
+        console.error('Connection request API error (non-JSON):', response.status, errorText);
+      }
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();
