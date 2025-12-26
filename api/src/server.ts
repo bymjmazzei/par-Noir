@@ -8191,6 +8191,7 @@ class ProductionServer {
      * Helper function to get or create metadata folder for a user
      * Creates pN folder if needed, then creates _metadata folder inside it
      * Fetches a fresh access token to avoid expiration issues
+     * Retries with token refresh on 401 errors
      */
     const getOrCreateMetadataFolder = async (
       identityId: string, 
@@ -8198,8 +8199,21 @@ class ProductionServer {
       googleDriveProxyService: any,
       pnIdentifier: string
     ): Promise<string> => {
-      // Get a fresh access token each time to avoid expiration
-      const accessToken = await googleDriveProxyService.getAccessToken(identityId, accountId, [identityId]);
+      // Helper to make a request with retry on 401
+      const makeRequestWithRetry = async (requestFn: (token: string) => Promise<Response>, retries = 1): Promise<Response> => {
+        let accessToken = await googleDriveProxyService.getAccessToken(identityId, accountId, [identityId]);
+        let response = await requestFn(accessToken);
+        
+        // If we get a 401, try refreshing the token once and retry
+        if (response.status === 401 && retries > 0) {
+          console.warn(`[getOrCreateMetadataFolder] Got 401, refreshing token and retrying...`);
+          // Force refresh by getting a new token (getAccessToken should handle refresh)
+          accessToken = await googleDriveProxyService.getAccessToken(identityId, accountId, [identityId]);
+          response = await requestFn(accessToken);
+        }
+        
+        return response;
+      };
       // Normalize pn identifier
       const normalizedPn = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
       
@@ -8207,8 +8221,10 @@ class ProductionServer {
       for (const folderName of ['_metadata', 'Metadata']) {
         const rootFolderQuery = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
         const rootFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(rootFolderQuery)}&fields=files(id)&pageSize=1`;
-        const rootFolderResponse = await fetch(rootFolderUrl, {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
+        const rootFolderResponse = await makeRequestWithRetry(async (token) => {
+          return await fetch(rootFolderUrl, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
         });
 
         if (rootFolderResponse.ok) {
@@ -8223,8 +8239,10 @@ class ProductionServer {
       const pnFolderName = `par Noir - ${normalizedPn}`;
       const pnFolderQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
       const pnFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderQuery)}&fields=files(id)&pageSize=1`;
-      const pnFolderResponse = await fetch(pnFolderUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
+      const pnFolderResponse = await makeRequestWithRetry(async (token) => {
+        return await fetch(pnFolderUrl, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
       });
 
       let pnFolderId: string | null = null;
@@ -8237,29 +8255,25 @@ class ProductionServer {
 
       // Create pN folder if it doesn't exist
       if (!pnFolderId) {
-        let createPnFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            name: pnFolderName,
-            mimeType: 'application/vnd.google-apps.folder'
-          })
+        const createPnFolderResponse = await makeRequestWithRetry(async (token) => {
+          return await fetch('https://www.googleapis.com/drive/v3/files', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              name: pnFolderName,
+              mimeType: 'application/vnd.google-apps.folder'
+            })
+          });
         });
-
-        // If we get a 401, the token might be expired - try refreshing and retry once
-        if (createPnFolderResponse.status === 401) {
-          console.warn(`[getOrCreateMetadataFolder] Got 401 when creating pN folder, token may be expired. Attempting to refresh...`);
-          // Note: We can't refresh here directly, but getAccessToken should have refreshed it
-          // This might be a race condition. For now, throw a clearer error.
-          const errorText = await createPnFolderResponse.text().catch(() => 'Unknown error');
-          throw new Error(`Google Drive access token expired. Please reconnect your Google Drive account. Error: ${errorText.substring(0, 200)}`);
-        }
 
         if (!createPnFolderResponse.ok) {
           const errorText = await createPnFolderResponse.text().catch(() => 'Unknown error');
+          if (createPnFolderResponse.status === 401) {
+            throw new Error(`Google Drive access token expired. Please reconnect your Google Drive account in the dashboard. Error: ${errorText.substring(0, 200)}`);
+          }
           console.error(`Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText}`, errorText);
           throw new Error(`Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText} - ${errorText.substring(0, 200)}`);
         }
@@ -8271,8 +8285,10 @@ class ProductionServer {
       // Now search for _metadata folder inside pN folder
       const metadataFolderQuery = `name='_metadata' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
       const metadataFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataFolderQuery)}&fields=files(id)&pageSize=1`;
-      const metadataFolderResponse = await fetch(metadataFolderUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
+      const metadataFolderResponse = await makeRequestWithRetry(async (token) => {
+        return await fetch(metadataFolderUrl, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
       });
 
       if (metadataFolderResponse.ok) {
@@ -8283,28 +8299,26 @@ class ProductionServer {
       }
 
       // Create _metadata folder inside pN folder
-      const createMetadataResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: '_metadata',
-          mimeType: 'application/vnd.google-apps.folder',
-          parents: [pnFolderId]
-        })
+      const createMetadataResponse = await makeRequestWithRetry(async (token) => {
+        return await fetch('https://www.googleapis.com/drive/v3/files', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name: '_metadata',
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [pnFolderId]
+          })
+        });
       });
-
-      // If we get a 401, the token might be expired
-      if (createMetadataResponse.status === 401) {
-        console.warn(`[getOrCreateMetadataFolder] Got 401 when creating _metadata folder, token may be expired.`);
-        const errorText = await createMetadataResponse.text().catch(() => 'Unknown error');
-        throw new Error(`Google Drive access token expired. Please reconnect your Google Drive account. Error: ${errorText.substring(0, 200)}`);
-      }
 
       if (!createMetadataResponse.ok) {
         const errorText = await createMetadataResponse.text().catch(() => 'Unknown error');
+        if (createMetadataResponse.status === 401) {
+          throw new Error(`Google Drive access token expired. Please reconnect your Google Drive account in the dashboard. Error: ${errorText.substring(0, 200)}`);
+        }
         console.error(`Failed to create _metadata folder: ${createMetadataResponse.status} ${createMetadataResponse.statusText}`, errorText);
         throw new Error(`Failed to create _metadata folder: ${createMetadataResponse.status} ${createMetadataResponse.statusText} - ${errorText.substring(0, 200)}`);
       }
