@@ -8305,11 +8305,21 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Get requester's credentials
-        const requesterCredentials = await storageCredentialsService.getCredentials(requesterDid);
+        // Normalize requesterDid to pn identifier format
+        const requesterPnIdentifier = requesterDid.startsWith('pn-') ? requesterDid : `pn-${requesterDid}`;
+        console.log(`[ConnectionRequest] Requester DID: ${requesterDid}, Normalized: ${requesterPnIdentifier}`);
+        
+        // Get requester's credentials - try both formats
+        let requesterCredentials = await storageCredentialsService.getCredentials(requesterPnIdentifier);
+        if (!requesterCredentials?.credentials && requesterDid !== requesterPnIdentifier) {
+          // Try original format if normalized didn't work
+          requesterCredentials = await storageCredentialsService.getCredentials(requesterDid);
+        }
         if (!requesterCredentials?.credentials) {
+          console.error(`[ConnectionRequest] No credentials found for requester. Tried: ${requesterPnIdentifier}, ${requesterDid}`);
           return res.status(404).json({ error: 'Requester credentials not found' });
         }
+        console.log(`[ConnectionRequest] Found requester credentials under: ${requesterCredentials.identityId}`);
 
         const requesterGoogleDriveAccounts = requesterCredentials.credentials.googleDriveAccounts || 
           (requesterCredentials.credentials.googleDrive ? [requesterCredentials.credentials.googleDrive] : []);
@@ -8321,8 +8331,15 @@ class ProductionServer {
         const requesterAccount = requesterGoogleDriveAccounts[0];
         // Try backendId first, then keyPrefix, then accountId/id for backward compatibility
         const requesterAccountId = (requesterAccount as any).backendId || (requesterAccount as any).keyPrefix || (requesterAccount as any).accountId || (requesterAccount as any).id || undefined;
-        // If accountId is not found, getAccessToken will use the first account automatically
-        const requesterAccessToken = await googleDriveProxyService.getAccessToken(requesterDid, requesterAccountId, [requesterDid]);
+        console.log(`[ConnectionRequest] Requester account structure:`, {
+          backendId: (requesterAccount as any).backendId,
+          keyPrefix: (requesterAccount as any).keyPrefix,
+          accountId: (requesterAccount as any).accountId,
+          id: (requesterAccount as any).id,
+          usingAccountId: requesterAccountId
+        });
+        // Use the identityId from credentials (the actual stored identifier)
+        const requesterAccessToken = await googleDriveProxyService.getAccessToken(requesterCredentials.identityId, requesterAccountId, [requesterCredentials.identityId]);
 
         // Get or create requester's metadata folder
         let requesterMetadataFolderId: string;
@@ -8340,11 +8357,21 @@ class ProductionServer {
           });
         }
 
-        // Get recipient's credentials
-        const recipientCredentials = await storageCredentialsService.getCredentials(recipientDid);
+        // Normalize recipientDid to pn identifier format
+        const recipientPnIdentifier = recipientDid.startsWith('pn-') ? recipientDid : `pn-${recipientDid}`;
+        console.log(`[ConnectionRequest] Recipient DID: ${recipientDid}, Normalized: ${recipientPnIdentifier}`);
+        
+        // Get recipient's credentials - try both formats
+        let recipientCredentials = await storageCredentialsService.getCredentials(recipientPnIdentifier);
+        if (!recipientCredentials?.credentials && recipientDid !== recipientPnIdentifier) {
+          // Try original format if normalized didn't work
+          recipientCredentials = await storageCredentialsService.getCredentials(recipientDid);
+        }
         if (!recipientCredentials?.credentials) {
+          console.error(`[ConnectionRequest] No credentials found for recipient. Tried: ${recipientPnIdentifier}, ${recipientDid}`);
           return res.status(404).json({ error: 'Recipient credentials not found' });
         }
+        console.log(`[ConnectionRequest] Found recipient credentials under: ${recipientCredentials.identityId}`);
 
         const recipientGoogleDriveAccounts = recipientCredentials.credentials.googleDriveAccounts || 
           (recipientCredentials.credentials.googleDrive ? [recipientCredentials.credentials.googleDrive] : []);
@@ -8356,8 +8383,15 @@ class ProductionServer {
         const recipientAccount = recipientGoogleDriveAccounts[0];
         // Try backendId first, then keyPrefix, then accountId/id for backward compatibility
         const recipientAccountId = (recipientAccount as any).backendId || (recipientAccount as any).keyPrefix || (recipientAccount as any).accountId || (recipientAccount as any).id || undefined;
-        // If accountId is not found, getAccessToken will use the first account automatically
-        const recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientDid, recipientAccountId, [recipientDid]);
+        console.log(`[ConnectionRequest] Recipient account structure:`, {
+          backendId: (recipientAccount as any).backendId,
+          keyPrefix: (recipientAccount as any).keyPrefix,
+          accountId: (recipientAccount as any).accountId,
+          id: (recipientAccount as any).id,
+          usingAccountId: recipientAccountId
+        });
+        // Use the identityId from credentials (the actual stored identifier)
+        const recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientCredentials.identityId, recipientAccountId, [recipientCredentials.identityId]);
 
         // Get or create recipient's metadata folder
         let recipientMetadataFolderId: string;
