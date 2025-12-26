@@ -8233,6 +8233,7 @@ class ProductionServer {
 
       // Create pN folder if it doesn't exist
       if (!pnFolderId) {
+        console.log('[getOrCreateMetadataFolder] Creating pN folder:', pnFolderName);
         const createPnFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
           method: 'POST',
           headers: {
@@ -8245,13 +8246,20 @@ class ProductionServer {
           })
         });
 
+        console.log('[getOrCreateMetadataFolder] Create pN folder response status:', createPnFolderResponse.status);
+
         if (!createPnFolderResponse.ok) {
           const errorText = await createPnFolderResponse.text().catch(() => 'Unknown error');
-          const errorJson = await createPnFolderResponse.json().catch(() => null);
-          console.error(`Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText}`);
-          console.error(`Full error response:`, errorText);
-          console.error(`Parsed error JSON:`, errorJson);
-          console.error(`Token used (first 50 chars):`, accessToken.substring(0, 50));
+          let errorJson = null;
+          try {
+            errorJson = JSON.parse(errorText);
+          } catch (e) {
+            // Not JSON, use as text
+          }
+          console.error(`[getOrCreateMetadataFolder] Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText}`);
+          console.error(`[getOrCreateMetadataFolder] Full error response text:`, errorText);
+          console.error(`[getOrCreateMetadataFolder] Parsed error JSON:`, errorJson);
+          console.error(`[getOrCreateMetadataFolder] Token used (first 50 chars):`, accessToken.substring(0, 50));
           throw new Error(`Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText} - ${errorText.substring(0, 500)}`);
         }
 
@@ -8350,14 +8358,17 @@ class ProductionServer {
         const requesterAccessToken = await googleDriveProxyService.getAccessToken(requesterCredentials.identityId, requesterAccountId, [requesterCredentials.identityId]);
 
         // Get or create requester's metadata folder
+        console.log('[ConnectionRequest] About to get/create requester metadata folder');
         let requesterMetadataFolderId: string;
         try {
           requesterMetadataFolderId = await getOrCreateMetadataFolder(requesterAccessToken, requesterDid);
+          console.log('[ConnectionRequest] Successfully got/created requester metadata folder:', requesterMetadataFolderId);
         } catch (error: any) {
-          console.error('Error getting/creating requester metadata folder:', error);
+          console.error('[ConnectionRequest] Error getting/creating requester metadata folder:', error);
+          console.error('[ConnectionRequest] Error stack:', error.stack);
           const errorDetails = error.message || 'Unknown error';
           const errorResponse = error.response ? await error.response.text().catch(() => '') : '';
-          console.error('Error details:', { errorDetails, errorResponse, requesterDid });
+          console.error('[ConnectionRequest] Error details:', { errorDetails, errorResponse, requesterDid });
           return res.status(500).json({ 
             error: 'Failed to get or create requester metadata folder', 
             error_description: errorDetails,
