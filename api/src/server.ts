@@ -8190,8 +8190,16 @@ class ProductionServer {
     /**
      * Helper function to get or create metadata folder for a user
      * Creates pN folder if needed, then creates _metadata folder inside it
+     * Fetches a fresh access token to avoid expiration issues
      */
-    const getOrCreateMetadataFolder = async (accessToken: string, pnIdentifier: string): Promise<string> => {
+    const getOrCreateMetadataFolder = async (
+      identityId: string, 
+      accountId: string | undefined,
+      googleDriveProxyService: any,
+      pnIdentifier: string
+    ): Promise<string> => {
+      // Get a fresh access token each time to avoid expiration
+      const accessToken = await googleDriveProxyService.getAccessToken(identityId, accountId, [identityId]);
       // Normalize pn identifier
       const normalizedPn = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
       
@@ -8360,7 +8368,12 @@ class ProductionServer {
         // Get or create requester's metadata folder
         let requesterMetadataFolderId: string;
         try {
-          requesterMetadataFolderId = await getOrCreateMetadataFolder(requesterAccessToken, requesterDid);
+          requesterMetadataFolderId = await getOrCreateMetadataFolder(
+            requesterCredentials.identityId,
+            requesterAccountId,
+            googleDriveProxyService,
+            requesterDid
+          );
         } catch (error: any) {
           console.error('Error getting/creating requester metadata folder:', error);
           const errorDetails = error.message || 'Unknown error';
@@ -8412,7 +8425,12 @@ class ProductionServer {
         // Get or create recipient's metadata folder
         let recipientMetadataFolderId: string;
         try {
-          recipientMetadataFolderId = await getOrCreateMetadataFolder(recipientAccessToken, recipientDid);
+          recipientMetadataFolderId = await getOrCreateMetadataFolder(
+            recipientCredentials.identityId,
+            recipientAccountId,
+            googleDriveProxyService,
+            recipientDid
+          );
         } catch (error: any) {
           console.error('Error getting/creating recipient metadata folder:', error);
           const errorDetails = error.message || 'Unknown error';
@@ -8510,14 +8528,19 @@ class ProductionServer {
         }
 
         const account = googleDriveAccounts[0];
-        const accountId = (account as any).accountId || (account as any).id;
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
         // Use normalized pn identifier for access token retrieval
-        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
 
         // Get or create metadata folder
         let metadataFolderId: string;
         try {
-          metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
+          metadataFolderId = await getOrCreateMetadataFolder(
+            userCredentials.identityId,
+            accountId,
+            googleDriveProxyService,
+            pnIdentifier
+          );
         } catch (error: any) {
           console.error('Error getting/creating metadata folder:', error);
           return res.status(500).json({ error: 'Failed to get or create metadata folder', error_description: error.message });
@@ -8593,7 +8616,12 @@ class ProductionServer {
 
               // Get or create other user's metadata folder
               try {
-                const otherMetadataFolderId = await getOrCreateMetadataFolder(otherAccessToken, otherUserCredentials.identityId);
+                const otherMetadataFolderId = await getOrCreateMetadataFolder(
+                  otherUserCredentials.identityId,
+                  otherAccountId,
+                  googleDriveProxyService,
+                  otherUserCredentials.identityId
+                );
                 
                 await ConnectionsService.updateOtherUserConnectionStatus(
                   otherAccessToken,
@@ -8710,13 +8738,18 @@ class ProductionServer {
         }
 
         const account = googleDriveAccounts[0];
-        const accountId = (account as any).accountId || (account as any).id;
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid as string, accountId, [userDid as string]);
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
 
         // Get or create metadata folder
         let metadataFolderId: string;
         try {
-          metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userDid as string);
+          metadataFolderId = await getOrCreateMetadataFolder(
+            userCredentials.identityId,
+            accountId,
+            googleDriveProxyService,
+            userDid as string
+          );
         } catch (error: any) {
           console.error('Error getting/creating metadata folder:', error);
           // Return empty connections array if folder creation fails
@@ -8779,7 +8812,12 @@ class ProductionServer {
         // Get or create metadata folder
         let metadataFolderId: string;
         try {
-          metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userDid as string);
+          metadataFolderId = await getOrCreateMetadataFolder(
+            userCredentials.identityId,
+            accountId,
+            googleDriveProxyService,
+            userDid as string
+          );
         } catch (error: any) {
           console.error('Error getting/creating metadata folder:', error);
           // Return empty arrays if folder creation fails
