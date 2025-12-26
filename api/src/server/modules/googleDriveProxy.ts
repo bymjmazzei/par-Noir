@@ -129,7 +129,18 @@ export class GoogleDriveProxyService {
       expires_at: account.expires_at
     };
 
+    console.log(`[GoogleDriveProxy] Token extracted from account:`, {
+      hasAccessToken: !!token.access_token,
+      accessTokenLength: token.access_token?.length || 0,
+      accessTokenPrefix: token.access_token?.substring(0, 20) || 'N/A',
+      hasRefreshToken: !!token.refresh_token,
+      expires_at: token.expires_at,
+      expires_in: token.expires_in,
+      accountKeys: Object.keys(account || {})
+    });
+
     if (!token.access_token) {
+      console.error(`[GoogleDriveProxy] No access token found in account object. Account keys:`, Object.keys(account || {}));
       throw new Error('Google Drive access token not found');
     }
 
@@ -202,7 +213,9 @@ export class GoogleDriveProxyService {
     }
 
     // Return the access token (either refreshed or original)
-    return token.access_token;
+    const finalToken = token.access_token;
+    console.log(`[GoogleDriveProxy] Returning access token. Length: ${finalToken?.length || 0}, Prefix: ${finalToken?.substring(0, 20) || 'N/A'}`);
+    return finalToken;
   }
 
   /**
