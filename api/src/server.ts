@@ -3588,9 +3588,90 @@ class ProductionServer {
 
         const result = await EngagementService.toggleLike(fileId, userDid);
 
-        // Update engagement counts in database metadata
+        // Get file owner for activity logging and notifications
         const aggregator = AggregatorMetadataServiceDB.getInstance();
         const fileMetadata = await aggregator.getFileMetadata(fileId);
+        const fileOwnerDid = fileMetadata?.pnIdentifier;
+
+        // Record activity and send notification (only when liking, not unliking)
+        if (result.liked && fileOwnerDid && fileOwnerDid !== userDid) {
+          try {
+            const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
+            const { NotificationService } = await import('./server/modules/notificationService');
+            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+            // Get user's credentials and metadata folder
+            const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+            const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+            if (userCredentials?.credentials) {
+              const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+                (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+              
+              if (googleDriveAccounts.length > 0) {
+                const account = googleDriveAccounts[0];
+                const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+                const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+                const userMetadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+                // Record activity for liker
+                await ActivityLedgerService.recordActivity(
+                  userAccessToken,
+                  userMetadataFolderId,
+                  userCredentials.identityId,
+                  'like',
+                  {
+                    targetType: 'file',
+                    targetId: fileId,
+                    metadata: { fileOwnerDid }
+                  }
+                );
+              }
+            }
+
+            // Get file owner's credentials and metadata folder
+            const ownerPnIdentifier = fileOwnerDid.startsWith('pn-') ? fileOwnerDid : `pn-${fileOwnerDid}`;
+            const ownerCredentials = await storageCredentialsService.getCredentials(ownerPnIdentifier);
+            if (ownerCredentials?.credentials) {
+              const ownerGoogleDriveAccounts = ownerCredentials.credentials.googleDriveAccounts || 
+                (ownerCredentials.credentials.googleDrive ? [ownerCredentials.credentials.googleDrive] : []);
+              
+              if (ownerGoogleDriveAccounts.length > 0) {
+                const ownerAccount = ownerGoogleDriveAccounts[0];
+                const ownerAccountId = (ownerAccount as any).backendId || (ownerAccount as any).keyPrefix || (ownerAccount as any).accountId || (ownerAccount as any).id || undefined;
+                const ownerAccessToken = await googleDriveProxyService.getAccessToken(ownerCredentials.identityId, ownerAccountId, [ownerCredentials.identityId]);
+                const ownerMetadataFolderId = await getOrCreateMetadataFolder(ownerAccessToken, ownerCredentials.identityId);
+
+                // Record activity for file owner
+                await ActivityLedgerService.recordActivity(
+                  ownerAccessToken,
+                  ownerMetadataFolderId,
+                  ownerCredentials.identityId,
+                  'like',
+                  {
+                    targetType: 'file',
+                    targetId: fileId,
+                    actorDid: userDid,
+                    metadata: { fileId }
+                  }
+                );
+
+                // Send notification to file owner
+                await NotificationService.notifyFileLike(
+                  ownerAccessToken,
+                  ownerMetadataFolderId,
+                  fileId,
+                  userDid,
+                  ownerCredentials.identityId
+                );
+              }
+            }
+          } catch (error) {
+            console.warn('Failed to record like activity/notification:', error);
+            // Don't fail the operation if activity logging fails
+          }
+        }
+
+        // Update engagement counts in database metadata
         
         if (fileMetadata) {
           // Update engagement counts in database metadata
@@ -3742,8 +3823,91 @@ class ProductionServer {
           postReply // Optional - for post replies
         );
 
-        // Update engagement counts in database metadata
+        // Get file owner for activity logging and notifications
         const aggregator = AggregatorMetadataServiceDB.getInstance();
+        const fileMetadataForOwner = await aggregator.getFileMetadata(fileId);
+        const ownerDid = fileMetadataForOwner?.pnIdentifier || fileOwnerDid;
+
+        // Record activity and send notification (only for top-level comments, not replies)
+        if (ownerDid && ownerDid !== userDid && !parentCommentId) {
+          try {
+            const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
+            const { NotificationService } = await import('./server/modules/notificationService');
+            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+            // Get user's credentials and metadata folder
+            const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+            const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+            if (userCredentials?.credentials) {
+              const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+                (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+              
+              if (googleDriveAccounts.length > 0) {
+                const account = googleDriveAccounts[0];
+                const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+                const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+                const userMetadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+                // Record activity for commenter
+                await ActivityLedgerService.recordActivity(
+                  userAccessToken,
+                  userMetadataFolderId,
+                  userCredentials.identityId,
+                  'comment',
+                  {
+                    targetType: 'file',
+                    targetId: fileId,
+                    metadata: { commentId: comment.id, fileOwnerDid: ownerDid }
+                  }
+                );
+              }
+            }
+
+            // Get file owner's credentials and metadata folder
+            const ownerPnIdentifier = ownerDid.startsWith('pn-') ? ownerDid : `pn-${ownerDid}`;
+            const ownerCredentials = await storageCredentialsService.getCredentials(ownerPnIdentifier);
+            if (ownerCredentials?.credentials) {
+              const ownerGoogleDriveAccounts = ownerCredentials.credentials.googleDriveAccounts || 
+                (ownerCredentials.credentials.googleDrive ? [ownerCredentials.credentials.googleDrive] : []);
+              
+              if (ownerGoogleDriveAccounts.length > 0) {
+                const ownerAccount = ownerGoogleDriveAccounts[0];
+                const ownerAccountId = (ownerAccount as any).backendId || (ownerAccount as any).keyPrefix || (ownerAccount as any).accountId || (ownerAccount as any).id || undefined;
+                const ownerAccessToken = await googleDriveProxyService.getAccessToken(ownerCredentials.identityId, ownerAccountId, [ownerCredentials.identityId]);
+                const ownerMetadataFolderId = await getOrCreateMetadataFolder(ownerAccessToken, ownerCredentials.identityId);
+
+                // Record activity for file owner
+                await ActivityLedgerService.recordActivity(
+                  ownerAccessToken,
+                  ownerMetadataFolderId,
+                  ownerCredentials.identityId,
+                  'comment',
+                  {
+                    targetType: 'file',
+                    targetId: fileId,
+                    actorDid: userDid,
+                    metadata: { commentId: comment.id, fileId }
+                  }
+                );
+
+                // Send notification to file owner
+                await NotificationService.notifyFileComment(
+                  ownerAccessToken,
+                  ownerMetadataFolderId,
+                  fileId,
+                  comment.id,
+                  userDid,
+                  ownerCredentials.identityId
+                );
+              }
+            }
+          } catch (error) {
+            console.warn('Failed to record comment activity/notification:', error);
+            // Don't fail the operation if activity logging fails
+          }
+        }
+
+        // Update engagement counts in database metadata
         // Get current engagement stats from engagement table to sync counts
         const engagementStats = await EngagementService.getEngagementStats(fileId);
         
@@ -3969,8 +4133,90 @@ class ProductionServer {
 
         const count = await EngagementService.recordShare(fileId, userDid);
 
-        // Update engagement counts in database metadata
+        // Get file owner for activity logging and notifications
         const aggregator = AggregatorMetadataServiceDB.getInstance();
+        const fileMetadataForOwner = await aggregator.getFileMetadata(fileId);
+        const fileOwnerDid = fileMetadataForOwner?.pnIdentifier;
+
+        // Record activity and send notification
+        if (fileOwnerDid && fileOwnerDid !== userDid) {
+          try {
+            const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
+            const { NotificationService } = await import('./server/modules/notificationService');
+            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+            // Get user's credentials and metadata folder
+            const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+            const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+            if (userCredentials?.credentials) {
+              const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+                (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+              
+              if (googleDriveAccounts.length > 0) {
+                const account = googleDriveAccounts[0];
+                const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+                const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+                const userMetadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+                // Record activity for sharer
+                await ActivityLedgerService.recordActivity(
+                  userAccessToken,
+                  userMetadataFolderId,
+                  userCredentials.identityId,
+                  'share',
+                  {
+                    targetType: 'file',
+                    targetId: fileId,
+                    metadata: { fileOwnerDid }
+                  }
+                );
+              }
+            }
+
+            // Get file owner's credentials and metadata folder
+            const ownerPnIdentifier = fileOwnerDid.startsWith('pn-') ? fileOwnerDid : `pn-${fileOwnerDid}`;
+            const ownerCredentials = await storageCredentialsService.getCredentials(ownerPnIdentifier);
+            if (ownerCredentials?.credentials) {
+              const ownerGoogleDriveAccounts = ownerCredentials.credentials.googleDriveAccounts || 
+                (ownerCredentials.credentials.googleDrive ? [ownerCredentials.credentials.googleDrive] : []);
+              
+              if (ownerGoogleDriveAccounts.length > 0) {
+                const ownerAccount = ownerGoogleDriveAccounts[0];
+                const ownerAccountId = (ownerAccount as any).backendId || (ownerAccount as any).keyPrefix || (ownerAccount as any).accountId || (ownerAccount as any).id || undefined;
+                const ownerAccessToken = await googleDriveProxyService.getAccessToken(ownerCredentials.identityId, ownerAccountId, [ownerCredentials.identityId]);
+                const ownerMetadataFolderId = await getOrCreateMetadataFolder(ownerAccessToken, ownerCredentials.identityId);
+
+                // Record activity for file owner
+                await ActivityLedgerService.recordActivity(
+                  ownerAccessToken,
+                  ownerMetadataFolderId,
+                  ownerCredentials.identityId,
+                  'share',
+                  {
+                    targetType: 'file',
+                    targetId: fileId,
+                    actorDid: userDid,
+                    metadata: { fileId }
+                  }
+                );
+
+                // Send notification (shares are reposts in this context)
+                await NotificationService.notifyRepost(
+                  ownerAccessToken,
+                  ownerMetadataFolderId,
+                  fileId,
+                  userDid,
+                  ownerCredentials.identityId
+                );
+              }
+            }
+          } catch (error) {
+            console.warn('Failed to record share activity/notification:', error);
+            // Don't fail the operation if activity logging fails
+          }
+        }
+
+        // Update engagement counts in database metadata
         // Get current engagement stats from engagement table to sync counts
         const engagementStats = await EngagementService.getEngagementStats(fileId);
         
@@ -7772,15 +8018,101 @@ class ProductionServer {
         }
 
         // TODO: Implement message sending to Google Drive
+        const messageId = `msg_${Date.now()}`;
+        const timestamp = new Date().toISOString();
+        
+        // Record messaging activity and send notification
+        try {
+          const { MessagingLedgerService } = await import('./server/modules/messagingLedgerService');
+          const { NotificationService } = await import('./server/modules/notificationService');
+          const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+          
+          // Generate thread ID from user DIDs (sorted for consistency)
+          const threadId = [fromDid, toDid].sort().join('_');
+          
+          // Get sender's credentials and metadata folder
+          const senderPnIdentifier = fromDid.startsWith('pn-') ? fromDid : `pn-${fromDid}`;
+          const senderCredentials = await storageCredentialsService.getCredentials(senderPnIdentifier);
+          if (senderCredentials?.credentials) {
+            const senderGoogleDriveAccounts = senderCredentials.credentials.googleDriveAccounts || 
+              (senderCredentials.credentials.googleDrive ? [senderCredentials.credentials.googleDrive] : []);
+            
+            if (senderGoogleDriveAccounts.length > 0) {
+              const senderAccount = senderGoogleDriveAccounts[0];
+              const senderAccountId = (senderAccount as any).backendId || (senderAccount as any).keyPrefix || (senderAccount as any).accountId || (senderAccount as any).id || undefined;
+              const senderAccessToken = await googleDriveProxyService.getAccessToken(senderCredentials.identityId, senderAccountId, [senderCredentials.identityId]);
+              const senderMetadataFolderId = await getOrCreateMetadataFolder(senderAccessToken, senderCredentials.identityId);
+
+              // Record activity for sender
+              await MessagingLedgerService.recordMessagingActivity(
+                senderAccessToken,
+                senderMetadataFolderId,
+                senderCredentials.identityId,
+                'message_sent',
+                {
+                  fromDid,
+                  toDid,
+                  messageId,
+                  threadId,
+                  metadata: { content: content.substring(0, 100), mediaFileId }
+                }
+              );
+            }
+          }
+
+          // Get recipient's credentials and metadata folder
+          const recipientPnIdentifier = toDid.startsWith('pn-') ? toDid : `pn-${toDid}`;
+          const recipientCredentials = await storageCredentialsService.getCredentials(recipientPnIdentifier);
+          if (recipientCredentials?.credentials) {
+            const recipientGoogleDriveAccounts = recipientCredentials.credentials.googleDriveAccounts || 
+              (recipientCredentials.credentials.googleDrive ? [recipientCredentials.credentials.googleDrive] : []);
+            
+            if (recipientGoogleDriveAccounts.length > 0) {
+              const recipientAccount = recipientGoogleDriveAccounts[0];
+              const recipientAccountId = (recipientAccount as any).backendId || (recipientAccount as any).keyPrefix || (recipientAccount as any).accountId || (recipientAccount as any).id || undefined;
+              const recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientCredentials.identityId, recipientAccountId, [recipientCredentials.identityId]);
+              const recipientMetadataFolderId = await getOrCreateMetadataFolder(recipientAccessToken, recipientCredentials.identityId);
+
+              // Record activity for recipient
+              await MessagingLedgerService.recordMessagingActivity(
+                recipientAccessToken,
+                recipientMetadataFolderId,
+                recipientCredentials.identityId,
+                'message_received',
+                {
+                  fromDid,
+                  toDid,
+                  messageId,
+                  threadId,
+                  metadata: { content: content.substring(0, 100), mediaFileId }
+                }
+              );
+
+              // Send notification to recipient
+              await NotificationService.notifyNewMessage(
+                recipientAccessToken,
+                recipientMetadataFolderId,
+                messageId,
+                fromDid,
+                recipientCredentials.identityId,
+                threadId
+              );
+            }
+          }
+        } catch (activityError: any) {
+          console.warn('Failed to record messaging activity/notification:', activityError);
+          // Don't fail the request if activity logging fails
+        }
+
         return res.json({
           success: true,
           message: {
-            messageId: `msg_${Date.now()}`,
+            messageId,
             fromDid,
             toDid,
             content,
             mediaFileId,
-            timestamp: new Date().toISOString(),
+            timestamp,
             read: false,
             encrypted: true
           }
@@ -8445,6 +8777,51 @@ class ProductionServer {
           });
         }
 
+        // Record activity and send notification
+        try {
+          const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
+          const { NotificationService } = await import('./server/modules/notificationService');
+          
+          // Record activity for requester
+          await ActivityLedgerService.recordActivity(
+            requesterAccessToken,
+            requesterMetadataFolderId,
+            requesterDid,
+            'connection_request',
+            {
+              targetType: 'user',
+              targetId: recipientDid,
+              metadata: { connectionId: connection.connectionId }
+            }
+          );
+
+          // Record activity for recipient
+          await ActivityLedgerService.recordActivity(
+            recipientAccessToken,
+            recipientMetadataFolderId,
+            recipientDid,
+            'connection_request',
+            {
+              targetType: 'user',
+              targetId: requesterDid,
+              actorDid: requesterDid,
+              metadata: { connectionId: connection.connectionId }
+            }
+          );
+
+          // Send notification to recipient
+          await NotificationService.notifyConnectionRequest(
+            recipientAccessToken,
+            recipientMetadataFolderId,
+            connection.connectionId,
+            requesterDid,
+            recipientDid
+          );
+        } catch (activityError: any) {
+          console.warn('Failed to record connection request activity/notification:', activityError);
+          // Don't fail the request if activity logging fails
+        }
+
         // Send connection request as message (optional - don't fail if this fails)
         try {
           await fetch(`${req.protocol}://${req.get('host')}/api/messages/send`, {
@@ -8612,6 +8989,73 @@ class ProductionServer {
         } catch (otherUserError: any) {
           console.warn('Failed to update other user\'s connection status:', otherUserError?.message || otherUserError);
           // Continue even if other user update fails
+        }
+
+        // Record activity and send notification
+        try {
+          const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
+          const { NotificationService } = await import('./server/modules/notificationService');
+          
+          // Record activity for acceptor
+          await ActivityLedgerService.recordActivity(
+            userAccessToken,
+            metadataFolderId,
+            userCredentials.identityId,
+            'connection_accepted',
+            {
+              targetType: 'user',
+              targetId: otherUserDid,
+              metadata: { connectionId }
+            }
+          );
+
+          // Record activity for requester (need to get their credentials)
+          try {
+            const otherUserPnIdentifier = otherUserDid.startsWith('pn-') ? otherUserDid : `pn-${otherUserDid}`;
+            let otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
+            if (!otherUserCredentials?.credentials && otherUserDid !== otherUserPnIdentifier) {
+              otherUserCredentials = await storageCredentialsService.getCredentials(otherUserDid);
+            }
+            
+            if (otherUserCredentials?.credentials) {
+              const otherGoogleDriveAccounts = otherUserCredentials.credentials.googleDriveAccounts || 
+                (otherUserCredentials.credentials.googleDrive ? [otherUserCredentials.credentials.googleDrive] : []);
+              
+              if (otherGoogleDriveAccounts.length > 0) {
+                const otherAccount = otherGoogleDriveAccounts[0];
+                const otherAccountId = (otherAccount as any).backendId || (otherAccount as any).keyPrefix || (otherAccount as any).accountId || (otherAccount as any).id || undefined;
+                const otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherAccountId, [otherUserCredentials.identityId]);
+                const otherMetadataFolderId = await getOrCreateMetadataFolder(otherAccessToken, otherUserCredentials.identityId);
+
+                await ActivityLedgerService.recordActivity(
+                  otherAccessToken,
+                  otherMetadataFolderId,
+                  otherUserCredentials.identityId,
+                  'connection_accepted',
+                  {
+                    targetType: 'user',
+                    targetId: pnIdentifier,
+                    actorDid: pnIdentifier,
+                    metadata: { connectionId }
+                  }
+                );
+
+                // Send notification to requester that their request was accepted
+                await NotificationService.notifyConnectionAccepted(
+                  otherAccessToken,
+                  otherMetadataFolderId,
+                  connectionId,
+                  pnIdentifier,
+                  otherUserCredentials.identityId
+                );
+              }
+            }
+          } catch (otherUserActivityError: any) {
+            console.warn('Failed to record activity/notification for other user:', otherUserActivityError);
+          }
+        } catch (activityError: any) {
+          console.warn('Failed to record connection acceptance activity/notification:', activityError);
+          // Don't fail the request if activity logging fails
         }
 
         return res.json({ success: true });
@@ -10067,13 +10511,37 @@ class ProductionServer {
           });
         }
 
-        const { NotificationService } = require('./server/modules/notificationService');
+        const { NotificationService } = await import('./server/modules/notificationService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
         const limit = parseInt(req.query.limit as string) || 50;
         const offset = parseInt(req.query.offset as string) || 0;
         const unreadOnly = req.query.unreadOnly === 'true';
         const type = req.query.type as string | undefined;
 
-        const result = await NotificationService.getUserNotifications(userDid, {
+        const result = await NotificationService.getUserNotifications(userAccessToken, metadataFolderId, {
           limit,
           offset,
           unreadOnly,
@@ -10107,8 +10575,32 @@ class ProductionServer {
           });
         }
 
-        const { NotificationService } = require('./server/modules/notificationService');
-        const count = await NotificationService.getUnreadCount(userDid);
+        const { NotificationService } = await import('./server/modules/notificationService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.json({ count: 0 });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ count: 0 });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+        const count = await NotificationService.getUnreadCount(userAccessToken, metadataFolderId);
 
         return res.json({ count });
       } catch (error: any) {
@@ -10133,8 +10625,32 @@ class ProductionServer {
           });
         }
 
-        const { NotificationService } = require('./server/modules/notificationService');
-        const success = await NotificationService.markAsRead(notificationId, userDid);
+        const { NotificationService } = await import('./server/modules/notificationService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+        const success = await NotificationService.markAsRead(userAccessToken, metadataFolderId, userCredentials.identityId, notificationId);
 
         if (!success) {
           return res.status(404).json({
@@ -10165,8 +10681,32 @@ class ProductionServer {
           });
         }
 
-        const { NotificationService } = require('./server/modules/notificationService');
-        const count = await NotificationService.markAllAsRead(userDid);
+        const { NotificationService } = await import('./server/modules/notificationService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+        const count = await NotificationService.markAllAsRead(userAccessToken, metadataFolderId, userCredentials.identityId);
 
         return res.json({ success: true, markedRead: count });
       } catch (error: any) {
@@ -10191,8 +10731,32 @@ class ProductionServer {
           });
         }
 
-        const { NotificationService } = require('./server/modules/notificationService');
-        const success = await NotificationService.deleteNotification(notificationId, userDid);
+        const { NotificationService } = await import('./server/modules/notificationService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+        const success = await NotificationService.deleteNotification(userAccessToken, metadataFolderId, userCredentials.identityId, notificationId);
 
         if (!success) {
           return res.status(404).json({
@@ -10223,8 +10787,56 @@ class ProductionServer {
           });
         }
 
-        const { NotificationService } = require('./server/modules/notificationService');
-        const preferences = await NotificationService.getPreferences(userDid);
+        const { NotificationService } = await import('./server/modules/notificationService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          // Return default preferences if no credentials
+          return res.json({
+            user_did: userDid,
+            feed_new_post: true,
+            feed_new_comment: true,
+            feed_new_like: false,
+            feed_new_subscriber: true,
+            comment_reply: true,
+            mention: true,
+            connection_request: true,
+            connection_accepted: true,
+            repost: true
+          });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          // Return default preferences if no Google Drive
+          return res.json({
+            user_did: userDid,
+            feed_new_post: true,
+            feed_new_comment: true,
+            feed_new_like: false,
+            feed_new_subscriber: true,
+            comment_reply: true,
+            mention: true,
+            connection_request: true,
+            connection_accepted: true,
+            repost: true
+          });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+        const preferences = await NotificationService.getPreferences(userAccessToken, metadataFolderId, userCredentials.identityId);
 
         return res.json(preferences);
       } catch (error: any) {
@@ -10248,8 +10860,38 @@ class ProductionServer {
           });
         }
 
-        const { NotificationService } = require('./server/modules/notificationService');
-        const preferences = await NotificationService.updatePreferences(userDid, req.body);
+        const { NotificationService } = await import('./server/modules/notificationService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+        const { user_did, ...preferencesUpdate } = req.body;
+        const preferences = await NotificationService.updatePreferences(
+          userAccessToken,
+          metadataFolderId,
+          userCredentials.identityId,
+          preferencesUpdate
+        );
 
         return res.json(preferences);
       } catch (error: any) {

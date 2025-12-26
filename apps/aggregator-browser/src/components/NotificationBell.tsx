@@ -29,7 +29,7 @@ export function NotificationBell({ onNotificationClick }: NotificationBellProps)
     }
   }, [showDropdown, userState.isUnlocked, userState.pnIdentifier]);
 
-  // Poll for unread count periodically
+  // Poll for unread count periodically (excluding message notifications)
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) {
       return;
@@ -37,8 +37,13 @@ export function NotificationBell({ onNotificationClick }: NotificationBellProps)
 
     const loadUnreadCount = async () => {
       try {
-        const count = await NotificationService.getUnreadCount(userState.pnIdentifier!);
-        setUnreadCount(count);
+        // Get all notifications and filter out message notifications
+        const result = await NotificationService.getNotifications(userState.pnIdentifier!, {
+          limit: 100,
+          unreadOnly: true
+        });
+        const engagementNotifications = result.notifications.filter(n => n.type !== 'new_message');
+        setUnreadCount(engagementNotifications.length);
       } catch (error: any) {
         // Don't log 429 errors as errors, just skip this poll
         if (error?.message?.includes('429') || error?.status === 429) {
@@ -66,10 +71,12 @@ export function NotificationBell({ onNotificationClick }: NotificationBellProps)
         limit: 20,
         unreadOnly: false
       });
-      setNotifications(result.notifications);
+      // Filter out message notifications - those appear in the messages section
+      const engagementNotifications = result.notifications.filter(n => n.type !== 'new_message');
+      setNotifications(engagementNotifications);
       
-      // Update unread count
-      const count = result.notifications.filter(n => !n.read).length;
+      // Update unread count (excluding message notifications)
+      const count = engagementNotifications.filter(n => !n.read).length;
       setUnreadCount(count);
     } catch (error: any) {
       // Don't show error for 429 rate limiting

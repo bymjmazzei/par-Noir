@@ -78,24 +78,8 @@ export class EngagementService {
       const count = parseInt(countResult.rows[0].count, 10);
       const liked = existing.rows.length === 0; // If it didn't exist, now it's liked
 
-      // Trigger notification for file owner (only when liking, not unliking)
-      if (liked) {
-        try {
-          // Get file owner from metadata
-          const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-          const aggregator = AggregatorMetadataServiceDB.getInstance();
-          const fileMetadata = await aggregator.getFileMetadata(fileId);
-          const fileOwnerDid = fileMetadata?.pnIdentifier;
-          
-          if (fileOwnerDid && fileOwnerDid !== userDid) {
-            const { NotificationService } = await import('./notificationService');
-            await NotificationService.notifyFileLike(fileId, userDid, fileOwnerDid);
-          }
-        } catch (error) {
-          console.warn('Failed to send like notification:', error);
-          // Don't fail the operation if notification fails
-        }
-      }
+      // Note: Activity logging and notifications are handled by API endpoints
+      // which have access to user credentials for Google Drive storage
 
       return { liked, count };
     } catch (error) {
@@ -184,16 +168,8 @@ export class EngagementService {
         fileOwnerDid: parsedContent.fileOwnerDid || ownerDid || undefined
       };
 
-      // Trigger notification for file owner (only for top-level comments, not replies)
-      if (ownerDid && ownerDid !== userDid && !parentCommentId) {
-        try {
-          const { NotificationService } = await import('./notificationService');
-          await NotificationService.notifyFileComment(fileId, comment.id, userDid, ownerDid);
-        } catch (error) {
-          console.warn('Failed to send comment notification:', error);
-          // Don't fail the operation if notification fails
-        }
-      }
+      // Note: Activity logging and notifications are handled by API endpoints
+      // which have access to user credentials for Google Drive storage
 
       return comment;
     } catch (error) {
@@ -409,6 +385,9 @@ export class EngagementService {
         SELECT COUNT(*) as count FROM engagement 
         WHERE file_id = $1 AND type = 'share'
       `, [fileId]);
+
+      // Note: Activity logging and notifications are handled by API endpoints
+      // which have access to user credentials for Google Drive storage
 
       return parseInt(countResult.rows[0].count, 10);
     } catch (error) {

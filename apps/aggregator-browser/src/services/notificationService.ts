@@ -8,7 +8,7 @@ const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.
 export interface Notification {
   notification_id: string;
   user_did: string;
-  type: 'feed_new_post' | 'feed_new_comment' | 'feed_new_like' | 'feed_new_subscriber' | 'comment_reply' | 'mention';
+  type: 'feed_new_post' | 'feed_new_comment' | 'feed_new_like' | 'feed_new_subscriber' | 'comment_reply' | 'mention' | 'connection_request' | 'connection_accepted' | 'repost' | 'follow' | 'new_message';
   title: string;
   message: string;
   data?: {
@@ -16,6 +16,9 @@ export interface Notification {
     file_id?: string;
     comment_id?: string;
     user_did?: string;
+    connection_id?: string;
+    message_id?: string;
+    thread_id?: string;
     [key: string]: any;
   };
   read: boolean;

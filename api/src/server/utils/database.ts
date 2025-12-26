@@ -468,48 +468,14 @@ export async function initializeDatabase(): Promise<void> {
       ON engagement(type)
     `);
 
-    // Notifications table
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS notifications (
-        notification_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_did VARCHAR(255) NOT NULL,
-        type VARCHAR(50) NOT NULL,
-        title VARCHAR(255) NOT NULL,
-        message TEXT NOT NULL,
-        data JSONB,
-        read BOOLEAN DEFAULT false,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-      )
-    `);
-
-    await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_notifications_user_did
-      ON notifications(user_did)
-    `);
-
-    await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_notifications_read
-      ON notifications(user_did, read)
-    `);
-
-    await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_notifications_created_at
-      ON notifications(created_at DESC)
-    `);
-
-    // Notification preferences table
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS notification_preferences (
-        user_did VARCHAR(255) PRIMARY KEY,
-        feed_new_post BOOLEAN DEFAULT true,
-        feed_new_comment BOOLEAN DEFAULT true,
-        feed_new_like BOOLEAN DEFAULT false,
-        feed_new_subscriber BOOLEAN DEFAULT true,
-        comment_reply BOOLEAN DEFAULT true,
-        mention BOOLEAN DEFAULT true,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-      )
-    `);
+    // NOTE: User data (notifications, activity ledger, messaging ledger) is now stored
+    // in Google Drive (decentralized) - users own their data
+    // Database tables for these have been removed to follow the decentralized architecture
+    // 
+    // Files stored in Google Drive:
+    // - notifications.json (in user's _metadata folder)
+    // - activity_ledger.json (in user's _metadata folder)
+    // - messaging_ledger.json (in user's _metadata folder)
 
     // OAuth refresh tokens table (persistent storage for refresh tokens)
     await db.query(`

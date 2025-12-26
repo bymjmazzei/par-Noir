@@ -1,15 +1,14 @@
 /**
  * Notification Service
  * Handles push notifications for feed subscriptions, comments, likes, etc.
+ * Stored in Google Drive (decentralized) - users own their data
  * Event-driven: When event A happens, triggers push notification
  */
-
-import { getDatabasePool } from '../utils/database';
 
 export interface Notification {
   notification_id: string;
   user_did: string;
-  type: 'feed_new_post' | 'feed_new_comment' | 'feed_new_like' | 'feed_new_subscriber' | 'comment_reply' | 'mention';
+  type: 'feed_new_post' | 'feed_new_comment' | 'feed_new_like' | 'feed_new_subscriber' | 'comment_reply' | 'mention' | 'connection_request' | 'connection_accepted' | 'repost' | 'follow' | 'new_message';
   title: string;
   message: string;
   data?: {
@@ -17,10 +16,13 @@ export interface Notification {
     file_id?: string;
     comment_id?: string;
     user_did?: string;
+    connection_id?: string;
+    message_id?: string;
+    thread_id?: string;
     [key: string]: any;
   };
   read: boolean;
-  created_at: Date;
+  created_at: string;
 }
 
 export interface NotificationPreferences {
@@ -31,40 +33,196 @@ export interface NotificationPreferences {
   feed_new_subscriber: boolean;
   comment_reply: boolean;
   mention: boolean;
+  connection_request: boolean;
+  connection_accepted: boolean;
+  repost: boolean;
+}
+
+export interface NotificationsFile {
+  identifier: string;
+  updatedAt: string;
+  notifications: Notification[];
+  preferences?: NotificationPreferences;
 }
 
 export class NotificationService {
+  private static readonly NOTIFICATIONS_FILE_NAME = 'notifications.json';
+
+  /**
+   * Get notifications file from user's Google Drive
+   */
+  static async getNotificationsFile(
+    accessToken: string,
+    metadataFolderId: string
+  ): Promise<NotificationsFile | null> {
+    try {
+      // Search for notifications.json in metadata folder
+      const searchQuery = `name='${this.NOTIFICATIONS_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false`;
+      const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id)&pageSize=1`;
+      
+      const searchResponse = await fetch(searchUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+
+      if (!searchResponse.ok || searchResponse.status === 404) {
+        return null;
+      }
+
+      const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
+      
+      if (!searchData.files || searchData.files.length === 0) {
+        return null;
+      }
+
+      // Download notifications file
+      const fileId = searchData.files[0].id;
+      const getResponse = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` } }
+      );
+
+      if (!getResponse.ok) {
+        return null;
+      }
+
+      try {
+        return await getResponse.json() as NotificationsFile;
+      } catch {
+        return null;
+      }
+    } catch (error) {
+      console.error('Error getting notifications file:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Create or update notifications file
+   */
+  static async updateNotificationsFile(
+    accessToken: string,
+    metadataFolderId: string,
+    identifier: string,
+    notificationsData: NotificationsFile
+  ): Promise<void> {
+    const notificationsContent = JSON.stringify(notificationsData, null, 2);
+
+    try {
+      // Search for existing notifications.json
+      const searchQuery = `name='${this.NOTIFICATIONS_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false`;
+      const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id)&pageSize=1`;
+      
+      const searchResponse = await fetch(searchUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+
+      if (searchResponse.ok) {
+        const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
+        
+        if (searchData.files && searchData.files.length > 0) {
+          // Update existing file
+          const fileId = searchData.files[0].id;
+          await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json; charset=UTF-8'
+            },
+            body: notificationsContent
+          });
+          return;
+        }
+      }
+
+      // Create new file
+      const boundary = `----WebKitFormBoundary${Date.now()}`;
+      const metadataPart = JSON.stringify({
+        name: this.NOTIFICATIONS_FILE_NAME,
+        parents: [metadataFolderId]
+      });
+
+      const multipartBody = [
+        `--${boundary}`,
+        'Content-Disposition: form-data; name="metadata"',
+        'Content-Type: application/json',
+        '',
+        metadataPart,
+        `--${boundary}`,
+        'Content-Disposition: form-data; name="file"; filename="notifications.json"',
+        'Content-Type: application/json',
+        '',
+        notificationsContent,
+        `--${boundary}--`
+      ].join('\r\n');
+
+      await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': `multipart/form-data; boundary=${boundary}`
+        },
+        body: multipartBody
+      });
+    } catch (error) {
+      console.error('Error updating notifications file:', error);
+      throw error;
+    }
+  }
+
   /**
    * Create a notification
    */
-  static async createNotification(notification: Omit<Notification, 'notification_id' | 'created_at' | 'read'>): Promise<Notification> {
-    const db = getDatabasePool();
+  static async createNotification(
+    accessToken: string,
+    metadataFolderId: string,
+    userDid: string,
+    notification: Omit<Notification, 'notification_id' | 'created_at' | 'read'>
+  ): Promise<Notification> {
     const notificationId = crypto.randomUUID();
+    const now = new Date().toISOString();
 
-    const result = await db.query(
-      `INSERT INTO notifications (
-        notification_id, user_did, type, title, message, data, read, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-      RETURNING *`,
-      [
-        notificationId,
-        notification.user_did,
-        notification.type,
-        notification.title,
-        notification.message,
-        JSON.stringify(notification.data || {}),
-        false
-      ]
-    );
+    // Get or create notifications file
+    let notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
+    if (!notificationsFile) {
+      notificationsFile = {
+        identifier: userDid,
+        updatedAt: now,
+        notifications: [],
+        preferences: this.getDefaultPreferences(userDid)
+      };
+    }
 
-    return this.mapRowToNotification(result.rows[0]);
+    // Create notification entry
+    const newNotification: Notification = {
+      notification_id: notificationId,
+      user_did: userDid,
+      type: notification.type,
+      title: notification.title,
+      message: notification.message,
+      data: notification.data || {},
+      read: false,
+      created_at: now
+    };
+
+    // Add to notifications (keep only last 5,000 notifications)
+    notificationsFile.notifications.push(newNotification);
+    if (notificationsFile.notifications.length > 5000) {
+      notificationsFile.notifications = notificationsFile.notifications.slice(-5000);
+    }
+    notificationsFile.updatedAt = now;
+
+    // Update file
+    await this.updateNotificationsFile(accessToken, metadataFolderId, userDid, notificationsFile);
+
+    return newNotification;
   }
 
   /**
    * Get notifications for a user
    */
   static async getUserNotifications(
-    userDid: string,
+    accessToken: string,
+    metadataFolderId: string,
     options?: {
       limit?: number;
       offset?: number;
@@ -72,47 +230,36 @@ export class NotificationService {
       type?: Notification['type'];
     }
   ): Promise<{ notifications: Notification[]; total: number }> {
-    const db = getDatabasePool();
+    const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
+    
+    if (!notificationsFile) {
+      return { notifications: [], total: 0 };
+    }
+
+    let notifications = [...notificationsFile.notifications];
+
+    // Filter by read status if specified
+    if (options?.unreadOnly) {
+      notifications = notifications.filter(n => !n.read);
+    }
+
+    // Filter by type if specified
+    if (options?.type) {
+      notifications = notifications.filter(n => n.type === options.type);
+    }
+
+    // Sort by created_at descending (most recent first)
+    notifications.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    const total = notifications.length;
     const limit = options?.limit || 50;
     const offset = options?.offset || 0;
 
-    let query = `
-      SELECT * FROM notifications
-      WHERE user_did = $1
-    `;
-    const params: any[] = [userDid];
-    let paramIndex = 2;
-
-    if (options?.unreadOnly) {
-      query += ` AND read = false`;
-    }
-
-    if (options?.type) {
-      query += ` AND type = $${paramIndex}`;
-      params.push(options.type);
-      paramIndex++;
-    }
-
-    query += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-    params.push(limit, offset);
-
-    const result = await db.query(query, params);
-
-    // Get total count
-    let countQuery = `SELECT COUNT(*) FROM notifications WHERE user_did = $1`;
-    const countParams: any[] = [userDid];
-    if (options?.unreadOnly) {
-      countQuery += ` AND read = false`;
-    }
-    if (options?.type) {
-      countQuery += ` AND type = $2`;
-      countParams.push(options.type);
-    }
-    const countResult = await db.query(countQuery, countParams);
-    const total = parseInt(countResult.rows[0].count);
+    // Apply pagination
+    const paginatedNotifications = notifications.slice(offset, offset + limit);
 
     return {
-      notifications: result.rows.map(row => this.mapRowToNotification(row)),
+      notifications: paginatedNotifications,
       total
     };
   }
@@ -120,200 +267,207 @@ export class NotificationService {
   /**
    * Mark notification as read
    */
-  static async markAsRead(notificationId: string, userDid: string): Promise<boolean> {
-    const db = getDatabasePool();
+  static async markAsRead(
+    accessToken: string,
+    metadataFolderId: string,
+    userDid: string,
+    notificationId: string
+  ): Promise<boolean> {
+    const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
+    if (!notificationsFile) {
+      return false;
+    }
 
-    const result = await db.query(
-      `UPDATE notifications 
-       SET read = true 
-       WHERE notification_id = $1 AND user_did = $2
-       RETURNING *`,
-      [notificationId, userDid]
-    );
+    const notification = notificationsFile.notifications.find(n => n.notification_id === notificationId);
+    if (!notification || notification.read) {
+      return false;
+    }
 
-    return result.rows.length > 0;
+    notification.read = true;
+    notificationsFile.updatedAt = new Date().toISOString();
+
+    await this.updateNotificationsFile(accessToken, metadataFolderId, userDid, notificationsFile);
+    return true;
   }
 
   /**
    * Mark all notifications as read for a user
    */
-  static async markAllAsRead(userDid: string): Promise<number> {
-    const db = getDatabasePool();
+  static async markAllAsRead(
+    accessToken: string,
+    metadataFolderId: string,
+    userDid: string
+  ): Promise<number> {
+    const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
+    if (!notificationsFile) {
+      return 0;
+    }
 
-    const result = await db.query(
-      `UPDATE notifications 
-       SET read = true 
-       WHERE user_did = $1 AND read = false
-       RETURNING notification_id`,
-      [userDid]
-    );
+    let markedCount = 0;
+    notificationsFile.notifications.forEach(notification => {
+      if (!notification.read) {
+        notification.read = true;
+        markedCount++;
+      }
+    });
 
-    return result.rows.length;
+    if (markedCount > 0) {
+      notificationsFile.updatedAt = new Date().toISOString();
+      await this.updateNotificationsFile(accessToken, metadataFolderId, userDid, notificationsFile);
+    }
+
+    return markedCount;
   }
 
   /**
    * Delete notification
    */
-  static async deleteNotification(notificationId: string, userDid: string): Promise<boolean> {
-    const db = getDatabasePool();
+  static async deleteNotification(
+    accessToken: string,
+    metadataFolderId: string,
+    userDid: string,
+    notificationId: string
+  ): Promise<boolean> {
+    const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
+    if (!notificationsFile) {
+      return false;
+    }
 
-    const result = await db.query(
-      `DELETE FROM notifications 
-       WHERE notification_id = $1 AND user_did = $2
-       RETURNING notification_id`,
-      [notificationId, userDid]
+    const initialLength = notificationsFile.notifications.length;
+    notificationsFile.notifications = notificationsFile.notifications.filter(
+      n => n.notification_id !== notificationId
     );
 
-    return result.rows.length > 0;
+    if (notificationsFile.notifications.length < initialLength) {
+      notificationsFile.updatedAt = new Date().toISOString();
+      await this.updateNotificationsFile(accessToken, metadataFolderId, userDid, notificationsFile);
+      return true;
+    }
+
+    return false;
   }
 
   /**
    * Get unread count for a user
    */
-  static async getUnreadCount(userDid: string): Promise<number> {
-    const db = getDatabasePool();
+  static async getUnreadCount(
+    accessToken: string,
+    metadataFolderId: string
+  ): Promise<number> {
+    const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
+    if (!notificationsFile) {
+      return 0;
+    }
 
-    const result = await db.query(
-      `SELECT COUNT(*) FROM notifications 
-       WHERE user_did = $1 AND read = false`,
-      [userDid]
-    );
-
-    return parseInt(result.rows[0].count);
+    return notificationsFile.notifications.filter(n => !n.read).length;
   }
 
   /**
    * Get notification preferences for a user
    */
-  static async getPreferences(userDid: string): Promise<NotificationPreferences> {
-    const db = getDatabasePool();
-
-    const result = await db.query(
-      `SELECT * FROM notification_preferences WHERE user_did = $1`,
-      [userDid]
-    );
-
-    if (result.rows.length === 0) {
-      // Return default preferences
-      return {
-        user_did: userDid,
-        feed_new_post: true,
-        feed_new_comment: true,
-        feed_new_like: false,
-        feed_new_subscriber: true,
-        comment_reply: true,
-        mention: true
-      };
+  static async getPreferences(
+    accessToken: string,
+    metadataFolderId: string,
+    userDid: string
+  ): Promise<NotificationPreferences> {
+    const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
+    
+    if (!notificationsFile || !notificationsFile.preferences) {
+      return this.getDefaultPreferences(userDid);
     }
 
-    return result.rows[0];
+    return notificationsFile.preferences;
   }
 
   /**
    * Update notification preferences
    */
   static async updatePreferences(
+    accessToken: string,
+    metadataFolderId: string,
     userDid: string,
     preferences: Partial<Omit<NotificationPreferences, 'user_did'>>
   ): Promise<NotificationPreferences> {
-    const db = getDatabasePool();
+    let notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
+    const now = new Date().toISOString();
 
-    // Check if preferences exist
-    const existing = await db.query(
-      `SELECT * FROM notification_preferences WHERE user_did = $1`,
-      [userDid]
-    );
-
-    if (existing.rows.length === 0) {
-      // Insert new preferences
-      await db.query(
-        `INSERT INTO notification_preferences (
-          user_did, feed_new_post, feed_new_comment, feed_new_like,
-          feed_new_subscriber, comment_reply, mention
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          userDid,
-          preferences.feed_new_post ?? true,
-          preferences.feed_new_comment ?? true,
-          preferences.feed_new_like ?? false,
-          preferences.feed_new_subscriber ?? true,
-          preferences.comment_reply ?? true,
-          preferences.mention ?? true
-        ]
-      );
-    } else {
-      // Update existing preferences
-      const updates: string[] = [];
-      const values: any[] = [];
-      let paramIndex = 1;
-
-      if (preferences.feed_new_post !== undefined) {
-        updates.push(`feed_new_post = $${paramIndex++}`);
-        values.push(preferences.feed_new_post);
-      }
-      if (preferences.feed_new_comment !== undefined) {
-        updates.push(`feed_new_comment = $${paramIndex++}`);
-        values.push(preferences.feed_new_comment);
-      }
-      if (preferences.feed_new_like !== undefined) {
-        updates.push(`feed_new_like = $${paramIndex++}`);
-        values.push(preferences.feed_new_like);
-      }
-      if (preferences.feed_new_subscriber !== undefined) {
-        updates.push(`feed_new_subscriber = $${paramIndex++}`);
-        values.push(preferences.feed_new_subscriber);
-      }
-      if (preferences.comment_reply !== undefined) {
-        updates.push(`comment_reply = $${paramIndex++}`);
-        values.push(preferences.comment_reply);
-      }
-      if (preferences.mention !== undefined) {
-        updates.push(`mention = $${paramIndex++}`);
-        values.push(preferences.mention);
-      }
-
-      if (updates.length > 0) {
-        values.push(userDid);
-        await db.query(
-          `UPDATE notification_preferences 
-           SET ${updates.join(', ')} 
-           WHERE user_did = $${paramIndex}`,
-          values
-        );
-      }
+    if (!notificationsFile) {
+      notificationsFile = {
+        identifier: userDid,
+        updatedAt: now,
+        notifications: [],
+        preferences: this.getDefaultPreferences(userDid)
+      };
     }
 
-    return this.getPreferences(userDid);
+    if (!notificationsFile.preferences) {
+      notificationsFile.preferences = this.getDefaultPreferences(userDid);
+    }
+
+    // Update preferences
+    notificationsFile.preferences = {
+      ...notificationsFile.preferences,
+      ...preferences
+    };
+    notificationsFile.updatedAt = now;
+
+    await this.updateNotificationsFile(accessToken, metadataFolderId, userDid, notificationsFile);
+    return notificationsFile.preferences;
+  }
+
+  /**
+   * Get default notification preferences
+   */
+  private static getDefaultPreferences(userDid: string): NotificationPreferences {
+    return {
+      user_did: userDid,
+      feed_new_post: true,
+      feed_new_comment: true,
+      feed_new_like: false,
+      feed_new_subscriber: true,
+      comment_reply: true,
+      mention: true,
+      connection_request: true,
+      connection_accepted: true,
+      repost: true
+    };
   }
 
   /**
    * Notify subscribers when a new post is added to a feed
    */
-  static async notifyFeedNewPost(feedId: string, fileId: string, feedName: string, creatorDid: string): Promise<void> {
-    const db = getDatabasePool();
-
-    // Get all subscribers for this feed
-    const subscribers = await db.query(
-      `SELECT user_did FROM feed_subscriptions WHERE feed_id = $1`,
-      [feedId]
-    );
-
-    // Get preferences for each subscriber and create notifications
-    for (const sub of subscribers.rows) {
-      const prefs = await this.getPreferences(sub.user_did);
-      
-      if (prefs.feed_new_post) {
-        await this.createNotification({
-          user_did: sub.user_did,
-          type: 'feed_new_post',
-          title: `New post in ${feedName}`,
-          message: `A new post has been added to ${feedName}`,
-          data: {
-            feed_id: feedId,
-            file_id: fileId,
-            creator_did: creatorDid
-          }
-        });
+  static async notifyFeedNewPost(
+    feedId: string,
+    fileId: string,
+    feedName: string,
+    creatorDid: string,
+    subscriberAccessTokens: Array<{ accessToken: string; metadataFolderId: string; userDid: string }>
+  ): Promise<void> {
+    for (const subscriber of subscriberAccessTokens) {
+      try {
+        const prefs = await this.getPreferences(subscriber.accessToken, subscriber.metadataFolderId, subscriber.userDid);
+        
+        if (prefs.feed_new_post) {
+          await this.createNotification(
+            subscriber.accessToken,
+            subscriber.metadataFolderId,
+            subscriber.userDid,
+            {
+              user_did: subscriber.userDid,
+              type: 'feed_new_post',
+              title: `New post in ${feedName}`,
+              message: `A new post has been added to ${feedName}`,
+              data: {
+                feed_id: feedId,
+                file_id: fileId,
+                creator_did: creatorDid
+              }
+            }
+          );
+        }
+      } catch (error) {
+        console.warn('Failed to send feed post notification:', error);
+        // Continue with other subscribers
       }
     }
   }
@@ -321,88 +475,233 @@ export class NotificationService {
   /**
    * Notify file owner when someone comments on their file
    */
-  static async notifyFileComment(fileId: string, commentId: string, commenterDid: string, fileOwnerDid: string): Promise<void> {
+  static async notifyFileComment(
+    accessToken: string,
+    metadataFolderId: string,
+    fileId: string,
+    commentId: string,
+    commenterDid: string,
+    fileOwnerDid: string
+  ): Promise<void> {
     // Don't notify if commenter is the owner
     if (commenterDid === fileOwnerDid) {
       return;
     }
 
-    const prefs = await this.getPreferences(fileOwnerDid);
+    const prefs = await this.getPreferences(accessToken, metadataFolderId, fileOwnerDid);
     
     if (prefs.feed_new_comment) {
-      await this.createNotification({
-        user_did: fileOwnerDid,
-        type: 'feed_new_comment',
-        title: 'New comment on your post',
-        message: `Someone commented on your post`,
-        data: {
-          file_id: fileId,
-          comment_id: commentId,
-          user_did: commenterDid
+      await this.createNotification(
+        accessToken,
+        metadataFolderId,
+        fileOwnerDid,
+        {
+          user_did: fileOwnerDid,
+          type: 'feed_new_comment',
+          title: 'New comment on your post',
+          message: `Someone commented on your post`,
+          data: {
+            file_id: fileId,
+            comment_id: commentId,
+            user_did: commenterDid
+          }
         }
-      });
+      );
     }
   }
 
   /**
    * Notify file owner when someone likes their file
    */
-  static async notifyFileLike(fileId: string, likerDid: string, fileOwnerDid: string): Promise<void> {
+  static async notifyFileLike(
+    accessToken: string,
+    metadataFolderId: string,
+    fileId: string,
+    likerDid: string,
+    fileOwnerDid: string
+  ): Promise<void> {
     // Don't notify if liker is the owner
     if (likerDid === fileOwnerDid) {
       return;
     }
 
-    const prefs = await this.getPreferences(fileOwnerDid);
+    const prefs = await this.getPreferences(accessToken, metadataFolderId, fileOwnerDid);
     
     if (prefs.feed_new_like) {
-      await this.createNotification({
-        user_did: fileOwnerDid,
-        type: 'feed_new_like',
-        title: 'New like on your post',
-        message: `Someone liked your post`,
-        data: {
-          file_id: fileId,
-          user_did: likerDid
+      await this.createNotification(
+        accessToken,
+        metadataFolderId,
+        fileOwnerDid,
+        {
+          user_did: fileOwnerDid,
+          type: 'feed_new_like',
+          title: 'New like on your post',
+          message: `Someone liked your post`,
+          data: {
+            file_id: fileId,
+            user_did: likerDid
+          }
         }
-      });
+      );
     }
   }
 
   /**
    * Notify feed creator when someone subscribes
    */
-  static async notifyFeedSubscription(feedId: string, subscriberDid: string, creatorDid: string, feedName: string): Promise<void> {
-    const prefs = await this.getPreferences(creatorDid);
+  static async notifyFeedSubscription(
+    accessToken: string,
+    metadataFolderId: string,
+    feedId: string,
+    subscriberDid: string,
+    creatorDid: string,
+    feedName: string
+  ): Promise<void> {
+    const prefs = await this.getPreferences(accessToken, metadataFolderId, creatorDid);
     
     if (prefs.feed_new_subscriber) {
-      await this.createNotification({
-        user_did: creatorDid,
-        type: 'feed_new_subscriber',
-        title: 'New subscriber',
-        message: `Someone subscribed to ${feedName}`,
-        data: {
-          feed_id: feedId,
-          user_did: subscriberDid
+      await this.createNotification(
+        accessToken,
+        metadataFolderId,
+        creatorDid,
+        {
+          user_did: creatorDid,
+          type: 'feed_new_subscriber',
+          title: 'New subscriber',
+          message: `Someone subscribed to ${feedName}`,
+          data: {
+            feed_id: feedId,
+            user_did: subscriberDid
+          }
         }
-      });
+      );
     }
   }
 
   /**
-   * Map database row to Notification object
+   * Notify user when they receive a connection request
    */
-  private static mapRowToNotification(row: any): Notification {
-    return {
-      notification_id: row.notification_id,
-      user_did: row.user_did,
-      type: row.type,
-      title: row.title,
-      message: row.message,
-      data: row.data ? (typeof row.data === 'string' ? JSON.parse(row.data) : row.data) : {},
-      read: row.read,
-      created_at: row.created_at
-    };
+  static async notifyConnectionRequest(
+    accessToken: string,
+    metadataFolderId: string,
+    connectionId: string,
+    requesterDid: string,
+    recipientDid: string
+  ): Promise<void> {
+    const prefs = await this.getPreferences(accessToken, metadataFolderId, recipientDid);
+    
+    if (prefs.connection_request) {
+      await this.createNotification(
+        accessToken,
+        metadataFolderId,
+        recipientDid,
+        {
+          user_did: recipientDid,
+          type: 'connection_request',
+          title: 'New connection request',
+          message: 'Someone wants to connect with you',
+          data: {
+            connection_id: connectionId,
+            user_did: requesterDid
+          }
+        }
+      );
+    }
+  }
+
+  /**
+   * Notify user when their connection request is accepted
+   */
+  static async notifyConnectionAccepted(
+    accessToken: string,
+    metadataFolderId: string,
+    connectionId: string,
+    acceptorDid: string,
+    requesterDid: string
+  ): Promise<void> {
+    const prefs = await this.getPreferences(accessToken, metadataFolderId, requesterDid);
+    
+    if (prefs.connection_accepted) {
+      await this.createNotification(
+        accessToken,
+        metadataFolderId,
+        requesterDid,
+        {
+          user_did: requesterDid,
+          type: 'connection_accepted',
+          title: 'Connection accepted',
+          message: 'Your connection request was accepted',
+          data: {
+            connection_id: connectionId,
+            user_did: acceptorDid
+          }
+        }
+      );
+    }
+  }
+
+  /**
+   * Notify user when someone reposts their content
+   */
+  static async notifyRepost(
+    accessToken: string,
+    metadataFolderId: string,
+    fileId: string,
+    reposterDid: string,
+    originalOwnerDid: string
+  ): Promise<void> {
+    // Don't notify if reposter is the owner
+    if (reposterDid === originalOwnerDid) {
+      return;
+    }
+
+    const prefs = await this.getPreferences(accessToken, metadataFolderId, originalOwnerDid);
+    
+    if (prefs.repost) {
+      await this.createNotification(
+        accessToken,
+        metadataFolderId,
+        originalOwnerDid,
+        {
+          user_did: originalOwnerDid,
+          type: 'repost',
+          title: 'Your post was reposted',
+          message: 'Someone reposted your content',
+          data: {
+            file_id: fileId,
+            user_did: reposterDid
+          }
+        }
+      );
+    }
+  }
+
+  /**
+   * Notify user when they receive a new message
+   */
+  static async notifyNewMessage(
+    accessToken: string,
+    metadataFolderId: string,
+    messageId: string,
+    fromDid: string,
+    toDid: string,
+    threadId?: string
+  ): Promise<void> {
+    await this.createNotification(
+      accessToken,
+      metadataFolderId,
+      toDid,
+      {
+        user_did: toDid,
+        type: 'new_message',
+        title: 'New message',
+        message: 'You have a new message',
+        data: {
+          message_id: messageId,
+          from_did: fromDid,
+          thread_id: threadId
+        }
+      }
+    );
   }
 }
-
