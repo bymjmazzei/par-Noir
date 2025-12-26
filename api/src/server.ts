@@ -8550,7 +8550,7 @@ class ProductionServer {
 
               // Get or create other user's metadata folder
               try {
-                const otherMetadataFolderId = await getOrCreateMetadataFolder(otherAccessToken, otherUserDid);
+                const otherMetadataFolderId = await getOrCreateMetadataFolder(otherAccessToken, otherUserCredentials.identityId);
                 
                 await ConnectionsService.updateOtherUserConnectionStatus(
                   otherAccessToken,
