@@ -8524,21 +8524,29 @@ class ProductionServer {
         await ConnectionsService.acceptConnectionRequest(
           userAccessToken,
           metadataFolderId,
-          userDid,
+          userCredentials.identityId, // Use identityId from credentials
           connectionId
         );
 
         // Update other user's file to accepted
         try {
-          const otherUserCredentials = await storageCredentialsService.getCredentials(otherUserDid);
+          // Normalize other user DID
+          const otherUserPnIdentifier = otherUserDid.startsWith('pn-') ? otherUserDid : `pn-${otherUserDid}`;
+          let otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
+          if (!otherUserCredentials?.credentials && otherUserDid !== otherUserPnIdentifier) {
+            otherUserCredentials = await storageCredentialsService.getCredentials(otherUserDid);
+          }
+          
           if (otherUserCredentials?.credentials) {
             const otherGoogleDriveAccounts = otherUserCredentials.credentials.googleDriveAccounts || 
               (otherUserCredentials.credentials.googleDrive ? [otherUserCredentials.credentials.googleDrive] : []);
             
             if (otherGoogleDriveAccounts.length > 0) {
               const otherAccount = otherGoogleDriveAccounts[0];
-              const otherAccountId = (otherAccount as any).accountId || (otherAccount as any).id;
-              const otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserDid, otherAccountId, [otherUserDid]);
+              // Try backendId first, then keyPrefix, then accountId/id for backward compatibility
+              const otherAccountId = (otherAccount as any).backendId || (otherAccount as any).keyPrefix || (otherAccount as any).accountId || (otherAccount as any).id || undefined;
+              // Use the identityId from credentials
+              const otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherAccountId, [otherUserCredentials.identityId]);
 
               // Get or create other user's metadata folder
               try {
@@ -8547,7 +8555,7 @@ class ProductionServer {
                 await ConnectionsService.updateOtherUserConnectionStatus(
                   otherAccessToken,
                   otherMetadataFolderId,
-                  otherUserDid,
+                  otherUserCredentials.identityId, // Use identityId from credentials
                   connectionId,
                   'accepted'
                 );
