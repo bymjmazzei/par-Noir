@@ -1,7 +1,7 @@
 /**
  * Connection Service
  * Manages user connections (two-way mutually accepted connections)
- * Uses decentralized coordination when available, falls back to API
+ * Uses Google Drive via API (no IPFS/decentralized coordination)
  */
 
 import { PNOAuthService } from './pnOAuthService';
