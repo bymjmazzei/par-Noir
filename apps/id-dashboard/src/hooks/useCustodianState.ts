@@ -25,20 +25,34 @@ export function useCustodianState() {
   const [biometricEnabled, setBiometricEnabled] = useState(false);
 
   // New state for sending invitations
+  const [showDeviceInfoModal, setShowDeviceInfoModal] = useState(false);
   const [showSendInvitationModal, setShowSendInvitationModal] = useState(false);
   const [selectedCustodianForInvitation, setSelectedCustodianForInvitation] = useState<any>(null);
 
   // Form states
   const [createForm, setCreateForm] = useState({
     pnName: '',
+    confirmPNName: '',
     passcode: '',
     confirmPasscode: '',
     nickname: '',
     email: '',
-    phone: ''
+    phone: '',
+    recoveryEmail: '',
+    confirmRecoveryEmail: '',
+    recoveryPhone: '',
+    confirmRecoveryPhone: '',
+    recoveryContactType: 'email' as 'email' | 'phone'
   });
 
+  // Create step state for multi-step form
+  const [createStep, setCreateStep] = useState(1);
+
   // Show/hide state for create form fields
+  const [showPNName, setShowPNName] = useState(false);
+  const [showPasscode, setShowPasscode] = useState(false);
+  const [showConfirmPNName, setShowConfirmPNName] = useState(false);
+  const [showConfirmPasscode, setShowConfirmPasscode] = useState(false);
   const [showCreatePasscode, setShowCreatePasscode] = useState(false);
   const [showCreateConfirmPasscode, setShowCreateConfirmPasscode] = useState(false);
   const [showCreateNickname, setShowCreateNickname] = useState(false);
@@ -116,7 +130,9 @@ export function useCustodianState() {
     biometricEnabled,
     setBiometricEnabled,
 
-    // Invitations
+    // Device info and invitations
+    showDeviceInfoModal,
+    setShowDeviceInfoModal,
     showSendInvitationModal,
     setShowSendInvitationModal,
     selectedCustodianForInvitation,
@@ -125,6 +141,16 @@ export function useCustodianState() {
     // Forms
     createForm,
     setCreateForm,
+    createStep,
+    setCreateStep,
+    showPNName,
+    setShowPNName,
+    showPasscode,
+    setShowPasscode,
+    showConfirmPNName,
+    setShowConfirmPNName,
+    showConfirmPasscode,
+    setShowConfirmPasscode,
     showCreatePasscode,
     setShowCreatePasscode,
     showCreateConfirmPasscode,
