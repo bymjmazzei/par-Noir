@@ -1,4 +1,5 @@
 // Self-contained cryptographic utilities
+import { getAssetUrl } from './assetPaths';
 
 export interface DIDKeyPair {
   publicKey: string;

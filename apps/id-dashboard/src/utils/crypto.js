@@ -1,4 +1,6 @@
 // Self-contained cryptographic utilities
+import { getAssetUrl } from './assetPaths';
+
 export class IdentityCrypto {
     /**
      * Generate a real DID with Ed25519 key pair
