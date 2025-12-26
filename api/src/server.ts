@@ -6556,17 +6556,9 @@ class ProductionServer {
           // pnName and passcode are NOT stored - they're secrets
         });
 
-        // Return authorization code immediately (non-blocking)
-        // Permission checks will be performed asynchronously
-        res.json({
-          code,
-          state: state || undefined,
-          existingPermissions: null, // Will be null initially, checks happen async
-          availableOptionalDataPoints: undefined // Will be undefined initially, checks happen async
-        });
-
         // Perform permission checks asynchronously (fire-and-forget)
         // These checks are optional and don't block authentication
+        // Start async operations before sending response
         if (pnIdentifier && client_id === 'browser-app') {
           // Check for existing permissions asynchronously
           (async () => {
@@ -6708,6 +6700,15 @@ class ProductionServer {
             }
           })().catch(err => console.error('[OAuth Auth] Age ZKP check failed (async):', err));
         }
+
+        // Return authorization code immediately (non-blocking)
+        // Permission checks are running asynchronously in the background
+        return res.json({
+          code,
+          state: state || undefined,
+          existingPermissions: null, // Will be null initially, checks happen async
+          availableOptionalDataPoints: undefined // Will be undefined initially, checks happen async
+        });
       } catch (error: any) {
         console.error('OAuth authentication error:', error);
         return res.status(500).json({
