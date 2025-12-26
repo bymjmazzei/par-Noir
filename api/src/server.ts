@@ -8473,25 +8473,20 @@ class ProductionServer {
               const otherAccountId = (otherAccount as any).accountId || (otherAccount as any).id;
               const otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserDid, otherAccountId, [otherUserDid]);
 
-              // Find other user's metadata folder
-              const otherFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
-              const otherFolderResponse = await fetch(otherFolderUrl, {
-                headers: { 'Authorization': `Bearer ${otherAccessToken}` }
-              });
-
-              if (otherFolderResponse.ok) {
-                const otherFolderData = await otherFolderResponse.json() as { files?: Array<{ id: string }> };
-                if (otherFolderData.files && otherFolderData.files.length > 0) {
-                  const otherMetadataFolderId = otherFolderData.files[0].id;
-                  
-                  await ConnectionsService.updateOtherUserConnectionStatus(
-                    otherAccessToken,
-                    otherMetadataFolderId,
-                    otherUserDid,
-                    connectionId,
-                    'accepted'
-                  );
-                }
+              // Get or create other user's metadata folder
+              try {
+                const otherMetadataFolderId = await getOrCreateMetadataFolder(otherAccessToken, otherUserDid);
+                
+                await ConnectionsService.updateOtherUserConnectionStatus(
+                  otherAccessToken,
+                  otherMetadataFolderId,
+                  otherUserDid,
+                  connectionId,
+                  'accepted'
+                );
+              } catch (otherUserFolderError: any) {
+                console.warn('Failed to get/create other user metadata folder:', otherUserFolderError?.message || otherUserFolderError);
+                // Continue even if we can't update other user's folder
               }
             }
           }
@@ -8651,23 +8646,15 @@ class ProductionServer {
         const accountId = (account as any).accountId || (account as any).id;
         const userAccessToken = await googleDriveProxyService.getAccessToken(userDid as string, accountId, [userDid as string]);
 
-        // Find metadata folder
-        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
-        const folderResponse = await fetch(folderUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        if (!folderResponse.ok) {
+        // Get or create metadata folder
+        let metadataFolderId: string;
+        try {
+          metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userDid as string);
+        } catch (error: any) {
+          console.error('Error getting/creating metadata folder:', error);
+          // Return empty arrays if folder creation fails
           return res.json({ sent: [], received: [] });
         }
-
-        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
-        if (!folderData.files || folderData.files.length === 0) {
-          return res.json({ sent: [], received: [] });
-        }
-
-        const metadataFolderId = folderData.files[0].id;
 
         const pending = await ConnectionsService.getPendingRequests(userAccessToken, metadataFolderId);
 
@@ -8711,23 +8698,15 @@ class ProductionServer {
         const accountId = (account as any).accountId || (account as any).id;
         const userAccessToken = await googleDriveProxyService.getAccessToken(userDid as string, accountId, [userDid as string]);
 
-        // Find metadata folder
-        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
-        const folderResponse = await fetch(folderUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        if (!folderResponse.ok) {
+        // Get or create metadata folder
+        let metadataFolderId: string;
+        try {
+          metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, userDid as string);
+        } catch (error: any) {
+          console.error('Error getting/creating metadata folder:', error);
+          // Return not_connected if folder creation fails
           return res.json({ status: 'not_connected' });
         }
-
-        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
-        if (!folderData.files || folderData.files.length === 0) {
-          return res.json({ status: 'not_connected' });
-        }
-
-        const metadataFolderId = folderData.files[0].id;
 
         const status = await ConnectionsService.getConnectionStatus(
           userAccessToken,
@@ -8780,23 +8759,14 @@ class ProductionServer {
         // Use normalized pn identifier for access token retrieval
         const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
 
-        // Find metadata folder
-        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
-        const folderResponse = await fetch(folderUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        if (!folderResponse.ok) {
-          return res.status(404).json({ error: 'Metadata folder not found' });
+        // Get or create metadata folder
+        let metadataFolderId: string;
+        try {
+          metadataFolderId = await getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
+        } catch (error: any) {
+          console.error('Error getting/creating metadata folder:', error);
+          return res.status(500).json({ error: 'Failed to get or create metadata folder', error_description: error.message });
         }
-
-        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
-        if (!folderData.files || folderData.files.length === 0) {
-          return res.status(404).json({ error: 'Metadata folder not found' });
-        }
-
-        const metadataFolderId = folderData.files[0].id;
 
         // Remove connection from user's file
         await ConnectionsService.removeConnection(
