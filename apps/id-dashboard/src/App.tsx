@@ -1193,25 +1193,41 @@ function App() {
   const handleCreateDID = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    console.log('handleCreateDID called', { createForm, createStep });
+    
     try {
       logDebug('Starting identity creation...');
       setLoading(true);
       setError(null);
+      
+      console.log('Validation starting...', {
+        pnName: createForm.pnName,
+        confirmPNName: createForm.confirmPNName,
+        passcode: createForm.passcode ? '***' : '',
+        confirmPasscode: createForm.confirmPasscode ? '***' : '',
+        recoveryContactType: createForm.recoveryContactType,
+        recoveryEmail: createForm.recoveryEmail,
+        confirmRecoveryEmail: createForm.confirmRecoveryEmail
+      });
 
       // Comprehensive input validation
       const pnNameValidation = InputValidator.validatePNName(createForm.pnName);
       if (!pnNameValidation.isValid) {
-        setError(`pN Name validation failed: ${pnNameValidation.errors.join(', ')}`);
-        analytics.trackError(new Error(`pN Name validation failed: ${pnNameValidation.errors.join(', ')}`), 'create-form', 'high');
+        const errorMsg = `pN Name validation failed: ${pnNameValidation.errors.join(', ')}`;
+        setError(errorMsg);
+        setLoading(false);
+        analytics.trackError(new Error(errorMsg), 'create-form', 'high');
+        setTimeout(() => setError(null), 9000);
         return;
       }
 
-
-
       const passcodeValidation = InputValidator.validatePasscode(createForm.passcode);
       if (!passcodeValidation.isValid) {
-        setError(`Passcode validation failed: ${passcodeValidation.errors.join(', ')}`);
-        analytics.trackError(new Error(`Passcode validation failed: ${passcodeValidation.errors.join(', ')}`), 'create-form', 'high');
+        const errorMsg = `Passcode validation failed: ${passcodeValidation.errors.join(', ')}`;
+        setError(errorMsg);
+        setLoading(false);
+        analytics.trackError(new Error(errorMsg), 'create-form', 'high');
+        setTimeout(() => setError(null), 9000);
         return;
       }
 
@@ -1219,7 +1235,10 @@ function App() {
       if (createForm.recoveryEmail) {
         const emailValidation = InputValidator.validateEmail(createForm.recoveryEmail);
         if (!emailValidation.isValid) {
-          setError(`Email validation failed: ${emailValidation.errors.join(', ')}`);
+          const errorMsg = `Email validation failed: ${emailValidation.errors.join(', ')}`;
+          setError(errorMsg);
+          setLoading(false);
+          setTimeout(() => setError(null), 9000);
           return;
         }
       }
@@ -1227,7 +1246,10 @@ function App() {
       if (createForm.recoveryPhone) {
         const phoneValidation = InputValidator.validatePhone(createForm.recoveryPhone);
         if (!phoneValidation.isValid) {
-          setError(`Phone validation failed: ${phoneValidation.errors.join(', ')}`);
+          const errorMsg = `Phone validation failed: ${phoneValidation.errors.join(', ')}`;
+          setError(errorMsg);
+          setLoading(false);
+          setTimeout(() => setError(null), 9000);
           return;
         }
       }
@@ -1241,6 +1263,8 @@ function App() {
 
       if (!security.checkRateLimit(rateLimitConfig)) {
         setError('Too many requests. Please wait a moment and try again.');
+        setLoading(false);
+        setTimeout(() => setError(null), 9000);
         return;
       }
 
@@ -5173,6 +5197,13 @@ This invitation expires in 24 hours.`;
                     </div>
                   </div>
                 </div>
+                
+                {/* Error Message Display */}
+                {error && (
+                  <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
+                    <p className="text-red-700 dark:text-red-300 text-sm">{error}</p>
+                  </div>
+                )}
                 
               {createStep === 1 ? (
                 <form key="step1" onSubmit={(e) => { e.preventDefault(); setCreateStep(2); }} className="space-y-6">
