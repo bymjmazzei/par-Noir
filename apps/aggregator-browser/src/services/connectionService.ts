@@ -8,7 +8,7 @@ import { PNOAuthService } from './pnOAuthService';
 import * as decentralizedCoordination from './decentralizedCoordination';
 
 const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-const USE_DECENTRALIZED = process.env.REACT_APP_USE_DECENTRALIZED !== 'false'; // Default true
+const USE_DECENTRALIZED = process.env.REACT_APP_USE_DECENTRALIZED === 'true'; // Default false - use Google Drive via API
 
 // Helper function to get auth headers
 function getAuthHeaders(): HeadersInit {
