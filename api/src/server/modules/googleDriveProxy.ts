@@ -158,7 +158,8 @@ export class GoogleDriveProxyService {
     console.log(`[GoogleDriveProxy] Token check for accountId: ${accountId || 'default'}, expiresAt: ${expiresAt}, now: ${now}, age: ${tokenAge}ms, shouldRefresh: ${shouldRefresh}`);
     
     // If we have a refresh token, always try to refresh to ensure we have a valid token
-    if (token.refresh_token && shouldRefresh) {
+    // Even if the stored token appears valid, refresh it to be safe (Google may have invalidated it)
+    if (token.refresh_token) {
       try {
         console.log(`[GoogleDriveProxy] Refreshing access token for accountId: ${accountId || 'default'}`);
         const refreshedToken = await this.refreshAccessToken(token.refresh_token);
