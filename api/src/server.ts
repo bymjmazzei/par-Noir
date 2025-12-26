@@ -8247,8 +8247,12 @@ class ProductionServer {
 
         if (!createPnFolderResponse.ok) {
           const errorText = await createPnFolderResponse.text().catch(() => 'Unknown error');
-          console.error(`Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText}`, errorText);
-          throw new Error(`Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText} - ${errorText.substring(0, 200)}`);
+          const errorJson = await createPnFolderResponse.json().catch(() => null);
+          console.error(`Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText}`);
+          console.error(`Full error response:`, errorText);
+          console.error(`Parsed error JSON:`, errorJson);
+          console.error(`Token used (first 50 chars):`, accessToken.substring(0, 50));
+          throw new Error(`Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText} - ${errorText.substring(0, 500)}`);
         }
 
         const createdPnFolder = await createPnFolderResponse.json() as { id: string };
