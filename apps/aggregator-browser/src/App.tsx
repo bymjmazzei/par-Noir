@@ -2347,6 +2347,7 @@ function App() {
               const normalizedConnectionId = connection.userDid.startsWith('pn-') 
                 ? connection.userDid 
                 : `pn-${connection.userDid}`;
+              console.log(`[App] Fetching top post for connection: ${normalizedConnectionId}`);
               const response = await fetch(
                 `${apiEndpoint}/api/aggregator/metadata-index?authorDid=${encodeURIComponent(normalizedConnectionId)}`,
                 {
@@ -2357,6 +2358,7 @@ function App() {
               
               if (response.ok) {
                 const data = await response.json();
+                console.log(`[App] Received ${data.files?.length || 0} files for connection ${normalizedConnectionId}`);
                 if (data.files && Array.isArray(data.files)) {
                   // Find the top post for this connection
                   const topPost = data.files.find((entry: any) => {
@@ -2365,6 +2367,7 @@ function App() {
                   });
                   
                   if (topPost) {
+                    console.log(`[App] Found top post for connection ${normalizedConnectionId}:`, topPost.fileId);
                     const metadata = topPost.metadata || {};
                     connectionTopPosts.push({
                       metadata: {
@@ -2380,11 +2383,33 @@ function App() {
                         isTopPost: true
                       }
                     } as IndexedFile);
+                  } else {
+                    console.log(`[App] No top post found for connection ${normalizedConnectionId}, using first file as fallback`);
+                    // Fallback: use first file if no top post
+                    const firstFile = data.files[0];
+                    if (firstFile) {
+                      const metadata = firstFile.metadata || {};
+                      connectionTopPosts.push({
+                        metadata: {
+                          ...metadata,
+                          fileId: firstFile.fileId || metadata.fileId,
+                          creatorId: firstFile.pnIdentifier || metadata.creatorId || connection.userDid,
+                          creator: metadata.creator || {
+                            identifier: { value: firstFile.pnIdentifier || connection.userDid }
+                          },
+                          author: metadata.author || {
+                            did: firstFile.pnIdentifier || connection.userDid
+                          }
+                        }
+                      } as IndexedFile);
+                    }
                   }
                 }
+              } else {
+                console.warn(`[App] API returned ${response.status} for connection ${normalizedConnectionId}`);
               }
             } catch (err) {
-              console.warn(`Failed to load top post for connection ${connection.userDid}:`, err);
+              console.warn(`[App] Failed to load top post for connection ${connection.userDid}:`, err);
             }
           }
           
@@ -2409,6 +2434,11 @@ function App() {
             ]).values()
           );
           
+          console.log(`[App] Setting connectionsFiles: ${combinedTopPosts.length} posts from ${connections.length} connections`);
+          console.log(`[App] Connection top posts:`, connectionTopPosts.map(f => ({
+            fileId: f.metadata.fileId,
+            creatorId: f.metadata.creatorId
+          })));
           setConnectionsFiles(combinedTopPosts);
           if (process.env.NODE_ENV === 'development') {
             console.log(`[Me Page] Connections: ${combinedTopPosts.length} posts from ${connections.length} connections`);
@@ -2868,9 +2898,14 @@ function App() {
         case 'saved':
           filtered = savedFiles;
           break;
-        case 'connections':
-          filtered = connectionsFiles;
-          break;
+          case 'connections':
+            console.log(`[App] Connections tab selected, showing ${connectionsFiles.length} files`);
+            console.log(`[App] Connections files:`, connectionsFiles.map(f => ({
+              fileId: f.metadata.fileId,
+              creatorId: f.metadata.creatorId
+            })));
+            filtered = connectionsFiles;
+            break;
       }
       
       // Pin top post at the top for 'all', 'media', and 'thoughts' tabs
