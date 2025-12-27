@@ -8936,8 +8936,18 @@ class ProductionServer {
         // Get connection to find other user
         const connectionsFile = await ConnectionsService.getConnectionsFile(userAccessToken, metadataFolderId);
         if (!connectionsFile) {
+          console.error(`[AcceptConnection] Connections file not found for user: ${pnIdentifier}`);
           return res.status(404).json({ error: 'Connection request not found' });
         }
+
+        console.log(`[AcceptConnection] Looking for connection ${connectionId} in user's connections file`);
+        console.log(`[AcceptConnection] User has ${connectionsFile.connections.length} connections:`, 
+          connectionsFile.connections.map(c => ({
+            connectionId: c.connectionId,
+            userDid: c.userDid,
+            status: c.status
+          }))
+        );
 
         const connection = connectionsFile.connections.find(c => c.connectionId === connectionId);
         if (!connection) {

@@ -237,19 +237,45 @@ export class ConnectionsService {
       };
     }
 
-    // Remove existing connection if any
-    recipientFile.connections = recipientFile.connections.filter(c => c.userDid !== requesterDid);
+    // Remove existing connection if any (check both normalized and original DID formats)
+    recipientFile.connections = recipientFile.connections.filter(c => {
+      const normalizedC = c.userDid.startsWith('pn-') ? c.userDid : `pn-${c.userDid}`;
+      const normalizedRequester = requesterDid.startsWith('pn-') ? requesterDid : `pn-${requesterDid}`;
+      return normalizedC !== normalizedRequester && c.userDid !== requesterDid;
+    });
     
     // Add new connection request
-    recipientFile.connections.push({
+    const recipientConnection: Connection = {
       connectionId,
       userDid: requesterDid,
       status: 'pending_received',
       createdAt: now
-    });
+    };
+    recipientFile.connections.push(recipientConnection);
     recipientFile.updatedAt = now;
 
+    console.log(`[ConnectionsService] Updating recipient's connections file:`, {
+      recipientDid,
+      connectionId,
+      requesterDid,
+      status: recipientConnection.status,
+      totalConnections: recipientFile.connections.length
+    });
+
     await this.updateConnectionsFile(recipientAccessToken, recipientMetadataFolder, recipientDid, recipientFile);
+
+    // Verify the update was successful
+    const verifyFile = await this.getConnectionsFile(recipientAccessToken, recipientMetadataFolder);
+    if (verifyFile) {
+      const verifyConnection = verifyFile.connections.find(c => c.connectionId === connectionId);
+      if (!verifyConnection) {
+        console.error(`[ConnectionsService] WARNING: Connection ${connectionId} not found in recipient's file after update!`);
+      } else if (verifyConnection.status !== 'pending_received') {
+        console.error(`[ConnectionsService] WARNING: Connection ${connectionId} has wrong status: ${verifyConnection.status}, expected pending_received`);
+      } else {
+        console.log(`[ConnectionsService] Verified: Connection ${connectionId} correctly saved with status pending_received`);
+      }
+    }
 
     return {
       connectionId,
