@@ -169,18 +169,27 @@ export async function rejectConnectionRequest(
 export async function getConnections(userDid: string): Promise<Connection[]> {
   // Use Google Drive API directly
   try {
+    console.log(`[getConnections] Fetching connections for userDid: ${userDid}`);
     const response = await fetch(`${API_ENDPOINT}/api/connections?userDid=${userDid}`, {
       headers: getAuthHeaders()
     });
 
     if (!response.ok) {
-      throw new Error('Failed to load connections');
+      const errorText = await response.text().catch(() => 'Unknown error');
+      console.error(`[getConnections] API returned ${response.status}:`, errorText);
+      throw new Error(`Failed to load connections: ${response.status}`);
     }
 
     const result = await response.json();
-    return result.connections || [];
+    const connections = result.connections || [];
+    console.log(`[getConnections] Received ${connections.length} connections:`, connections.map(c => ({
+      connectionId: c.connectionId,
+      userDid: c.userDid,
+      status: c.status
+    })));
+    return connections;
   } catch (error) {
-    console.error('Failed to get connections:', error);
+    console.error('[getConnections] Failed to get connections:', error);
     return [];
   }
 }

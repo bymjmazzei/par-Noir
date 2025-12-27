@@ -2324,7 +2324,9 @@ function App() {
       (async () => {
         try {
           const { getConnections } = await import('./services/connectionService');
+          console.log(`[App] Loading connections for: ${userState.pnIdentifier}`);
           const connections = await getConnections(userState.pnIdentifier);
+          console.log(`[App] Loaded ${connections.length} connections`);
           
           // Get connection IDs (normalize to handle both formats)
           const normalizeIdentifier = (id: string | undefined | null): string => {
