@@ -9206,16 +9206,27 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(userDid as string);
+        // CRITICAL: Normalize userDid to pn identifier format
+        const pnIdentifier = (userDid as string).startsWith('pn-') ? (userDid as string) : `pn-${userDid}`;
+        console.log(`[GetConnections] User DID: ${userDid}, Normalized: ${pnIdentifier}`);
+
+        // Get user's credentials using normalized pn identifier
+        let userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials && userDid !== pnIdentifier) {
+          // Try original format if normalized didn't work
+          userCredentials = await storageCredentialsService.getCredentials(userDid as string);
+        }
         if (!userCredentials?.credentials) {
+          console.log(`[GetConnections] No credentials found for user. Tried: ${pnIdentifier}, ${userDid}`);
           return res.json({ connections: [] });
         }
+        console.log(`[GetConnections] Found credentials under: ${userCredentials.identityId}`);
 
         const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
+          console.log(`[GetConnections] User has no Google Drive connected`);
           return res.json({ connections: [] });
         }
 
@@ -9223,17 +9234,18 @@ class ProductionServer {
         const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
 
-        // Get or create metadata folder
+        // Get or create metadata folder - use identityId from credentials
         let metadataFolderId: string;
         try {
-          metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userDid as string);
+          metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
         } catch (error: any) {
-          console.error('Error getting/creating metadata folder:', error);
+          console.error('[GetConnections] Error getting/creating metadata folder:', error);
           // Return empty connections array if folder creation fails
           return res.json({ connections: [] });
         }
 
         const connections = await ConnectionsService.getConnections(userAccessToken, metadataFolderId);
+        console.log(`[GetConnections] Found ${connections.length} accepted connections for user ${pnIdentifier}`);
 
         return res.json({ connections });
       } catch (error: any) {

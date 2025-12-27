@@ -422,10 +422,19 @@ export class ConnectionsService {
   ): Promise<Connection[]> {
     const connectionsFile = await this.getConnectionsFile(accessToken, metadataFolderId);
     if (!connectionsFile) {
+      console.log(`[ConnectionsService.getConnections] Connections file not found`);
       return [];
     }
 
-    return connectionsFile.connections.filter(c => c.status === 'accepted');
+    const allConnections = connectionsFile.connections || [];
+    const acceptedConnections = allConnections.filter(c => c.status === 'accepted');
+    
+    console.log(`[ConnectionsService.getConnections] Total connections: ${allConnections.length}, Accepted: ${acceptedConnections.length}`);
+    console.log(`[ConnectionsService.getConnections] Connection statuses:`, 
+      allConnections.map(c => ({ connectionId: c.connectionId, userDid: c.userDid, status: c.status }))
+    );
+
+    return acceptedConnections;
   }
 
   /**
