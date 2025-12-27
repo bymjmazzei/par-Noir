@@ -358,23 +358,77 @@ export class ConnectionsService {
 
   /**
    * Update connection status in other user's file (requires both access tokens)
+   * Also creates the connection if it doesn't exist (for mutual request scenarios)
    */
   static async updateOtherUserConnectionStatus(
     otherUserAccessToken: string,
     otherUserMetadataFolder: string,
     otherUserDid: string,
     connectionId: string,
-    newStatus: 'accepted' | 'blocked'
+    newStatus: 'accepted' | 'blocked',
+    acceptorDid?: string // The DID of the user who accepted (to create connection if missing)
   ): Promise<void> {
     const otherUserFile = await this.getConnectionsFile(otherUserAccessToken, otherUserMetadataFolder);
     if (!otherUserFile) {
-      return; // File doesn't exist yet, connection will be created when they accept
+      console.log(`[updateOtherUserConnectionStatus] Connections file not found for ${otherUserDid}, creating new file`);
+      // Create new file with the connection
+      if (newStatus === 'accepted' && acceptorDid) {
+        const now = new Date().toISOString();
+        const newFile: ConnectionsFile = {
+          identifier: otherUserDid,
+          updatedAt: now,
+          connections: [{
+            connectionId,
+            userDid: acceptorDid,
+            status: 'accepted',
+            createdAt: now,
+            acceptedAt: now
+          }],
+          blocked: []
+        };
+        await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserDid, newFile);
+        console.log(`[updateOtherUserConnectionStatus] Created new connections file for ${otherUserDid} with accepted connection to ${acceptorDid}`);
+        return;
+      }
+      return; // Can't create connection without acceptorDid
     }
 
     const connection = otherUserFile.connections.find(c => c.connectionId === connectionId);
     if (!connection) {
+      console.log(`[updateOtherUserConnectionStatus] Connection ${connectionId} not found in ${otherUserDid}'s file`);
+      console.log(`[updateOtherUserConnectionStatus] Available connections:`, otherUserFile.connections.map(c => ({
+        connectionId: c.connectionId,
+        userDid: c.userDid,
+        status: c.status
+      })));
+      
+      // If accepting and we have acceptorDid, create the connection
+      if (newStatus === 'accepted' && acceptorDid) {
+        console.log(`[updateOtherUserConnectionStatus] Creating missing connection in ${otherUserDid}'s file`);
+        const now = new Date().toISOString();
+        otherUserFile.connections.push({
+          connectionId,
+          userDid: acceptorDid,
+          status: 'accepted',
+          createdAt: now,
+          acceptedAt: now
+        });
+        otherUserFile.updatedAt = now;
+        await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserDid, otherUserFile);
+        console.log(`[updateOtherUserConnectionStatus] Successfully created connection in ${otherUserDid}'s file`);
+        return;
+      }
+      
+      console.warn(`[updateOtherUserConnectionStatus] Connection not found and cannot create (missing acceptorDid or wrong status)`);
       return; // Connection not found in their file
     }
+
+    console.log(`[updateOtherUserConnectionStatus] Found connection in ${otherUserDid}'s file:`, {
+      connectionId: connection.connectionId,
+      userDid: connection.userDid,
+      currentStatus: connection.status,
+      newStatus
+    });
 
     const now = new Date().toISOString();
 
@@ -391,6 +445,7 @@ export class ConnectionsService {
 
     otherUserFile.updatedAt = now;
     await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserDid, otherUserFile);
+    console.log(`[updateOtherUserConnectionStatus] Successfully updated connection status to ${newStatus} in ${otherUserDid}'s file`);
   }
 
   /**

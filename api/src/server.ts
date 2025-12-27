@@ -9055,8 +9055,21 @@ class ProductionServer {
                   otherMetadataFolderId,
                   otherUserCredentials.identityId, // Use identityId from credentials
                   connectionId,
-                  'accepted'
+                  'accepted',
+                  userCredentials.identityId // Pass acceptor's DID to create connection if missing
                 );
+                
+                // Verify the update was successful
+                const verifyOtherFile = await ConnectionsService.getConnectionsFile(otherAccessToken, otherMetadataFolderId);
+                if (verifyOtherFile) {
+                  const verifyOtherConnection = verifyOtherFile.connections.find(c => c.connectionId === connectionId);
+                  if (verifyOtherConnection && verifyOtherConnection.status === 'accepted') {
+                    console.log(`[AcceptConnection] Verified: Connection ${connectionId} is now accepted in other user's file`);
+                  } else {
+                    console.error(`[AcceptConnection] WARNING: Connection ${connectionId} not found or not accepted in other user's file after update`);
+                    console.error(`[AcceptConnection] Other user's connection status:`, verifyOtherConnection?.status || 'not found');
+                  }
+                }
               } catch (otherUserFolderError: any) {
                 console.warn('Failed to get/create other user metadata folder:', otherUserFolderError?.message || otherUserFolderError);
                 // Continue even if we can't update other user's folder
