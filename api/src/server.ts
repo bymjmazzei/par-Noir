@@ -9014,6 +9014,18 @@ class ProductionServer {
           connectionId
         );
 
+        // Verify the connection was accepted in acceptor's file
+        const verifyFile = await ConnectionsService.getConnectionsFile(userAccessToken, metadataFolderId);
+        if (verifyFile) {
+          const verifyConnection = verifyFile.connections.find(c => c.connectionId === connectionId);
+          if (verifyConnection && verifyConnection.status === 'accepted') {
+            console.log(`[AcceptConnection] Verified: Connection ${connectionId} is now accepted in acceptor's file`);
+          } else {
+            console.error(`[AcceptConnection] WARNING: Connection ${connectionId} not found or not accepted in acceptor's file after accept`);
+            console.error(`[AcceptConnection] Connection status:`, verifyConnection?.status || 'not found');
+          }
+        }
+
         // Update other user's file to accepted
         try {
           // Normalize other user DID
