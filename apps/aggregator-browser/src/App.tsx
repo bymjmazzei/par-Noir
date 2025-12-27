@@ -1958,6 +1958,7 @@ function App() {
   const [userLikedFiles, setUserLikedFiles] = useState<IndexedFile[]>([]);
   const [userCommentedFiles, setUserCommentedFiles] = useState<IndexedFile[]>([]);
   const [connectionsFiles, setConnectionsFiles] = useState<IndexedFile[]>([]);
+  const [connectionsList, setConnectionsList] = useState<Array<{ connectionId: string; userDid: string; status: string; createdAt: string; acceptedAt?: string }>>([]);
   const [isLoadingUserEngagement, setIsLoadingUserEngagement] = useState(false);
   
   // Load other user's liked and commented files when viewing their profile
@@ -2318,7 +2319,7 @@ function App() {
     }
   }, [viewingCreatorId, userState.pnIdentifier, indexedFilesKey]);
 
-  // Load connections files when viewing own index
+  // Load connections list when viewing own index
   useEffect(() => {
     if (viewingCreatorId === userState.pnIdentifier && userState.pnIdentifier) {
       (async () => {
@@ -2328,202 +2329,17 @@ function App() {
           const connections = await getConnections(userState.pnIdentifier);
           console.log(`[App] Loaded ${connections.length} connections`);
           
-          // Get connection IDs (normalize to handle both formats)
-          const normalizeIdentifier = (id: string | undefined | null): string => {
-            if (!id) return '';
-            const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
-            return cleaned.trim().toLowerCase();
-          };
-          
-          const connectionIds = connections.map(c => normalizeIdentifier(c.userDid));
-          
-          // Load top post for each connection from API
-          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-          const connectionTopPosts: IndexedFile[] = [];
-          
-          // Query API for each connection's top post
-          for (const connection of connections) {
-            try {
-              const normalizedConnectionId = connection.userDid.startsWith('pn-') 
-                ? connection.userDid 
-                : `pn-${connection.userDid}`;
-              console.log(`[App] Fetching top post for connection: ${normalizedConnectionId}`);
-              const response = await fetch(
-                `${apiEndpoint}/api/aggregator/metadata-index?authorDid=${encodeURIComponent(normalizedConnectionId)}`,
-                {
-                  method: 'GET',
-                  headers: { 'Content-Type': 'application/json' }
-                }
-              );
-              
-              if (response.ok) {
-                const data = await response.json();
-                console.log(`[App] Received ${data.files?.length || 0} files for connection ${normalizedConnectionId}`);
-                if (data.files && Array.isArray(data.files)) {
-                  // Find the top post for this connection
-                  const topPost = data.files.find((entry: any) => {
-                    const metadata = entry.metadata || {};
-                    return metadata.isTopPost === true;
-                  });
-                  
-                  if (topPost) {
-                    console.log(`[App] Found top post for connection ${normalizedConnectionId}:`, topPost.fileId);
-                    const metadata = topPost.metadata || {};
-                    connectionTopPosts.push({
-                      metadata: {
-                        ...metadata,
-                        fileId: topPost.fileId || metadata.fileId,
-                        creatorId: topPost.pnIdentifier || metadata.creatorId || connection.userDid,
-                        creator: metadata.creator || {
-                          identifier: { value: topPost.pnIdentifier || connection.userDid }
-                        },
-                        author: metadata.author || {
-                          did: topPost.pnIdentifier || connection.userDid
-                        },
-                        isTopPost: true
-                      }
-                    } as IndexedFile);
-                  } else {
-                    console.log(`[App] No top post found for connection ${normalizedConnectionId}, using first file as fallback`);
-                    // Fallback: use first file if no top post
-                    const firstFile = data.files[0];
-                    if (firstFile) {
-                      const metadata = firstFile.metadata || {};
-                      connectionTopPosts.push({
-                        metadata: {
-                          ...metadata,
-                          fileId: firstFile.fileId || metadata.fileId,
-                          creatorId: firstFile.pnIdentifier || metadata.creatorId || connection.userDid,
-                          creator: metadata.creator || {
-                            identifier: { value: firstFile.pnIdentifier || connection.userDid }
-                          },
-                          author: metadata.author || {
-                            did: firstFile.pnIdentifier || connection.userDid
-                          }
-                        }
-                      } as IndexedFile);
-                    } else {
-                      // Connection has no files - create a placeholder entry
-                      console.log(`[App] Connection ${normalizedConnectionId} has no files, creating placeholder`);
-                      connectionTopPosts.push({
-                        metadata: {
-                          fileId: `connection-placeholder-${connection.connectionId}`,
-                          creatorId: connection.userDid,
-                          name: 'No posts yet',
-                          title: 'No posts yet',
-                          creator: {
-                            identifier: { value: connection.userDid }
-                          },
-                          author: {
-                            did: connection.userDid
-                          },
-                          isConnectionPlaceholder: true,
-                          connectionId: connection.connectionId
-                        }
-                      } as IndexedFile);
-                    }
-                  }
-                } else {
-                  // API returned empty files array - create placeholder
-                  console.log(`[App] Connection ${normalizedConnectionId} has no files in response, creating placeholder`);
-                  connectionTopPosts.push({
-                    metadata: {
-                      fileId: `connection-placeholder-${connection.connectionId}`,
-                      creatorId: connection.userDid,
-                      name: 'No posts yet',
-                      title: 'No posts yet',
-                      creator: {
-                        identifier: { value: connection.userDid }
-                      },
-                      author: {
-                        did: connection.userDid
-                      },
-                      isConnectionPlaceholder: true,
-                      connectionId: connection.connectionId
-                    }
-                  } as IndexedFile);
-                }
-              } else {
-                console.warn(`[App] API returned ${response.status} for connection ${normalizedConnectionId}, creating placeholder`);
-                // API call failed - still create placeholder so connection shows up
-                connectionTopPosts.push({
-                  metadata: {
-                    fileId: `connection-placeholder-${connection.connectionId}`,
-                    creatorId: connection.userDid,
-                    name: 'No posts yet',
-                    title: 'No posts yet',
-                    creator: {
-                      identifier: { value: connection.userDid }
-                    },
-                    author: {
-                      did: connection.userDid
-                    },
-                    isConnectionPlaceholder: true,
-                    connectionId: connection.connectionId
-                  }
-                } as IndexedFile);
-              }
-            } catch (err) {
-              console.warn(`[App] Failed to load top post for connection ${connection.userDid}:`, err);
-              // Even if API call fails, create placeholder
-              connectionTopPosts.push({
-                metadata: {
-                  fileId: `connection-placeholder-${connection.connectionId}`,
-                  creatorId: connection.userDid,
-                  name: 'No posts yet',
-                  title: 'No posts yet',
-                  creator: {
-                    identifier: { value: connection.userDid }
-                  },
-                  author: {
-                    did: connection.userDid
-                  },
-                  isConnectionPlaceholder: true,
-                  connectionId: connection.connectionId
-                }
-              } as IndexedFile);
-            }
-          }
-          
-          // Also check already-loaded indexed files as fallback
-          const topPostsFromIndexed = indexedFiles.filter(f => {
-            const creatorId = f.metadata.creator?.identifier?.value || 
-                             f.metadata.creator?.["@id"] || 
-                             f.metadata.author?.did ||
-                             f.metadata.creatorId;
-            const normalizedCreatorId = normalizeIdentifier(creatorId);
-            const isTopPost = f.metadata.isTopPost === true;
-            return normalizedCreatorId && 
-                   connectionIds.includes(normalizedCreatorId) && 
-                   isTopPost;
-          });
-          
-          // Combine and deduplicate (prefer API results)
-          const combinedTopPosts = Array.from(
-            new Map([
-              ...connectionTopPosts.map(f => [f.metadata.fileId, f]),
-              ...topPostsFromIndexed.map(f => [f.metadata.fileId, f])
-            ]).values()
-          );
-          
-          console.log(`[App] Setting connectionsFiles: ${combinedTopPosts.length} posts from ${connections.length} connections`);
-          console.log(`[App] Connection top posts:`, connectionTopPosts.map(f => ({
-            fileId: f.metadata.fileId,
-            creatorId: f.metadata.creatorId
-          })));
-          setConnectionsFiles(combinedTopPosts);
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`[Me Page] Connections: ${combinedTopPosts.length} posts from ${connections.length} connections`);
-          }
+          // Store the connections list (not posts)
+          setConnectionsList(connections);
         } catch (error) {
-          console.error('Failed to load connections files:', error);
-          setConnectionsFiles([]);
+          console.error('Failed to load connections:', error);
+          setConnectionsList([]);
         }
       })();
     } else {
-      setConnectionsFiles([]);
+      setConnectionsList([]);
     }
-  }, [viewingCreatorId, userState.pnIdentifier, indexedFilesKey]);
+  }, [viewingCreatorId, userState.pnIdentifier]);
 
   // Helper function to load engagement data (same as in useEngagement hook)
   function loadEngagementData() {
@@ -2971,12 +2787,9 @@ function App() {
           filtered = savedFiles;
           break;
           case 'connections':
-            console.log(`[App] Connections tab selected, showing ${connectionsFiles.length} files`);
-            console.log(`[App] Connections files:`, connectionsFiles.map(f => ({
-              fileId: f.metadata.fileId,
-              creatorId: f.metadata.creatorId
-            })));
-            filtered = connectionsFiles;
+            // Connections tab shows a list of users, not posts
+            // Return empty array - we'll render connections list separately
+            filtered = [];
             break;
       }
       
@@ -3678,8 +3491,55 @@ function App() {
             availableTabs={isOwnIndex ? ['connections', 'all', 'media', 'thoughts', 'likes', 'comments', 'saved'] : ['all', 'media', 'thoughts', 'likes', 'comments']}
           />
           
-          {/* Unified feed view for all profiles */}
-          {filteredMeFiles.length > 0 ? (
+          {/* Connections List View - Show when connections tab is selected */}
+          {mePageTab === 'connections' && isOwnIndex ? (
+            <div className="flex-1 overflow-y-auto p-6">
+              {connectionsList.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-center">
+                  <div className="text-6xl mb-4">👥</div>
+                  <h2 className="text-2xl font-semibold text-white mb-2">No Connections Yet</h2>
+                  <p className="text-neutral-400">Connect with other users to see them here</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {connectionsList.map((connection) => (
+                    <div
+                      key={connection.connectionId}
+                      onClick={() => {
+                        setViewingCreatorId(connection.userDid);
+                        setMePageTab('all');
+                        setCurrentFeedIndex(0);
+                      }}
+                      className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-4 hover:bg-neutral-800 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold text-lg">
+                          {connection.userDid.substring(3, 5).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-white font-medium truncate">
+                            {connection.userDid}
+                          </h3>
+                          <p className="text-neutral-400 text-sm">
+                            Connected {connection.acceptedAt 
+                              ? new Date(connection.acceptedAt).toLocaleDateString()
+                              : connection.createdAt 
+                              ? new Date(connection.createdAt).toLocaleDateString()
+                              : 'recently'}
+                          </p>
+                        </div>
+                        <div className="text-neutral-500">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : filteredMeFiles.length > 0 ? (
             <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
               <FullScreenFeed
                 files={filteredMeFiles}
@@ -3760,7 +3620,7 @@ function App() {
                 } : undefined}
               />
             </div>
-          ) : (
+          ) : mePageTab !== 'connections' ? (
             <div className="h-full flex items-center justify-center text-white" style={{ paddingBottom: '64px' }}>
               <EmptyState
                 type="no-content"
