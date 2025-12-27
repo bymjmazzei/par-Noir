@@ -306,6 +306,7 @@ export class ConnectionsService {
 
   /**
    * Accept connection request
+   * Allows accepting both pending_received (normal case) and pending_sent (mutual request scenario)
    */
   static async acceptConnectionRequest(
     acceptorAccessToken: string,
@@ -318,13 +319,27 @@ export class ConnectionsService {
       throw new Error('Connections file not found');
     }
 
-    const connection = acceptorFile.connections.find(c => c.connectionId === connectionId);
-    if (!connection) {
-      throw new Error('Connection request not found');
+    // Find all connections with this ID (in case of mutual requests)
+    const allMatchingConnections = acceptorFile.connections.filter(c => c.connectionId === connectionId);
+    
+    // Prioritize pending_received, but also allow pending_sent (mutual request)
+    let connection = allMatchingConnections.find(c => c.status === 'pending_received');
+    if (!connection && allMatchingConnections.length > 0) {
+      connection = allMatchingConnections.find(c => c.status === 'pending_sent');
     }
 
-    if (connection.status !== 'pending_received') {
-      throw new Error('Connection request is not in pending_received status');
+    if (!connection) {
+      const statuses = allMatchingConnections.map(c => c.status).join(', ');
+      throw new Error(`Connection request not found or not in acceptable status. Found connections with statuses: ${statuses || 'none'}`);
+    }
+
+    // Allow accepting if it's pending_received or pending_sent (mutual request)
+    if (connection.status !== 'pending_received' && connection.status !== 'pending_sent') {
+      if (connection.status === 'accepted') {
+        // Already accepted, this is fine (idempotent)
+        return;
+      }
+      throw new Error(`Connection request is not in acceptable status. Current status: ${connection.status}. Only pending_received or pending_sent connections can be accepted.`);
     }
 
     const otherUserDid = connection.userDid;
