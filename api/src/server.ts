@@ -8949,7 +8949,25 @@ class ProductionServer {
           }))
         );
 
-        const connection = connectionsFile.connections.find(c => c.connectionId === connectionId);
+        // Find connection - prioritize pending_received, but also check for pending_sent (mutual request scenario)
+        const allMatchingConnections = connectionsFile.connections.filter(c => c.connectionId === connectionId);
+        console.log(`[AcceptConnection] Found ${allMatchingConnections.length} connections with ID ${connectionId}:`, 
+          allMatchingConnections.map(c => ({ userDid: c.userDid, status: c.status }))
+        );
+
+        // Prioritize pending_received connection (the one we want to accept)
+        let connection = allMatchingConnections.find(c => c.status === 'pending_received');
+        
+        // If no pending_received found, but there's a pending_sent, it means the recipient sent a request first
+        // In this case, we should accept their own request and update the other user's file
+        if (!connection && allMatchingConnections.length > 0) {
+          connection = allMatchingConnections.find(c => c.status === 'pending_sent');
+          if (connection) {
+            console.log(`[AcceptConnection] Found pending_sent connection - this is a mutual request scenario`);
+            console.log(`[AcceptConnection] Will accept by updating both users' files to accepted status`);
+          }
+        }
+
         if (!connection) {
           console.error(`[AcceptConnection] Connection ${connectionId} not found in user's connections file`);
           console.error(`[AcceptConnection] Available connections:`, connectionsFile.connections.map(c => ({
@@ -8967,17 +8985,22 @@ class ProductionServer {
           expectedStatus: 'pending_received'
         });
 
-        // Check status - allow accepting if it's pending_received or if it's already accepted (idempotent)
+        // Check status - allow accepting if it's pending_received, pending_sent (mutual request), or already accepted (idempotent)
         if (connection.status === 'accepted') {
           console.log(`[AcceptConnection] Connection already accepted, returning success`);
           return res.json({ success: true, message: 'Connection already accepted' });
         }
 
-        if (connection.status !== 'pending_received') {
-          console.error(`[AcceptConnection] Connection status is '${connection.status}', expected 'pending_received'`);
+        // Allow accepting pending_sent connections (mutual request scenario)
+        // In this case, both users sent requests, so accepting either one should connect them
+        if (connection.status === 'pending_sent') {
+          console.log(`[AcceptConnection] Accepting pending_sent connection (mutual request scenario)`);
+          // We'll treat this as accepting the connection - update both files to accepted
+        } else if (connection.status !== 'pending_received') {
+          console.error(`[AcceptConnection] Connection status is '${connection.status}', expected 'pending_received' or 'pending_sent'`);
           return res.status(400).json({ 
             error: 'Connection request is not in pending_received status',
-            error_description: `Current status: ${connection.status}. Only pending_received connections can be accepted.`
+            error_description: `Current status: ${connection.status}. Only pending_received or pending_sent connections can be accepted.`
           });
         }
 

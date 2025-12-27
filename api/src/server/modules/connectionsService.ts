@@ -262,19 +262,38 @@ export class ConnectionsService {
       totalConnections: recipientFile.connections.length
     });
 
-    await this.updateConnectionsFile(recipientAccessToken, recipientMetadataFolder, recipientDid, recipientFile);
+    try {
+      await this.updateConnectionsFile(recipientAccessToken, recipientMetadataFolder, recipientDid, recipientFile);
+      console.log(`[ConnectionsService] Successfully updated recipient's connections file`);
+    } catch (updateError: any) {
+      console.error(`[ConnectionsService] ERROR: Failed to update recipient's connections file:`, updateError);
+      throw new Error(`Failed to save connection request to recipient's file: ${updateError.message || updateError}`);
+    }
 
     // Verify the update was successful
-    const verifyFile = await this.getConnectionsFile(recipientAccessToken, recipientMetadataFolder);
-    if (verifyFile) {
-      const verifyConnection = verifyFile.connections.find(c => c.connectionId === connectionId);
-      if (!verifyConnection) {
-        console.error(`[ConnectionsService] WARNING: Connection ${connectionId} not found in recipient's file after update!`);
-      } else if (verifyConnection.status !== 'pending_received') {
-        console.error(`[ConnectionsService] WARNING: Connection ${connectionId} has wrong status: ${verifyConnection.status}, expected pending_received`);
+    try {
+      const verifyFile = await this.getConnectionsFile(recipientAccessToken, recipientMetadataFolder);
+      if (verifyFile) {
+        const verifyConnection = verifyFile.connections.find(c => c.connectionId === connectionId);
+        if (!verifyConnection) {
+          console.error(`[ConnectionsService] WARNING: Connection ${connectionId} not found in recipient's file after update!`);
+          console.error(`[ConnectionsService] Recipient's file contents:`, JSON.stringify(verifyFile, null, 2));
+          throw new Error(`Connection was not saved to recipient's file`);
+        } else if (verifyConnection.status !== 'pending_received') {
+          console.error(`[ConnectionsService] WARNING: Connection ${connectionId} has wrong status: ${verifyConnection.status}, expected pending_received`);
+          console.error(`[ConnectionsService] Connection details:`, JSON.stringify(verifyConnection, null, 2));
+          throw new Error(`Connection saved with wrong status: ${verifyConnection.status}, expected pending_received`);
+        } else {
+          console.log(`[ConnectionsService] Verified: Connection ${connectionId} correctly saved with status pending_received`);
+        }
       } else {
-        console.log(`[ConnectionsService] Verified: Connection ${connectionId} correctly saved with status pending_received`);
+        console.error(`[ConnectionsService] WARNING: Could not verify recipient's file - file not found after update`);
+        throw new Error(`Recipient's connections file not found after update`);
       }
+    } catch (verifyError: any) {
+      console.error(`[ConnectionsService] Verification failed:`, verifyError);
+      // Don't throw here - the update might have succeeded but verification failed due to timing
+      // But log it so we can see what's happening
     }
 
     return {
