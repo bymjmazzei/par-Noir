@@ -3493,7 +3493,7 @@ function App() {
           
           {/* Connections List View - Show when connections tab is selected */}
           {mePageTab === 'connections' && isOwnIndex ? (
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto px-6 pt-14 pb-6">
               {connectionsList.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center">
                   <div className="text-6xl mb-4">👥</div>
