@@ -2402,14 +2402,86 @@ function App() {
                           }
                         }
                       } as IndexedFile);
+                    } else {
+                      // Connection has no files - create a placeholder entry
+                      console.log(`[App] Connection ${normalizedConnectionId} has no files, creating placeholder`);
+                      connectionTopPosts.push({
+                        metadata: {
+                          fileId: `connection-placeholder-${connection.connectionId}`,
+                          creatorId: connection.userDid,
+                          name: 'No posts yet',
+                          title: 'No posts yet',
+                          creator: {
+                            identifier: { value: connection.userDid }
+                          },
+                          author: {
+                            did: connection.userDid
+                          },
+                          isConnectionPlaceholder: true,
+                          connectionId: connection.connectionId
+                        }
+                      } as IndexedFile);
                     }
                   }
+                } else {
+                  // API returned empty files array - create placeholder
+                  console.log(`[App] Connection ${normalizedConnectionId} has no files in response, creating placeholder`);
+                  connectionTopPosts.push({
+                    metadata: {
+                      fileId: `connection-placeholder-${connection.connectionId}`,
+                      creatorId: connection.userDid,
+                      name: 'No posts yet',
+                      title: 'No posts yet',
+                      creator: {
+                        identifier: { value: connection.userDid }
+                      },
+                      author: {
+                        did: connection.userDid
+                      },
+                      isConnectionPlaceholder: true,
+                      connectionId: connection.connectionId
+                    }
+                  } as IndexedFile);
                 }
               } else {
-                console.warn(`[App] API returned ${response.status} for connection ${normalizedConnectionId}`);
+                console.warn(`[App] API returned ${response.status} for connection ${normalizedConnectionId}, creating placeholder`);
+                // API call failed - still create placeholder so connection shows up
+                connectionTopPosts.push({
+                  metadata: {
+                    fileId: `connection-placeholder-${connection.connectionId}`,
+                    creatorId: connection.userDid,
+                    name: 'No posts yet',
+                    title: 'No posts yet',
+                    creator: {
+                      identifier: { value: connection.userDid }
+                    },
+                    author: {
+                      did: connection.userDid
+                    },
+                    isConnectionPlaceholder: true,
+                    connectionId: connection.connectionId
+                  }
+                } as IndexedFile);
               }
             } catch (err) {
               console.warn(`[App] Failed to load top post for connection ${connection.userDid}:`, err);
+              // Even if API call fails, create placeholder
+              connectionTopPosts.push({
+                metadata: {
+                  fileId: `connection-placeholder-${connection.connectionId}`,
+                  creatorId: connection.userDid,
+                  name: 'No posts yet',
+                  title: 'No posts yet',
+                  creator: {
+                    identifier: { value: connection.userDid }
+                  },
+                  author: {
+                    did: connection.userDid
+                  },
+                  isConnectionPlaceholder: true,
+                  connectionId: connection.connectionId
+                }
+              } as IndexedFile);
             }
           }
           

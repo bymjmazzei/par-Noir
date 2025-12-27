@@ -1992,6 +1992,9 @@ export function FullScreenFeed({
                           file.creator?.["@id"] || 
                           file.author?.did;
 
+        // Check if this is a connection placeholder
+        const isConnectionPlaceholder = (file as any).isConnectionPlaceholder || (indexedFile.metadata as any).isConnectionPlaceholder;
+
         return (
           <div
             key={fileId}
@@ -2015,7 +2018,7 @@ export function FullScreenFeed({
             {/* Thoughts now render as images (thumbnails) - no special rendering needed! */}
             
             {/* Full-screen video */}
-            {isVideoFinal && videoBlobs.get(fileId) && (() => {
+            {!isConnectionPlaceholder && isVideoFinal && videoBlobs.get(fileId) && (() => {
               const containerHeight = window.innerHeight - 64; // Account for bottom nav
               const containerWidth = window.innerWidth;
               const containerAspect = containerWidth / containerHeight;
@@ -2128,7 +2131,7 @@ export function FullScreenFeed({
             
             {/* Full-screen image (single image) - Only render if NOT a text post */}
             {/* Show image if detected as image (show placeholder if thumbnail not loaded yet) */}
-            {isImageFinal && (() => {
+            {!isConnectionPlaceholder && isImageFinal && (() => {
               const thumbnailUrl = thumbnails.get(fileId);
               
               if (!thumbnailUrl) {
@@ -2200,8 +2203,27 @@ export function FullScreenFeed({
               );
             })()}
 
+            {/* Connection Placeholder - Show when connection has no posts */}
+            {isConnectionPlaceholder ? (
+              <div className="w-full h-full flex flex-col items-center justify-center text-white p-8">
+                <div className="text-6xl mb-6">👤</div>
+                <h2 className="text-2xl font-semibold mb-2">Connected</h2>
+                <p className="text-neutral-400 text-center mb-6">
+                  {creatorId ? `${creatorId.substring(0, 8)}...` : 'This connection'} hasn't posted anything yet
+                </p>
+                {onCreatorClick && creatorId && (
+                  <button
+                    onClick={() => onCreatorClick(creatorId)}
+                    className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition-colors"
+                  >
+                    View Profile
+                  </button>
+                )}
+              </div>
+            ) : null}
+
             {/* Collection - Simple thumbnail slideshow */}
-            {isCollectionFile && (collectionData || collectionDataCache.get(fileId))?.collectionFileIds ? (
+            {!isConnectionPlaceholder && isCollectionFile && (collectionData || collectionDataCache.get(fileId))?.collectionFileIds ? (
               (() => {
                 // Use cached collection data if available
                 const finalCollectionData = collectionData || collectionDataCache.get(fileId);
@@ -2311,7 +2333,7 @@ export function FullScreenFeed({
             })()}
 
             {/* Non-image/video/slideshow/collection file */}
-            {!isImageFinal && !isVideoFinal && !isCollectionFile && (
+            {!isConnectionPlaceholder && !isImageFinal && !isVideoFinal && !isCollectionFile && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <File className="h-24 w-24 mb-4" />
                 <h3 className="text-white text-xl font-medium mb-2">{cleanTitle(fileName)}</h3>
