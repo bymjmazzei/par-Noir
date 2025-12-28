@@ -1824,12 +1824,19 @@ class ProductionServer {
         const db = (await import('./server/utils/database')).getDatabasePool();
         const { invalidateIndexCache } = await import('./server/utils/cache');
         
-        // 1. Check current state
+        // 1. Check current state - handle JSONB boolean values safely
         const stateCheck = await db.query(`
           SELECT 
             COUNT(*) as total_files,
-            COUNT(*) FILTER (WHERE metadata->>'isPublic' = 'true' OR (metadata->>'isPublic')::boolean = true) as public_files,
-            COUNT(*) FILTER (WHERE metadata->>'isPublic' = 'false' OR (metadata->>'isPublic')::boolean = false) as private_files
+            COUNT(*) FILTER (WHERE 
+              jsonb_typeof(metadata->'isPublic') = 'boolean' AND (metadata->'isPublic')::boolean = true
+              OR jsonb_typeof(metadata->'isPublic') = 'string' AND (metadata->>'isPublic') = 'true'
+            ) as public_files,
+            COUNT(*) FILTER (WHERE 
+              jsonb_typeof(metadata->'isPublic') = 'boolean' AND (metadata->'isPublic')::boolean = false
+              OR jsonb_typeof(metadata->'isPublic') = 'string' AND (metadata->>'isPublic') = 'false'
+              OR metadata->'isPublic' IS NULL
+            ) as private_files
           FROM aggregator_metadata
         `);
         
@@ -1839,7 +1846,10 @@ class ProductionServer {
             COUNT(DISTINCT fp.file_id) as public_files_in_feeds
           FROM aggregator_metadata am
           LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
-          WHERE (am.metadata->>'isPublic' = 'true' OR (am.metadata->>'isPublic')::boolean = true)
+          WHERE (
+            jsonb_typeof(am.metadata->'isPublic') = 'boolean' AND (am.metadata->'isPublic')::boolean = true
+            OR jsonb_typeof(am.metadata->'isPublic') = 'string' AND (am.metadata->>'isPublic') = 'true'
+          )
         `);
         
         // 2. Get sample public files
@@ -1847,12 +1857,19 @@ class ProductionServer {
           SELECT 
             am.file_id,
             am.metadata->>'name' as name,
-            am.metadata->>'isPublic' as is_public,
+            CASE 
+              WHEN jsonb_typeof(am.metadata->'isPublic') = 'boolean' AND (am.metadata->'isPublic')::boolean = true THEN 'true'
+              WHEN jsonb_typeof(am.metadata->'isPublic') = 'string' AND am.metadata->>'isPublic' = 'true' THEN 'true'
+              ELSE 'false'
+            END as is_public,
             COUNT(fp.feed_id) as feed_count
           FROM aggregator_metadata am
           LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
-          WHERE (am.metadata->>'isPublic' = 'true' OR (am.metadata->>'isPublic')::boolean = true)
-          GROUP BY am.file_id, am.metadata->>'name', am.metadata->>'isPublic'
+          WHERE (
+            jsonb_typeof(am.metadata->'isPublic') = 'boolean' AND (am.metadata->'isPublic')::boolean = true
+            OR jsonb_typeof(am.metadata->'isPublic') = 'string' AND (am.metadata->>'isPublic') = 'true'
+          )
+          GROUP BY am.file_id, am.metadata->>'name', am.metadata->'isPublic'
           ORDER BY am.updated_at DESC
           LIMIT 10
         `);
@@ -1885,7 +1902,8 @@ class ProductionServer {
         console.error('Error in fix-feeds endpoint:', error);
         return res.status(500).json({ 
           error: 'Failed to run diagnostic',
-          message: error.message 
+          message: error.message,
+          stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
       }
     });
