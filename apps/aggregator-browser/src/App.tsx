@@ -787,6 +787,7 @@ function App() {
       // This ensures NSFW content never appears in public feed unless explicitly enabled
       // Also filter out individual thought pages from multi-page thought collections
       const filtered = indexedFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
+      console.log('[DEBUG] Public feed filtered', { activeFeedId, indexedFilesLength: indexedFiles.length, filteredLength: filtered.length });
       
       // Helper function to detect images - check fileType, name, title, mimeType, encodingFormat, and @type
       const isImageFile = (f: IndexedFile): boolean => {
@@ -973,6 +974,7 @@ function App() {
     
     // Thoughts should appear in all feeds - no filtering needed
     // The only place thoughts are excluded is the me page "media" tab, which handles it separately
+    console.log('[DEBUG] filteredFilesByFeed result', { activeFeedId, resultLength: filtered.length, indexedFilesLength: indexedFiles.length });
     return filtered;
   }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.blockedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, feeds]);
 
@@ -1376,15 +1378,15 @@ function App() {
       
       // SCALABILITY: Handle pagination - append or replace based on page number
       setIndexedFiles(prev => {
-        if (page === 0 || !append) {
-          // First page or force refresh - replace all files
-          return discoveredFiles;
-        } else {
-          // Subsequent pages - append new files (avoid duplicates)
-          const existingIds = new Set(prev.map(f => f.metadata.fileId));
-          const newFiles = discoveredFiles.filter(f => !existingIds.has(f.metadata.fileId));
-          return [...prev, ...newFiles];
-        }
+        const result = page === 0 || !append
+          ? discoveredFiles
+          : (() => {
+              const existingIds = new Set(prev.map(f => f.metadata.fileId));
+              const newFiles = discoveredFiles.filter(f => !existingIds.has(f.metadata.fileId));
+              return [...prev, ...newFiles];
+            })();
+        console.log('[DEBUG] setIndexedFiles', { activeFeedId, discoveredFilesLength: discoveredFiles.length, prevLength: prev.length, resultLength: result.length, page, append });
+        return result;
       });
       
       // Update pagination state
@@ -3896,7 +3898,10 @@ function App() {
             className="flex-1"
             style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}
           >
-            {filteredFilesByFeed.length > 0 ? (
+            {(() => {
+              console.log('[DEBUG] Feed render check', { viewMode, activeFeedId, filteredFilesByFeedLength: filteredFilesByFeed.length, indexedFilesLength: indexedFiles.length });
+              return filteredFilesByFeed.length > 0;
+            })() ? (
               <>
               <FullScreenFeed
                 files={filteredFilesByFeed}
