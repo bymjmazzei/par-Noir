@@ -46,8 +46,8 @@ export class AggregatorMetadataServiceDB {
 
     // OWNERSHIP VERIFICATION: If file exists and isPublic is being changed, verify ownership
     if (existingMetadata && metadata.isPublic !== undefined) {
-      const isChangingIsPublic = metadata.isPublic !== existingIsPublic && 
-                                 (metadata.isPublic === true || metadata.isPublic === 'true') !== (existingIsPublic === true || existingIsPublic === 'true');
+      const existingIsPublicBool = existingIsPublic === true || existingIsPublic === 'true';
+      const isChangingIsPublic = metadata.isPublic !== existingIsPublicBool;
       
       if (isChangingIsPublic) {
         if (!ownerDid) {
@@ -70,7 +70,7 @@ export class AggregatorMetadataServiceDB {
     // Otherwise preserve existing value (don't accidentally make public files private)
     const finalIsPublic = existingMetadata && metadata.isPublic === undefined
       ? (existingIsPublic === true || existingIsPublic === 'true' ? true : false)
-      : (metadata.isPublic === true || metadata.isPublic === 'true');
+      : metadata.isPublic;
 
     // Enhance metadata structure - preserve isPublic value
     const validatedMetadata: PublicMetadata = {
@@ -1866,7 +1866,7 @@ export class AggregatorMetadataServiceDB {
         // Only sync other metadata fields
         const preservedIsPublic = existingIsPublic !== undefined 
           ? (existingIsPublic === true || existingIsPublic === 'true')
-          : (metadata.isPublic === true || metadata.isPublic === 'true');
+          : metadata.isPublic;
 
         const validatedMetadata: PublicMetadata = {
           ...metadata,
