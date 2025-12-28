@@ -265,7 +265,13 @@ class ProductionServer {
 
     // CORS configuration with security improvements
     // SECURITY FIX: Restrict no-origin requests to prevent CSRF attacks
-    const publicNoOriginPaths = ['/health', '/api/aggregator/metadata-index', '/api/aggregator/nsfw-index'];
+    const publicNoOriginPaths = [
+      '/health', 
+      '/api/aggregator/metadata-index', 
+      '/api/aggregator/nsfw-index',
+      '/api/aggregator/fix-feeds',
+      '/api/aggregator/metadata-index/debug'
+    ];
     
     // Custom CORS middleware that checks path before allowing no-origin requests
     this.app.use((req, res, next) => {
