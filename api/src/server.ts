@@ -1744,12 +1744,30 @@ class ProductionServer {
           r.is_public === 'true' || r.is_public_bool === true
         );
         
+        // Check feed_posts status
+        const feedPostsCheck = await db.query(`
+          SELECT 
+            COUNT(DISTINCT am.file_id) as public_files_total,
+            COUNT(DISTINCT fp.file_id) as public_files_in_feeds,
+            COUNT(DISTINCT am.file_id) - COUNT(DISTINCT fp.file_id) as public_files_not_in_feeds
+          FROM aggregator_metadata am
+          LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
+          WHERE (am.metadata->>'isPublic' = 'true' OR (am.metadata->>'isPublic')::boolean = true)
+        `);
+        
+        const feedStats = feedPostsCheck.rows[0];
+
         return res.json({
           totalFiles: allFiles.rows.length,
           publicFiles: publicFiles.length,
           privateFiles: privateFiles.length,
           filesWithTokenButNotPublic: filesWithTokenButNotPublic.length,
           googleDriveFiles: googleDriveFiles.length,
+          feedStats: {
+            publicFilesTotal: parseInt(feedStats.public_files_total || '0', 10),
+            publicFilesInFeeds: parseInt(feedStats.public_files_in_feeds || '0', 10),
+            publicFilesNotInFeeds: parseInt(feedStats.public_files_not_in_feeds || '0', 10)
+          },
           samplePublicFiles: publicFiles.slice(0, 10).map((r: any) => ({
             fileId: r.file_id,
             name: r.name,
@@ -1765,12 +1783,30 @@ class ProductionServer {
             backend: r.backend,
             updatedAt: r.updated_at
           })),
-          note: 'The public feed ONLY shows files where isPublic = true in the database. Google Drive files are NOT used.'
+          note: 'The public feed (no feedId) shows ALL public files. Specific feeds (with feedId) only show files in feed_posts table.'
         });
       } catch (error: any) {
         console.error('Error in debug endpoint:', error);
         return res.status(500).json({ 
           error: 'Failed to fetch debug info',
+          message: error.message 
+        });
+      }
+    });
+
+    // POST /api/aggregator/metadata-index/invalidate-cache - Invalidate index cache
+    this.app.post('/api/aggregator/metadata-index/invalidate-cache', async (req, res) => {
+      try {
+        const { invalidateIndexCache } = await import('./server/utils/cache');
+        await invalidateIndexCache();
+        return res.json({ 
+          success: true, 
+          message: 'Index cache invalidated successfully' 
+        });
+      } catch (error: any) {
+        console.error('Error invalidating cache:', error);
+        return res.status(500).json({ 
+          error: 'Failed to invalidate cache',
           message: error.message 
         });
       }
