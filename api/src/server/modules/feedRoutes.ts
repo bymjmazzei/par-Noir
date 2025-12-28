@@ -864,7 +864,13 @@ export function setupFeedRoutes(app: any) {
       }
 
       // Verify user is requesting their own delegated feeds
-      if (tokenPayload.did !== userDid) {
+      // Check both DID and pnIdentifier since userDid param could be either format
+      const isAuthorized = tokenPayload.did === userDid || 
+                          tokenPayload.pnIdentifier === userDid ||
+                          (userDid.startsWith('pn-') && tokenPayload.pnIdentifier === userDid) ||
+                          (!userDid.startsWith('pn-') && tokenPayload.did === userDid);
+      
+      if (!isAuthorized) {
         return res.status(403).json({ error: 'Not authorized' });
       }
 
