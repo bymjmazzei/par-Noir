@@ -711,6 +711,7 @@ function App() {
   // The only place thoughts are excluded is the me page "media" tab, which handles it separately
 
   const filteredFilesByFeed = useMemo(() => {
+    console.log('[DEBUG] filteredFilesByFeed computing', { activeFeedId, indexedFilesLength: indexedFiles.length, viewMode });
     
     // Build sets of fileIds to exclude (individual thought pages from multi-page thought collections)
     // Only filter out thoughts that are in thought collections (multi-page thoughts), not regular collections or single thoughts
@@ -1296,6 +1297,7 @@ function App() {
       const publicFiles = Array.isArray(publicFilesResult) 
         ? publicFilesResult 
         : publicFilesResult.files;
+      console.log('[DEBUG] discoverFiles API result', { activeFeedId, publicFilesLength: publicFiles.length, isArray: Array.isArray(publicFilesResult), finalFilters });
       const paginationInfo = Array.isArray(publicFilesResult)
         ? { total: publicFiles.length, hasMore: false }
         : { total: publicFilesResult.total, hasMore: publicFilesResult.hasMore };
