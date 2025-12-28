@@ -100,10 +100,13 @@ export function setupFeedRoutes(app: any) {
             const currentFeedIds = (currentEntry.metadata as any).feedIds || [];
             if (!currentFeedIds.includes(feedId)) {
               // Update metadata to include this feedId
+              // CRITICAL: Do NOT include isPublic - it will be preserved by submitMetadata
               const updatedMetadata = {
                 ...currentEntry.metadata,
                 feedIds: [...currentFeedIds, feedId]
               };
+              // Explicitly remove isPublic to ensure it's not changed
+              delete (updatedMetadata as any).isPublic;
               await metadataService.submitMetadata(updatedMetadata, currentEntry.pnIdentifier);
             }
           }
@@ -217,10 +220,13 @@ export function setupFeedRoutes(app: any) {
           const updatedFeedIds = currentFeedIds.filter((id: string) => id !== feedId);
           
           // Update metadata to remove this feedId
+          // CRITICAL: Do NOT include isPublic - it will be preserved by submitMetadata
           const updatedMetadata = {
             ...currentEntry.metadata,
             feedIds: updatedFeedIds
           };
+          // Explicitly remove isPublic to ensure it's not changed
+          delete (updatedMetadata as any).isPublic;
           await metadataService.submitMetadata(updatedMetadata, currentEntry.pnIdentifier);
         }
       } catch (metadataError) {

@@ -1604,10 +1604,16 @@ class ProductionServer {
         }
 
         console.log(`📝 [${requestId}] Submitting metadata for file: ${validatedMetadata.fileId}`);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/src/server.ts:1606',message:'Submitting metadata',data:{fileId:validatedMetadata.fileId,isPublic:validatedMetadata.isPublic,pnIdentifier},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
 
         // Submit metadata to central index
         await service.submitMetadata(validatedMetadata, pnIdentifier);
 
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/src/server.ts:1611',message:'Metadata submitted successfully',data:{fileId:validatedMetadata.fileId,isPublic:validatedMetadata.isPublic},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         console.log(`✅ [${requestId}] Successfully submitted metadata for: ${validatedMetadata.fileId}`);
         return res.json({
           success: true,
@@ -2251,7 +2257,8 @@ class ProductionServer {
 
             // Submit initial metadata
             try {
-              await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier);
+              // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
+              await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
               console.log(`[MetadataIndex] Created metadata entry for ${fileId}`);
             } catch (submitError: any) {
               console.error(`[MetadataIndex] Failed to submit initial metadata for ${fileId}:`, submitError);
@@ -2288,7 +2295,8 @@ class ProductionServer {
               }
             };
             try {
-              await service.submitMetadata(minimalMetadata, tokenPayload.pnIdentifier);
+              // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
+              await service.submitMetadata(minimalMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
               console.log(`[MetadataIndex] Created minimal metadata entry for ${fileId}`);
             } catch (minimalSubmitError: any) {
               console.error(`[MetadataIndex] Failed to submit minimal metadata for ${fileId}:`, minimalSubmitError);
@@ -2402,6 +2410,24 @@ class ProductionServer {
           const finalIsPublic = isPublic !== undefined ? isPublic : ((textPost || thought) ? true : false);
           current = await service.getFileMetadata(fileId);
           const wasPublic = current?.metadata?.isPublic || false;
+          
+          // CRITICAL: OWNERSHIP VERIFICATION - Only owner can change isPublic
+          if (current && isPublic !== undefined) {
+            const fileOwnerDid = current.metadata.creator?.identifier?.value || 
+                               current.metadata.creator?.["@id"] || 
+                               current.metadata.author?.did ||
+                               current.pnIdentifier;
+            const requestingUserDid = tokenPayload.pnIdentifier || tokenPayload.did;
+            
+            if (fileOwnerDid !== requestingUserDid && current.pnIdentifier !== requestingUserDid) {
+              console.error(`[MetadataIndex PUT] UNAUTHORIZED: Attempt to change isPublic for file ${fileId} by non-owner. Owner: ${fileOwnerDid}, Requesting: ${requestingUserDid}`);
+              return res.status(403).json({ 
+                error: 'Forbidden',
+                message: 'Only the file owner can change the isPublic setting'
+              });
+            }
+          }
+          
           // CRITICAL: A file is "becoming public" if:
           // 1. It's being set to public AND wasn't public before, OR
           // 2. It's a NEW file being created as public (didn't exist before)
@@ -11026,22 +11052,24 @@ class ProductionServer {
       }
     }
 
+    // DISABLED: Google Drive sync service is outdated - files are now submitted directly via API
     // Start Google Drive sync service (if configured)
-    try {
-      const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
-      const syncService = GoogleDriveSyncService.getInstance();
-      
-      // Start periodic sync (every 10 minutes)
-      // Only if service account is configured
-      if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-        syncService.startPeriodicSync(10);
-      } else {
-        console.log('ℹ️ Google Drive sync disabled - GOOGLE_SERVICE_ACCOUNT_KEY not set');
-      }
-    } catch (error) {
-      console.warn('⚠️ Failed to start Google Drive sync service:', error);
-      // Continue anyway - sync is optional
-    }
+    // try {
+    //   const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
+    //   const syncService = GoogleDriveSyncService.getInstance();
+    //   
+    //   // Start periodic sync (every 10 minutes)
+    //   // Only if service account is configured
+    //   if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+    //     syncService.startPeriodicSync(10);
+    //   } else {
+    //     console.log('ℹ️ Google Drive sync disabled - GOOGLE_SERVICE_ACCOUNT_KEY not set');
+    //   }
+    // } catch (error) {
+    //   console.warn('⚠️ Failed to start Google Drive sync service:', error);
+    //   // Continue anyway - sync is optional
+    // }
+    console.log('ℹ️ Google Drive sync disabled - files are now submitted directly via API when marked as public');
 
     // Warm third-party catalog
     try {

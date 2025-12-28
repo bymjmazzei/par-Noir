@@ -25,7 +25,7 @@ export class AggregatorMetadataServiceDB {
    * Submit public metadata to central index
    * Validates structure before adding
    */
-  async submitMetadata(metadata: PublicMetadata, pnIdentifier?: string): Promise<void> {
+  async submitMetadata(metadata: PublicMetadata, pnIdentifier?: string, ownerDid?: string): Promise<void> {
     // Only require fileId - other fields can have defaults
     if (!metadata.fileId) {
       throw new Error('Invalid metadata: missing required field: fileId');
@@ -33,10 +33,49 @@ export class AggregatorMetadataServiceDB {
 
     const db = getDatabasePool();
 
-    // Enhance metadata structure - preserve isPublic value from metadata
+    // CRITICAL: Check existing metadata to preserve isPublic
+    const existing = await db.query(
+      'SELECT metadata, pn_identifier FROM aggregator_metadata WHERE file_id = $1',
+      [metadata.fileId]
+    );
+
+    const existingRow = existing.rows[0];
+    const existingMetadata = existingRow?.metadata;
+    const existingIsPublic = existingMetadata?.isPublic;
+    const existingPnIdentifier = existingRow?.pn_identifier;
+
+    // OWNERSHIP VERIFICATION: If file exists and isPublic is being changed, verify ownership
+    if (existingMetadata && metadata.isPublic !== undefined) {
+      const isChangingIsPublic = metadata.isPublic !== existingIsPublic && 
+                                 (metadata.isPublic === true || metadata.isPublic === 'true') !== (existingIsPublic === true || existingIsPublic === 'true');
+      
+      if (isChangingIsPublic) {
+        if (!ownerDid) {
+          throw new Error('CRITICAL: Cannot change isPublic without owner verification. Owner DID required.');
+        }
+        
+        // Verify owner matches
+        const fileOwnerDid = existingMetadata.creator?.identifier?.value || 
+                            existingMetadata.creator?.["@id"] || 
+                            existingMetadata.author?.did ||
+                            existingPnIdentifier;
+        
+        if (fileOwnerDid !== ownerDid && existingPnIdentifier !== ownerDid) {
+          throw new Error(`CRITICAL: Unauthorized - Only owner can change isPublic. File owner: ${fileOwnerDid || 'unknown'}, Attempted by: ${ownerDid}`);
+        }
+      }
+    }
+
+    // PRESERVE isPublic: Only change if explicitly provided AND owner verified
+    // Otherwise preserve existing value (don't accidentally make public files private)
+    const finalIsPublic = existingMetadata && metadata.isPublic === undefined
+      ? (existingIsPublic === true || existingIsPublic === 'true' ? true : false)
+      : (metadata.isPublic === true || metadata.isPublic === 'true');
+
+    // Enhance metadata structure - preserve isPublic value
     const validatedMetadata: PublicMetadata = {
       ...metadata,
-      isPublic: metadata.isPublic === true, // Default to false (private) if not explicitly true
+      isPublic: finalIsPublic,
       backend: metadata.backend || 'google_drive',
       backendFileId: metadata.backendFileId || metadata.fileId,
       name: metadata.name || metadata.title || metadata.fileId,
@@ -61,17 +100,83 @@ export class AggregatorMetadataServiceDB {
     };
 
     try {
-      // Upsert metadata (insert or update if exists)
-      await db.query(
-        `INSERT INTO aggregator_metadata (file_id, metadata, pn_identifier, updated_at)
-         VALUES ($1, $2, $3, NOW())
-         ON CONFLICT (file_id) 
-         DO UPDATE SET 
-           metadata = $2,
-           pn_identifier = $3,
-           updated_at = NOW()`,
-        [validatedMetadata.fileId, JSON.stringify(validatedMetadata), pnIdentifier]
-      );
+      if (existingRow) {
+        // UPDATE: Use jsonb_set to preserve isPublic unless explicitly changing it
+        // Only update isPublic if it was explicitly provided in metadata parameter
+        if (metadata.isPublic !== undefined) {
+          // Explicitly changing isPublic - use jsonb_set to update only that field
+          await db.query(
+            `UPDATE aggregator_metadata 
+             SET metadata = jsonb_set(metadata, '{isPublic}', $1::jsonb, true),
+                 pn_identifier = COALESCE($2, pn_identifier),
+                 updated_at = NOW()
+             WHERE file_id = $3`,
+            [JSON.stringify(finalIsPublic), pnIdentifier, validatedMetadata.fileId]
+          );
+        } else {
+          // Not changing isPublic - preserve existing value by using jsonb_set for other fields only
+          // Update other fields but preserve isPublic
+          const updateFields: string[] = [];
+          const updateValues: any[] = [];
+          let paramIndex = 1;
+
+          if (metadata.name || metadata.title) {
+            updateFields.push(`metadata = jsonb_set(metadata, '{name}', $${paramIndex}::jsonb, true)`);
+            updateValues.push(JSON.stringify(validatedMetadata.name));
+            paramIndex++;
+          }
+          if (metadata.description !== undefined) {
+            updateFields.push(`metadata = jsonb_set(metadata, '{description}', $${paramIndex}::jsonb, true)`);
+            updateValues.push(JSON.stringify(validatedMetadata.description || null));
+            paramIndex++;
+          }
+          if (metadata.keywords || metadata.tags) {
+            updateFields.push(`metadata = jsonb_set(metadata, '{keywords}', $${paramIndex}::jsonb, true)`);
+            updateValues.push(JSON.stringify(validatedMetadata.keywords || []));
+            paramIndex++;
+          }
+          if (metadata.fileType) {
+            updateFields.push(`metadata = jsonb_set(metadata, '{fileType}', $${paramIndex}::jsonb, true)`);
+            updateValues.push(JSON.stringify(validatedMetadata.fileType));
+            paramIndex++;
+          }
+          if ((metadata as any).feedIds !== undefined) {
+            updateFields.push(`metadata = jsonb_set(metadata, '{feedIds}', $${paramIndex}::jsonb, true)`);
+            updateValues.push(JSON.stringify((metadata as any).feedIds || []));
+            paramIndex++;
+          }
+
+          if (updateFields.length > 0) {
+            updateFields.push(`pn_identifier = COALESCE($${paramIndex}, pn_identifier)`);
+            updateValues.push(pnIdentifier);
+            paramIndex++;
+            updateFields.push(`updated_at = NOW()`);
+            updateValues.push(validatedMetadata.fileId);
+            
+            await db.query(
+              `UPDATE aggregator_metadata 
+               SET ${updateFields.join(', ')}
+               WHERE file_id = $${paramIndex}`,
+              updateValues
+            );
+          } else if (pnIdentifier) {
+            // Only updating pn_identifier
+            await db.query(
+              `UPDATE aggregator_metadata 
+               SET pn_identifier = $1, updated_at = NOW()
+               WHERE file_id = $2`,
+              [pnIdentifier, validatedMetadata.fileId]
+            );
+          }
+        }
+      } else {
+        // INSERT: New file
+        await db.query(
+          `INSERT INTO aggregator_metadata (file_id, metadata, pn_identifier, updated_at)
+           VALUES ($1, $2, $3, NOW())`,
+          [validatedMetadata.fileId, JSON.stringify(validatedMetadata), pnIdentifier]
+        );
+      }
 
       const displayTitle = validatedMetadata.name || validatedMetadata.title || 'Untitled';
       const authorDid = validatedMetadata.creator?.identifier?.value || validatedMetadata.creator?.["@id"] || validatedMetadata.author?.did;
@@ -1748,9 +1853,25 @@ export class AggregatorMetadataServiceDB {
       for (const { metadata, pnIdentifier } of entries) {
         if (!metadata.fileId) continue;
 
+        // CRITICAL: Get existing metadata to preserve isPublic
+        const existing = await db.query(
+          'SELECT metadata FROM aggregator_metadata WHERE file_id = $1',
+          [metadata.fileId]
+        );
+
+        const existingMetadata = existing.rows[0]?.metadata;
+        const existingIsPublic = existingMetadata?.isPublic;
+
+        // PRESERVE isPublic - NEVER change it in bulk operations
+        // Only sync other metadata fields
+        const preservedIsPublic = existingIsPublic !== undefined 
+          ? (existingIsPublic === true || existingIsPublic === 'true')
+          : (metadata.isPublic === true || metadata.isPublic === 'true');
+
         const validatedMetadata: PublicMetadata = {
           ...metadata,
-          isPublic: true,
+          // CRITICAL: Preserve existing isPublic, never override in bulk operations
+          isPublic: preservedIsPublic,
           backend: metadata.backend || 'google_drive',
           backendFileId: metadata.backendFileId || metadata.fileId,
           name: metadata.name || metadata.title || metadata.fileId,
@@ -1758,20 +1879,48 @@ export class AggregatorMetadataServiceDB {
           fileType: metadata.fileType || 'other'
         };
 
-        await db.query(
-          `INSERT INTO aggregator_metadata (file_id, metadata, pn_identifier, updated_at)
-           VALUES ($1, $2, $3, NOW())
-           ON CONFLICT (file_id) 
-           DO UPDATE SET 
-             metadata = $2,
-             pn_identifier = $3,
-             updated_at = NOW()`,
-          [validatedMetadata.fileId, JSON.stringify(validatedMetadata), pnIdentifier]
-        );
+        if (existing.rows.length > 0) {
+          // UPDATE: Use jsonb_set to update only non-isPublic fields, preserving isPublic
+          // Update name, description, backendFileId, fileType, but NOT isPublic
+          await db.query(
+            `UPDATE aggregator_metadata 
+             SET metadata = jsonb_set(
+               jsonb_set(
+                 jsonb_set(
+                   jsonb_set(
+                     COALESCE(metadata, '{}'::jsonb),
+                     '{name}', $1::jsonb, true
+                   ),
+                   '{description}', $2::jsonb, true
+                 ),
+                 '{backendFileId}', $3::jsonb, true
+               ),
+               '{fileType}', $4::jsonb, true
+             ),
+             pn_identifier = COALESCE($5, pn_identifier),
+             updated_at = NOW()
+             WHERE file_id = $6`,
+            [
+              JSON.stringify(validatedMetadata.name),
+              JSON.stringify(validatedMetadata.description || null),
+              JSON.stringify(validatedMetadata.backendFileId),
+              JSON.stringify(validatedMetadata.fileType),
+              pnIdentifier,
+              validatedMetadata.fileId
+            ]
+          );
+        } else {
+          // INSERT: New file
+          await db.query(
+            `INSERT INTO aggregator_metadata (file_id, metadata, pn_identifier, updated_at)
+             VALUES ($1, $2, $3, NOW())`,
+            [validatedMetadata.fileId, JSON.stringify(validatedMetadata), pnIdentifier]
+          );
+        }
       }
 
       await db.query('COMMIT');
-      console.log(`✅ Bulk upserted ${entries.length} metadata entries`);
+      console.log(`✅ Bulk upserted ${entries.length} metadata entries (isPublic preserved)`);
     } catch (error) {
       await db.query('ROLLBACK');
       console.error('❌ Failed to bulk upsert metadata:', error);
