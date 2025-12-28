@@ -1812,6 +1812,78 @@ class ProductionServer {
       }
     });
 
+    // GET /api/aggregator/fix-feeds - Diagnostic and fix endpoint for feed issues
+    this.app.get('/api/aggregator/fix-feeds', async (req, res) => {
+      try {
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        const { invalidateIndexCache } = await import('./server/utils/cache');
+        
+        // 1. Check current state
+        const stateCheck = await db.query(`
+          SELECT 
+            COUNT(*) as total_files,
+            COUNT(*) FILTER (WHERE metadata->>'isPublic' = 'true' OR (metadata->>'isPublic')::boolean = true) as public_files,
+            COUNT(*) FILTER (WHERE metadata->>'isPublic' = 'false' OR (metadata->>'isPublic')::boolean = false) as private_files
+          FROM aggregator_metadata
+        `);
+        
+        const feedPostsCheck = await db.query(`
+          SELECT 
+            COUNT(DISTINCT am.file_id) as public_files_total,
+            COUNT(DISTINCT fp.file_id) as public_files_in_feeds
+          FROM aggregator_metadata am
+          LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
+          WHERE (am.metadata->>'isPublic' = 'true' OR (am.metadata->>'isPublic')::boolean = true)
+        `);
+        
+        // 2. Get sample public files
+        const samplePublic = await db.query(`
+          SELECT 
+            am.file_id,
+            am.metadata->>'name' as name,
+            am.metadata->>'isPublic' as is_public,
+            COUNT(fp.feed_id) as feed_count
+          FROM aggregator_metadata am
+          LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
+          WHERE (am.metadata->>'isPublic' = 'true' OR (am.metadata->>'isPublic')::boolean = true)
+          GROUP BY am.file_id, am.metadata->>'name', am.metadata->>'isPublic'
+          ORDER BY am.updated_at DESC
+          LIMIT 10
+        `);
+        
+        // 3. Invalidate cache
+        await invalidateIndexCache();
+        
+        const stats = stateCheck.rows[0];
+        const feedStats = feedPostsCheck.rows[0];
+        
+        return res.json({
+          success: true,
+          message: 'Diagnostic complete and cache cleared',
+          database: {
+            totalFiles: parseInt(stats.total_files || '0', 10),
+            publicFiles: parseInt(stats.public_files || '0', 10),
+            privateFiles: parseInt(stats.private_files || '0', 10),
+            publicFilesInFeeds: parseInt(feedStats.public_files_in_feeds || '0', 10),
+            publicFilesNotInFeeds: parseInt(feedStats.public_files_total || '0', 10) - parseInt(feedStats.public_files_in_feeds || '0', 10)
+          },
+          samplePublicFiles: samplePublic.rows.map((r: any) => ({
+            fileId: r.file_id,
+            name: r.name,
+            isPublic: r.is_public,
+            inFeeds: parseInt(r.feed_count || '0', 10)
+          })),
+          note: 'Public feed (no feedId) shows ALL public files. Specific feeds only show files in feed_posts table. Cache has been cleared.'
+        });
+      } catch (error: any) {
+        console.error('Error in fix-feeds endpoint:', error);
+        return res.status(500).json({ 
+          error: 'Failed to run diagnostic',
+          message: error.message 
+        });
+      }
+    });
+
     // GET /api/aggregator/metadata-index/:fileId/companion-check - Check companion metadata visibility vs database isPublic
     this.app.get('/api/aggregator/metadata-index/:fileId/companion-check', async (req, res) => {
       try {
