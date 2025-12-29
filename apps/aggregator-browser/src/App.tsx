@@ -56,7 +56,6 @@ import { saveToFeed, getSavedFeed } from './services/savedFeedService';
 import { getUserProfile } from './services/profileService';
 import { isNSFWContent } from './constants/contentRatings';
 import { calculateMediaScaling, getContainerDimensions, type MediaDimensions } from './utils/mediaScaling';
-import { getMePageCoverUrl } from './utils/mePageCoverGenerator';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -70,7 +69,6 @@ function App() {
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mePageCoverUrl, setMePageCoverUrl] = useState<string | null>(null); // Shared cover URL for all users
   // SCALABILITY: Pagination state for infinite scroll
   const [currentPage, setCurrentPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -239,15 +237,6 @@ function App() {
   // MOBILE FIX: Use actual viewport height instead of 100vh to account for mobile browser UI
   const viewportHeightCSS = useViewportHeightCSS(true); // true = exclude bottom nav
 
-  // Pre-generate me page cover image on app load for instant display
-  // This is a shared cover used by all users for their empty states
-  useEffect(() => {
-    getMePageCoverUrl().then((coverUrl) => {
-      setMePageCoverUrl(coverUrl); // Store in state for immediate access
-    }).catch((error) => {
-      console.error('Failed to pre-generate me page cover:', error);
-    });
-  }, []);
 
   // Feed navigation hook
   const { feedHierarchy, getNextFeed, getPreviousFeed, getFeedIndex } = useFeedNavigation(
@@ -3654,50 +3643,24 @@ function App() {
             if (shouldShowCover && coverCreatorId) {
               const coverName = getDisplayName(coverCreatorId) || coverCreatorId;
               
-              // Use shared cover URL - should be pre-generated on app load
-              // If not available yet, show minimal loading (should be rare)
-              if (!mePageCoverUrl) {
-                // Trigger generation if not already in progress
-                getMePageCoverUrl().then((coverUrl) => {
-                  setMePageCoverUrl(coverUrl);
-                }).catch((error) => {
-                  console.error('Failed to get me page cover:', error);
-                });
-                
-                // Show minimal loading state only if cover truly not available
-                return (
-                  <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
-                    <div className="relative w-full h-full flex items-center justify-center bg-black">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
-                    </div>
-                  </div>
-                );
-              }
-              
               return (
                 <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
                   <div className="relative w-full h-full flex">
-                    {/* Cover Image - Shared thumbnail for all users */}
-                    <div className="flex-1 relative overflow-hidden bg-black">
-                      {/* Blurred background */}
-                      <img
-                        src={mePageCoverUrl}
-                        alt=""
-                        className="absolute w-full h-full object-cover"
-                        style={{ 
-                          filter: 'blur(40px)', 
-                          transform: 'scale(1.1)',
-                          opacity: 0.6
-                        }}
-                      />
-                      {/* Main cover image */}
+                    {/* Background Image - Direct CSS reference, no generation needed */}
+                    <div 
+                      className="flex-1 relative overflow-hidden"
+                      style={{
+                        backgroundImage: 'url(/branding/Par-Noir-Background-Dark.png)',
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        backgroundRepeat: 'no-repeat'
+                      }}
+                    >
+                      {/* User's Public Name - Centered text overlay */}
                       <div className="absolute inset-0 flex items-center justify-center z-10">
-                        <img
-                          src={mePageCoverUrl}
-                          alt={coverName}
-                          className="max-w-full max-h-full object-contain"
-                          style={{ maxWidth: '90%', maxHeight: '90%' }}
-                        />
+                        <h2 className="text-white text-4xl font-semibold text-center px-4">
+                          {coverName}
+                        </h2>
                       </div>
                     </div>
                     
