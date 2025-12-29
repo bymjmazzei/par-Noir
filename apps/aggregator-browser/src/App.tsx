@@ -3682,7 +3682,7 @@ function App() {
                 }
               />
             </div>
-          )}
+          ) : null}
         </div>
       ) : showUploadModal ? (
         <div className="h-screen w-full bg-neutral-900" style={{ paddingBottom: '64px' }}>
