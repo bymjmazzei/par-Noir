@@ -137,6 +137,7 @@ export class GoogleDriveSyncService {
           // CRITICAL: pnIdentifier from storage_credentials already includes 'pn-' prefix
           // Folder name format: "par Noir - pn-{hash}"
           const folderName = `par Noir - ${pnIdentifier}`;
+          console.log(`🔍 [DEBUG] Searching for folder: "${folderName}" for pN identifier: ${pnIdentifier}`);
           const folderQuery = `name='${folderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
           const folderResponse = await fetch(
             `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)&pageSize=1`,
@@ -148,12 +149,20 @@ export class GoogleDriveSyncService {
             }
           );
           
+          console.log(`🔍 [DEBUG] Folder search response for ${pnIdentifier}:`, { status: folderResponse.status, statusText: folderResponse.statusText });
+          
           if (folderResponse.ok) {
             const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
+            console.log(`🔍 [DEBUG] Folder search result for ${pnIdentifier}:`, { filesFound: folderData.files?.length || 0, files: folderData.files });
             if (folderData.files && folderData.files.length > 0) {
               pnFolders.push(folderData.files[0]);
               console.log(`✅ Found folder for known pN identifier: ${pnIdentifier}`);
+            } else {
+              console.log(`⚠️ [DEBUG] No folder found for ${pnIdentifier} - folder name "${folderName}" not found in Google Drive`);
             }
+          } else {
+            const errorText = await folderResponse.text().catch(() => 'Unknown error');
+            console.error(`❌ [DEBUG] Failed to search for folder "${folderName}" (${pnIdentifier}): ${folderResponse.status} ${folderResponse.statusText}`, errorText);
           }
         }
       }

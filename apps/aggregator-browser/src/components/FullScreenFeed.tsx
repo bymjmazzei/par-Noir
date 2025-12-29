@@ -1994,6 +1994,9 @@ export function FullScreenFeed({
 
         // Check if this is a connection placeholder
         const isConnectionPlaceholder = (file as any).isConnectionPlaceholder || (indexedFile.metadata as any).isConnectionPlaceholder;
+        
+        // Check if this is a me page cover placeholder
+        const isMePageCover = (indexedFile.metadata as any).isMePageCover === true;
 
         return (
           <div
@@ -2129,9 +2132,75 @@ export function FullScreenFeed({
               );
             })()}
             
+            {/* Me Page Cover - Show when user has no media posts */}
+            {isMePageCover && (() => {
+              const coverThumbnailUrl = thumbnails.get(fileId);
+              
+              if (!coverThumbnailUrl) {
+                // Show placeholder while cover loads
+                return (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="flex flex-col items-center justify-center text-neutral-500">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
+                      <span className="text-xs">Loading cover...</span>
+                    </div>
+                  </div>
+                );
+              }
+              
+              const containerDims = getContainerDimensions(64);
+              const dims = mediaDimensions.get(fileId);
+              const scalingStyles = calculateMediaScaling(dims, containerDims);
+              
+              return (
+                <>
+                  {/* Blurred background image */}
+                  <img
+                    src={coverThumbnailUrl}
+                    alt="Par-Noir Cover"
+                    className="absolute"
+                    style={scalingStyles.background}
+                    loading="eager"
+                    decoding="async"
+                    onError={(e) => {
+                      console.error(`[FullScreenFeed] Cover background image failed to load for ${fileId}:`, e);
+                    }}
+                  />
+                  {/* Main cover image container - centers image */}
+                  <div className="w-full h-full flex items-center justify-center relative z-10">
+                    <img
+                      ref={(el) => {
+                        if (el) {
+                          imageRefs.current.set(fileId, el);
+                          // Track dimensions when loaded
+                          el.addEventListener('load', () => {
+                            const naturalWidth = el.naturalWidth;
+                            const naturalHeight = el.naturalHeight;
+                            setMediaDimensions(prev => {
+                              const newMap = new Map(prev);
+                              newMap.set(fileId, { width: naturalWidth, height: naturalHeight });
+                              return newMap;
+                            });
+                          });
+                        }
+                      }}
+                      src={coverThumbnailUrl}
+                      alt="Par-Noir Cover"
+                      style={scalingStyles.mainMedia}
+                      loading="eager"
+                      decoding="sync"
+                      onError={(e) => {
+                        console.error(`[FullScreenFeed] Cover image failed to load for ${fileId}:`, e);
+                      }}
+                    />
+                  </div>
+                </>
+              );
+            })()}
+
             {/* Full-screen image (single image) - Only render if NOT a text post */}
             {/* Show image if detected as image (show placeholder if thumbnail not loaded yet) */}
-            {!isConnectionPlaceholder && isImageFinal && (() => {
+            {!isConnectionPlaceholder && !isMePageCover && isImageFinal && (() => {
               const thumbnailUrl = thumbnails.get(fileId);
               
               if (!thumbnailUrl) {
@@ -2359,13 +2428,13 @@ export function FullScreenFeed({
                 }
               }}
               isLiked={isLiked(fileId)}
-              onLike={() => {
+              onLike={isMePageCover ? () => {} : () => {
                 if (visibleFileId === fileId && showEngagementOverlay) {
                   setShowEngagementOverlay(false);
                 }
                 onLike(fileId);
               }}
-              onComment={() => {
+              onComment={isMePageCover ? () => {} : () => {
                 console.log('[FullScreenFeed] onComment called', { fileId, indexedFile: !!indexedFile });
                 if (visibleFileId === fileId && showEngagementOverlay) {
                   setShowEngagementOverlay(false);
@@ -2377,7 +2446,7 @@ export function FullScreenFeed({
                   console.warn('[FullScreenFeed] onComment or indexedFile is missing', { onComment: !!onComment, indexedFile: !!indexedFile });
                 }
               }}
-              onShare={async () => {
+              onShare={isMePageCover ? async () => {} : async () => {
                 _onShare(fileId);
                 // Directly copy link to clipboard
                 const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;

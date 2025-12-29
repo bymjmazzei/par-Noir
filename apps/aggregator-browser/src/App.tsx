@@ -56,6 +56,7 @@ import { saveToFeed, getSavedFeed } from './services/savedFeedService';
 import { getUserProfile } from './services/profileService';
 import { isNSFWContent } from './constants/contentRatings';
 import { calculateMediaScaling, getContainerDimensions, type MediaDimensions } from './utils/mediaScaling';
+import { getMePageCoverUrl } from './utils/mePageCoverGenerator';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -2844,8 +2845,46 @@ function App() {
         }
       }
     }
+    
+    // Inject me page cover placeholder if media tab is empty
+    if (mePageTab === 'media' && filtered.length === 0) {
+      const coverCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
+      if (coverCreatorId) {
+        const coverFileId = `me-page-cover-${coverCreatorId}`;
+        filtered = [{
+          metadata: {
+            fileId: coverFileId,
+            isMePageCover: true,
+            creatorId: coverCreatorId,
+            fileType: 'image',
+            name: 'Par-Noir Cover',
+            engagement: {
+              views: 0,
+              likes: 0,
+              comments: 0,
+              shares: 0,
+              saves: 0,
+              lastUpdated: new Date().toISOString()
+            }
+          },
+          pnIdentifier: coverCreatorId
+        } as IndexedFile];
+        
+        // Generate and add cover image to thumbnails map
+        getMePageCoverUrl().then((coverUrl) => {
+          setThumbnails(prev => {
+            const next = new Map(prev);
+            next.set(coverFileId, coverUrl);
+            return next;
+          });
+        }).catch((error) => {
+          console.error('Failed to generate me page cover:', error);
+        });
+      }
+    }
+    
     return filtered;
-  }, [isOwnIndex, mePageTab, creatorFiles, userLikedFiles, userCommentedFiles, savedFiles, connectionsFiles, viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId, indexedFilesMap]);
+  }, [isOwnIndex, mePageTab, creatorFiles, userLikedFiles, userCommentedFiles, savedFiles, connectionsFiles, viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId, indexedFilesMap, userState.pnIdentifier]);
   
   // Only log when the count actually changes - use refs to track all values to prevent unnecessary re-runs
   const prevFilteredCountRef = useRef<number>(-1);
