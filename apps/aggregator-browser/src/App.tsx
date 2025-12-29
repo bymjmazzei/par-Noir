@@ -3638,9 +3638,16 @@ function App() {
               />
             </div>
           ) : mePageTab !== 'connections' ? (() => {
-            // Check if we should show cover as empty state
+            // Show cover as empty state when:
+            // 1. No files in filtered array (empty state) - this means we're already in empty state
+            // 2. On 'all' or 'media' tab
+            // 3. User has no media posts (check creatorFiles to see if they have any media)
+            // Since filteredMeFiles.length === 0, we're in empty state, so show cover if appropriate
             const userHasMedia = creatorFiles.some(f => isMedia(f));
-            const shouldShowCover = (mePageTab === 'all' || mePageTab === 'media') && !userHasMedia;
+            const shouldShowCover = 
+              filteredMeFiles.length === 0 && 
+              (mePageTab === 'all' || mePageTab === 'media') && 
+              !userHasMedia;
             const coverCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
             
             if (shouldShowCover && coverCreatorId) {
