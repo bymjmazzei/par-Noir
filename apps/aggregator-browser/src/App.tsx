@@ -65,7 +65,7 @@ import { getMePageCoverUrl } from './utils/mePageCoverGenerator';
 const EMPTY_ARRAY: IndexedFile[] = [];
 
 function App() {
-  const { userState, setLocked, setUnlocked, updateDisplayName } = useUserState();
+  const { userState, setLocked, setUnlocked, updateDisplayName, getDisplayName } = useUserState();
   const { activeContext, setActiveContext, availableContexts, loadContexts, isLoading: isLoadingContexts } = useAppContext(userState.pnIdentifier);
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -2867,6 +2867,10 @@ function App() {
       const coverCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
       if (coverCreatorId) {
         const coverFileId = `me-page-cover-${coverCreatorId}`;
+        // Get user's display name for the cover title
+        const userDisplayName = getDisplayName(coverCreatorId) || coverCreatorId;
+        const coverName = userDisplayName !== coverCreatorId ? userDisplayName : 'Par-Noir Cover';
+        
         // If 'all' tab has thoughts, prepend cover; otherwise replace empty array
         if (mePageTab === 'all' && filtered.length > 0) {
           // Prepend cover to thoughts in 'all' tab
@@ -2876,7 +2880,7 @@ function App() {
               isMePageCover: true,
               creatorId: coverCreatorId,
               fileType: 'image',
-              name: 'Par-Noir Cover',
+              name: coverName,
               engagement: {
                 views: 0,
                 likes: 0,
@@ -2896,7 +2900,7 @@ function App() {
               isMePageCover: true,
               creatorId: coverCreatorId,
               fileType: 'image',
-              name: 'Par-Noir Cover',
+              name: coverName,
               engagement: {
                 views: 0,
                 likes: 0,
@@ -2924,7 +2928,7 @@ function App() {
     }
     
     return filtered;
-  }, [isOwnIndex, mePageTab, creatorFiles, userLikedFiles, userCommentedFiles, savedFiles, connectionsFiles, viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId, indexedFilesMap, userState.pnIdentifier]);
+  }, [isOwnIndex, mePageTab, creatorFiles, userLikedFiles, userCommentedFiles, savedFiles, connectionsFiles, viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId, indexedFilesMap, userState.pnIdentifier, getDisplayName, userState.preferences.userDisplayNames]);
   
   // Only log when the count actually changes - use refs to track all values to prevent unnecessary re-runs
   const prevFilteredCountRef = useRef<number>(-1);
