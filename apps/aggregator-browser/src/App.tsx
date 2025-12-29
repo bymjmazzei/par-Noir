@@ -238,6 +238,16 @@ function App() {
   // MOBILE FIX: Use actual viewport height instead of 100vh to account for mobile browser UI
   const viewportHeightCSS = useViewportHeightCSS(true); // true = exclude bottom nav
 
+  // Pre-generate me page cover image on app load for instant display
+  useEffect(() => {
+    getMePageCoverUrl().then((coverUrl) => {
+      // Store in a ref or state for quick access
+      // The cover will be added to thumbnails when needed
+    }).catch((error) => {
+      console.error('Failed to pre-generate me page cover:', error);
+    });
+  }, []);
+
   // Feed navigation hook
   const { feedHierarchy, getNextFeed, getPreviousFeed, getFeedIndex } = useFeedNavigation(
     feeds,
@@ -2846,31 +2856,61 @@ function App() {
       }
     }
     
-    // Inject me page cover placeholder if media tab is empty
-    if (mePageTab === 'media' && filtered.length === 0) {
+    // Inject me page cover placeholder if 'all' or 'media' tab has no media posts
+    // For 'all' tab: show cover if user has no media (even if they have thoughts)
+    // For 'media' tab: show cover if no media files exist
+    // Check creatorFiles directly to see if user has any media, regardless of current filter
+    const userHasMedia = creatorFiles.some(f => isMedia(f));
+    const shouldShowCover = (mePageTab === 'all' || mePageTab === 'media') && !userHasMedia;
+    
+    if (shouldShowCover) {
       const coverCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
       if (coverCreatorId) {
         const coverFileId = `me-page-cover-${coverCreatorId}`;
-        filtered = [{
-          metadata: {
-            fileId: coverFileId,
-            isMePageCover: true,
-            creatorId: coverCreatorId,
-            fileType: 'image',
-            name: 'Par-Noir Cover',
-            engagement: {
-              views: 0,
-              likes: 0,
-              comments: 0,
-              shares: 0,
-              saves: 0,
-              lastUpdated: new Date().toISOString()
-            }
-          },
-          pnIdentifier: coverCreatorId
-        } as IndexedFile];
+        // If 'all' tab has thoughts, prepend cover; otherwise replace empty array
+        if (mePageTab === 'all' && filtered.length > 0) {
+          // Prepend cover to thoughts in 'all' tab
+          filtered = [{
+            metadata: {
+              fileId: coverFileId,
+              isMePageCover: true,
+              creatorId: coverCreatorId,
+              fileType: 'image',
+              name: 'Par-Noir Cover',
+              engagement: {
+                views: 0,
+                likes: 0,
+                comments: 0,
+                shares: 0,
+                saves: 0,
+                lastUpdated: new Date().toISOString()
+              }
+            },
+            pnIdentifier: coverCreatorId
+          } as IndexedFile, ...filtered];
+        } else {
+          // Replace empty array with cover
+          filtered = [{
+            metadata: {
+              fileId: coverFileId,
+              isMePageCover: true,
+              creatorId: coverCreatorId,
+              fileType: 'image',
+              name: 'Par-Noir Cover',
+              engagement: {
+                views: 0,
+                likes: 0,
+                comments: 0,
+                shares: 0,
+                saves: 0,
+                lastUpdated: new Date().toISOString()
+              }
+            },
+            pnIdentifier: coverCreatorId
+          } as IndexedFile];
+        }
         
-        // Generate and add cover image to thumbnails map
+        // Get pre-generated cover image (should be cached) and add to thumbnails map
         getMePageCoverUrl().then((coverUrl) => {
           setThumbnails(prev => {
             const next = new Map(prev);
@@ -2878,7 +2918,7 @@ function App() {
             return next;
           });
         }).catch((error) => {
-          console.error('Failed to generate me page cover:', error);
+          console.error('Failed to get me page cover:', error);
         });
       }
     }
