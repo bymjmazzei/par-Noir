@@ -3656,11 +3656,17 @@ function App() {
                         backgroundRepeat: 'no-repeat'
                       }}
                     >
-                      {/* User's Public Name - Centered text overlay */}
-                      <div className="absolute inset-0 flex items-center justify-center z-10">
-                        <h2 className="text-white text-4xl font-semibold text-center px-4">
+                      {/* User's Public Name - Bottom left, same position as regular media tiles */}
+                      <div 
+                        className="absolute left-0 right-20 p-4 md:p-6 z-10"
+                        style={{ 
+                          bottom: 0,
+                          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+                        }}
+                      >
+                        <h3 className="text-white text-base md:text-lg font-semibold line-clamp-1">
                           {coverName}
-                        </h2>
+                        </h3>
                       </div>
                     </div>
                     
