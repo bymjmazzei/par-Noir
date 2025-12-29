@@ -3660,7 +3660,7 @@ function App() {
                       <div 
                         className="absolute left-0 right-20 p-4 md:p-6 z-10"
                         style={{ 
-                          bottom: 0,
+                          bottom: '10px',
                           paddingBottom: 'env(safe-area-inset-bottom, 0px)',
                         }}
                       >
