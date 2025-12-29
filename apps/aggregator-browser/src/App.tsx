@@ -2856,78 +2856,9 @@ function App() {
       }
     }
     
-    // Inject me page cover placeholder if 'all' or 'media' tab has no media posts
-    // For 'all' tab: show cover if user has no media (even if they have thoughts)
-    // For 'media' tab: show cover if no media files exist
-    // Check creatorFiles directly to see if user has any media, regardless of current filter
-    const userHasMedia = creatorFiles.some(f => isMedia(f));
-    const shouldShowCover = (mePageTab === 'all' || mePageTab === 'media') && !userHasMedia;
-    
-    if (shouldShowCover) {
-      const coverCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
-      if (coverCreatorId) {
-        const coverFileId = `me-page-cover-${coverCreatorId}`;
-        // Get user's display name for the cover title, fallback to pn identifier
-        const coverName = getDisplayName(coverCreatorId) || coverCreatorId;
-        
-        // If 'all' tab has thoughts, prepend cover; otherwise replace empty array
-        if (mePageTab === 'all' && filtered.length > 0) {
-          // Prepend cover to thoughts in 'all' tab
-          filtered = [{
-            metadata: {
-              fileId: coverFileId,
-              isMePageCover: true,
-              creatorId: coverCreatorId,
-              fileType: 'image',
-              name: coverName,
-              engagement: {
-                views: 0,
-                likes: 0,
-                comments: 0,
-                shares: 0,
-                saves: 0,
-                lastUpdated: new Date().toISOString()
-              }
-            },
-            pnIdentifier: coverCreatorId
-          } as IndexedFile, ...filtered];
-        } else {
-          // Replace empty array with cover
-          filtered = [{
-            metadata: {
-              fileId: coverFileId,
-              isMePageCover: true,
-              creatorId: coverCreatorId,
-              fileType: 'image',
-              name: coverName,
-              engagement: {
-                views: 0,
-                likes: 0,
-                comments: 0,
-                shares: 0,
-                saves: 0,
-                lastUpdated: new Date().toISOString()
-              }
-            },
-            pnIdentifier: coverCreatorId
-          } as IndexedFile];
-        }
-        
-        // Get pre-generated cover image (should be cached) and add to thumbnails map
-        getMePageCoverUrl().then((coverUrl) => {
-          setThumbnails(prev => {
-            const next = new Map(prev);
-            next.set(coverFileId, coverUrl);
-            return next;
-          });
-        }).catch((error) => {
-          console.error('Failed to get me page cover:', error);
-        });
-      }
-    }
-    
+    // Don't inject cover into feed array - it will be shown as empty state instead
     return filtered;
-  }, [isOwnIndex, mePageTab, creatorFiles, userLikedFiles, userCommentedFiles, savedFiles, connectionsFiles, viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId, indexedFilesMap, userState.pnIdentifier, getDisplayName, userState.preferences.userDisplayNames]);
+  }, [isOwnIndex, mePageTab, creatorFiles, userLikedFiles, userCommentedFiles, savedFiles, connectionsFiles, viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId, indexedFilesMap]);
   
   // Only log when the count actually changes - use refs to track all values to prevent unnecessary re-runs
   const prevFilteredCountRef = useRef<number>(-1);
@@ -3706,26 +3637,133 @@ function App() {
                 } : undefined}
               />
             </div>
-          ) : mePageTab !== 'connections' ? (
-            <div className="h-full flex items-center justify-center text-white" style={{ paddingBottom: '64px' }}>
-              <EmptyState
-                type="no-content"
-                message={
-                  mePageTab === 'media' 
-                    ? 'No media yet.'
-                    : mePageTab === 'thoughts'
-                    ? 'No thoughts yet.'
-                    : mePageTab === 'likes'
-                    ? 'No liked posts yet.'
-                    : mePageTab === 'comments'
-                    ? 'No commented posts yet.'
-                    : mePageTab === 'saved'
-                    ? 'No saved posts yet. Save posts to your private collection!'
-                    : 'No content yet.'
-                }
-              />
-            </div>
-          ) : null}
+          ) : mePageTab !== 'connections' ? (() => {
+            // Check if we should show cover as empty state
+            const userHasMedia = creatorFiles.some(f => isMedia(f));
+            const shouldShowCover = (mePageTab === 'all' || mePageTab === 'media') && !userHasMedia;
+            const coverCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
+            
+            if (shouldShowCover && coverCreatorId) {
+              const coverFileId = `me-page-cover-${coverCreatorId}`;
+              const coverName = getDisplayName(coverCreatorId) || coverCreatorId;
+              const coverThumbnailUrl = thumbnails.get(coverFileId);
+              
+              // Ensure cover is in thumbnails
+              if (!coverThumbnailUrl) {
+                getMePageCoverUrl().then((coverUrl) => {
+                  setThumbnails(prev => {
+                    const next = new Map(prev);
+                    next.set(coverFileId, coverUrl);
+                    return next;
+                  });
+                }).catch((error) => {
+                  console.error('Failed to get me page cover:', error);
+                });
+              }
+              
+              return (
+                <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
+                  <div className="relative w-full h-full flex">
+                    {/* Cover Image */}
+                    <div className="flex-1 relative overflow-hidden bg-black">
+                      {coverThumbnailUrl ? (
+                        <>
+                          {/* Blurred background */}
+                          <img
+                            src={coverThumbnailUrl}
+                            alt=""
+                            className="absolute w-full h-full object-cover"
+                            style={{ 
+                              filter: 'blur(40px)', 
+                              transform: 'scale(1.1)',
+                              opacity: 0.6
+                            }}
+                          />
+                          {/* Main cover image */}
+                          <div className="absolute inset-0 flex items-center justify-center z-10">
+                            <img
+                              src={coverThumbnailUrl}
+                              alt={coverName}
+                              className="max-w-full max-h-full object-contain"
+                              style={{ maxWidth: '90%', maxHeight: '90%' }}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <div className="flex flex-col items-center justify-center text-neutral-500">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
+                            <span className="text-xs">Loading cover...</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Engagement Sidebar */}
+                    <FeedEngagementSidebar
+                      file={{
+                        metadata: {
+                          fileId: coverFileId,
+                          creatorId: coverCreatorId,
+                          name: coverName,
+                          engagement: {
+                            views: 0,
+                            likes: 0,
+                            comments: 0,
+                            shares: 0,
+                            saves: 0,
+                            lastUpdated: new Date().toISOString()
+                          }
+                        }
+                      } as IndexedFile}
+                      isLiked={false}
+                      onLike={() => {}}
+                      onComment={() => {}}
+                      onShare={async () => {}}
+                      onAddToFeed={undefined}
+                      onEdit={undefined}
+                      isOwner={isOwnIndex && coverCreatorId === userState.pnIdentifier}
+                      onCreatorClick={(creatorId) => {
+                        if (creatorId !== viewingCreatorId) {
+                          setViewingCreatorId(creatorId);
+                          setMePageTab('all');
+                          setCurrentFeedIndex(0);
+                        }
+                      }}
+                      onMessage={(creatorId) => {
+                        setInitialThread({ participantDid: creatorId });
+                        setShowInbox(true);
+                        setActiveBottomTab('messages');
+                      }}
+                      indexedFiles={[]}
+                    />
+                  </div>
+                </div>
+              );
+            }
+            
+            // Default empty state
+            return (
+              <div className="h-full flex items-center justify-center text-white" style={{ paddingBottom: '64px' }}>
+                <EmptyState
+                  type="no-content"
+                  message={
+                    mePageTab === 'media' 
+                      ? 'No media yet.'
+                      : mePageTab === 'thoughts'
+                      ? 'No thoughts yet.'
+                      : mePageTab === 'likes'
+                      ? 'No liked posts yet.'
+                      : mePageTab === 'comments'
+                      ? 'No commented posts yet.'
+                      : mePageTab === 'saved'
+                      ? 'No saved posts yet. Save posts to your private collection!'
+                      : 'No content yet.'
+                  }
+                />
+              </div>
+            );
+          })() : null}
         </div>
       ) : showUploadModal ? (
         <div className="h-screen w-full bg-neutral-900" style={{ paddingBottom: '64px' }}>
