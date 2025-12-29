@@ -3641,13 +3641,13 @@ function App() {
             // Show cover as empty state when:
             // 1. No files in filtered array (empty state) - this means we're already in empty state
             // 2. On 'all' or 'media' tab
-            // 3. User has no media posts (check creatorFiles to see if they have any media)
-            // Since filteredMeFiles.length === 0, we're in empty state, so show cover if appropriate
-            const userHasMedia = creatorFiles.some(f => isMedia(f));
+            // Show cover optimistically - if user has media, it will be replaced once files load
+            // For users with no content, cover will show immediately without waiting for files to load
+            const userHasMedia = creatorFiles.length > 0 && creatorFiles.some(f => isMedia(f));
             const shouldShowCover = 
               filteredMeFiles.length === 0 && 
               (mePageTab === 'all' || mePageTab === 'media') && 
-              !userHasMedia;
+              !userHasMedia; // Only false if creatorFiles has loaded AND has media
             const coverCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
             
             if (shouldShowCover && coverCreatorId) {
