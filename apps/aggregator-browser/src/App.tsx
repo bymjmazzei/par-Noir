@@ -2867,9 +2867,8 @@ function App() {
       const coverCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
       if (coverCreatorId) {
         const coverFileId = `me-page-cover-${coverCreatorId}`;
-        // Get user's display name for the cover title
-        const userDisplayName = getDisplayName(coverCreatorId) || coverCreatorId;
-        const coverName = userDisplayName !== coverCreatorId ? userDisplayName : 'Par-Noir Cover';
+        // Get user's display name for the cover title, fallback to pn identifier
+        const coverName = getDisplayName(coverCreatorId) || coverCreatorId;
         
         // If 'all' tab has thoughts, prepend cover; otherwise replace empty array
         if (mePageTab === 'all' && filtered.length > 0) {
