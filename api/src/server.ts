@@ -1690,6 +1690,41 @@ class ProductionServer {
           return res.status(400).json({ error: 'Missing fileId parameter' });
         }
 
+        // CRITICAL: OWNERSHIP VERIFICATION - Only owner can delete metadata
+        const current = await service.getFileMetadata(fileId);
+        if (current) {
+          const fileOwnerDid = current.metadata.creator?.identifier?.value || 
+                             current.metadata.creator?.["@id"] || 
+                             current.metadata.author?.did ||
+                             current.pnIdentifier;
+          const authHeader = req.headers.authorization;
+          if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.substring(7);
+            const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+            const tokenPayload = PNOAuthService.validateAccessToken(token);
+            if (tokenPayload) {
+              const requestingUserDid = tokenPayload.pnIdentifier || tokenPayload.did;
+              if (fileOwnerDid !== requestingUserDid && current.pnIdentifier !== requestingUserDid) {
+                console.error(`[MetadataIndex DELETE] UNAUTHORIZED: Attempt to delete metadata for file ${fileId} by non-owner. Owner: ${fileOwnerDid}, Requesting: ${requestingUserDid}`);
+                return res.status(403).json({ 
+                  error: 'Forbidden',
+                  message: 'Only the file owner can delete metadata'
+                });
+              }
+            } else {
+              return res.status(401).json({
+                error: 'unauthorized',
+                error_description: 'Invalid or expired access token'
+              });
+            }
+          } else {
+            return res.status(401).json({
+              error: 'unauthorized',
+              error_description: 'Missing or invalid Authorization header'
+            });
+          }
+        }
+
         const removed = await service.removeMetadata(fileId);
 
         if (removed) {
@@ -2508,6 +2543,23 @@ class ProductionServer {
         fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.ts:2142',message:'Updating metadata with isPublic',data:{fileId,isPublicProvided:isPublic,finalIsPublic,currentIsPublic:current.metadata.isPublic},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
         // #endregion
 
+        // CRITICAL: OWNERSHIP VERIFICATION - Only owner can update metadata
+        if (current) {
+          const fileOwnerDid = current.metadata.creator?.identifier?.value || 
+                             current.metadata.creator?.["@id"] || 
+                             current.metadata.author?.did ||
+                             current.pnIdentifier;
+          const requestingUserDid = tokenPayload.pnIdentifier || tokenPayload.did;
+          
+          if (fileOwnerDid !== requestingUserDid && current.pnIdentifier !== requestingUserDid) {
+            console.error(`[MetadataIndex PUT] UNAUTHORIZED: Attempt to update metadata for file ${fileId} by non-owner. Owner: ${fileOwnerDid}, Requesting: ${requestingUserDid}`);
+            return res.status(403).json({ 
+              error: 'Forbidden',
+              message: 'Only the file owner can update metadata'
+            });
+          }
+        }
+
         // Now update with provided fields
         const updated = await service.updateMetadata(fileId, {
           name,
@@ -2539,8 +2591,12 @@ class ProductionServer {
         // IMPORTANT: Text posts default to public if isPublic is not explicitly set
         const shouldUpdateIsPublic = isPublic !== undefined || textPost || thought;
         if (shouldUpdateIsPublic) {
-          const finalIsPublic = isPublic !== undefined ? isPublic : ((textPost || thought) ? true : false);
           current = await service.getFileMetadata(fileId);
+          const finalIsPublic = isPublic !== undefined 
+            ? isPublic 
+            : (textPost || thought) 
+              ? true 
+              : (current?.metadata?.isPublic ?? false); // Preserve existing, default to false only for new files
           const wasPublic = current?.metadata?.isPublic || false;
           
           // CRITICAL: OWNERSHIP VERIFICATION - Only owner can change isPublic

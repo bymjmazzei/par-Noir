@@ -69,7 +69,7 @@ export class AggregatorMetadataServiceDB {
     // PRESERVE isPublic: Only change if explicitly provided AND owner verified
     // Otherwise preserve existing value (don't accidentally make public files private)
     const finalIsPublic = existingMetadata && metadata.isPublic === undefined
-      ? (existingIsPublic === true || existingIsPublic === 'true' ? true : false)
+      ? existingIsPublic  // Preserve whatever it was (true, false, null, undefined)
       : metadata.isPublic;
 
     // Enhance metadata structure - preserve isPublic value
@@ -307,9 +307,8 @@ export class AggregatorMetadataServiceDB {
     const db = getDatabasePool();
 
     try {
-      // If filtering by feedId, use INNER JOIN to only get files in that feed
-      // Otherwise use LEFT JOIN to get all files with their feedIds
-      const joinType = filters?.feedId ? 'INNER' : 'LEFT';
+      // Always use LEFT JOIN to include public files even if not in feed_posts
+      const joinType = 'LEFT';
       
       let query = `
         SELECT 
@@ -345,9 +344,12 @@ export class AggregatorMetadataServiceDB {
       const params: any[] = [];
       let paramIndex = 1;
       
-      // Add feedId filter if provided
+      // Add feedId filter if provided - check both feed_posts and metadata.feedIds
       if (filters?.feedId) {
-        query += ` AND fp.feed_id = $${paramIndex}`;
+        query += ` AND (
+          fp.feed_id = $${paramIndex}
+          OR (am.metadata->'feedIds' ? $${paramIndex})
+        )`;
         params.push(filters.feedId);
         paramIndex++;
       }
@@ -391,11 +393,11 @@ export class AggregatorMetadataServiceDB {
       
       // Get total count before pagination (for pagination info)
       // Note: This count doesn't include JS filters (tags, authorDid) for performance
-      const countJoinType = filters?.feedId ? 'INNER' : 'LEFT';
-      const countQuery = `
+      // Always use LEFT JOIN to match main query
+      let countQuery = `
         SELECT COUNT(DISTINCT am.file_id) as count
         FROM aggregator_metadata am
-        ${countJoinType} JOIN feed_posts fp ON am.file_id = fp.file_id
+        LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
         WHERE (
           am.metadata->>'isPublic' = 'true' 
           OR (am.metadata->>'isPublic')::boolean = true
@@ -417,26 +419,42 @@ export class AggregatorMetadataServiceDB {
         )
         -- SIMPLIFIED: Public feed should only filter by isPublic/publicToken and isNSFW
         -- Files with publicToken are considered public even if isPublic is false
-        ${filters?.fileType ? `AND am.metadata->>'fileType' = $1` : ''}
-        ${filters?.feedId ? `AND fp.feed_id = $${filters?.fileType ? '2' : '1'}` : ''}
-        ${filters?.indexerId ? `AND (
+      `;
+      const countParams: any[] = [];
+      let countParamIndex = 1;
+      
+      if (filters?.fileType) {
+        countQuery += ` AND am.metadata->>'fileType' = $${countParamIndex}`;
+        countParams.push(filters.fileType);
+        countParamIndex++;
+      }
+      
+      if (filters?.feedId) {
+        countQuery += ` AND (
+          fp.feed_id = $${countParamIndex}
+          OR (am.metadata->'feedIds' ? $${countParamIndex})
+        )`;
+        countParams.push(filters.feedId);
+        countParamIndex++;
+      }
+      
+      if (filters?.indexerId) {
+        countQuery += ` AND (
           am.metadata->'indexingPermissions' IS NULL
           OR am.metadata->'indexingPermissions'->>'mode' IS NULL
           OR (
             am.metadata->'indexingPermissions'->>'mode' = 'all'
-            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${filters?.fileType && filters?.feedId ? '3' : filters?.fileType || filters?.feedId ? '2' : '1'})
+            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${countParamIndex})
           )
           OR (
             am.metadata->'indexingPermissions'->>'mode' = 'custom'
-            AND (COALESCE(am.metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? $${filters?.fileType && filters?.feedId ? '3' : filters?.fileType || filters?.feedId ? '2' : '1'})
-            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${filters?.fileType && filters?.feedId ? '3' : filters?.fileType || filters?.feedId ? '2' : '1'})
+            AND (COALESCE(am.metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? $${countParamIndex})
+            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${countParamIndex})
           )
-        )` : ''}
-      `;
-      const countParams: any[] = [];
-      if (filters?.fileType) countParams.push(filters.fileType);
-      if (filters?.feedId) countParams.push(filters.feedId);
-      if (filters?.indexerId) countParams.push(filters.indexerId);
+        )`;
+        countParams.push(filters.indexerId);
+        countParamIndex++;
+      }
       
       const countResult = await db.query(countQuery, countParams);
       const total = parseInt(countResult.rows[0].count, 10);
