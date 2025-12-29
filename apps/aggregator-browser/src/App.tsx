@@ -70,6 +70,7 @@ function App() {
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mePageCoverUrl, setMePageCoverUrl] = useState<string | null>(null); // Shared cover URL for all users
   // SCALABILITY: Pagination state for infinite scroll
   const [currentPage, setCurrentPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -239,10 +240,10 @@ function App() {
   const viewportHeightCSS = useViewportHeightCSS(true); // true = exclude bottom nav
 
   // Pre-generate me page cover image on app load for instant display
+  // This is a shared cover used by all users for their empty states
   useEffect(() => {
     getMePageCoverUrl().then((coverUrl) => {
-      // Store in a ref or state for quick access
-      // The cover will be added to thumbnails when needed
+      setMePageCoverUrl(coverUrl); // Store in state for immediate access
     }).catch((error) => {
       console.error('Failed to pre-generate me page cover:', error);
     });
@@ -3651,66 +3652,60 @@ function App() {
             const coverCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
             
             if (shouldShowCover && coverCreatorId) {
-              const coverFileId = `me-page-cover-${coverCreatorId}`;
               const coverName = getDisplayName(coverCreatorId) || coverCreatorId;
-              const coverThumbnailUrl = thumbnails.get(coverFileId);
               
-              // Ensure cover is in thumbnails
-              if (!coverThumbnailUrl) {
+              // Use shared cover URL - should be pre-generated on app load
+              // If not available yet, show minimal loading (should be rare)
+              if (!mePageCoverUrl) {
+                // Trigger generation if not already in progress
                 getMePageCoverUrl().then((coverUrl) => {
-                  setThumbnails(prev => {
-                    const next = new Map(prev);
-                    next.set(coverFileId, coverUrl);
-                    return next;
-                  });
+                  setMePageCoverUrl(coverUrl);
                 }).catch((error) => {
                   console.error('Failed to get me page cover:', error);
                 });
+                
+                // Show minimal loading state only if cover truly not available
+                return (
+                  <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
+                    <div className="relative w-full h-full flex items-center justify-center bg-black">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
+                    </div>
+                  </div>
+                );
               }
               
               return (
                 <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
                   <div className="relative w-full h-full flex">
-                    {/* Cover Image */}
+                    {/* Cover Image - Shared thumbnail for all users */}
                     <div className="flex-1 relative overflow-hidden bg-black">
-                      {coverThumbnailUrl ? (
-                        <>
-                          {/* Blurred background */}
-                          <img
-                            src={coverThumbnailUrl}
-                            alt=""
-                            className="absolute w-full h-full object-cover"
-                            style={{ 
-                              filter: 'blur(40px)', 
-                              transform: 'scale(1.1)',
-                              opacity: 0.6
-                            }}
-                          />
-                          {/* Main cover image */}
-                          <div className="absolute inset-0 flex items-center justify-center z-10">
-                            <img
-                              src={coverThumbnailUrl}
-                              alt={coverName}
-                              className="max-w-full max-h-full object-contain"
-                              style={{ maxWidth: '90%', maxHeight: '90%' }}
-                            />
-                          </div>
-                        </>
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <div className="flex flex-col items-center justify-center text-neutral-500">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
-                            <span className="text-xs">Loading cover...</span>
-                          </div>
-                        </div>
-                      )}
+                      {/* Blurred background */}
+                      <img
+                        src={mePageCoverUrl}
+                        alt=""
+                        className="absolute w-full h-full object-cover"
+                        style={{ 
+                          filter: 'blur(40px)', 
+                          transform: 'scale(1.1)',
+                          opacity: 0.6
+                        }}
+                      />
+                      {/* Main cover image */}
+                      <div className="absolute inset-0 flex items-center justify-center z-10">
+                        <img
+                          src={mePageCoverUrl}
+                          alt={coverName}
+                          className="max-w-full max-h-full object-contain"
+                          style={{ maxWidth: '90%', maxHeight: '90%' }}
+                        />
+                      </div>
                     </div>
                     
                     {/* Engagement Sidebar */}
                     <FeedEngagementSidebar
                       file={{
                         metadata: {
-                          fileId: coverFileId,
+                          fileId: `me-page-cover-${coverCreatorId}`,
                           creatorId: coverCreatorId,
                           name: coverName,
                           engagement: {
