@@ -223,13 +223,14 @@ export function FeedRail({
   }, [isPublicFeedActive, userState.isUnlocked, activeFeedId, feeds.length, getDropdownPosition]);
 
   return (
-    <div className="relative">
+    <div className="relative w-full">
       <div 
         ref={scrollContainerRef}
         className="w-full overflow-x-auto scrollbar-hide pointer-events-auto" 
         style={{ 
           scrollbarWidth: 'none', 
-          msOverflowStyle: 'none'
+          msOverflowStyle: 'none',
+          width: '100%'
         }}
       >
         <div
