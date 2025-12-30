@@ -40,37 +40,6 @@ export function FeedRail({
   const [showDropdown, setShowDropdown] = useState(false);
   const isPublicFeedActive = activeFeedId === 'public';
   
-  // Debug: Log feeds to see what's being passed
-  useEffect(() => {
-    console.log('[FeedRail] Feeds received:', JSON.stringify(feeds.map(f => ({ feedId: f.feedId, name: f.name })), null, 2));
-  }, [feeds]);
-
-  // Debug: Check if DOM elements exist after render
-  useEffect(() => {
-    if (innerContainerRef.current) {
-      const allButtons = innerContainerRef.current.querySelectorAll('[data-feed-id]');
-      const buttonDetails = Array.from(allButtons).map(btn => {
-        const element = btn as HTMLElement;
-        const computedStyle = window.getComputedStyle(element);
-        const rect = element.getBoundingClientRect();
-        return {
-          feedId: btn.getAttribute('data-feed-id'),
-          visible: element.offsetWidth > 0 && element.offsetHeight > 0,
-          width: element.offsetWidth,
-          height: element.offsetHeight,
-          display: computedStyle.display,
-          visibility: computedStyle.visibility,
-          opacity: computedStyle.opacity,
-          position: computedStyle.position,
-          left: rect.left,
-          top: rect.top,
-          right: rect.right,
-          bottom: rect.bottom
-        };
-      });
-      console.log('[FeedRail] DOM check - Found buttons:', JSON.stringify(buttonDetails, null, 2));
-    }
-  }, [feeds, activeFeedId]);
 
   // Calculate max scroll position - prevent scrolling past last feed at midpoint
   const calculateMaxScroll = useCallback(() => {
@@ -174,22 +143,14 @@ export function FeedRail({
   // Calculate dropdown position when pN is active
   const getDropdownPosition = useCallback(() => {
     if (!isPublicFeedActive || !userState.isUnlocked || !pNButtonRef.current || !scrollContainerRef.current) {
-      console.log('[FeedRail] Dropdown position check failed:', {
-        isPublicFeedActive,
-        isUnlocked: userState.isUnlocked,
-        hasButtonRef: !!pNButtonRef.current,
-        hasContainerRef: !!scrollContainerRef.current
-      });
       return null;
     }
     const buttonRect = pNButtonRef.current.getBoundingClientRect();
     const containerRect = scrollContainerRef.current.getBoundingClientRect();
-    const position = {
+    return {
       left: buttonRect.left - containerRect.left + (buttonRect.width / 2),
       top: containerRect.height + 4
     };
-    console.log('[FeedRail] Dropdown position calculated:', position);
-    return position;
   }, [isPublicFeedActive, userState.isUnlocked]);
   
   const [dropdownPosition, setDropdownPosition] = useState<{ left: number; top: number } | null>(null);
@@ -198,7 +159,6 @@ export function FeedRail({
     if (isPublicFeedActive && userState.isUnlocked) {
       const updatePosition = () => {
         const pos = getDropdownPosition();
-        console.log('[FeedRail] Updating dropdown position:', pos);
         setDropdownPosition(pos);
       };
       // Use multiple timeouts to ensure button is rendered
@@ -221,7 +181,6 @@ export function FeedRail({
         clearTimeout(timeout3);
       };
     } else {
-      console.log('[FeedRail] Dropdown hidden:', { isPublicFeedActive, isUnlocked: userState.isUnlocked });
       setDropdownPosition(null);
     }
   }, [isPublicFeedActive, userState.isUnlocked, activeFeedId, feeds.length, getDropdownPosition]);
@@ -250,13 +209,8 @@ export function FeedRail({
             const isActive = feed.feedId === activeFeedId;
             const isPublicFeed = feed.feedId === 'public';
             
-            // Debug: Log when rendering each feed
-            if (feed.feedId === 'thoughts' || feed.feedId === 'collections') {
-              console.log(`[FeedRail] Rendering feed: ${feed.feedId} (${feed.name})`);
-            }
-            
             return (
-              <div key={feed.feedId} className="relative" data-debug-feed-id={feed.feedId}>
+              <div key={feed.feedId} className="relative">
                 <button
                   ref={isPublicFeed ? pNButtonRef : undefined}
                   data-feed-id={feed.feedId}

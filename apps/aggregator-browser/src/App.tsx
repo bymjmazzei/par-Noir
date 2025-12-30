@@ -606,15 +606,13 @@ function App() {
   // Only show subscribed feeds and CURATED feed when user is unlocked
   // MUST be before early returns to satisfy Rules of Hooks
   const feedRailItems = useMemo(() => {
-    const items = buildFeedRailItems(
+    return buildFeedRailItems(
       feeds,
       userState.isUnlocked ? userState.preferences.subscribedFeedIds : [],
       activeFeedId,
       userState.isUnlocked,
       hasNewThirdPartyContent
     );
-    console.log('[App] feedRailItems built:', JSON.stringify(items.map(f => ({ feedId: f.feedId, name: f.name })), null, 2));
-    return items;
   }, [feeds, userState.isUnlocked, userState.preferences.subscribedFeedIds, activeFeedId, hasNewThirdPartyContent]);
 
   // Auth modal state - MUST be before early returns to satisfy Rules of Hooks
