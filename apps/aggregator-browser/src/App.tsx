@@ -8,6 +8,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Search, Filter, User, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import { LockButtonWithContext } from './components/LockButtonWithContext';
 import { getMetadataIndexService } from './services/metadata/MetadataIndexService';
+import { ContentTypeIndexService } from './services/contentTypeIndexService';
 import { MetadataFilters, IndexedFile, Feed } from './types/aggregator';
 import { decryptWithToken, ShareToken } from './utils/tokenDecryption';
 import { useUserState } from './contexts/UserStateContext';
@@ -60,7 +61,16 @@ const EMPTY_ARRAY: IndexedFile[] = [];
 function App() {
   const { userState, setLocked, setUnlocked, updateDisplayName, getDisplayName } = useUserState();
   const { activeContext, setActiveContext, availableContexts, loadContexts, isLoading: isLoadingContexts } = useAppContext(userState.pnIdentifier);
-  const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
+  // Content-type indices (replaces single indexedFiles state)
+  const [mediaFiles, setMediaFiles] = useState<IndexedFile[]>([]);
+  const [thoughtsFiles, setThoughtsFiles] = useState<IndexedFile[]>([]);
+  const [collectionsFiles, setCollectionsFiles] = useState<IndexedFile[]>([]);
+  
+  // Keep indexedFiles for backward compatibility during migration
+  // This will be computed from the content-type indices
+  const indexedFiles = useMemo(() => {
+    return [...mediaFiles, ...thoughtsFiles, ...collectionsFiles];
+  }, [mediaFiles, thoughtsFiles, collectionsFiles]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // SCALABILITY: Pagination state for infinite scroll
@@ -816,35 +826,7 @@ function App() {
   // The only place thoughts are excluded is the me page "media" tab, which handles it separately
 
   const filteredFilesByFeed = useMemo(() => {
-    console.log('[DEBUG] filteredFilesByFeed computing', { activeFeedId, indexedFilesLength: indexedFiles.length, viewMode });
-    
-    // Build sets of fileIds to exclude (individual thought pages from multi-page thought collections)
-    // Only filter out thoughts that are in thought collections (multi-page thoughts), not regular collections or single thoughts
-    const thoughtThumbnailIdsInCollections = new Set<string>();
-    const thoughtFileIdsInCollections = new Set<string>();
-    
-    // Find all thought collections and mark their constituent files for exclusion
-    indexedFiles.forEach((file: IndexedFile) => {
-      const isThoughtCollection = (file.metadata as any).isThoughtCollection === true;
-      if (isThoughtCollection && file.metadata.collection?.collectionFileIds) {
-        const collectionFileIds = file.metadata.collection.collectionFileIds;
-        
-        // For thought collections, collectionFileIds are thumbnail IDs
-        collectionFileIds.forEach((thumbnailId: string) => {
-          thoughtThumbnailIdsInCollections.add(thumbnailId);
-          
-          // Find the main thought file for this thumbnail (if it exists in indexedFiles)
-          const thumbnailFile = indexedFiles.find(f => f.metadata.fileId === thumbnailId);
-          if (thumbnailFile?.metadata.mainFileId) {
-            thoughtFileIdsInCollections.add(thumbnailFile.metadata.mainFileId);
-          }
-        });
-      }
-    });
-    
-    const showNSFW = userState.preferences.showNSFW;
-    const hasAgeZKP = userState.preferences.hasAgeZKP;
-    const isOver18 = userState.preferences.isOver18;
+    console.log('[DEBUG] filteredFilesByFeed computing', { activeFeedId, mediaCount: mediaFiles.length, thoughtsCount: thoughtsFiles.length, collectionsCount: collectionsFiles.length, viewMode });
     
     // Helper to check if file should be shown based on NSFW preference
     // LOCKED USERS: Never show NSFW content, period
@@ -859,7 +841,9 @@ function App() {
       
       // UNLOCKED USERS: Only show NSFW if age-verified and enabled
       if (isNSFW) {
-        return hasAgeZKP && isOver18 && showNSFW;
+        return userState.preferences.hasAgeZKP && 
+               userState.preferences.isOver18 && 
+               userState.preferences.showNSFW;
       }
       
       // Show public (non-NSFW) content
@@ -877,75 +861,54 @@ function App() {
         return true;
       }
       
-      // Fallback for existing data: check if in collections
-      const fileId = file.metadata.fileId;
-      if (thoughtThumbnailIdsInCollections.has(fileId) || thoughtFileIdsInCollections.has(fileId)) {
-        console.log(`[App] Excluding thought ${fileId} - part of thought collection (fallback)`);
-        return true;
-      }
-      
       return false;
     };
 
+    // Filter each index for NSFW and thought page exclusions
+    const filteredMedia = mediaFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
+    const filteredThoughts = thoughtsFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
+    const filteredCollections = collectionsFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
+
+    // Build feeds from indices
     if (activeFeedId === 'public') {
-      // Public feed: ALWAYS filter out NSFW content unless user has it enabled
-      // This ensures NSFW content never appears in public feed unless explicitly enabled
-      // Also filter out individual thought pages from multi-page thought collections
-      const filtered = indexedFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
-      console.log('[DEBUG] Public feed filtered', { activeFeedId, indexedFilesLength: indexedFiles.length, filteredLength: filtered.length });
-      
-      // Define each feed type independently
-      const mediaFeed = filtered.filter(f => isMedia(f));
-      const thoughtsFeed = filtered.filter(f => isThought(f));
-      const collectionsFeed = filtered.filter(f => isCollection(f));
-      
       // Public feed = media + thoughts + collections
-      const combined = [...mediaFeed, ...thoughtsFeed, ...collectionsFeed];
+      const combined = [...filteredMedia, ...filteredThoughts, ...filteredCollections];
       
       if (process.env.NODE_ENV === 'development') {
-        console.log(`[Public Feed] ${combined.length} files: ${mediaFeed.length} media, ${thoughtsFeed.length} thoughts, ${collectionsFeed.length} collections`);
+        console.log(`[Public Feed] ${combined.length} files: ${filteredMedia.length} media, ${filteredThoughts.length} thoughts, ${filteredCollections.length} collections`);
       }
       
       return combined;
     }
     if (activeFeedId === 'media') {
-      // Media feed: only show media files
-      const filtered = indexedFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
-      const mediaFiles = filtered.filter(f => isMedia(f));
       if (process.env.NODE_ENV === 'development') {
         console.log('[DEBUG] Media feed:', {
-          totalFiltered: filtered.length,
-          mediaFiles: mediaFiles.length,
-          sampleFileIds: mediaFiles.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType }))
+          totalMedia: mediaFiles.length,
+          filteredMedia: filteredMedia.length,
+          sampleFileIds: filteredMedia.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType }))
         });
       }
-      return mediaFiles;
+      return filteredMedia;
     }
     if (activeFeedId === 'thoughts') {
-      // Thoughts feed: only show thoughts
-      const filtered = indexedFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
-      const thoughtFiles = filtered.filter(f => isThought(f));
       if (process.env.NODE_ENV === 'development') {
         console.log('[DEBUG] Thoughts feed:', {
-          totalFiltered: filtered.length,
-          thoughtFiles: thoughtFiles.length,
-          sampleFileIds: thoughtFiles.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType }))
+          totalThoughts: thoughtsFiles.length,
+          filteredThoughts: filteredThoughts.length,
+          sampleFileIds: filteredThoughts.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType }))
         });
       }
-      return thoughtFiles;
+      return filteredThoughts;
     }
     if (activeFeedId === 'collections') {
-      // Collections feed: only show collections
-      const filtered = indexedFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
-      const collectionFiles = filtered.filter(f => isCollection(f));
       if (process.env.NODE_ENV === 'development') {
         console.log('[DEBUG] Collections feed:', {
-          totalFiltered: filtered.length,
-          collectionFiles: collectionFiles.length,
-          sampleFileIds: collectionFiles.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType, hasCollection: !!f.metadata.collection }))
+          totalCollections: collectionsFiles.length,
+          filteredCollections: filteredCollections.length,
+          sampleFileIds: filteredCollections.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType, hasCollection: !!f.metadata.collection }))
         });
       }
-      return collectionFiles;
+      return filteredCollections;
     }
     if (activeFeedId === 'curated') {
       // Curated feed = all content EXCEPT blocked categories (negative filter)
@@ -955,13 +918,8 @@ function App() {
       const subscribedSubjects = userState.preferences.subscribedSubjects || [];
       const blockedSubjects = userState.preferences.blockedSubjects || [];
       
-      // Only log in development mode
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`[Curated Feed] Filtering ${indexedFiles.length} files`);
-      }
-      
-      // Apply category/subject filtering first
-      const filtered = indexedFiles.filter(file => {
+      // Apply curated filtering to each index
+      const curatedFilter = (file: IndexedFile): boolean => {
         // Exclude individual thought pages from multi-page thought collections
         if (shouldExcludeThoughtPage(file)) {
           return false;
@@ -1033,15 +991,15 @@ function App() {
         // Default: show all content (negative filter - only exclude blocked)
         // Filter by NSFW preference
         return shouldShowFile(file);
-      });
+      };
       
-      // Define each feed type independently and combine
-      const mediaFeed = filtered.filter(f => isMedia(f));
-      const thoughtsFeed = filtered.filter(f => isThought(f));
-      const collectionsFeed = filtered.filter(f => isCollection(f));
+      // Apply curated filtering to each index and combine
+      const curatedMedia = filteredMedia.filter(curatedFilter);
+      const curatedThoughts = filteredThoughts.filter(curatedFilter);
+      const curatedCollections = filteredCollections.filter(curatedFilter);
       
       // Curated feed = media + thoughts + collections
-      return [...mediaFeed, ...thoughtsFeed, ...collectionsFeed];
+      return [...curatedMedia, ...curatedThoughts, ...curatedCollections];
     }
     if (activeFeedId === 'discovery') {
       // Discovery page - return empty for now (will be implemented in Phase 3)
@@ -1051,17 +1009,13 @@ function App() {
     // Handle niche category feeds (virtual feeds based on categories)
     if (activeFeedId.startsWith('niche-')) {
       const categoryId = activeFeedId.replace('niche-', '');
-      let filtered = indexedFiles.filter(file => {
-        // Exclude individual thought pages from multi-page thought collections
-        if (shouldExcludeThoughtPage(file)) {
-          return false;
-        }
-        
+      const allFiles = [...filteredMedia, ...filteredThoughts, ...filteredCollections];
+      
+      let filtered = allFiles.filter(file => {
         // Check if file has this category in its feedCategories
-        // Handle nested arrays by flattening (in case feedCategories contains arrays of arrays)
         const fileCategories = file.metadata.feedCategories || [];
         const flattenedFileCategories = Array.isArray(fileCategories) 
-          ? fileCategories.flat(Infinity) // Flatten nested arrays
+          ? fileCategories.flat(Infinity)
           : [fileCategories];
         if (flattenedFileCategories.includes(categoryId as any)) {
           return true;
@@ -1072,31 +1026,21 @@ function App() {
         return fileFeeds.some(feed => feed.feedCategory === categoryId);
       });
       
-      // ALWAYS filter by NSFW preference (for both unlocked and locked users)
-      filtered = filtered.filter(shouldShowFile);
-      
-      // Thoughts should appear in all niche feeds - no filtering needed
       return filtered;
     }
     
-    // Individual feed: ALWAYS filter by NSFW preference
-    // Also filter out individual thought pages from multi-page thought collections
-    let filtered = indexedFiles.filter(file => {
+    // Individual feed: filter by feedId from combined indices
+    const allFiles = [...filteredMedia, ...filteredThoughts, ...filteredCollections];
+    let filtered = allFiles.filter(file => {
       if (!file.metadata.feedIds?.includes(activeFeedId)) {
-        return false;
-      }
-      if (shouldExcludeThoughtPage(file)) {
         return false;
       }
       return true;
     });
-    filtered = filtered.filter(shouldShowFile);
     
-    // Thoughts should appear in all feeds - no filtering needed
-    // The only place thoughts are excluded is the me page "media" tab, which handles it separately
-    console.log('[DEBUG] filteredFilesByFeed result', { activeFeedId, resultLength: filtered.length, indexedFilesLength: indexedFiles.length });
+    console.log('[DEBUG] filteredFilesByFeed result', { activeFeedId, resultLength: filtered.length });
     return filtered;
-  }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.blockedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, feeds]);
+  }, [mediaFiles, thoughtsFiles, collectionsFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.blockedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, feeds, viewMode]);
 
   // Public feed now uses the same thumbnails state as Me page
   // generateThumbnailsForImages already populates thumbnails for all discovered files
@@ -1360,33 +1304,18 @@ function App() {
     };
   }, []);
 
-  const discoverFiles = useCallback(async (
-    searchFilters?: MetadataFilters, 
+  // Load content-type indices (new architecture)
+  const loadContentTypeIndices = useCallback(async (
+    searchFilters?: MetadataFilters,
     forceRefresh: boolean = false,
-    page: number = 0,
-    append: boolean = false
+    page: number = 0
   ) => {
-    // Prevent duplicate simultaneous calls (unless appending for pagination)
-    if (isDiscoveringRef.current && !forceRefresh && !append) {
-      console.log('⏸️ Discover files already in progress, skipping duplicate call');
-      return;
-    }
-    
     try {
-      isDiscoveringRef.current = true;
-      if (!append) {
-        setIsLoading(true);
-      } else {
-        setIsLoadingMore(true);
-      }
       setError(null);
       
-      // No Google Drive connection needed - just query central aggregator API
       await metadataIndexService.initialize();
       
       // Build filters with rating preferences and feed filtering
-      // NOTE: 'curated', 'discovery', and 'niche-*' are virtual feeds - don't filter by feedId for these
-      // They are filtered client-side in filteredFilesByFeed
       const isVirtualFeed = activeFeedId === 'public' || 
                             activeFeedId === 'curated' || 
                             activeFeedId === 'discovery';
@@ -1396,15 +1325,8 @@ function App() {
         ...filters,
         ...searchFilters,
         ...(searchQuery ? { tags: searchQuery.split(',').map(t => t.trim()).filter(Boolean) } : {}),
-        // SCALABILITY: Add pagination parameters
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-        // DON'T apply rating filter to public feed - public feed shows all public files
-        // Only apply rating filter to non-public feeds (but not virtual feeds)
-        // NSFW filtering is handled in filteredFilesByFeed based on showNSFW preference
-        // No need to filter here at the API level
-        // Filter by active feed (but not for virtual feeds)
-        // For niche category feeds, filter by feedCategory instead of feedId
+        // Note: Pagination is handled per content type, but we load all for now
+        // TODO: Implement proper pagination per content type if needed
         ...(isVirtualFeed
           ? {} 
           : isNicheCategoryFeed
@@ -1412,41 +1334,55 @@ function App() {
           : { feedId: activeFeedId })
       };
       
-      // Discover public files from all users (with pagination support)
-      const publicFilesResult = await metadataIndexService.discoverFiles(finalFilters, forceRefresh);
+      const contentTypeService = new ContentTypeIndexService();
       
-      // Handle paginated response (could be array for backward compat or object with pagination info)
-      const publicFiles = Array.isArray(publicFilesResult) 
-        ? publicFilesResult 
-        : publicFilesResult.files;
-      console.log('[DEBUG] discoverFiles API result', { activeFeedId, publicFilesLength: publicFiles.length, isArray: Array.isArray(publicFilesResult), finalFilters });
-      const paginationInfo = Array.isArray(publicFilesResult)
-        ? { total: publicFiles.length, hasMore: false }
-        : { total: publicFilesResult.total, hasMore: publicFilesResult.hasMore };
+      // Load each content type index in parallel
+      const [media, thoughts, collections] = await Promise.all([
+        contentTypeService.loadContentTypeIndex('media', finalFilters, forceRefresh),
+        contentTypeService.loadContentTypeIndex('thoughts', finalFilters, forceRefresh),
+        contentTypeService.loadContentTypeIndex('collections', finalFilters, forceRefresh),
+      ]);
       
-      // If user has age ZKP, is over 18, AND has NSFW enabled, also load NSFW index
-      let nsfwFiles: IndexedFile[] = [];
+      // For pagination: append or replace based on page
+      if (page === 0) {
+        setMediaFiles(media);
+        setThoughtsFiles(thoughts);
+        setCollectionsFiles(collections);
+      } else {
+        // Append new files, deduplicating by fileId
+        setMediaFiles(prev => {
+          const existingIds = new Set(prev.map(f => f.metadata.fileId));
+          const newFiles = media.filter(f => !existingIds.has(f.metadata.fileId));
+          return [...prev, ...newFiles];
+        });
+        setThoughtsFiles(prev => {
+          const existingIds = new Set(prev.map(f => f.metadata.fileId));
+          const newFiles = thoughts.filter(f => !existingIds.has(f.metadata.fileId));
+          return [...prev, ...newFiles];
+        });
+        setCollectionsFiles(prev => {
+          const existingIds = new Set(prev.map(f => f.metadata.fileId));
+          const newFiles = collections.filter(f => !existingIds.has(f.metadata.fileId));
+          return [...prev, ...newFiles];
+        });
+      }
+      
+      // Handle NSFW files if user has access
       if (userState.preferences.hasAgeZKP && userState.preferences.isOver18 && userState.preferences.showNSFW) {
         try {
           const { CentralMetadataAggregator } = await import('./services/storage/CentralMetadataAggregator');
           const nsfwResult = await CentralMetadataAggregator.fetchNSFWIndex({
             tags: finalFilters?.tags,
-            fileType: finalFilters?.fileType,
             authorDid: finalFilters?.authorDid,
-            limit: PAGE_SIZE,      // SCALABILITY: Pagination support
-            offset: page * PAGE_SIZE // SCALABILITY: Pagination support
+            limit: PAGE_SIZE,
+            offset: page * PAGE_SIZE
           }, forceRefresh);
           
-          // Handle paginated response
           const nsfwEntries = nsfwResult.files || [];
-          
-          // Transform NSFW entries to IndexedFile format (same as public files)
-          nsfwFiles = nsfwEntries
+          const nsfwFiles: IndexedFile[] = nsfwEntries
             .filter((entry: any) => {
               const metadata = entry.metadata || {};
-              const isPublic = metadata.isPublic;
-              const hasPublicToken = metadata.publicToken != null;
-              return (isPublic !== false || hasPublicToken) && metadata.isNSFW === true;
+              return (metadata.isPublic !== false || metadata.publicToken != null) && metadata.isNSFW === true;
             })
             .map((entry: any) => {
               const pnId = entry.pnIdentifier;
@@ -1467,106 +1403,157 @@ function App() {
               };
             });
           
-          // Removed verbose logging
+          // Add NSFW files to appropriate indices based on their fileType
+          const nsfwMedia = nsfwFiles.filter(f => ['image', 'video'].includes(f.metadata.fileType || ''));
+          const nsfwThoughts = nsfwFiles.filter(f => {
+            const isThoughtThumbnail = (f.metadata as any).isThoughtThumbnail === true;
+            const isThoughtCollectionThumbnail = f.metadata.fileType === 'thought-collection-thumbnail';
+            const isThoughtFile = ['thought', 'text'].includes(f.metadata.fileType || '');
+            return isThoughtThumbnail || isThoughtCollectionThumbnail || isThoughtFile;
+          });
+          const nsfwCollections = nsfwFiles.filter(f => f.metadata.fileType === 'collection');
+          
+          setMediaFiles(prev => {
+            const existingIds = new Set(prev.map(f => f.metadata.fileId));
+            const newFiles = nsfwMedia.filter(f => !existingIds.has(f.metadata.fileId));
+            return [...prev, ...newFiles];
+          });
+          setThoughtsFiles(prev => {
+            const existingIds = new Set(prev.map(f => f.metadata.fileId));
+            const newFiles = nsfwThoughts.filter(f => !existingIds.has(f.metadata.fileId));
+            return [...prev, ...newFiles];
+          });
+          setCollectionsFiles(prev => {
+            const existingIds = new Set(prev.map(f => f.metadata.fileId));
+            const newFiles = nsfwCollections.filter(f => !existingIds.has(f.metadata.fileId));
+            return [...prev, ...newFiles];
+          });
         } catch (nsfwError) {
           console.warn('Failed to fetch NSFW index:', nsfwError);
-          // Continue with public files only if NSFW fetch fails
         }
       }
       
-      // Merge public and NSFW files, deduplicate by fileId
-      const allFilesMap = new Map<string, IndexedFile>();
-      
-      // Add public files first
-      for (const file of publicFiles) {
-        allFilesMap.set(file.metadata.fileId, file);
-      }
-      
-      // Add NSFW files (will override public if same fileId, but shouldn't happen)
-      for (const file of nsfwFiles) {
-        if (!allFilesMap.has(file.metadata.fileId)) {
-          allFilesMap.set(file.metadata.fileId, file);
+      console.log('[DEBUG] loadContentTypeIndices complete', {
+        activeFeedId,
+        mediaCount: media.length,
+        thoughtsCount: thoughts.length,
+        collectionsCount: collections.length
+      });
+    } catch (error: any) {
+      console.error('Failed to load content-type indices:', error);
+      setError(error.message || 'Failed to load files');
+      throw error; // Re-throw so discoverFiles can handle it
+    }
+  }, [activeFeedId, filters, searchQuery, userState.preferences, metadataIndexService]);
+
+  const discoverFiles = useCallback(async (
+    searchFilters?: MetadataFilters, 
+    forceRefresh: boolean = false,
+    page: number = 0,
+    append: boolean = false
+  ) => {
+    // Prevent duplicate simultaneous calls (unless appending for pagination)
+    if (isDiscoveringRef.current && !forceRefresh && !append) {
+      console.log('⏸️ Discover files already in progress, skipping duplicate call');
+      return;
+    }
+    
+    // Use new content-type indices loading
+    await loadContentTypeIndices(searchFilters, forceRefresh, page);
+    
+    // Generate thumbnails for image files (only for newly loaded files)
+    if (generateThumbnailsForImagesRef.current) {
+      const allFiles = [...mediaFiles, ...thoughtsFiles, ...collectionsFiles];
+      const filesToThumbnail = page === 0 || !append 
+        ? allFiles 
+        : allFiles.filter(f => !indexedFiles.some(existing => existing.metadata.fileId === f.metadata.fileId));
+      generateThumbnailsForImagesRef.current(filesToThumbnail);
+    }
+    
+    // Pre-load video blobs for feed mode (if in feed mode) - only for newly loaded files
+    const currentViewMode = viewMode || 'grid';
+    if (currentViewMode === 'feed') {
+      const allFiles = [...mediaFiles, ...thoughtsFiles, ...collectionsFiles];
+      const filesToPreload = page === 0 || !append 
+        ? allFiles 
+        : allFiles.filter(f => !indexedFiles.some(existing => existing.metadata.fileId === f.metadata.fileId));
+      for (const indexedFile of filesToPreload) {
+        const file = indexedFile.metadata;
+        const isVideo = file.fileType === 'video' || 
+                       !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
+        if (isVideo && file.publicToken && !videoBlobsRef.current.has(file.fileId)) {
+          (async () => {
+            try {
+              let token: ShareToken;
+              try {
+                token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
+              } catch (e) {
+                return;
+              }
+              const decryptedBlob = await decryptWithToken(token);
+              const videoUrl = URL.createObjectURL(decryptedBlob);
+              setVideoBlobs(prev => {
+                const newMap = new Map(prev);
+                newMap.set(file.fileId, videoUrl);
+                return newMap;
+              });
+            } catch (err) {
+              console.warn('Failed to pre-load video for feed:', err);
+            }
+          })();
         }
       }
-      
-      // Convert back to array, sorted by uploadDate (newest first)
-      const discoveredFiles = Array.from(allFilesMap.values()).sort((a, b) => {
-        const aDate = new Date(a.metadata.uploadDate || 0).getTime();
-        const bDate = new Date(b.metadata.uploadDate || 0).getTime();
-        return bDate - aDate;
+    }
+  }, [loadContentTypeIndices, mediaFiles, thoughtsFiles, collectionsFiles, indexedFiles, viewMode]);
+  
+  // Generate thumbnails when content-type indices are updated
+  useEffect(() => {
+    if (generateThumbnailsForImagesRef.current && (mediaFiles.length > 0 || thoughtsFiles.length > 0 || collectionsFiles.length > 0)) {
+      const allFiles = [...mediaFiles, ...thoughtsFiles, ...collectionsFiles];
+      // Only generate thumbnails for files that don't already have them
+      const filesToThumbnail = allFiles.filter(f => {
+        const fileId = f.metadata.fileId;
+        return !thumbnails.has(fileId) && !generatingThumbnails.has(fileId);
       });
-      
-      // SCALABILITY: Handle pagination - append or replace based on page number
-      setIndexedFiles(prev => {
-        const result = page === 0 || !append
-          ? discoveredFiles
-          : (() => {
-              const existingIds = new Set(prev.map(f => f.metadata.fileId));
-              const newFiles = discoveredFiles.filter(f => !existingIds.has(f.metadata.fileId));
-              return [...prev, ...newFiles];
-            })();
-        console.log('[DEBUG] setIndexedFiles', { activeFeedId, discoveredFilesLength: discoveredFiles.length, prevLength: prev.length, resultLength: result.length, page, append });
-        return result;
-      });
-      
-      // Update pagination state
-      setHasMore(paginationInfo.hasMore);
-      hasMoreRef.current = paginationInfo.hasMore; // Update ref as well
-      setCurrentPage(page);
-      
-      // Removed verbose logging - only log errors
-      
-      // Generate thumbnails for image files (only for newly loaded files)
-      if (generateThumbnailsForImagesRef.current) {
-        const filesToThumbnail = page === 0 || !append 
-          ? discoveredFiles 
-          : discoveredFiles.filter(f => !indexedFiles.some(existing => existing.metadata.fileId === f.metadata.fileId));
+      if (filesToThumbnail.length > 0) {
         generateThumbnailsForImagesRef.current(filesToThumbnail);
       }
-      
-      // Pre-load video blobs for feed mode (if in feed mode) - only for newly loaded files
-      const currentViewMode = viewMode || 'grid';
-      if (currentViewMode === 'feed') {
-        const filesToPreload = page === 0 || !append 
-          ? discoveredFiles 
-          : discoveredFiles.filter(f => !indexedFiles.some(existing => existing.metadata.fileId === f.metadata.fileId));
-        for (const indexedFile of filesToPreload) {
-          const file = indexedFile.metadata;
-          const isVideo = file.fileType === 'video' || 
-                         !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
-          if (isVideo && file.publicToken && !videoBlobsRef.current.has(file.fileId)) {
-            (async () => {
+    }
+  }, [mediaFiles, thoughtsFiles, collectionsFiles, thumbnails, generatingThumbnails]);
+  
+  // Pre-load video blobs for feed mode when indices are updated
+  useEffect(() => {
+    const currentViewMode = viewMode || 'grid';
+    if (currentViewMode === 'feed') {
+      const allFiles = [...mediaFiles, ...thoughtsFiles, ...collectionsFiles];
+      for (const indexedFile of allFiles) {
+        const file = indexedFile.metadata;
+        const isVideo = file.fileType === 'video' || 
+                       !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
+        if (isVideo && file.publicToken && !videoBlobsRef.current.has(file.fileId)) {
+          (async () => {
+            try {
+              let token: ShareToken;
               try {
-                let token: ShareToken;
-                try {
-                  token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
-                } catch (e) {
-                  return;
-                }
-                const decryptedBlob = await decryptWithToken(token);
-                const videoUrl = URL.createObjectURL(decryptedBlob);
-                setVideoBlobs(prev => {
-                  const newMap = new Map(prev);
-                  newMap.set(file.fileId, videoUrl);
-                  return newMap;
-                });
-              } catch (err) {
-                console.warn('Failed to pre-load video for feed:', err);
+                token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
+              } catch (e) {
+                return;
               }
-            })();
-          }
+              const decryptedBlob = await decryptWithToken(token);
+              const videoUrl = URL.createObjectURL(decryptedBlob);
+              setVideoBlobs(prev => {
+                const newMap = new Map(prev);
+                newMap.set(file.fileId, videoUrl);
+                return newMap;
+              });
+            } catch (err) {
+              console.warn('Failed to pre-load video for feed:', err);
+            }
+          })();
         }
       }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to discover files';
-      setError(errorMessage);
-      console.error('Failed to discover files:', err);
-    } finally {
-      setIsLoading(false);
-      setIsLoadingMore(false);
-      isDiscoveringRef.current = false;
     }
-  }, [filters, searchQuery, userState.preferences.showNSFW, activeFeedId, viewMode, indexedFiles]);
+  }, [mediaFiles, thoughtsFiles, collectionsFiles, viewMode]);
   
   // Store discoverFiles in ref so it can be called from OAuth callback
   useEffect(() => {
@@ -2924,15 +2911,29 @@ function App() {
     return normalizedOwnerId !== normalizedViewingId;
   };
 
+  // Create content-type indices from creatorFiles (owner's Google Drive files)
+  // This follows the same pattern as the public feed indices
+  const creatorMediaFiles = useMemo(() => {
+    return creatorFiles.filter(f => isMedia(f));
+  }, [creatorFiles]);
+  
+  const creatorThoughtsFiles = useMemo(() => {
+    return creatorFiles.filter(f => isThought(f));
+  }, [creatorFiles]);
+  
+  const creatorCollectionsFiles = useMemo(() => {
+    return creatorFiles.filter(f => isCollection(f));
+  }, [creatorFiles]);
+
   // Memoize filteredMeFiles to prevent unnecessary recalculations
   const filteredMeFilesMemo = useMemo(() => {
     let filtered: IndexedFile[] = [];
     
     if (isOwnIndex) {
-      // Define each feed type independently
-      const mediaFeed = creatorFiles.filter(f => isMedia(f));
-      const thoughtsFeed = creatorFiles.filter(f => isThought(f));
-      const collectionsFeed = creatorFiles.filter(f => isCollection(f));
+      // Use content-type indices from owner's Google Drive files
+      const mediaFeed = creatorMediaFiles;
+      const thoughtsFeed = creatorThoughtsFiles;
+      const collectionsFeed = creatorCollectionsFiles;
       const likesFeed = userLikedFiles.filter(f => isThirdPartyContent(f, viewingCreatorId!));
       const commentsFeed = userCommentedFiles.filter(f => isThirdPartyContent(f, viewingCreatorId!));
       const sharesFeed = userSharedFiles.filter(f => isThirdPartyContent(f, viewingCreatorId!));
@@ -2980,10 +2981,10 @@ function App() {
         }
       }
     } else if (viewingCreatorId) {
-      // For viewing other users' profiles - same simple pattern
-      const mediaFeed = creatorFiles.filter(f => isMedia(f));
-      const thoughtsFeed = creatorFiles.filter(f => isThought(f));
-      const collectionsFeed = creatorFiles.filter(f => isCollection(f));
+      // For viewing other users' profiles - use content-type indices from their creatorFiles
+      const mediaFeed = creatorMediaFiles;
+      const thoughtsFeed = creatorThoughtsFiles;
+      const collectionsFeed = creatorCollectionsFiles;
       
       switch (mePageTab) {
         case 'all':
@@ -3021,7 +3022,7 @@ function App() {
     
     // Don't inject cover into feed array - it will be shown as empty state instead
     return filtered;
-  }, [isOwnIndex, mePageTab, creatorFiles, userLikedFiles, userCommentedFiles, userSharedFiles, savedFiles, connectionsFiles, viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId, indexedFilesMap]);
+  }, [isOwnIndex, mePageTab, creatorMediaFiles, creatorThoughtsFiles, creatorCollectionsFiles, userLikedFiles, userCommentedFiles, userSharedFiles, savedFiles, connectionsFiles, viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId, indexedFilesMap, creatorFiles]);
   
   // Only log when the count actually changes - use refs to track all values to prevent unnecessary re-runs
   const prevFilteredCountRef = useRef<number>(-1);
@@ -4684,8 +4685,18 @@ function App() {
                   f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f
                 )
               );
-              // Also update in indexedFiles if it exists there
-              setIndexedFiles(prev =>
+              // Update in appropriate content-type indices
+              setMediaFiles(prev =>
+                prev.map(f =>
+                  f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f
+                )
+              );
+              setThoughtsFiles(prev =>
+                prev.map(f =>
+                  f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f
+                )
+              );
+              setCollectionsFiles(prev =>
                 prev.map(f =>
                   f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f
                 )
