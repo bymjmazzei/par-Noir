@@ -4,7 +4,7 @@
  */
 
 import { getDatabasePool } from '../utils/database';
-import { CentralIndexEntry } from '../types/aggregator';
+import { CentralIndexEntry } from './aggregatorMetadataService';
 import { UserPreferenceService } from './userPreferenceService';
 
 export interface RecommendationScore {
@@ -35,7 +35,7 @@ export class RecommendationService {
     const reasons: string[] = [];
 
     // Base score from engagement metrics
-    const engagement = file.metadata.engagement || {};
+    const engagement = (file.metadata as any).engagement || {};
     const likes = engagement.likes || 0;
     const views = engagement.views || 0;
     const comments = engagement.comments || 0;
@@ -132,9 +132,9 @@ export class RecommendationService {
       `, [userDid]);
       
       const subscribedFeedIds = subscribedFeedsResult.rows.map(r => r.feed_id);
-      const fileFeedIds = file.metadata.feedIds || [];
+      const fileFeedIds = (file.metadata as any).feedIds || [];
       
-      if (fileFeedIds.some(feedId => subscribedFeedIds.includes(feedId))) {
+      if (fileFeedIds.some((feedId: string) => subscribedFeedIds.includes(feedId))) {
         score += 15;
         reasons.push('From subscribed feed');
       }

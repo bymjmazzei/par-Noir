@@ -4235,10 +4235,10 @@ class ProductionServer {
           }
         }
 
-        res.json(result);
+        return res.json(result);
       } catch (error: any) {
         console.error('Failed to toggle dislike:', error);
-        res.status(500).json({
+        return res.status(500).json({
           error: 'Failed to toggle dislike',
           message: error.message 
         });
