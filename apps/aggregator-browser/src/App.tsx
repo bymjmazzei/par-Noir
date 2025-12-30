@@ -3565,10 +3565,10 @@ function App() {
                 </div>
               )}
             </div>
-          ) : (creatorFiles.length > 0 || filteredMeFiles.length > 0) ? (
+          ) : filteredMeFiles.length > 0 ? (
             <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
               <FullScreenFeed
-                files={filteredMeFiles.length > 0 ? filteredMeFiles : []}
+                files={filteredMeFiles}
                 currentIndex={currentFeedIndex}
                 thumbnails={thumbnails}
                 videoBlobs={videoBlobs}
@@ -3649,17 +3649,14 @@ function App() {
           ) : mePageTab !== 'connections' ? (() => {
             // Show cover as empty state when:
             // 1. No files in filtered array (empty state)
-            // 2. No files have been loaded yet (creatorFiles.length === 0) - this is the key condition
-            // 3. On 'all' or 'media' tab
-            // 4. Either files are still loading OR user has no media after loading
+            // 2. On 'all' or 'media' tab
+            // 3. Either files are still loading OR no files have been loaded yet OR user has no media after loading
             // This ensures smooth transition: cover shows immediately, then switches directly to content when it loads
-            // Only show cover if NO files have been loaded - once files load, show content (even if filtered is temporarily empty)
             const userHasMedia = creatorFiles.length > 0 && creatorFiles.some(f => isMedia(f));
             const shouldShowCover = 
               filteredMeFiles.length === 0 && 
-              creatorFiles.length === 0 && // CRITICAL: Only show cover if NO files have been loaded yet
               (mePageTab === 'all' || mePageTab === 'media') && 
-              (isLoadingCreatorFiles || !userHasMedia); // Show while loading, or if no media after loading
+              (isLoadingCreatorFiles || creatorFiles.length === 0 || !userHasMedia); // Show while loading, or if no files loaded yet, or if no media after loading
             const coverCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
             
             if (shouldShowCover && coverCreatorId) {
