@@ -42,7 +42,7 @@ export function FeedRail({
   
   // Debug: Log feeds to see what's being passed
   useEffect(() => {
-    console.log('[FeedRail] Feeds received:', feeds.map(f => ({ feedId: f.feedId, name: f.name })));
+    console.log('[FeedRail] Feeds received:', JSON.stringify(feeds.map(f => ({ feedId: f.feedId, name: f.name })), null, 2));
   }, [feeds]);
 
   // Calculate max scroll position based on last feed at midpoint

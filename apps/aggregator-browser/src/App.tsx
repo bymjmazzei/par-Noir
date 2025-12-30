@@ -613,7 +613,7 @@ function App() {
       userState.isUnlocked,
       hasNewThirdPartyContent
     );
-    console.log('[App] feedRailItems built:', items.map(f => ({ feedId: f.feedId, name: f.name })));
+    console.log('[App] feedRailItems built:', JSON.stringify(items.map(f => ({ feedId: f.feedId, name: f.name })), null, 2));
     return items;
   }, [feeds, userState.isUnlocked, userState.preferences.subscribedFeedIds, activeFeedId, hasNewThirdPartyContent]);
 
