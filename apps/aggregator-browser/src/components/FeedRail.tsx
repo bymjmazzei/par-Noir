@@ -203,14 +203,14 @@ export function FeedRail({
                     <span className="absolute left-0 right-0 h-0.5 bg-white" style={{ bottom: '-2px' }} />
                   )}
                 </button>
-                {/* Dropdown arrow for pN feed when active and user is unlocked */}
+                {/* Dropdown arrow for pN feed when active and user is unlocked - positioned below text */}
                 {isPublicFeed && isActive && userState.isUnlocked && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setShowDropdown(!showDropdown);
                     }}
-                    className="p-0.5 flex items-center justify-center text-white/60 hover:text-white/85 transition-colors pointer-events-auto mt-0.5"
+                    className="p-0.5 flex items-center justify-center text-white/60 hover:text-white/85 transition-colors pointer-events-auto mt-1"
                     title="Feed options"
                   >
                     <ChevronDown className={`h-3 w-3 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />

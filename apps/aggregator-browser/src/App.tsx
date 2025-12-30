@@ -98,7 +98,6 @@ function App() {
     thumbnailsRef.current = thumbnails;
   }, [thumbnails]);
   const [viewMode, setViewMode] = useState<'grid' | 'feed'>('feed'); // Default to feed mode
-  const [useRecommendations, setUseRecommendations] = useState(false); // Toggle for chronological vs recommended
   const [activeFeedId, setActiveFeedId] = useState<string>('public');
   const [currentFeedIndex, setCurrentFeedIndex] = useState(0); // Current file index in feed
   const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'search' | 'upload' | 'index' | 'messages'>('home');
@@ -630,48 +629,6 @@ function App() {
     return indexedFiles.map(f => f.metadata.fileId).sort().join(',');
   }, [indexedFiles]);
 
-  // Fetch recommended content
-  const [recommendedFiles, setRecommendedFiles] = useState<IndexedFile[]>([]);
-  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
-  
-  const fetchRecommendations = useCallback(async () => {
-    if (!useRecommendations || !userState.isUnlocked || !userState.pnIdentifier) {
-      return;
-    }
-    
-    setIsLoadingRecommendations(true);
-    try {
-      const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-      const response = await fetch(
-        `${API_ENDPOINT}/api/recommendations/content?userDid=${encodeURIComponent(userState.pnIdentifier)}&feedId=${encodeURIComponent(activeFeedId)}&limit=50`
-      );
-      
-      if (response.ok) {
-        const result = await response.json();
-        // Convert CentralIndexEntry to IndexedFile format
-        const files: IndexedFile[] = (result.files || []).map((entry: any) => ({
-          metadata: entry.metadata || entry,
-          thumbnail: entry.thumbnail,
-          publicToken: entry.publicToken,
-          pnIdentifier: entry.pnIdentifier
-        }));
-        setRecommendedFiles(files);
-      }
-    } catch (error) {
-      console.error('Failed to fetch recommendations:', error);
-    } finally {
-      setIsLoadingRecommendations(false);
-    }
-  }, [useRecommendations, userState.isUnlocked, userState.pnIdentifier, activeFeedId]);
-  
-  // Fetch recommendations when toggle is enabled
-  useEffect(() => {
-    if (useRecommendations && userState.isUnlocked && userState.pnIdentifier) {
-      fetchRecommendations();
-    } else {
-      setRecommendedFiles([]);
-    }
-  }, [useRecommendations, activeFeedId, userState.isUnlocked, userState.pnIdentifier, fetchRecommendations]);
 
   // Memoize filtered files by active feed
   // Helper function to normalize fileType based on file extension
@@ -1151,14 +1108,9 @@ function App() {
     
     console.log('[DEBUG] filteredFilesByFeed result', { activeFeedId, resultLength: filtered.length });
     
-    // Use recommended files if recommendations are enabled
-    if (useRecommendations && recommendedFiles.length > 0) {
-      return recommendedFiles;
-    }
-    
     // Use full algorithm (public + user personalization) for individual feeds
     return sortByScore(filtered, true);
-  }, [mediaFiles, thoughtsFiles, collectionsFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.blockedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, userState.preferences.curatedFeedPreferences, userState.pnIdentifier, connectionsList, feeds, viewMode, useRecommendations, recommendedFiles]);
+  }, [mediaFiles, thoughtsFiles, collectionsFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.blockedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, userState.preferences.curatedFeedPreferences, userState.pnIdentifier, connectionsList, feeds, viewMode]);
 
   // Public feed now uses the same thumbnails state as Me page
   // generateThumbnailsForImages already populates thumbnails for all discovered files
@@ -4260,29 +4212,6 @@ function App() {
             className="flex-1 relative"
             style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}
           >
-            {/* Recommendation Toggle - Only show when user is unlocked */}
-            {userState.isUnlocked && (
-              <div className="absolute top-4 right-4 z-50 flex items-center gap-2 bg-black/50 backdrop-blur-sm rounded-full px-3 py-2 border border-white/20">
-                <button
-                  onClick={() => setUseRecommendations(!useRecommendations)}
-                  className={`text-xs font-medium transition-colors ${
-                    useRecommendations 
-                      ? 'text-blue-400' 
-                      : 'text-white/70 hover:text-white'
-                  }`}
-                  disabled={isLoadingRecommendations}
-                >
-                  {isLoadingRecommendations ? 'Loading...' : useRecommendations ? 'Recommended' : 'Chronological'}
-                </button>
-                <div className={`w-10 h-5 rounded-full transition-colors ${
-                  useRecommendations ? 'bg-blue-500' : 'bg-white/20'
-                }`}>
-                  <div className={`w-4 h-4 rounded-full bg-white transition-transform mt-0.5 ${
-                    useRecommendations ? 'translate-x-5' : 'translate-x-0.5'
-                  }`} />
-                </div>
-              </div>
-            )}
             {(() => {
               console.log('[DEBUG] Feed render check', { viewMode, activeFeedId, filteredFilesByFeedLength: filteredFilesByFeed.length, indexedFilesLength: indexedFiles.length });
               return filteredFilesByFeed.length > 0;
