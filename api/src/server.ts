@@ -3938,9 +3938,13 @@ class ProductionServer {
     this.app.post('/api/engagement/:fileId/like', async (req, res) => {
       try {
         const { EngagementService } = await import('./server/modules/engagementService');
+        const { EngagementDriveService } = await import('./server/modules/engagementDriveService');
+        const { PreferencesService } = await import('./server/modules/preferencesService');
+        const { extractTagsFromMetadata } = await import('./server/utils/tagExtractor');
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
         const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const { fileId } = req.params;
         const { userDid } = req.body;
 
@@ -3948,12 +3952,81 @@ class ProductionServer {
           return res.status(400).json({ error: 'userDid is required' });
         }
 
-        const result = await EngagementService.toggleLike(fileId, userDid);
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
 
-        // Get file owner for activity logging and notifications
+        // Get user's credentials and metadata folder for Google Drive operations
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
+
+        // 1. Update user's Google Drive engagement.json
+        const driveResult = await EngagementDriveService.toggleLike(
+          pnIdentifier,
+          fileId,
+          userAccessToken,
+          metadataFolderId
+        );
+
+        // 2. Update database public count (event-driven)
+        await EngagementService.toggleLikePublicCount(fileId, pnIdentifier, driveResult.liked);
+
+        // Get file metadata for tag extraction, activity logging, and other operations
         const aggregator = AggregatorMetadataServiceDB.getInstance();
         const fileMetadata = await aggregator.getFileMetadata(fileId);
         const fileOwnerDid = fileMetadata?.pnIdentifier;
+
+        // 3. Extract tags and save as preferences (only when liking, not unliking)
+        if (driveResult.liked && fileMetadata?.metadata) {
+          try {
+            const tags = extractTagsFromMetadata(fileMetadata.metadata, {
+              fileId
+            });
+
+            for (const tag of tags) {
+              await PreferencesService.addTagPreference(
+                userAccessToken,
+                metadataFolderId,
+                pnIdentifier,
+                tag.id,
+                'like',
+                'swipe_like',
+                {
+                  sourceFileId: fileId,
+                  confidence: 0.7,
+                  metadata: {
+                    fileType: fileMetadata.metadata.fileType,
+                    category: fileMetadata.metadata.feedCategories?.[0],
+                    subject: tag.displayName
+                  }
+                }
+              );
+            }
+          } catch (tagError) {
+            console.warn('Failed to extract and save tags:', tagError);
+            // Don't fail the like operation if tag extraction fails
+          }
+        }
+
+        // Get public count for response
+        const publicStats = await EngagementService.getEngagementStats(fileId);
+        const result = {
+          liked: driveResult.liked,
+          count: publicStats.likes
+        };
 
         // Record activity and send notification (only when liking, not unliking)
         if (result.liked && fileOwnerDid && fileOwnerDid !== userDid) {
@@ -4033,38 +4106,35 @@ class ProductionServer {
           }
         }
 
-        // Update engagement counts in database metadata
-        
+        // Update engagement counts in database metadata (for aggregator metadata sync)
         if (fileMetadata) {
-          // Update engagement counts in database metadata
           // Get current engagement stats from engagement table to sync counts
           const engagementStats = await EngagementService.getEngagementStats(fileId);
           
-          // Update database metadata with current counts (not increment/decrement)
-          // We'll derive counts from engagement table, but updateEngagement increments
-          // So we need to manually update the counts based on engagementStats
+          // Update database metadata with current counts
           const db = (await import('./server/utils/database')).getDatabasePool();
           const currentMeta = await aggregator.getFileMetadata(fileId);
           if (currentMeta) {
-          const updatedMetadata = {
-            ...currentMeta.metadata,
-            engagement: {
-              views: currentMeta.metadata.engagement?.views || 0,
-              likes: engagementStats.likes || 0,
-              comments: engagementStats.comments || 0,
-              shares: engagementStats.shares || 0,
-              saves: engagementStats.saves || 0,
-              lastUpdated: new Date().toISOString(),
-              engagementHistory: currentMeta.metadata.engagement?.engagementHistory || []
-            }
-          };
-          
-          await db.query(
-            `UPDATE aggregator_metadata 
-             SET metadata = $1, updated_at = NOW()
-             WHERE file_id = $2`,
-            [JSON.stringify(updatedMetadata), fileId]
-          );
+            const updatedMetadata = {
+              ...currentMeta.metadata,
+              engagement: {
+                views: currentMeta.metadata.engagement?.views || 0,
+                likes: engagementStats.likes || 0,
+                comments: engagementStats.comments || 0,
+                shares: engagementStats.shares || 0,
+                saves: engagementStats.saves || 0,
+                lastUpdated: new Date().toISOString(),
+                engagementHistory: currentMeta.metadata.engagement?.engagementHistory || []
+              }
+            };
+            
+            await db.query(
+              `UPDATE aggregator_metadata 
+               SET metadata = $1, updated_at = NOW()
+               WHERE file_id = $2`,
+              [JSON.stringify(updatedMetadata), fileId]
+            );
+          }
         }
         
         // Also update companion metadata spreadsheet if file owner has one
@@ -4143,7 +4213,9 @@ class ProductionServer {
     // GET /api/engagement/:fileId/like - Check if liked
     this.app.get('/api/engagement/:fileId/like', async (req, res) => {
       try {
-        const { EngagementService } = await import('./server/modules/engagementService');
+        const { EngagementDriveService } = await import('./server/modules/engagementDriveService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const { fileId } = req.params;
         const { userDid } = req.query;
 
@@ -4151,7 +4223,29 @@ class ProductionServer {
           return res.status(400).json({ error: 'userDid query parameter is required' });
         }
 
-        const liked = await EngagementService.isLiked(fileId, userDid as string);
+        // Normalize pn identifier
+        const pnIdentifier = (userDid as string).startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.json({ liked: false });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ liked: false });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
+
+        // Read from user's Google Drive engagement.json
+        const liked = await EngagementDriveService.isLiked(fileId, userAccessToken, metadataFolderId);
 
         return res.json({ liked });
       } catch (error: any) {
@@ -4164,9 +4258,12 @@ class ProductionServer {
     this.app.post('/api/engagement/:fileId/dislike', async (req, res) => {
       try {
         const { EngagementService } = await import('./server/modules/engagementService');
+        const { EngagementDriveService } = await import('./server/modules/engagementDriveService');
+        const { PreferencesService } = await import('./server/modules/preferencesService');
+        const { extractTagsFromMetadata } = await import('./server/utils/tagExtractor');
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
-        const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const { fileId } = req.params;
         const { userDid } = req.body;
 
@@ -4174,12 +4271,83 @@ class ProductionServer {
           return res.status(400).json({ error: 'userDid is required' });
         }
 
-        const result = await EngagementService.toggleDislike(fileId, userDid);
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
 
-        // Get file owner for activity logging and notifications
+        // Get user's credentials and metadata folder for Google Drive operations
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
+
+        // 1. Update user's Google Drive engagement.json
+        const driveResult = await EngagementDriveService.toggleDislike(
+          pnIdentifier,
+          fileId,
+          userAccessToken,
+          metadataFolderId
+        );
+
+        // 2. Update database public count (event-driven)
+        await EngagementService.toggleDislikePublicCount(fileId, pnIdentifier, driveResult.disliked);
+
+        // Get file metadata for tag extraction
         const aggregator = AggregatorMetadataServiceDB.getInstance();
         const fileMetadata = await aggregator.getFileMetadata(fileId);
+
+        // 3. Extract tags and save as preferences (only when disliking, not removing dislike)
+        if (driveResult.disliked && fileMetadata?.metadata) {
+          try {
+            const tags = extractTagsFromMetadata(fileMetadata.metadata, {
+              fileId
+            });
+
+            for (const tag of tags) {
+              await PreferencesService.addTagPreference(
+                userAccessToken,
+                metadataFolderId,
+                pnIdentifier,
+                tag.id,
+                'dislike',
+                'swipe_dislike',
+                {
+                  sourceFileId: fileId,
+                  confidence: 0.7,
+                  metadata: {
+                    fileType: fileMetadata.metadata.fileType,
+                    category: fileMetadata.metadata.feedCategories?.[0],
+                    subject: tag.displayName
+                  }
+                }
+              );
+            }
+          } catch (tagError) {
+            console.warn('Failed to extract and save tags:', tagError);
+            // Don't fail the dislike operation if tag extraction fails
+          }
+        }
+
+        // Get file owner for activity logging and notifications (fileMetadata already fetched above)
         const fileOwnerDid = fileMetadata?.pnIdentifier;
+
+        // Get public count for response
+        const publicStats = await EngagementService.getEngagementStats(fileId);
+        const result = {
+          disliked: driveResult.disliked,
+          count: publicStats.likes // Note: dislikes count not currently tracked separately in stats
+        };
 
         // Record activity and send notification (only when disliking, not removing dislike)
         if (result.disliked && fileOwnerDid && fileOwnerDid !== userDid) {
@@ -4270,9 +4438,10 @@ class ProductionServer {
     this.app.post('/api/engagement/:fileId/comment', async (req, res) => {
       try {
         const { EngagementService } = await import('./server/modules/engagementService');
+        const { EngagementDriveService } = await import('./server/modules/engagementDriveService');
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
-        const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const { fileId } = req.params;
         const { userDid, content, authorName, fileOwnerDid, parentCommentId, postReply } = req.body;
 
@@ -4280,31 +4449,74 @@ class ProductionServer {
           return res.status(400).json({ error: 'userDid and content are required' });
         }
 
-        const comment = await EngagementService.addComment(
-          fileId, 
-          userDid, 
-          content, 
-          authorName,
-          fileOwnerDid, // Optional - will be fetched from metadata if not provided
-          parentCommentId, // Optional - for threaded replies
-          postReply // Optional - for post replies
-        );
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
 
-        // Get file owner for activity logging and notifications
+        // Get user's credentials and metadata folder for Google Drive operations
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
+
+        // Get file owner if not provided
         const aggregator = AggregatorMetadataServiceDB.getInstance();
         const fileMetadataForOwner = await aggregator.getFileMetadata(fileId);
         const ownerDid = fileMetadataForOwner?.pnIdentifier || fileOwnerDid;
 
+        // 1. Store comment in database first (gets ID from database)
+        const dbComment = await EngagementService.addComment(
+          fileId, 
+          pnIdentifier, 
+          content, 
+          authorName,
+          ownerDid,
+          parentCommentId,
+          postReply
+        );
+
+        // 2. Store comment in user's Google Drive engagement.json (with same ID from database)
+        await EngagementDriveService.addComment(
+          pnIdentifier,
+          fileId,
+          {
+            commentId: dbComment.id,
+            content: dbComment.content,
+            authorName: dbComment.authorName,
+            timestamp: dbComment.timestamp,
+            parentCommentId: dbComment.parentCommentId,
+            likes: dbComment.likes || [],
+            postReply: dbComment.postReply
+          },
+          userAccessToken,
+          metadataFolderId
+        );
+
+        // Note: Public comment count is updated automatically by EngagementService.addComment
+        // which inserts a record in the engagement table. COUNT(*) queries will reflect the correct count.
+
+        // Use database comment for response
+        const comment = dbComment;
+
         // Record activity and send notification (only for top-level comments, not replies)
-        if (ownerDid && ownerDid !== userDid && !parentCommentId) {
+        // pnIdentifier, userCredentials, userAccessToken, and metadataFolderId already defined above
+        if (ownerDid && ownerDid !== pnIdentifier && !parentCommentId) {
           try {
             const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
             const { NotificationService } = await import('./server/modules/notificationService');
-            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-            // Get user's credentials and metadata folder
-            const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
-            const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+            // Use already-fetched userCredentials
             if (userCredentials?.credentials) {
               const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
                 (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
@@ -11084,17 +11296,79 @@ class ProductionServer {
         // Normalize pn identifier
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
-        const { UserPreferenceService } = await import('./server/modules/userPreferenceService');
+        const { PreferencesService } = await import('./server/modules/preferencesService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Save tag preference
-        await UserPreferenceService.setTagPreference(
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+
+        // Find _metadata folder
+        const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
+        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id)&pageSize=1`;
+        
+        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        let pnFolderId: string | null = null;
+        if (pnFolderResponse.ok) {
+          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string }> };
+          if (pnFolderData.files && pnFolderData.files.length > 0) {
+            pnFolderId = pnFolderData.files[0].id;
+          }
+        }
+
+        if (!pnFolderId) {
+          return res.status(404).json({ error: 'pN folder not found' });
+        }
+
+        const metadataFolderName = '_metadata';
+        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
+        
+        let metadataFolderId: string | null = null;
+        const metadataFolderResponse = await fetch(metadataSearchUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (metadataFolderResponse.ok) {
+          const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
+          if (metadataFolderData.files && metadataFolderData.files.length > 0) {
+            metadataFolderId = metadataFolderData.files[0].id;
+          }
+        }
+
+        if (!metadataFolderId) {
+          return res.status(404).json({ error: '_metadata folder not found' });
+        }
+
+        // Save tag preference to Google Drive
+        await PreferencesService.addTagPreference(
+          userAccessToken,
+          metadataFolderId,
           normalizedPnIdentifier,
-          tagId.toLowerCase(), // Normalize tag ID
+          tagId.toLowerCase(),
           preference,
           action,
           {
             sourceFileId,
-            confidence: confidence ?? 0.8, // Default confidence
+            confidence: confidence ?? 0.8,
             metadata
           }
         );
@@ -11121,13 +11395,70 @@ class ProductionServer {
         // Normalize pn identifier
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
-        const { UserPreferenceService } = await import('./server/modules/userPreferenceService');
+        const { PreferencesService } = await import('./server/modules/preferencesService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Get all user tag preferences
-        const preferencesMap = await UserPreferenceService.getUserTagPreferences(normalizedPnIdentifier);
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.json({ preferences: [] });
+        }
 
-        // Convert Map to array
-        const preferences = Array.from(preferencesMap.values());
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ preferences: [] });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+
+        // Find _metadata folder
+        const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
+        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id)&pageSize=1`;
+        
+        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        let pnFolderId: string | null = null;
+        if (pnFolderResponse.ok) {
+          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string }> };
+          if (pnFolderData.files && pnFolderData.files.length > 0) {
+            pnFolderId = pnFolderData.files[0].id;
+          }
+        }
+
+        if (!pnFolderId) {
+          return res.json({ preferences: [] });
+        }
+
+        const metadataFolderName = '_metadata';
+        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
+        
+        let metadataFolderId: string | null = null;
+        const metadataFolderResponse = await fetch(metadataSearchUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (metadataFolderResponse.ok) {
+          const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
+          if (metadataFolderData.files && metadataFolderData.files.length > 0) {
+            metadataFolderId = metadataFolderData.files[0].id;
+          }
+        }
+
+        if (!metadataFolderId) {
+          return res.json({ preferences: [] });
+        }
+
+        // Get tag preferences from Google Drive
+        const preferences = await PreferencesService.getTagPreferences(userAccessToken, metadataFolderId);
 
         return res.json({ preferences });
       } catch (error: any) {
@@ -11155,10 +11486,75 @@ class ProductionServer {
         // Normalize pn identifier
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
-        const { UserPreferenceService } = await import('./server/modules/userPreferenceService');
+        const { PreferencesService } = await import('./server/modules/preferencesService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Remove tag preference
-        await UserPreferenceService.removeTagPreference(normalizedPnIdentifier, tagId.toLowerCase());
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+
+        // Find _metadata folder
+        const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
+        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id)&pageSize=1`;
+        
+        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        let pnFolderId: string | null = null;
+        if (pnFolderResponse.ok) {
+          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string }> };
+          if (pnFolderData.files && pnFolderData.files.length > 0) {
+            pnFolderId = pnFolderData.files[0].id;
+          }
+        }
+
+        if (!pnFolderId) {
+          return res.status(404).json({ error: 'pN folder not found' });
+        }
+
+        const metadataFolderName = '_metadata';
+        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
+        
+        let metadataFolderId: string | null = null;
+        const metadataFolderResponse = await fetch(metadataSearchUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (metadataFolderResponse.ok) {
+          const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
+          if (metadataFolderData.files && metadataFolderData.files.length > 0) {
+            metadataFolderId = metadataFolderData.files[0].id;
+          }
+        }
+
+        if (!metadataFolderId) {
+          return res.status(404).json({ error: '_metadata folder not found' });
+        }
+
+        // Remove tag preference from Google Drive
+        await PreferencesService.removeTagPreference(
+          userAccessToken,
+          metadataFolderId,
+          normalizedPnIdentifier,
+          tagId.toLowerCase()
+        );
 
         return res.json({ success: true });
       } catch (error: any) {

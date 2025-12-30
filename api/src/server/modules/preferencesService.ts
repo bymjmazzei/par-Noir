@@ -4,6 +4,22 @@
  * Each user stores their preferences in preferences.json in their _metadata folder
  */
 
+export interface UserTagPreference {
+  tagId: string;
+  preference: 'like' | 'dislike' | 'block' | 'subscribe';
+  action: 'swipe_like' | 'swipe_dislike' | 'preference_tile_yes' | 'preference_tile_no' | 'explicit_setting';
+  confidence: number;
+  sourceFileId?: string;
+  metadata?: {
+    questionId?: string;
+    fileType?: string;
+    category?: string;
+    subject?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface UserPreferences {
   identifier: string;
   updatedAt: string;
@@ -15,6 +31,7 @@ export interface UserPreferences {
   displayName?: string;
   profileImageFileId?: string;
   userDisplayNames?: Record<string, string>;
+  tagPreferences?: UserTagPreference[];
 }
 
 export class PreferencesService {
@@ -152,6 +169,90 @@ export class PreferencesService {
       console.error('Error updating preferences file:', error);
       throw error;
     }
+  }
+
+  /**
+   * Add or update a tag preference
+   */
+  static async addTagPreference(
+    accessToken: string,
+    metadataFolderId: string,
+    userDid: string,
+    tagId: string,
+    preference: 'like' | 'dislike' | 'block' | 'subscribe',
+    action: UserTagPreference['action'],
+    options?: {
+      sourceFileId?: string;
+      confidence?: number;
+      metadata?: UserTagPreference['metadata'];
+    }
+  ): Promise<void> {
+    const existingPreferences = await this.getPreferencesFile(accessToken, metadataFolderId);
+    const tagPreferences = existingPreferences?.tagPreferences || [];
+    
+    const now = new Date().toISOString();
+    const normalizedTagId = tagId.toLowerCase();
+    
+    // Find existing preference for this tag
+    const existingIndex = tagPreferences.findIndex(tp => tp.tagId === normalizedTagId);
+    
+    const newPreference: UserTagPreference = {
+      tagId: normalizedTagId,
+      preference,
+      action,
+      confidence: options?.confidence ?? 0.8,
+      sourceFileId: options?.sourceFileId,
+      metadata: options?.metadata,
+      createdAt: existingIndex >= 0 ? tagPreferences[existingIndex].createdAt : now,
+      updatedAt: now
+    };
+
+    if (existingIndex >= 0) {
+      // Update existing preference
+      tagPreferences[existingIndex] = newPreference;
+    } else {
+      // Add new preference
+      tagPreferences.push(newPreference);
+    }
+
+    await this.updatePreferencesFile(accessToken, metadataFolderId, userDid, {
+      tagPreferences
+    });
+  }
+
+  /**
+   * Remove a tag preference
+   */
+  static async removeTagPreference(
+    accessToken: string,
+    metadataFolderId: string,
+    userDid: string,
+    tagId: string
+  ): Promise<void> {
+    const existingPreferences = await this.getPreferencesFile(accessToken, metadataFolderId);
+    if (!existingPreferences?.tagPreferences) {
+      return;
+    }
+
+    const normalizedTagId = tagId.toLowerCase();
+    const tagPreferences = existingPreferences.tagPreferences.filter(
+      tp => tp.tagId !== normalizedTagId
+    );
+
+    await this.updatePreferencesFile(accessToken, metadataFolderId, userDid, {
+      tagPreferences
+    });
+  }
+
+  /**
+   * Get all tag preferences for a user
+   */
+  static async getTagPreferences(
+    accessToken: string,
+    metadataFolderId: string
+  ): Promise<UserTagPreference[]> {
+    const preferences = await this.getPreferencesFile(accessToken, metadataFolderId);
+    return preferences?.tagPreferences || [];
   }
 }
 

@@ -892,5 +892,84 @@ export class EngagementService {
       return statsMap;
     }
   }
+
+  /**
+   * Update public like count (insert or delete record for counting)
+   * Used for event-driven updates when user likes/unlikes
+   * Note: Individual user engagement is stored in Google Drive, this is only for public count aggregation
+   */
+  static async toggleLikePublicCount(fileId: string, userDid: string, liked: boolean): Promise<void> {
+    const db = getDatabasePool();
+    
+    try {
+      if (liked) {
+        // Insert record to increment count
+        await db.query(`
+          INSERT INTO engagement (file_id, user_did, type)
+          VALUES ($1, $2, 'like')
+          ON CONFLICT (file_id, user_did, type) DO NOTHING
+        `, [fileId, userDid]);
+      } else {
+        // Delete record to decrement count
+        await db.query(`
+          DELETE FROM engagement 
+          WHERE file_id = $1 AND user_did = $2 AND type = 'like'
+        `, [fileId, userDid]);
+      }
+    } catch (error) {
+      console.error('Failed to update public like count:', error);
+      // Don't throw - counting is best effort, user engagement is in Google Drive
+    }
+  }
+
+  /**
+   * Update public dislike count (insert or delete record for counting)
+   */
+  static async toggleDislikePublicCount(fileId: string, userDid: string, disliked: boolean): Promise<void> {
+    const db = getDatabasePool();
+    
+    try {
+      if (disliked) {
+        // Insert record to increment count
+        await db.query(`
+          INSERT INTO engagement (file_id, user_did, type)
+          VALUES ($1, $2, 'dislike')
+          ON CONFLICT (file_id, user_did, type) DO NOTHING
+        `, [fileId, userDid]);
+      } else {
+        // Delete record to decrement count
+        await db.query(`
+          DELETE FROM engagement 
+          WHERE file_id = $1 AND user_did = $2 AND type = 'dislike'
+        `, [fileId, userDid]);
+      }
+    } catch (error) {
+      console.error('Failed to update public dislike count:', error);
+      // Don't throw - counting is best effort
+    }
+  }
+
+  /**
+   * Increment public comment count
+   * Note: Individual comment content is stored in Google Drive, this is only for counting
+   */
+  static async incrementCommentCount(fileId: string, userDid: string): Promise<void> {
+    const db = getDatabasePool();
+    
+    try {
+      // Insert a record to increment count
+      // Note: The UNIQUE constraint limits one record per user per file per type,
+      // but comments can be multiple per user. This is a limitation of the current schema.
+      // For now, we'll insert and let it fail silently on conflict (best effort counting)
+      await db.query(`
+        INSERT INTO engagement (file_id, user_did, type)
+        VALUES ($1, $2, 'comment')
+        ON CONFLICT (file_id, user_did, type) DO NOTHING
+      `, [fileId, userDid]);
+    } catch (error) {
+      console.error('Failed to increment comment count:', error);
+      // Don't throw - counting is best effort
+    }
+  }
 }
 
