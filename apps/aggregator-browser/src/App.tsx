@@ -325,15 +325,7 @@ function App() {
       return;
     }
     
-    if (unlockStateChanged) {
-      if (userState.isUnlocked && activeFeedId === 'public') {
-        // User just unlocked - switch to curated
-        setActiveFeedId('curated');
-      } else if (!userState.isUnlocked && activeFeedId === 'curated') {
-        // User just locked - switch to public
-        setActiveFeedId('public');
-      }
-    }
+    // Removed auto-switch from public to curated - curated feed has been consolidated into public feed
   }, [userState.isUnlocked]); // Only depend on isUnlocked, not activeFeedId (to avoid interference with manual clicks)
 
   // Fetch feeds from API - only once on mount
@@ -952,6 +944,83 @@ function App() {
         return scoreB - scoreA; // Descending order (highest first)
       });
     };
+
+    // Helper to get creator ID from file metadata
+    const getCreatorId = (file: IndexedFile): string | null => {
+      const creatorId = file.metadata.creator?.identifier?.value ||
+                        file.metadata.creator?.["@id"] ||
+                        file.metadata.author?.did ||
+                        file.metadata.creatorId ||
+                        file.pnIdentifier;
+      return creatorId ? String(creatorId) : null;
+    };
+
+    // Helper to apply connection filter
+    const applyConnectionFilter = (files: IndexedFile[], connectionFilter: 'all' | 'connections' | 'not_connections', userDid: string, connections: Array<{ connectionId: string; userDid: string; status: string; createdAt: string; acceptedAt?: string }>): IndexedFile[] => {
+      if (connectionFilter === 'all' || !userState.isUnlocked || connections.length === 0) {
+        return files;
+      }
+
+      // Get list of connected user DIDs
+      const connectedDids = new Set<string>();
+      connections.forEach(conn => {
+        // Normalize DIDs for comparison
+        const normalizeDid = (did: string) => {
+          const cleaned = did.startsWith('pn-') ? did.substring(3) : did;
+          return cleaned.trim().toLowerCase();
+        };
+
+        const userDidNormalized = normalizeDid(userDid);
+        const connUserDid = normalizeDid(conn.userDid);
+        const otherUserDid = normalizeDid((conn as any).otherUserDid || '');
+
+        if (connUserDid !== userDidNormalized) {
+          connectedDids.add(connUserDid);
+        }
+        if (otherUserDid && otherUserDid !== userDidNormalized) {
+          connectedDids.add(otherUserDid);
+        }
+      });
+
+      const normalizeDid = (did: string | null): string => {
+        if (!did) return '';
+        const cleaned = did.startsWith('pn-') ? did.substring(3) : did;
+        return cleaned.trim().toLowerCase();
+      };
+
+      const userDidNormalized = normalizeDid(userDid);
+
+      return files.filter(file => {
+        const fileCreatorId = getCreatorId(file);
+        if (!fileCreatorId) return true; // Keep files without creator ID
+
+        const fileCreatorNormalized = normalizeDid(fileCreatorId);
+        
+        // Exclude self
+        if (fileCreatorNormalized === userDidNormalized) {
+          return connectionFilter !== 'not_connections'; // Include self in 'all' and 'connections', exclude in 'not_connections'
+        }
+
+        const isConnected = connectedDids.has(fileCreatorNormalized);
+
+        if (connectionFilter === 'connections') {
+          return isConnected;
+        } else if (connectionFilter === 'not_connections') {
+          return !isConnected;
+        }
+
+        return true;
+      });
+    };
+
+    // Helper to sort by time (newest first)
+    const sortByTime = (files: IndexedFile[]): IndexedFile[] => {
+      return [...files].sort((a, b) => {
+        const dateA = a.metadata.uploadDate ? new Date(a.metadata.uploadDate).getTime() : 0;
+        const dateB = b.metadata.uploadDate ? new Date(b.metadata.uploadDate).getTime() : 0;
+        return dateB - dateA; // Descending order (newest first)
+      });
+    };
     
     // Helper to check if file should be excluded (individual thought pages from multi-page thought collections)
     const shouldExcludeThoughtPage = (file: IndexedFile): boolean => {
@@ -972,18 +1041,45 @@ function App() {
     const filteredThoughts = thoughtsFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
     const filteredCollections = collectionsFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
 
+    // Get curated feed preferences (apply to all public feeds when unlocked)
+    const curatedFeedPreferences = userState.isUnlocked ? (userState.preferences.curatedFeedPreferences || {
+      sortOrder: 'recommended',
+      connectionFilter: 'all'
+    }) : null;
+
+    // Helper to process public feeds with curated feed preferences
+    // Note: connectionsList is declared later in file but is React state, available at runtime
+    const processPublicFeed = (files: IndexedFile[], connections: Array<{ connectionId: string; userDid: string; status: string; createdAt: string; acceptedAt?: string }>): IndexedFile[] => {
+      let processed = files;
+
+      // Apply connection filter if user is unlocked and preferences are set
+      if (curatedFeedPreferences && userState.pnIdentifier) {
+        processed = applyConnectionFilter(processed, curatedFeedPreferences.connectionFilter, userState.pnIdentifier, connections);
+      }
+
+      // Apply sort order
+      if (curatedFeedPreferences?.sortOrder === 'time') {
+        processed = sortByTime(processed);
+      } else {
+        // Recommended: use full algorithm with personalization for unlocked users, public algorithm for locked
+        processed = sortByScore(processed, userState.isUnlocked);
+      }
+
+      return processed;
+    };
+
     // Build feeds from indices
     if (activeFeedId === 'public') {
       // Public feed = media + thoughts + collections
-      // Use public algorithm only (no personalization)
       const combined = [...filteredMedia, ...filteredThoughts, ...filteredCollections];
-      const sorted = sortByScore(combined, false); // Public algorithm only
+      // eslint-disable-next-line @typescript-eslint/no-use-before-define
+      const processed = processPublicFeed(combined, connectionsList);
       
       if (process.env.NODE_ENV === 'development') {
-        console.log(`[Public Feed] ${sorted.length} files: ${filteredMedia.length} media, ${filteredThoughts.length} thoughts, ${filteredCollections.length} collections`);
+        console.log(`[Public Feed] ${processed.length} files: ${filteredMedia.length} media, ${filteredThoughts.length} thoughts, ${filteredCollections.length} collections`);
       }
       
-      return sorted;
+      return processed;
     }
     if (activeFeedId === 'media') {
       if (process.env.NODE_ENV === 'development') {
@@ -993,8 +1089,8 @@ function App() {
           sampleFileIds: filteredMedia.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType }))
         });
       }
-      // Public feed - use public algorithm only
-      return sortByScore(filteredMedia, false);
+      // eslint-disable-next-line @typescript-eslint/no-use-before-define
+      return processPublicFeed(filteredMedia, connectionsList);
     }
     if (activeFeedId === 'thoughts') {
       if (process.env.NODE_ENV === 'development') {
@@ -1004,8 +1100,8 @@ function App() {
           sampleFileIds: filteredThoughts.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType }))
         });
       }
-      // Public feed - use public algorithm only
-      return sortByScore(filteredThoughts, false);
+      // eslint-disable-next-line @typescript-eslint/no-use-before-define
+      return processPublicFeed(filteredThoughts, connectionsList);
     }
     if (activeFeedId === 'collections') {
       if (process.env.NODE_ENV === 'development') {
@@ -1015,101 +1111,8 @@ function App() {
           sampleFileIds: filteredCollections.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType, hasCollection: !!f.metadata.collection }))
         });
       }
-      // Public feed - use public algorithm only
-      return sortByScore(filteredCollections, false);
-    }
-    if (activeFeedId === 'curated') {
-      // Curated feed = all content EXCEPT blocked categories (negative filter)
-      // Also respects subscribed feeds and subject filters for backward compatibility
-      const blockedCategories = userState.preferences.blockedCategories || [];
-      const subscribedFeedIds = userState.preferences.subscribedFeedIds || [];
-      const subscribedSubjects = userState.preferences.subscribedSubjects || [];
-      const blockedSubjects = userState.preferences.blockedSubjects || [];
-      
-      // Apply curated filtering to each index
-      const curatedFilter = (file: IndexedFile): boolean => {
-        // Exclude individual thought pages from multi-page thought collections
-        if (shouldExcludeThoughtPage(file)) {
-          return false;
-        }
-        
-        // Check if file matches blocked categories
-        // Check both feedCategories (array) and category (single string) fields
-        const fileCategoriesArray = file.metadata.feedCategories || [];
-        const fileCategorySingle = file.metadata.category;
-        
-        // Combine all possible category sources
-        // Handle nested arrays by flattening (in case feedCategories contains arrays of arrays)
-        const flattenedCategories = Array.isArray(fileCategoriesArray) 
-          ? fileCategoriesArray.flat(Infinity) // Flatten nested arrays
-          : [fileCategoriesArray];
-        const allFileCategories = [
-          ...flattenedCategories,
-          ...(fileCategorySingle ? [fileCategorySingle] : [])
-        ].filter(Boolean); // Remove any null/undefined values
-        
-        // Normalize categories for comparison
-        const normalizedFileCategories = allFileCategories.map(cat => String(cat).toLowerCase().trim());
-        const normalizedBlocked = blockedCategories.map(cat => String(cat).toLowerCase().trim());
-        
-        // Debug logging only in development
-        if (process.env.NODE_ENV === 'development' && normalizedBlocked.length > 0 && normalizedFileCategories.some(cat => normalizedBlocked.includes(cat))) {
-          console.log(`[Curated Feed] Filtered out file ${file.metadata.fileId} due to blocked category`);
-        }
-        
-        const hasBlockedCategory = normalizedBlocked.length > 0 && 
-          normalizedFileCategories.some(cat => normalizedBlocked.includes(cat));
-        
-        // Exclude if matches blocked category
-        if (hasBlockedCategory) {
-          return false;
-        }
-        
-        // Subject filtering (backward compatibility)
-        const fileSubjects = (file.metadata.subjects || []).map(s => s.toLowerCase().trim());
-        
-        // If user has subscribed subjects, only show matching content
-        let matchesSubject = true;
-        if (subscribedSubjects.length > 0) {
-          const normalizedSubscribed = subscribedSubjects.map(s => s.toLowerCase().trim());
-          matchesSubject = fileSubjects.some(subject => 
-            normalizedSubscribed.includes(subject)
-          );
-        }
-        
-        // Always exclude blocked subjects
-        let hasBlockedSubject = false;
-        if (blockedSubjects.length > 0) {
-          const normalizedBlocked = blockedSubjects.map(s => s.toLowerCase().trim());
-          hasBlockedSubject = fileSubjects.some(subject => 
-            normalizedBlocked.includes(subject)
-          );
-        }
-        
-        // If user has subscribed subjects, must match those
-        if (subscribedSubjects.length > 0 && !matchesSubject) return false;
-        if (hasBlockedSubject) return false;
-        
-        // Check if file is in a subscribed feed (backward compatibility)
-        if (subscribedFeedIds.length > 0) {
-          const inSubscribedFeed = file.metadata.feedIds?.some(feedId => subscribedFeedIds.includes(feedId));
-          if (inSubscribedFeed) return shouldShowFile(file); // Show subscribed feed content
-        }
-        
-        // Default: show all content (negative filter - only exclude blocked)
-        // Filter by NSFW preference
-        return shouldShowFile(file);
-      };
-      
-      // Apply curated filtering to each index and combine
-      const curatedMedia = filteredMedia.filter(curatedFilter);
-      const curatedThoughts = filteredThoughts.filter(curatedFilter);
-      const curatedCollections = filteredCollections.filter(curatedFilter);
-      
-      // Curated feed = media + thoughts + collections
-      // Use full algorithm (public + user personalization)
-      const combined = [...curatedMedia, ...curatedThoughts, ...curatedCollections];
-      return sortByScore(combined, true); // Full algorithm with personalization
+      // eslint-disable-next-line @typescript-eslint/no-use-before-define
+      return processPublicFeed(filteredCollections, connectionsList);
     }
     if (activeFeedId === 'discovery') {
       // Discovery page - return empty for now (will be implemented in Phase 3)
@@ -1158,7 +1161,7 @@ function App() {
     
     // Use full algorithm (public + user personalization) for individual feeds
     return sortByScore(filtered, true);
-  }, [mediaFiles, thoughtsFiles, collectionsFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.blockedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, feeds, viewMode, useRecommendations, recommendedFiles]);
+  }, [mediaFiles, thoughtsFiles, collectionsFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.blockedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, userState.preferences.curatedFeedPreferences, userState.pnIdentifier, feeds, viewMode, useRecommendations, recommendedFiles]); // connectionsList excluded from deps - it's declared later but React state is available throughout component
 
   // Public feed now uses the same thumbnails state as Me page
   // generateThumbnailsForImages already populates thumbnails for all discovered files
@@ -1435,7 +1438,6 @@ function App() {
       
       // Build filters with rating preferences and feed filtering
       const isVirtualFeed = activeFeedId === 'public' || 
-                            activeFeedId === 'curated' || 
                             activeFeedId === 'discovery';
       const isNicheCategoryFeed = activeFeedId.startsWith('niche-');
       
@@ -4373,9 +4375,7 @@ function App() {
                 <EmptyState
                   type="no-content"
                   message={
-                    activeFeedId === 'curated'
-                      ? 'No curated content yet. Subscribe to feeds to see content here.'
-                      : activeFeedId === 'discovery'
+                    activeFeedId === 'discovery'
                       ? 'Discovery page coming soon'
                       : 'No content available in this feed'
                   }

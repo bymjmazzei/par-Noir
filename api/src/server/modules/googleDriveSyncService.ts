@@ -7,6 +7,7 @@
 import { GoogleAuth } from 'google-auth-library';
 import { AggregatorMetadataServiceDB } from './aggregatorMetadataServiceDB';
 import { PublicMetadata } from './aggregatorMetadataService';
+import { getFileTypeFromMime } from '../utils/fileTypeUtils';
 
 export class GoogleDriveSyncService {
   private static instance: GoogleDriveSyncService;
@@ -283,9 +284,10 @@ export class GoogleDriveSyncService {
                     // Legacy format - construct semantic metadata
                     const creatorDid = file.owner?.did || file.owner?.identifier;
                     const resourceUri = `https://parnoir.com/resource/${file.fileId}`;
-                    const schemaType = this.getFileTypeFromMime(file.mimeType) === 'image' ? 'ImageObject' :
-                                      this.getFileTypeFromMime(file.mimeType) === 'video' ? 'VideoObject' :
-                                      this.getFileTypeFromMime(file.mimeType) === 'audio' ? 'AudioObject' :
+                    const fileType = getFileTypeFromMime(file.mimeType);
+                    const schemaType = fileType === 'image' ? 'ImageObject' :
+                                      fileType === 'video' ? 'VideoObject' :
+                                      fileType === 'audio' ? 'AudioObject' :
                                       'CreativeWork';
                     
                     return {
@@ -302,7 +304,7 @@ export class GoogleDriveSyncService {
                         keywords: file.tags || [],
                         tags: file.tags || [], // Legacy support
                         uploadDate: file.uploadedAt,
-                        fileType: this.getFileTypeFromMime(file.mimeType),
+                        fileType: getFileTypeFromMime(file.mimeType),
                         creator: file.owner?.did ? {
                           '@type': 'Person',
                           '@id': file.owner.did,
@@ -378,17 +380,6 @@ export class GoogleDriveSyncService {
     }
   }
 
-  /**
-   * Helper to get file type from MIME type
-   */
-  private getFileTypeFromMime(mimeType?: string): string {
-    if (!mimeType) return 'other';
-    if (mimeType.startsWith('image/')) return 'image';
-    if (mimeType.startsWith('video/')) return 'video';
-    if (mimeType.startsWith('audio/')) return 'audio';
-    if (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('text')) return 'document';
-    return 'other';
-  }
 
   /**
    * Start periodic sync (every 10 minutes)

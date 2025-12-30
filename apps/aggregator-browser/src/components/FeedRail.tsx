@@ -3,10 +3,12 @@
  * Horizontal scrolling feed selector for TikTok-style navigation
  */
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { Feed } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { FEED_CATEGORIES } from '../constants/feedCategories';
+import { CuratedFeedDropdown } from './CuratedFeedDropdown';
 
 export interface FeedRailItem {
   feedId: string;
@@ -32,7 +34,10 @@ export function FeedRail({
 }: FeedRailProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const innerContainerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const { userState } = useUserState();
+  const [showDropdown, setShowDropdown] = useState(false);
+  const isPublicFeedActive = activeFeedId === 'public';
 
   // Calculate max scroll position based on last feed at midpoint
   const calculateMaxScroll = useCallback(() => {
@@ -78,6 +83,25 @@ export function FeedRail({
     return () => container.removeEventListener('scroll', handleScroll);
   }, [calculateMaxScroll]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current && 
+        !dropdownRef.current.contains(event.target as Node) &&
+        innerContainerRef.current &&
+        !innerContainerRef.current.contains(event.target as Node)
+      ) {
+        setShowDropdown(false);
+      }
+    };
+
+    if (showDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showDropdown]);
+
   // Auto-scroll to center active feed on mount/change (TikTok style)
   useEffect(() => {
     if (!scrollContainerRef.current || !innerContainerRef.current) return;
@@ -111,76 +135,101 @@ export function FeedRail({
   }, [activeFeedId, calculateMaxScroll]);
 
   return (
-    <div 
-      ref={scrollContainerRef}
-      className="w-full overflow-x-auto scrollbar-hide pointer-events-auto" 
-      style={{ 
-        scrollbarWidth: 'none', 
-        msOverflowStyle: 'none'
-      }}
-    >
-      <div
-        ref={innerContainerRef}
-        className="flex items-center justify-center space-x-8 py-2"
+    <div className="relative">
+      <div 
+        ref={scrollContainerRef}
+        className="w-full overflow-x-auto scrollbar-hide pointer-events-auto" 
         style={{ 
-          minWidth: 'max-content',
-          paddingLeft: '50%',
-          paddingRight: '50%'
+          scrollbarWidth: 'none', 
+          msOverflowStyle: 'none'
         }}
       >
-        {feeds.map((feed) => {
-          const isActive = feed.feedId === activeFeedId;
-          const isPublicFeed = feed.feedId === 'public';
-          
-          return (
-            <button
-              key={feed.feedId}
-              data-feed-id={feed.feedId}
-              onClick={() => onFeedSelect(feed.feedId)}
-              className="relative whitespace-nowrap text-white/85 hover:text-white transition-colors flex items-center justify-center"
-              style={{ opacity: isActive ? 1 : 0.85 }}
-            >
-              {isPublicFeed ? (
-                // pN text for public feed (lowercase p with line, uppercase N)
-                <svg 
-                  width="24" 
-                  height="20" 
-                  viewBox="0 0 24 20" 
-                  fill="none" 
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="text-white"
+        <div
+          ref={innerContainerRef}
+          className="flex items-center justify-center space-x-8 py-2"
+          style={{ 
+            minWidth: 'max-content',
+            paddingLeft: '50%',
+            paddingRight: '50%'
+          }}
+        >
+          {feeds.map((feed) => {
+            const isActive = feed.feedId === activeFeedId;
+            const isPublicFeed = feed.feedId === 'public';
+            
+            return (
+              <div key={feed.feedId} className="relative flex flex-col items-center">
+                <button
+                  data-feed-id={feed.feedId}
+                  onClick={() => onFeedSelect(feed.feedId)}
+                  className="relative whitespace-nowrap text-white/85 hover:text-white transition-colors flex items-center justify-center"
+                  style={{ opacity: isActive ? 1 : 0.85 }}
                 >
-                  <text 
-                    x="0" 
-                    y="15" 
-                    fontSize="16" 
-                    fontFamily="system-ui, -apple-system, sans-serif" 
-                    fontWeight="500"
-                    fill="currentColor"
-                    letterSpacing="0.05em"
+                  {isPublicFeed ? (
+                    // pN text for public feed (lowercase p with line, uppercase N)
+                    <svg 
+                      width="24" 
+                      height="20" 
+                      viewBox="0 0 24 20" 
+                      fill="none" 
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="text-white"
+                    >
+                      <text 
+                        x="0" 
+                        y="15" 
+                        fontSize="16" 
+                        fontFamily="system-ui, -apple-system, sans-serif" 
+                        fontWeight="500"
+                        fill="currentColor"
+                        letterSpacing="0.05em"
+                      >
+                        pN
+                      </text>
+                      <line 
+                        x1="2" 
+                        y1="4" 
+                        x2="8" 
+                        y2="4" 
+                        stroke="currentColor" 
+                        strokeWidth="1.5" 
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  ) : (
+                    <span className="text-base font-medium uppercase tracking-wide">{feed.name}</span>
+                  )}
+                  {isActive && (
+                    <span className="absolute left-0 right-0 h-0.5 bg-white" style={{ bottom: '-2px' }} />
+                  )}
+                </button>
+                {/* Dropdown arrow for pN feed when active and user is unlocked */}
+                {isPublicFeed && isActive && userState.isUnlocked && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowDropdown(!showDropdown);
+                    }}
+                    className="p-0.5 flex items-center justify-center text-white/60 hover:text-white/85 transition-colors pointer-events-auto mt-0.5"
+                    title="Feed options"
                   >
-                    pN
-                  </text>
-                  <line 
-                    x1="2" 
-                    y1="4" 
-                    x2="8" 
-                    y2="4" 
-                    stroke="currentColor" 
-                    strokeWidth="1.5" 
-                    strokeLinecap="round"
-                  />
-                </svg>
-              ) : (
-                <span className="text-base font-medium uppercase tracking-wide">{feed.name}</span>
-              )}
-              {isActive && (
-                <span className="absolute left-0 right-0 h-0.5 bg-white" style={{ bottom: '-2px' }} />
-              )}
-            </button>
-          );
-        })}
+                    <ChevronDown className={`h-3 w-3 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
+      {/* Dropdown menu */}
+      {showDropdown && isPublicFeedActive && userState.isUnlocked && (
+        <div
+          ref={dropdownRef}
+          className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-[200]"
+        >
+          <CuratedFeedDropdown onClose={() => setShowDropdown(false)} />
+        </div>
+      )}
     </div>
   );
 }
@@ -228,14 +277,6 @@ export function buildFeedRailItems(
     }
   );
 
-  // Add CURATED feed right after Collections if user is unlocked
-  if (isUnlocked) {
-    items.push({
-      feedId: 'curated',
-      name: 'CURATED',
-      isActive: activeFeedId === 'curated'
-    });
-  }
 
   // Add subscribed niche category feeds (virtual feeds based on categories)
   // Only show categories where user has subscribed to at least one feed

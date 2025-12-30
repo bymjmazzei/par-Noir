@@ -10,6 +10,7 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
+import { determineFileType, getFileTypeFromMime } from './server/utils/fileTypeUtils';
 
 // Environment configuration
 const PORT = process.env.PORT || 3001;
@@ -371,17 +372,6 @@ class ProductionServer {
     });
   }
 
-  /**
-   * Helper to get file type from MIME type
-   */
-  private getFileTypeFromMime(mimeType?: string): string {
-    if (!mimeType) return 'other';
-    if (mimeType.startsWith('image/')) return 'image';
-    if (mimeType.startsWith('video/')) return 'video';
-    if (mimeType.startsWith('audio/')) return 'audio';
-    if (mimeType.includes('text')) return 'text';
-    return 'other';
-  }
 
   /**
    * Get owner file index (contains all files owned by the user)
@@ -655,11 +645,11 @@ class ProductionServer {
    * Convert companion metadata to public metadata (simplified semantic web format)
    */
   private companionToPublicMetadata(companion: any, creatorDid?: string): any {
-    const mimeCategory = companion.mimeType?.split('/')[0] || 'file';
+    const fileType = getFileTypeFromMime(companion.mimeType);
     const schemaType = 
-      mimeCategory === 'image' ? 'ImageObject' :
-      mimeCategory === 'video' ? 'VideoObject' :
-      mimeCategory === 'audio' ? 'AudioObject' :
+      fileType === 'image' ? 'ImageObject' :
+      fileType === 'video' ? 'VideoObject' :
+      fileType === 'audio' ? 'AudioObject' :
       'CreativeWork';
     
     const resourceUri = `https://parnoir.com/resource/${companion.fileId}`;
@@ -686,7 +676,7 @@ class ProductionServer {
       keywords: companion.tags || [],
       uploadDate: companion.uploadedAt,
       datePublished: companion.uploadedAt,
-      fileType: mimeCategory,
+      fileType: fileType,
       creator: {
         '@type': 'Person',
         '@id': didUri,
@@ -1597,7 +1587,7 @@ class ProductionServer {
           name: title || metadata.fileId || 'Untitled',
           uploadDate: metadata.uploadDate || new Date().toISOString(),
           isPublic: metadata.isPublic === true, // Default to false (private) if not explicitly set to true
-          fileType: metadata.fileType || this.getFileTypeFromMime(metadata.mimeType) || 'other'
+          fileType: metadata.fileType || getFileTypeFromMime(metadata.mimeType) || 'other'
         };
 
         // Only require fileId - other fields can be optional
@@ -2246,8 +2236,7 @@ class ProductionServer {
                     backendFileId: fileId,
                     backend: 'google_drive',
                     name: driveFile.name?.replace(/\.encrypted$/i, '') || fileId,
-                    fileType: driveFile.mimeType?.startsWith('image/') ? 'image' :
-                              driveFile.mimeType?.startsWith('video/') ? 'video' : 'other',
+                    fileType: getFileTypeFromMime(driveFile.mimeType),
                     uploadDate: driveFile.createdTime || new Date().toISOString(),
                     isPublic: false,
                     "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
@@ -2392,11 +2381,14 @@ class ProductionServer {
             // Create initial metadata entry
             // IMPORTANT: Default isPublic to true for text posts, false for other files
             const defaultIsPublic = (textPost || thought) ? true : false;
-            // IMPORTANT: If textPost or thought is present, fileType should be 'text', not 'image' (even though the file is a PNG)
-            const determinedFileType = fileType || 
-                                      ((textPost || thought) ? 'text' : 
-                                       (driveFile.mimeType?.startsWith('image/') ? 'image' : 
-                                        driveFile.mimeType?.startsWith('video/') ? 'video' : 'other'));
+            // Determine fileType using centralized utility (handles collection, textPost, thought, MIME type)
+            const determinedFileType = determineFileType({
+              fileType,
+              collection,
+              textPost,
+              thought,
+              mimeType: driveFile.mimeType
+            });
             const initialMetadata: any = {
               fileId: fileId,
               backendFileId: fileId,
@@ -2436,8 +2428,13 @@ class ProductionServer {
             // Continue anyway - create entry with minimal info
             // IMPORTANT: Default isPublic to true for text posts, false for other files
             const defaultIsPublic = (textPost || thought) ? true : false;
-            // IMPORTANT: If textPost or thought is present, fileType should be 'text', not 'other'
-            const determinedFileType = fileType || ((textPost || thought) ? 'text' : 'other');
+            // Determine fileType using centralized utility (handles collection, textPost, thought)
+            const determinedFileType = determineFileType({
+              fileType,
+              collection,
+              textPost,
+              thought
+            });
             const minimalMetadata: any = {
               fileId: fileId,
               backendFileId: fileId,
@@ -2560,6 +2557,14 @@ class ProductionServer {
           }
         }
 
+        // Determine fileType using centralized utility (auto-sets collection fileType when collection data is provided)
+        const determinedFileTypeForUpdate = determineFileType({
+          fileType,
+          collection,
+          textPost,
+          thought
+        });
+
         // Now update with provided fields
         const updated = await service.updateMetadata(fileId, {
           name,
@@ -2572,7 +2577,7 @@ class ProductionServer {
           locationCreated,
           license,
           inLanguage,
-          fileType,
+          fileType: determinedFileTypeForUpdate,
           textPost,
           thought,
           collection, // Include collection data if provided

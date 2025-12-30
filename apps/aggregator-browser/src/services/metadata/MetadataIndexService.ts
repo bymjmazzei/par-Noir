@@ -273,13 +273,15 @@ export class MetadataIndexService {
 
   /**
    * Helper to determine file type from MIME type
+   * Matches backend logic for consistency
    */
   private getFileTypeFromMime(mimeType: string): string {
     if (!mimeType) return 'other';
     if (mimeType.startsWith('image/')) return 'image';
     if (mimeType.startsWith('video/')) return 'video';
     if (mimeType.startsWith('audio/')) return 'audio';
-    if (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('text')) return 'document';
+    if (mimeType.includes('pdf') || mimeType.includes('document')) return 'document';
+    if (mimeType.includes('text')) return 'text'; // Text MIME types map to 'text' fileType
     return 'other';
   }
 }

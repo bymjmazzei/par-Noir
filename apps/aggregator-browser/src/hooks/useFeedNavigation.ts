@@ -11,7 +11,7 @@ import { FEED_CATEGORIES } from '../constants/feedCategories';
 export interface FeedNavigationItem {
   feedId: string;
   name: string;
-  type: 'curated' | 'public' | 'subscribed' | 'discovery' | 'niche';
+  type: 'public' | 'subscribed' | 'discovery' | 'niche';
   index: number;
 }
 
@@ -31,49 +31,41 @@ export function useFeedNavigation(
     const hierarchy: FeedNavigationItem[] = [];
 
     if (userState.isUnlocked) {
-      // Unlocked users: Curated → Public → Media → Thoughts → Collections → Subscribed → Discovery
+      // Unlocked users: Public → Media → Thoughts → Collections → Subscribed → Discovery
       
-      // 1. Curated Feed (default for unlocked users)
-      hierarchy.push({
-        feedId: 'curated',
-        name: 'Curated',
-        type: 'curated',
-        index: 0
-      });
-
-      // 2. Public Index
+      // 1. Public Index
       hierarchy.push({
         feedId: 'public',
         name: 'Public',
         type: 'public',
-        index: 1
+        index: 0
       });
 
-      // 3. Media Feed
+      // 2. Media Feed
       hierarchy.push({
         feedId: 'media',
         name: 'Media',
         type: 'public',
-        index: 2
+        index: 1
       });
 
-      // 4. Thoughts Feed
+      // 3. Thoughts Feed
       hierarchy.push({
         feedId: 'thoughts',
         name: 'Thoughts',
         type: 'public',
-        index: 3
+        index: 2
       });
 
-      // 5. Collections Feed
+      // 4. Collections Feed
       hierarchy.push({
         feedId: 'collections',
         name: 'Collections',
         type: 'public',
-        index: 4
+        index: 3
       });
 
-      // 6. Subscribed Niche Category Feeds (virtual feeds based on categories)
+      // 5. Subscribed Niche Category Feeds (virtual feeds based on categories)
       if (subscribedFeedIds.length > 0) {
         // Get unique categories from subscribed feeds
         const subscribedCategories = new Set<string>();
@@ -98,13 +90,13 @@ export function useFeedNavigation(
                 feedId: `niche-${categoryId}`,
                 name: categoryInfo.name,
                 type: 'niche',
-                index: 5 + idx
+                index: 4 + idx
               });
             }
           });
       }
 
-      // 7. Individual Subscribed Feeds (feeds without categories or additional feeds)
+      // 6. Individual Subscribed Feeds (feeds without categories or additional feeds)
       subscribedFeedIds.forEach((feedId, idx) => {
         const feed = feeds.find(f => f.feedId === feedId);
         // Only add if feed doesn't have a category (or category already shown above)
@@ -118,7 +110,7 @@ export function useFeedNavigation(
         }
       });
 
-      // 8. Discovery Page
+      // 7. Discovery Page
       hierarchy.push({
         feedId: 'discovery',
         name: 'Discovery',

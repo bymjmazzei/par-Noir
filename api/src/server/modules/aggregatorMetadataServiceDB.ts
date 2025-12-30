@@ -72,6 +72,31 @@ export class AggregatorMetadataServiceDB {
       ? existingIsPublic  // Preserve whatever it was (true, false, null, undefined)
       : metadata.isPublic;
 
+    // Validate and auto-fix fileType to match metadata content
+    let validatedFileType = metadata.fileType || 'other';
+    
+    // Auto-set fileType to 'collection' if collection data is present but fileType doesn't match
+    if ((metadata as any).collection?.collectionFileIds?.length && validatedFileType !== 'collection') {
+      console.warn(`[AggregatorMetadataServiceDB] Collection data present but fileType is '${validatedFileType}', auto-setting to 'collection': ${metadata.fileId}`);
+      validatedFileType = 'collection';
+    }
+    
+    // Warn if fileType is 'collection' but no collection data
+    if (validatedFileType === 'collection' && !(metadata as any).collection?.collectionFileIds?.length) {
+      console.warn(`[AggregatorMetadataServiceDB] Collection fileType set but no collection data: ${metadata.fileId}`);
+    }
+    
+    // Auto-set fileType to 'text' if textPost/thought data is present but fileType doesn't match
+    // Preserve thought-collection types as they're explicitly set
+    const thoughtCollectionTypes = ['thought-collection-thumbnail', 'thought-collection-page', 'thought-collection'];
+    if ((metadata.textPost || (metadata as any).thought) && 
+        validatedFileType !== 'text' && 
+        validatedFileType !== 'thought' && 
+        !thoughtCollectionTypes.includes(validatedFileType)) {
+      console.warn(`[AggregatorMetadataServiceDB] Text/thought data present but fileType is '${validatedFileType}', auto-setting to 'text': ${metadata.fileId}`);
+      validatedFileType = 'text';
+    }
+
     // Enhance metadata structure - preserve isPublic value
     const validatedMetadata: PublicMetadata = {
       ...metadata,
@@ -80,7 +105,7 @@ export class AggregatorMetadataServiceDB {
       backendFileId: metadata.backendFileId || metadata.fileId,
       name: metadata.name || metadata.title || metadata.fileId,
       uploadDate: metadata.uploadDate || new Date().toISOString(),
-      fileType: metadata.fileType || 'other',
+      fileType: validatedFileType,
       // Ensure @context is always an array
       "@context": Array.isArray(metadata["@context"]) 
         ? metadata["@context"] 

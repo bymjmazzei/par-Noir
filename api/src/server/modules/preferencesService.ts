@@ -20,6 +20,11 @@ export interface UserTagPreference {
   updatedAt: string;
 }
 
+export interface CuratedFeedPreferences {
+  sortOrder: 'time' | 'recommended'; // Default: 'recommended'
+  connectionFilter: 'all' | 'connections' | 'not_connections'; // Default: 'all'
+}
+
 export interface UserPreferences {
   identifier: string;
   updatedAt: string;
@@ -32,6 +37,7 @@ export interface UserPreferences {
   profileImageFileId?: string;
   userDisplayNames?: Record<string, string>;
   tagPreferences?: UserTagPreference[];
+  curatedFeedPreferences?: CuratedFeedPreferences;
 }
 
 export class PreferencesService {

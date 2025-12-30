@@ -8,6 +8,11 @@ import { Feed } from '../types/aggregator';
 import { accountsCacheService } from '../services/accountsCacheService';
 import { TagNormalizationService } from '../services/tagNormalizationService';
 
+export interface CuratedFeedPreferences {
+  sortOrder: 'time' | 'recommended'; // Default: 'recommended'
+  connectionFilter: 'all' | 'connections' | 'not_connections'; // Default: 'all'
+}
+
 export interface UserPreferences {
   // Age verification (for NSFW access)
   hasAgeZKP: boolean; // User has age attestation ZKP set up
@@ -27,6 +32,9 @@ export interface UserPreferences {
   displayName?: string; // User's display name (defaults to nickname)
   profileImageFileId?: string; // FileId of profile image
   userDisplayNames?: Record<string, string>; // Map of creatorId -> displayName (for other users)
+  
+  // Curated feed preferences (applies to all public feeds)
+  curatedFeedPreferences?: CuratedFeedPreferences;
 }
 
 export interface UserState {
@@ -60,6 +68,7 @@ interface UserStateContextType {
   updateProfileImageFileId: (fileId: string) => void;
   setUserDisplayName: (creatorId: string, displayName: string) => void;
   getDisplayName: (creatorId: string, nickname?: string) => string;
+  updateCuratedFeedPreferences: (preferences: CuratedFeedPreferences) => Promise<void>;
 }
 
 const defaultPreferences: UserPreferences = {
@@ -70,7 +79,11 @@ const defaultPreferences: UserPreferences = {
   subscribedCategories: [],
   blockedCategories: [],
   subscribedSubjects: [],
-  blockedSubjects: []
+  blockedSubjects: [],
+  curatedFeedPreferences: {
+    sortOrder: 'recommended',
+    connectionFilter: 'all'
+  }
 };
 
 const defaultUserState: UserState = {
@@ -112,6 +125,16 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           parsed.preferences = {
             ...parsed.preferences,
             blockedCategories: []
+          };
+        }
+        // Ensure curatedFeedPreferences exists for backward compatibility
+        if (!parsed.preferences?.curatedFeedPreferences) {
+          parsed.preferences = {
+            ...parsed.preferences,
+            curatedFeedPreferences: {
+              sortOrder: 'recommended',
+              connectionFilter: 'all'
+            }
           };
         }
         // Migrate old rating preferences to new NSFW system
@@ -198,7 +221,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
                 ...(data.preferences.blockedSubjects !== undefined && { blockedSubjects: data.preferences.blockedSubjects }),
                 ...(data.preferences.hasAgeZKP !== undefined && { hasAgeZKP: data.preferences.hasAgeZKP }),
                 ...(data.preferences.isOver18 !== undefined && { isOver18: data.preferences.isOver18 }),
-                ...(data.preferences.showNSFW !== undefined && { showNSFW: data.preferences.showNSFW })
+                ...(data.preferences.showNSFW !== undefined && { showNSFW: data.preferences.showNSFW }),
+                ...(data.preferences.curatedFeedPreferences !== undefined && { curatedFeedPreferences: data.preferences.curatedFeedPreferences })
               };
               
               console.log('Loaded preferences from Google Drive:', {
@@ -872,6 +896,51 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     return nickname || creatorId;
   };
 
+  const updateCuratedFeedPreferences = async (preferences: CuratedFeedPreferences) => {
+    // Update local state immediately
+    setUserState(prev => ({
+      ...prev,
+      preferences: {
+        ...prev.preferences,
+        curatedFeedPreferences: preferences
+      }
+    }));
+
+    // Save to Google Drive if user is unlocked
+    if (userState.isUnlocked && userState.pnIdentifier) {
+      try {
+        const { PNOAuthService } = await import('../services/pnOAuthService');
+        const session = PNOAuthService.loadSession();
+        if (!session?.accessToken) {
+          console.warn('No access token, cannot save curated feed preferences to Google Drive');
+          return;
+        }
+
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.accessToken}`
+          },
+          body: JSON.stringify({
+            curatedFeedPreferences: preferences
+          })
+        });
+
+        if (response.ok) {
+          console.log('Successfully saved curated feed preferences to Google Drive');
+        } else if (response.status === 404) {
+          console.warn('Preferences endpoint not available yet, keeping local state only');
+        } else {
+          console.warn('Failed to save curated feed preferences to Google Drive:', response.status);
+        }
+      } catch (error: any) {
+        console.warn('Could not save curated feed preferences to Google Drive:', error);
+      }
+    }
+  };
+
   return (
     <UserStateContext.Provider
       value={{
@@ -898,7 +967,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         updateDisplayName,
         updateProfileImageFileId,
         setUserDisplayName,
-        getDisplayName
+        getDisplayName,
+        updateCuratedFeedPreferences
       }}
     >
       {children}
