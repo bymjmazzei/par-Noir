@@ -39,6 +39,13 @@ export function FeedRail({
   const { userState } = useUserState();
   const [showDropdown, setShowDropdown] = useState(false);
   const isPublicFeedActive = activeFeedId === 'public';
+  
+  // Debug: Log feeds to see what's being passed
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[FeedRail] Feeds received:', feeds.map(f => ({ feedId: f.feedId, name: f.name })));
+    }
+  }, [feeds]);
 
   // Calculate max scroll position based on last feed at midpoint
   const calculateMaxScroll = useCallback(() => {
@@ -135,38 +142,45 @@ export function FeedRail({
     }
   }, [activeFeedId, calculateMaxScroll]);
 
-  // Get position of pN button for dropdown arrow - update on scroll/resize
-  const [pNButtonPosition, setPNButtonPosition] = useState<{ left: number; top: number } | null>(null);
+  // Calculate dropdown position when pN is active
+  const getDropdownPosition = useCallback(() => {
+    if (!isPublicFeedActive || !userState.isUnlocked || !pNButtonRef.current || !scrollContainerRef.current) {
+      return null;
+    }
+    const buttonRect = pNButtonRef.current.getBoundingClientRect();
+    const containerRect = scrollContainerRef.current.getBoundingClientRect();
+    return {
+      left: buttonRect.left - containerRect.left + (buttonRect.width / 2),
+      top: containerRect.height + 4
+    };
+  }, [isPublicFeedActive, userState.isUnlocked]);
+  
+  const [dropdownPosition, setDropdownPosition] = useState<{ left: number; top: number } | null>(null);
   
   useEffect(() => {
-    if (isPublicFeedActive && userState.isUnlocked && pNButtonRef.current && scrollContainerRef.current) {
+    if (isPublicFeedActive && userState.isUnlocked) {
       const updatePosition = () => {
-        if (pNButtonRef.current && scrollContainerRef.current) {
-          const buttonRect = pNButtonRef.current.getBoundingClientRect();
-          const containerRect = scrollContainerRef.current.getBoundingClientRect();
-          setPNButtonPosition({
-            left: buttonRect.left - containerRect.left + (buttonRect.width / 2),
-            top: containerRect.height
-          });
-        }
+        const pos = getDropdownPosition();
+        setDropdownPosition(pos);
       };
-      // Initial position
       updatePosition();
-      // Update on scroll (within the scroll container)
       const scrollContainer = scrollContainerRef.current;
-      scrollContainer.addEventListener('scroll', updatePosition, { passive: true });
+      if (scrollContainer) {
+        scrollContainer.addEventListener('scroll', updatePosition, { passive: true });
+      }
       window.addEventListener('resize', updatePosition);
-      // Also update when activeFeedId changes (in case pN button moves)
-      const timeoutId = setTimeout(updatePosition, 100);
+      const timeoutId = setTimeout(updatePosition, 100); // Delay to ensure button is rendered
       return () => {
-        scrollContainer.removeEventListener('scroll', updatePosition);
+        if (scrollContainer) {
+          scrollContainer.removeEventListener('scroll', updatePosition);
+        }
         window.removeEventListener('resize', updatePosition);
         clearTimeout(timeoutId);
       };
     } else {
-      setPNButtonPosition(null);
+      setDropdownPosition(null);
     }
-  }, [isPublicFeedActive, userState.isUnlocked, activeFeedId]);
+  }, [isPublicFeedActive, userState.isUnlocked, activeFeedId, feeds.length, getDropdownPosition]);
 
   return (
     <div className="relative">
@@ -247,12 +261,12 @@ export function FeedRail({
         </div>
       </div>
       {/* Dropdown arrow and menu for pN feed - positioned absolutely below railway, always visible when pN is active */}
-      {isPublicFeedActive && userState.isUnlocked && pNButtonPosition && (
+      {isPublicFeedActive && userState.isUnlocked && dropdownPosition && (
         <div
           className="absolute pointer-events-auto"
           style={{
-            left: `${pNButtonPosition.left}px`,
-            top: `${pNButtonPosition.top + 4}px`,
+            left: `${dropdownPosition.left}px`,
+            top: `${dropdownPosition.top}px`,
             transform: 'translateX(-50%)',
             zIndex: 200
           }}
