@@ -143,14 +143,22 @@ export function FeedRail({
   // Calculate dropdown position when pN is active
   const getDropdownPosition = useCallback(() => {
     if (!isPublicFeedActive || !userState.isUnlocked || !pNButtonRef.current || !scrollContainerRef.current) {
+      console.log('[FeedRail] Dropdown position check failed:', {
+        isPublicFeedActive,
+        isUnlocked: userState.isUnlocked,
+        hasButtonRef: !!pNButtonRef.current,
+        hasContainerRef: !!scrollContainerRef.current
+      });
       return null;
     }
     const buttonRect = pNButtonRef.current.getBoundingClientRect();
     const containerRect = scrollContainerRef.current.getBoundingClientRect();
-    return {
+    const position = {
       left: buttonRect.left - containerRect.left + (buttonRect.width / 2),
       top: containerRect.height + 4
     };
+    console.log('[FeedRail] Dropdown position calculated:', position);
+    return position;
   }, [isPublicFeedActive, userState.isUnlocked]);
   
   const [dropdownPosition, setDropdownPosition] = useState<{ left: number; top: number } | null>(null);
@@ -159,23 +167,30 @@ export function FeedRail({
     if (isPublicFeedActive && userState.isUnlocked) {
       const updatePosition = () => {
         const pos = getDropdownPosition();
+        console.log('[FeedRail] Updating dropdown position:', pos);
         setDropdownPosition(pos);
       };
+      // Use multiple timeouts to ensure button is rendered
       updatePosition();
+      const timeout1 = setTimeout(updatePosition, 50);
+      const timeout2 = setTimeout(updatePosition, 150);
+      const timeout3 = setTimeout(updatePosition, 300);
       const scrollContainer = scrollContainerRef.current;
       if (scrollContainer) {
         scrollContainer.addEventListener('scroll', updatePosition, { passive: true });
       }
       window.addEventListener('resize', updatePosition);
-      const timeoutId = setTimeout(updatePosition, 100); // Delay to ensure button is rendered
       return () => {
         if (scrollContainer) {
           scrollContainer.removeEventListener('scroll', updatePosition);
         }
         window.removeEventListener('resize', updatePosition);
-        clearTimeout(timeoutId);
+        clearTimeout(timeout1);
+        clearTimeout(timeout2);
+        clearTimeout(timeout3);
       };
     } else {
+      console.log('[FeedRail] Dropdown hidden:', { isPublicFeedActive, isUnlocked: userState.isUnlocked });
       setDropdownPosition(null);
     }
   }, [isPublicFeedActive, userState.isUnlocked, activeFeedId, feeds.length, getDropdownPosition]);
