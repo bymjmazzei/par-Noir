@@ -621,6 +621,7 @@ function App() {
   // Creator files state for INDEX view - MUST be before early returns to satisfy Rules of Hooks
   const [creatorFilesState, setCreatorFilesState] = useState<IndexedFile[]>([]);
   const [isLoadingCreatorFiles, setIsLoadingCreatorFiles] = useState(false);
+  const isLoadingCreatorFilesRef = useRef(false);
   
   // Create a stable key for indexedFilesMap based on fileIds (not array reference)
   // MUST be declared before any useEffect that uses it
@@ -1720,12 +1721,20 @@ function App() {
   useEffect(() => {
     if (!viewingCreatorId) {
       setCreatorFilesState([]);
+      setIsLoadingCreatorFiles(false);
+      isLoadingCreatorFilesRef.current = false;
+      return;
+    }
+    
+    // Prevent multiple simultaneous fetches
+    if (isLoadingCreatorFilesRef.current) {
       return;
     }
     
     // If viewing own profile and unlocked, use authenticated endpoint to get ALL files (public + private)
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
       const loadUserFiles = async () => {
+        isLoadingCreatorFilesRef.current = true;
         setIsLoadingCreatorFiles(true);
         try {
           // Use authenticated endpoint to get ALL files (public + private) for the user
@@ -1843,6 +1852,7 @@ function App() {
           setCreatorFilesState(filtered);
         } finally {
           setIsLoadingCreatorFiles(false);
+          isLoadingCreatorFilesRef.current = false;
         }
       };
 
@@ -1850,6 +1860,7 @@ function App() {
     } else {
       // For other creators (or when not logged in), load from public API
       const loadPublicCreatorFiles = async () => {
+        isLoadingCreatorFilesRef.current = true;
         setIsLoadingCreatorFiles(true);
         try {
           const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
@@ -1959,12 +1970,13 @@ function App() {
           setCreatorFilesState(filtered);
         } finally {
           setIsLoadingCreatorFiles(false);
+          isLoadingCreatorFilesRef.current = false;
         }
       };
 
       loadPublicCreatorFiles();
     }
-  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFilesKey]);
+  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]); // Removed indexedFilesKey to prevent re-fetching when public index updates
 
   // Load user's liked and commented files when viewing own index
   const [userLikedFiles, setUserLikedFiles] = useState<IndexedFile[]>([]);
@@ -3553,10 +3565,10 @@ function App() {
                 </div>
               )}
             </div>
-          ) : filteredMeFiles.length > 0 ? (
+          ) : (creatorFiles.length > 0 || filteredMeFiles.length > 0) ? (
             <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
               <FullScreenFeed
-                files={filteredMeFiles}
+                files={filteredMeFiles.length > 0 ? filteredMeFiles : []}
                 currentIndex={currentFeedIndex}
                 thumbnails={thumbnails}
                 videoBlobs={videoBlobs}
@@ -3637,15 +3649,17 @@ function App() {
           ) : mePageTab !== 'connections' ? (() => {
             // Show cover as empty state when:
             // 1. No files in filtered array (empty state)
-            // 2. On 'all' or 'media' tab
-            // 3. Either files are still loading OR creatorFiles is empty (hasn't loaded yet) OR user has no media after loading
+            // 2. No files have been loaded yet (creatorFiles.length === 0) - this is the key condition
+            // 3. On 'all' or 'media' tab
+            // 4. Either files are still loading OR user has no media after loading
             // This ensures smooth transition: cover shows immediately, then switches directly to content when it loads
-            // Check creatorFiles.length === 0 to handle race condition where isLoadingCreatorFiles becomes false before filteredMeFiles recalculates
+            // Only show cover if NO files have been loaded - once files load, show content (even if filtered is temporarily empty)
             const userHasMedia = creatorFiles.length > 0 && creatorFiles.some(f => isMedia(f));
             const shouldShowCover = 
               filteredMeFiles.length === 0 && 
+              creatorFiles.length === 0 && // CRITICAL: Only show cover if NO files have been loaded yet
               (mePageTab === 'all' || mePageTab === 'media') && 
-              (isLoadingCreatorFiles || creatorFiles.length === 0 || !userHasMedia); // Show while loading, or if no files loaded yet, or if no media after loading
+              (isLoadingCreatorFiles || !userHasMedia); // Show while loading, or if no media after loading
             const coverCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
             
             if (shouldShowCover && coverCreatorId) {
