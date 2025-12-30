@@ -3638,13 +3638,14 @@ function App() {
             // Show cover as empty state when:
             // 1. No files in filtered array (empty state)
             // 2. On 'all' or 'media' tab
-            // 3. Either files are still loading (show optimistically) OR files have loaded and user has no media
+            // 3. Either files are still loading OR creatorFiles is empty (hasn't loaded yet) OR user has no media after loading
             // This ensures smooth transition: cover shows immediately, then switches directly to content when it loads
+            // Check creatorFiles.length === 0 to handle race condition where isLoadingCreatorFiles becomes false before filteredMeFiles recalculates
             const userHasMedia = creatorFiles.length > 0 && creatorFiles.some(f => isMedia(f));
             const shouldShowCover = 
               filteredMeFiles.length === 0 && 
               (mePageTab === 'all' || mePageTab === 'media') && 
-              (isLoadingCreatorFiles || !userHasMedia); // Show optimistically while loading, or if no media after loading
+              (isLoadingCreatorFiles || creatorFiles.length === 0 || !userHasMedia); // Show while loading, or if no files loaded yet, or if no media after loading
             const coverCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
             
             if (shouldShowCover && coverCreatorId) {
