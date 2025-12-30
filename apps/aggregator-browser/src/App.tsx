@@ -3647,25 +3647,17 @@ function App() {
               />
             </div>
           ) : mePageTab !== 'connections' ? (() => {
-            // Show cover as empty state when:
-            // 1. No files in filtered array (empty state)
-            // 2. On 'all' or 'media' tab
-            // 3. Either files are still loading OR no files have been loaded yet OR user has no media after loading
-            // This ensures smooth transition: cover shows immediately, then switches directly to content when it loads
-            const userHasMedia = creatorFiles.length > 0 && creatorFiles.some(f => isMedia(f));
-            const shouldShowCover = 
-              filteredMeFiles.length === 0 && 
-              (mePageTab === 'all' || mePageTab === 'media') && 
-              (isLoadingCreatorFiles || creatorFiles.length === 0 || !userHasMedia); // Show while loading, or if no files loaded yet, or if no media after loading
-            const coverCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
+            // Empty state for all tabs: background + engagement bar + title
+            // Simple logic: if filteredMeFiles is empty, show empty state
+            const emptyStateCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
             
-            if (shouldShowCover && coverCreatorId) {
-              const coverName = getDisplayName(coverCreatorId) || coverCreatorId;
+            if (emptyStateCreatorId) {
+              const emptyStateName = getDisplayName(emptyStateCreatorId) || emptyStateCreatorId;
               
               return (
                 <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
                   <div className="relative w-full h-full flex">
-                    {/* Background Image - Direct CSS reference, no generation needed */}
+                    {/* Background Image */}
                     <div 
                       className="flex-1 relative overflow-hidden"
                       style={{
@@ -3675,7 +3667,7 @@ function App() {
                         backgroundRepeat: 'no-repeat'
                       }}
                     >
-                      {/* User's Public Name - Bottom left, same position as regular media tiles */}
+                      {/* User's Public Name */}
                       <div 
                         className="absolute left-0 right-20 p-4 md:p-6 z-10"
                         style={{ 
@@ -3684,7 +3676,7 @@ function App() {
                         }}
                       >
                         <h3 className="text-white text-base md:text-lg font-semibold line-clamp-1">
-                          {coverName}
+                          {emptyStateName}
                         </h3>
                       </div>
                     </div>
@@ -3693,9 +3685,9 @@ function App() {
                     <FeedEngagementSidebar
                       file={{
                         metadata: {
-                          fileId: `me-page-cover-${coverCreatorId}`,
-                          creatorId: coverCreatorId,
-                          name: coverName,
+                          fileId: `me-page-empty-${emptyStateCreatorId}`,
+                          creatorId: emptyStateCreatorId,
+                          name: emptyStateName,
                           engagement: {
                             views: 0,
                             likes: 0,
@@ -3712,7 +3704,7 @@ function App() {
                       onShare={async () => {}}
                       onAddToFeed={undefined}
                       onEdit={undefined}
-                      isOwner={isOwnIndex && coverCreatorId === userState.pnIdentifier}
+                      isOwner={isOwnIndex && emptyStateCreatorId === userState.pnIdentifier}
                       onCreatorClick={(creatorId) => {
                         if (creatorId !== viewingCreatorId) {
                           setViewingCreatorId(creatorId);
@@ -3732,27 +3724,8 @@ function App() {
               );
             }
             
-            // Default empty state
-            return (
-              <div className="h-full flex items-center justify-center text-white" style={{ paddingBottom: '64px' }}>
-                <EmptyState
-                  type="no-content"
-                  message={
-                    mePageTab === 'media' 
-                      ? 'No media yet.'
-                      : mePageTab === 'thoughts'
-                      ? 'No thoughts yet.'
-                      : mePageTab === 'likes'
-                      ? 'No liked posts yet.'
-                      : mePageTab === 'comments'
-                      ? 'No commented posts yet.'
-                      : mePageTab === 'saved'
-                      ? 'No saved posts yet. Save posts to your private collection!'
-                      : 'No content yet.'
-                  }
-                />
-              </div>
-            );
+            // Fallback if no creatorId (shouldn't happen, but just in case)
+            return null;
           })() : null}
         </div>
       ) : showUploadModal ? (
