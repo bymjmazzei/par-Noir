@@ -706,6 +706,44 @@ function App() {
            collectionData.collectionFileIds.length > 0;
   };
 
+  // Helper function to check if a file is media (image or video) - MUST be defined before filteredFilesByFeed
+  const isMedia = (file: IndexedFile): boolean => {
+    // Check if it's a thought first - if so, it's not media
+    const thoughtCheck = isThought(file);
+    if (thoughtCheck) {
+      return false; // Thoughts are not media
+    }
+    
+    // Normalize fileType based on extension - this fixes 'other' types
+    const normalizedFileType = normalizeFileType(file);
+    const fileName = file.metadata.name || file.metadata.title || '';
+    
+    // Check for images using normalized fileType
+    const isImage = normalizedFileType === 'image' || 
+                   !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
+    
+    // Check for videos using normalized fileType
+    const isVideo = normalizedFileType === 'video' || 
+                   !!(fileName.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i));
+    
+    const result = isImage || isVideo;
+    
+    // Debug logging for files that should be media but aren't detected
+    if (!result && (normalizedFileType === 'image' || normalizedFileType === 'video' || !!fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm)$/i))) {
+      console.warn(`[App] File not detected as media:`, {
+        fileId: file.metadata.fileId,
+        originalFileType: file.metadata.fileType,
+        normalizedFileType,
+        fileName,
+        isThought: thoughtCheck,
+        isImage,
+        isVideo
+      });
+    }
+    
+    return result;
+  };
+
   // REMOVED: isMediaOnlyFeed function - thoughts should appear in ALL feeds
   // The only place thoughts are excluded is the me page "media" tab, which handles it separately
 
@@ -2756,44 +2794,6 @@ function App() {
     // Note: currentFeedIndex is intentionally NOT in dependencies to prevent infinite loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleFileId, viewingCreatorId, mePageTab, creatorFilesState, userState.pnIdentifier, userState.isUnlocked, userLikedFiles, userCommentedFiles, viewedUserLikedFiles, viewedUserCommentedFiles, savedFiles]);
-
-  // Helper function to check if a file is media (image or video)
-  const isMedia = (file: IndexedFile): boolean => {
-    // Check if it's a thought first - if so, it's not media
-    const thoughtCheck = isThought(file);
-    if (thoughtCheck) {
-      return false; // Thoughts are not media
-    }
-    
-    // Normalize fileType based on extension - this fixes 'other' types
-    const normalizedFileType = normalizeFileType(file);
-    const fileName = file.metadata.name || file.metadata.title || '';
-    
-    // Check for images using normalized fileType
-    const isImage = normalizedFileType === 'image' || 
-                   !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
-    
-    // Check for videos using normalized fileType
-    const isVideo = normalizedFileType === 'video' || 
-                   !!(fileName.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i));
-    
-    const result = isImage || isVideo;
-    
-    // Debug logging for files that should be media but aren't detected
-    if (!result && (normalizedFileType === 'image' || normalizedFileType === 'video' || !!fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm)$/i))) {
-      console.warn(`[App] File not detected as media:`, {
-        fileId: file.metadata.fileId,
-        originalFileType: file.metadata.fileType,
-        normalizedFileType,
-        fileName,
-        isThought: thoughtCheck,
-        isImage,
-        isVideo
-      });
-    }
-    
-    return result;
-  };
 
   // Prepare data for conditional rendering
   // Use stable empty array reference to prevent unnecessary re-renders
