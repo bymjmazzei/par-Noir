@@ -4160,6 +4160,111 @@ class ProductionServer {
       }
     });
 
+    // POST /api/engagement/:fileId/dislike - Toggle dislike
+    this.app.post('/api/engagement/:fileId/dislike', async (req, res) => {
+      try {
+        const { EngagementService } = await import('./server/modules/engagementService');
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { fileId } = req.params;
+        const { userDid } = req.body;
+
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const result = await EngagementService.toggleDislike(fileId, userDid);
+
+        // Get file owner for activity logging and notifications
+        const aggregator = AggregatorMetadataServiceDB.getInstance();
+        const fileMetadata = await aggregator.getFileMetadata(fileId);
+        const fileOwnerDid = fileMetadata?.pnIdentifier;
+
+        // Record activity and send notification (only when disliking, not removing dislike)
+        if (result.disliked && fileOwnerDid && fileOwnerDid !== userDid) {
+          try {
+            const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
+            const { NotificationService } = await import('./server/modules/notificationService');
+            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+            // Get user's credentials and metadata folder
+            const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+            const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+            if (userCredentials?.credentials) {
+              const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+                (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+              
+              if (googleDriveAccounts.length > 0) {
+                const account = googleDriveAccounts[0];
+                const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+                const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+                const userMetadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+                // Record activity for disliker (optional - may not want to track dislikes in activity)
+                // Uncomment if you want to track dislikes in activity ledger
+                // await ActivityLedgerService.recordActivity(
+                //   userAccessToken,
+                //   userMetadataFolderId,
+                //   userCredentials.identityId,
+                //   'dislike',
+                //   {
+                //     targetType: 'file',
+                //     targetId: fileId,
+                //     metadata: { fileOwnerDid }
+                //   }
+                // );
+
+                // Send notification to file owner (optional - may not want notifications for dislikes)
+                // Uncomment if you want to notify creators about dislikes
+                // await NotificationService.sendNotification({
+                //   userDid: fileOwnerDid,
+                //   type: 'engagement',
+                //   title: 'New Dislike',
+                //   message: 'Someone disliked your content',
+                //   metadata: {
+                //     fileId: fileId,
+                //     fromUserDid: userDid
+                //   }
+                // });
+              }
+            }
+          } catch (activityError) {
+            console.error('Failed to record activity or send notification:', activityError);
+            // Don't fail the request if activity/notification fails
+          }
+        }
+
+        res.json(result);
+      } catch (error: any) {
+        console.error('Failed to toggle dislike:', error);
+        res.status(500).json({
+          error: 'Failed to toggle dislike',
+          message: error.message 
+        });
+      }
+    });
+
+    // GET /api/engagement/:fileId/dislike - Check if disliked
+    this.app.get('/api/engagement/:fileId/dislike', async (req, res) => {
+      try {
+        const { EngagementService } = await import('./server/modules/engagementService');
+        const { fileId } = req.params;
+        const { userDid } = req.query;
+
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid query parameter is required' });
+        }
+
+        const disliked = await EngagementService.isDisliked(fileId, userDid as string);
+
+        return res.json({ disliked });
+      } catch (error: any) {
+        console.error('Error checking dislike:', error);
+        return res.status(500).json({ error: 'Failed to check dislike', message: error.message });
+      }
+    });
+
     // POST /api/engagement/:fileId/comment - Add comment
     // File owner has the content, pN commentor references it
     this.app.post('/api/engagement/:fileId/comment', async (req, res) => {
@@ -4427,6 +4532,76 @@ class ProductionServer {
       } catch (error: any) {
         console.error('Error deleting comments:', error);
         return res.status(500).json({ error: 'Failed to delete comments', message: error.message });
+      }
+    });
+
+    // GET /api/recommendations/content - Get personalized content recommendations
+    this.app.get('/api/recommendations/content', async (req, res) => {
+      try {
+        const { RecommendationService } = await import('./server/modules/recommendationService');
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        
+        const userDid = req.query.userDid as string | undefined;
+        const feedId = req.query.feedId as string | 'public' | 'curated' | 'me';
+        const limit = parseInt(req.query.limit as string) || 50;
+        const offset = parseInt(req.query.offset as string) || 0;
+        const recencyWeight = req.query.recencyWeight ? parseFloat(req.query.recencyWeight as string) : 0.3;
+        const engagementWeight = req.query.engagementWeight ? parseFloat(req.query.engagementWeight as string) : 0.7;
+        
+        // Get base content
+        const aggregator = AggregatorMetadataServiceDB.getInstance();
+        let baseFiles: { files: any[]; total: number; hasMore: boolean };
+        
+        if (feedId === 'public' || !feedId) {
+          baseFiles = await aggregator.getPublicMetadata({ limit: limit * 2, offset: 0 });
+        } else if (feedId === 'curated') {
+          // For curated, we'd need to apply user preferences first
+          baseFiles = await aggregator.getPublicMetadata({ limit: limit * 2, offset: 0 });
+        } else {
+          // Specific feed
+          const { FeedService } = await import('./server/modules/feedService');
+          const fileIds = await FeedService.getFeedPosts(feedId);
+          const files: any[] = [];
+          for (const fileId of fileIds.slice(0, limit * 2)) {
+            const metadata = await aggregator.getFileMetadata(fileId);
+            if (metadata) {
+              files.push({
+                fileId: metadata.fileId,
+                metadata: metadata.metadata,
+                submittedAt: metadata.submittedAt,
+                pnIdentifier: metadata.pnIdentifier
+              });
+            }
+          }
+          baseFiles = { files, total: files.length, hasMore: false };
+        }
+        
+        // Apply recommendation algorithm
+        const result = await RecommendationService.getRecommendedContent(
+          baseFiles.files,
+          {
+            userDid,
+            feedId,
+            limit,
+            offset,
+            recencyWeight,
+            engagementWeight
+          }
+        );
+        
+        res.json({
+          files: result.files,
+          scores: Array.from(result.scores.entries()).map(([fileId, score]) => ({
+            fileId,
+            score: score.score,
+            reasons: score.reasons
+          })),
+          total: baseFiles.total,
+          hasMore: baseFiles.hasMore
+        });
+      } catch (error: any) {
+        console.error('Error getting recommendations:', error);
+        res.status(500).json({ error: 'Failed to get recommendations', message: error.message });
       }
     });
 

@@ -8,7 +8,7 @@
  * Normalize subject to singular form (unless it's a proper noun)
  * Examples: "cowboys" -> "cowboy", "Cowboys" (team) -> "Cowboys"
  */
-function normalizeSubject(subject: string): string {
+export function normalizeSubject(subject: string): string {
   const trimmed = subject.trim().toLowerCase();
   if (!trimmed) return '';
   
@@ -44,7 +44,7 @@ function normalizeSubject(subject: string): string {
  * Check if two subjects are similar (for misspelling detection)
  * Uses Levenshtein distance for fuzzy matching
  */
-function areSubjectsSimilar(subject1: string, subject2: string, threshold: number = 2): boolean {
+export function areSubjectsSimilar(subject1: string, subject2: string, threshold: number = 2): boolean {
   const s1 = subject1.toLowerCase();
   const s2 = subject2.toLowerCase();
   
@@ -65,7 +65,7 @@ function areSubjectsSimilar(subject1: string, subject2: string, threshold: numbe
 /**
  * Calculate Levenshtein distance between two strings
  */
-function levenshteinDistance(str1: string, str2: string): number {
+export function levenshteinDistance(str1: string, str2: string): number {
   const matrix: number[][] = [];
   
   for (let i = 0; i <= str2.length; i++) {

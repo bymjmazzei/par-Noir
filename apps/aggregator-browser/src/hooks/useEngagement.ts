@@ -12,6 +12,7 @@ const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.
 
 interface EngagementData {
   likes: Set<string>; // Set of file IDs that user has liked
+  dislikes?: Set<string>; // Set of file IDs that user has disliked
   comments: Map<string, Comment[]>; // Map of file ID to comments
   shares: Map<string, number>; // Map of file ID to share count
 }
@@ -42,6 +43,7 @@ function loadEngagementData(): EngagementData {
       const parsed = JSON.parse(stored);
       return {
         likes: new Set(parsed.likes || []),
+        dislikes: new Set(parsed.dislikes || []),
         comments: new Map(Object.entries(parsed.comments || {})),
         shares: new Map(Object.entries(parsed.shares || {}))
       };
@@ -51,6 +53,7 @@ function loadEngagementData(): EngagementData {
   }
   return {
     likes: new Set(),
+    dislikes: new Set(),
     comments: new Map(),
     shares: new Map()
   };
@@ -60,6 +63,7 @@ function saveEngagementData(data: EngagementData) {
   try {
     const serializable = {
       likes: Array.from(data.likes),
+      dislikes: Array.from(data.dislikes || []),
       comments: Object.fromEntries(data.comments),
       shares: Object.fromEntries(data.shares)
     };
@@ -188,12 +192,14 @@ export function useEngagement() {
           const result = await response.json();
           setEngagement(prev => {
             const newLikes = new Set(prev.likes);
+            const newDislikes = new Set(prev.dislikes || []);
             if (result.liked) {
               newLikes.add(fileId);
+              newDislikes.delete(fileId); // Remove dislike if exists
             } else {
               newLikes.delete(fileId);
             }
-            return { ...prev, likes: newLikes };
+            return { ...prev, likes: newLikes, dislikes: newDislikes };
           });
           return;
         }
@@ -205,14 +211,68 @@ export function useEngagement() {
     // Fallback to localStorage
     setEngagement(prev => {
       const newLikes = new Set(prev.likes);
+      const newDislikes = new Set(prev.dislikes || []);
       if (newLikes.has(fileId)) {
         newLikes.delete(fileId);
       } else {
         newLikes.add(fileId);
+        newDislikes.delete(fileId); // Remove dislike if exists
       }
-      return { ...prev, likes: newLikes };
+      return { ...prev, likes: newLikes, dislikes: newDislikes };
     });
   }, [userState.isUnlocked, userState.pnIdentifier]);
+
+  const toggleDislike = useCallback(async (fileId: string) => {
+    if (userState.isUnlocked && userState.pnIdentifier) {
+      // Use backend API
+      try {
+        const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/dislike`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userDid: userState.pnIdentifier })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          setEngagement(prev => {
+            const newDislikes = new Set(prev.dislikes || []);
+            const newLikes = new Set(prev.likes);
+            // Remove from likes if it was liked
+            newLikes.delete(fileId);
+            
+            if (result.disliked) {
+              newDislikes.add(fileId);
+            } else {
+              newDislikes.delete(fileId);
+            }
+            return { ...prev, likes: newLikes, dislikes: newDislikes };
+          });
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to toggle dislike:', error);
+      }
+    }
+
+    // Fallback to localStorage
+    setEngagement(prev => {
+      const newDislikes = new Set(prev.dislikes || []);
+      const newLikes = new Set(prev.likes);
+      // Remove from likes if it was liked
+      newLikes.delete(fileId);
+      
+      if (newDislikes.has(fileId)) {
+        newDislikes.delete(fileId);
+      } else {
+        newDislikes.add(fileId);
+      }
+      return { ...prev, likes: newLikes, dislikes: newDislikes };
+    });
+  }, [userState.isUnlocked, userState.pnIdentifier]);
+
+  const isDisliked = useCallback((fileId: string): boolean => {
+    return engagement.dislikes?.has(fileId) || false;
+  }, [engagement.dislikes]);
 
   const addComment = useCallback(async (
     fileId: string, 
@@ -604,10 +664,12 @@ export function useEngagement() {
 
   return {
     toggleLike,
+    toggleDislike,
     addComment,
     share,
     getLikeCount,
     isLiked,
+    isDisliked,
     getComments,
     getShareCount,
     loadComments,

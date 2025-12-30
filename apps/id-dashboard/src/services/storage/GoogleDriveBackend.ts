@@ -1001,9 +1001,11 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         // NEW: Generate AI metadata using Gemini (tags, description, category)
         let aiGeneratedMetadata: {
           tags?: string[];
+          geminiTags?: string[];
           description?: string;
           category?: string;
           contentRating?: 'safe' | 'nsfw' | 'x-rated';
+          geminiModel?: string;
         } = {};
         
         try {
@@ -1014,6 +1016,10 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           if (metadataResult.tags.length > 0 && (!metadata.tags || metadata.tags.length === 0)) {
             aiGeneratedMetadata.tags = metadataResult.tags;
           }
+          // Always store Gemini tags separately for provenance tracking
+          if (metadataResult.geminiTags && metadataResult.geminiTags.length > 0) {
+            aiGeneratedMetadata.geminiTags = metadataResult.geminiTags;
+          }
           if (metadataResult.description && !metadata.description) {
             aiGeneratedMetadata.description = metadataResult.description;
           }
@@ -1022,6 +1028,9 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           }
           if (metadataResult.suggestedRating) {
             aiGeneratedMetadata.contentRating = metadataResult.suggestedRating;
+          }
+          if (metadataResult.model) {
+            aiGeneratedMetadata.geminiModel = metadataResult.model;
           }
           
           console.log('✅ [uploadFile] AI-generated metadata:', aiGeneratedMetadata);
@@ -1094,6 +1103,8 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
                tags: metadata.tags && metadata.tags.length > 0 
                  ? metadata.tags 
                  : (aiGeneratedMetadata.tags || []),
+               // Store Gemini tags separately for provenance tracking
+               ...(aiGeneratedMetadata.geminiTags && { geminiTags: aiGeneratedMetadata.geminiTags }),
                // Merge user description with AI-generated description (user takes precedence)
                description: metadata.description || aiGeneratedMetadata.description || undefined,
                // Content rating from AI (if generated)

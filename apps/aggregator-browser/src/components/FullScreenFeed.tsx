@@ -12,11 +12,15 @@ import { ContentRatingBadge } from './ContentRatingBadge';
 import { File } from 'lucide-react';
 import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
+import { useLikeDislikeSwipe } from '../hooks/useLikeDislikeSwipe';
 import { useViewportHeightCSS } from '../hooks/useViewportHeight';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import { ShareToken } from '../utils/tokenDecryption';
 import { cleanTitle } from '../utils/cleanTitle';
 import { calculateMediaScaling, getContainerDimensions } from '../utils/mediaScaling';
+import { PreferenceTile, PreferenceQuestion } from './PreferenceTile';
+import { PreferenceQuestionService, PreferenceState } from '../services/preferenceQuestionService';
+import { useUserState } from '../contexts/UserStateContext';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -25,12 +29,14 @@ interface FullScreenFeedProps {
   currentIndex: number;
   onIndexChange: (index: number) => void;
   onLike: (fileId: string) => void;
+  onDislike?: (fileId: string) => void; // Add dislike handler
   onComment: (file: IndexedFile) => void;
   onShare: (fileId: string) => void;
   onAddToFeed?: (file: IndexedFile) => void;
   onSave?: (file: IndexedFile) => void;
   onEdit?: (file: IndexedFile) => void;
   isLiked: (fileId: string) => boolean;
+  isDisliked?: (fileId: string) => boolean; // Add dislike check
   getLikeCount: (fileId: string, defaultCount: number) => number;
   getComments: (fileId: string) => any[];
   loadComments?: (fileId: string) => Promise<any[]>; // Optional: for preloading comments
@@ -53,12 +59,14 @@ export function FullScreenFeed({
   currentIndex,
   onIndexChange,
   onLike,
+  onDislike,
   onComment,
   onShare: _onShare,
   onAddToFeed,
   onSave,
   onEdit,
   isLiked,
+  isDisliked,
   getLikeCount,
   getComments,
   loadComments,
@@ -254,6 +262,16 @@ export function FullScreenFeed({
   
   const [commentOpacity, setCommentOpacity] = useState<Map<string, number>>(new Map());
 
+  // Preference tile state
+  const [preferenceState, setPreferenceState] = useState<PreferenceState>({
+    askedQuestions: new Set(),
+    lastQuestionIndex: -1
+  });
+  const [currentPreferenceQuestion, setCurrentPreferenceQuestion] = useState<PreferenceQuestion | null>(null);
+
+  // Get user preference functions
+  const { subscribeToSubject, blockSubject, blockCategory } = useUserState();
+
   // MOBILE FIX: Use actual viewport height instead of 100vh to account for mobile browser UI
   const viewportHeightCSS = useViewportHeightCSS(true); // true = exclude bottom nav
 
@@ -308,6 +326,142 @@ export function FullScreenFeed({
     enabled: !!(onSwipeLeft || onSwipeRight),
     threshold: 40,
     snapThreshold: 0.2
+  });
+
+  // Generate preference question when index changes
+  useEffect(() => {
+    // Skip if we're on a preference tile
+    if (currentPreferenceQuestion) {
+      return;
+    }
+
+    const question = PreferenceQuestionService.generateQuestion(
+      files,
+      currentIndex,
+      {
+        subscribedSubjects: userState.preferences?.subscribedSubjects || [],
+        blockedSubjects: userState.preferences?.blockedSubjects || [],
+        subscribedCategories: userState.preferences?.subscribedCategories || [],
+        blockedCategories: userState.preferences?.blockedCategories || []
+      },
+      preferenceState.askedQuestions
+    );
+
+    if (question && PreferenceQuestionService.shouldShowQuestion(
+      currentIndex,
+      preferenceState.lastQuestionIndex
+    )) {
+      setCurrentPreferenceQuestion(question);
+    }
+  }, [currentIndex, files, userState.preferences, preferenceState, currentPreferenceQuestion]);
+
+  // Handle preference swipe right (like)
+  const handlePreferenceLike = useCallback((question: PreferenceQuestion) => {
+    switch (question.type) {
+      case 'contentType':
+        // Subscribe to the subject
+        if (question.metadata?.subject) {
+          subscribeToSubject(question.metadata.subject);
+        }
+        break;
+      case 'category':
+        // Note: Categories are blocked, not subscribed (negative filter)
+        // So we don't block it (which means we like it)
+        break;
+      case 'subject':
+        subscribeToSubject(question.value);
+        break;
+      case 'creator':
+        // Could subscribe to creator's feed if they have one
+        break;
+    }
+
+    // Mark as asked
+    setPreferenceState(prev => ({
+      askedQuestions: new Set([...prev.askedQuestions, question.id]),
+      lastQuestionIndex: currentIndex
+    }));
+    
+    setCurrentPreferenceQuestion(null);
+    // Move to next item
+    if (currentIndex < files.length - 1) {
+      handleIndexChange(currentIndex + 1);
+    }
+  }, [currentIndex, files.length, handleIndexChange, subscribeToSubject]);
+
+  // Handle preference swipe left (dislike)
+  const handlePreferenceDislike = useCallback((question: PreferenceQuestion) => {
+    switch (question.type) {
+      case 'contentType':
+        // Block the subject
+        if (question.metadata?.subject) {
+          blockSubject(question.metadata.subject);
+        }
+        break;
+      case 'category':
+        blockCategory(question.value);
+        break;
+      case 'subject':
+        blockSubject(question.value);
+        break;
+      case 'creator':
+        // Could block creator's content
+        break;
+    }
+
+    // Mark as asked
+    setPreferenceState(prev => ({
+      askedQuestions: new Set([...prev.askedQuestions, question.id]),
+      lastQuestionIndex: currentIndex
+    }));
+    
+    setCurrentPreferenceQuestion(null);
+    // Move to next item
+    if (currentIndex < files.length - 1) {
+      handleIndexChange(currentIndex + 1);
+    }
+  }, [currentIndex, files.length, handleIndexChange, blockSubject, blockCategory]);
+
+  // Handle horizontal swipe for like/dislike (separate from feed switching)
+  // Note: currentFile is defined later, so we'll check it in the hook
+
+  const isPreferenceTile = currentPreferenceQuestion !== null;
+
+  // Get current file for like/dislike swipe
+  const currentFileForSwipe = files[currentIndex];
+  const isCollectionFile = currentFileForSwipe && (() => {
+    const fileId = currentFileForSwipe.metadata?.fileId;
+    if (!fileId) return false;
+    const collectionData = currentFileForSwipe.metadata?.collection || collectionDataCache.get(fileId);
+    return collectionData &&
+           typeof collectionData === 'object' &&
+           collectionData.collectionFileIds && 
+           Array.isArray(collectionData.collectionFileIds) &&
+           collectionData.collectionFileIds.length > 0;
+  })();
+
+  const likeDislikeSwipeRef = useLikeDislikeSwipe({
+    onSwipeRight: isPreferenceTile 
+      ? () => currentPreferenceQuestion && handlePreferenceLike(currentPreferenceQuestion)
+      : currentFileForSwipe && onLike ? () => {
+          const fileId = currentFileForSwipe.metadata.fileId;
+          const wasLiked = isLiked(fileId);
+          onLike(fileId);
+          if (!wasLiked) {
+            // Could show a toast here if needed
+          }
+        } : undefined,
+    onSwipeLeft: isPreferenceTile
+      ? () => currentPreferenceQuestion && handlePreferenceDislike(currentPreferenceQuestion)
+      : currentFileForSwipe && onDislike ? () => {
+          const fileId = currentFileForSwipe.metadata.fileId;
+          onDislike(fileId);
+        } : undefined,
+    isCollection: !!isCollectionFile,
+    enabled: !!(onLike || onDislike || isPreferenceTile),
+    threshold: 50,
+    snapThreshold: 0.2,
+    holdDuration: 250
   });
 
   // Function to get popular comments for a file
@@ -1463,6 +1617,9 @@ export function FullScreenFeed({
         }
         if (horizontalSwipeRef.current !== el) {
           (horizontalSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+        }
+        if (likeDislikeSwipeRef.current !== el) {
+          (likeDislikeSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }
       }}
       className="w-full overflow-y-scroll snap-y snap-mandatory bg-black"
@@ -2703,6 +2860,22 @@ export function FullScreenFeed({
           </div>
         );
       })}
+      
+      {/* Preference Tile - Show when question is generated */}
+      {currentPreferenceQuestion && (
+        <div
+          key={`preference-${currentPreferenceQuestion.id}`}
+          className="w-full flex-shrink-0 snap-start"
+          style={{ height: viewportHeightCSS }}
+          data-file-id={`preference-${currentPreferenceQuestion.id}`}
+        >
+          <PreferenceTile
+            question={currentPreferenceQuestion}
+            onSwipeRight={handlePreferenceLike}
+            onSwipeLeft={handlePreferenceDislike}
+          />
+        </div>
+      )}
     </div>
   );
 }

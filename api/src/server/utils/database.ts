@@ -468,6 +468,43 @@ export async function initializeDatabase(): Promise<void> {
       ON engagement(type)
     `);
 
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_engagement_file_user_type
+      ON engagement(file_id, user_did, type)
+    `);
+
+    // User tag preferences table (for recommendation algorithm)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS user_tag_preferences (
+        preference_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_did VARCHAR(255) NOT NULL,
+        tag_id VARCHAR(255) NOT NULL,
+        preference VARCHAR(20) NOT NULL,
+        action VARCHAR(50) NOT NULL,
+        confidence DECIMAL(3,2) DEFAULT 0.5,
+        source_file_id VARCHAR(255),
+        metadata JSONB,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        UNIQUE(user_did, tag_id)
+      )
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_tag_preferences_user_did
+      ON user_tag_preferences(user_did)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_tag_preferences_tag_id
+      ON user_tag_preferences(tag_id)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_tag_preferences_preference
+      ON user_tag_preferences(preference)
+    `);
+
     // NOTE: User data (notifications, activity ledger, messaging ledger) is now stored
     // in Google Drive (decentralized) - users own their data
     // Database tables for these have been removed to follow the decentralized architecture

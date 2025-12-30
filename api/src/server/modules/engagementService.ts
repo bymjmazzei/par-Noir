@@ -104,6 +104,72 @@ export class EngagementService {
   }
 
   /**
+   * Toggle dislike for a file
+   */
+  static async toggleDislike(fileId: string, userDid: string): Promise<{ disliked: boolean; count: number }> {
+    const db = getDatabasePool();
+    
+    try {
+      // Check if already disliked
+      const existing = await db.query(`
+        SELECT engagement_id FROM engagement 
+        WHERE file_id = $1 AND user_did = $2 AND type = 'dislike'
+        LIMIT 1
+      `, [fileId, userDid]);
+
+      if (existing.rows.length > 0) {
+        // Remove dislike
+        await db.query(`
+          DELETE FROM engagement 
+          WHERE file_id = $1 AND user_did = $2 AND type = 'dislike'
+        `, [fileId, userDid]);
+      } else {
+        // Add dislike - remove like if exists (user can't like and dislike)
+        await db.query(`
+          DELETE FROM engagement 
+          WHERE file_id = $1 AND user_did = $2 AND type = 'like'
+        `, [fileId, userDid]);
+        
+        // Add dislike
+        await db.query(`
+          INSERT INTO engagement (file_id, user_did, type)
+          VALUES ($1, $2, 'dislike')
+          ON CONFLICT (file_id, user_did, type) DO NOTHING
+        `, [fileId, userDid]);
+      }
+
+      // Get updated count
+      const countResult = await db.query(`
+        SELECT COUNT(*) as count FROM engagement 
+        WHERE file_id = $1 AND type = 'dislike'
+      `, [fileId]);
+
+      const count = parseInt(countResult.rows[0].count, 10);
+      const disliked = existing.rows.length === 0; // If it didn't exist, now it's disliked
+
+      return { disliked, count };
+    } catch (error) {
+      console.error('Failed to toggle dislike:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if user has disliked a file
+   */
+  static async isDisliked(fileId: string, userDid: string): Promise<boolean> {
+    const db = getDatabasePool();
+    
+    const result = await db.query(`
+      SELECT 1 FROM engagement 
+      WHERE file_id = $1 AND user_did = $2 AND type = 'dislike'
+      LIMIT 1
+    `, [fileId, userDid]);
+
+    return result.rows.length > 0;
+  }
+
+  /**
    * Add a comment
    * File owner has the content, pN commentor references it
    * Comments wouldn't exist without the content; creator owns original content and hosts it
