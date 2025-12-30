@@ -3645,9 +3645,188 @@ class ProductionServer {
               
               // Initialize folder structure (creates pN folder and _metadata folder if they don't exist)
               console.log(`[StorageCredentials PUT] Initializing folder structure for identityId: ${sanitizedIdentityId}`);
-              await this.getOrCreateMetadataFolder(accessToken, identityId);
+              const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, identityId);
               
               console.log(`[StorageCredentials PUT] Successfully initialized folder structure for identityId: ${sanitizedIdentityId}`);
+              
+              // Initialize all metadata files with default structures
+              const { PreferencesService } = await import('./server/modules/preferencesService');
+              const { EngagementDriveService } = await import('./server/modules/engagementDriveService');
+              const { NotificationService } = await import('./server/modules/notificationService');
+              const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
+              const { ProfileService } = await import('./server/modules/profileService');
+              const { ConnectionsService } = await import('./server/modules/connectionsService');
+              const { MessagingLedgerService } = await import('./server/modules/messagingLedgerService');
+              const { ZKPDataPointsService } = await import('./server/modules/zkpDataPointsService');
+              const { ThirdPartyPermissionsService } = await import('./server/modules/thirdPartyPermissionsService');
+              
+              const now = new Date().toISOString();
+              
+              // Initialize preferences.json
+              try {
+                const existingPreferences = await PreferencesService.getPreferencesFile(accessToken, metadataFolderId);
+                if (!existingPreferences) {
+                  await PreferencesService.updatePreferencesFile(accessToken, metadataFolderId, identityId, {
+                    identifier: identityId,
+                    updatedAt: now,
+                    tagPreferences: []
+                  });
+                  console.log(`[StorageCredentials PUT] Initialized preferences.json for identityId: ${sanitizedIdentityId}`);
+                }
+              } catch (prefError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize preferences.json:`, prefError?.message || prefError);
+              }
+              
+              // Initialize engagement.json
+              try {
+                const existingEngagement = await EngagementDriveService.getEngagementFile(accessToken, metadataFolderId);
+                if (!existingEngagement) {
+                  await EngagementDriveService.updateEngagementFile(accessToken, metadataFolderId, identityId, {
+                    userDid: identityId,
+                    updatedAt: now,
+                    likes: [],
+                    dislikes: [],
+                    comments: [],
+                    shares: [],
+                    saves: []
+                  });
+                  console.log(`[StorageCredentials PUT] Initialized engagement.json for identityId: ${sanitizedIdentityId}`);
+                }
+              } catch (engError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize engagement.json:`, engError?.message || engError);
+              }
+              
+              // Initialize notifications.json
+              try {
+                const existingNotifications = await NotificationService.getNotificationsFile(accessToken, metadataFolderId);
+                if (!existingNotifications) {
+                  await NotificationService.updateNotificationsFile(accessToken, metadataFolderId, identityId, {
+                    identifier: identityId,
+                    updatedAt: now,
+                    notifications: []
+                  });
+                  console.log(`[StorageCredentials PUT] Initialized notifications.json for identityId: ${sanitizedIdentityId}`);
+                }
+              } catch (notifError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize notifications.json:`, notifError?.message || notifError);
+              }
+              
+              // Initialize activity_ledger.json
+              try {
+                const existingActivity = await ActivityLedgerService.getActivityLedgerFile(accessToken, metadataFolderId);
+                if (!existingActivity) {
+                  await ActivityLedgerService.updateActivityLedgerFile(accessToken, metadataFolderId, identityId, {
+                    identifier: identityId,
+                    updatedAt: now,
+                    activities: []
+                  });
+                  console.log(`[StorageCredentials PUT] Initialized activity_ledger.json for identityId: ${sanitizedIdentityId}`);
+                }
+              } catch (activityError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize activity_ledger.json:`, activityError?.message || activityError);
+              }
+              
+              // Initialize profile.json
+              try {
+                const existingProfile = await ProfileService.getProfileFile(accessToken, metadataFolderId);
+                if (!existingProfile) {
+                  await ProfileService.updateProfileFile(accessToken, metadataFolderId, identityId, {
+                    identifier: identityId,
+                    updatedAt: now
+                  });
+                  console.log(`[StorageCredentials PUT] Initialized profile.json for identityId: ${sanitizedIdentityId}`);
+                }
+              } catch (profileError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize profile.json:`, profileError?.message || profileError);
+              }
+              
+              // Initialize connections.json
+              try {
+                const existingConnections = await ConnectionsService.getConnectionsFile(accessToken, metadataFolderId);
+                if (!existingConnections) {
+                  await ConnectionsService.updateConnectionsFile(accessToken, metadataFolderId, identityId, {
+                    identifier: identityId,
+                    updatedAt: now,
+                    connections: [],
+                    blocked: []
+                  });
+                  console.log(`[StorageCredentials PUT] Initialized connections.json for identityId: ${sanitizedIdentityId}`);
+                }
+              } catch (connError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize connections.json:`, connError?.message || connError);
+              }
+              
+              // Initialize messaging_ledger.json
+              try {
+                const existingMessaging = await MessagingLedgerService.getMessagingLedgerFile(accessToken, metadataFolderId);
+                if (!existingMessaging) {
+                  await MessagingLedgerService.updateMessagingLedgerFile(accessToken, metadataFolderId, identityId, {
+                    identifier: identityId,
+                    updatedAt: now,
+                    activities: []
+                  });
+                  console.log(`[StorageCredentials PUT] Initialized messaging_ledger.json for identityId: ${sanitizedIdentityId}`);
+                }
+              } catch (messagingError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize messaging_ledger.json:`, messagingError?.message || messagingError);
+              }
+              
+              // Initialize zkp-data-points.json (special case - direct multipart upload)
+              try {
+                const existingZKP = await ZKPDataPointsService.getZKPDataPointsFile(accessToken, metadataFolderId);
+                if (!existingZKP) {
+                  const zkpContent = JSON.stringify({
+                    identifier: identityId,
+                    updatedAt: now,
+                    dataPoints: {}
+                  }, null, 2);
+                  
+                  const boundary = `----WebKitFormBoundary${Date.now()}`;
+                  const metadataPart = JSON.stringify({
+                    name: 'zkp-data-points.json',
+                    parents: [metadataFolderId]
+                  });
+                  
+                  const multipartBody = [
+                    `--${boundary}`,
+                    'Content-Disposition: form-data; name="metadata"',
+                    'Content-Type: application/json',
+                    '',
+                    metadataPart,
+                    `--${boundary}`,
+                    'Content-Disposition: form-data; name="file"; filename="zkp-data-points.json"',
+                    'Content-Type: application/json',
+                    '',
+                    zkpContent,
+                    `--${boundary}--`
+                  ].join('\r\n');
+                  
+                  await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${accessToken}`,
+                      'Content-Type': `multipart/form-data; boundary=${boundary}`
+                    },
+                    body: multipartBody
+                  });
+                  console.log(`[StorageCredentials PUT] Initialized zkp-data-points.json for identityId: ${sanitizedIdentityId}`);
+                }
+              } catch (zkpError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize zkp-data-points.json:`, zkpError?.message || zkpError);
+              }
+              
+              // Initialize third-party-permissions.json
+              try {
+                const existingPermissions = await ThirdPartyPermissionsService.getPermissionsFile(accessToken, metadataFolderId);
+                if (!existingPermissions) {
+                  await ThirdPartyPermissionsService.storePermissions(accessToken, metadataFolderId, identityId, {});
+                  console.log(`[StorageCredentials PUT] Initialized third-party-permissions.json for identityId: ${sanitizedIdentityId}`);
+                }
+              } catch (permError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize third-party-permissions.json:`, permError?.message || permError);
+              }
+              
+              console.log(`[StorageCredentials PUT] Successfully initialized all metadata files for identityId: ${sanitizedIdentityId}`);
             }
           } catch (folderInitError: any) {
             // Don't fail the credential save if folder initialization fails
