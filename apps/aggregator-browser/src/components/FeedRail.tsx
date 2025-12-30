@@ -72,7 +72,49 @@ export function FeedRail({
     }
   }, [feeds, activeFeedId]);
 
-  // Allow free scrolling - no scroll limit enforcement
+  // Calculate max scroll position - prevent scrolling past last feed at midpoint
+  const calculateMaxScroll = useCallback(() => {
+    if (!scrollContainerRef.current || !innerContainerRef.current) return null;
+    
+    const container = scrollContainerRef.current;
+    const containerWidth = container.clientWidth;
+    const scrollWidth = container.scrollWidth;
+    const screenWidth = window.innerWidth;
+    const midpoint = screenWidth / 2;
+    
+    // Get the last feed element
+    const allFeedElements = innerContainerRef.current.querySelectorAll('[data-feed-id]');
+    const lastFeedElement = allFeedElements[allFeedElements.length - 1] as HTMLElement;
+    
+    if (!lastFeedElement) return null;
+    
+    const lastElementLeft = lastFeedElement.offsetLeft;
+    const lastElementWidth = lastFeedElement.offsetWidth;
+    // Calculate scroll position to center last element at screen midpoint
+    const lastElementScrollLeft = lastElementLeft - midpoint + (lastElementWidth / 2);
+    
+    // Return the maximum allowed scroll (don't allow scrolling beyond midpoint for last feed)
+    return Math.min(scrollWidth - containerWidth, lastElementScrollLeft);
+  }, []);
+
+  // Enforce scroll limit on manual scrolling - prevent scrolling past last feed at midpoint
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const maxScroll = calculateMaxScroll();
+      if (maxScroll !== null && container.scrollLeft > maxScroll) {
+        container.scrollTo({
+          left: maxScroll,
+          behavior: 'auto' // Instant correction
+        });
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [calculateMaxScroll]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -96,34 +138,46 @@ export function FeedRail({
   // Auto-scroll to center active feed on mount/change (TikTok style)
   useEffect(() => {
     if (!scrollContainerRef.current || !innerContainerRef.current) return;
-    const activeElement = innerContainerRef.current.querySelector(`[data-feed-id="${activeFeedId}"]`) as HTMLElement;
-    if (activeElement && scrollContainerRef.current) {
+    
+    // Use setTimeout to ensure DOM is updated
+    const timeoutId = setTimeout(() => {
+      const activeElement = innerContainerRef.current?.querySelector(`[data-feed-id="${activeFeedId}"]`) as HTMLElement;
+      if (!activeElement || !scrollContainerRef.current) return;
+      
       const container = scrollContainerRef.current;
       
-      // Calculate scroll position to center the element
-      const elementLeft = activeElement.offsetLeft;
-      const elementWidth = activeElement.offsetWidth;
-      const containerWidth = container.clientWidth;
+      // Use getBoundingClientRect to get current viewport position
+      const elementRect = activeElement.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
       
-      // Use screen width for midpoint calculation, not container width
+      // Calculate where the element currently is relative to the container
+      const elementLeftRelativeToContainer = elementRect.left - containerRect.left + container.scrollLeft;
+      
+      // Use screen width for midpoint calculation
       const screenWidth = window.innerWidth;
       const midpoint = screenWidth / 2;
       
-      // Center the element: scroll to position where element is centered at the screen midpoint
-      const scrollLeft = elementLeft - midpoint + (elementWidth / 2);
+      // Calculate scroll position to center the element at screen midpoint
+      // The element's center should be at the screen midpoint
+      const elementCenter = elementLeftRelativeToContainer + (elementRect.width / 2);
+      const scrollLeft = elementCenter - midpoint;
       
-      // Calculate max scroll (just the natural max scroll, no midpoint restriction)
-      const maxScroll = container.scrollWidth - container.clientWidth;
+      // Get max scroll limit (prevents scrolling past last feed at midpoint)
+      const maxScroll = calculateMaxScroll();
+      const naturalMaxScroll = container.scrollWidth - container.clientWidth;
+      const effectiveMaxScroll = maxScroll !== null ? Math.min(maxScroll, naturalMaxScroll) : naturalMaxScroll;
       
-      // Clamp scroll position between 0 and maxScroll (allow free scrolling)
-      const clampedScrollLeft = Math.max(0, Math.min(scrollLeft, maxScroll));
+      // Clamp scroll position between 0 and effectiveMaxScroll
+      const clampedScrollLeft = Math.max(0, Math.min(scrollLeft, effectiveMaxScroll));
       
       container.scrollTo({
         left: clampedScrollLeft,
         behavior: 'smooth'
       });
-    }
-  }, [activeFeedId]);
+    }, 50);
+    
+    return () => clearTimeout(timeoutId);
+  }, [activeFeedId, calculateMaxScroll]);
 
   // Calculate dropdown position when pN is active
   const getDropdownPosition = useCallback(() => {
