@@ -35,6 +35,7 @@ export function FeedRail({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const innerContainerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const pNButtonRef = useRef<HTMLButtonElement>(null);
   const { userState } = useUserState();
   const [showDropdown, setShowDropdown] = useState(false);
   const isPublicFeedActive = activeFeedId === 'public';
@@ -134,6 +135,39 @@ export function FeedRail({
     }
   }, [activeFeedId, calculateMaxScroll]);
 
+  // Get position of pN button for dropdown arrow - update on scroll/resize
+  const [pNButtonPosition, setPNButtonPosition] = useState<{ left: number; top: number } | null>(null);
+  
+  useEffect(() => {
+    if (isPublicFeedActive && userState.isUnlocked && pNButtonRef.current && scrollContainerRef.current) {
+      const updatePosition = () => {
+        if (pNButtonRef.current && scrollContainerRef.current) {
+          const buttonRect = pNButtonRef.current.getBoundingClientRect();
+          const containerRect = scrollContainerRef.current.getBoundingClientRect();
+          setPNButtonPosition({
+            left: buttonRect.left - containerRect.left + (buttonRect.width / 2),
+            top: containerRect.height
+          });
+        }
+      };
+      // Initial position
+      updatePosition();
+      // Update on scroll (within the scroll container)
+      const scrollContainer = scrollContainerRef.current;
+      scrollContainer.addEventListener('scroll', updatePosition, { passive: true });
+      window.addEventListener('resize', updatePosition);
+      // Also update when activeFeedId changes (in case pN button moves)
+      const timeoutId = setTimeout(updatePosition, 100);
+      return () => {
+        scrollContainer.removeEventListener('scroll', updatePosition);
+        window.removeEventListener('resize', updatePosition);
+        clearTimeout(timeoutId);
+      };
+    } else {
+      setPNButtonPosition(null);
+    }
+  }, [isPublicFeedActive, userState.isUnlocked, activeFeedId]);
+
   return (
     <div className="relative">
       <div 
@@ -158,8 +192,9 @@ export function FeedRail({
             const isPublicFeed = feed.feedId === 'public';
             
             return (
-              <div key={feed.feedId} className="relative flex flex-col items-center">
+              <div key={feed.feedId} className="relative">
                 <button
+                  ref={isPublicFeed ? pNButtonRef : undefined}
                   data-feed-id={feed.feedId}
                   onClick={() => onFeedSelect(feed.feedId)}
                   className="relative whitespace-nowrap text-white/85 hover:text-white transition-colors flex items-center justify-center"
@@ -202,35 +237,44 @@ export function FeedRail({
                   {isActive && !isPublicFeed && (
                     <span className="absolute left-0 right-0 h-0.5 bg-white" style={{ bottom: '-2px' }} />
                   )}
+                  {isPublicFeed && isActive && (
+                    <span className="absolute left-0 right-0 h-0.5 bg-white" style={{ bottom: '-2px' }} />
+                  )}
                 </button>
-                {/* Dropdown arrow for pN feed when active and user is unlocked - positioned below text */}
-                {isPublicFeed && isActive && userState.isUnlocked && (
-                  <div className="flex flex-col items-center">
-                    <span className="h-0.5 w-full bg-white mb-0.5" />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowDropdown(!showDropdown);
-                      }}
-                      className="p-0.5 flex items-center justify-center text-white/60 hover:text-white/85 transition-colors pointer-events-auto"
-                      title="Feed options"
-                    >
-                      <ChevronDown className={`h-3 w-3 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
-                    </button>
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
       </div>
-      {/* Dropdown menu */}
-      {showDropdown && isPublicFeedActive && userState.isUnlocked && (
+      {/* Dropdown arrow and menu for pN feed - positioned absolutely below railway, always visible when pN is active */}
+      {isPublicFeedActive && userState.isUnlocked && pNButtonPosition && (
         <div
-          ref={dropdownRef}
-          className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-[200]"
+          className="absolute pointer-events-auto"
+          style={{
+            left: `${pNButtonPosition.left}px`,
+            top: `${pNButtonPosition.top + 4}px`,
+            transform: 'translateX(-50%)',
+            zIndex: 200
+          }}
         >
-          <CuratedFeedDropdown onClose={() => setShowDropdown(false)} />
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowDropdown(!showDropdown);
+            }}
+            className="p-0.5 flex items-center justify-center text-white/60 hover:text-white/85 transition-colors"
+            title="Feed options"
+          >
+            <ChevronDown className={`h-3 w-3 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+          </button>
+          {showDropdown && (
+            <div
+              ref={dropdownRef}
+              className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-[200]"
+            >
+              <CuratedFeedDropdown onClose={() => setShowDropdown(false)} />
+            </div>
+          )}
         </div>
       )}
     </div>
