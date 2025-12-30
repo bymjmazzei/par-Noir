@@ -11063,6 +11063,113 @@ class ProductionServer {
       }
     });
 
+    // POST /api/users/:pnIdentifier/tag-preferences - Save a tag preference
+    this.app.post('/api/users/:pnIdentifier/tag-preferences', async (req, res) => {
+      try {
+        const { pnIdentifier } = req.params;
+        const { tagId, preference, action, confidence, metadata, sourceFileId } = req.body;
+
+        if (!pnIdentifier) {
+          return res.status(400).json({ error: 'pnIdentifier is required' });
+        }
+
+        if (!tagId || !preference || !action) {
+          return res.status(400).json({ error: 'tagId, preference, and action are required' });
+        }
+
+        if (!['like', 'dislike', 'block', 'subscribe'].includes(preference)) {
+          return res.status(400).json({ error: 'preference must be one of: like, dislike, block, subscribe' });
+        }
+
+        // Normalize pn identifier
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        const { UserPreferenceService } = await import('./server/modules/userPreferenceService');
+
+        // Save tag preference
+        await UserPreferenceService.setTagPreference(
+          normalizedPnIdentifier,
+          tagId.toLowerCase(), // Normalize tag ID
+          preference,
+          action,
+          {
+            sourceFileId,
+            confidence: confidence ?? 0.8, // Default confidence
+            metadata
+          }
+        );
+
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error saving tag preference:', error);
+        return res.status(500).json({
+          error: 'Failed to save tag preference',
+          error_description: error.message || 'Failed to save tag preference'
+        });
+      }
+    });
+
+    // GET /api/users/:pnIdentifier/tag-preferences - Get all tag preferences
+    this.app.get('/api/users/:pnIdentifier/tag-preferences', async (req, res) => {
+      try {
+        const { pnIdentifier } = req.params;
+
+        if (!pnIdentifier) {
+          return res.status(400).json({ error: 'pnIdentifier is required' });
+        }
+
+        // Normalize pn identifier
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        const { UserPreferenceService } = await import('./server/modules/userPreferenceService');
+
+        // Get all user tag preferences
+        const preferencesMap = await UserPreferenceService.getUserTagPreferences(normalizedPnIdentifier);
+
+        // Convert Map to array
+        const preferences = Array.from(preferencesMap.values());
+
+        return res.json({ preferences });
+      } catch (error: any) {
+        console.error('Error getting tag preferences:', error);
+        return res.status(500).json({
+          error: 'Failed to get tag preferences',
+          error_description: error.message || 'Failed to get tag preferences'
+        });
+      }
+    });
+
+    // DELETE /api/users/:pnIdentifier/tag-preferences/:tagId - Remove a tag preference
+    this.app.delete('/api/users/:pnIdentifier/tag-preferences/:tagId', async (req, res) => {
+      try {
+        const { pnIdentifier, tagId } = req.params;
+
+        if (!pnIdentifier) {
+          return res.status(400).json({ error: 'pnIdentifier is required' });
+        }
+
+        if (!tagId) {
+          return res.status(400).json({ error: 'tagId is required' });
+        }
+
+        // Normalize pn identifier
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        const { UserPreferenceService } = await import('./server/modules/userPreferenceService');
+
+        // Remove tag preference
+        await UserPreferenceService.removeTagPreference(normalizedPnIdentifier, tagId.toLowerCase());
+
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error removing tag preference:', error);
+        return res.status(500).json({
+          error: 'Failed to remove tag preference',
+          error_description: error.message || 'Failed to remove tag preference'
+        });
+      }
+    });
+
     this.app.get('/api/notifications', async (req, res) => {
       try {
         const userDid = req.headers['x-user-did'] as string || req.query.userDid as string;

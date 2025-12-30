@@ -893,6 +893,65 @@ function App() {
       // Show public (non-NSFW) content
       return true;
     };
+
+    // Helper to calculate client-side recommendation score
+    // For public feed: uses public algorithm only (engagement + recency)
+    // For personalized feeds: uses full algorithm (public + user preferences)
+    const calculateClientScore = (file: IndexedFile, usePersonalization: boolean = false): number => {
+      // Use recommendationScore from metadata if available
+      if ((file.metadata as any).recommendationScore !== undefined) {
+        return (file.metadata as any).recommendationScore;
+      }
+
+      // Fallback: simple client-side calculation
+      const engagement = file.metadata.engagement;
+      const engagementScore = (engagement?.likes || 0) + 
+                              (engagement?.comments || 0) * 2 + 
+                              (engagement?.shares || 0) * 1.5;
+
+      // Recency score (decay by 2 points per day)
+      const uploadDate = file.metadata.uploadDate 
+        ? new Date(file.metadata.uploadDate).getTime()
+        : Date.now();
+      const daysSinceUpload = (Date.now() - uploadDate) / (1000 * 60 * 60 * 24);
+      const recencyScore = Math.max(0, 100 - (daysSinceUpload * 2));
+
+      // Combine engagement (70%) and recency (30%)
+      let score = (engagementScore * 0.7) + (recencyScore * 0.3);
+
+      // Add personalization adjustments if enabled
+      if (usePersonalization && userState.isUnlocked) {
+        // Boost for subscribed subjects
+        const fileSubjects = (file.metadata.subjects || []).map(s => s.toLowerCase().trim());
+        const subscribedSubjects = (userState.preferences.subscribedSubjects || []).map(s => s.toLowerCase().trim());
+        if (subscribedSubjects.length > 0 && fileSubjects.some(s => subscribedSubjects.includes(s))) {
+          score += 15;
+        }
+
+        // Penalty for blocked subjects
+        const blockedSubjects = (userState.preferences.blockedSubjects || []).map(s => s.toLowerCase().trim());
+        if (blockedSubjects.length > 0 && fileSubjects.some(s => blockedSubjects.includes(s))) {
+          score -= 30;
+        }
+
+        // Boost for subscribed feeds
+        const subscribedFeedIds = userState.preferences.subscribedFeedIds || [];
+        if (subscribedFeedIds.length > 0 && file.metadata.feedIds?.some(id => subscribedFeedIds.includes(id))) {
+          score += 15;
+        }
+      }
+
+      return Math.max(0, score);
+    };
+
+    // Helper to sort files by recommendation score
+    const sortByScore = (files: IndexedFile[], usePersonalization: boolean = false): IndexedFile[] => {
+      return [...files].sort((a, b) => {
+        const scoreA = calculateClientScore(a, usePersonalization);
+        const scoreB = calculateClientScore(b, usePersonalization);
+        return scoreB - scoreA; // Descending order (highest first)
+      });
+    };
     
     // Helper to check if file should be excluded (individual thought pages from multi-page thought collections)
     const shouldExcludeThoughtPage = (file: IndexedFile): boolean => {
@@ -916,13 +975,15 @@ function App() {
     // Build feeds from indices
     if (activeFeedId === 'public') {
       // Public feed = media + thoughts + collections
+      // Use public algorithm only (no personalization)
       const combined = [...filteredMedia, ...filteredThoughts, ...filteredCollections];
+      const sorted = sortByScore(combined, false); // Public algorithm only
       
       if (process.env.NODE_ENV === 'development') {
-        console.log(`[Public Feed] ${combined.length} files: ${filteredMedia.length} media, ${filteredThoughts.length} thoughts, ${filteredCollections.length} collections`);
+        console.log(`[Public Feed] ${sorted.length} files: ${filteredMedia.length} media, ${filteredThoughts.length} thoughts, ${filteredCollections.length} collections`);
       }
       
-      return combined;
+      return sorted;
     }
     if (activeFeedId === 'media') {
       if (process.env.NODE_ENV === 'development') {
@@ -932,7 +993,8 @@ function App() {
           sampleFileIds: filteredMedia.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType }))
         });
       }
-      return filteredMedia;
+      // Public feed - use public algorithm only
+      return sortByScore(filteredMedia, false);
     }
     if (activeFeedId === 'thoughts') {
       if (process.env.NODE_ENV === 'development') {
@@ -942,7 +1004,8 @@ function App() {
           sampleFileIds: filteredThoughts.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType }))
         });
       }
-      return filteredThoughts;
+      // Public feed - use public algorithm only
+      return sortByScore(filteredThoughts, false);
     }
     if (activeFeedId === 'collections') {
       if (process.env.NODE_ENV === 'development') {
@@ -952,7 +1015,8 @@ function App() {
           sampleFileIds: filteredCollections.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType, hasCollection: !!f.metadata.collection }))
         });
       }
-      return filteredCollections;
+      // Public feed - use public algorithm only
+      return sortByScore(filteredCollections, false);
     }
     if (activeFeedId === 'curated') {
       // Curated feed = all content EXCEPT blocked categories (negative filter)
@@ -1043,7 +1107,9 @@ function App() {
       const curatedCollections = filteredCollections.filter(curatedFilter);
       
       // Curated feed = media + thoughts + collections
-      return [...curatedMedia, ...curatedThoughts, ...curatedCollections];
+      // Use full algorithm (public + user personalization)
+      const combined = [...curatedMedia, ...curatedThoughts, ...curatedCollections];
+      return sortByScore(combined, true); // Full algorithm with personalization
     }
     if (activeFeedId === 'discovery') {
       // Discovery page - return empty for now (will be implemented in Phase 3)
@@ -1070,7 +1136,8 @@ function App() {
         return fileFeeds.some(feed => feed.feedCategory === categoryId);
       });
       
-      return filtered;
+      // Use full algorithm (public + user personalization) for niche feeds
+      return sortByScore(filtered, true);
     }
     
     // Individual feed: filter by feedId from combined indices
@@ -1089,7 +1156,8 @@ function App() {
       return recommendedFiles;
     }
     
-    return filtered;
+    // Use full algorithm (public + user personalization) for individual feeds
+    return sortByScore(filtered, true);
   }, [mediaFiles, thoughtsFiles, collectionsFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.blockedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, feeds, viewMode, useRecommendations, recommendedFiles]);
 
   // Public feed now uses the same thumbnails state as Me page

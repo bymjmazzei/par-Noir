@@ -6,6 +6,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Feed } from '../types/aggregator';
 import { accountsCacheService } from '../services/accountsCacheService';
+import { TagNormalizationService } from '../services/tagNormalizationService';
 
 export interface UserPreferences {
   // Age verification (for NSFW access)
@@ -224,6 +225,66 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     };
 
     loadPreferencesFromDrive();
+  }, [userState.isUnlocked, userState.pnIdentifier]);
+
+  // Load tag preferences from backend when user unlocks
+  useEffect(() => {
+    if (!userState.isUnlocked || !userState.pnIdentifier) {
+      return;
+    }
+
+    const loadTagPreferences = async () => {
+      try {
+        const { PNOAuthService } = await import('../services/pnOAuthService');
+        const session = PNOAuthService.loadSession();
+        if (!session?.accessToken) {
+          return;
+        }
+
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/tag-preferences`, {
+          headers: {
+            'Authorization': `Bearer ${session.accessToken}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.preferences && Array.isArray(data.preferences)) {
+            // Extract subscribed and blocked subjects from tag preferences
+            const subscribedTags: string[] = [];
+            const blockedTags: string[] = [];
+
+            data.preferences.forEach((pref: any) => {
+              if (pref.preference === 'like' || pref.preference === 'subscribe') {
+                subscribedTags.push(pref.tagId);
+              } else if (pref.preference === 'dislike' || pref.preference === 'block') {
+                blockedTags.push(pref.tagId);
+              }
+            });
+
+            // Update local state with loaded preferences
+            setUserState(prev => ({
+              ...prev,
+              preferences: {
+                ...prev.preferences,
+                subscribedSubjects: [...new Set([...prev.preferences.subscribedSubjects, ...subscribedTags])],
+                blockedSubjects: [...new Set([...prev.preferences.blockedSubjects, ...blockedTags])]
+              }
+            }));
+
+            console.log('✅ Loaded tag preferences from backend:', { subscribedTags, blockedTags });
+          }
+        } else if (response.status === 404) {
+          // Endpoint not deployed yet - just use local state
+          console.log('Tag preferences endpoint not available, using local state');
+        }
+      } catch (error) {
+        console.warn('Failed to load tag preferences from backend:', error);
+      }
+    };
+
+    loadTagPreferences();
   }, [userState.isUnlocked, userState.pnIdentifier]);
 
   // Check ZKP age verification when user unlocks
@@ -602,9 +663,18 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     return (userState.preferences.blockedCategories || []).includes(categoryId);
   };
 
-  const subscribeToSubject = (subject: string) => {
+  const subscribeToSubject = async (subject: string) => {
+    // Normalize tag
+    const normalizedTag = TagNormalizationService.normalizeTagWithProvenance(
+      subject,
+      'user',
+      'preference_tile_yes',
+      userState.pnIdentifier
+    );
+    const normalizedSubject = normalizedTag.id;
+
+    // Update local state immediately
     setUserState(prev => {
-      const normalizedSubject = subject.toLowerCase().trim();
       const currentSubjects = prev.preferences.subscribedSubjects || [];
       if (currentSubjects.includes(normalizedSubject)) {
         return prev; // Already subscribed
@@ -620,6 +690,43 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         }
       };
     });
+
+    // Persist to backend if user is unlocked
+    if (userState.isUnlocked && userState.pnIdentifier) {
+      try {
+        const { PNOAuthService } = await import('../services/pnOAuthService');
+        const session = PNOAuthService.loadSession();
+        if (!session?.accessToken) {
+          console.warn('No access token, cannot save tag preference to backend');
+          return;
+        }
+
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/tag-preferences`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.accessToken}`
+          },
+          body: JSON.stringify({
+            tagId: normalizedSubject,
+            preference: 'subscribe',
+            action: 'preference_tile_yes',
+            confidence: 0.8
+          })
+        });
+
+        if (response.ok) {
+          console.log('✅ Saved tag preference to backend:', normalizedSubject);
+        } else if (response.status === 404) {
+          console.warn('Tag preferences endpoint not available, keeping local state only');
+        } else {
+          console.warn('Failed to save tag preference to backend:', response.status);
+        }
+      } catch (error) {
+        console.warn('Error saving tag preference to backend:', error);
+      }
+    }
   };
 
   const unsubscribeFromSubject = (subject: string) => {
@@ -636,9 +743,18 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     return (userState.preferences.subscribedSubjects || []).includes(subject.toLowerCase().trim());
   };
 
-  const blockSubject = (subject: string) => {
+  const blockSubject = async (subject: string) => {
+    // Normalize tag
+    const normalizedTag = TagNormalizationService.normalizeTagWithProvenance(
+      subject,
+      'user',
+      'preference_tile_no',
+      userState.pnIdentifier
+    );
+    const normalizedSubject = normalizedTag.id;
+
+    // Update local state immediately
     setUserState(prev => {
-      const normalizedSubject = subject.toLowerCase().trim();
       const currentBlocked = prev.preferences.blockedSubjects || [];
       if (currentBlocked.includes(normalizedSubject)) {
         return prev; // Already blocked
@@ -654,6 +770,43 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         }
       };
     });
+
+    // Persist to backend if user is unlocked
+    if (userState.isUnlocked && userState.pnIdentifier) {
+      try {
+        const { PNOAuthService } = await import('../services/pnOAuthService');
+        const session = PNOAuthService.loadSession();
+        if (!session?.accessToken) {
+          console.warn('No access token, cannot save tag preference to backend');
+          return;
+        }
+
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/tag-preferences`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.accessToken}`
+          },
+          body: JSON.stringify({
+            tagId: normalizedSubject,
+            preference: 'block',
+            action: 'preference_tile_no',
+            confidence: 0.8
+          })
+        });
+
+        if (response.ok) {
+          console.log('✅ Saved tag preference to backend:', normalizedSubject);
+        } else if (response.status === 404) {
+          console.warn('Tag preferences endpoint not available, keeping local state only');
+        } else {
+          console.warn('Failed to save tag preference to backend:', response.status);
+        }
+      } catch (error) {
+        console.warn('Error saving tag preference to backend:', error);
+      }
+    }
   };
 
   const unblockSubject = (subject: string) => {

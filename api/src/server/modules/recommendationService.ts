@@ -37,14 +37,13 @@ export interface RecommendationOptions {
 
 export class RecommendationService {
   /**
-   * Calculate recommendation score for content
+   * Calculate public recommendation score (base score everyone gets)
+   * This is the foundation - engagement + recency, no user-specific logic
    */
-  static async calculateContentScore(
+  static async calculatePublicScore(
     file: CentralIndexEntry,
-    userDid: string | undefined,
     options: RecommendationOptions
   ): Promise<{ score: number; reasons: string[] }> {
-    let score = 0;
     const reasons: string[] = [];
 
     // Get weighted engagement metrics (verified vs unverified)
@@ -72,14 +71,30 @@ export class RecommendationService {
     const engagementWeight = options.engagementWeight ?? 0.7;
     const recencyWeight = options.recencyWeight ?? 0.3;
     
-    score = (normalizedEngagement * engagementWeight) + (recencyScore * recencyWeight);
+    const score = (normalizedEngagement * engagementWeight) + (recencyScore * recencyWeight);
     reasons.push(`Weighted Engagement: ${normalizedEngagement.toFixed(1)} (Verified: ${engagementMetrics.verified.likes + engagementMetrics.verified.comments + engagementMetrics.verified.shares + engagementMetrics.verified.saves}, Unverified: ${engagementMetrics.unverified.likes + engagementMetrics.unverified.comments + engagementMetrics.unverified.shares + engagementMetrics.unverified.saves}), Recency: ${recencyScore.toFixed(1)}`);
 
+    return { score, reasons };
+  }
+
+  /**
+   * Calculate user-specific personalization adjustments
+   * Extends the public score with user preferences
+   */
+  static async calculateUserScore(
+    file: CentralIndexEntry,
+    userDid: string,
+    publicScore: number,
+    publicReasons: string[],
+    options: RecommendationOptions
+  ): Promise<{ score: number; reasons: string[] }> {
+    let score = publicScore;
+    const reasons = [...publicReasons];
+
     // User-specific adjustments
-    if (userDid) {
-      const db = getDatabasePool();
-      
-      // Check if user has liked this content (+20 points)
+    const db = getDatabasePool();
+    
+    // Check if user has liked this content (+20 points)
       const likeResult = await db.query(`
         SELECT 1 FROM engagement 
         WHERE file_id = $1 AND user_did = $2 AND type = 'like'
@@ -193,14 +208,32 @@ export class RecommendationService {
           reasons.push(`Preferred content type: ${fileType}`);
         }
       }
-    }
 
     return { 
       score: Math.max(0, score), 
-      reasons,
-      verifiedEngagement: engagementMetrics.verified,
-      unverifiedEngagement: engagementMetrics.unverified
+      reasons
     }; // Ensure non-negative
+  }
+
+  /**
+   * Calculate recommendation score for content
+   * Uses two-part architecture: public algorithm + optional user personalization
+   */
+  static async calculateContentScore(
+    file: CentralIndexEntry,
+    userDid: string | undefined,
+    options: RecommendationOptions
+  ): Promise<{ score: number; reasons: string[] }> {
+    // First, calculate public score (base score everyone gets)
+    const { score: publicScore, reasons: publicReasons } = await this.calculatePublicScore(file, options);
+
+    // If no user, return public score
+    if (!userDid) {
+      return { score: Math.max(0, publicScore), reasons: publicReasons };
+    }
+
+    // Otherwise, extend with user personalization
+    return await this.calculateUserScore(file, userDid, publicScore, publicReasons, options);
   }
 
   /**
