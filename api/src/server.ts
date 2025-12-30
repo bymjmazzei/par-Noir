@@ -4139,19 +4139,20 @@ class ProductionServer {
         
         // Also update companion metadata spreadsheet if file owner has one
         try {
-          const ownerDid = fileMetadata.pnIdentifier || fileMetadata.metadata.creator?.["@id"] || fileMetadata.metadata.author?.did;
-          if (ownerDid) {
-            // Try to get owner's access token
-            const identifierCandidates = [ownerDid];
-            const ownerIdentifier = fileMetadata.metadata.creator?.identifier?.value;
-            if (ownerIdentifier) {
-              identifierCandidates.push(ownerIdentifier);
-            }
-            
-            // Get first Google Drive account for owner
-            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-            const credentialsRecord = await storageCredentialsService.getCredentials(ownerDid);
-            const credentials = credentialsRecord?.credentials;
+          if (fileMetadata) {
+            const ownerDid = fileMetadata.pnIdentifier || fileMetadata.metadata.creator?.["@id"] || fileMetadata.metadata.author?.did;
+            if (ownerDid) {
+              // Try to get owner's access token
+              const identifierCandidates = [ownerDid];
+              const ownerIdentifier = fileMetadata.metadata.creator?.identifier?.value;
+              if (ownerIdentifier) {
+                identifierCandidates.push(ownerIdentifier);
+              }
+              
+              // Get first Google Drive account for owner
+              const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+              const credentialsRecord = await storageCredentialsService.getCredentials(ownerDid);
+              const credentials = credentialsRecord?.credentials;
               const googleDriveAccounts = credentials?.googleDriveAccounts || (credentials?.googleDrive ? [credentials.googleDrive] : []);
               
               if (googleDriveAccounts.length > 0) {
@@ -4193,10 +4194,10 @@ class ProductionServer {
                 }
               }
             }
-          } catch (sheetError: any) {
-            // Non-critical - log but don't fail the request
-            console.warn(`[Engagement] Failed to update companion metadata sheet for like:`, sheetError?.message || sheetError);
           }
+        } catch (sheetError: any) {
+          // Non-critical - log but don't fail the request
+          console.warn(`[Engagement] Failed to update companion metadata sheet for like:`, sheetError?.message || sheetError);
         }
 
         return res.json({
@@ -4217,14 +4218,14 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const { fileId } = req.params;
-        const { userDid } = req.query;
+        const userDid = req.query.userDid;
 
-        if (!userDid) {
+        if (!userDid || typeof userDid !== 'string') {
           return res.status(400).json({ error: 'userDid query parameter is required' });
         }
 
         // Normalize pn identifier
-        const pnIdentifier = (userDid as string).startsWith('pn-') ? userDid : `pn-${userDid}`;
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -4440,6 +4441,7 @@ class ProductionServer {
         const { EngagementService } = await import('./server/modules/engagementService');
         const { EngagementDriveService } = await import('./server/modules/engagementDriveService');
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const { fileId } = req.params;
