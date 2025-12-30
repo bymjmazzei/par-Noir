@@ -758,24 +758,26 @@ function App() {
       return false; // Thought thumbnails are not media
     }
     
-    // CRITICAL: Exclude any thumbnail files that have mainFileId pointing to a thought
-    // If a file has mainFileId, it's a thumbnail - try to find the main file
+    // CRITICAL: Only exclude thumbnails if they point to a thought
+    // Regular media thumbnails (thumb_image.jpg, thumb_video.mp4) SHOULD be considered media
     const mainFileId = file.metadata.mainFileId;
     if (mainFileId) {
       // This is a thumbnail file - try to find the main file to check its type
       const mainFile = indexedFiles.find(f => f.metadata.fileId === mainFileId);
       if (mainFile) {
-        // Check if the main file is a thought
+        // Only exclude if the main file is a thought
         if (isThought(mainFile)) {
           return false; // This thumbnail belongs to a thought, so it's not media
         }
+        // If main file is media, this thumbnail is also media - continue to check below
       } else {
         // Main file not found in indexedFiles - check filename pattern
-        // If the thumbnail name suggests it's for a thought, exclude it
+        // Only exclude if the thumbnail name suggests it's for a thought
         const thumbNameWithoutPrefix = fileName.replace(/^thumb_/i, '');
         if (/^thought-\d+\.(thought|png)/i.test(thumbNameWithoutPrefix)) {
           return false; // This thumbnail is for a thought file
         }
+        // Otherwise, assume it's a regular media thumbnail and continue
       }
     }
     
@@ -783,6 +785,7 @@ function App() {
     const normalizedFileType = normalizeFileType(file);
     
     // Check for images using normalized fileType
+    // IMPORTANT: Thumbnails have fileType 'image' and should be considered media
     const isImage = normalizedFileType === 'image' || 
                    !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
     
@@ -908,17 +911,41 @@ function App() {
     if (activeFeedId === 'media') {
       // Media feed: only show media files
       const filtered = indexedFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
-      return filtered.filter(f => isMedia(f));
+      const mediaFiles = filtered.filter(f => isMedia(f));
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[DEBUG] Media feed:', {
+          totalFiltered: filtered.length,
+          mediaFiles: mediaFiles.length,
+          sampleFileIds: mediaFiles.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType }))
+        });
+      }
+      return mediaFiles;
     }
     if (activeFeedId === 'thoughts') {
       // Thoughts feed: only show thoughts
       const filtered = indexedFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
-      return filtered.filter(f => isThought(f));
+      const thoughtFiles = filtered.filter(f => isThought(f));
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[DEBUG] Thoughts feed:', {
+          totalFiltered: filtered.length,
+          thoughtFiles: thoughtFiles.length,
+          sampleFileIds: thoughtFiles.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType }))
+        });
+      }
+      return thoughtFiles;
     }
     if (activeFeedId === 'collections') {
       // Collections feed: only show collections
       const filtered = indexedFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
-      return filtered.filter(f => isCollection(f));
+      const collectionFiles = filtered.filter(f => isCollection(f));
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[DEBUG] Collections feed:', {
+          totalFiltered: filtered.length,
+          collectionFiles: collectionFiles.length,
+          sampleFileIds: collectionFiles.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType, hasCollection: !!f.metadata.collection }))
+        });
+      }
+      return collectionFiles;
     }
     if (activeFeedId === 'curated') {
       // Curated feed = all content EXCEPT blocked categories (negative filter)
