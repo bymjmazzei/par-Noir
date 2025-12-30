@@ -2912,25 +2912,39 @@ function App() {
 
   const filteredMeFiles = filteredMeFilesMemo;
 
-  // Reset currentFeedIndex when filteredMeFiles changes and index is invalid
-  useEffect(() => {
-    if (filteredMeFiles.length > 0) {
-      // If current index is out of bounds, reset to 0
-      if (currentFeedIndex >= filteredMeFiles.length || !filteredMeFiles[currentFeedIndex]) {
-        setCurrentFeedIndex(0);
-      }
-    } else {
-      // If no files, reset to 0
-      if (currentFeedIndex !== 0) {
-        setCurrentFeedIndex(0);
-      }
-    }
-  }, [filteredMeFiles.length, filteredMeFiles, currentFeedIndex]);
-
   // Track if files are still loading to prevent glitchy scrolling
   // Must be after filteredMeFilesMemo is defined to avoid TDZ error
   const filesStabilizedRef = useRef<boolean>(false);
   const prevFilteredMeFilesLengthRef = useRef<number>(0);
+  
+  // Reset currentFeedIndex when filteredMeFiles length changes and index is invalid
+  // Use a separate ref to track previous length to avoid infinite loops
+  const prevLengthForIndexResetRef = useRef<number>(filteredMeFiles.length);
+  useEffect(() => {
+    const prevLength = prevLengthForIndexResetRef.current;
+    const currentLength = filteredMeFiles.length;
+    
+    // Only update if length actually changed
+    if (prevLength !== currentLength) {
+      prevLengthForIndexResetRef.current = currentLength;
+      
+      // Use functional form of setState to avoid dependency on currentFeedIndex
+      // Capture filteredMeFiles in closure to access it safely
+      const currentFiles = filteredMeFiles;
+      setCurrentFeedIndex(prevIndex => {
+        if (currentLength > 0) {
+          // If current index is out of bounds, reset to 0
+          if (prevIndex >= currentLength || !currentFiles[prevIndex]) {
+            return 0;
+          }
+          return prevIndex;
+        } else {
+          // If no files, reset to 0
+          return prevIndex !== 0 ? 0 : prevIndex;
+        }
+      });
+    }
+  }, [filteredMeFiles.length]); // Only depend on length to avoid infinite loops
   
   useEffect(() => {
     // Mark files as stabilized when the array length stops changing
