@@ -6,18 +6,20 @@
 import React, { useRef, useEffect } from 'react';
 
 interface MePageTabsRailProps {
-  activeTab: 'all' | 'media' | 'thoughts' | 'likes' | 'comments' | 'saved' | 'connections';
-  onTabSelect: (tab: 'all' | 'media' | 'thoughts' | 'likes' | 'comments' | 'saved' | 'connections') => void;
-  availableTabs?: ('all' | 'media' | 'thoughts' | 'likes' | 'comments' | 'saved' | 'connections')[];
+  activeTab: 'all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections';
+  onTabSelect: (tab: 'all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections') => void;
+  availableTabs?: ('all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections')[];
 }
 
-const TABS = ['connections', 'all', 'media', 'thoughts', 'likes', 'comments', 'saved'] as const;
+const TABS = ['connections', 'all', 'media', 'thoughts', 'collections', 'likes', 'comments', 'shares', 'saved'] as const;
 const TAB_LABELS: Record<typeof TABS[number], string> = {
   all: 'ALL',
   media: 'MEDIA',
   thoughts: 'THOUGHTS',
+  collections: 'COLLECTIONS',
   likes: 'LIKES',
   comments: 'COMMENTS',
+  shares: 'SHARES',
   saved: 'SAVED',
   connections: 'CONNECTIONS'
 };

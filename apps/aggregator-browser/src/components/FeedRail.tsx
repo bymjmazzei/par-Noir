@@ -6,7 +6,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { Feed } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
-import { Globe, Sparkles } from 'lucide-react';
 import { FEED_CATEGORIES } from '../constants/feedCategories';
 
 export interface FeedRailItem {
@@ -210,7 +209,26 @@ export function buildFeedRailItems(
     }
   ];
 
-  // Add CURATED feed right after PUBLIC if user is unlocked
+  // Add Media, Thoughts, and Collections feeds after PUBLIC
+  items.push(
+    {
+      feedId: 'media',
+      name: 'MEDIA',
+      isActive: activeFeedId === 'media'
+    },
+    {
+      feedId: 'thoughts',
+      name: 'THOUGHTS',
+      isActive: activeFeedId === 'thoughts'
+    },
+    {
+      feedId: 'collections',
+      name: 'COLLECTIONS',
+      isActive: activeFeedId === 'collections'
+    }
+  );
+
+  // Add CURATED feed right after Collections if user is unlocked
   if (isUnlocked) {
     items.push({
       feedId: 'curated',

@@ -788,52 +788,34 @@ function App() {
       const filtered = indexedFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
       console.log('[DEBUG] Public feed filtered', { activeFeedId, indexedFilesLength: indexedFiles.length, filteredLength: filtered.length });
       
-      // Helper function to detect images - check fileType, name, title, mimeType, encodingFormat, and @type
-      const isImageFile = (f: IndexedFile): boolean => {
-        const fileType = f.metadata.fileType;
-        const fileName = f.metadata.name || f.metadata.title || '';
-        // Check both mimeType and encodingFormat (encodingFormat is the standard field in PublicMetadata)
-        const mimeType = (f.metadata as any).mimeType || f.metadata.encodingFormat || '';
-        // Check @type field (JSON-LD semantic web field)
-        const atType = f.metadata['@type'];
-        const isImageObject = Array.isArray(atType) 
-          ? atType.some(t => String(t).toLowerCase().includes('image'))
-          : String(atType || '').toLowerCase().includes('image');
-        
-        // Check if fileType is explicitly 'image'
-        if (fileType === 'image') return true;
-        
-        // Check if @type indicates ImageObject
-        if (isImageObject) return true;
-        
-        // Check if mimeType/encodingFormat indicates image
-        if (mimeType.startsWith('image/')) return true;
-        
-        // Check if filename has image extension (check both name and title)
-        const hasImageExt = !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i));
-        if (hasImageExt) return true;
-        
-        // If fileType is 'other' but has image extension, it's likely an image
-        if (fileType === 'other' && hasImageExt) return true;
-        
-        return false;
-      };
+      // Define each feed type independently
+      const mediaFeed = filtered.filter(f => isMedia(f));
+      const thoughtsFeed = filtered.filter(f => isThought(f));
+      const collectionsFeed = filtered.filter(f => isCollection(f));
       
-      // Debug logging for public feed (only in development)
-      const imageFiles = filtered.filter(isImageFile);
+      // Public feed = media + thoughts + collections
+      const combined = [...mediaFeed, ...thoughtsFeed, ...collectionsFeed];
       
       if (process.env.NODE_ENV === 'development') {
-        console.log(`[Public Feed] ${filtered.length} files: ${imageFiles.length} images, ${filtered.filter(f => f.metadata.fileType === 'video').length} videos, ${filtered.filter(f => {
-          const fileType = f.metadata.fileType;
-          const hasTextPostData = !!(f.metadata as any).textPost || !!(f.metadata as any).thought;
-          const hasTextFileType = fileType === 'text' || fileType === 'thought';
-          const fileName = f.metadata.name || f.metadata.title || '';
-          const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(fileName);
-          return hasTextPostData || hasTextFileType || isThoughtFile;
-        }).length} thoughts`);
+        console.log(`[Public Feed] ${combined.length} files: ${mediaFeed.length} media, ${thoughtsFeed.length} thoughts, ${collectionsFeed.length} collections`);
       }
       
-      return filtered;
+      return combined;
+    }
+    if (activeFeedId === 'media') {
+      // Media feed: only show media files
+      const filtered = indexedFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
+      return filtered.filter(f => isMedia(f));
+    }
+    if (activeFeedId === 'thoughts') {
+      // Thoughts feed: only show thoughts
+      const filtered = indexedFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
+      return filtered.filter(f => isThought(f));
+    }
+    if (activeFeedId === 'collections') {
+      // Collections feed: only show collections
+      const filtered = indexedFiles.filter(file => shouldShowFile(file) && !shouldExcludeThoughtPage(file));
+      return filtered.filter(f => isCollection(f));
     }
     if (activeFeedId === 'curated') {
       // Curated feed = all content EXCEPT blocked categories (negative filter)
@@ -848,7 +830,8 @@ function App() {
         console.log(`[Curated Feed] Filtering ${indexedFiles.length} files`);
       }
       
-      return indexedFiles.filter(file => {
+      // Apply category/subject filtering first
+      const filtered = indexedFiles.filter(file => {
         // Exclude individual thought pages from multi-page thought collections
         if (shouldExcludeThoughtPage(file)) {
           return false;
@@ -921,6 +904,14 @@ function App() {
         // Filter by NSFW preference
         return shouldShowFile(file);
       });
+      
+      // Define each feed type independently and combine
+      const mediaFeed = filtered.filter(f => isMedia(f));
+      const thoughtsFeed = filtered.filter(f => isThought(f));
+      const collectionsFeed = filtered.filter(f => isCollection(f));
+      
+      // Curated feed = media + thoughts + collections
+      return [...mediaFeed, ...thoughtsFeed, ...collectionsFeed];
     }
     if (activeFeedId === 'discovery') {
       // Discovery page - return empty for now (will be implemented in Phase 3)
@@ -1977,6 +1968,7 @@ function App() {
   // Load user's liked and commented files when viewing own index
   const [userLikedFiles, setUserLikedFiles] = useState<IndexedFile[]>([]);
   const [userCommentedFiles, setUserCommentedFiles] = useState<IndexedFile[]>([]);
+  const [userSharedFiles, setUserSharedFiles] = useState<IndexedFile[]>([]);
   const [connectionsFiles, setConnectionsFiles] = useState<IndexedFile[]>([]);
   const [connectionsList, setConnectionsList] = useState<Array<{ connectionId: string; userDid: string; status: string; createdAt: string; acceptedAt?: string }>>([]);
   const [isLoadingUserEngagement, setIsLoadingUserEngagement] = useState(false);
@@ -2110,6 +2102,7 @@ function App() {
   // Track user engagement fileIds separately
   const [userLikedFileIds, setUserLikedFileIds] = useState<string[]>([]);
   const [userCommentedFileIds, setUserCommentedFileIds] = useState<string[]>([]);
+  const [userSharedFileIds, setUserSharedFileIds] = useState<string[]>([]);
   
   // Load user engagement fileIds (only when user/viewing changes)
   useEffect(() => {
@@ -2117,7 +2110,7 @@ function App() {
       setIsLoadingUserEngagement(true);
       (async () => {
         try {
-          // Get file IDs from engagement data (likes and comments)
+          // Get file IDs from engagement data (likes, comments, and shares)
           const engagementData = loadEngagementData();
           
           // Get file IDs that user has liked
@@ -2126,16 +2119,21 @@ function App() {
           // Get file IDs that user has commented on
           const commentedFileIds = Array.from(engagementData.comments.keys()) as string[];
           
+          // Get file IDs that user has shared
+          const sharedFileIds = Array.from(engagementData.shares.keys()) as string[];
+          
           if (process.env.NODE_ENV === 'development') {
-            console.log(`[Me Page] Engagement: ${likedFileIds.length} liked, ${commentedFileIds.length} commented`);
+            console.log(`[Me Page] Engagement: ${likedFileIds.length} liked, ${commentedFileIds.length} commented, ${sharedFileIds.length} shared`);
           }
           
           setUserLikedFileIds(likedFileIds);
           setUserCommentedFileIds(commentedFileIds);
+          setUserSharedFileIds(sharedFileIds);
         } catch (error) {
           console.error('Failed to load user engagement:', error);
           setUserLikedFileIds([]);
           setUserCommentedFileIds([]);
+          setUserSharedFileIds([]);
         } finally {
           setIsLoadingUserEngagement(false);
         }
@@ -2143,8 +2141,10 @@ function App() {
     } else {
       setUserLikedFileIds([]);
       setUserCommentedFileIds([]);
+      setUserSharedFileIds([]);
       setUserLikedFiles([]);
       setUserCommentedFiles([]);
+      setUserSharedFiles([]);
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
   
@@ -2152,12 +2152,16 @@ function App() {
   // Use indexedFilesKey instead of indexedFilesMap to prevent re-runs when Map reference changes
   const userLikedFileIdsKey = useMemo(() => userLikedFileIds.sort().join(','), [userLikedFileIds]);
   const userCommentedFileIdsKey = useMemo(() => userCommentedFileIds.sort().join(','), [userCommentedFileIds]);
+  const userSharedFileIdsKey = useMemo(() => userSharedFileIds.sort().join(','), [userSharedFileIds]);
   useEffect(() => {
     if (indexedFilesMap.size > 0) {
       const likedFromIndexed = userLikedFileIds
         .map(fileId => indexedFilesMap.get(fileId))
         .filter((f): f is IndexedFile => f !== undefined);
       const commentedFromIndexed = userCommentedFileIds
+        .map(fileId => indexedFilesMap.get(fileId))
+        .filter((f): f is IndexedFile => f !== undefined);
+      const sharedFromIndexed = userSharedFileIds
         .map(fileId => indexedFilesMap.get(fileId))
         .filter((f): f is IndexedFile => f !== undefined);
       
@@ -2179,11 +2183,21 @@ function App() {
         }
         return commentedFromIndexed;
       });
+      
+      setUserSharedFiles(prev => {
+        const prevIds = new Set(prev.map(f => f.metadata.fileId));
+        const newIds = new Set(sharedFromIndexed.map(f => f.metadata.fileId));
+        if (prevIds.size === newIds.size && [...prevIds].every(id => newIds.has(id))) {
+          return prev; // No change, return previous array to avoid re-render
+        }
+        return sharedFromIndexed;
+      });
     } else {
       setUserLikedFiles(prev => prev.length === 0 ? prev : EMPTY_ARRAY);
       setUserCommentedFiles(prev => prev.length === 0 ? prev : EMPTY_ARRAY);
+      setUserSharedFiles(prev => prev.length === 0 ? prev : EMPTY_ARRAY);
     }
-  }, [userLikedFileIdsKey, userCommentedFileIdsKey, indexedFilesKey, userLikedFileIds, userCommentedFileIds, indexedFilesMap]);
+  }, [userLikedFileIdsKey, userCommentedFileIdsKey, userSharedFileIdsKey, indexedFilesKey, userLikedFileIds, userCommentedFileIds, userSharedFileIds, indexedFilesMap]);
 
   // Load other user's liked and commented files when viewing their profile
   useEffect(() => {
@@ -2340,7 +2354,7 @@ function App() {
     }
   }, [viewingCreatorId, userState.pnIdentifier, indexedFilesKey]);
 
-  // Load connections list when viewing own index
+  // Load connections list and populate connectionsFiles with top post from each connection
   useEffect(() => {
     if (viewingCreatorId === userState.pnIdentifier && userState.pnIdentifier) {
       (async () => {
@@ -2351,17 +2365,61 @@ function App() {
           const connections = await getConnections(userState.pnIdentifier);
           console.log(`[App] Loaded ${connections.length} connections`);
           
-          // Store the connections list (not posts)
+          // Store the connections list
           setConnectionsList(connections);
+          
+          // Populate connectionsFiles with top post from each connection
+          const connectionTopPosts: IndexedFile[] = [];
+          const processedConnections = new Set<string>();
+          
+          for (const connection of connections) {
+            if (processedConnections.has(connection.userDid)) continue;
+            processedConnections.add(connection.userDid);
+            
+            // Find all files from this connection in indexedFiles
+            const connectionFiles = indexedFiles.filter(f => {
+              const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                                  f.metadata.creator?.["@id"] || 
+                                  f.metadata.author?.did ||
+                                  f.metadata.creatorId;
+              const normalizeId = (id: string | undefined | null): string => {
+                if (!id) return '';
+                const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
+                return cleaned.trim().toLowerCase();
+              };
+              const normalizedOwnerId = normalizeId(fileOwnerId);
+              const normalizedConnectionId = normalizeId(connection.userDid);
+              return normalizedOwnerId === normalizedConnectionId;
+            });
+            
+            // Find the top post (isTopPost === true) or the most recent post
+            const topPost = connectionFiles.find(f => f.metadata.isTopPost === true) ||
+                           connectionFiles.sort((a, b) => {
+                             const aDate = new Date(a.metadata.uploadDate || a.metadata.datePublished || 0).getTime();
+                             const bDate = new Date(b.metadata.uploadDate || b.metadata.datePublished || 0).getTime();
+                             return bDate - aDate;
+                           })[0];
+            
+            if (topPost) {
+              connectionTopPosts.push(topPost);
+            }
+          }
+          
+          setConnectionsFiles(connectionTopPosts);
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[App] Loaded ${connectionTopPosts.length} top posts from connections`);
+          }
         } catch (error) {
           console.error('Failed to load connections:', error);
           setConnectionsList([]);
+          setConnectionsFiles([]);
         }
       })();
     } else {
       setConnectionsList([]);
+      setConnectionsFiles([]);
     }
-  }, [viewingCreatorId, userState.pnIdentifier]);
+  }, [viewingCreatorId, userState.pnIdentifier, indexedFilesKey]);
 
   // Helper function to load engagement data (same as in useEngagement hook)
   function loadEngagementData() {
@@ -2389,7 +2447,7 @@ function App() {
   const [editingFile, setEditingFile] = useState<IndexedFile | null>(null);
   
   // State for Me page tabs
-  const [mePageTab, setMePageTab] = useState<'all' | 'media' | 'thoughts' | 'likes' | 'comments' | 'saved' | 'connections'>('all');
+  const [mePageTab, setMePageTab] = useState<'all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections'>('all');
   const [savedFiles, setSavedFiles] = useState<IndexedFile[]>([]);
   const [isLoadingSavedFiles, setIsLoadingSavedFiles] = useState(false);
 
@@ -2550,7 +2608,30 @@ function App() {
         return false; // User manually changed tab or no file to navigate to - don't auto-switch
       }
       
-      // Check thoughts tab first (if not already on thoughts)
+      // Check collections tab first (if not already on collections)
+      if (mePageTab !== 'collections' && currentCreatorFiles.length > 0) {
+        const collectionsFiles = currentCreatorFiles.filter(f => isCollection(f));
+        const collectionsIndex = collectionsFiles.findIndex(f => f.metadata.fileId === visibleFileId);
+        if (collectionsIndex !== -1) {
+          setMePageTab('collections');
+          if (currentFeedIndex !== collectionsIndex) {
+            setCurrentFeedIndex(collectionsIndex);
+          }
+          lastNavigatedFileIdRef.current = visibleFileId;
+          lastNavigatedFileIndexRef.current = collectionsIndex;
+          setTimeout(() => {
+            isNavigatingToFileRef.current = false;
+            setVisibleFileId(null);
+            setTimeout(() => {
+              lastNavigatedFileIdRef.current = null;
+              lastNavigatedFileIndexRef.current = null;
+            }, 1000);
+          }, 1000);
+          return true;
+        }
+      }
+      
+      // Check thoughts tab (if not already on thoughts)
       if (mePageTab !== 'thoughts' && currentCreatorFiles.length > 0) {
         const thoughtsFiles = currentCreatorFiles.filter(f => isThought(f));
         const thoughtsIndex = thoughtsFiles.findIndex(f => f.metadata.fileId === visibleFileId);
@@ -2719,104 +2800,87 @@ function App() {
   const creatorFiles = viewingCreatorId ? creatorFilesState : EMPTY_ARRAY;
   const isOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
   
+  // Helper function to normalize IDs for comparison
+  const normalizeId = (id: string | undefined | null): string => {
+    if (!id) return '';
+    const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
+    return cleaned.trim().toLowerCase();
+  };
+
+  // Helper function to check if a file is from a third party (not the viewing user)
+  const isThirdPartyContent = (f: IndexedFile, viewingId: string): boolean => {
+    const fullFile = indexedFilesMap.get(f.metadata.fileId) || f;
+    const isPublicKey = (id: string | undefined | null): boolean => {
+      if (!id) return false;
+      const trimmed = id.trim();
+      return trimmed.startsWith('MII') || trimmed.length > 100;
+    };
+    
+    let fileOwnerId = (fullFile as any).pnIdentifier || (f as any).pnIdentifier;
+    if (!fileOwnerId) {
+      const candidate = f.metadata.creator?.identifier?.value || 
+                        f.metadata.creator?.["@id"] || 
+                        f.metadata.author?.did ||
+                        f.metadata.creatorId;
+      if (candidate && !isPublicKey(candidate)) {
+        fileOwnerId = candidate;
+      }
+    }
+    
+    const normalizedOwnerId = normalizeId(fileOwnerId);
+    const normalizedViewingId = normalizeId(viewingId);
+    return normalizedOwnerId !== normalizedViewingId;
+  };
+
   // Memoize filteredMeFiles to prevent unnecessary recalculations
   const filteredMeFilesMemo = useMemo(() => {
     let filtered: IndexedFile[] = [];
+    
     if (isOwnIndex) {
+      // Define each feed type independently
+      const mediaFeed = creatorFiles.filter(f => isMedia(f));
+      const thoughtsFeed = creatorFiles.filter(f => isThought(f));
+      const collectionsFeed = creatorFiles.filter(f => isCollection(f));
+      const likesFeed = userLikedFiles.filter(f => isThirdPartyContent(f, viewingCreatorId!));
+      const commentsFeed = userCommentedFiles.filter(f => isThirdPartyContent(f, viewingCreatorId!));
+      const sharesFeed = userSharedFiles.filter(f => isThirdPartyContent(f, viewingCreatorId!));
+      const savedFeed = savedFiles; // Already filtered to owner's saved files
+      const connectionsFeed = connectionsFiles; // Already populated with top posts from connections
+      
+      // Select the appropriate feed
       switch (mePageTab) {
         case 'all':
-          // Combine all files - show everything that is either media OR thoughts (or both)
-          const allFiles = Array.from(
-            new Map([...creatorFiles, ...userLikedFiles, ...userCommentedFiles]
-              .map(f => [f.metadata.fileId, f])).values()
-          );
-          // Show all files that are either media OR thoughts
-          filtered = allFiles.filter(f => {
-            const isMediaFile = isMedia(f);
-            const isThoughtFile = isThought(f);
-            return isMediaFile || isThoughtFile;
-          });
-          
-          // Debug logging for me page "all" tab (only in development)
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`[Me Page] Filtered ${filtered.length} of ${allFiles.length} files`);
-          }
+          // All feed = media + thoughts + collections
+          filtered = [...mediaFeed, ...thoughtsFeed, ...collectionsFeed];
           break;
         case 'media':
-          // Only show images and videos (exclude thoughts)
-          filtered = creatorFiles.filter(f => isMedia(f));
+          filtered = mediaFeed;
           break;
         case 'thoughts':
-          filtered = creatorFiles.filter(f => isThought(f));
+          filtered = thoughtsFeed;
+          break;
+        case 'collections':
+          filtered = collectionsFeed;
           break;
         case 'likes':
-          filtered = userLikedFiles.filter(f => {
-            const fileOwnerId = f.metadata.creator?.identifier?.value || 
-                                f.metadata.creator?.["@id"] || 
-                                f.metadata.author?.did ||
-                                f.metadata.creatorId;
-            const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
-            const normalizedViewingId = viewingCreatorId!.trim().toLowerCase();
-            return normalizedOwnerId !== normalizedViewingId;
-          });
+          filtered = likesFeed;
           break;
         case 'comments':
-          // Only show posts the user has commented on (excluding their own posts)
-          filtered = userCommentedFiles.filter(f => {
-            // Look up the full file from indexedFilesMap to get pnIdentifier
-            const fullFile = indexedFilesMap.get(f.metadata.fileId) || f;
-            
-            // Prioritize pnIdentifier first, then check other fields but skip public keys
-            // Public keys start with "MII" (base64 encoded RSA public key header)
-            const isPublicKey = (id: string | undefined | null): boolean => {
-              if (!id) return false;
-              const trimmed = id.trim();
-              return trimmed.startsWith('MII') || trimmed.length > 100; // Public keys are long base64 strings
-            };
-            
-            // Try to get pnIdentifier first (it's on the file object, not in metadata)
-            let fileOwnerId = (fullFile as any).pnIdentifier || (f as any).pnIdentifier;
-            
-            // If no pnIdentifier, try other fields but skip public keys
-            if (!fileOwnerId) {
-              const candidate = f.metadata.creator?.identifier?.value || 
-                                f.metadata.creator?.["@id"] || 
-                                f.metadata.author?.did ||
-                                f.metadata.creatorId;
-              
-              // Only use if it's not a public key
-              if (candidate && !isPublicKey(candidate)) {
-                fileOwnerId = candidate;
-              }
-            }
-            
-            // Normalize both IDs by removing "pn-" prefix and converting to lowercase
-            const normalizeId = (id: string | undefined | null): string => {
-              if (!id) return '';
-              const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
-              return cleaned.trim().toLowerCase();
-            };
-            
-            const normalizedOwnerId = normalizeId(fileOwnerId);
-            const normalizedViewingId = normalizeId(viewingCreatorId!);
-            
-            // Exclude own posts - only show posts from other creators that user commented on
-            const isNotOwnPost = normalizedOwnerId !== normalizedViewingId;
-            return isNotOwnPost;
-          });
+          filtered = commentsFeed;
+          break;
+        case 'shares':
+          filtered = sharesFeed;
           break;
         case 'saved':
-          filtered = savedFiles;
+          filtered = savedFeed;
           break;
-          case 'connections':
-            // Connections tab shows a list of users, not posts
-            // Return empty array - we'll render connections list separately
-            filtered = [];
-            break;
+        case 'connections':
+          filtered = connectionsFeed;
+          break;
       }
       
-      // Pin top post at the top for 'all', 'media', and 'thoughts' tabs
-      if ((mePageTab === 'all' || mePageTab === 'media' || mePageTab === 'thoughts') && filtered.length > 0) {
+      // Pin top post at the top for 'all', 'media', 'thoughts', and 'collections' tabs
+      if ((mePageTab === 'all' || mePageTab === 'media' || mePageTab === 'thoughts' || mePageTab === 'collections') && filtered.length > 0) {
         const topPostIndex = filtered.findIndex(f => f.metadata.isTopPost === true);
         if (topPostIndex > 0) {
           const topPost = filtered[topPostIndex];
@@ -2824,24 +2888,24 @@ function App() {
         }
       }
     } else if (viewingCreatorId) {
+      // For viewing other users' profiles - same simple pattern
+      const mediaFeed = creatorFiles.filter(f => isMedia(f));
+      const thoughtsFeed = creatorFiles.filter(f => isThought(f));
+      const collectionsFeed = creatorFiles.filter(f => isCollection(f));
+      
       switch (mePageTab) {
         case 'all':
-          // Combine all files - show everything that is either media OR thoughts (or both)
-          const allFilesOther = Array.from(
-            new Map([...creatorFiles, ...viewedUserLikedFiles, ...viewedUserCommentedFiles]
-              .map(f => [f.metadata.fileId, f])).values()
-          );
-          // Show all files that are either media OR thoughts
-          filtered = allFilesOther.filter(f => {
-            return isMedia(f) || isThought(f);
-          });
+          // All feed = media + thoughts + collections
+          filtered = [...mediaFeed, ...thoughtsFeed, ...collectionsFeed];
           break;
         case 'media':
-          // Only show images and videos (exclude thoughts)
-          filtered = creatorFiles.filter(f => isMedia(f));
+          filtered = mediaFeed;
           break;
         case 'thoughts':
-          filtered = creatorFiles.filter(f => isThought(f));
+          filtered = thoughtsFeed;
+          break;
+        case 'collections':
+          filtered = collectionsFeed;
           break;
         case 'likes':
           filtered = viewedUserLikedFiles;
@@ -2853,8 +2917,8 @@ function App() {
           filtered = creatorFiles;
       }
       
-      // Pin top post at the top for 'all', 'media', and 'thoughts' tabs
-      if ((mePageTab === 'all' || mePageTab === 'media' || mePageTab === 'thoughts') && filtered.length > 0) {
+      // Pin top post at the top for 'all', 'media', 'thoughts', and 'collections' tabs
+      if ((mePageTab === 'all' || mePageTab === 'media' || mePageTab === 'thoughts' || mePageTab === 'collections') && filtered.length > 0) {
         const topPostIndex = filtered.findIndex(f => f.metadata.isTopPost === true);
         if (topPostIndex > 0) {
           const topPost = filtered[topPostIndex];
@@ -2865,7 +2929,7 @@ function App() {
     
     // Don't inject cover into feed array - it will be shown as empty state instead
     return filtered;
-  }, [isOwnIndex, mePageTab, creatorFiles, userLikedFiles, userCommentedFiles, savedFiles, connectionsFiles, viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId, indexedFilesMap]);
+  }, [isOwnIndex, mePageTab, creatorFiles, userLikedFiles, userCommentedFiles, userSharedFiles, savedFiles, connectionsFiles, viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId, indexedFilesMap]);
   
   // Only log when the count actually changes - use refs to track all values to prevent unnecessary re-runs
   const prevFilteredCountRef = useRef<number>(-1);
@@ -3545,63 +3609,15 @@ function App() {
           <MePageTabsRail
             activeTab={mePageTab}
             onTabSelect={(tab) => {
-              // If not owner, don't allow saved or connections tabs
-              if (!isOwnIndex && (tab === 'saved' || tab === 'connections')) return;
+              // If not owner, don't allow saved, connections, or shares tabs
+              if (!isOwnIndex && (tab === 'saved' || tab === 'connections' || tab === 'shares')) return;
               setMePageTab(tab);
               setCurrentFeedIndex(0);
             }}
-            availableTabs={isOwnIndex ? ['connections', 'all', 'media', 'thoughts', 'likes', 'comments', 'saved'] : ['all', 'media', 'thoughts', 'likes', 'comments']}
+            availableTabs={isOwnIndex ? ['connections', 'all', 'media', 'thoughts', 'collections', 'likes', 'comments', 'shares', 'saved'] : ['all', 'media', 'thoughts', 'collections', 'likes', 'comments']}
           />
           
-          {/* Connections List View - Show when connections tab is selected */}
-          {mePageTab === 'connections' && isOwnIndex ? (
-            <div className="flex-1 overflow-y-auto px-6 pt-14 pb-6">
-              {connectionsList.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center">
-                  <div className="text-6xl mb-4">👥</div>
-                  <h2 className="text-2xl font-semibold text-white mb-2">No Connections Yet</h2>
-                  <p className="text-neutral-400">Connect with other users to see them here</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {connectionsList.map((connection) => (
-                    <div
-                      key={connection.connectionId}
-                      onClick={() => {
-                        setViewingCreatorId(connection.userDid);
-                        setMePageTab('all');
-                        setCurrentFeedIndex(0);
-                      }}
-                      className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-4 hover:bg-neutral-800 transition-colors cursor-pointer"
-                    >
-                      <div className="flex items-center space-x-4">
-                        <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold text-lg">
-                          {connection.userDid.substring(3, 5).toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-white font-medium truncate">
-                            {connection.userDid}
-                          </h3>
-                          <p className="text-neutral-400 text-sm">
-                            Connected {connection.acceptedAt 
-                              ? new Date(connection.acceptedAt).toLocaleDateString()
-                              : connection.createdAt 
-                              ? new Date(connection.createdAt).toLocaleDateString()
-                              : 'recently'}
-                          </p>
-                        </div>
-                        <div className="text-neutral-500">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : filteredMeFiles.length > 0 && filteredMeFiles[currentFeedIndex] ? (
+          {filteredMeFiles.length > 0 && filteredMeFiles[currentFeedIndex] ? (
             <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
               <FullScreenFeed
                 files={filteredMeFiles}
@@ -3683,7 +3699,7 @@ function App() {
                 } : undefined}
               />
             </div>
-          ) : mePageTab !== 'connections' ? (
+          ) : (
             // Empty state for all tabs: background + engagement bar + title
             // ALWAYS show when filteredMeFiles is empty - no conditions, no fallbacks
             (() => {
@@ -3774,7 +3790,7 @@ function App() {
                 </div>
               );
             })()
-          ) : null}
+          )}
         </div>
       ) : showUploadModal ? (
         <div className="h-screen w-full bg-neutral-900" style={{ paddingBottom: '64px' }}>

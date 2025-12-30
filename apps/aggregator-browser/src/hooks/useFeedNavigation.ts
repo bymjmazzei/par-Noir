@@ -31,7 +31,7 @@ export function useFeedNavigation(
     const hierarchy: FeedNavigationItem[] = [];
 
     if (userState.isUnlocked) {
-      // Unlocked users: Curated → Public → Subscribed → Discovery
+      // Unlocked users: Curated → Public → Media → Thoughts → Collections → Subscribed → Discovery
       
       // 1. Curated Feed (default for unlocked users)
       hierarchy.push({
@@ -49,7 +49,31 @@ export function useFeedNavigation(
         index: 1
       });
 
-      // 3. Subscribed Niche Category Feeds (virtual feeds based on categories)
+      // 3. Media Feed
+      hierarchy.push({
+        feedId: 'media',
+        name: 'Media',
+        type: 'public',
+        index: 2
+      });
+
+      // 4. Thoughts Feed
+      hierarchy.push({
+        feedId: 'thoughts',
+        name: 'Thoughts',
+        type: 'public',
+        index: 3
+      });
+
+      // 5. Collections Feed
+      hierarchy.push({
+        feedId: 'collections',
+        name: 'Collections',
+        type: 'public',
+        index: 4
+      });
+
+      // 6. Subscribed Niche Category Feeds (virtual feeds based on categories)
       if (subscribedFeedIds.length > 0) {
         // Get unique categories from subscribed feeds
         const subscribedCategories = new Set<string>();
@@ -74,13 +98,13 @@ export function useFeedNavigation(
                 feedId: `niche-${categoryId}`,
                 name: categoryInfo.name,
                 type: 'niche',
-                index: 2 + idx
+                index: 5 + idx
               });
             }
           });
       }
 
-      // 4. Individual Subscribed Feeds (feeds without categories or additional feeds)
+      // 7. Individual Subscribed Feeds (feeds without categories or additional feeds)
       subscribedFeedIds.forEach((feedId, idx) => {
         const feed = feeds.find(f => f.feedId === feedId);
         // Only add if feed doesn't have a category (or category already shown above)
@@ -94,7 +118,7 @@ export function useFeedNavigation(
         }
       });
 
-      // 5. Discovery Page
+      // 8. Discovery Page
       hierarchy.push({
         feedId: 'discovery',
         name: 'Discovery',
@@ -102,7 +126,7 @@ export function useFeedNavigation(
         index: hierarchy.length
       });
     } else {
-      // Locked users: Public Index → 20 Niche Feeds
+      // Locked users: Public Index → Media → Thoughts → Collections → 20 Niche Feeds
       
       // 1. Public Index (default for locked users)
       hierarchy.push({
@@ -112,7 +136,31 @@ export function useFeedNavigation(
         index: 0
       });
 
-      // 2. Niche Feeds (up to 20)
+      // 2. Media Feed
+      hierarchy.push({
+        feedId: 'media',
+        name: 'Media',
+        type: 'public',
+        index: 1
+      });
+
+      // 3. Thoughts Feed
+      hierarchy.push({
+        feedId: 'thoughts',
+        name: 'Thoughts',
+        type: 'public',
+        index: 2
+      });
+
+      // 4. Collections Feed
+      hierarchy.push({
+        feedId: 'collections',
+        name: 'Collections',
+        type: 'public',
+        index: 3
+      });
+
+      // 5. Niche Feeds (up to 20)
       const nicheFeeds = feeds
         .filter(feed => feed.feedCategory)
         .slice(0, 20);
@@ -122,7 +170,7 @@ export function useFeedNavigation(
           feedId: feed.feedId,
           name: feed.feedName,
           type: 'niche',
-          index: 1 + idx
+          index: 4 + idx
         });
       });
     }

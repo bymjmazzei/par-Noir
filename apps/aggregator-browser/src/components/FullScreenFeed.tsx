@@ -43,7 +43,7 @@ interface FullScreenFeedProps {
   onMessage?: (creatorId: string) => void;
   onSwipeLeft?: () => void; // Horizontal swipe left handler
   onSwipeRight?: () => void; // Horizontal swipe right handler
-  mePageTab?: 'all' | 'media' | 'thoughts' | 'likes' | 'comments' | 'saved' | 'connections'; // For Me page tab context
+  mePageTab?: 'all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections'; // For Me page tab context
   thumbnails?: Map<string, string>; // Optional: pre-generated thumbnails from parent
   videoBlobs?: Map<string, string>; // Optional: pre-loaded video blobs from parent
 }
