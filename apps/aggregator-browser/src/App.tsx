@@ -2912,6 +2912,21 @@ function App() {
 
   const filteredMeFiles = filteredMeFilesMemo;
 
+  // Reset currentFeedIndex when filteredMeFiles changes and index is invalid
+  useEffect(() => {
+    if (filteredMeFiles.length > 0) {
+      // If current index is out of bounds, reset to 0
+      if (currentFeedIndex >= filteredMeFiles.length || !filteredMeFiles[currentFeedIndex]) {
+        setCurrentFeedIndex(0);
+      }
+    } else {
+      // If no files, reset to 0
+      if (currentFeedIndex !== 0) {
+        setCurrentFeedIndex(0);
+      }
+    }
+  }, [filteredMeFiles.length, filteredMeFiles, currentFeedIndex]);
+
   // Track if files are still loading to prevent glitchy scrolling
   // Must be after filteredMeFilesMemo is defined to avoid TDZ error
   const filesStabilizedRef = useRef<boolean>(false);
@@ -3572,7 +3587,7 @@ function App() {
                 </div>
               )}
             </div>
-          ) : filteredMeFiles.length > 0 ? (
+          ) : filteredMeFiles.length > 0 && filteredMeFiles[currentFeedIndex] ? (
             <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
               <FullScreenFeed
                 files={filteredMeFiles}
@@ -3654,13 +3669,12 @@ function App() {
                 } : undefined}
               />
             </div>
-          ) : mePageTab !== 'connections' ? (() => {
+          ) : mePageTab !== 'connections' ? (
             // Empty state for all tabs: background + engagement bar + title
-            // Simple logic: if filteredMeFiles is empty, show empty state
-            const emptyStateCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
-            
-            if (emptyStateCreatorId) {
-              const emptyStateName = getDisplayName(emptyStateCreatorId) || emptyStateCreatorId;
+            // ALWAYS show when filteredMeFiles is empty - no conditions, no fallbacks
+            (() => {
+              const emptyStateCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
+              const emptyStateName = emptyStateCreatorId ? (getDisplayName(emptyStateCreatorId) || emptyStateCreatorId) : 'User';
               
               return (
                 <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
@@ -3690,64 +3704,63 @@ function App() {
                     </div>
                     
                     {/* Engagement Sidebar */}
-                    <FeedEngagementSidebar
-                      file={{
-                        metadata: {
-                          fileId: `me-page-empty-${emptyStateCreatorId}`,
-                          backend: 'empty-state',
-                          backendFileId: `me-page-empty-${emptyStateCreatorId}`,
-                          uploadDate: new Date().toISOString(),
-                          fileType: 'other',
-                          isPublic: false,
-                          name: emptyStateName,
-                          creatorId: emptyStateCreatorId,
-                          creator: {
-                            "@type": "Person",
-                            "@id": emptyStateCreatorId,
-                            identifier: {
-                              "@type": "PropertyValue",
-                              name: "DID",
-                              value: emptyStateCreatorId
+                    {emptyStateCreatorId && (
+                      <FeedEngagementSidebar
+                        file={{
+                          metadata: {
+                            fileId: `me-page-empty-${emptyStateCreatorId}`,
+                            backend: 'empty-state',
+                            backendFileId: `me-page-empty-${emptyStateCreatorId}`,
+                            uploadDate: new Date().toISOString(),
+                            fileType: 'other',
+                            isPublic: false,
+                            name: emptyStateName,
+                            creatorId: emptyStateCreatorId,
+                            creator: {
+                              "@type": "Person",
+                              "@id": emptyStateCreatorId,
+                              identifier: {
+                                "@type": "PropertyValue",
+                                name: "DID",
+                                value: emptyStateCreatorId
+                              }
+                            },
+                            engagement: {
+                              views: 0,
+                              likes: 0,
+                              comments: 0,
+                              shares: 0,
+                              saves: 0,
+                              lastUpdated: new Date().toISOString()
                             }
-                          },
-                          engagement: {
-                            views: 0,
-                            likes: 0,
-                            comments: 0,
-                            shares: 0,
-                            saves: 0,
-                            lastUpdated: new Date().toISOString()
                           }
-                        }
-                      } as IndexedFile}
-                      isLiked={false}
-                      onLike={() => {}}
-                      onComment={() => {}}
-                      onShare={async () => {}}
-                      onAddToFeed={undefined}
-                      onEdit={undefined}
-                      isOwner={isOwnIndex && emptyStateCreatorId === userState.pnIdentifier}
-                      onCreatorClick={(creatorId) => {
-                        if (creatorId !== viewingCreatorId) {
-                          setViewingCreatorId(creatorId);
-                          setMePageTab('all');
-                          setCurrentFeedIndex(0);
-                        }
-                      }}
-                      onMessage={(creatorId) => {
-                        setInitialThread({ participantDid: creatorId });
-                        setShowInbox(true);
-                        setActiveBottomTab('messages');
-                      }}
-                    />
+                        } as IndexedFile}
+                        isLiked={false}
+                        onLike={() => {}}
+                        onComment={() => {}}
+                        onShare={async () => {}}
+                        onAddToFeed={undefined}
+                        onEdit={undefined}
+                        isOwner={isOwnIndex && emptyStateCreatorId === userState.pnIdentifier}
+                        onCreatorClick={(creatorId) => {
+                          if (creatorId !== viewingCreatorId) {
+                            setViewingCreatorId(creatorId);
+                            setMePageTab('all');
+                            setCurrentFeedIndex(0);
+                          }
+                        }}
+                        onMessage={(creatorId) => {
+                          setInitialThread({ participantDid: creatorId });
+                          setShowInbox(true);
+                          setActiveBottomTab('messages');
+                        }}
+                      />
+                    )}
                   </div>
                 </div>
               );
-            }
-            
-            // Fallback if no creatorId (shouldn't happen, but just in case)
-            return null;
-          })() : null}
+            })()
+          ) : null}
         </div>
       ) : showUploadModal ? (
         <div className="h-screen w-full bg-neutral-900" style={{ paddingBottom: '64px' }}>
