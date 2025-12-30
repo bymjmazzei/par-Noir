@@ -146,21 +146,13 @@ export function FeedRail({
       
       const container = scrollContainerRef.current;
       
-      // Use getBoundingClientRect to get current viewport position
-      const elementRect = activeElement.getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
-      
-      // Calculate where the element currently is relative to the container
-      const elementLeftRelativeToContainer = elementRect.left - containerRect.left + container.scrollLeft;
-      
-      // Use screen width for midpoint calculation
+      // Use offsetLeft (relative to container) - simpler and more reliable
+      const buttonLeft = activeElement.offsetLeft;
+      const buttonWidth = activeElement.offsetWidth;
       const screenWidth = window.innerWidth;
-      const midpoint = screenWidth / 2;
       
-      // Calculate scroll position to center the element at screen midpoint
-      // The element's center should be at the screen midpoint
-      const elementCenter = elementLeftRelativeToContainer + (elementRect.width / 2);
-      const scrollLeft = elementCenter - midpoint;
+      // Calculate scroll position to center the button at screen midpoint
+      const scrollLeft = buttonLeft - (screenWidth / 2) + (buttonWidth / 2);
       
       // Get max scroll limit (prevents scrolling past last feed at midpoint)
       const maxScroll = calculateMaxScroll();
