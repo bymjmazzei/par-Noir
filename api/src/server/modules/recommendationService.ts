@@ -6,11 +6,24 @@
 import { getDatabasePool } from '../utils/database';
 import { CentralIndexEntry } from './aggregatorMetadataService';
 import { UserPreferenceService } from './userPreferenceService';
+import { EngagementService } from './engagementService';
 
 export interface RecommendationScore {
   fileId: string;
   score: number;
   reasons: string[]; // For debugging/transparency
+  verifiedEngagement?: {
+    likes: number;
+    comments: number;
+    shares: number;
+    saves: number;
+  };
+  unverifiedEngagement?: {
+    likes: number;
+    comments: number;
+    shares: number;
+    saves: number;
+  };
 }
 
 export interface RecommendationOptions {
@@ -34,23 +47,16 @@ export class RecommendationService {
     let score = 0;
     const reasons: string[] = [];
 
-    // Base score from engagement metrics
-    const engagement = (file.metadata as any).engagement || {};
-    const likes = engagement.likes || 0;
-    const views = engagement.views || 0;
-    const comments = engagement.comments || 0;
-    const shares = engagement.shares || 0;
+    // Get weighted engagement metrics (verified vs unverified)
+    const engagementMetrics = await EngagementService.getEngagementMetrics(file.fileId);
     
-    // Calculate engagement score (normalized)
-    // Weight: likes (3x), shares (2x), comments (1.5x), views (0.1x)
-    const engagementScore = 
-      (likes * 3) + 
-      (shares * 2) + 
-      (comments * 1.5) + 
-      (views * 0.1);
+    // Use recommendation score from weighted algorithm
+    // This already accounts for verified (10-15x) vs unverified (0.5-1x) weights
+    // and filters out bot engagement (bot_score >= 0.5)
+    const weightedEngagementScore = engagementMetrics.recommendationScore;
     
     // Normalize engagement score (log scale to prevent outliers from dominating)
-    const normalizedEngagement = Math.log10(engagementScore + 1) * 10;
+    const normalizedEngagement = Math.log10(weightedEngagementScore + 1) * 10;
     
     // Recency score (0-100, based on upload date)
     const uploadDate = file.metadata.uploadDate 
@@ -67,7 +73,7 @@ export class RecommendationService {
     const recencyWeight = options.recencyWeight ?? 0.3;
     
     score = (normalizedEngagement * engagementWeight) + (recencyScore * recencyWeight);
-    reasons.push(`Engagement: ${normalizedEngagement.toFixed(1)}, Recency: ${recencyScore.toFixed(1)}`);
+    reasons.push(`Weighted Engagement: ${normalizedEngagement.toFixed(1)} (Verified: ${engagementMetrics.verified.likes + engagementMetrics.verified.comments + engagementMetrics.verified.shares + engagementMetrics.verified.saves}, Unverified: ${engagementMetrics.unverified.likes + engagementMetrics.unverified.comments + engagementMetrics.unverified.shares + engagementMetrics.unverified.saves}), Recency: ${recencyScore.toFixed(1)}`);
 
     // User-specific adjustments
     if (userDid) {
@@ -189,7 +195,47 @@ export class RecommendationService {
       }
     }
 
-    return { score: Math.max(0, score), reasons }; // Ensure non-negative
+    return { 
+      score: Math.max(0, score), 
+      reasons,
+      verifiedEngagement: engagementMetrics.verified,
+      unverifiedEngagement: engagementMetrics.unverified
+    }; // Ensure non-negative
+  }
+
+  /**
+   * Get monetization metrics (verified-only engagement)
+   */
+  static async getMonetizationMetrics(fileId: string): Promise<{
+    verifiedLikes: number;
+    verifiedComments: number;
+    verifiedShares: number;
+    verifiedSaves: number;
+    estimatedValue: number;
+  }> {
+    const metrics = await EngagementService.getEngagementMetrics(fileId);
+
+    // Monetization rates (per verified engagement)
+    const RATES = {
+      like: 0.01,      // $0.01 per verified like
+      comment: 0.05,  // $0.05 per verified comment
+      share: 0.02,    // $0.02 per verified share
+      save: 0.01      // $0.01 per verified save
+    };
+
+    const estimatedValue = 
+      metrics.verified.likes * RATES.like +
+      metrics.verified.comments * RATES.comment +
+      metrics.verified.shares * RATES.share +
+      metrics.verified.saves * RATES.save;
+
+    return {
+      verifiedLikes: metrics.verified.likes,
+      verifiedComments: metrics.verified.comments,
+      verifiedShares: metrics.verified.shares,
+      verifiedSaves: metrics.verified.saves,
+      estimatedValue
+    };
   }
 
   /**

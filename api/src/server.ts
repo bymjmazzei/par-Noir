@@ -5027,6 +5027,78 @@ class ProductionServer {
       }
     });
 
+    // GET /api/engagement/:fileId/metrics - Get detailed engagement metrics (verified/unverified breakdown)
+    this.app.get('/api/engagement/:fileId/metrics', async (req, res) => {
+      try {
+        const { EngagementService } = await import('./server/modules/engagementService');
+        const { fileId } = req.params;
+        
+        const metrics = await EngagementService.getEngagementMetrics(fileId);
+        return res.json(metrics);
+      } catch (error: any) {
+        console.error('Error getting engagement metrics:', error);
+        return res.status(500).json({ error: 'Failed to get engagement metrics', message: error.message });
+      }
+    });
+
+    // GET /api/engagement/:fileId/monetization - Get monetization metrics (verified-only)
+    this.app.get('/api/engagement/:fileId/monetization', async (req, res) => {
+      try {
+        const { RecommendationService } = await import('./server/modules/recommendationService');
+        const { fileId } = req.params;
+        
+        const metrics = await RecommendationService.getMonetizationMetrics(fileId);
+        return res.json(metrics);
+      } catch (error: any) {
+        console.error('Error getting monetization metrics:', error);
+        return res.status(500).json({ error: 'Failed to get monetization metrics', message: error.message });
+      }
+    });
+
+    // POST /api/file-views - Track viewing behavior for bot detection
+    this.app.post('/api/file-views', async (req, res) => {
+      try {
+        const { fileId, userDid, viewDuration } = req.body;
+        
+        if (!fileId || !userDid) {
+          return res.status(400).json({ error: 'fileId and userDid are required' });
+        }
+        
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        
+        await db.query(`
+          INSERT INTO file_views (file_id, user_did, view_duration, viewed_at)
+          VALUES ($1, $2, $3, NOW())
+          ON CONFLICT (file_id, user_did, DATE(viewed_at)) 
+          DO UPDATE SET view_duration = GREATEST(file_views.view_duration, $3)
+        `, [fileId, userDid, viewDuration || 0]);
+        
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error recording file view:', error);
+        return res.status(500).json({ error: 'Failed to record file view', message: error.message });
+      }
+    });
+
+    // POST /api/verification/sync - Sync verification status to engagement system
+    this.app.post('/api/verification/sync', async (req, res) => {
+      try {
+        const { VerificationIntegrationService } = await import('./server/modules/verificationIntegrationService');
+        const { identityId, verificationId, verifiedAt } = req.body;
+        
+        if (!identityId || !verificationId || !verifiedAt) {
+          return res.status(400).json({ error: 'identityId, verificationId, and verifiedAt are required' });
+        }
+        
+        await VerificationIntegrationService.syncVerificationStatus(identityId, verificationId, verifiedAt);
+        
+        return res.json({ success: true, message: 'Verification status synced' });
+      } catch (error: any) {
+        console.error('Error syncing verification status:', error);
+        return res.status(500).json({ error: 'Failed to sync verification status', message: error.message });
+      }
+    });
+
     // GET /api/aggregator/curated/:did - Get curated feed for a DID
     // ============================================================================
     // Feed Management APIs

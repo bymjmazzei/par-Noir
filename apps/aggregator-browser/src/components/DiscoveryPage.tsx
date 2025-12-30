@@ -38,17 +38,20 @@ export function DiscoveryPage({
   // Use ref to track fetched creators to avoid re-fetching (persists across renders)
   const fetchedCreatorsRef = useRef<Set<string>>(new Set());
 
-  // Get trending files (most engagement)
+  // Get trending files (most engagement, using recommendation scores if available)
   const trendingFiles = useMemo(() => {
     return [...files]
       .sort((a, b) => {
-        const aEngagement = (a.metadata.engagement?.likes || 0) + 
-                           (a.metadata.engagement?.comments || 0) + 
-                           (a.metadata.engagement?.shares || 0);
-        const bEngagement = (b.metadata.engagement?.likes || 0) + 
-                           (b.metadata.engagement?.comments || 0) + 
-                           (b.metadata.engagement?.shares || 0);
-        return bEngagement - aEngagement;
+        // Use recommendationScore if available (from weighted algorithm), otherwise fallback to simple engagement
+        const aScore = (a.metadata as any).recommendationScore || 
+          ((a.metadata.engagement?.likes || 0) + 
+           (a.metadata.engagement?.comments || 0) + 
+           (a.metadata.engagement?.shares || 0));
+        const bScore = (b.metadata as any).recommendationScore || 
+          ((b.metadata.engagement?.likes || 0) + 
+           (b.metadata.engagement?.comments || 0) + 
+           (b.metadata.engagement?.shares || 0));
+        return bScore - aScore;
       })
       .slice(0, 20);
   }, [files]);
@@ -142,13 +145,16 @@ export function DiscoveryPage({
         break;
       case 'trending':
         filtered = filtered.sort((a, b) => {
-          const aEngagement = (a.metadata.engagement?.likes || 0) + 
-                             (a.metadata.engagement?.comments || 0) + 
-                             (a.metadata.engagement?.shares || 0);
-          const bEngagement = (b.metadata.engagement?.likes || 0) + 
-                             (b.metadata.engagement?.comments || 0) + 
-                             (b.metadata.engagement?.shares || 0);
-          return bEngagement - aEngagement;
+          // Use recommendationScore if available (from weighted algorithm), otherwise fallback to simple engagement
+          const aScore = (a.metadata as any).recommendationScore || 
+            ((a.metadata.engagement?.likes || 0) + 
+             (a.metadata.engagement?.comments || 0) + 
+             (a.metadata.engagement?.shares || 0));
+          const bScore = (b.metadata as any).recommendationScore || 
+            ((b.metadata.engagement?.likes || 0) + 
+             (b.metadata.engagement?.comments || 0) + 
+             (b.metadata.engagement?.shares || 0));
+          return bScore - aScore;
         }).slice(0, 100);
         break;
       case 'featured':
@@ -168,11 +174,14 @@ export function DiscoveryPage({
           const daysOld = (Date.now() - uploadDate.getTime()) / (1000 * 60 * 60 * 24);
           return daysOld > 30; // At least 30 days old
         }).sort((a, b) => {
-          const aEngagement = (a.metadata.engagement?.likes || 0) + 
-                             (a.metadata.engagement?.comments || 0);
-          const bEngagement = (b.metadata.engagement?.likes || 0) + 
-                             (b.metadata.engagement?.comments || 0);
-          return bEngagement - aEngagement;
+          // Use recommendationScore if available (from weighted algorithm), otherwise fallback to simple engagement
+          const aScore = (a.metadata as any).recommendationScore || 
+            ((a.metadata.engagement?.likes || 0) + 
+             (a.metadata.engagement?.comments || 0));
+          const bScore = (b.metadata as any).recommendationScore || 
+            ((b.metadata.engagement?.likes || 0) + 
+             (b.metadata.engagement?.comments || 0));
+          return bScore - aScore;
         }).slice(0, 100);
         break;
     }

@@ -1,9 +1,11 @@
 /**
  * Engagement Service
  * Manages likes, comments, and shares for files
+ * Includes bot detection and verification tracking
  */
 
 import { getDatabasePool } from '../utils/database';
+import { BotDetectionService } from './botDetectionService';
 
 export interface EngagementRow {
   engagement_id: string;
@@ -39,14 +41,88 @@ export interface EngagementStats {
   saves: number;
 }
 
+export interface EngagementMetrics {
+  total: {
+    likes: number;
+    comments: number;
+    shares: number;
+    saves: number;
+  };
+  verified: {
+    likes: number;
+    comments: number;
+    shares: number;
+    saves: number;
+  };
+  unverified: {
+    likes: number;
+    comments: number;
+    shares: number;
+    saves: number;
+  };
+  recommendationScore: number;
+}
+
 export class EngagementService {
   /**
-   * Toggle like for a file
+   * Check if user is verified
+   */
+  private static async isUserVerified(userDid: string): Promise<boolean> {
+    const db = getDatabasePool();
+    try {
+      const result = await db.query(`
+        SELECT 1 FROM verified_identities 
+        WHERE identity_id = $1 AND is_active = TRUE
+        LIMIT 1
+      `, [userDid]);
+      return result.rows.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Get recent action count for rate limiting
+   */
+  private static async getRecentActionCount(userDid: string, window: string): Promise<number> {
+    const db = getDatabasePool();
+    const windowMs = window === '1 hour' ? 3600000 : 3600000; // Default to 1 hour
+    
+    const result = await db.query(`
+      SELECT COUNT(*) as count
+      FROM engagement
+      WHERE user_did = $1
+      AND created_at > NOW() - INTERVAL '1 hour'
+    `, [userDid]);
+    
+    return parseInt(result.rows[0].count, 10);
+  }
+
+  /**
+   * Toggle like for a file with bot detection and verification tracking
    */
   static async toggleLike(fileId: string, userDid: string): Promise<{ liked: boolean; count: number }> {
     const db = getDatabasePool();
     
     try {
+      // Check verification status
+      const isVerified = await this.isUserVerified(userDid);
+      
+      // Calculate bot score for unverified users
+      let botScore = 0.0;
+      if (!isVerified) {
+        const botResult = await BotDetectionService.calculateBotScore(userDid);
+        botScore = botResult.botScore;
+        
+        // Check rate limits
+        const rateLimit = BotDetectionService.getRateLimitForBotScore(botScore);
+        const recentActions = await this.getRecentActionCount(userDid, rateLimit.window);
+        
+        if (recentActions >= rateLimit.maxActions) {
+          throw new Error(`Rate limit: ${rateLimit.maxActions} actions per ${rateLimit.window} allowed`);
+        }
+      }
+
       // Check if already liked
       const existing = await db.query(`
         SELECT engagement_id FROM engagement 
@@ -61,12 +137,12 @@ export class EngagementService {
           WHERE file_id = $1 AND user_did = $2 AND type = 'like'
         `, [fileId, userDid]);
       } else {
-        // Like - add the engagement
+        // Like - add the engagement with verification and bot score
         await db.query(`
-          INSERT INTO engagement (file_id, user_did, type)
-          VALUES ($1, $2, 'like')
+          INSERT INTO engagement (file_id, user_did, type, is_verified, bot_score)
+          VALUES ($1, $2, 'like', $3, $4)
           ON CONFLICT (file_id, user_did, type) DO NOTHING
-        `, [fileId, userDid]);
+        `, [fileId, userDid, isVerified, botScore]);
       }
 
       // Get updated count
@@ -170,7 +246,7 @@ export class EngagementService {
   }
 
   /**
-   * Add a comment
+   * Add a comment with bot detection and verification tracking
    * File owner has the content, pN commentor references it
    * Comments wouldn't exist without the content; creator owns original content and hosts it
    */
@@ -186,6 +262,24 @@ export class EngagementService {
     const db = getDatabasePool();
     
     try {
+      // Check verification status
+      const isVerified = await this.isUserVerified(userDid);
+      
+      // Calculate bot score for unverified users
+      let botScore = 0.0;
+      if (!isVerified) {
+        const botResult = await BotDetectionService.calculateBotScore(userDid);
+        botScore = botResult.botScore;
+        
+        // Check rate limits
+        const rateLimit = BotDetectionService.getRateLimitForBotScore(botScore);
+        const recentActions = await this.getRecentActionCount(userDid, rateLimit.window);
+        
+        if (recentActions >= rateLimit.maxActions) {
+          throw new Error(`Rate limit: ${rateLimit.maxActions} actions per ${rateLimit.window} allowed`);
+        }
+      }
+
       // If fileOwnerDid not provided, get it from aggregator metadata
       let ownerDid = fileOwnerDid;
       if (!ownerDid) {
@@ -212,10 +306,10 @@ export class EngagementService {
       };
 
       const result = await db.query<EngagementRow>(`
-        INSERT INTO engagement (file_id, user_did, type, content)
-        VALUES ($1, $2, 'comment', $3)
+        INSERT INTO engagement (file_id, user_did, type, content, is_verified, bot_score)
+        VALUES ($1, $2, 'comment', $3, $4, $5)
         RETURNING *
-      `, [fileId, userDid, JSON.stringify(commentData)]);
+      `, [fileId, userDid, JSON.stringify(commentData), isVerified, botScore]);
 
       const row = result.rows[0];
       const parsedContent = JSON.parse(row.content || '{}');
@@ -387,12 +481,30 @@ export class EngagementService {
   }
 
   /**
-   * Like a comment
+   * Like a comment with bot detection and verification tracking
    */
   static async likeComment(fileId: string, commentId: string, userDid: string): Promise<{ liked: boolean; likes: string[] }> {
     const db = getDatabasePool();
     
     try {
+      // Check verification status
+      const isVerified = await this.isUserVerified(userDid);
+      
+      // Calculate bot score for unverified users
+      let botScore = 0.0;
+      if (!isVerified) {
+        const botResult = await BotDetectionService.calculateBotScore(userDid);
+        botScore = botResult.botScore;
+        
+        // Check rate limits
+        const rateLimit = BotDetectionService.getRateLimitForBotScore(botScore);
+        const recentActions = await this.getRecentActionCount(userDid, rateLimit.window);
+        
+        if (recentActions >= rateLimit.maxActions) {
+          throw new Error(`Rate limit: ${rateLimit.maxActions} actions per ${rateLimit.window} allowed`);
+        }
+      }
+
       // Check if already liked by looking for existing like with this commentId in content
       const existing = await db.query(`
         SELECT engagement_id FROM engagement 
@@ -409,11 +521,11 @@ export class EngagementService {
           AND content::jsonb->>'commentId' = $3
         `, [fileId, userDid, commentId]);
       } else {
-        // Like - add the like
+        // Like - add the like with verification and bot score
         await db.query(`
-          INSERT INTO engagement (file_id, user_did, type, content)
-          VALUES ($1, $2, 'comment_like', $3)
-        `, [fileId, userDid, JSON.stringify({ commentId })]);
+          INSERT INTO engagement (file_id, user_did, type, content, is_verified, bot_score)
+          VALUES ($1, $2, 'comment_like', $3, $4, $5)
+        `, [fileId, userDid, JSON.stringify({ commentId }), isVerified, botScore]);
       }
 
       // Get updated likes list
@@ -434,17 +546,35 @@ export class EngagementService {
   }
 
   /**
-   * Record a share
+   * Record a share with bot detection and verification tracking
    */
   static async recordShare(fileId: string, userDid: string): Promise<number> {
     const db = getDatabasePool();
     
     try {
+      // Check verification status
+      const isVerified = await this.isUserVerified(userDid);
+      
+      // Calculate bot score for unverified users
+      let botScore = 0.0;
+      if (!isVerified) {
+        const botResult = await BotDetectionService.calculateBotScore(userDid);
+        botScore = botResult.botScore;
+        
+        // Check rate limits
+        const rateLimit = BotDetectionService.getRateLimitForBotScore(botScore);
+        const recentActions = await this.getRecentActionCount(userDid, rateLimit.window);
+        
+        if (recentActions >= rateLimit.maxActions) {
+          throw new Error(`Rate limit: ${rateLimit.maxActions} actions per ${rateLimit.window} allowed`);
+        }
+      }
+
       await db.query(`
-        INSERT INTO engagement (file_id, user_did, type)
-        VALUES ($1, $2, 'share')
+        INSERT INTO engagement (file_id, user_did, type, is_verified, bot_score)
+        VALUES ($1, $2, 'share', $3, $4)
         ON CONFLICT (file_id, user_did, type) DO NOTHING
-      `, [fileId, userDid]);
+      `, [fileId, userDid, isVerified, botScore]);
 
       // Get share count
       const countResult = await db.query(`
@@ -463,12 +593,30 @@ export class EngagementService {
   }
 
   /**
-   * Toggle save for a file
+   * Toggle save for a file with bot detection and verification tracking
    */
   static async toggleSave(fileId: string, userDid: string): Promise<{ saved: boolean; count: number }> {
     const db = getDatabasePool();
     
     try {
+      // Check verification status
+      const isVerified = await this.isUserVerified(userDid);
+      
+      // Calculate bot score for unverified users
+      let botScore = 0.0;
+      if (!isVerified) {
+        const botResult = await BotDetectionService.calculateBotScore(userDid);
+        botScore = botResult.botScore;
+        
+        // Check rate limits
+        const rateLimit = BotDetectionService.getRateLimitForBotScore(botScore);
+        const recentActions = await this.getRecentActionCount(userDid, rateLimit.window);
+        
+        if (recentActions >= rateLimit.maxActions) {
+          throw new Error(`Rate limit: ${rateLimit.maxActions} actions per ${rateLimit.window} allowed`);
+        }
+      }
+
       // Check if already saved
       const existing = await db.query(`
         SELECT engagement_id FROM engagement 
@@ -483,12 +631,12 @@ export class EngagementService {
           WHERE file_id = $1 AND user_did = $2 AND type = 'save'
         `, [fileId, userDid]);
       } else {
-        // Save - add the engagement
+        // Save - add the engagement with verification and bot score
         await db.query(`
-          INSERT INTO engagement (file_id, user_did, type)
-          VALUES ($1, $2, 'save')
+          INSERT INTO engagement (file_id, user_did, type, is_verified, bot_score)
+          VALUES ($1, $2, 'save', $3, $4)
           ON CONFLICT (file_id, user_did, type) DO NOTHING
-        `, [fileId, userDid]);
+        `, [fileId, userDid, isVerified, botScore]);
       }
 
       // Get updated count
@@ -559,6 +707,109 @@ export class EngagementService {
       console.error('Failed to get engagement stats:', error);
       return { likes: 0, comments: 0, shares: 0, saves: 0 };
     }
+  }
+
+  /**
+   * Get comprehensive engagement metrics with verified/unverified breakdown
+   */
+  static async getEngagementMetrics(fileId: string): Promise<EngagementMetrics> {
+    const db = getDatabasePool();
+    
+    try {
+      const result = await db.query(`
+        SELECT 
+          type,
+          COUNT(*) FILTER (WHERE is_verified = TRUE) as verified_count,
+          COUNT(*) FILTER (WHERE is_verified = FALSE AND bot_score < 0.5) as unverified_count,
+          COUNT(*) as total_count
+        FROM engagement
+        WHERE file_id = $1
+        GROUP BY type
+      `, [fileId]);
+
+      const metrics: EngagementMetrics = {
+        total: { likes: 0, comments: 0, shares: 0, saves: 0 },
+        verified: { likes: 0, comments: 0, shares: 0, saves: 0 },
+        unverified: { likes: 0, comments: 0, shares: 0, saves: 0 },
+        recommendationScore: 0
+      };
+
+      result.rows.forEach(row => {
+        const type = row.type;
+        const verifiedCount = parseInt(row.verified_count, 10) || 0;
+        const unverifiedCount = parseInt(row.unverified_count, 10) || 0;
+        const totalCount = parseInt(row.total_count, 10) || 0;
+
+        if (type === 'like') {
+          metrics.total.likes = totalCount;
+          metrics.verified.likes = verifiedCount;
+          metrics.unverified.likes = unverifiedCount;
+        } else if (type === 'comment') {
+          metrics.total.comments = totalCount;
+          metrics.verified.comments = verifiedCount;
+          metrics.unverified.comments = unverifiedCount;
+        } else if (type === 'share') {
+          metrics.total.shares = totalCount;
+          metrics.verified.shares = verifiedCount;
+          metrics.unverified.shares = unverifiedCount;
+        } else if (type === 'save') {
+          metrics.total.saves = totalCount;
+          metrics.verified.saves = verifiedCount;
+          metrics.unverified.saves = unverifiedCount;
+        }
+      });
+
+      // Calculate recommendation score using weighted algorithm
+      metrics.recommendationScore = this.calculateRecommendationScore(metrics);
+
+      return metrics;
+    } catch (error) {
+      console.error('Failed to get engagement metrics:', error);
+      return {
+        total: { likes: 0, comments: 0, shares: 0, saves: 0 },
+        verified: { likes: 0, comments: 0, shares: 0, saves: 0 },
+        unverified: { likes: 0, comments: 0, shares: 0, saves: 0 },
+        recommendationScore: 0
+      };
+    }
+  }
+
+  /**
+   * Calculate recommendation score using weighted algorithm
+   * Verified engagement weighted 10-15x, unverified weighted 0.5-1x
+   */
+  private static calculateRecommendationScore(metrics: EngagementMetrics): number {
+    // Weight configuration
+    const WEIGHTS = {
+      verified: {
+        like: 10.0,      // Verified likes worth 10x
+        comment: 15.0,   // Verified comments worth 15x (more valuable)
+        share: 8.0,      // Verified shares worth 8x
+        save: 5.0        // Verified saves worth 5x
+      },
+      unverified: {
+        like: 0.5,       // Unverified likes worth 0.5x (heavily discounted)
+        comment: 1.0,    // Unverified comments worth 1x (slightly discounted)
+        share: 0.3,      // Unverified shares worth 0.3x (heavily discounted)
+        save: 0.2        // Unverified saves worth 0.2x (heavily discounted)
+      }
+    };
+
+    // Calculate weighted score
+    const verifiedScore = 
+      (metrics.verified.likes * WEIGHTS.verified.like) +
+      (metrics.verified.comments * WEIGHTS.verified.comment) +
+      (metrics.verified.shares * WEIGHTS.verified.share) +
+      (metrics.verified.saves * WEIGHTS.verified.save);
+
+    const unverifiedScore = 
+      (metrics.unverified.likes * WEIGHTS.unverified.like) +
+      (metrics.unverified.comments * WEIGHTS.unverified.comment) +
+      (metrics.unverified.shares * WEIGHTS.unverified.share) +
+      (metrics.unverified.saves * WEIGHTS.unverified.save);
+
+    // Total recommendation score
+    return verifiedScore + unverifiedScore;
   }
 
   /**

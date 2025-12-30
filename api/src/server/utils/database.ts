@@ -600,6 +600,19 @@ export async function initializeDatabase(): Promise<void> {
     // Clean up expired refresh tokens periodically (via application logic)
     // The cleanup will happen in the service layer
 
+    // Run bot detection migration
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const migrationPath = path.join(__dirname, '../../migrations/add_bot_detection.sql');
+      const migrationSQL = fs.readFileSync(migrationPath, 'utf-8');
+      await db.query(migrationSQL);
+      console.log('✅ Bot detection migration executed');
+    } catch (migrationError: any) {
+      // Migration errors are non-fatal - table/columns may already exist
+      console.debug('ℹ️ Bot detection migration error (may already be applied):', migrationError?.message);
+    }
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);

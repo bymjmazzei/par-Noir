@@ -268,6 +268,24 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
         fraudPrevention: verificationResult.fraudPrevention
       };
 
+      // Sync verification status to engagement system
+      try {
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        await fetch(`${apiEndpoint}/api/verification/sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            identityId: identityId || verifiedData.id,
+            verificationId: verifiedData.verificationId,
+            verifiedAt: verifiedData.verifiedAt
+          })
+        });
+        console.log('✅ Verification status synced to engagement system');
+      } catch (syncError) {
+        // Non-critical - log but don't fail verification
+        console.warn('⚠️ Failed to sync verification status:', syncError);
+      }
+
       setCurrentStep(5);
       onVerificationComplete(verifiedData);
     } catch (err) {

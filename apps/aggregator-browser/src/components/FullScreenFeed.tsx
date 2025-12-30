@@ -498,6 +498,9 @@ export function FullScreenFeed({
   const isUserScrollingRef = useRef<boolean>(false);
   const userScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Track viewing behavior for bot detection
+  const viewStartTimeRef = useRef<Map<string, number>>(new Map());
+  
   // Handle scroll events to detect user scrolling vs programmatic scrolling
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -562,12 +565,18 @@ export function FullScreenFeed({
       const element = scrollContainerRef.current?.querySelector(`[data-file-id="${currentFile.metadata.fileId}"]`);
       if (element && scrollContainerRef.current) {
         // Use smooth scroll - CSS snap will provide the snap behavior
+        const fileId = currentFile.metadata.fileId;
         element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        setVisibleFileId(currentFile.metadata.fileId);
+        setVisibleFileId(fileId);
+        
+        // Track viewing start time for bot detection
+        if (userState.isUnlocked && userState.pnIdentifier) {
+          viewStartTimeRef.current.set(fileId, Date.now());
+        }
         
         // Preload comments for the visible file if loadComments is available
         if (loadComments) {
-          loadComments(currentFile.metadata.fileId).catch(err => {
+          loadComments(fileId).catch(err => {
             // Silently fail - comments will be loaded when modal opens
             console.debug('Failed to preload comments:', err);
           });
@@ -580,7 +589,42 @@ export function FullScreenFeed({
         clearTimeout(scrollTimeoutRef.current);
       }
     };
-  }, [currentIndex, files, loadComments]);
+  }, [currentIndex, files, loadComments, userState.isUnlocked, userState.pnIdentifier]);
+
+  // Track viewing behavior and send to backend for bot detection
+  useEffect(() => {
+    if (!visibleFileId || !userState.isUnlocked || !userState.pnIdentifier) {
+      return;
+    }
+
+    const startTime = viewStartTimeRef.current.get(visibleFileId) || Date.now();
+    
+    return () => {
+      // Calculate view duration when file changes or component unmounts
+      const endTime = Date.now();
+      const viewDuration = (endTime - startTime) / 1000; // Convert to seconds
+      
+      // Only send if view duration is meaningful (> 0.5 seconds)
+      if (viewDuration > 0.5) {
+        // Send viewing data to backend (fire and forget)
+        fetch(`${apiEndpoint}/api/file-views`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileId: visibleFileId,
+            userDid: userState.pnIdentifier,
+            viewDuration
+          })
+        }).catch(err => {
+          // Silently fail - viewing tracking is non-critical
+          console.debug('Failed to track view:', err);
+        });
+      }
+      
+      // Clean up start time
+      viewStartTimeRef.current.delete(visibleFileId);
+    };
+  }, [visibleFileId, userState.isUnlocked, userState.pnIdentifier]);
 
   // Rotate comments every 2 seconds with fade transitions
   useEffect(() => {
