@@ -102,6 +102,8 @@ function App() {
   const [activeFeedId, setActiveFeedId] = useState<string>('public');
   const [currentFeedIndex, setCurrentFeedIndex] = useState(0); // Current file index in feed
   const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'search' | 'upload' | 'index' | 'messages'>('home');
+  // Connections list for filtering public feeds (must be declared before filteredFilesByFeed useMemo)
+  const [connectionsList, setConnectionsList] = useState<Array<{ connectionId: string; userDid: string; status: string; createdAt: string; acceptedAt?: string }>>([]);
   const [showSearch, setShowSearch] = useState(false);
   const [showInbox, setShowInbox] = useState(false);
   const [initialThread, setInitialThread] = useState<{
@@ -1048,7 +1050,6 @@ function App() {
     }) : null;
 
     // Helper to process public feeds with curated feed preferences
-    // Note: connectionsList is declared later in file but is React state, available at runtime
     const processPublicFeed = (files: IndexedFile[], connections: Array<{ connectionId: string; userDid: string; status: string; createdAt: string; acceptedAt?: string }>): IndexedFile[] => {
       let processed = files;
 
@@ -1072,7 +1073,6 @@ function App() {
     if (activeFeedId === 'public') {
       // Public feed = media + thoughts + collections
       const combined = [...filteredMedia, ...filteredThoughts, ...filteredCollections];
-      // eslint-disable-next-line @typescript-eslint/no-use-before-define
       const processed = processPublicFeed(combined, connectionsList);
       
       if (process.env.NODE_ENV === 'development') {
@@ -1089,7 +1089,6 @@ function App() {
           sampleFileIds: filteredMedia.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType }))
         });
       }
-      // eslint-disable-next-line @typescript-eslint/no-use-before-define
       return processPublicFeed(filteredMedia, connectionsList);
     }
     if (activeFeedId === 'thoughts') {
@@ -1100,7 +1099,6 @@ function App() {
           sampleFileIds: filteredThoughts.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType }))
         });
       }
-      // eslint-disable-next-line @typescript-eslint/no-use-before-define
       return processPublicFeed(filteredThoughts, connectionsList);
     }
     if (activeFeedId === 'collections') {
@@ -1111,7 +1109,6 @@ function App() {
           sampleFileIds: filteredCollections.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType, hasCollection: !!f.metadata.collection }))
         });
       }
-      // eslint-disable-next-line @typescript-eslint/no-use-before-define
       return processPublicFeed(filteredCollections, connectionsList);
     }
     if (activeFeedId === 'discovery') {
@@ -1161,7 +1158,7 @@ function App() {
     
     // Use full algorithm (public + user personalization) for individual feeds
     return sortByScore(filtered, true);
-  }, [mediaFiles, thoughtsFiles, collectionsFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.blockedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, userState.preferences.curatedFeedPreferences, userState.pnIdentifier, feeds, viewMode, useRecommendations, recommendedFiles]); // connectionsList excluded from deps - it's declared later but React state is available throughout component
+  }, [mediaFiles, thoughtsFiles, collectionsFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.blockedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, userState.preferences.curatedFeedPreferences, userState.pnIdentifier, connectionsList, feeds, viewMode, useRecommendations, recommendedFiles]);
 
   // Public feed now uses the same thumbnails state as Me page
   // generateThumbnailsForImages already populates thumbnails for all discovered files
@@ -2207,7 +2204,6 @@ function App() {
   const [userCommentedFiles, setUserCommentedFiles] = useState<IndexedFile[]>([]);
   const [userSharedFiles, setUserSharedFiles] = useState<IndexedFile[]>([]);
   const [connectionsFiles, setConnectionsFiles] = useState<IndexedFile[]>([]);
-  const [connectionsList, setConnectionsList] = useState<Array<{ connectionId: string; userDid: string; status: string; createdAt: string; acceptedAt?: string }>>([]);
   const [isLoadingUserEngagement, setIsLoadingUserEngagement] = useState(false);
   
   // Load other user's liked and commented files when viewing their profile
