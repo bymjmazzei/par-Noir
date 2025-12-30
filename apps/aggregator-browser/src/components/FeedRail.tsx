@@ -49,13 +49,26 @@ export function FeedRail({
   useEffect(() => {
     if (innerContainerRef.current) {
       const allButtons = innerContainerRef.current.querySelectorAll('[data-feed-id]');
-      console.log('[FeedRail] DOM check - Found buttons:', Array.from(allButtons).map(btn => ({
-        feedId: btn.getAttribute('data-feed-id'),
-        visible: (btn as HTMLElement).offsetWidth > 0 && (btn as HTMLElement).offsetHeight > 0,
-        width: (btn as HTMLElement).offsetWidth,
-        height: (btn as HTMLElement).offsetHeight,
-        computedStyle: window.getComputedStyle(btn as HTMLElement).display
-      })));
+      const buttonDetails = Array.from(allButtons).map(btn => {
+        const element = btn as HTMLElement;
+        const computedStyle = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return {
+          feedId: btn.getAttribute('data-feed-id'),
+          visible: element.offsetWidth > 0 && element.offsetHeight > 0,
+          width: element.offsetWidth,
+          height: element.offsetHeight,
+          display: computedStyle.display,
+          visibility: computedStyle.visibility,
+          opacity: computedStyle.opacity,
+          position: computedStyle.position,
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom
+        };
+      });
+      console.log('[FeedRail] DOM check - Found buttons:', JSON.stringify(buttonDetails, null, 2));
     }
   }, [feeds, activeFeedId]);
 
