@@ -45,6 +45,20 @@ export function FeedRail({
     console.log('[FeedRail] Feeds received:', JSON.stringify(feeds.map(f => ({ feedId: f.feedId, name: f.name })), null, 2));
   }, [feeds]);
 
+  // Debug: Check if DOM elements exist after render
+  useEffect(() => {
+    if (innerContainerRef.current) {
+      const allButtons = innerContainerRef.current.querySelectorAll('[data-feed-id]');
+      console.log('[FeedRail] DOM check - Found buttons:', Array.from(allButtons).map(btn => ({
+        feedId: btn.getAttribute('data-feed-id'),
+        visible: (btn as HTMLElement).offsetWidth > 0 && (btn as HTMLElement).offsetHeight > 0,
+        width: (btn as HTMLElement).offsetWidth,
+        height: (btn as HTMLElement).offsetHeight,
+        computedStyle: window.getComputedStyle(btn as HTMLElement).display
+      })));
+    }
+  }, [feeds, activeFeedId]);
+
   // Calculate max scroll position based on last feed at midpoint
   const calculateMaxScroll = useCallback(() => {
     if (!scrollContainerRef.current || !innerContainerRef.current) return null;
@@ -218,8 +232,13 @@ export function FeedRail({
             const isActive = feed.feedId === activeFeedId;
             const isPublicFeed = feed.feedId === 'public';
             
+            // Debug: Log when rendering each feed
+            if (feed.feedId === 'thoughts' || feed.feedId === 'collections') {
+              console.log(`[FeedRail] Rendering feed: ${feed.feedId} (${feed.name})`);
+            }
+            
             return (
-              <div key={feed.feedId} className="relative">
+              <div key={feed.feedId} className="relative" data-debug-feed-id={feed.feedId}>
                 <button
                   ref={isPublicFeed ? pNButtonRef : undefined}
                   data-feed-id={feed.feedId}
