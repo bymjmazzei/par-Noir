@@ -5,16 +5,14 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Search, Filter, File, Globe, Tag, Calendar, User, Download, RefreshCw, Lock, Unlock, Image as ImageIcon, X, Grid } from 'lucide-react';
+import { Search, Filter, User, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import { LockButtonWithContext } from './components/LockButtonWithContext';
 import { getMetadataIndexService } from './services/metadata/MetadataIndexService';
-import { PublicMetadata, MetadataFilters, IndexedFile, Feed } from './types/aggregator';
+import { MetadataFilters, IndexedFile, Feed } from './types/aggregator';
 import { decryptWithToken, ShareToken } from './utils/tokenDecryption';
 import { useUserState } from './contexts/UserStateContext';
 import { FeedRail, buildFeedRailItems } from './components/FeedRail';
-import { PNConnect } from './components/PNConnect';
 import { FeedBrowser } from './components/FeedBrowser';
-import { CreatorIndex } from './components/CreatorIndex';
 import { FeedEngagementSidebar } from './components/FeedEngagementSidebar';
 import { SettingsPanel } from './components/SettingsPanel';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
@@ -31,31 +29,27 @@ import { NotificationBell } from './components/NotificationBell';
 import { ToastContainer } from './components/Toast';
 import { EditFileModal } from './components/EditFileModal';
 import { MePageTabsRail } from './components/MePageTabsRail';
-import { Settings, Upload, Plus, Home, MessageSquare, Grid } from 'lucide-react';
+import { Settings, Upload, Plus } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
-import { useSwipeGesture } from './hooks/useSwipeGesture';
-import { useVerticalSwipe } from './hooks/useVerticalSwipe';
 import { useHorizontalSwipe } from './hooks/useHorizontalSwipe';
 import { useViewportHeightCSS } from './hooks/useViewportHeight';
 import { useFeedNavigation } from './hooks/useFeedNavigation';
 import { useEngagement } from './hooks/useEngagement';
 import { useToast } from './hooks/useToast';
 import { useURLParams } from './hooks/useURLParams';
-import { loadFeedViewedTimestamps, markFeedAsViewed, hasNewContent } from './utils/feedUtils';
+import { loadFeedViewedTimestamps, markFeedAsViewed } from './utils/feedUtils';
 import { FeedService } from './services/feedService';
 import { PNOAuthService } from './services/pnOAuthService';
 import { FullScreenFeed } from './components/FullScreenFeed';
-import { FeedNavBar } from './components/FeedNavBar';
 import { BottomNav } from './components/BottomNav';
 import { useAppContext } from './hooks/useAppContext';
 import { DiscoveryPage } from './components/DiscoveryPage';
 import { SearchResults } from './components/SearchResults';
-import { CreatorFeedPage } from './components/CreatorFeedPage';
 import { Inbox } from './components/Inbox';
 import { saveToFeed, getSavedFeed } from './services/savedFeedService';
 import { getUserProfile } from './services/profileService';
 import { isNSFWContent } from './constants/contentRatings';
-import { calculateMediaScaling, getContainerDimensions, type MediaDimensions } from './utils/mediaScaling';
+import { calculateMediaScaling, type MediaDimensions } from './utils/mediaScaling';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -162,6 +156,7 @@ function App() {
               // Add delay to avoid rate limiting when OAuth window opens
               setTimeout(async () => {
                 try {
+                  if (!pnIdentifier) return;
                   const profile = await getUserProfile(pnIdentifier);
                   if (profile.displayName) {
                     updateDisplayName(profile.displayName);
@@ -204,6 +199,7 @@ function App() {
               // Add delay to avoid rate limiting when OAuth window opens
               setTimeout(async () => {
                 try {
+                  if (!userInfo.pn_identifier) return;
                   const profile = await getUserProfile(userInfo.pn_identifier);
                   if (profile.displayName) {
                     updateDisplayName(profile.displayName);
@@ -705,7 +701,7 @@ function App() {
   const isCollection = (file: IndexedFile): boolean => {
     const collectionData = file.metadata?.collection;
     return file.metadata.fileType === 'collection' && 
-           collectionData?.collectionFileIds && 
+           !!collectionData?.collectionFileIds && 
            Array.isArray(collectionData.collectionFileIds) &&
            collectionData.collectionFileIds.length > 0;
   };
@@ -2023,6 +2019,7 @@ function App() {
       setIsLoadingSavedFiles(true);
       (async () => {
         try {
+          if (!userState.pnIdentifier) return;
           const savedFeed = await getSavedFeed(userState.pnIdentifier);
           if (savedFeed && savedFeed.fileIds.length > 0) {
             setSavedFeedFileIds(savedFeed.fileIds);
@@ -2124,10 +2121,10 @@ function App() {
           const engagementData = loadEngagementData();
           
           // Get file IDs that user has liked
-          const likedFileIds = Array.from(engagementData.likes);
+          const likedFileIds = Array.from(engagementData.likes) as string[];
           
           // Get file IDs that user has commented on
-          const commentedFileIds = Array.from(engagementData.comments.keys());
+          const commentedFileIds = Array.from(engagementData.comments.keys()) as string[];
           
           if (process.env.NODE_ENV === 'development') {
             console.log(`[Me Page] Engagement: ${likedFileIds.length} liked, ${commentedFileIds.length} commented`);
@@ -2348,6 +2345,7 @@ function App() {
     if (viewingCreatorId === userState.pnIdentifier && userState.pnIdentifier) {
       (async () => {
         try {
+          if (!userState.pnIdentifier) return;
           const { getConnections } = await import('./services/connectionService');
           console.log(`[App] Loading connections for: ${userState.pnIdentifier}`);
           const connections = await getConnections(userState.pnIdentifier);
@@ -2966,7 +2964,7 @@ function App() {
 
   const handleCreatorClick = useCallback((creatorId: string) => {
     setViewingCreatorId(creatorId);
-    setViewMode('profile');
+    setViewMode('feed');
     setMePageTab('all');
   }, []);
 
@@ -2999,9 +2997,12 @@ function App() {
           ...indexedFile.metadata,
           engagement: {
             ...indexedFile.metadata.engagement,
+            views: indexedFile.metadata.engagement?.views ?? 0,
             likes: currentLikeCount,
             comments: currentCommentCount,
-            shares: currentShareCount
+            shares: currentShareCount,
+            saves: indexedFile.metadata.engagement?.saves ?? 0,
+            lastUpdated: indexedFile.metadata.engagement?.lastUpdated ?? new Date().toISOString()
           }
         }
       };
@@ -3133,7 +3134,7 @@ function App() {
                   refreshToken: tokenResponse.refresh_token,
                   expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
                   did: userInfo.did,
-                  pnName: userInfo.pn_name,
+                  pnName: userInfo.nickname,
                   pnIdentifier: userInfo.pn_identifier, // Store pN identifier from OAuth
                   publicKey: userInfo.public_key, // Store publicKey from OAuth for file decryption
                   feedTokens: feedTokens // Store feed tokens for context switching
@@ -3443,15 +3444,21 @@ function App() {
               if (notification.data?.file_id) {
                 setViewMode('feed');
                 setTimeout(() => {
-                  const element = document.querySelector(`[data-file-id="${notification.data.file_id}"]`);
-                  if (element && feedScrollRef.current) {
-                    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  const fileId = notification.data?.file_id;
+                  if (fileId) {
+                    const element = document.querySelector(`[data-file-id="${fileId}"]`);
+                    if (element && feedScrollRef.current) {
+                      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
                   }
                 }, 100);
               } else if (notification.data?.feed_id) {
-                const feed = feeds.find(f => f.feedId === notification.data.feed_id);
-                if (feed) {
-                  setViewingBrandedFeed(feed);
+                const feedId = notification.data.feed_id;
+                if (feedId) {
+                  const feed = feeds.find(f => f.feedId === feedId);
+                  if (feed) {
+                    setViewingBrandedFeed(feed);
+                  }
                 }
               }
             }}
@@ -3493,7 +3500,7 @@ function App() {
             // Navigate to creator's profile
             // The useEffect will handle finding the file index in filteredMeFiles
             setViewingCreatorId(creatorId);
-            setViewMode('profile');
+            setViewMode('feed');
             setMePageTab('all'); // Default to all tab - useEffect will adjust if needed
           }}
         />
@@ -3627,6 +3634,7 @@ function App() {
                         Math.min(30000 * Math.pow(2, savedFeedErrorRef.current.count), 300000)) {
                       // Only refresh if not in backoff period
                       try {
+                        if (!userState.pnIdentifier) return;
                         const savedFeed = await getSavedFeed(userState.pnIdentifier);
                         if (savedFeed && savedFeed.fileIds.length > 0) {
                           setSavedFeedFileIds(savedFeed.fileIds);
@@ -3686,8 +3694,22 @@ function App() {
                       file={{
                         metadata: {
                           fileId: `me-page-empty-${emptyStateCreatorId}`,
-                          creatorId: emptyStateCreatorId,
+                          backend: 'empty-state',
+                          backendFileId: `me-page-empty-${emptyStateCreatorId}`,
+                          uploadDate: new Date().toISOString(),
+                          fileType: 'other',
+                          isPublic: false,
                           name: emptyStateName,
+                          creatorId: emptyStateCreatorId,
+                          creator: {
+                            "@type": "Person",
+                            "@id": emptyStateCreatorId,
+                            identifier: {
+                              "@type": "PropertyValue",
+                              name: "DID",
+                              value: emptyStateCreatorId
+                            }
+                          },
                           engagement: {
                             views: 0,
                             likes: 0,
@@ -3717,7 +3739,6 @@ function App() {
                         setShowInbox(true);
                         setActiveBottomTab('messages');
                       }}
-                      indexedFiles={[]}
                     />
                   </div>
                 </div>
@@ -3879,15 +3900,21 @@ function App() {
                           if (notification.data?.file_id) {
                             setViewMode('feed');
                             setTimeout(() => {
-                              const element = document.querySelector(`[data-file-id="${notification.data.file_id}"]`);
-                              if (element && feedScrollRef.current) {
-                                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              const fileId = notification.data?.file_id;
+                              if (fileId) {
+                                const element = document.querySelector(`[data-file-id="${fileId}"]`);
+                                if (element && feedScrollRef.current) {
+                                  element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                }
                               }
                             }, 100);
                           } else if (notification.data?.feed_id) {
-                            const feed = feeds.find(f => f.feedId === notification.data.feed_id);
-                            if (feed) {
-                              setViewingBrandedFeed(feed);
+                            const feedId = notification.data.feed_id;
+                            if (feedId) {
+                              const feed = feeds.find(f => f.feedId === feedId);
+                              if (feed) {
+                                setViewingBrandedFeed(feed);
+                              }
                             }
                           }
                         }}
@@ -3965,7 +3992,7 @@ function App() {
               onCreatorClick={(creatorId) => {
                 console.log('🔍 onCreatorClick called with:', creatorId);
                 setViewingCreatorId(creatorId);
-                setViewMode('profile');
+                setViewMode('feed');
                 setMePageTab('all');
               }}
             />
@@ -4041,7 +4068,6 @@ function App() {
                   setShowInbox(true);
                   setActiveBottomTab('messages');
                 }}
-                indexedFiles={stableIndexedFiles}
               />
               {/* SCALABILITY: Infinite scroll sentinel - Intersection Observer watches this */}
               {viewMode === 'feed' && hasMore && (
