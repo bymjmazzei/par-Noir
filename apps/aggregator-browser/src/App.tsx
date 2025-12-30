@@ -663,10 +663,17 @@ function App() {
       return false; // Thumbnail files are images, not thoughts
     }
     
+    // CRITICAL: If a file has mainFileId, it's a thumbnail - not a thought
+    // (The main file would be the thought, not the thumbnail)
+    if (file.metadata.mainFileId) {
+      return false; // Files with mainFileId are thumbnails, not thoughts
+    }
+    
     // Normalize fileType first to ensure correct detection
     const normalizedFileType = normalizeFileType(file);
     
     // Check for textPost/thought data in multiple locations (same as FullScreenFeed)
+    // NOTE: Thumbnails have textPost/thought data removed by metadata service, so this check is safe
     const hasTextPostData = !!(file.metadata as any).textPost || 
                            !!(file.metadata as any).thought ||
                            !!(file as any).textPost ||
@@ -699,24 +706,81 @@ function App() {
 
   // Helper function to check if a file is a collection
   const isCollection = (file: IndexedFile): boolean => {
+    // Check fileType first
+    const fileType = file.metadata.fileType;
     const collectionData = file.metadata?.collection;
-    return file.metadata.fileType === 'collection' && 
-           !!collectionData?.collectionFileIds && 
-           Array.isArray(collectionData.collectionFileIds) &&
-           collectionData.collectionFileIds.length > 0;
+    
+    // A file is a collection if:
+    // 1. It has fileType 'collection' AND has collection data with fileIds
+    // 2. OR it has collectionFileIds even if fileType isn't explicitly 'collection' (backward compatibility)
+    const hasCollectionData = collectionData?.collectionFileIds && 
+                              Array.isArray(collectionData.collectionFileIds) && 
+                              collectionData.collectionFileIds.length > 0;
+    
+    if (fileType === 'collection' && hasCollectionData) {
+      return true;
+    }
+    
+    // Backward compatibility: check if file has collection data even if fileType isn't set
+    if (hasCollectionData) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[App] Detected collection by data (fileType: ${fileType}):`, {
+          fileId: file.metadata.fileId,
+          fileType,
+          collectionFileIdsCount: collectionData.collectionFileIds.length
+        });
+      }
+      return true;
+    }
+    
+    return false;
   };
 
   // Helper function to check if a file is media (image or video) - MUST be defined before filteredFilesByFeed
   const isMedia = (file: IndexedFile): boolean => {
+    // CRITICAL: Exclude collections - they're not media
+    if (isCollection(file)) {
+      return false;
+    }
+    
     // Check if it's a thought first - if so, it's not media
     const thoughtCheck = isThought(file);
     if (thoughtCheck) {
       return false; // Thoughts are not media
     }
     
+    const fileName = file.metadata.name || file.metadata.title || '';
+    
+    // CRITICAL: Exclude thought thumbnail files (files starting with thumb_thought-)
+    // These are PNG images but they're thumbnails of thoughts, not actual media
+    const isThoughtThumbnail = fileName.toLowerCase().startsWith('thumb_thought-');
+    if (isThoughtThumbnail) {
+      return false; // Thought thumbnails are not media
+    }
+    
+    // CRITICAL: Exclude any thumbnail files that have mainFileId pointing to a thought
+    // If a file has mainFileId, it's a thumbnail - try to find the main file
+    const mainFileId = file.metadata.mainFileId;
+    if (mainFileId) {
+      // This is a thumbnail file - try to find the main file to check its type
+      const mainFile = indexedFiles.find(f => f.metadata.fileId === mainFileId);
+      if (mainFile) {
+        // Check if the main file is a thought
+        if (isThought(mainFile)) {
+          return false; // This thumbnail belongs to a thought, so it's not media
+        }
+      } else {
+        // Main file not found in indexedFiles - check filename pattern
+        // If the thumbnail name suggests it's for a thought, exclude it
+        const thumbNameWithoutPrefix = fileName.replace(/^thumb_/i, '');
+        if (/^thought-\d+\.(thought|png)/i.test(thumbNameWithoutPrefix)) {
+          return false; // This thumbnail is for a thought file
+        }
+      }
+    }
+    
     // Normalize fileType based on extension - this fixes 'other' types
     const normalizedFileType = normalizeFileType(file);
-    const fileName = file.metadata.name || file.metadata.title || '';
     
     // Check for images using normalized fileType
     const isImage = normalizedFileType === 'image' || 
@@ -737,7 +801,8 @@ function App() {
         fileName,
         isThought: thoughtCheck,
         isImage,
-        isVideo
+        isVideo,
+        hasMainFileId: !!mainFileId
       });
     }
     
