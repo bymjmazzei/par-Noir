@@ -32,7 +32,7 @@ export function getDatabasePool(): Pool {
       ssl: requiresSSL ? { rejectUnauthorized: false } : false,
       max: 20, // Maximum number of clients in the pool
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000, // Increased to 10 seconds for Railway network latency
+      connectionTimeoutMillis: 30000, // Increased to 30 seconds for Railway network latency
     };
 
     pool = new Pool(config);

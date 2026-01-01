@@ -23,6 +23,7 @@ export async function initializeCache(): Promise<void> {
     redisClient = createClient({
       url: redisUrl,
       socket: {
+        connectTimeout: 30000, // 30 seconds for Railway network latency
         reconnectStrategy: (retries) => {
           if (retries > 10) {
             console.error('❌ [Cache] Redis reconnection failed after 10 attempts');
