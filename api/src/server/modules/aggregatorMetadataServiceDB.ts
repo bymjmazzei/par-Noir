@@ -97,6 +97,24 @@ export class AggregatorMetadataServiceDB {
       validatedFileType = 'text';
     }
 
+    // Determine contentClass if not already set
+    let validatedContentClass = (metadata as any).contentClass;
+    if (!validatedContentClass) {
+      const { determineContentClass } = await import('../utils/fileTypeUtils');
+      validatedContentClass = determineContentClass({
+        fileType: validatedFileType,
+        collection: (metadata as any).collection,
+        textPost: (metadata as any).textPost,
+        thought: (metadata as any).thought,
+        isThoughtThumbnail: (metadata as any).isThoughtThumbnail,
+        isPartOfCollection: (metadata as any).isPartOfCollection
+      });
+      // Log if we had to determine it (helps debug missing contentClass issues)
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[AggregatorMetadataServiceDB] Determined contentClass '${validatedContentClass}' for file ${metadata.fileId} (was missing)`);
+      }
+    }
+
     // Enhance metadata structure - preserve isPublic value
     const validatedMetadata: PublicMetadata = {
       ...metadata,
@@ -106,6 +124,7 @@ export class AggregatorMetadataServiceDB {
       name: metadata.name || metadata.title || metadata.fileId,
       uploadDate: metadata.uploadDate || new Date().toISOString(),
       fileType: validatedFileType,
+      contentClass: validatedContentClass,
       // Ensure @context is always an array
       "@context": Array.isArray(metadata["@context"]) 
         ? metadata["@context"] 
@@ -165,6 +184,13 @@ export class AggregatorMetadataServiceDB {
             updateValues.push(JSON.stringify(validatedMetadata.fileType));
             paramIndex++;
           }
+          // Always update contentClass if it's missing from existing metadata (backfill for existing files)
+          const existingContentClass = existingMetadata?.contentClass;
+          if (!existingContentClass && validatedContentClass) {
+            updateFields.push(`metadata = jsonb_set(metadata, '{contentClass}', $${paramIndex}::jsonb, true)`);
+            updateValues.push(JSON.stringify(validatedContentClass));
+            paramIndex++;
+          }
           if ((metadata as any).feedIds !== undefined) {
             updateFields.push(`metadata = jsonb_set(metadata, '{feedIds}', $${paramIndex}::jsonb, true)`);
             updateValues.push(JSON.stringify((metadata as any).feedIds || []));
@@ -209,10 +235,13 @@ export class AggregatorMetadataServiceDB {
       const hasTextPost = !!(validatedMetadata as any).textPost;
       const hasThought = !!(validatedMetadata as any).thought;
       const fileType = validatedMetadata.fileType;
+      const contentClass = (validatedMetadata as any).contentClass;
       console.log(`✅ Added public metadata for file: ${validatedMetadata.fileId} (${displayTitle}) by ${authorDisplay}`, {
         fileType,
+        contentClass,
         hasTextPost,
         hasThought,
+        isThoughtThumbnail: !!(validatedMetadata as any).isThoughtThumbnail,
         textPostKeys: hasTextPost ? Object.keys((validatedMetadata as any).textPost || {}) : [],
         thoughtKeys: hasThought ? Object.keys((validatedMetadata as any).thought || {}) : []
       });
