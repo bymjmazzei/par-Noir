@@ -35,6 +35,9 @@ export interface UserPreferences {
   
   // Curated feed preferences (applies to all public feeds)
   curatedFeedPreferences?: CuratedFeedPreferences;
+  
+  // Me page sort order
+  mePageSortOrder?: 'time' | 'recommended' | 'most_viewed'; // Default: 'recommended'
 }
 
 export interface UserState {
@@ -69,6 +72,7 @@ interface UserStateContextType {
   setUserDisplayName: (creatorId: string, displayName: string) => void;
   getDisplayName: (creatorId: string, nickname?: string) => string;
   updateCuratedFeedPreferences: (preferences: CuratedFeedPreferences) => Promise<void>;
+  updateMePageSortOrder: (sortOrder: 'time' | 'recommended' | 'most_viewed') => Promise<void>;
 }
 
 const defaultPreferences: UserPreferences = {
@@ -135,6 +139,13 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
               sortOrder: 'recommended',
               connectionFilter: 'all'
             }
+          };
+        }
+        // Ensure mePageSortOrder exists for backward compatibility
+        if (parsed.preferences?.mePageSortOrder === undefined) {
+          parsed.preferences = {
+            ...parsed.preferences,
+            mePageSortOrder: 'recommended'
           };
         }
         // Migrate old rating preferences to new NSFW system
@@ -222,7 +233,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
                 ...(data.preferences.hasAgeZKP !== undefined && { hasAgeZKP: data.preferences.hasAgeZKP }),
                 ...(data.preferences.isOver18 !== undefined && { isOver18: data.preferences.isOver18 }),
                 ...(data.preferences.showNSFW !== undefined && { showNSFW: data.preferences.showNSFW }),
-                ...(data.preferences.curatedFeedPreferences !== undefined && { curatedFeedPreferences: data.preferences.curatedFeedPreferences })
+                ...(data.preferences.curatedFeedPreferences !== undefined && { curatedFeedPreferences: data.preferences.curatedFeedPreferences }),
+                ...(data.preferences.mePageSortOrder !== undefined && { mePageSortOrder: data.preferences.mePageSortOrder })
               };
               
               console.log('Loaded preferences from Google Drive:', {
@@ -941,6 +953,51 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateMePageSortOrder = async (sortOrder: 'time' | 'recommended' | 'most_viewed') => {
+    // Update local state immediately
+    setUserState(prev => ({
+      ...prev,
+      preferences: {
+        ...prev.preferences,
+        mePageSortOrder: sortOrder
+      }
+    }));
+
+    // Save to Google Drive if user is unlocked
+    if (userState.isUnlocked && userState.pnIdentifier) {
+      try {
+        const { PNOAuthService } = await import('../services/pnOAuthService');
+        const session = PNOAuthService.loadSession();
+        if (!session?.accessToken) {
+          console.warn('No access token, cannot save me page sort order to Google Drive');
+          return;
+        }
+
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.accessToken}`
+          },
+          body: JSON.stringify({
+            mePageSortOrder: sortOrder
+          })
+        });
+
+        if (response.ok) {
+          console.log('Successfully saved me page sort order to Google Drive');
+        } else if (response.status === 404) {
+          console.warn('Preferences endpoint not available yet, keeping local state only');
+        } else {
+          console.warn('Failed to save me page sort order to Google Drive:', response.status);
+        }
+      } catch (error: any) {
+        console.warn('Could not save me page sort order to Google Drive:', error);
+      }
+    }
+  };
+
   return (
     <UserStateContext.Provider
       value={{
@@ -968,7 +1025,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         updateProfileImageFileId,
         setUserDisplayName,
         getDisplayName,
-        updateCuratedFeedPreferences
+        updateCuratedFeedPreferences,
+        updateMePageSortOrder
       }}
     >
       {children}

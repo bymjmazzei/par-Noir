@@ -3088,9 +3088,46 @@ function App() {
       }
     }
     
+    // Apply sorting based on mePageSortOrder preference (only for 'all' tab when unlocked)
+    if (mePageTab === 'all' && userState.isUnlocked) {
+      const sortOrder = userState.preferences.mePageSortOrder || 'recommended';
+      
+      if (sortOrder === 'time') {
+        // Sort by upload date (newest first)
+        filtered = [...filtered].sort((a, b) => {
+          const dateA = a.metadata.uploadDate ? new Date(a.metadata.uploadDate).getTime() : 0;
+          const dateB = b.metadata.uploadDate ? new Date(b.metadata.uploadDate).getTime() : 0;
+          return dateB - dateA; // Descending order (newest first)
+        });
+      } else if (sortOrder === 'most_viewed') {
+        // Sort by view count (most viewed first)
+        filtered = [...filtered].sort((a, b) => {
+          const viewsA = a.metadata.engagement?.views || 0;
+          const viewsB = b.metadata.engagement?.views || 0;
+          return viewsB - viewsA; // Descending order (most viewed first)
+        });
+      } else {
+        // Recommended: use recommendation score (already calculated)
+        // If recommendationScore is not available, fall back to engagement metrics
+        filtered = [...filtered].sort((a, b) => {
+          const scoreA = (a.metadata as any).recommendationScore ?? 
+            ((a.metadata.engagement?.likes || 0) + 
+             (a.metadata.engagement?.comments || 0) + 
+             (a.metadata.engagement?.shares || 0) +
+             (a.metadata.engagement?.views || 0) * 0.1); // Weight views less than interactions
+          const scoreB = (b.metadata as any).recommendationScore ?? 
+            ((b.metadata.engagement?.likes || 0) + 
+             (b.metadata.engagement?.comments || 0) + 
+             (b.metadata.engagement?.shares || 0) +
+             (b.metadata.engagement?.views || 0) * 0.1);
+          return scoreB - scoreA; // Descending order (highest first)
+        });
+      }
+    }
+    
     // Don't inject cover into feed array - it will be shown as empty state instead
     return filtered;
-  }, [isOwnIndex, mePageTab, creatorMediaFiles, creatorThoughtsFiles, creatorCollectionsFiles, userLikedFiles, userCommentedFiles, userSharedFiles, savedFiles, connectionsFiles, viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId, indexedFilesMap, creatorFiles]);
+  }, [isOwnIndex, mePageTab, creatorMediaFiles, creatorThoughtsFiles, creatorCollectionsFiles, userLikedFiles, userCommentedFiles, userSharedFiles, savedFiles, connectionsFiles, viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId, indexedFilesMap, creatorFiles, userState.isUnlocked, userState.preferences.mePageSortOrder]);
   
   // Only log when the count actually changes - use refs to track all values to prevent unnecessary re-runs
   const prevFilteredCountRef = useRef<number>(-1);

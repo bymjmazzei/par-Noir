@@ -38,6 +38,7 @@ export interface UserPreferences {
   userDisplayNames?: Record<string, string>;
   tagPreferences?: UserTagPreference[];
   curatedFeedPreferences?: CuratedFeedPreferences;
+  mePageSortOrder?: 'time' | 'recommended' | 'most_viewed'; // Default: 'recommended'
 }
 
 export class PreferencesService {
