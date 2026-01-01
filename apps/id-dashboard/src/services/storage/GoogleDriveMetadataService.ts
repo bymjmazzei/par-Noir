@@ -812,11 +812,68 @@ export class GoogleDriveMetadataService {
       const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnFolderId);
       console.log('Metadata folder ID:', metadataFolderId);
 
+      // Determine contentClass from metadata
+      let contentClass = fileMetadata.contentClass;
+      if (!contentClass) {
+        // Determine from metadata content
+        if (fileMetadata.collection?.collectionFileIds?.length) {
+          contentClass = 'collection';
+        } else if (fileMetadata.textPost || fileMetadata.thought || fileMetadata.isThoughtThumbnail) {
+          contentClass = 'thought';
+        } else {
+          contentClass = 'media';
+        }
+      }
+
+      // Get or create content type subfolder
+      const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass; // Map 'thought' to 'thoughts' folder
+      const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const contentTypeFolderResponse = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id,name)&pageSize=1`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        }
+      );
+
+      let contentTypeFolderId: string;
+      if (contentTypeFolderResponse.ok) {
+        const contentTypeFolderData = await contentTypeFolderResponse.json();
+        if (contentTypeFolderData.files && contentTypeFolderData.files.length > 0) {
+          contentTypeFolderId = contentTypeFolderData.files[0].id;
+        } else {
+          // Create subfolder
+          const createFolderResponse = await fetch(
+            'https://www.googleapis.com/drive/v3/files',
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: contentTypeFolderName,
+                mimeType: 'application/vnd.google-apps.folder',
+                parents: [metadataFolderId]
+              })
+            }
+          );
+          if (!createFolderResponse.ok) {
+            throw new Error('Failed to create content type subfolder');
+          }
+          const folderData = await createFolderResponse.json();
+          contentTypeFolderId = folderData.id;
+        }
+      } else {
+        throw new Error('Failed to search for content type subfolder');
+      }
+
       const metadataFileName = `${fileMetadata.googleDriveFileId}.metadata.json`;
       
-      // Check if metadata file already exists
+      // Check if metadata file already exists in the subfolder
       const searchResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=name='${encodeURIComponent(metadataFileName)}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
+        `https://www.googleapis.com/drive/v3/files?q=name='${encodeURIComponent(metadataFileName)}' and '${contentTypeFolderId}' in parents and trashed=false&fields=files(id)`,
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`
@@ -907,7 +964,7 @@ export class GoogleDriveMetadataService {
         const formData = new FormData();
         formData.append('metadata', new Blob([JSON.stringify({
           name: metadataFileName,
-          parents: [metadataFolderId]
+          parents: [contentTypeFolderId]
         })], { type: 'application/json' }));
         formData.append('file', metadataBlob);
 

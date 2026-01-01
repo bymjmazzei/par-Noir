@@ -1379,12 +1379,18 @@ class ProductionServer {
         if (debug) {
           // Debug mode: return additional info
           const db = (await import('./server/utils/database')).getDatabasePool();
-          const allFiles = await db.query(`
-            SELECT file_id, metadata->>'isPublic' as is_public, metadata->>'name' as name, updated_at
-            FROM aggregator_metadata
-            ORDER BY updated_at DESC
-            LIMIT 100
-          `);
+          // Query all three tables for debug info
+          const allTables = ['aggregator_media', 'aggregator_thoughts', 'aggregator_collections'];
+          const debugQueries = allTables.map(table =>
+            db.query(`
+              SELECT file_id, metadata->>'isPublic' as is_public, metadata->>'name' as name, updated_at, '${table}' as table_name
+              FROM ${table}
+              ORDER BY updated_at DESC
+              LIMIT 100
+            `)
+          );
+          const debugResults = await Promise.all(debugQueries);
+          const allFiles = { rows: debugResults.flatMap(r => r.rows) };
           
           return res.json({
             ...response,

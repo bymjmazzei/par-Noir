@@ -22,6 +22,29 @@ export class AggregatorMetadataServiceDB {
   }
 
   /**
+   * Get table name for a given content class
+   */
+  private getTableNameForContentClass(contentClass: 'media' | 'thought' | 'collection'): string {
+    switch (contentClass) {
+      case 'media':
+        return 'aggregator_media';
+      case 'thought':
+        return 'aggregator_thoughts';
+      case 'collection':
+        return 'aggregator_collections';
+      default:
+        throw new Error(`Unknown contentClass: ${contentClass}`);
+    }
+  }
+
+  /**
+   * Get all content type table names
+   */
+  private getAllContentTypeTables(): string[] {
+    return ['aggregator_media', 'aggregator_thoughts', 'aggregator_collections'];
+  }
+
+  /**
    * Submit public metadata to central index
    * Validates structure before adding
    */
@@ -33,16 +56,44 @@ export class AggregatorMetadataServiceDB {
 
     const db = getDatabasePool();
 
-    // CRITICAL: Check existing metadata to preserve isPublic
-    const existing = await db.query(
-      'SELECT metadata, pn_identifier FROM aggregator_metadata WHERE file_id = $1',
+    // Determine contentClass early to know which table to query/update
+    let validatedContentClass = (metadata as any).contentClass;
+    if (!validatedContentClass) {
+      const { determineContentClass } = await import('../utils/fileTypeUtils');
+      validatedContentClass = determineContentClass({
+        fileType: metadata.fileType,
+        collection: (metadata as any).collection,
+        textPost: (metadata as any).textPost,
+        thought: (metadata as any).thought,
+        isThoughtThumbnail: (metadata as any).isThoughtThumbnail,
+        isPartOfCollection: (metadata as any).isPartOfCollection
+      });
+    }
+
+    // Check existing metadata in all tables to find where it currently exists
+    const allTables = this.getAllContentTypeTables();
+    let existingRow: any = null;
+    let existingTable: string | null = null;
+    let existingMetadata: any = null;
+    let existingIsPublic: any = null;
+    let existingPnIdentifier: string | null = null;
+    let existingContentClass: string | null = null;
+
+    for (const table of allTables) {
+      const result = await db.query(
+        `SELECT metadata, pn_identifier FROM ${table} WHERE file_id = $1`,
       [metadata.fileId]
     );
-
-    const existingRow = existing.rows[0];
-    const existingMetadata = existingRow?.metadata;
-    const existingIsPublic = existingMetadata?.isPublic;
-    const existingPnIdentifier = existingRow?.pn_identifier;
+      if (result.rows.length > 0) {
+        existingRow = result.rows[0];
+        existingTable = table;
+        existingMetadata = existingRow.metadata;
+        existingIsPublic = existingMetadata?.isPublic;
+        existingPnIdentifier = existingRow.pn_identifier;
+        existingContentClass = existingMetadata?.contentClass;
+        break;
+      }
+    }
 
     // OWNERSHIP VERIFICATION: If file exists and isPublic is being changed, verify ownership
     if (existingMetadata && metadata.isPublic !== undefined) {
@@ -97,9 +148,8 @@ export class AggregatorMetadataServiceDB {
       validatedFileType = 'text';
     }
 
-    // Determine contentClass if not already set
-    let validatedContentClass = (metadata as any).contentClass;
-    if (!validatedContentClass) {
+    // Re-determine contentClass after fileType validation (in case fileType changed)
+    if (!validatedContentClass || validatedFileType !== metadata.fileType) {
       const { determineContentClass } = await import('../utils/fileTypeUtils');
       validatedContentClass = determineContentClass({
         fileType: validatedFileType,
@@ -111,9 +161,15 @@ export class AggregatorMetadataServiceDB {
       });
       // Log if we had to determine it (helps debug missing contentClass issues)
       if (process.env.NODE_ENV === 'development') {
-        console.log(`[AggregatorMetadataServiceDB] Determined contentClass '${validatedContentClass}' for file ${metadata.fileId} (was missing)`);
+        console.log(`[AggregatorMetadataServiceDB] Determined contentClass '${validatedContentClass}' for file ${metadata.fileId}`);
       }
     }
+
+    // Get target table name based on contentClass
+    const targetTable = this.getTableNameForContentClass(validatedContentClass as 'media' | 'thought' | 'collection');
+    
+    // If contentClass changed, we need to move the row from old table to new table
+    const contentClassChanged = existingTable && existingTable !== targetTable;
 
     // Enhance metadata structure - preserve isPublic value
     const validatedMetadata: PublicMetadata = {
@@ -144,13 +200,19 @@ export class AggregatorMetadataServiceDB {
     };
 
     try {
-      if (existingRow) {
+      // If contentClass changed, delete from old table first
+      if (contentClassChanged && existingTable) {
+        await db.query(`DELETE FROM ${existingTable} WHERE file_id = $1`, [metadata.fileId]);
+        console.log(`[AggregatorMetadataServiceDB] Moved file ${metadata.fileId} from ${existingTable} to ${targetTable} (contentClass changed)`);
+      }
+
+      if (existingRow && !contentClassChanged) {
         // UPDATE: Use jsonb_set to preserve isPublic unless explicitly changing it
         // Only update isPublic if it was explicitly provided in metadata parameter
         if (metadata.isPublic !== undefined) {
           // Explicitly changing isPublic - use jsonb_set to update only that field
           await db.query(
-            `UPDATE aggregator_metadata 
+            `UPDATE ${targetTable} 
              SET metadata = jsonb_set(metadata, '{isPublic}', $1::jsonb, true),
                  pn_identifier = COALESCE($2, pn_identifier),
                  updated_at = NOW()
@@ -205,7 +267,7 @@ export class AggregatorMetadataServiceDB {
             updateValues.push(validatedMetadata.fileId);
             
             await db.query(
-              `UPDATE aggregator_metadata 
+              `UPDATE ${targetTable} 
                SET ${updateFields.join(', ')}
                WHERE file_id = $${paramIndex}`,
               updateValues
@@ -213,7 +275,7 @@ export class AggregatorMetadataServiceDB {
           } else if (pnIdentifier) {
             // Only updating pn_identifier
             await db.query(
-              `UPDATE aggregator_metadata 
+              `UPDATE ${targetTable} 
                SET pn_identifier = $1, updated_at = NOW()
                WHERE file_id = $2`,
               [pnIdentifier, validatedMetadata.fileId]
@@ -221,9 +283,9 @@ export class AggregatorMetadataServiceDB {
           }
         }
       } else {
-        // INSERT: New file
+        // INSERT: New file (or moved from another table)
         await db.query(
-          `INSERT INTO aggregator_metadata (file_id, metadata, pn_identifier, updated_at)
+          `INSERT INTO ${targetTable} (file_id, metadata, pn_identifier, updated_at)
            VALUES ($1, $2, $3, NOW())`,
           [validatedMetadata.fileId, JSON.stringify(validatedMetadata), pnIdentifier]
         );
@@ -277,9 +339,13 @@ export class AggregatorMetadataServiceDB {
         // Try deleting by file_id directly
         await db.query('DELETE FROM feed_posts WHERE file_id = $1', [fileIdOrBackendFileId]);
         
-        // Also try deleting by backendFileId if it's different
+        // Also try deleting by backendFileId if it's different - search all tables
+        const allTables = this.getAllContentTypeTables();
+        let actualFileId: string | null = null;
+        
+        for (const table of allTables) {
         const findResult = await db.query(
-          `SELECT file_id FROM aggregator_metadata 
+            `SELECT file_id FROM ${table} 
            WHERE metadata->>'backendFileId' = $1 
               OR metadata->>'fileId' = $1
            LIMIT 1`,
@@ -287,10 +353,13 @@ export class AggregatorMetadataServiceDB {
         );
         
         if (findResult.rows.length > 0) {
-          const actualFileId = findResult.rows[0].file_id;
-          if (actualFileId !== fileIdOrBackendFileId) {
-            await db.query('DELETE FROM feed_posts WHERE file_id = $1', [actualFileId]);
+            actualFileId = findResult.rows[0].file_id;
+            break;
           }
+        }
+        
+        if (actualFileId && actualFileId !== fileIdOrBackendFileId) {
+          await db.query('DELETE FROM feed_posts WHERE file_id = $1', [actualFileId]);
         }
         
         console.log(`🗑️ [removeMetadata] Attempted to remove file ${fileIdOrBackendFileId} from feed_posts`);
@@ -299,23 +368,33 @@ export class AggregatorMetadataServiceDB {
         console.warn(`⚠️ [removeMetadata] Could not delete from feed_posts (non-critical):`, feedPostsError?.message || feedPostsError);
       }
       
+      // Delete from all three tables
+      const allTables = this.getAllContentTypeTables();
+      let removed = false;
+      
+      for (const table of allTables) {
       // Try to remove by file_id first (most common case)
       let result = await db.query(
-        'DELETE FROM aggregator_metadata WHERE file_id = $1',
+          `DELETE FROM ${table} WHERE file_id = $1`,
         [fileIdOrBackendFileId]
       );
 
-      let removed = (result.rowCount ?? 0) > 0;
+        if ((result.rowCount ?? 0) > 0) {
+          removed = true;
+        }
 
       // If not found by file_id, try to find by backendFileId in metadata JSON
       if (!removed) {
         result = await db.query(
-          `DELETE FROM aggregator_metadata 
+            `DELETE FROM ${table} 
            WHERE metadata->>'backendFileId' = $1 
               OR metadata->>'fileId' = $1`,
           [fileIdOrBackendFileId]
         );
-        removed = (result.rowCount ?? 0) > 0;
+          if ((result.rowCount ?? 0) > 0) {
+            removed = true;
+          }
+        }
       }
 
       if (removed) {
@@ -341,6 +420,138 @@ export class AggregatorMetadataServiceDB {
   }
 
   /**
+   * Build query for a single content type table
+   */
+  private buildTableQuery(
+    tableName: string,
+    filters: {
+    feedId?: string;
+      indexerId?: string;
+    }
+  ): { query: string; countQuery: string; params: any[] } {
+      const joinType = 'LEFT';
+    const params: any[] = [];
+    let paramIndex = 1;
+      
+      let query = `
+        SELECT 
+          am.file_id, 
+          am.metadata, 
+          am.submitted_at, 
+          am.pn_identifier,
+          COALESCE(ARRAY_AGG(DISTINCT fp.feed_id::text) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::text[]) as feed_ids
+      FROM ${tableName} am
+        ${joinType} JOIN feed_posts fp ON am.file_id = fp.file_id
+        WHERE (
+          am.metadata->>'isPublic' = 'true' 
+          OR (am.metadata->>'isPublic')::boolean = true
+          OR am.metadata->'isPublic' = 'true'::jsonb
+        )
+        AND (
+          am.metadata->>'isNSFW' IS NULL 
+          OR am.metadata->>'isNSFW' = 'false'
+          OR am.metadata->>'isNSFW' = 'False'
+          OR am.metadata->>'isNSFW' = 'FALSE'
+          OR (am.metadata->>'isNSFW')::text = 'false'
+        )
+        AND NOT (
+          am.metadata->>'isNSFW' = 'true'
+          OR am.metadata->>'isNSFW' = 'True'
+          OR am.metadata->>'isNSFW' = 'TRUE'
+          OR (am.metadata->>'isNSFW')::text = 'true'
+          OR (am.metadata->'isNSFW')::boolean = true
+        )
+      `;
+      
+    // Add feedId filter if provided
+      if (filters?.feedId) {
+        query += ` AND (
+          fp.feed_id = $${paramIndex}
+          OR (am.metadata->'feedIds' ? $${paramIndex})
+        )`;
+        params.push(filters.feedId);
+        paramIndex++;
+      }
+
+      if (filters?.indexerId) {
+        const idxParam = `$${paramIndex}`;
+        query += ` AND (
+          am.metadata->'indexingPermissions' IS NULL
+          OR am.metadata->'indexingPermissions'->>'mode' IS NULL
+          OR (
+            am.metadata->'indexingPermissions'->>'mode' = 'all'
+            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
+          )
+          OR (
+            am.metadata->'indexingPermissions'->>'mode' = 'custom'
+            AND (COALESCE(am.metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? ${idxParam})
+            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
+          )
+        )`;
+        params.push(filters.indexerId);
+        paramIndex++;
+      }
+
+    query += ` GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier`;
+      query += ` ORDER BY am.updated_at DESC`;
+
+    // Build count query with same params
+      let countQuery = `
+        SELECT COUNT(DISTINCT am.file_id) as count
+      FROM ${tableName} am
+        LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
+        WHERE (
+          am.metadata->>'isPublic' = 'true' 
+          OR (am.metadata->>'isPublic')::boolean = true
+          OR am.metadata->'isPublic' = 'true'::jsonb
+        )
+        AND (
+          am.metadata->>'isNSFW' IS NULL 
+          OR am.metadata->>'isNSFW' = 'false'
+          OR am.metadata->>'isNSFW' = 'False'
+          OR am.metadata->>'isNSFW' = 'FALSE'
+          OR (am.metadata->>'isNSFW')::text = 'false'
+        )
+        AND NOT (
+          am.metadata->>'isNSFW' = 'true'
+          OR am.metadata->>'isNSFW' = 'True'
+          OR am.metadata->>'isNSFW' = 'TRUE'
+          OR (am.metadata->>'isNSFW')::text = 'true'
+          OR (am.metadata->'isNSFW')::boolean = true
+        )
+    `;
+
+    let countParamIndex = 1;
+      if (filters?.feedId) {
+        countQuery += ` AND (
+          fp.feed_id = $${countParamIndex}
+          OR (am.metadata->'feedIds' ? $${countParamIndex})
+        )`;
+        countParamIndex++;
+      }
+      
+      if (filters?.indexerId) {
+      const idxParam = `$${countParamIndex}`;
+        countQuery += ` AND (
+          am.metadata->'indexingPermissions' IS NULL
+          OR am.metadata->'indexingPermissions'->>'mode' IS NULL
+          OR (
+            am.metadata->'indexingPermissions'->>'mode' = 'all'
+          AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
+          )
+          OR (
+            am.metadata->'indexingPermissions'->>'mode' = 'custom'
+          AND (COALESCE(am.metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? ${idxParam})
+          AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
+          )
+        )`;
+        countParamIndex++;
+      }
+      
+    return { query, countQuery, params };
+  }
+
+  /**
    * Get all public metadata with optional filters
    * 
    * IMPORTANT: This is the SOURCE OF TRUTH for the public feed.
@@ -362,335 +573,85 @@ export class AggregatorMetadataServiceDB {
     const db = getDatabasePool();
 
     try {
-      // Always use LEFT JOIN to include public files even if not in feed_posts
-      const joinType = 'LEFT';
-      
-      let query = `
-        SELECT 
-          am.file_id, 
-          am.metadata, 
-          am.submitted_at, 
-          am.pn_identifier,
-          COALESCE(ARRAY_AGG(DISTINCT fp.feed_id::text) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::text[]) as feed_ids
-        FROM aggregator_metadata am
-        ${joinType} JOIN feed_posts fp ON am.file_id = fp.file_id
-        WHERE (
-          am.metadata->>'isPublic' = 'true' 
-          OR (am.metadata->>'isPublic')::boolean = true
-          OR am.metadata->'isPublic' = 'true'::jsonb
-        )
-        AND (
-          am.metadata->>'isNSFW' IS NULL 
-          OR am.metadata->>'isNSFW' = 'false'
-          OR am.metadata->>'isNSFW' = 'False'
-          OR am.metadata->>'isNSFW' = 'FALSE'
-          OR (am.metadata->>'isNSFW')::text = 'false'
-        )
-        AND NOT (
-          am.metadata->>'isNSFW' = 'true'
-          OR am.metadata->>'isNSFW' = 'True'
-          OR am.metadata->>'isNSFW' = 'TRUE'
-          OR (am.metadata->>'isNSFW')::text = 'true'
-          OR (am.metadata->'isNSFW')::boolean = true
-        )
-        -- SIMPLIFIED: Public feed should only filter by isPublic/publicToken and isNSFW
-        -- Files with publicToken are considered public even if isPublic is false
-      `;
       const params: any[] = [];
       let paramIndex = 1;
       
-      // Add feedId filter if provided - check both feed_posts and metadata.feedIds
-      if (filters?.feedId) {
-        query += ` AND (
-          fp.feed_id = $${paramIndex}
-          OR (am.metadata->'feedIds' ? $${paramIndex})
-        )`;
-        params.push(filters.feedId);
-        paramIndex++;
-      }
-
-      // Apply contentClass filter (preferred) or fileType filter (backward compatibility)
+      // Determine which table(s) to query
+      let tablesToQuery: string[];
       if (filters?.contentClass) {
-        query += ` AND am.metadata->>'contentClass' = $${paramIndex}`;
-        params.push(filters.contentClass);
-        paramIndex++;
-      } else if (filters?.fileType) {
-        // Backward compatibility: use fileType if contentClass not provided
-        query += ` AND am.metadata->>'fileType' = $${paramIndex}`;
-        params.push(filters.fileType);
-        paramIndex++;
-      }
-      
-      query += ` GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier`;
-
-      // Note: authorDid filter is applied in JavaScript (same pattern as tags)
-      // This avoids SQL type issues with NULL comparisons
-
-      if (filters?.indexerId) {
-        const idxParam = `$${paramIndex}`;
-        query += ` AND (
-          am.metadata->'indexingPermissions' IS NULL
-          OR am.metadata->'indexingPermissions'->>'mode' IS NULL
-          OR (
-            am.metadata->'indexingPermissions'->>'mode' = 'all'
-            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
-          )
-          OR (
-            am.metadata->'indexingPermissions'->>'mode' = 'custom'
-            AND (COALESCE(am.metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? ${idxParam})
-            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
-          )
-        )`;
-        params.push(filters.indexerId);
-        paramIndex++;
+        // Query specific table
+        tablesToQuery = [this.getTableNameForContentClass(filters.contentClass)];
+      } else {
+        // Query all tables for aggregate feed
+        tablesToQuery = this.getAllContentTypeTables();
       }
 
-      query += ` ORDER BY am.updated_at DESC`;
+      // Build queries for each table
+      const tableQueries = tablesToQuery.map(table => {
+        const { query, countQuery, params: tableParams } = this.buildTableQuery(
+          table,
+          { feedId: filters?.feedId, indexerId: filters?.indexerId }
+        );
+        return { table, query, countQuery, params: tableParams };
+      });
 
-      // SCALABILITY: Add pagination support
+      // Execute queries in parallel
       const limit = filters?.limit || 50;
       const offset = filters?.offset || 0;
       
-      // Get total count before pagination (for pagination info)
-      // Note: This count doesn't include JS filters (tags, authorDid) for performance
-      // Always use LEFT JOIN to match main query
-      let countQuery = `
-        SELECT COUNT(DISTINCT am.file_id) as count
-        FROM aggregator_metadata am
-        LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
-        WHERE (
-          am.metadata->>'isPublic' = 'true' 
-          OR (am.metadata->>'isPublic')::boolean = true
-          OR am.metadata->'isPublic' = 'true'::jsonb
-        )
-        AND (
-          am.metadata->>'isNSFW' IS NULL 
-          OR am.metadata->>'isNSFW' = 'false'
-          OR am.metadata->>'isNSFW' = 'False'
-          OR am.metadata->>'isNSFW' = 'FALSE'
-          OR (am.metadata->>'isNSFW')::text = 'false'
-        )
-        AND NOT (
-          am.metadata->>'isNSFW' = 'true'
-          OR am.metadata->>'isNSFW' = 'True'
-          OR am.metadata->>'isNSFW' = 'TRUE'
-          OR (am.metadata->>'isNSFW')::text = 'true'
-          OR (am.metadata->'isNSFW')::boolean = true
-        )
-        -- SIMPLIFIED: Public feed should only filter by isPublic/publicToken and isNSFW
-        -- Files with publicToken are considered public even if isPublic is false
-      `;
-      const countParams: any[] = [];
-      let countParamIndex = 1;
-      
-      // Apply contentClass filter (preferred) or fileType filter (backward compatibility)
-      if (filters?.contentClass) {
-        countQuery += ` AND am.metadata->>'contentClass' = $${countParamIndex}`;
-        countParams.push(filters.contentClass);
-        countParamIndex++;
-      } else if (filters?.fileType) {
-        // Backward compatibility: use fileType if contentClass not provided
-        countQuery += ` AND am.metadata->>'fileType' = $${countParamIndex}`;
-        countParams.push(filters.fileType);
-        countParamIndex++;
-      }
-      
-      if (filters?.feedId) {
-        countQuery += ` AND (
-          fp.feed_id = $${countParamIndex}
-          OR (am.metadata->'feedIds' ? $${countParamIndex})
-        )`;
-        countParams.push(filters.feedId);
-        countParamIndex++;
-      }
-      
-      if (filters?.indexerId) {
-        countQuery += ` AND (
-          am.metadata->'indexingPermissions' IS NULL
-          OR am.metadata->'indexingPermissions'->>'mode' IS NULL
-          OR (
-            am.metadata->'indexingPermissions'->>'mode' = 'all'
-            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${countParamIndex})
-          )
-          OR (
-            am.metadata->'indexingPermissions'->>'mode' = 'custom'
-            AND (COALESCE(am.metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? $${countParamIndex})
-            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${countParamIndex})
-          )
-        )`;
-        countParams.push(filters.indexerId);
-        countParamIndex++;
-      }
-      
-      const countResult = await db.query(countQuery, countParams);
-      const total = parseInt(countResult.rows[0].count, 10);
+      // Execute queries with pagination (fetch more than needed for proper merging)
+      const queryPromises = tableQueries.map(({ query, params: tableParams }) => {
+        const finalParams = [...tableParams];
+        finalParams.push(limit * 3); // Fetch more to account for merging and sorting
+        finalParams.push(0); // Start from beginning for each table
+        const finalQuery = query + ` LIMIT $${tableParams.length + 1} OFFSET $${tableParams.length + 2}`;
+        return db.query(finalQuery, finalParams);
+      });
 
-      // Add pagination to main query (fetch limit+1 to check hasMore)
-      query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-      params.push(limit + 1); // Fetch one extra to check hasMore
-      params.push(offset);
-      paramIndex += 2;
+      const countPromises = tableQueries.map(({ countQuery, params: tableParams }) => 
+        db.query(countQuery, tableParams)
+      );
 
-      // CRITICAL DEBUG: Log query details
-      console.log(`🔍 [getPublicMetadata] Executing query with filters:`, {
-        fileType: filters?.fileType,
-        feedId: filters?.feedId,
-        limit,
-        offset,
-        queryLength: query.length
-      });
+      const [queryResults, countResults] = await Promise.all([
+        Promise.all(queryPromises),
+        Promise.all(countPromises)
+      ]);
+
+      // Merge results from all tables
+      let allFiles: any[] = [];
+      let total = 0;
       
-      // First, check how many files are in the database total
-      const totalFilesCheck = await db.query(`SELECT COUNT(*) as count FROM aggregator_metadata`);
-      const totalFilesInDB = parseInt(totalFilesCheck.rows[0].count, 10);
-      
-      // Get ALL files to see what their isPublic values actually are
-      const allFilesCheck = await db.query(`
-        SELECT file_id, 
-               metadata->>'isPublic' as is_public, 
-               metadata->'isPublic' as is_public_jsonb,
-               (metadata->>'isPublic')::boolean as is_public_boolean,
-               metadata->>'name' as name, 
-               metadata->>'fileType' as file_type, 
-               metadata->>'publicToken' as public_token,
-               metadata as full_metadata
-        FROM aggregator_metadata 
-        ORDER BY updated_at DESC
-        LIMIT 10
-      `);
-      
-      // Check how many are public
-      const publicFilesCheck = await db.query(`
-        SELECT COUNT(*) as count 
-        FROM aggregator_metadata 
-        WHERE (
-          metadata->>'isPublic' = 'true' 
-          OR (metadata->>'isPublic')::boolean = true
-          OR metadata->'isPublic' = 'true'::jsonb
-        )
-      `);
-      const publicFilesInDB = parseInt(publicFilesCheck.rows[0].count, 10);
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aggregatorMetadataServiceDB.ts:396',message:'All files in database',data:{allFiles:allFilesCheck.rows.map((r:any)=>({fileId:r.file_id,isPublic:r.is_public,name:r.name,fileType:r.file_type,hasPublicToken:!!r.public_token}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
-      
-      // Check how many pass NSFW filter
-      const publicNonNSFWCheck = await db.query(`
-        SELECT COUNT(*) as count 
-        FROM aggregator_metadata 
-        WHERE (
-          metadata->>'isPublic' = 'true' 
-          OR (metadata->>'isPublic')::boolean = true
-          OR metadata->'isPublic' = 'true'::jsonb
-        )
-        AND (
-          metadata->>'isNSFW' IS NULL 
-          OR metadata->>'isNSFW' = 'false'
-          OR metadata->>'isNSFW' = 'False'
-          OR metadata->>'isNSFW' = 'FALSE'
-          OR (metadata->>'isNSFW')::text = 'false'
-        )
-        AND NOT (
-          metadata->>'isNSFW' = 'true'
-          OR metadata->>'isNSFW' = 'True'
-          OR metadata->>'isNSFW' = 'TRUE'
-          OR (metadata->>'isNSFW')::text = 'true'
-          OR (metadata->'isNSFW')::boolean = true
-        )
-      `);
-      const publicNonNSFWInDB = parseInt(publicNonNSFWCheck.rows[0].count, 10);
-      
-      // Get sample of public files to see what they look like
-      const sampleFilesCheck = await db.query(`
-        SELECT file_id, metadata->>'name' as name, metadata->>'fileType' as file_type, 
-               metadata->>'isPublic' as is_public, metadata->>'thumbnailFileId' as thumbnail_file_id,
-               metadata->'textPost' IS NOT NULL as has_text_post,
-               metadata->'thought' IS NOT NULL as has_thought
-        FROM aggregator_metadata 
-        WHERE (
-          metadata->>'isPublic' = 'true' 
-          OR (metadata->>'isPublic')::boolean = true
-          OR metadata->'isPublic' = 'true'::jsonb
-        )
-        ORDER BY updated_at DESC
-        LIMIT 10
-      `);
-      
-      console.log(`🔍 [getPublicMetadata] Database state:`, {
-        totalFilesInDB,
-        publicFilesInDB,
-        publicNonNSFWInDB,
-        allFiles: allFilesCheck.rows.map((r: any) => ({
-          fileId: r.file_id,
-          name: r.name,
-          fileType: r.file_type,
-          isPublic_string: r.is_public,
-          isPublic_jsonb: r.is_public_jsonb,
-          isPublic_boolean: r.is_public_boolean,
-          hasPublicToken: !!r.public_token,
-          fullMetadata: r.full_metadata
-        })),
-        sampleFiles: sampleFilesCheck.rows.map((r: any) => ({
-          fileId: r.file_id,
-          name: r.name,
-          fileType: r.file_type,
-          isPublic: r.is_public,
-          hasThumbnailFileId: !!r.thumbnail_file_id,
-          hasTextPost: r.has_text_post,
-          hasThought: r.has_thought
-        }))
-      });
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aggregatorMetadataServiceDB.ts:468',message:'Executing public metadata query',data:{query:query.substring(0,200),params:params,filters:filters},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-      const result = await db.query(query, params);
-      const hasMore = result.rows.length > limit;
-      const rowsToProcess = result.rows.slice(0, limit); // Only process the requested amount
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aggregatorMetadataServiceDB.ts:472',message:'Query result received',data:{rowsReturned:result.rows.length,rowsToProcess:rowsToProcess.length,hasMore,firstRow:rowsToProcess[0]?{fileId:rowsToProcess[0].file_id,fileType:rowsToProcess[0].metadata?.fileType||null,name:rowsToProcess[0].metadata?.name||null}:null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-      console.log(`🔍 [getPublicMetadata] Query result:`, {
-        rowsReturned: result.rows.length,
-        rowsToProcess: rowsToProcess.length,
-        hasMore
-      });
-      
-      // Check if any NSFW files slipped through the query (should never happen)
-      rowsToProcess.forEach((row: any) => {
-        const metadata = row.metadata || {};
-        const isNSFW = metadata.isNSFW;
-        const isNSFWString = String(isNSFW || '').toLowerCase();
-        const isNSFWValue = isNSFW === true || isNSFWString === 'true';
-        
-        if (isNSFWValue) {
-          console.error(`❌ [getPublicMetadata] NSFW FILE FOUND IN PUBLIC INDEX! File: ${row.file_id} (${metadata.name || 'unnamed'})`);
+      for (let i = 0; i < queryResults.length; i++) {
+        allFiles.push(...queryResults[i].rows);
+        total += parseInt(countResults[i].rows[0]?.count || '0', 10);
+      }
+
+      // Remove duplicates (in case file exists in multiple tables - shouldn't happen but safety check)
+      const uniqueFiles = new Map<string, any>();
+      for (const file of allFiles) {
+        if (!uniqueFiles.has(file.file_id)) {
+          uniqueFiles.set(file.file_id, file);
         }
+      }
+      allFiles = Array.from(uniqueFiles.values());
+
+      // Sort by updated_at descending
+      allFiles.sort((a, b) => {
+        const aTime = new Date(a.metadata?.updated_at || a.submitted_at).getTime();
+        const bTime = new Date(b.metadata?.updated_at || b.submitted_at).getTime();
+        return bTime - aTime;
       });
+
+      // Apply pagination after merging
+      const paginatedFiles = allFiles.slice(offset, offset + limit);
+      const hasMore = allFiles.length > offset + limit;
       
-      let entries: CentralIndexEntry[] = rowsToProcess.map(row => {
+      // Convert to CentralIndexEntry format
+      let entries: CentralIndexEntry[] = paginatedFiles.map(row => {
         const metadata = row.metadata as PublicMetadata & { feedIds?: string[] };
         // Add feedIds to metadata if they exist
         if (row.feed_ids && row.feed_ids.length > 0) {
           metadata.feedIds = row.feed_ids.map((id: string) => id.toString());
-        }
-        
-        // Debug logging for text files to verify textPost/thought are in the response
-        if (metadata.fileType === 'text' || metadata.fileType === 'thought') {
-          const hasTextPost = !!(metadata as any).textPost;
-          const hasThought = !!(metadata as any).thought;
-          if (!hasTextPost && !hasThought) {
-            console.warn(`⚠️ [getPublicMetadata] Text file ${row.file_id} missing textPost/thought fields:`, {
-              fileId: row.file_id,
-              fileType: metadata.fileType,
-              metadataKeys: Object.keys(metadata),
-              hasTextPost,
-              hasThought,
-              description: metadata.description?.substring(0, 50)
-            });
-          }
         }
         
         return {
@@ -722,16 +683,7 @@ export class AggregatorMetadataServiceDB {
         });
       }
 
-      // SIMPLE: Trust the database - if isPublic = true, return it
-      // Files are removed from database when:
-      // 1. User makes file private (PUT updates isPublic = false)
-      // 2. User deletes file (DELETE endpoint removes from database)
-      // 3. User disconnects cloud (handled by disconnect logic)
-      // No need for complex validation - database is source of truth
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aggregatorMetadataServiceDB.ts:554',message:'Returning public metadata entries',data:{entriesCount:entries.length,total,hasMore,limit,offset,sampleEntries:entries.slice(0,3).map(e=>({fileId:e.fileId,fileType:e.metadata?.fileType,name:e.metadata?.name}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-      console.log(`📤 [getPublicMetadata] Returning ${entries.length} files from database (isPublic = true, limit=${limit}, offset=${offset}, hasMore=${hasMore})`);
+      console.log(`📤 [getPublicMetadata] Returning ${entries.length} files (limit=${limit}, offset=${offset}, hasMore=${hasMore}, total=${total})`);
       
       return { files: entries, total, hasMore };
     } catch (error) {
@@ -757,6 +709,12 @@ export class AggregatorMetadataServiceDB {
     const db = getDatabasePool();
 
     try {
+      // Query all three tables in parallel for NSFW content
+      const allTables = this.getAllContentTypeTables();
+      const limit = filters?.limit || 50;
+      const offset = filters?.offset || 0;
+      
+      const queryPromises = allTables.map(table => {
       let query = `
         SELECT 
           am.file_id, 
@@ -764,7 +722,7 @@ export class AggregatorMetadataServiceDB {
           am.submitted_at, 
           am.pn_identifier,
           COALESCE(ARRAY_AGG(DISTINCT fp.feed_id::text) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::text[]) as feed_ids
-        FROM aggregator_metadata am
+          FROM ${table} am
         LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
         WHERE (
           am.metadata->>'isPublic' = 'true' 
@@ -772,7 +730,6 @@ export class AggregatorMetadataServiceDB {
           OR am.metadata->'isPublic' = 'true'::jsonb
         )
         AND am.metadata->>'isNSFW' = 'true'
-        GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier
       `;
       const params: any[] = [];
       let paramIndex = 1;
@@ -803,55 +760,93 @@ export class AggregatorMetadataServiceDB {
         paramIndex++;
       }
 
+        query += ` GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier`;
       query += ` ORDER BY am.updated_at DESC`;
+        query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+        params.push(limit * 3); // Fetch more for merging
+        params.push(0);
 
-      // SCALABILITY: Add pagination support
-      const limit = filters?.limit || 50;
-      const offset = filters?.offset || 0;
+        return { query, params, table };
+      });
       
-      // Get total count before pagination
-      const countQuery = `
+      const countPromises = allTables.map(table => {
+        let countQuery = `
         SELECT COUNT(*) as count
-        FROM aggregator_metadata am
+          FROM ${table} am
         WHERE (
           am.metadata->>'isPublic' = 'true' 
           OR (am.metadata->>'isPublic')::boolean = true
           OR am.metadata->'isPublic' = 'true'::jsonb
         )
         AND am.metadata->>'isNSFW' = 'true'
-        ${filters?.fileType ? `AND am.metadata->>'fileType' = $1` : ''}
-        ${filters?.indexerId ? `AND (
+        `;
+        const params: any[] = [];
+        let paramIndex = 1;
+        
+        if (filters?.fileType) {
+          countQuery += ` AND am.metadata->>'fileType' = $${paramIndex}`;
+          params.push(filters.fileType);
+          paramIndex++;
+        }
+        
+        if (filters?.indexerId) {
+          const idxParam = `$${paramIndex}`;
+          countQuery += ` AND (
           am.metadata->'indexingPermissions' IS NULL
           OR am.metadata->'indexingPermissions'->>'mode' IS NULL
           OR (
             am.metadata->'indexingPermissions'->>'mode' = 'all'
-            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${filters?.fileType ? '2' : '1'})
+              AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
           )
           OR (
             am.metadata->'indexingPermissions'->>'mode' = 'custom'
-            AND (COALESCE(am.metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? $${filters?.fileType ? '2' : '1'})
-            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${filters?.fileType ? '2' : '1'})
-          )
-        )` : ''}
-      `;
-      const countParams: any[] = [];
-      if (filters?.fileType) countParams.push(filters.fileType);
-      if (filters?.indexerId) countParams.push(filters.indexerId);
-      
-      const countResult = await db.query(countQuery, countParams);
-      const total = parseInt(countResult.rows[0].count, 10);
+              AND (COALESCE(am.metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? ${idxParam})
+              AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
+            )
+          )`;
+          params.push(filters.indexerId);
+          paramIndex++;
+        }
+        
+        return { countQuery, params };
+      });
 
-      // Add pagination to main query (fetch limit+1 to check hasMore)
-      query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-      params.push(limit + 1); // Fetch one extra to check hasMore
-      params.push(offset);
-      paramIndex += 2;
+      // Execute queries in parallel
+      const [queryResults, countResults] = await Promise.all([
+        Promise.all(queryPromises.map(({ query, params }) => db.query(query, params))),
+        Promise.all(countPromises.map(({ countQuery, params }) => db.query(countQuery, params)))
+      ]);
 
-      const result = await db.query(query, params);
-      const hasMore = result.rows.length > limit;
-      const rowsToProcess = result.rows.slice(0, limit); // Only process the requested amount
+      // Merge results from all tables
+      let allFiles: any[] = [];
+      let total = 0;
       
-      let entries: CentralIndexEntry[] = rowsToProcess.map(row => {
+      for (let i = 0; i < queryResults.length; i++) {
+        allFiles.push(...queryResults[i].rows);
+        total += parseInt(countResults[i].rows[0]?.count || '0', 10);
+      }
+
+      // Remove duplicates and sort
+      const uniqueFiles = new Map<string, any>();
+      for (const file of allFiles) {
+        if (!uniqueFiles.has(file.file_id)) {
+          uniqueFiles.set(file.file_id, file);
+        }
+      }
+      allFiles = Array.from(uniqueFiles.values());
+
+      // Sort by updated_at descending
+      allFiles.sort((a, b) => {
+        const aTime = new Date(a.metadata?.updated_at || a.submitted_at).getTime();
+        const bTime = new Date(b.metadata?.updated_at || b.submitted_at).getTime();
+        return bTime - aTime;
+      });
+
+      // Apply pagination after merging
+      const paginatedFiles = allFiles.slice(offset, offset + limit);
+      const hasMore = allFiles.length > offset + limit;
+      
+      let entries: CentralIndexEntry[] = paginatedFiles.map(row => {
         const metadata = row.metadata as PublicMetadata & { feedIds?: string[] };
         // Add feedIds to metadata if they exist
         if (row.feed_ids && row.feed_ids.length > 0) {
@@ -902,15 +897,16 @@ export class AggregatorMetadataServiceDB {
     const db = getDatabasePool();
 
     try {
+      // Query all three tables to find the file
+      const allTables = this.getAllContentTypeTables();
+      
+      for (const table of allTables) {
       const result = await db.query(
-        'SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_metadata WHERE file_id = $1',
+          `SELECT file_id, metadata, submitted_at, pn_identifier FROM ${table} WHERE file_id = $1`,
         [fileId]
       );
 
-      if (result.rows.length === 0) {
-        return null;
-      }
-
+        if (result.rows.length > 0) {
       const row = result.rows[0];
       return {
         fileId: row.file_id,
@@ -918,6 +914,10 @@ export class AggregatorMetadataServiceDB {
         submittedAt: row.submitted_at.toISOString(),
         pnIdentifier: row.pn_identifier
       };
+        }
+      }
+
+      return null;
     } catch (error) {
       console.error(`❌ Failed to get metadata for file ${fileId}:`, error);
       throw error;
@@ -935,36 +935,60 @@ export class AggregatorMetadataServiceDB {
     const db = getDatabasePool();
 
     try {
-      let query = `
-        SELECT 
+      // Query all three tables in parallel
+      const allTables = this.getAllContentTypeTables();
+      const queryPromises = allTables.map(table => 
+        db.query(
+          `SELECT 
           am.file_id, 
           am.metadata, 
           am.submitted_at, 
           am.pn_identifier,
-          COALESCE(ARRAY_AGG(DISTINCT fp.feed_id::text) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::text[]) as feed_ids
-        FROM aggregator_metadata am
-        LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
-        WHERE am.pn_identifier = $1
-        GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier
-      `;
-      const params: any[] = [pnIdentifier];
-      let paramIndex = 2;
+            am.updated_at
+          FROM ${table} am
+          WHERE am.pn_identifier = $1`,
+          [pnIdentifier]
+        )
+      );
 
-      // Apply filters
-      if (filters?.fileType) {
-        query += ` AND am.metadata->>'fileType' = $${paramIndex}`;
-        params.push(filters.fileType);
-        paramIndex++;
+      const results = await Promise.all(queryPromises);
+      
+      // Merge results from all tables
+      let allRows: any[] = [];
+      for (const result of results) {
+        allRows.push(...result.rows);
       }
-
-      query += ` ORDER BY am.updated_at DESC`;
-
-      const result = await db.query(query, params);
-      let entries: CentralIndexEntry[] = result.rows.map(row => {
+      
+      // Sort by updated_at descending
+      allRows.sort((a, b) => {
+        const aTime = new Date(a.updated_at || a.submitted_at).getTime();
+        const bTime = new Date(b.updated_at || b.submitted_at).getTime();
+        return bTime - aTime;
+      });
+      
+      // Get feed_ids for each file
+      const fileIds = allRows.map((row: any) => row.file_id);
+      const feedIdsMap = new Map<string, string[]>();
+      
+      if (fileIds.length > 0) {
+        const feedIdsResult = await db.query(
+          `SELECT file_id, feed_id FROM feed_posts WHERE file_id = ANY($1)`,
+          [fileIds]
+        );
+        
+        for (const row of feedIdsResult.rows) {
+          if (!feedIdsMap.has(row.file_id)) {
+            feedIdsMap.set(row.file_id, []);
+          }
+          feedIdsMap.get(row.file_id)!.push(row.feed_id.toString());
+        }
+      }
+      let entries: CentralIndexEntry[] = allRows.map(row => {
         const metadata = row.metadata as PublicMetadata & { feedIds?: string[] };
         // Add feedIds to metadata if they exist
-        if (row.feed_ids && row.feed_ids.length > 0) {
-          metadata.feedIds = row.feed_ids.map((id: string) => id.toString());
+        const feedIds = feedIdsMap.get(row.file_id) || [];
+        if (feedIds.length > 0) {
+          metadata.feedIds = feedIds;
         }
         return {
           fileId: row.file_id,
@@ -973,6 +997,11 @@ export class AggregatorMetadataServiceDB {
           pnIdentifier: row.pn_identifier
         };
       });
+
+      // Apply filters
+      if (filters?.fileType) {
+        entries = entries.filter(entry => entry.metadata.fileType === filters.fileType);
+      }
 
       // Filter by tags (PostgreSQL JSONB array contains is complex, so filter in JS)
       if (filters?.tags && filters.tags.length > 0) {
@@ -1005,18 +1034,36 @@ export class AggregatorMetadataServiceDB {
     const db = getDatabasePool();
 
     try {
-      const result = await db.query(`
+      // Query all three tables
+      const allTables = this.getAllContentTypeTables();
+      const queryPromises = allTables.map(table =>
+        db.query(`
         SELECT 
           COUNT(*) as total_files,
           MAX(updated_at) as last_updated
-        FROM aggregator_metadata
+          FROM ${table}
         WHERE metadata->>'isPublic' = 'true'
-      `);
+        `)
+      );
 
+      const results = await Promise.all(queryPromises);
+      
+      // Sum totals and find max last_updated
+      let totalFiles = 0;
+      let lastUpdated: Date | null = null;
+      
+      for (const result of results) {
       const row = result.rows[0];
+        totalFiles += parseInt(row.total_files, 10);
+        const rowLastUpdated = row.last_updated ? new Date(row.last_updated) : null;
+        if (rowLastUpdated && (!lastUpdated || rowLastUpdated > lastUpdated)) {
+          lastUpdated = rowLastUpdated;
+        }
+      }
+
       return {
-        totalFiles: parseInt(row.total_files, 10),
-        lastUpdated: row.last_updated ? new Date(row.last_updated).toISOString() : new Date().toISOString()
+        totalFiles,
+        lastUpdated: lastUpdated ? lastUpdated.toISOString() : new Date().toISOString()
       };
     } catch (error) {
       console.error('❌ Failed to get stats:', error);
@@ -1046,15 +1093,16 @@ export class AggregatorMetadataServiceDB {
     const offset = options?.offset || 0;
 
     try {
-      // Build base query
-      let sqlQuery = `
+      // Query all three tables in parallel
+      const allTables = this.getAllContentTypeTables();
+      const baseQueryTemplate = (table: string) => `
         SELECT 
           am.file_id, 
           am.metadata, 
           am.submitted_at, 
           am.pn_identifier,
           COALESCE(ARRAY_AGG(DISTINCT fp.feed_id::text) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::text[]) as feed_ids
-        FROM aggregator_metadata am
+        FROM ${table} am
         LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
         WHERE (
           am.metadata->>'isPublic' = 'true' 
@@ -1062,6 +1110,9 @@ export class AggregatorMetadataServiceDB {
           OR (am.metadata->>'isPublic' = 'false' AND am.metadata->>'publicToken' IS NOT NULL)
         )
       `;
+      
+      const queryPromises = allTables.map(table => {
+        let sqlQuery = baseQueryTemplate(table);
       const params: any[] = [];
       let paramIndex = 1;
 
@@ -1151,17 +1202,92 @@ export class AggregatorMetadataServiceDB {
         }
       }
 
-      // Pagination
+        // Pagination - fetch more than needed for merging
       sqlQuery += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-      params.push(limit + 1); // Fetch one extra to check if there are more
-      params.push(offset);
-      paramIndex += 2;
+        params.push(limit * 3); // Fetch more for merging
+        params.push(0);
+        
+        return { query: sqlQuery, params, table };
+      });
 
-      const result = await db.query(sqlQuery, params);
+      // Execute queries in parallel
+      const queryResults = await Promise.all(
+        queryPromises.map(({ query, params }) => db.query(query, params))
+      );
+
+      // Merge results from all tables
+      let allFiles: any[] = [];
+      for (const result of queryResults) {
+        allFiles.push(...result.rows);
+      }
+
+      // Remove duplicates
+      const uniqueFiles = new Map<string, any>();
+      for (const file of allFiles) {
+        if (!uniqueFiles.has(file.file_id)) {
+          uniqueFiles.set(file.file_id, file);
+        }
+      }
+      allFiles = Array.from(uniqueFiles.values());
+
+      // Apply sorting
+      if (options?.sortBy === 'date') {
+        allFiles.sort((a, b) => {
+          const aDate = new Date(a.metadata?.uploadDate || a.submitted_at).getTime();
+          const bDate = new Date(b.metadata?.uploadDate || b.submitted_at).getTime();
+          return bDate - aDate;
+        });
+      } else if (options?.sortBy === 'popularity') {
+        allFiles.sort((a, b) => {
+          const aLikes = parseInt(a.metadata?.engagement?.likes || '0', 10);
+          const bLikes = parseInt(b.metadata?.engagement?.likes || '0', 10);
+          if (aLikes !== bLikes) return bLikes - aLikes;
+          const aViews = parseInt(a.metadata?.engagement?.views || '0', 10);
+          const bViews = parseInt(b.metadata?.engagement?.views || '0', 10);
+          if (aViews !== bViews) return bViews - aViews;
+          const aTime = new Date(a.metadata?.updated_at || a.submitted_at).getTime();
+          const bTime = new Date(b.metadata?.updated_at || b.submitted_at).getTime();
+          return bTime - aTime;
+        });
+      } else {
+        // Relevance sorting
+        if (searchQuery) {
+          allFiles.sort((a, b) => {
+            const aName = (a.metadata?.name || '').toLowerCase();
+            const bName = (b.metadata?.name || '').toLowerCase();
+            const queryLower = searchQuery.toLowerCase();
+            
+            let aScore = 4;
+            let bScore = 4;
+            
+            if (aName === queryLower) aScore = 1;
+            else if (aName.startsWith(queryLower)) aScore = 2;
+            else if ((a.metadata?.description || '').toLowerCase().includes(queryLower)) aScore = 3;
+            
+            if (bName === queryLower) bScore = 1;
+            else if (bName.startsWith(queryLower)) bScore = 2;
+            else if ((b.metadata?.description || '').toLowerCase().includes(queryLower)) bScore = 3;
+            
+            if (aScore !== bScore) return aScore - bScore;
+            
+            const aTime = new Date(a.metadata?.updated_at || a.submitted_at).getTime();
+            const bTime = new Date(b.metadata?.updated_at || b.submitted_at).getTime();
+            return bTime - aTime;
+          });
+        } else {
+          allFiles.sort((a, b) => {
+            const aTime = new Date(a.metadata?.updated_at || a.submitted_at).getTime();
+            const bTime = new Date(b.metadata?.updated_at || b.submitted_at).getTime();
+            return bTime - aTime;
+          });
+        }
+      }
+
+      // Apply pagination after merging and sorting
+      const paginatedFiles = allFiles.slice(offset, offset + limit);
+      const hasMore = allFiles.length > offset + limit;
       
-      // Check if there are more results
-      const hasMore = result.rows.length > limit;
-      const files = result.rows.slice(0, limit).map(row => {
+      let files = paginatedFiles.map(row => {
         const metadata = row.metadata as PublicMetadata & { feedIds?: string[] };
         if (row.feed_ids && row.feed_ids.length > 0) {
           metadata.feedIds = row.feed_ids.map((id: string) => id.toString());
@@ -1196,26 +1322,8 @@ export class AggregatorMetadataServiceDB {
         });
       }
 
-      // Get total count (simplified - could be optimized)
-      const countResult = await db.query(`
-        SELECT COUNT(*) as total
-        FROM aggregator_metadata am
-        WHERE (
-          am.metadata->>'isPublic' = 'true' 
-          OR am.metadata->>'isPublic' IS NULL
-          OR (am.metadata->>'isPublic' = 'false' AND am.metadata->>'publicToken' IS NOT NULL)
-        )
-        ${searchQuery ? `AND (
-          LOWER(am.metadata->>'name') LIKE $1
-          OR LOWER(am.metadata->>'title') LIKE $1
-          OR LOWER(am.metadata->>'description') LIKE $1
-          OR EXISTS (
-            SELECT 1 FROM jsonb_array_elements_text(COALESCE(am.metadata->'keywords', am.metadata->'tags', '[]'::jsonb)) AS keyword
-            WHERE LOWER(keyword) LIKE $1
-          )
-          OR LOWER(am.metadata->>'category') LIKE $1
-        )` : ''}
-      `, searchQuery ? [`%${searchQuery}%`] : []);
+      // Get total count from merged results (approximate - actual count would require separate queries)
+      const total = allFiles.length;
       
       const total = parseInt(countResult.rows[0].total, 10);
 
@@ -1588,14 +1696,17 @@ export class AggregatorMetadataServiceDB {
       }
     }
     
-    // Remove deleted files from database
+    // Remove deleted files from database (all three tables)
     if (filesToRemove.length > 0) {
       try {
         const db = getDatabasePool();
+        const allTables = this.getAllContentTypeTables();
+        for (const table of allTables) {
         await db.query(
-          `DELETE FROM aggregator_metadata WHERE file_id = ANY($1::text[])`,
+            `DELETE FROM ${table} WHERE file_id = ANY($1::text[])`,
           [filesToRemove]
         );
+        }
         console.log(`✅ [verifyGoogleDriveFilesExist] Removed ${filesToRemove.length} deleted file(s) from database: ${filesToRemove.join(', ')}`);
       } catch (error) {
         console.error('❌ [verifyGoogleDriveFilesExist] Failed to remove deleted files from database:', error);
@@ -1669,9 +1780,25 @@ export class AggregatorMetadataServiceDB {
         engagement
       };
 
+      // Find which table the file is in and update
+      const allTables = this.getAllContentTypeTables();
+      let targetTable: string | null = null;
+      
+      for (const table of allTables) {
+        const checkResult = await db.query(`SELECT file_id FROM ${table} WHERE file_id = $1`, [fileId]);
+        if (checkResult.rows.length > 0) {
+          targetTable = table;
+          break;
+        }
+      }
+
+      if (!targetTable) {
+        throw new Error(`File ${fileId} not found in any table`);
+      }
+
       // Save to database
       await db.query(
-        `UPDATE aggregator_metadata 
+        `UPDATE ${targetTable} 
          SET metadata = $1, updated_at = NOW()
          WHERE file_id = $2`,
         [JSON.stringify(updatedMetadata), fileId]
@@ -1789,6 +1916,7 @@ export class AggregatorMetadataServiceDB {
       }
 
       // Recalculate contentClass if classification flags changed or if it's missing
+      const oldContentClass = (updatedMetadata as any).contentClass;
       if (updates.isThoughtThumbnail !== undefined || 
           updates.isPartOfCollection !== undefined || 
           updates.collection !== undefined ||
@@ -1810,13 +1938,55 @@ export class AggregatorMetadataServiceDB {
         }
       }
 
-      // Save to database
+      // Find which table the file is currently in
+      const allTables = this.getAllContentTypeTables();
+      let currentTable: string | null = null;
+      
+      for (const table of allTables) {
+        const checkResult = await db.query(`SELECT file_id FROM ${table} WHERE file_id = $1`, [fileId]);
+        if (checkResult.rows.length > 0) {
+          currentTable = table;
+          break;
+        }
+      }
+
+      if (!currentTable) {
+        throw new Error(`File ${fileId} not found in any table`);
+      }
+
+      // Determine target table based on new contentClass
+      const newContentClass = (updatedMetadata as any).contentClass as 'media' | 'thought' | 'collection';
+      const targetTable = this.getTableNameForContentClass(newContentClass);
+
+      // If contentClass changed, move row to new table
+      if (currentTable !== targetTable) {
+        // Get current row data
+        const currentRow = await db.query(
+          `SELECT metadata, pn_identifier, submitted_at, created_at FROM ${currentTable} WHERE file_id = $1`,
+          [fileId]
+        );
+        
+        if (currentRow.rows.length > 0) {
+          const row = currentRow.rows[0];
+          // Insert into new table
       await db.query(
-        `UPDATE aggregator_metadata 
+            `INSERT INTO ${targetTable} (file_id, metadata, pn_identifier, submitted_at, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [fileId, JSON.stringify(updatedMetadata), row.pn_identifier, row.submitted_at, row.created_at]
+          );
+          // Delete from old table
+          await db.query(`DELETE FROM ${currentTable} WHERE file_id = $1`, [fileId]);
+          console.log(`[AggregatorMetadataServiceDB] Moved file ${fileId} from ${currentTable} to ${targetTable} (contentClass changed)`);
+        }
+      } else {
+        // Update in current table
+        await db.query(
+          `UPDATE ${targetTable} 
          SET metadata = $1, updated_at = NOW()
          WHERE file_id = $2`,
         [JSON.stringify(updatedMetadata), fileId]
       );
+      }
 
       console.log(`✅ Updated metadata for file: ${fileId}`);
       return updatedMetadata;
@@ -1846,8 +2016,24 @@ export class AggregatorMetadataServiceDB {
         indexingPermissions: indexingPermissions || undefined
       };
 
+      // Find which table the file is in
+      const allTables = this.getAllContentTypeTables();
+      let targetTable: string | null = null;
+      
+      for (const table of allTables) {
+        const checkResult = await db.query(`SELECT file_id FROM ${table} WHERE file_id = $1`, [fileId]);
+        if (checkResult.rows.length > 0) {
+          targetTable = table;
+          break;
+        }
+      }
+
+      if (!targetTable) {
+        throw new Error(`File ${fileId} not found in any table`);
+      }
+
       await db.query(
-        `UPDATE aggregator_metadata
+        `UPDATE ${targetTable}
            SET metadata = $1,
                updated_at = NOW()
          WHERE file_id = $2`,
@@ -1927,10 +2113,12 @@ export class AggregatorMetadataServiceDB {
     const db = getDatabasePool();
 
     try {
-      // Query for files where isPartOf matches the DID or creator matches the DID
-      const result = await db.query(
-        `SELECT file_id, metadata, submitted_at, pn_identifier
-         FROM aggregator_metadata
+      // Query all three tables in parallel
+      const allTables = this.getAllContentTypeTables();
+      const queryPromises = allTables.map(table =>
+        db.query(
+          `SELECT file_id, metadata, submitted_at, pn_identifier, updated_at
+           FROM ${table}
          WHERE metadata->>'isPublic' = 'true'
          AND (
            metadata->>'isPartOf' = $1 OR
@@ -1940,9 +2128,25 @@ export class AggregatorMetadataServiceDB {
          )
          ORDER BY updated_at DESC`,
         [did]
+        )
       );
 
-      return result.rows.map(row => ({
+      const results = await Promise.all(queryPromises);
+      
+      // Merge results from all tables
+      let allRows: any[] = [];
+      for (const result of results) {
+        allRows.push(...result.rows);
+      }
+
+      // Sort by updated_at descending
+      allRows.sort((a, b) => {
+        const aTime = new Date(a.updated_at || a.submitted_at).getTime();
+        const bTime = new Date(b.updated_at || b.submitted_at).getTime();
+        return bTime - aTime;
+      });
+
+      return allRows.map(row => ({
         fileId: row.file_id,
         metadata: row.metadata as PublicMetadata,
         submittedAt: row.submitted_at.toISOString(),
@@ -1967,13 +2171,38 @@ export class AggregatorMetadataServiceDB {
       for (const { metadata, pnIdentifier } of entries) {
         if (!metadata.fileId) continue;
 
-        // CRITICAL: Get existing metadata to preserve isPublic
+        // Determine contentClass
+        let contentClass = (metadata as any).contentClass;
+        if (!contentClass) {
+          const { determineContentClass } = await import('../utils/fileTypeUtils');
+          contentClass = determineContentClass({
+            fileType: metadata.fileType,
+            collection: (metadata as any).collection,
+            textPost: (metadata as any).textPost,
+            thought: (metadata as any).thought,
+            isThoughtThumbnail: (metadata as any).isThoughtThumbnail,
+            isPartOfCollection: (metadata as any).isPartOfCollection
+          });
+        }
+
+        // Check all three tables for existing metadata
+        const allTables = this.getAllContentTypeTables();
+        let existingRow: any = null;
+        let existingTable: string | null = null;
+        
+        for (const table of allTables) {
         const existing = await db.query(
-          'SELECT metadata FROM aggregator_metadata WHERE file_id = $1',
+            `SELECT metadata FROM ${table} WHERE file_id = $1`,
           [metadata.fileId]
         );
+          if (existing.rows.length > 0) {
+            existingRow = existing.rows[0];
+            existingTable = table;
+            break;
+          }
+        }
 
-        const existingMetadata = existing.rows[0]?.metadata;
+        const existingMetadata = existingRow?.metadata;
         const existingIsPublic = existingMetadata?.isPublic;
 
         // PRESERVE isPublic - NEVER change it in bulk operations
@@ -1990,14 +2219,36 @@ export class AggregatorMetadataServiceDB {
           backendFileId: metadata.backendFileId || metadata.fileId,
           name: metadata.name || metadata.title || metadata.fileId,
           uploadDate: metadata.uploadDate || new Date().toISOString(),
-          fileType: metadata.fileType || 'other'
+          fileType: metadata.fileType || 'other',
+          contentClass: contentClass as 'media' | 'thought' | 'collection'
         };
 
-        if (existing.rows.length > 0) {
+        const targetTable = this.getTableNameForContentClass(contentClass as 'media' | 'thought' | 'collection');
+
+        if (existingRow && existingTable) {
+          // If contentClass changed, move to new table
+          if (existingTable !== targetTable) {
+            // Get full row data
+            const fullRow = await db.query(
+              `SELECT metadata, pn_identifier, submitted_at, created_at FROM ${existingTable} WHERE file_id = $1`,
+              [metadata.fileId]
+            );
+            
+            if (fullRow.rows.length > 0) {
+              const row = fullRow.rows[0];
+              // Insert into new table
+              await db.query(
+                `INSERT INTO ${targetTable} (file_id, metadata, pn_identifier, submitted_at, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, NOW())`,
+                [metadata.fileId, JSON.stringify(validatedMetadata), row.pn_identifier, row.submitted_at, row.created_at]
+              );
+              // Delete from old table
+              await db.query(`DELETE FROM ${existingTable} WHERE file_id = $1`, [metadata.fileId]);
+            }
+          } else {
           // UPDATE: Use jsonb_set to update only non-isPublic fields, preserving isPublic
-          // Update name, description, backendFileId, fileType, but NOT isPublic
           await db.query(
-            `UPDATE aggregator_metadata 
+              `UPDATE ${targetTable} 
              SET metadata = jsonb_set(
                jsonb_set(
                  jsonb_set(
@@ -2023,10 +2274,11 @@ export class AggregatorMetadataServiceDB {
               validatedMetadata.fileId
             ]
           );
+          }
         } else {
           // INSERT: New file
           await db.query(
-            `INSERT INTO aggregator_metadata (file_id, metadata, pn_identifier, updated_at)
+            `INSERT INTO ${targetTable} (file_id, metadata, pn_identifier, updated_at)
              VALUES ($1, $2, $3, NOW())`,
             [validatedMetadata.fileId, JSON.stringify(validatedMetadata), pnIdentifier]
           );

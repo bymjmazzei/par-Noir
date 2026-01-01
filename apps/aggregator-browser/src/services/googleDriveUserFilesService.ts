@@ -96,32 +96,85 @@ export async function loadUserFilesFromGoogleDrive(
 
     console.log('✅ Found _metadata folder:', metadataFolder.id);
 
-    // Step 3: List all .metadata.json files in the _metadata folder
-    const metadataFilesQuery = `'${metadataFolder.id}' in parents and name contains '.metadata.json' and trashed=false`;
-    
+    // Step 3: List all .metadata.json files in content type subfolders
+    // Check for new structure (subfolders) first, fallback to old structure (flat)
+    const contentTypes = ['media', 'thoughts', 'collections'];
     let allMetadataFiles: any[] = [];
-    let nextPageToken: string | undefined;
     
-    do {
-      let url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataFilesQuery)}&fields=nextPageToken,files(id,name)&pageSize=1000`;
-      if (nextPageToken) {
-        url += `&pageToken=${nextPageToken}`;
-      }
-      
-      const metadataFilesResponse = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
+    // Try new structure first (subfolders)
+    let foundSubfolders = false;
+    for (const contentType of contentTypes) {
+      const subfolderQuery = `name='${contentType}' and '${metadataFolder.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const subfolderResponse = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(subfolderQuery)}&fields=files(id,name)&pageSize=1`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
         }
-      });
+      );
 
-      if (!metadataFilesResponse.ok) {
-        throw new Error(`Failed to list metadata files: ${metadataFilesResponse.status}`);
+      if (subfolderResponse.ok) {
+        const subfolderData = await subfolderResponse.json();
+        if (subfolderData.files && subfolderData.files.length > 0) {
+          foundSubfolders = true;
+          const subfolderId = subfolderData.files[0].id;
+          
+          // List files in this subfolder
+          const metadataFilesQuery = `'${subfolderId}' in parents and name contains '.metadata.json' and trashed=false`;
+          let nextPageToken: string | undefined;
+          
+          do {
+            let url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataFilesQuery)}&fields=nextPageToken,files(id,name)&pageSize=1000`;
+            if (nextPageToken) {
+              url += `&pageToken=${nextPageToken}`;
+            }
+            
+            const metadataFilesResponse = await fetch(url, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            });
+
+            if (metadataFilesResponse.ok) {
+              const metadataFilesData = await metadataFilesResponse.json();
+              allMetadataFiles.push(...(metadataFilesData.files || []));
+              nextPageToken = metadataFilesData.nextPageToken;
+            } else {
+              break;
+            }
+          } while (nextPageToken);
+        }
       }
+    }
 
-      const metadataFilesData = await metadataFilesResponse.json();
-      allMetadataFiles.push(...(metadataFilesData.files || []));
-      nextPageToken = metadataFilesData.nextPageToken;
-    } while (nextPageToken);
+    // Fallback to old structure (flat) if no subfolders found
+    if (!foundSubfolders) {
+      console.log('📁 No content type subfolders found, using flat structure');
+      const metadataFilesQuery = `'${metadataFolder.id}' in parents and name contains '.metadata.json' and trashed=false`;
+      let nextPageToken: string | undefined;
+      
+      do {
+        let url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataFilesQuery)}&fields=nextPageToken,files(id,name)&pageSize=1000`;
+        if (nextPageToken) {
+          url += `&pageToken=${nextPageToken}`;
+        }
+        
+        const metadataFilesResponse = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+
+        if (!metadataFilesResponse.ok) {
+          throw new Error(`Failed to list metadata files: ${metadataFilesResponse.status}`);
+        }
+
+        const metadataFilesData = await metadataFilesResponse.json();
+        allMetadataFiles.push(...(metadataFilesData.files || []));
+        nextPageToken = metadataFilesData.nextPageToken;
+      } while (nextPageToken);
+    }
 
     console.log(`📄 Found ${allMetadataFiles.length} metadata files`);
 

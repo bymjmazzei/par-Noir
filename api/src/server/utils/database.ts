@@ -81,9 +81,12 @@ export async function initializeDatabase(): Promise<void> {
   }
 
   try {
-    // Create aggregator_metadata table
+    // Create content-type specific tables for better performance and organization
+    // Each content type has its own table to eliminate filtering overhead
+    
+    // Media table (images, videos, audio)
     await db.query(`
-      CREATE TABLE IF NOT EXISTS aggregator_metadata (
+      CREATE TABLE IF NOT EXISTS aggregator_media (
         file_id VARCHAR(255) PRIMARY KEY,
         metadata JSONB NOT NULL,
         submitted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -93,54 +96,124 @@ export async function initializeDatabase(): Promise<void> {
       )
     `);
 
-    // Create index on pn_identifier for faster lookups
+    // Thoughts table (text posts, thoughts)
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_aggregator_metadata_pn_identifier 
-      ON aggregator_metadata(pn_identifier)
+      CREATE TABLE IF NOT EXISTS aggregator_thoughts (
+        file_id VARCHAR(255) PRIMARY KEY,
+        metadata JSONB NOT NULL,
+        submitted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        pn_identifier VARCHAR(255),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
     `);
 
-    // Create index on isPublic for filtering
+    // Collections table (collections of files)
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_aggregator_metadata_is_public 
-      ON aggregator_metadata((metadata->>'isPublic'))
+      CREATE TABLE IF NOT EXISTS aggregator_collections (
+        file_id VARCHAR(255) PRIMARY KEY,
+        metadata JSONB NOT NULL,
+        submitted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        pn_identifier VARCHAR(255),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
     `);
 
-    // Create index on fileType for filtering
+    // Create indexes for aggregator_media
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_aggregator_metadata_file_type 
-      ON aggregator_metadata((metadata->>'fileType'))
+      CREATE INDEX IF NOT EXISTS idx_aggregator_media_pn_identifier 
+      ON aggregator_media(pn_identifier)
     `);
 
-    // Create index on updated_at for sorting
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_aggregator_metadata_updated_at 
-      ON aggregator_metadata(updated_at DESC)
+      CREATE INDEX IF NOT EXISTS idx_aggregator_media_is_public 
+      ON aggregator_media((metadata->>'isPublic'))
     `);
 
-    // SCALABILITY: Composite index for common query patterns (public files with fileType and date sorting)
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_metadata_public_type_date 
-      ON aggregator_metadata((metadata->>'isPublic'), (metadata->>'fileType'), updated_at DESC)
+      CREATE INDEX IF NOT EXISTS idx_aggregator_media_updated_at 
+      ON aggregator_media(updated_at DESC)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_media_public_only 
+      ON aggregator_media(updated_at DESC)
       WHERE metadata->>'isPublic' = 'true'
     `);
 
-    // SCALABILITY: Partial index for public files only (most common query - faster than full table scan)
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_metadata_public_only 
-      ON aggregator_metadata(updated_at DESC)
+      CREATE INDEX IF NOT EXISTS idx_media_keywords_gin 
+      ON aggregator_media USING GIN((metadata->'keywords'))
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_media_feed_category
+      ON aggregator_media USING GIN((metadata->'feedCategories'))
+    `);
+
+    // Create indexes for aggregator_thoughts
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_aggregator_thoughts_pn_identifier 
+      ON aggregator_thoughts(pn_identifier)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_aggregator_thoughts_is_public 
+      ON aggregator_thoughts((metadata->>'isPublic'))
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_aggregator_thoughts_updated_at 
+      ON aggregator_thoughts(updated_at DESC)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_thoughts_public_only 
+      ON aggregator_thoughts(updated_at DESC)
       WHERE metadata->>'isPublic' = 'true'
     `);
 
-    // SCALABILITY: GIN index for JSONB array searches (keywords/tags filtering)
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_metadata_keywords_gin 
-      ON aggregator_metadata USING GIN((metadata->'keywords'))
+      CREATE INDEX IF NOT EXISTS idx_thoughts_keywords_gin 
+      ON aggregator_thoughts USING GIN((metadata->'keywords'))
     `);
 
-    // SCALABILITY: GIN index for feedCategories array searches
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_metadata_feed_category
-      ON aggregator_metadata USING GIN((metadata->'feedCategories'))
+      CREATE INDEX IF NOT EXISTS idx_thoughts_feed_category
+      ON aggregator_thoughts USING GIN((metadata->'feedCategories'))
+    `);
+
+    // Create indexes for aggregator_collections
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_aggregator_collections_pn_identifier 
+      ON aggregator_collections(pn_identifier)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_aggregator_collections_is_public 
+      ON aggregator_collections((metadata->>'isPublic'))
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_aggregator_collections_updated_at 
+      ON aggregator_collections(updated_at DESC)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_collections_public_only 
+      ON aggregator_collections(updated_at DESC)
+      WHERE metadata->>'isPublic' = 'true'
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_collections_keywords_gin 
+      ON aggregator_collections USING GIN((metadata->'keywords'))
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_collections_feed_category
+      ON aggregator_collections USING GIN((metadata->'feedCategories'))
     `);
 
     // Third-party indexers catalog

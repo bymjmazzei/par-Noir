@@ -43,14 +43,14 @@ export class ContentTypeIndexService {
     
     const allFiles = Array.isArray(result) ? result : result.files;
     
-    // Apply contentClass-based filtering
-    const filtered = this.filterForContentType(allFiles, contentType, config);
+    // No client-side filtering needed - API returns correct content type
+    // API now queries the appropriate table directly
     
     // Update index
-    this[`${contentType}Index`] = filtered;
+    this[`${contentType}Index`] = allFiles;
     this.lastUpdated.set(contentType, Date.now());
     
-    return filtered;
+    return allFiles;
   }
   
   /**

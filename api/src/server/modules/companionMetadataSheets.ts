@@ -151,10 +151,48 @@ export class CompanionMetadataSheets {
         throw new Error('Failed to create spreadsheet: no ID returned');
       }
 
-      // 2. Move to metadata folder
+      // 2. Determine contentClass and get/create subfolder
+      let contentClass = metadata.contentClass;
+      if (!contentClass) {
+        // Determine from metadata content
+        if (metadata.collection?.collectionFileIds?.length) {
+          contentClass = 'collection';
+        } else if (metadata.textPost || metadata.thought || metadata.isThoughtThumbnail) {
+          contentClass = 'thought';
+        } else {
+          contentClass = 'media';
+        }
+      }
+
+      // Get or create content type subfolder
+      const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass; // Map 'thought' to 'thoughts' folder
+      const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const contentTypeFolderResponse = await drive.files.list({
+        q: contentTypeFolderQuery,
+        fields: 'files(id,name)',
+        pageSize: 1
+      });
+
+      let contentTypeFolderId: string;
+      if (contentTypeFolderResponse.data.files && contentTypeFolderResponse.data.files.length > 0) {
+        contentTypeFolderId = contentTypeFolderResponse.data.files[0].id!;
+      } else {
+        // Create subfolder
+        const createFolderResponse = await drive.files.create({
+          requestBody: {
+            name: contentTypeFolderName,
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [folderId]
+          },
+          fields: 'id'
+        });
+        contentTypeFolderId = createFolderResponse.data.id!;
+      }
+
+      // 3. Move to content type subfolder
       await drive.files.update({
         fileId: spreadsheetId,
-        addParents: folderId,
+        addParents: contentTypeFolderId,
         fields: 'id, parents'
       });
 
@@ -280,6 +318,32 @@ export class CompanionMetadataSheets {
     const drive = google.drive({ version: 'v3', auth });
 
     try {
+      // Search in content type subfolders first (new structure)
+      const contentTypes = ['media', 'thoughts', 'collections'];
+      for (const contentType of contentTypes) {
+        const subfolderQuery = `name='${contentType}' and '${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const subfolderResponse = await drive.files.list({
+          q: subfolderQuery,
+          fields: 'files(id)',
+          pageSize: 1
+        });
+
+        if (subfolderResponse.data.files && subfolderResponse.data.files.length > 0) {
+          const subfolderId = subfolderResponse.data.files[0].id!;
+          const query = `name='${fileId}.metadata' and '${subfolderId}' in parents and trashed=false and mimeType='application/vnd.google-apps.spreadsheet'`;
+          const response = await drive.files.list({
+            q: query,
+            fields: 'files(id)',
+            pageSize: 1
+          });
+
+          if (response.data.files && response.data.files.length > 0) {
+            return response.data.files[0].id || null;
+          }
+        }
+      }
+
+      // Fallback to old structure (flat - search directly in metadata folder)
       const query = `name='${fileId}.metadata' and '${folderId}' in parents and trashed=false and mimeType='application/vnd.google-apps.spreadsheet'`;
       const response = await drive.files.list({
         q: query,
