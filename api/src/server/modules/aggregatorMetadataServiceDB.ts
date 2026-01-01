@@ -1710,6 +1710,9 @@ export class AggregatorMetadataServiceDB {
       subjects?: string[];
       feedCategories?: string[];
       thumbnailFileId?: string;
+      isThoughtThumbnail?: boolean; // Thumbnails inherit classification from source
+      isPartOfCollection?: boolean; // Collection files inherit collection classification
+      mainFileId?: string; // Reference to source file for thumbnails
     }
   ): Promise<PublicMetadata | null> {
     const db = getDatabasePool();
@@ -1770,7 +1773,11 @@ export class AggregatorMetadataServiceDB {
         ...(updates.subjects !== undefined && { subjects: updates.subjects }),
         ...(updates.feedCategories !== undefined && { feedCategories: updates.feedCategories }),
         // Update thumbnail file ID
-        ...(updates.thumbnailFileId !== undefined && { thumbnailFileId: updates.thumbnailFileId })
+        ...(updates.thumbnailFileId !== undefined && { thumbnailFileId: updates.thumbnailFileId }),
+        // Update classification flags - thumbnails inherit classification from source
+        ...(updates.isThoughtThumbnail !== undefined && { isThoughtThumbnail: updates.isThoughtThumbnail }),
+        ...(updates.isPartOfCollection !== undefined && { isPartOfCollection: updates.isPartOfCollection }),
+        ...(updates.mainFileId !== undefined && { mainFileId: updates.mainFileId })
       };
 
       // Ensure keywords and tags are in sync
@@ -1779,6 +1786,28 @@ export class AggregatorMetadataServiceDB {
       }
       if (updatedMetadata.tags && !updatedMetadata.keywords) {
         updatedMetadata.keywords = updatedMetadata.tags;
+      }
+
+      // Recalculate contentClass if classification flags changed or if it's missing
+      if (updates.isThoughtThumbnail !== undefined || 
+          updates.isPartOfCollection !== undefined || 
+          updates.collection !== undefined ||
+          updates.textPost !== undefined ||
+          updates.thought !== undefined ||
+          !(updatedMetadata as any).contentClass) {
+        const { determineContentClass } = await import('../utils/fileTypeUtils');
+        const recalculatedContentClass = determineContentClass({
+          fileType: updatedMetadata.fileType,
+          collection: (updatedMetadata as any).collection,
+          textPost: (updatedMetadata as any).textPost,
+          thought: (updatedMetadata as any).thought,
+          isThoughtThumbnail: (updatedMetadata as any).isThoughtThumbnail,
+          isPartOfCollection: (updatedMetadata as any).isPartOfCollection
+        });
+        (updatedMetadata as any).contentClass = recalculatedContentClass;
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[AggregatorMetadataServiceDB] Recalculated contentClass '${recalculatedContentClass}' for file ${fileId}`);
+        }
       }
 
       // Save to database

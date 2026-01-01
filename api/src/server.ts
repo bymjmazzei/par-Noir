@@ -2311,7 +2311,10 @@ class ProductionServer {
           isNSFW,
           subjects,
           feedCategories,
-          thumbnailFileId
+          thumbnailFileId,
+          isThoughtThumbnail, // Flag indicating this is a thumbnail of a thought
+          isPartOfCollection, // Flag indicating this file is part of a collection
+          mainFileId // Reference to the source file (for thumbnails)
         } = req.body;
 
         if (!fileId) {
@@ -2389,7 +2392,9 @@ class ProductionServer {
               collection,
               textPost,
               thought,
-              mimeType: driveFile.mimeType
+              mimeType: driveFile.mimeType,
+              isThoughtThumbnail,
+              isPartOfCollection
             });
             const initialMetadata: any = {
               fileId: fileId,
@@ -2405,6 +2410,10 @@ class ProductionServer {
               ...(thought && { thought }),
               ...(collection && { collection }), // Include collection data if provided
               ...(isNSFW !== undefined && { isNSFW: isNSFW === true }),
+              ...(isThoughtThumbnail !== undefined && { isThoughtThumbnail }), // Thumbnails inherit classification from source
+              ...(isPartOfCollection !== undefined && { isPartOfCollection }), // Collection files inherit collection classification
+              ...(mainFileId && { mainFileId }), // Reference to source file for thumbnails
+              ...(thumbnailFileId && { thumbnailFileId }), // Reference to thumbnail file
               "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
               "@id": `https://parnoir.com/resource/${fileId}`,
               engagement: {
@@ -2435,7 +2444,9 @@ class ProductionServer {
               fileType,
               collection,
               textPost,
-              thought
+              thought,
+              isThoughtThumbnail,
+              isPartOfCollection
             });
             const minimalMetadata: any = {
               fileId: fileId,
@@ -2450,6 +2461,10 @@ class ProductionServer {
               ...(thought && { thought }),
               ...(collection && { collection }), // Include collection data if provided
               ...(isNSFW !== undefined && { isNSFW: isNSFW === true }),
+              ...(isThoughtThumbnail !== undefined && { isThoughtThumbnail }), // Thumbnails inherit classification from source
+              ...(isPartOfCollection !== undefined && { isPartOfCollection }), // Collection files inherit collection classification
+              ...(mainFileId && { mainFileId }), // Reference to source file for thumbnails
+              ...(thumbnailFileId && { thumbnailFileId }), // Reference to thumbnail file
               "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
               "@id": `https://parnoir.com/resource/${fileId}`,
               engagement: {
@@ -2564,7 +2579,9 @@ class ProductionServer {
           fileType,
           collection,
           textPost,
-          thought
+          thought,
+          isThoughtThumbnail,
+          isPartOfCollection
         });
 
         // ARCHITECTURAL FIX: Update companion metadata FIRST (source of truth), then database (cache)
@@ -2697,7 +2714,10 @@ class ProductionServer {
           isPublic: finalIsPublic !== undefined ? finalIsPublic : isPublic,
           subjects,
           feedCategories,
-          thumbnailFileId
+          thumbnailFileId,
+          isThoughtThumbnail, // Thumbnails inherit classification from source
+          isPartOfCollection, // Collection files inherit collection classification
+          mainFileId // Reference to source file for thumbnails
         });
 
         // Also update isPublic if provided (or default for text posts)
