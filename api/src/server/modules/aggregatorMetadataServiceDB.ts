@@ -1324,8 +1324,6 @@ export class AggregatorMetadataServiceDB {
 
       // Get total count from merged results (approximate - actual count would require separate queries)
       const total = allFiles.length;
-      
-      const total = parseInt(countResult.rows[0].total, 10);
 
       return {
         files: filteredFiles,

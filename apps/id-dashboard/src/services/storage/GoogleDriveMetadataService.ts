@@ -815,10 +815,11 @@ export class GoogleDriveMetadataService {
       // Determine contentClass from metadata
       let contentClass = fileMetadata.contentClass;
       if (!contentClass) {
-        // Determine from metadata content
-        if (fileMetadata.collection?.collectionFileIds?.length) {
+        // Determine from metadata content (cast to any to access extended properties)
+        const metadataAny = fileMetadata as any;
+        if (metadataAny.collection?.collectionFileIds?.length) {
           contentClass = 'collection';
-        } else if (fileMetadata.textPost || fileMetadata.thought || fileMetadata.isThoughtThumbnail) {
+        } else if (metadataAny.textPost || metadataAny.thought || metadataAny.isThoughtThumbnail) {
           contentClass = 'thought';
         } else {
           contentClass = 'media';

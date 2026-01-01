@@ -154,10 +154,11 @@ export class CompanionMetadataSheets {
       // 2. Determine contentClass and get/create subfolder
       let contentClass = metadata.contentClass;
       if (!contentClass) {
-        // Determine from metadata content
-        if (metadata.collection?.collectionFileIds?.length) {
+        // Determine from metadata content (cast to any to access extended properties)
+        const metadataAny = metadata as any;
+        if (metadataAny.collection?.collectionFileIds?.length) {
           contentClass = 'collection';
-        } else if (metadata.textPost || metadata.thought || metadata.isThoughtThumbnail) {
+        } else if (metadataAny.textPost || metadataAny.thought || metadataAny.isThoughtThumbnail) {
           contentClass = 'thought';
         } else {
           contentClass = 'media';
