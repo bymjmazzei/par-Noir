@@ -17,7 +17,7 @@ export class ContentTypeIndexService {
   
   /**
    * Load a content-type index from the API
-   * Queries for each fileType in the content type config and applies filtering
+   * Uses contentClass parameter (preferred) or falls back to fileType queries (backward compatibility)
    */
   async loadContentTypeIndex(
     contentType: ContentType,
@@ -27,20 +27,24 @@ export class ContentTypeIndexService {
     const config = CONTENT_TYPE_MAP[contentType];
     const metadataService = getMetadataIndexService();
     
-    // Query API for each fileType in the content type
-    const allFiles: IndexedFile[] = [];
-    for (const fileType of config.apiFileTypes) {
-      const result = await metadataService.discoverFiles({
-        ...filters,
-        fileType,
-      }, forceRefresh);
-      
-      const files = Array.isArray(result) ? result : result.files;
-      allFiles.push(...files);
-    }
+    // Map ContentType to contentClass for API query
+    const contentClassMap: Record<ContentType, 'media' | 'thought' | 'collection'> = {
+      'media': 'media',
+      'thoughts': 'thought',
+      'collections': 'collection'
+    };
+    const contentClass = contentClassMap[contentType];
     
-    // Apply content-type specific filtering AFTER combining all fileTypes
-    // This is important for thoughts which need to filter 'image' files to only thought thumbnails
+    // Query API using contentClass (preferred approach)
+    const result = await metadataService.discoverFiles({
+      ...filters,
+      contentClass,
+    }, forceRefresh);
+    
+    const allFiles = Array.isArray(result) ? result : result.files;
+    
+    // Apply content-type specific filtering for edge cases and backward compatibility
+    // Primary filter is now contentClass from API, but we still filter for edge cases
     const filtered = this.filterForContentType(allFiles, contentType, config);
     
     // Update index
@@ -52,6 +56,7 @@ export class ContentTypeIndexService {
   
   /**
    * Filter files based on content-type specific rules
+   * Primary filter is now contentClass from API, but we still apply edge case filters for backward compatibility
    */
   private filterForContentType(
     files: IndexedFile[],
@@ -59,10 +64,18 @@ export class ContentTypeIndexService {
     config: ContentTypeConfig
   ): IndexedFile[] {
     return files.filter(file => {
+      // Primary filter: check contentClass if available (new approach)
+      const fileContentClass = (file.metadata as any).contentClass;
+      if (fileContentClass) {
+        const expectedContentClass = contentType === 'thoughts' ? 'thought' : contentType === 'collections' ? 'collection' : 'media';
+        if (fileContentClass !== expectedContentClass) {
+          return false; // contentClass mismatch
+        }
+      }
+      
+      // Secondary filters for backward compatibility (files without contentClass)
       // For thoughts: only include thought thumbnails
-      // Thought thumbnails have isThoughtThumbnail: true OR fileType: 'thought-collection-thumbnail'
-      // OR fileType: 'thought'/'text' (legacy thought files, if any exist)
-      if (contentType === 'thoughts' && config.includeOnlyThoughtThumbnails) {
+      if (contentType === 'thoughts' && config.includeOnlyThoughtThumbnails && !fileContentClass) {
         const isThoughtThumbnail = (file.metadata as any).isThoughtThumbnail === true;
         const isThoughtCollectionThumbnail = file.metadata.fileType === 'thought-collection-thumbnail';
         const isThoughtFile = ['thought', 'text'].includes(file.metadata.fileType || '');
@@ -78,8 +91,8 @@ export class ContentTypeIndexService {
         }
       }
       
-      // For media: exclude thought thumbnails
-      if (contentType === 'media' && config.excludeThoughtThumbnails) {
+      // For media: exclude thought thumbnails (backward compatibility)
+      if (contentType === 'media' && config.excludeThoughtThumbnails && !fileContentClass) {
         const isThoughtThumbnail = (file.metadata as any).isThoughtThumbnail === true;
         const isThoughtCollectionThumbnail = file.metadata.fileType === 'thought-collection-thumbnail';
         if (isThoughtThumbnail || isThoughtCollectionThumbnail) {

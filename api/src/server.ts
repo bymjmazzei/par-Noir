@@ -10,7 +10,7 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import { determineFileType, getFileTypeFromMime } from './server/utils/fileTypeUtils';
+import { determineFileType, getFileTypeFromMime, determineContentClass } from './server/utils/fileTypeUtils';
 
 // Environment configuration
 const PORT = process.env.PORT || 3001;
@@ -1359,6 +1359,7 @@ class ProductionServer {
         // Parse query parameters
         const tags = req.query.tags ? (req.query.tags as string).split(',').map(t => t.trim()) : undefined;
         const fileType = req.query.fileType as string | undefined;
+        const contentClass = req.query.contentClass as 'media' | 'thought' | 'collection' | undefined;
         const authorDid = req.query.authorDid as string | undefined;
         const indexerId = req.query.indexerId as string | undefined;
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
@@ -1368,6 +1369,7 @@ class ProductionServer {
         const response = await service.getIndexResponse({
           tags,
           fileType,
+          contentClass,
           authorDid,
           indexerId,
           limit,    // SCALABILITY: Pagination support
@@ -2823,12 +2825,41 @@ class ProductionServer {
                       
                       if (spreadsheetId) {
                         const visibility = isBecomingPublic ? 'public' : 'private';
+                        
+                        // Get current metadata to determine contentClass and thumbnailFileId
+                        const currentMetadataForUpdate = await service.getFileMetadata(fileId);
+                        const metadataForType = (currentMetadataForUpdate?.metadata || {}) as any;
+                        
+                        // Determine fileType and contentClass
+                        const determinedFileType = determineFileType({
+                          fileType: metadataForType.fileType,
+                          collection: metadataForType.collection,
+                          textPost: metadataForType.textPost,
+                          thought: metadataForType.thought,
+                          mimeType: metadataForType.mimeType,
+                          isThoughtThumbnail: metadataForType.isThoughtThumbnail,
+                          isPartOfCollection: metadataForType.isPartOfCollection
+                        });
+                        const determinedContentClass = determineContentClass({
+                          fileType: determinedFileType,
+                          collection: metadataForType.collection,
+                          textPost: metadataForType.textPost,
+                          thought: metadataForType.thought,
+                          isThoughtThumbnail: metadataForType.isThoughtThumbnail,
+                          isPartOfCollection: metadataForType.isPartOfCollection
+                        });
+                        
                         await CompanionMetadataSheets.updateMetadata(
                           accessToken,
                           spreadsheetId,
-                          { visibility: visibility as 'public' | 'private' }
+                          { 
+                            visibility: visibility as 'public' | 'private',
+                            fileType: determinedFileType,
+                            contentClass: determinedContentClass,
+                            thumbnailFileId: metadataForType.thumbnailFileId
+                          }
                         );
-                        console.log(`[MetadataIndex PUT] Updated companion metadata FIRST (source of truth) for ${fileId} to ${visibility}`);
+                        console.log(`[MetadataIndex PUT] Updated companion metadata FIRST (source of truth) for ${fileId} to ${visibility} (contentClass: ${determinedContentClass})`);
                       } else {
                         console.log(`[MetadataIndex PUT] Companion metadata spreadsheet not found for ${fileId} - will be created in companion metadata creation block`);
                       }
@@ -2873,6 +2904,26 @@ class ProductionServer {
             // CRITICAL: Submit metadata to aggregator service so it appears in feeds
             if (isBecomingPublic && current) {
               try {
+                // Determine fileType and contentClass from current metadata
+                const metadataForType = (current.metadata || {}) as any;
+                const determinedFileType = determineFileType({
+                  fileType: metadataForType.fileType,
+                  collection: metadataForType.collection,
+                  textPost: metadataForType.textPost,
+                  thought: metadataForType.thought,
+                  mimeType: metadataForType.mimeType,
+                  isThoughtThumbnail: metadataForType.isThoughtThumbnail,
+                  isPartOfCollection: metadataForType.isPartOfCollection
+                });
+                const determinedContentClass = determineContentClass({
+                  fileType: determinedFileType,
+                  collection: metadataForType.collection,
+                  textPost: metadataForType.textPost,
+                  thought: metadataForType.thought,
+                  isThoughtThumbnail: metadataForType.isThoughtThumbnail,
+                  isPartOfCollection: metadataForType.isPartOfCollection
+                });
+                
                 const publicMetadata = {
                   ...current.metadata,
                   isPublic: true,
@@ -2882,7 +2933,9 @@ class ProductionServer {
                   backendFileId: current.metadata.backendFileId || fileId,
                   name: current.metadata.name || current.metadata.title || fileId,
                   uploadDate: current.metadata.uploadDate || new Date().toISOString(),
-                  fileType: current.metadata.fileType || 'other'
+                  fileType: determinedFileType,
+                  contentClass: determinedContentClass,
+                  thumbnailFileId: metadataForType.thumbnailFileId
                 };
                 
                 await service.submitMetadata(
@@ -3406,12 +3459,35 @@ class ProductionServer {
                           usingToken: !!tokenToUse
                         });
                         
+                        // Determine fileType and contentClass from current metadata
+                        const metadataForType = (currentMetadata?.metadata || {}) as any;
+                        const determinedFileType = determineFileType({
+                          fileType: metadataForType.fileType,
+                          collection: metadataForType.collection,
+                          textPost: metadataForType.textPost,
+                          thought: metadataForType.thought,
+                          mimeType: originalMimeType,
+                          isThoughtThumbnail: metadataForType.isThoughtThumbnail,
+                          isPartOfCollection: metadataForType.isPartOfCollection
+                        });
+                        const determinedContentClass = determineContentClass({
+                          fileType: determinedFileType,
+                          collection: metadataForType.collection,
+                          textPost: metadataForType.textPost,
+                          thought: metadataForType.thought,
+                          isThoughtThumbnail: metadataForType.isThoughtThumbnail,
+                          isPartOfCollection: metadataForType.isPartOfCollection
+                        });
+                        const thumbnailFileId = metadataForType.thumbnailFileId;
+                        
                         const companionMetadata = {
                           fileId: fileId,
                           googleDriveFileId: fileId,
                           fileName: driveFile.name || fileId,
                           originalName: originalFileName,
                           mimeType: originalMimeType,
+                          fileType: determinedFileType,
+                          contentClass: determinedContentClass,
                           size: parseInt(driveFile.size || '0', 10),
                           visibility: finalVisibility,
                           uploadedAt: driveFile.createdTime || new Date().toISOString(),
@@ -3420,6 +3496,7 @@ class ProductionServer {
                             identifier: pnIdentifier
                           },
                           tags: [],
+                          ...(thumbnailFileId && { thumbnailFileId }),
                           ...(tokenToUse && { publicToken: tokenToUse }),
                           engagement: {
                             views: 0,

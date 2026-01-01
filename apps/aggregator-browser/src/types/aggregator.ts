@@ -413,6 +413,7 @@ export interface TextPostData {
 export interface MetadataFilters {
   tags?: string[];
   fileType?: string;
+  contentClass?: 'media' | 'thought' | 'collection';
   authorDid?: string;
   dateRange?: {
     from: string;

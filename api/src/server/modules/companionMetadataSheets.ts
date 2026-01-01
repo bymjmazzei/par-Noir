@@ -22,6 +22,8 @@ export interface CompanionMetadata {
   originalName: string;
   mimeType: string;
   size: number;
+  fileType?: string; // Technical file type (image, video, text, thought, collection, etc.)
+  contentClass?: 'media' | 'thought' | 'collection'; // Content classification for feed filtering
   visibility: 'public' | 'private' | 'friends';
   uploadedAt: string;
   owner: {
@@ -31,6 +33,7 @@ export interface CompanionMetadata {
   tags?: string[];
   description?: string;
   thumbnail?: string;
+  thumbnailFileId?: string; // Reference to thumbnail file used in feeds
   publicToken?: string;
   engagement?: {
     views: number;
@@ -99,7 +102,7 @@ export class CompanionMetadataSheets {
                 title: 'Metadata',
                 gridProperties: {
                   rowCount: 2,
-                  columnCount: 15
+                  columnCount: 18
                 }
               }
             },
@@ -169,6 +172,8 @@ export class CompanionMetadataSheets {
               'fileName',
               'originalName',
               'mimeType',
+              'fileType',
+              'contentClass',
               'size',
               'visibility',
               'uploadedAt',
@@ -177,6 +182,7 @@ export class CompanionMetadataSheets {
               'tags',
               'description',
               'thumbnail',
+              'thumbnailFileId',
               'publicToken',
               'lastUpdated'
             ],
@@ -187,6 +193,8 @@ export class CompanionMetadataSheets {
               metadata.fileName,
               metadata.originalName,
               metadata.mimeType,
+              metadata.fileType || '',
+              metadata.contentClass || '',
               metadata.size.toString(),
               metadata.visibility,
               metadata.uploadedAt,
@@ -195,6 +203,7 @@ export class CompanionMetadataSheets {
               (metadata.tags || []).join(','),
               metadata.description || '',
               metadata.thumbnail || '',
+              metadata.thumbnailFileId || '',
               MetadataEncryption.encryptField(metadata.publicToken ? (typeof metadata.publicToken === 'string' ? metadata.publicToken : JSON.stringify(metadata.publicToken)) : undefined), // Encrypted
               new Date().toISOString()
             ]
@@ -302,10 +311,10 @@ export class CompanionMetadataSheets {
     const sheets = google.sheets({ version: 'v4', auth });
 
     try {
-      // Read Metadata sheet
+      // Read Metadata sheet (read up to 18 columns for new schema, but handle fewer gracefully)
       const metadataResponse = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: 'Metadata!A1:O2'
+        range: 'Metadata!A1:R2'
       });
 
       const rows = metadataResponse.data.values;
@@ -321,22 +330,31 @@ export class CompanionMetadataSheets {
       const ownerIdentifierEncrypted = data[headers.indexOf('ownerIdentifier')] || '';
       const publicTokenEncrypted = data[headers.indexOf('publicToken')] || '';
 
+      // Helper to safely get column index (backward compatibility for missing columns)
+      const getColumnIndex = (columnName: string): number => {
+        const idx = headers.indexOf(columnName);
+        return idx >= 0 ? idx : -1;
+      };
+
       const metadata: CompanionMetadata = {
-        fileId: data[headers.indexOf('fileId')] || '',
-        googleDriveFileId: data[headers.indexOf('googleDriveFileId')] || '',
-        fileName: data[headers.indexOf('fileName')] || '',
-        originalName: data[headers.indexOf('originalName')] || '',
-        mimeType: data[headers.indexOf('mimeType')] || '',
-        size: parseInt(data[headers.indexOf('size')] || '0', 10),
-        visibility: (data[headers.indexOf('visibility')] || 'private') as 'public' | 'private' | 'friends',
-        uploadedAt: data[headers.indexOf('uploadedAt')] || new Date().toISOString(),
+        fileId: data[getColumnIndex('fileId')] || '',
+        googleDriveFileId: data[getColumnIndex('googleDriveFileId')] || '',
+        fileName: data[getColumnIndex('fileName')] || '',
+        originalName: data[getColumnIndex('originalName')] || '',
+        mimeType: data[getColumnIndex('mimeType')] || '',
+        fileType: getColumnIndex('fileType') >= 0 ? (data[getColumnIndex('fileType')] || undefined) : undefined,
+        contentClass: getColumnIndex('contentClass') >= 0 ? (data[getColumnIndex('contentClass')] as 'media' | 'thought' | 'collection' | undefined) : undefined,
+        size: parseInt(data[getColumnIndex('size')] || '0', 10),
+        visibility: (data[getColumnIndex('visibility')] || 'private') as 'public' | 'private' | 'friends',
+        uploadedAt: data[getColumnIndex('uploadedAt')] || new Date().toISOString(),
         owner: {
           did: MetadataEncryption.decryptField(ownerDidEncrypted), // Decrypted
           identifier: MetadataEncryption.decryptField(ownerIdentifierEncrypted) // Decrypted
         },
-        tags: data[headers.indexOf('tags')] ? (data[headers.indexOf('tags')] as string).split(',').filter(Boolean) : [],
-        description: data[headers.indexOf('description')] || undefined,
-        thumbnail: data[headers.indexOf('thumbnail')] || undefined,
+        tags: data[getColumnIndex('tags')] ? (data[getColumnIndex('tags')] as string).split(',').filter(Boolean) : [],
+        description: data[getColumnIndex('description')] || undefined,
+        thumbnail: data[getColumnIndex('thumbnail')] || undefined,
+        thumbnailFileId: getColumnIndex('thumbnailFileId') >= 0 ? (data[getColumnIndex('thumbnailFileId')] || undefined) : undefined,
         publicToken: (() => {
           const decrypted = MetadataEncryption.decryptField(publicTokenEncrypted);
           if (!decrypted) return undefined;
@@ -475,10 +493,10 @@ export class CompanionMetadataSheets {
     const sheets = google.sheets({ version: 'v4', auth });
 
     try {
-      // Read current metadata to get headers
+      // Read current metadata to get headers (read up to 18 columns for new schema)
       const metadataResponse = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: 'Metadata!A1:O2'
+        range: 'Metadata!A1:R2'
       });
 
       const rows = metadataResponse.data.values;
@@ -494,6 +512,14 @@ export class CompanionMetadataSheets {
         const idx = headers.indexOf('visibility');
         if (idx >= 0) currentData[idx] = metadata.visibility;
       }
+      if (metadata.fileType !== undefined) {
+        const idx = headers.indexOf('fileType');
+        if (idx >= 0) currentData[idx] = metadata.fileType || '';
+      }
+      if (metadata.contentClass !== undefined) {
+        const idx = headers.indexOf('contentClass');
+        if (idx >= 0) currentData[idx] = metadata.contentClass || '';
+      }
       if (metadata.description !== undefined) {
         const idx = headers.indexOf('description');
         if (idx >= 0) currentData[idx] = metadata.description || '';
@@ -505,6 +531,10 @@ export class CompanionMetadataSheets {
       if (metadata.thumbnail !== undefined) {
         const idx = headers.indexOf('thumbnail');
         if (idx >= 0) currentData[idx] = metadata.thumbnail || '';
+      }
+      if (metadata.thumbnailFileId !== undefined) {
+        const idx = headers.indexOf('thumbnailFileId');
+        if (idx >= 0) currentData[idx] = metadata.thumbnailFileId || '';
       }
       if (metadata.publicToken !== undefined) {
         const idx = headers.indexOf('publicToken');

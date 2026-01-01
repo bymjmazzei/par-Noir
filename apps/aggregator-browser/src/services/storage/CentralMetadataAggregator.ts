@@ -69,6 +69,7 @@ export class CentralMetadataAggregator {
     filters?: { 
       tags?: string[]; 
       fileType?: string; 
+      contentClass?: 'media' | 'thought' | 'collection';
       authorDid?: string;
       limit?: number;      // SCALABILITY: Pagination support
       offset?: number;     // SCALABILITY: Pagination support
@@ -105,6 +106,7 @@ export class CentralMetadataAggregator {
     filters?: { 
       tags?: string[]; 
       fileType?: string; 
+      contentClass?: 'media' | 'thought' | 'collection';
       authorDid?: string;
       limit?: number;
       offset?: number;
@@ -118,7 +120,13 @@ export class CentralMetadataAggregator {
       // Query par Noir API backend
       const params = new URLSearchParams();
       if (filters?.tags) params.append('tags', filters.tags.join(','));
-      if (filters?.fileType) params.append('fileType', filters.fileType);
+      // Prefer contentClass over fileType (new approach)
+      if (filters?.contentClass) {
+        params.append('contentClass', filters.contentClass);
+      } else if (filters?.fileType) {
+        // Backward compatibility: use fileType if contentClass not provided
+        params.append('fileType', filters.fileType);
+      }
       if (filters?.authorDid) params.append('authorDid', filters.authorDid);
       if (filters?.limit !== undefined) params.append('limit', filters.limit.toString());      // SCALABILITY: Pagination
       if (filters?.offset !== undefined) params.append('offset', filters.offset.toString());    // SCALABILITY: Pagination

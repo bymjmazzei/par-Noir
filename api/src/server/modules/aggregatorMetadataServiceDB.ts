@@ -323,6 +323,7 @@ export class AggregatorMetadataServiceDB {
   async getPublicMetadata(filters?: {
     tags?: string[];
     fileType?: string;
+    contentClass?: 'media' | 'thought' | 'collection';
     authorDid?: string;
     indexerId?: string;
     feedId?: string;
@@ -379,8 +380,13 @@ export class AggregatorMetadataServiceDB {
         paramIndex++;
       }
 
-      // Apply fileType filter before GROUP BY
-      if (filters?.fileType) {
+      // Apply contentClass filter (preferred) or fileType filter (backward compatibility)
+      if (filters?.contentClass) {
+        query += ` AND am.metadata->>'contentClass' = $${paramIndex}`;
+        params.push(filters.contentClass);
+        paramIndex++;
+      } else if (filters?.fileType) {
+        // Backward compatibility: use fileType if contentClass not provided
         query += ` AND am.metadata->>'fileType' = $${paramIndex}`;
         params.push(filters.fileType);
         paramIndex++;
@@ -448,7 +454,13 @@ export class AggregatorMetadataServiceDB {
       const countParams: any[] = [];
       let countParamIndex = 1;
       
-      if (filters?.fileType) {
+      // Apply contentClass filter (preferred) or fileType filter (backward compatibility)
+      if (filters?.contentClass) {
+        countQuery += ` AND am.metadata->>'contentClass' = $${countParamIndex}`;
+        countParams.push(filters.contentClass);
+        countParamIndex++;
+      } else if (filters?.fileType) {
+        // Backward compatibility: use fileType if contentClass not provided
         countQuery += ` AND am.metadata->>'fileType' = $${countParamIndex}`;
         countParams.push(filters.fileType);
         countParamIndex++;
@@ -1343,6 +1355,7 @@ export class AggregatorMetadataServiceDB {
   async getIndexResponse(filters?: {
     tags?: string[];
     fileType?: string;
+    contentClass?: 'media' | 'thought' | 'collection';
     authorDid?: string;
     indexerId?: string;
     limit?: number;

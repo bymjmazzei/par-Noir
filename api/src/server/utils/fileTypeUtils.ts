@@ -68,6 +68,43 @@ export function determineFileType(options: {
 }
 
 /**
+ * Determine content class from metadata content
+ * This is separate from fileType - it classifies content for feed filtering
+ * 
+ * Priority order:
+ * 1. Collection data -> 'collection'
+ * 2. Thought (including thumbnails) -> 'thought'
+ * 3. Media (images, videos, audio) -> 'media'
+ * 4. Default -> 'media'
+ */
+export function determineContentClass(options: {
+  fileType?: string;
+  collection?: { collectionFileIds: string[] };
+  textPost?: any;
+  thought?: any;
+  isThoughtThumbnail?: boolean;
+  isPartOfCollection?: boolean;
+}): 'media' | 'thought' | 'collection' {
+  // Collection takes precedence
+  if (options.collection?.collectionFileIds && options.collection.collectionFileIds.length > 0) {
+    return 'collection';
+  }
+  
+  // Thought (including thumbnails)
+  if (options.thought || options.textPost || options.isThoughtThumbnail) {
+    return 'thought';
+  }
+  
+  // Media (images, videos, audio)
+  if (['image', 'video', 'audio'].includes(options.fileType || '')) {
+    return 'media';
+  }
+  
+  // Default to media for unknown types
+  return 'media';
+}
+
+/**
  * Valid file type values
  */
 export type FileType = 

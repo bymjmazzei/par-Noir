@@ -62,6 +62,7 @@ export class MetadataIndexService {
       const result = await CentralMetadataAggregator.fetchAggregatedIndex({
         tags: filters?.tags,
         fileType: filters?.fileType,
+        contentClass: filters?.contentClass,
         authorDid: filters?.authorDid,
         limit: filters?.limit,      // SCALABILITY: Pagination support
         offset: filters?.offset      // SCALABILITY: Pagination support
