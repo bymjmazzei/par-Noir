@@ -633,188 +633,21 @@ function App() {
   // Memoize filtered files by active feed
   // Helper function to normalize fileType based on file extension
   // This fixes cases where fileType is 'other' but should be 'image', 'video', etc.
-  const normalizeFileType = (file: IndexedFile): string => {
-    const fileType = file.metadata.fileType;
-    const fileName = file.metadata.name || file.metadata.title || '';
-    
-    // If fileType is already correct, return it
-    if (fileType === 'image' || fileType === 'video' || fileType === 'document' || fileType === 'text' || fileType === 'thought') {
-      return fileType;
-    }
-    
-    // Determine fileType from extension
-    if (fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)) {
-      return 'image';
-    }
-    if (fileName.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i)) {
-      return 'video';
-    }
-    if (fileName.match(/\.(thought)$/i) || /^thought-\d+\.(thought|png)/i.test(fileName)) {
-      return 'thought';
-    }
-    
-    // Return original fileType if we can't determine from extension
-    return fileType || 'other';
-  };
-
   // Helper function to identify text posts (thoughts) - MUST be defined before filteredFilesByFeed
   // Use same detection logic as FullScreenFeed for consistency
   // NOTE: Thoughts now render as thumbnails - thumbnail files should NOT be detected as thoughts
   const isThought = (file: IndexedFile): boolean => {
-    // CRITICAL: Exclude thumbnail files - they are just images, not thoughts
-    const fileName = file.metadata.name || file.metadata.title || '';
-    const isThumbnailFile = fileName.toLowerCase().startsWith('thumb_');
-    if (isThumbnailFile) {
-      return false; // Thumbnail files are images, not thoughts
-    }
-    
-    // CRITICAL: If a file has mainFileId, it's a thumbnail - not a thought
-    // (The main file would be the thought, not the thumbnail)
-    if (file.metadata.mainFileId) {
-      return false; // Files with mainFileId are thumbnails, not thoughts
-    }
-    
-    // Normalize fileType first to ensure correct detection
-    const normalizedFileType = normalizeFileType(file);
-    
-    // Check for textPost/thought data in multiple locations (same as FullScreenFeed)
-    // NOTE: Thumbnails have textPost/thought data removed by metadata service, so this check is safe
-    const hasTextPostData = !!(file.metadata as any).textPost || 
-                           !!(file.metadata as any).thought ||
-                           !!(file as any).textPost ||
-                           !!(file as any).thought;
-    
-    // Check for fileType in multiple locations (use normalized fileType)
-    const hasTextFileType = normalizedFileType === 'text' || 
-                           normalizedFileType === 'thought' ||
-                           file.metadata.fileType === 'text' ||
-                           file.metadata.fileType === 'thought' ||
-                           (file.metadata as any).fileType === 'text' ||
-                           (file.metadata as any).fileType === 'thought';
-    
-    // Check for thought filename pattern (new .thought format or legacy .png format)
-    // Also check originalName if available (file.name might be content, not filename)
-    const thoughtFileName = fileName || 
-                           (file.metadata as any).originalName ||
-                           (file.metadata as any).name ||
-                           '';
-    const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
-    
-    // IMPORTANT: If file has image/video extension, it's NOT a thought (unless it's thought-*.png)
-    const hasMediaExtension = !isThoughtFile && (
-      !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm|mkv|flv|wmv)$/i))
-    );
-    
-    // Prioritize hasTextPostData and hasTextFileType first, but exclude media files
-    return (hasTextPostData || hasTextFileType || isThoughtFile) && !hasMediaExtension;
+    return (file.metadata as any).contentClass === 'thought';
   };
 
   // Helper function to check if a file is a collection
   const isCollection = (file: IndexedFile): boolean => {
-    // Check fileType first
-    const fileType = file.metadata.fileType;
-    const collectionData = file.metadata?.collection;
-    
-    // A file is a collection if:
-    // 1. It has fileType 'collection' AND has collection data with fileIds
-    // 2. OR it has collectionFileIds even if fileType isn't explicitly 'collection' (backward compatibility)
-    const hasCollectionData = collectionData?.collectionFileIds && 
-                              Array.isArray(collectionData.collectionFileIds) && 
-                              collectionData.collectionFileIds.length > 0;
-    
-    if (fileType === 'collection' && hasCollectionData) {
-      return true;
-    }
-    
-    // Backward compatibility: check if file has collection data even if fileType isn't set
-    if (hasCollectionData) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`[App] Detected collection by data (fileType: ${fileType}):`, {
-          fileId: file.metadata.fileId,
-          fileType,
-          collectionFileIdsCount: collectionData.collectionFileIds.length
-        });
-      }
-      return true;
-    }
-    
-    return false;
+    return (file.metadata as any).contentClass === 'collection';
   };
 
   // Helper function to check if a file is media (image or video) - MUST be defined before filteredFilesByFeed
   const isMedia = (file: IndexedFile): boolean => {
-    // CRITICAL: Exclude collections - they're not media
-    if (isCollection(file)) {
-      return false;
-    }
-    
-    // Check if it's a thought first - if so, it's not media
-    const thoughtCheck = isThought(file);
-    if (thoughtCheck) {
-      return false; // Thoughts are not media
-    }
-    
-    const fileName = file.metadata.name || file.metadata.title || '';
-    
-    // CRITICAL: Exclude thought thumbnail files (files starting with thumb_thought-)
-    // These are PNG images but they're thumbnails of thoughts, not actual media
-    const isThoughtThumbnail = fileName.toLowerCase().startsWith('thumb_thought-');
-    if (isThoughtThumbnail) {
-      return false; // Thought thumbnails are not media
-    }
-    
-    // CRITICAL: Only exclude thumbnails if they point to a thought
-    // Regular media thumbnails (thumb_image.jpg, thumb_video.mp4) SHOULD be considered media
-    const mainFileId = file.metadata.mainFileId;
-    if (mainFileId) {
-      // This is a thumbnail file - try to find the main file to check its type
-      const mainFile = indexedFiles.find(f => f.metadata.fileId === mainFileId);
-      if (mainFile) {
-        // Only exclude if the main file is a thought
-        if (isThought(mainFile)) {
-          return false; // This thumbnail belongs to a thought, so it's not media
-        }
-        // If main file is media, this thumbnail is also media - continue to check below
-      } else {
-        // Main file not found in indexedFiles - check filename pattern
-        // Only exclude if the thumbnail name suggests it's for a thought
-        const thumbNameWithoutPrefix = fileName.replace(/^thumb_/i, '');
-        if (/^thought-\d+\.(thought|png)/i.test(thumbNameWithoutPrefix)) {
-          return false; // This thumbnail is for a thought file
-        }
-        // Otherwise, assume it's a regular media thumbnail and continue
-      }
-    }
-    
-    // Normalize fileType based on extension - this fixes 'other' types
-    const normalizedFileType = normalizeFileType(file);
-    
-    // Check for images using normalized fileType
-    // IMPORTANT: Thumbnails have fileType 'image' and should be considered media
-    const isImage = normalizedFileType === 'image' || 
-                   !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
-    
-    // Check for videos using normalized fileType
-    const isVideo = normalizedFileType === 'video' || 
-                   !!(fileName.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i));
-    
-    const result = isImage || isVideo;
-    
-    // Debug logging for files that should be media but aren't detected
-    if (!result && (normalizedFileType === 'image' || normalizedFileType === 'video' || !!fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm)$/i))) {
-      console.warn(`[App] File not detected as media:`, {
-        fileId: file.metadata.fileId,
-        originalFileType: file.metadata.fileType,
-        normalizedFileType,
-        fileName,
-        isThought: thoughtCheck,
-        isImage,
-        isVideo,
-        hasMainFileId: !!mainFileId
-      });
-    }
-    
-    return result;
+    return (file.metadata as any).contentClass === 'media';
   };
 
   // REMOVED: isMediaOnlyFeed function - thoughts should appear in ALL feeds
