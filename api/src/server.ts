@@ -2869,6 +2869,33 @@ class ProductionServer {
             );
             // Refetch after isPublic update
             current = await service.getFileMetadata(fileId);
+            
+            // CRITICAL: Submit metadata to aggregator service so it appears in feeds
+            if (isBecomingPublic && current) {
+              try {
+                const publicMetadata = {
+                  ...current.metadata,
+                  isPublic: true,
+                  fileId: current.metadata.fileId || fileId,
+                  // Ensure required fields are present
+                  backend: current.metadata.backend || 'google_drive',
+                  backendFileId: current.metadata.backendFileId || fileId,
+                  name: current.metadata.name || current.metadata.title || fileId,
+                  uploadDate: current.metadata.uploadDate || new Date().toISOString(),
+                  fileType: current.metadata.fileType || 'other'
+                };
+                
+                await service.submitMetadata(
+                  publicMetadata as any,
+                  tokenPayload?.pnIdentifier,
+                  tokenPayload?.did || tokenPayload?.pnIdentifier
+                );
+                console.log(`[MetadataIndex PUT] Submitted metadata to aggregator for public file ${fileId}`);
+              } catch (submitError: any) {
+                console.error(`[MetadataIndex PUT] Failed to submit metadata to aggregator:`, submitError?.message || submitError);
+                // Don't fail the request - metadata is updated, just not in aggregator yet
+              }
+            }
           }
           
           // Handle making file public - create companion metadata and update indexes
