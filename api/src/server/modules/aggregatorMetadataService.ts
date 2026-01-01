@@ -43,6 +43,7 @@ export interface PublicMetadata {
   tags?: string[]; // Legacy support (deprecated, use keywords)
   uploadDate: string; // Schema.org:datePublished
   fileType: string;
+  contentClass?: 'media' | 'thought' | 'collection'; // Content classification for feed filtering
   
   // Author/Creator (schema.org:creator)
   creator?: {
@@ -96,6 +97,13 @@ export interface PublicMetadata {
   
   // Thumbnail for fast feed loading (images, videos, slideshows)
   thumbnailFileId?: string; // File ID of encrypted thumbnail (800px width, JPEG)
+  
+  // Thought/Collection metadata
+  isThoughtThumbnail?: boolean; // True if this is a thumbnail image for a thought
+  isPartOfCollection?: boolean; // True if this file is part of a collection
+  collection?: {
+    collectionFileIds: string[]; // Array of file IDs in order
+  };
 
   // Text Post / Thought Support
   textPost?: {
