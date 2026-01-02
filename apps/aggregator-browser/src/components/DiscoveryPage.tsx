@@ -10,6 +10,7 @@ import { Info, Heart, MessageCircle, Share2, Bookmark } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { getUserProfile } from '../services/profileService';
 import { cleanTitle } from '../utils/cleanTitle';
+import { isNSFWContent } from '../constants/contentRatings';
 
 interface DiscoveryPageProps {
   files: IndexedFile[];
@@ -37,6 +38,87 @@ export function DiscoveryPage({
   const [showInfo, setShowInfo] = useState<string | null>(null);
   // Use ref to track fetched creators to avoid re-fetching (persists across renders)
   const fetchedCreatorsRef = useRef<Set<string>>(new Set());
+
+  // Helper to check if file should be shown based on NSFW preference
+  // LOCKED USERS: Never show NSFW content, period
+  // UNLOCKED USERS: Only show NSFW if age-verified and enabled
+  const shouldShowFile = (file: IndexedFile): boolean => {
+    const isNSFW = isNSFWContent(file.metadata);
+    
+    // LOCKED USERS: Never show NSFW content, period
+    if (!userState.isUnlocked && isNSFW) {
+      return false;
+    }
+    
+    // UNLOCKED USERS: Only show NSFW if age-verified and enabled
+    if (isNSFW) {
+      return userState.preferences.hasAgeZKP && 
+             userState.preferences.isOver18 && 
+             userState.preferences.showNSFW;
+    }
+    
+    // Show public (non-NSFW) content
+    return true;
+  };
+
+  // Helper to calculate client-side recommendation score
+  // For public feed: uses public algorithm only (engagement + recency)
+  // For personalized feeds: uses full algorithm (public + user preferences)
+  const calculateClientScore = (file: IndexedFile, usePersonalization: boolean = false): number => {
+    // Use recommendationScore from metadata if available
+    if ((file.metadata as any).recommendationScore !== undefined) {
+      return (file.metadata as any).recommendationScore;
+    }
+
+    // Fallback: simple client-side calculation
+    const engagement = file.metadata.engagement;
+    const engagementScore = (engagement?.likes || 0) + 
+                            (engagement?.comments || 0) * 2 + 
+                            (engagement?.shares || 0) * 1.5;
+
+    // Recency score (decay by 2 points per day)
+    const uploadDate = file.metadata.uploadDate 
+      ? new Date(file.metadata.uploadDate).getTime()
+      : Date.now();
+    const daysSinceUpload = (Date.now() - uploadDate) / (1000 * 60 * 60 * 24);
+    const recencyScore = Math.max(0, 100 - (daysSinceUpload * 2));
+
+    // Combine engagement (70%) and recency (30%)
+    let score = (engagementScore * 0.7) + (recencyScore * 0.3);
+
+    // Add personalization adjustments if enabled
+    if (usePersonalization && userState.isUnlocked) {
+      // Boost for subscribed subjects
+      const fileSubjects = (file.metadata.subjects || []).map(s => s.toLowerCase().trim());
+      const subscribedSubjects = (userState.preferences.subscribedSubjects || []).map(s => s.toLowerCase().trim());
+      if (subscribedSubjects.length > 0 && fileSubjects.some(s => subscribedSubjects.includes(s))) {
+        score += 15;
+      }
+
+      // Penalty for blocked subjects
+      const blockedSubjects = (userState.preferences.blockedSubjects || []).map(s => s.toLowerCase().trim());
+      if (blockedSubjects.length > 0 && fileSubjects.some(s => blockedSubjects.includes(s))) {
+        score -= 30;
+      }
+
+      // Boost for subscribed feeds
+      const subscribedFeedIds = userState.preferences.subscribedFeedIds || [];
+      if (subscribedFeedIds.length > 0 && file.metadata.feedIds?.some(id => subscribedFeedIds.includes(id))) {
+        score += 15;
+      }
+    }
+
+    return Math.max(0, score);
+  };
+
+  // Helper to sort files by recommendation score
+  const sortByScore = (files: IndexedFile[], usePersonalization: boolean = false): IndexedFile[] => {
+    return [...files].sort((a, b) => {
+      const scoreA = calculateClientScore(a, usePersonalization);
+      const scoreB = calculateClientScore(b, usePersonalization);
+      return scoreB - scoreA; // Descending order (highest first)
+    });
+  };
 
   // Get trending files (most engagement, using recommendation scores if available)
   const trendingFiles = useMemo(() => {
@@ -119,14 +201,15 @@ export function DiscoveryPage({
   }, [files]);
 
 
-  // Get files filtered by top feed and niche
-  // Filtering order: 1) Niche filter, 2) Top feed filter
-  // Example: "Classics" + "All" → shows all classics
-  // Example: "Sports & Fitness" + "Classics" → shows only sports & fitness classics
+  // Get files filtered by NSFW, niche, and top feed
+  // Filtering order: 1) NSFW filter, 2) Niche filter, 3) Top feed filter, 4) Scoring algorithm
+  // Example: "Classics" + "All" → shows all classics (filtered by NSFW and sorted)
+  // Example: "Sports & Fitness" + "Classics" → shows only sports & fitness classics (filtered by NSFW and sorted)
   const filteredFiles = useMemo(() => {
-    let filtered = [...files];
+    // Step 1: Apply NSFW filtering first
+    let filtered = files.filter(file => shouldShowFile(file));
     
-    // Step 1: Filter by niche if selected (null means "All" niches)
+    // Step 2: Filter by niche if selected (null means "All" niches)
     if (selectedNiche) {
       filtered = filtered.filter(file => 
         file.metadata.feedCategories?.includes(selectedNiche as any) ||
@@ -137,25 +220,16 @@ export function DiscoveryPage({
       );
     }
     
-    // Step 2: Apply top feed filter (sorts/filters the already niche-filtered results)
+    // Step 3: Apply top feed filter (sorts/filters the already niche-filtered results)
     switch (activeTopFeed) {
       case 'all':
-        // "All" feed: Show all files from public index (already filtered by niche if selected)
-        // No additional sorting - preserves original order from API (newest first)
+        // "All" feed: Show all files (already filtered by NSFW and niche if selected)
+        // Apply scoring algorithm based on user lock state
+        filtered = sortByScore(filtered, userState.isUnlocked);
         break;
       case 'trending':
-        filtered = filtered.sort((a, b) => {
-          // Use recommendationScore if available (from weighted algorithm), otherwise fallback to simple engagement
-          const aScore = (a.metadata as any).recommendationScore || 
-            ((a.metadata.engagement?.likes || 0) + 
-             (a.metadata.engagement?.comments || 0) + 
-             (a.metadata.engagement?.shares || 0));
-          const bScore = (b.metadata as any).recommendationScore || 
-            ((b.metadata.engagement?.likes || 0) + 
-             (b.metadata.engagement?.comments || 0) + 
-             (b.metadata.engagement?.shares || 0));
-          return bScore - aScore;
-        }).slice(0, 100);
+        // Trending: Sort by score and take top 100
+        filtered = sortByScore(filtered, userState.isUnlocked).slice(0, 100);
         break;
       case 'featured':
         // Featured feeds with most content
@@ -167,27 +241,22 @@ export function DiscoveryPage({
         filtered = filtered.filter(file => 
           file.metadata.feedIds?.some(feedId => featuredFeedIds.includes(feedId))
         );
+        // Apply scoring algorithm
+        filtered = sortByScore(filtered, userState.isUnlocked);
         break;
       case 'classics':
         filtered = filtered.filter(file => {
           const uploadDate = new Date(file.metadata.uploadDate);
           const daysOld = (Date.now() - uploadDate.getTime()) / (1000 * 60 * 60 * 24);
           return daysOld > 30; // At least 30 days old
-        }).sort((a, b) => {
-          // Use recommendationScore if available (from weighted algorithm), otherwise fallback to simple engagement
-          const aScore = (a.metadata as any).recommendationScore || 
-            ((a.metadata.engagement?.likes || 0) + 
-             (a.metadata.engagement?.comments || 0));
-          const bScore = (b.metadata as any).recommendationScore || 
-            ((b.metadata.engagement?.likes || 0) + 
-             (b.metadata.engagement?.comments || 0));
-          return bScore - aScore;
-        }).slice(0, 100);
+        });
+        // Apply scoring algorithm and take top 100
+        filtered = sortByScore(filtered, userState.isUnlocked).slice(0, 100);
         break;
     }
     
     return filtered;
-  }, [files, feeds, selectedNiche, activeTopFeed]);
+  }, [files, feeds, selectedNiche, activeTopFeed, userState.isUnlocked, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.subscribedFeedIds]);
 
   // Helper to check if file is a text post/thought
   const isTextPost = (file: IndexedFile): boolean => {

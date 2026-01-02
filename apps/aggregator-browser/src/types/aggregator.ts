@@ -152,16 +152,24 @@ export interface Feed {
   feedCategory: FeedCategory;
   feedDescription?: string;
   creatorId: string; // pN identifier of feed host
-  creatorTier: 'feed' | 'self-hosted';
+  creatorTier: 'free' | 'feed' | 'self-hosted';
   branding?: {
     bannerImage?: string;
     avatar?: string;
     bio?: string;
+    links?: Array<{
+      label: string;
+      url: string;
+    }>;
   };
   createdAt: string;
   updatedAt: string;
   subscriberCount?: number;
   postCount?: number;
+  isPaid?: boolean;
+  monthlyPrice?: number;
+  annualPrice?: number;
+  subdomain?: string;
 }
 
 // ============================================================================
