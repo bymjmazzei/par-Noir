@@ -1218,31 +1218,13 @@ function App() {
       
       await metadataIndexService.initialize();
       
-      // Build filters with rating preferences and feed filtering
-      const isVirtualFeed = activeFeedId === 'public' || 
-                            activeFeedId === 'discovery';
-      const isNicheCategoryFeed = activeFeedId.startsWith('niche-');
-      
-      const finalFilters: MetadataFilters & { limit?: number; offset?: number } = {
-        ...filters,
-        ...searchFilters,
-        ...(searchQuery ? { tags: searchQuery.split(',').map(t => t.trim()).filter(Boolean) } : {}),
-        // Note: Pagination is handled per content type, but we load all for now
-        // TODO: Implement proper pagination per content type if needed
-        ...(isVirtualFeed
-          ? {} 
-          : isNicheCategoryFeed
-          ? { feedCategory: activeFeedId.replace('niche-', '') as any }
-          : { feedId: activeFeedId })
-      };
-      
       const contentTypeService = new ContentTypeIndexService();
       
-      // Load each content type index in parallel
+      // Load each content type index directly - ONLY contentClass, NO OTHER FILTERS
       const [media, thoughts, collections] = await Promise.all([
-        contentTypeService.loadContentTypeIndex('media', finalFilters, forceRefresh),
-        contentTypeService.loadContentTypeIndex('thoughts', finalFilters, forceRefresh),
-        contentTypeService.loadContentTypeIndex('collections', finalFilters, forceRefresh),
+        contentTypeService.loadContentTypeIndex('media', { contentClass: 'media' }, forceRefresh),
+        contentTypeService.loadContentTypeIndex('thoughts', { contentClass: 'thought' }, forceRefresh),
+        contentTypeService.loadContentTypeIndex('collections', { contentClass: 'collection' }, forceRefresh),
       ]);
       
       // For pagination: append or replace based on page
@@ -1274,8 +1256,8 @@ function App() {
         try {
           const { CentralMetadataAggregator } = await import('./services/storage/CentralMetadataAggregator');
           const nsfwResult = await CentralMetadataAggregator.fetchNSFWIndex({
-            tags: finalFilters?.tags,
-            authorDid: finalFilters?.authorDid,
+            tags: filters?.tags,
+            authorDid: filters?.authorDid,
             limit: PAGE_SIZE,
             offset: page * PAGE_SIZE
           }, forceRefresh);
@@ -1305,15 +1287,10 @@ function App() {
               };
             });
           
-          // Add NSFW files to appropriate indices based on their fileType
-          const nsfwMedia = nsfwFiles.filter(f => ['image', 'video'].includes(f.metadata.fileType || ''));
-          const nsfwThoughts = nsfwFiles.filter(f => {
-            const isThoughtThumbnail = (f.metadata as any).isThoughtThumbnail === true;
-            const isThoughtCollectionThumbnail = f.metadata.fileType === 'thought-collection-thumbnail';
-            const isThoughtFile = ['thought', 'text'].includes(f.metadata.fileType || '');
-            return isThoughtThumbnail || isThoughtCollectionThumbnail || isThoughtFile;
-          });
-          const nsfwCollections = nsfwFiles.filter(f => f.metadata.fileType === 'collection');
+          // Add NSFW files to appropriate indices based on their contentClass
+          const nsfwMedia = nsfwFiles.filter(f => (f.metadata as any).contentClass === 'media');
+          const nsfwThoughts = nsfwFiles.filter(f => (f.metadata as any).contentClass === 'thought');
+          const nsfwCollections = nsfwFiles.filter(f => (f.metadata as any).contentClass === 'collection');
           
           setMediaFiles(prev => {
             const existingIds = new Set(prev.map(f => f.metadata.fileId));
@@ -1737,125 +1714,27 @@ function App() {
       return;
     }
     
-    // If viewing own profile and unlocked, use authenticated endpoint to get ALL files (public + private)
+    // If viewing own profile and unlocked, load directly from Google Drive owner indices
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
       const loadUserFiles = async () => {
         isLoadingCreatorFilesRef.current = true;
         setIsLoadingCreatorFiles(true);
         try {
-          // Use authenticated endpoint to get ALL files (public + private) for the user
-          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
           const { PNOAuthService } = await import('./services/pnOAuthService');
+          const { loadUserFilesFromGoogleDrive } = await import('./services/googleDriveUserFilesService');
           const accessToken = await PNOAuthService.getValidAccessToken();
           
           if (!accessToken) {
-            console.warn('⚠️ No access token available for authenticated file fetch');
+            console.warn('⚠️ No access token available for Google Drive file fetch');
             return;
           }
 
-          const response = await fetch(
-            `${apiEndpoint}/api/aggregator/my-files`,
-            {
-              method: 'GET',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${accessToken}`
-              }
-            }
-          );
-
-          let apiFiles: IndexedFile[] = [];
-          if (response.ok) {
-            const data = await response.json();
-            if (data.files && Array.isArray(data.files)) {
-              // The /api/aggregator/my-files endpoint already returns all files (public + private) for the authenticated user
-              // No need to filter - the server already filtered by pnIdentifier
-              if (process.env.NODE_ENV === 'development') {
-                console.log(`[Me Page] Loaded ${data.files.length} files for user ${viewingCreatorId}`);
-              }
-              
-              // Convert entries to IndexedFile format
-              apiFiles = data.files.map((entry: any) => {
-                const metadata = entry.metadata || {};
-                return {
-                  metadata: {
-                    ...metadata,
-                    fileId: entry.fileId || metadata.fileId,
-                    // FIX: Ensure textPost and thought are preserved for thoughts
-                    textPost: metadata.textPost || metadata.thought || undefined,
-                    thought: metadata.thought || metadata.textPost || undefined,
-                    // Preserve collection data for collections
-                    // IMPORTANT: Don't use || undefined - preserve null/empty objects if they exist
-                    collection: metadata.collection !== undefined ? metadata.collection : undefined,
-                    // Ensure owner info is preserved
-                    creator: metadata.creator || {
-                      identifier: { value: entry.pnIdentifier || viewingCreatorId }
-                    },
-                    creatorId: entry.pnIdentifier || metadata.creatorId || viewingCreatorId,
-                    // Also check author field for legacy compatibility
-                    author: metadata.author || {
-                      did: entry.pnIdentifier || viewingCreatorId
-                    }
-                  },
-                  // Preserve pnIdentifier from API response
-                  pnIdentifier: entry.pnIdentifier
-                } as IndexedFile;
-              });
-            }
-          } else {
-            const errorText = await response.text().catch(() => 'Unknown error');
-            console.warn(`⚠️ API returned ${response.status} for user files: ${errorText}, falling back to public index`);
-          }
-
-          // Also get files from already-loaded public index (in case API missed some)
-          const normalizeIdentifier = (id: string | undefined | null): string => {
-            if (!id) return '';
-            const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
-            return cleaned.trim().toLowerCase();
-          };
-          const normalizedViewingId = normalizeIdentifier(viewingCreatorId);
-          const publicIndexFiles = indexedFiles.filter(f => {
-            const fileOwnerId = f.metadata.creator?.identifier?.value || 
-                                f.metadata.creator?.["@id"] || 
-                                f.metadata.author?.did ||
-                                f.metadata.creatorId ||
-                                (f as any).pnIdentifier;
-            const normalizedOwnerId = normalizeIdentifier(fileOwnerId);
-            return normalizedOwnerId === normalizedViewingId;
-          });
-          
-          // Combine and deduplicate by fileId
-          const combinedFiles = Array.from(
-            new Map([...apiFiles, ...publicIndexFiles]
-              .map(f => [f.metadata.fileId, f])).values()
-          );
-          
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`[Me Page] Combined ${combinedFiles.length} files (${apiFiles.length} API + ${publicIndexFiles.length} index)`);
-          }
-          setCreatorFilesState(combinedFiles);
+          // Load directly from Google Drive owner indices - no API, no filtering
+          const allFiles = await loadUserFilesFromGoogleDrive(accessToken, viewingCreatorId);
+          setCreatorFilesState(allFiles);
         } catch (error) {
-          console.error('Failed to load user files from API, falling back to public index:', error);
-          // Fallback to public index
-          const normalizeIdentifier = (id: string | undefined | null): string => {
-            if (!id) return '';
-            const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
-            return cleaned.trim().toLowerCase();
-          };
-          const normalizedViewingId = normalizeIdentifier(viewingCreatorId);
-          const filtered = indexedFiles.filter(f => {
-            const fileOwnerId = f.metadata.creator?.identifier?.value || 
-                                f.metadata.creator?.["@id"] || 
-                                f.metadata.author?.did ||
-                                f.metadata.creatorId ||
-                                (f as any).pnIdentifier;
-            const normalizedOwnerId = normalizeIdentifier(fileOwnerId);
-            return normalizedOwnerId === normalizedViewingId;
-          });
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`[Me Page] Fallback: Found ${filtered.length} files from public index for ${viewingCreatorId}`);
-          }
-          setCreatorFilesState(filtered);
+          console.error('Failed to load user files from Google Drive:', error);
+          setCreatorFilesState([]);
         } finally {
           setIsLoadingCreatorFiles(false);
           isLoadingCreatorFilesRef.current = false;

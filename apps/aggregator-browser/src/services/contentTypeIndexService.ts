@@ -35,9 +35,8 @@ export class ContentTypeIndexService {
     };
     const contentClass = contentClassMap[contentType];
     
-    // Query API using contentClass (preferred approach)
+    // Query API using contentClass - ONLY contentClass, nothing else
     const result = await metadataService.discoverFiles({
-      ...filters,
       contentClass,
     }, forceRefresh);
     

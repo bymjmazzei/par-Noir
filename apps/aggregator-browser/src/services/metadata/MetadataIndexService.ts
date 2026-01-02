@@ -61,7 +61,6 @@ export class MetadataIndexService {
       
       const result = await CentralMetadataAggregator.fetchAggregatedIndex({
         tags: filters?.tags,
-        fileType: filters?.fileType,
         contentClass: filters?.contentClass,
         authorDid: filters?.authorDid,
         limit: filters?.limit,      // SCALABILITY: Pagination support
@@ -169,13 +168,6 @@ export class MetadataIndexService {
             return keywords.some(tag => filters.tags!.includes(tag));
           });
         }
-        if (filters.fileType && !filters.contentClass) {
-          // Only filter by fileType if contentClass is not provided
-          // When contentClass is provided, the API already filtered correctly
-          // fileType is for technical rendering, contentClass is for feed classification
-          // Thought thumbnails have fileType='image' but contentClass='thought'
-          files = files.filter(file => file.metadata.fileType === filters.fileType);
-        }
         if (filters.authorDid) {
           files = files.filter(file => {
             const did = file.metadata.creator?.identifier?.value || 
@@ -208,10 +200,25 @@ export class MetadataIndexService {
         
         // Feed filters
         if (filters.feedId) {
-          files = files.filter(file => {
-            const fileFeedIds = file.metadata.feedIds || [];
-            return fileFeedIds.includes(filters.feedId!);
-          });
+          // Map feedId to contentClass - we have content class indices, use them!
+          const feedIdToContentClass: Record<string, 'media' | 'thought' | 'collection'> = {
+            'media': 'media',
+            'thoughts': 'thought',
+            'collections': 'collection'
+          };
+          const contentClass = feedIdToContentClass[filters.feedId];
+          if (contentClass) {
+            files = files.filter(file => {
+              const fileContentClass = (file.metadata as any).contentClass;
+              return fileContentClass === contentClass;
+            });
+          } else {
+            // Fallback to old feedIds array check for custom feeds only
+            files = files.filter(file => {
+              const fileFeedIds = file.metadata.feedIds || [];
+              return fileFeedIds.includes(filters.feedId!);
+            });
+          }
         }
         
         if (filters.feedCategory) {

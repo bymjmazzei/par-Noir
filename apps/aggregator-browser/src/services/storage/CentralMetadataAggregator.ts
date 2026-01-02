@@ -120,12 +120,9 @@ export class CentralMetadataAggregator {
       // Query par Noir API backend
       const params = new URLSearchParams();
       if (filters?.tags) params.append('tags', filters.tags.join(','));
-      // Prefer contentClass over fileType (new approach)
+      // Only use contentClass - fileType is for rendering, not filtering
       if (filters?.contentClass) {
         params.append('contentClass', filters.contentClass);
-      } else if (filters?.fileType) {
-        // Backward compatibility: use fileType if contentClass not provided
-        params.append('fileType', filters.fileType);
       }
       if (filters?.authorDid) params.append('authorDid', filters.authorDid);
       if (filters?.limit !== undefined) params.append('limit', filters.limit.toString());      // SCALABILITY: Pagination
@@ -208,12 +205,6 @@ export class CentralMetadataAggregator {
             return keywords.some(tag => filters.tags!.includes(tag));
           });
         }
-        if (filters.fileType && !filters.contentClass) {
-          // Only filter by fileType if contentClass is not provided
-          // When contentClass is provided, the API already filtered correctly
-          // fileType is for technical rendering, contentClass is for feed classification
-          files = files.filter(f => f.metadata.fileType === filters.fileType);
-        }
         if (filters.authorDid) {
           files = files.filter(f => {
             // Support both new creator structure and legacy author structure
@@ -290,7 +281,7 @@ export class CentralMetadataAggregator {
       // Query NSFW index endpoint
       const params = new URLSearchParams();
       if (filters?.tags) params.append('tags', filters.tags.join(','));
-      if (filters?.fileType) params.append('fileType', filters.fileType);
+      if (filters?.contentClass) params.append('contentClass', filters.contentClass);
       if (filters?.authorDid) params.append('authorDid', filters.authorDid);
       if (filters?.limit !== undefined) params.append('limit', filters.limit.toString());      // SCALABILITY: Pagination
       if (filters?.offset !== undefined) params.append('offset', filters.offset.toString());    // SCALABILITY: Pagination

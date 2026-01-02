@@ -70,8 +70,8 @@ export async function searchFiles(
       if (options.filters.tags && options.filters.tags.length > 0) {
         params.append('tags', options.filters.tags.join(','));
       }
-      if (options.filters.fileType) {
-        params.append('fileType', options.filters.fileType);
+      if (options.filters.contentClass) {
+        params.append('contentClass', options.filters.contentClass);
       }
       if (options.filters.authorDid) {
         params.append('authorDid', options.filters.authorDid);
