@@ -6314,11 +6314,26 @@ class ProductionServer {
         
         const db = (await import('./server/utils/database')).getDatabasePool();
         
+        // Use upsert pattern: update existing view for today, or insert new one
         await db.query(`
           INSERT INTO file_views (file_id, user_did, view_duration, viewed_at)
-          VALUES ($1, $2, $3::DECIMAL, NOW())
-          ON CONFLICT (file_id, user_did, (DATE(viewed_at))) 
-          DO UPDATE SET view_duration = GREATEST(file_views.view_duration, $3::DECIMAL)
+          SELECT $1, $2, $3::DECIMAL, NOW()
+          WHERE NOT EXISTS (
+            SELECT 1 FROM file_views 
+            WHERE file_id = $1 
+            AND user_did = $2 
+            AND DATE(viewed_at) = DATE(NOW())
+          )
+          ON CONFLICT DO NOTHING
+        `, [fileId, userDid, viewDuration || 0]);
+        
+        // Update view_duration if record exists
+        await db.query(`
+          UPDATE file_views 
+          SET view_duration = GREATEST(view_duration, $3::DECIMAL)
+          WHERE file_id = $1 
+          AND user_did = $2 
+          AND DATE(viewed_at) = DATE(NOW())
         `, [fileId, userDid, viewDuration || 0]);
         
         return res.json({ success: true });

@@ -44,7 +44,9 @@ export async function loadUserFilesFromGoogleDrive(
     console.log('🔍 Loading user files from Google Drive for:', pnIdentifier);
 
     // Step 1: Find user's pN folder: "par Noir - pn-{identifier}"
-    const pnFolderName = `par Noir - pn-${pnIdentifier}`;
+    // Ensure pnIdentifier has the pn- prefix (it might already have it)
+    const normalizedIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+    const pnFolderName = `par Noir - ${normalizedIdentifier}`;
     const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     
     const foldersResponse = await fetch(

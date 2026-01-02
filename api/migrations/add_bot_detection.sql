@@ -55,9 +55,12 @@ CREATE TABLE IF NOT EXISTS file_views (
   file_id VARCHAR(255) NOT NULL,
   user_did VARCHAR(255) NOT NULL,
   view_duration DECIMAL(10,2), -- seconds
-  viewed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(file_id, user_did, DATE(viewed_at))
+  viewed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Create unique index for conflict resolution (one view per file per user per day)
+CREATE UNIQUE INDEX IF NOT EXISTS file_views_file_user_date_unique 
+ON file_views(file_id, user_did, DATE(viewed_at));
 
 -- Create indexes for file_views
 CREATE INDEX IF NOT EXISTS idx_file_views_user_did 
