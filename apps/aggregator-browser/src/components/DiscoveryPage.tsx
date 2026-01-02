@@ -41,6 +41,8 @@ export function DiscoveryPage({
   const fetchedCreatorsRef = useRef<Set<string>>(new Set());
   // Track blob URLs we create for cleanup
   const createdBlobUrlsRef = useRef<Set<string>>(new Set());
+  // Track which thumbnail fileIds we've already processed (to avoid duplicates)
+  const processedThumbnailsRef = useRef<Set<string>>(new Set());
   
   // Local thumbnails state (starts with external thumbnails, can load additional ones)
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
@@ -82,20 +84,30 @@ export function DiscoveryPage({
         const fileId = file.fileId;
         const fileName = file.name || file.title || '';
         
-        // Skip if already loaded or provided externally
-        // We need to check current thumbnails state, but since it's not in deps,
-        // we'll use a functional update pattern to check and update atomically
-        let shouldLoad = true;
+        // Skip if already processed, in external thumbnails, or in current thumbnails state
+        if (processedThumbnailsRef.current.has(fileId)) {
+          console.log(`[DiscoveryPage] Skipping ${fileId} - already processed`);
+          return;
+        }
+        if (externalThumbnails && externalThumbnails.has(fileId)) {
+          console.log(`[DiscoveryPage] Skipping ${fileId} - already in externalThumbnails`);
+          processedThumbnailsRef.current.add(fileId);
+          return;
+        }
+        
+        // Check if already in thumbnails state using functional update
+        let alreadyInState = false;
         setThumbnails(prev => {
-          if (prev.has(fileId) || (externalThumbnails && externalThumbnails.has(fileId))) {
-            console.log(`[DiscoveryPage] Skipping ${fileId} - already loaded`);
-            shouldLoad = false;
-            return prev; // Return unchanged map
+          if (prev.has(fileId)) {
+            alreadyInState = true;
+            return prev;
           }
-          return prev; // Will be updated below if loading
+          return prev;
         });
         
-        if (!shouldLoad) {
+        if (alreadyInState) {
+          console.log(`[DiscoveryPage] Skipping ${fileId} - already in thumbnails state`);
+          processedThumbnailsRef.current.add(fileId);
           return;
         }
 
@@ -127,6 +139,9 @@ export function DiscoveryPage({
           
           // Track this blob URL for cleanup
           createdBlobUrlsRef.current.add(thumbnailUrlObj);
+          
+          // Mark as processed
+          processedThumbnailsRef.current.add(fileId);
           
           setThumbnails(prev => {
             const newMap = new Map(prev);
