@@ -327,23 +327,27 @@ export async function loadUserFilesFromGoogleDrive(
         } else {
           // Final fallback: scan .metadata.json files (old behavior)
           console.log('📁 No owner indices found, falling back to scanning metadata files');
-          await this.loadFromMetadataFiles(accessToken, metadataFolder.id, indexedFiles);
+          await loadFromMetadataFiles(accessToken, metadataFolder.id, indexedFiles);
         }
       } else {
         // Final fallback: scan .metadata.json files (old behavior)
         console.log('📁 Failed to load root owner index, falling back to scanning metadata files');
-        await this.loadFromMetadataFiles(accessToken, metadataFolder.id, indexedFiles);
+        await loadFromMetadataFiles(accessToken, metadataFolder.id, indexedFiles);
       }
     }
 
     console.log(`✅ Loaded ${indexedFiles.length} files from Google Drive (${indexedFiles.filter(f => f.metadata.isArchived).length} archived)`);
     return indexedFiles;
+  } catch (error) {
+    console.error('❌ Failed to load files from Google Drive:', error);
+    throw error;
   }
+}
 
-  /**
-   * Fallback: Load files by scanning .metadata.json files (old behavior)
-   */
-  static async loadFromMetadataFiles(
+/**
+ * Fallback: Load files by scanning .metadata.json files (old behavior)
+ */
+async function loadFromMetadataFiles(
     accessToken: string,
     metadataFolderId: string,
     indexedFiles: IndexedFile[]
@@ -515,10 +519,6 @@ export async function loadUserFilesFromGoogleDrive(
         continue;
       }
     }
-  } catch (error) {
-    console.error('❌ Failed to load files from Google Drive:', error);
-    throw error;
-  }
 }
 
 /**

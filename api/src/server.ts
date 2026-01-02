@@ -6316,9 +6316,9 @@ class ProductionServer {
         
         await db.query(`
           INSERT INTO file_views (file_id, user_did, view_duration, viewed_at)
-          VALUES ($1, $2, $3, NOW())
-          ON CONFLICT (file_id, user_did, DATE(viewed_at)) 
-          DO UPDATE SET view_duration = GREATEST(file_views.view_duration, $3)
+          VALUES ($1, $2, $3::DECIMAL, NOW())
+          ON CONFLICT (file_id, user_did, (DATE(viewed_at))) 
+          DO UPDATE SET view_duration = GREATEST(file_views.view_duration, $3::DECIMAL)
         `, [fileId, userDid, viewDuration || 0]);
         
         return res.json({ success: true });

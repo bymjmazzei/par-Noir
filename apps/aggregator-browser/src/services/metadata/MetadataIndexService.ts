@@ -235,9 +235,11 @@ export class MetadataIndexService {
         }
       }
       
-      // After all filters (logging removed - was too verbose)
+      // After all filters - only log relevant filters (exclude fileType since it's not used for filtering)
       if (beforeFilters > files.length) {
-        console.log(`⚠️ [MetadataIndexService] Filtered out ${beforeFilters - files.length} files due to filters:`, filters);
+        const relevantFilters = { ...filters };
+        delete relevantFilters.fileType; // fileType is only for rendering, not filtering
+        console.log(`⚠️ [MetadataIndexService] Filtered out ${beforeFilters - files.length} files due to filters:`, relevantFilters);
       }
 
       // SCALABILITY: Return pagination info if pagination params were provided
