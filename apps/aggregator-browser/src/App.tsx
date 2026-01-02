@@ -3783,21 +3783,44 @@ function App() {
             <LoadingSkeleton type="grid" count={6} />
           )
         ) : indexedFiles.length === 0 ? (
-          <EmptyState
-            type="no-content"
-            message={
-              typeof window !== 'undefined' && localStorage.getItem('google_drive_token')
-                ? 'No files have been marked as public yet. Mark files as public in the dashboard to see them here.'
-                : 'Connect Google Drive in the dashboard to scan for public files'
-            }
-          />
+          (() => {
+            console.log('[App] Showing EmptyState - indexedFiles.length is 0', {
+              mediaFiles: mediaFiles.length,
+              thoughtsFiles: thoughtsFiles.length,
+              collectionsFiles: collectionsFiles.length,
+              indexedFiles: indexedFiles.length,
+              viewMode,
+              activeFeedId
+            });
+            return (
+              <EmptyState
+                type="no-content"
+                message={
+                  typeof window !== 'undefined' && localStorage.getItem('google_drive_token')
+                    ? 'No files have been marked as public yet. Mark files as public in the dashboard to see them here.'
+                    : 'Connect Google Drive in the dashboard to scan for public files'
+                }
+              />
+            );
+          })()
         ) : viewMode === 'feed' && activeFeedId === 'discovery' ? (
-          // Discovery Page - uses all indexedFiles (virtual feed)
-          <div className="flex-1 h-full pt-20 pb-20">
-            <DiscoveryPage
-              files={indexedFiles}
-              feeds={feeds}
-              thumbnails={thumbnails}
+          (() => {
+            console.log('[App] Rendering DiscoveryPage', {
+              indexedFilesLength: indexedFiles.length,
+              mediaFiles: mediaFiles.length,
+              thoughtsFiles: thoughtsFiles.length,
+              collectionsFiles: collectionsFiles.length,
+              thumbnailsSize: thumbnails.size,
+              viewMode,
+              activeFeedId
+            });
+            return (
+              // Discovery Page - uses all indexedFiles (virtual feed)
+              <div className="flex-1 h-full pt-20 pb-20">
+                <DiscoveryPage
+                  files={indexedFiles}
+                  feeds={feeds}
+                  thumbnails={thumbnails}
               onFileClick={(file) => {
                 const index = indexedFiles.findIndex(f => f.metadata.fileId === file.metadata.fileId);
                 if (index !== -1) {
@@ -3814,8 +3837,10 @@ function App() {
                 setViewMode('feed');
                 setMePageTab('all');
               }}
-            />
-                    </div>
+                />
+              </div>
+            );
+          })()
         ) : viewMode === 'feed' ? (
           // TikTok-style feed view using FullScreenFeed component
           <div 
