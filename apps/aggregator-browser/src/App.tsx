@@ -1722,10 +1722,13 @@ function App() {
         try {
           const { PNOAuthService } = await import('./services/pnOAuthService');
           const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-          const accessToken = await PNOAuthService.getValidAccessToken();
+          
+          // Force refresh token to ensure it's valid
+          const accessToken = await PNOAuthService.getValidAccessToken(true);
           
           if (!accessToken) {
-            console.warn('⚠️ No access token available for API call');
+            console.warn('⚠️ No access token available for API call - user may need to reconnect');
+            setCreatorFilesState([]);
             return;
           }
 
@@ -1738,6 +1741,28 @@ function App() {
           });
 
           if (!response.ok) {
+            if (response.status === 401) {
+              console.error('⚠️ Authentication failed - token may be invalid. User may need to reconnect.');
+              // Try to refresh token and retry once
+              const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+              if (refreshedToken) {
+                const retryResponse = await fetch(`${apiEndpoint}/api/aggregator/my-files`, {
+                  headers: {
+                    'Authorization': `Bearer ${refreshedToken}`,
+                    'Content-Type': 'application/json'
+                  }
+                });
+                if (retryResponse.ok) {
+                  const retryData = await retryResponse.json();
+                  const indexedFiles: IndexedFile[] = (retryData.files || []).map((entry: any) => ({
+                    metadata: entry.metadata,
+                    thumbnail: entry.metadata?.thumbnail
+                  }));
+                  setCreatorFilesState(indexedFiles);
+                  return;
+                }
+              }
+            }
             throw new Error(`Failed to load files: ${response.status}`);
           }
 
@@ -1749,6 +1774,7 @@ function App() {
             thumbnail: entry.metadata?.thumbnail
           }));
           
+          console.log(`✅ Loaded ${indexedFiles.length} files from API for me page`);
           setCreatorFilesState(indexedFiles);
         } catch (error) {
           console.error('Failed to load user files from API:', error);
