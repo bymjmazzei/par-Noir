@@ -6314,22 +6314,27 @@ class ProductionServer {
         
         const db = (await import('./server/utils/database')).getDatabasePool();
         
-        // Use upsert pattern: update existing view for today, or insert new one
-        // First try to update existing record
-        const updateResult = await db.query(`
-          UPDATE file_views 
-          SET view_duration = GREATEST(view_duration, $3::DECIMAL)
-          WHERE file_id = $1 
-          AND user_did = $2 
-          AND DATE(viewed_at) = DATE(NOW())
-        `, [fileId, userDid, viewDuration || 0]);
-        
-        // If no rows were updated, insert a new record
-        if (updateResult.rowCount === 0) {
+        // Try to insert first (optimistic path - most common case)
+        try {
           await db.query(`
             INSERT INTO file_views (file_id, user_did, view_duration, viewed_at)
             VALUES ($1, $2, $3::DECIMAL, NOW())
           `, [fileId, userDid, viewDuration || 0]);
+        } catch (insertError: any) {
+          // If unique constraint violation (23505), update instead
+          // This handles race conditions where two requests try to insert simultaneously
+          if (insertError.code === '23505') {
+            await db.query(`
+              UPDATE file_views 
+              SET view_duration = GREATEST(view_duration, $3::DECIMAL),
+                  viewed_at = NOW()
+              WHERE file_id = $1 
+              AND user_did = $2 
+              AND DATE(viewed_at) = DATE(NOW())
+            `, [fileId, userDid, viewDuration || 0]);
+          } else {
+            throw insertError; // Re-throw if it's a different error
+          }
         }
         
         return res.json({ success: true });
