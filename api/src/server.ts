@@ -249,6 +249,61 @@ class ProductionServer {
     return createdMetadata.id;
   }
 
+  /**
+   * Initialize all content class folders (media, thoughts, collections)
+   * This ensures the folder structure exists before any files are uploaded
+   */
+  private async initializeContentClassFolders(
+    accessToken: string,
+    metadataFolderId: string
+  ): Promise<void> {
+    const contentClassFolders = ['media', 'thoughts', 'collections'];
+    
+    for (const folderName of contentClassFolders) {
+      try {
+        // Check if folder already exists
+        const folderQuery = `name='${folderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        const searchResponse = await fetch(searchUrl, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+
+        if (searchResponse.ok) {
+          const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
+          if (searchData.files && searchData.files.length > 0) {
+            console.log(`[initializeContentClassFolders] Folder '${folderName}' already exists`);
+            continue;
+          }
+        }
+
+        // Create folder if it doesn't exist
+        const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name: folderName,
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [metadataFolderId]
+          })
+        });
+
+        if (createResponse.ok) {
+          const folderData = await createResponse.json() as { id: string };
+          console.log(`[initializeContentClassFolders] Created folder '${folderName}' (ID: ${folderData.id})`);
+        } else {
+          const errorText = await createResponse.text();
+          console.warn(`[initializeContentClassFolders] Failed to create folder '${folderName}': ${createResponse.status} ${errorText}`);
+        }
+      } catch (error: any) {
+        console.error(`[initializeContentClassFolders] Error creating folder '${folderName}':`, error);
+        // Don't throw - continue with other folders
+      }
+    }
+  }
+
   private setupMiddleware(): void {
     // Security middleware
     this.app.use(helmet({
@@ -3976,6 +4031,10 @@ class ProductionServer {
               // Initialize folder structure (creates pN folder and _metadata folder if they don't exist)
               console.log(`[StorageCredentials PUT] Initializing folder structure for identityId: ${sanitizedIdentityId}`);
               const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, identityId);
+              
+              // Initialize all content class folders (media, thoughts, collections)
+              console.log(`[StorageCredentials PUT] Initializing content class folders for identityId: ${sanitizedIdentityId}`);
+              await this.initializeContentClassFolders(accessToken, metadataFolderId);
               
               console.log(`[StorageCredentials PUT] Successfully initialized folder structure for identityId: ${sanitizedIdentityId}`);
               

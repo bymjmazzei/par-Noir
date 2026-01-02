@@ -794,6 +794,61 @@ export class GoogleDriveMetadataService {
   }
 
   /**
+   * Initialize all content class folders (media, thoughts, collections)
+   * This ensures the folder structure exists before any files are uploaded
+   */
+  static async initializeContentClassFolders(
+    accessToken: string,
+    metadataFolderId: string
+  ): Promise<void> {
+    const contentClassFolders = ['media', 'thoughts', 'collections'];
+    
+    for (const folderName of contentClassFolders) {
+      try {
+        // Check if folder already exists
+        const folderQuery = `name='${folderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        const searchResponse = await fetch(searchUrl, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+
+        if (searchResponse.ok) {
+          const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
+          if (searchData.files && searchData.files.length > 0) {
+            console.log(`[GoogleDriveMetadataService] Folder '${folderName}' already exists`);
+            continue;
+          }
+        }
+
+        // Create folder if it doesn't exist
+        const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name: folderName,
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [metadataFolderId]
+          })
+        });
+
+        if (createResponse.ok) {
+          const folderData = await createResponse.json() as { id: string };
+          console.log(`[GoogleDriveMetadataService] Created folder '${folderName}' (ID: ${folderData.id})`);
+        } else {
+          const errorText = await createResponse.text();
+          console.warn(`[GoogleDriveMetadataService] Failed to create folder '${folderName}': ${createResponse.status} ${errorText}`);
+        }
+      } catch (error: any) {
+        console.error(`[GoogleDriveMetadataService] Error creating folder '${folderName}':`, error);
+        // Don't throw - continue with other folders
+      }
+    }
+  }
+
+  /**
    * Create or update companion metadata file
    */
   static async createCompanionMetadataFile(
@@ -811,6 +866,9 @@ export class GoogleDriveMetadataService {
       console.log('Getting/creating metadata folder');
       const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnFolderId);
       console.log('Metadata folder ID:', metadataFolderId);
+
+      // Initialize all content class folders if this is a new metadata folder
+      await this.initializeContentClassFolders(accessToken, metadataFolderId);
 
       // Determine contentClass from metadata
       // Use same logic as server-side determineContentClass utility for consistency
