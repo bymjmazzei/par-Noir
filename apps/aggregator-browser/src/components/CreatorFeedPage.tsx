@@ -55,9 +55,12 @@ export function CreatorFeedPage({
   // Filter files by creator
   const creatorFiles = useMemo(() => {
     return files.filter(file => {
-      const fileCreatorId = file.metadata.creator?.identifier?.value || 
+      // PRIMARY: Use top-level pnIdentifier field first
+      const fileCreatorId = (file as any).pnIdentifier ||
+                           file.metadata.creator?.identifier?.value || 
                            file.metadata.creator?.["@id"] || 
-                           file.metadata.author?.did;
+                           file.metadata.author?.did ||
+                           file.metadata.creatorId;
       return fileCreatorId === creatorId;
     });
   }, [files, creatorId]);

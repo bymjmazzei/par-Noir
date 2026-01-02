@@ -733,13 +733,18 @@ function App() {
       });
     };
 
-    // Helper to get creator ID from file metadata
+    // Helper to get creator ID from file metadata (pnIdentifier is primary, others are compatibility fallbacks)
     const getCreatorId = (file: IndexedFile): string | null => {
+      // PRIMARY: Use top-level pnIdentifier field first
+      if ((file as any).pnIdentifier) {
+        return String((file as any).pnIdentifier);
+      }
+      
+      // FALLBACK: Use metadata fields only for compatibility with older data
       const creatorId = file.metadata.creator?.identifier?.value ||
                         file.metadata.creator?.["@id"] ||
                         file.metadata.author?.did ||
-                        file.metadata.creatorId ||
-                        file.pnIdentifier;
+                        file.metadata.creatorId;
       return creatorId ? String(creatorId) : null;
     };
 
@@ -1275,6 +1280,19 @@ function App() {
                   textPost: metadata.textPost || metadata.thought,
                   thought: metadata.thought || metadata.textPost,
                   creatorId: normalizedPnId || metadata.creatorId,
+                  // CRITICAL FIX: Populate creator and author fields from pnIdentifier if missing
+                  creator: metadata.creator || (entry.pnIdentifier ? {
+                    "@type": "Person",
+                    "@id": entry.pnIdentifier,
+                    identifier: {
+                      "@type": "PropertyValue",
+                      name: "DID",
+                      value: entry.pnIdentifier
+                    }
+                  } : undefined),
+                  author: metadata.author || (entry.pnIdentifier ? {
+                    did: entry.pnIdentifier
+                  } : undefined),
                   publicToken: entry.publicToken || metadata.publicToken
                 },
                 thumbnail: metadata.thumbnail,
@@ -1836,29 +1854,44 @@ function App() {
   
   // Load user engagement fileIds (only when user/viewing changes)
   useEffect(() => {
-    if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked && userState.pnIdentifier) {
+    if (viewingCreatorId && userState.isUnlocked && userState.pnIdentifier) {
       setIsLoadingUserEngagement(true);
       (async () => {
         try {
-          // Get file IDs from engagement data (likes, comments, and shares)
-          const engagementData = loadEngagementData();
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          // Normalize the creator ID - API might expect "pn-" prefix
+          const normalizedCreatorId = viewingCreatorId.startsWith('pn-') 
+            ? viewingCreatorId 
+            : `pn-${viewingCreatorId}`;
           
-          // Get file IDs that user has liked
-          const likedFileIds = Array.from(engagementData.likes) as string[];
-          
-          // Get file IDs that user has commented on
-          const commentedFileIds = Array.from(engagementData.comments.keys()) as string[];
-          
-          // Get file IDs that user has shared
-          const sharedFileIds = Array.from(engagementData.shares.keys()) as string[];
-          
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`[Me Page] Engagement: ${likedFileIds.length} liked, ${commentedFileIds.length} commented, ${sharedFileIds.length} shared`);
+          // Get user's engagement (likes, comments, and shares) from API - same as viewing other users
+          const engagementResponse = await fetch(
+            `${apiEndpoint}/api/engagement/user/${encodeURIComponent(normalizedCreatorId)}`,
+            {
+              method: 'GET',
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
+
+          if (engagementResponse.ok) {
+            const engagementData = await engagementResponse.json();
+            const likedFileIds = engagementData.likedFileIds || [];
+            const commentedFileIds = engagementData.commentedFileIds || [];
+            // Note: shares are not in the API response yet, will be empty array
+            const sharedFileIds: string[] = [];
+            
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`[Me Page] Engagement from API: ${likedFileIds.length} liked, ${commentedFileIds.length} commented`);
+            }
+            
+            setUserLikedFileIds(likedFileIds);
+            setUserCommentedFileIds(commentedFileIds);
+            setUserSharedFileIds(sharedFileIds);
+          } else {
+            setUserLikedFileIds([]);
+            setUserCommentedFileIds([]);
+            setUserSharedFileIds([]);
           }
-          
-          setUserLikedFileIds(likedFileIds);
-          setUserCommentedFileIds(commentedFileIds);
-          setUserSharedFileIds(sharedFileIds);
         } catch (error) {
           console.error('Failed to load user engagement:', error);
           setUserLikedFileIds([]);
@@ -2150,28 +2183,6 @@ function App() {
       setConnectionsFiles([]);
     }
   }, [viewingCreatorId, userState.pnIdentifier, indexedFilesKey]);
-
-  // Helper function to load engagement data (same as in useEngagement hook)
-  function loadEngagementData() {
-    try {
-      const stored = localStorage.getItem('pn_engagement_data');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        return {
-          likes: new Set(parsed.likes || []),
-          comments: new Map(Object.entries(parsed.comments || {})),
-          shares: new Map(Object.entries(parsed.shares || {}))
-        };
-      }
-    } catch (e) {
-      console.warn('Failed to load engagement data:', e);
-    }
-    return {
-      likes: new Set(),
-      comments: new Map(),
-      shares: new Map()
-    };
-  }
 
   // State for editing file metadata
   const [editingFile, setEditingFile] = useState<IndexedFile | null>(null);
@@ -2495,6 +2506,21 @@ function App() {
     return cleaned.trim().toLowerCase();
   };
   
+  // Helper function to get creator identifier (pnIdentifier is primary, others are compatibility fallbacks)
+  const getCreatorIdentifier = (file: IndexedFile): string | null => {
+    // PRIMARY: Use top-level pnIdentifier field first
+    if ((file as any).pnIdentifier) {
+      return (file as any).pnIdentifier;
+    }
+    
+    // FALLBACK: Use metadata fields only for compatibility with older data
+    return file.metadata.creator?.identifier?.value ||
+           file.metadata.creator?.["@id"] ||
+           file.metadata.author?.did ||
+           file.metadata.creatorId ||
+           null;
+  };
+  
   // Filter creator files from public indices
   const creatorFiles = useMemo(() => {
     if (!viewingCreatorId) return EMPTY_ARRAY;
@@ -2505,10 +2531,9 @@ function App() {
     const allPublicFiles = [...mediaFiles, ...thoughtsFiles, ...collectionsFiles];
     
     return allPublicFiles.filter(file => {
-      const fileOwnerId = file.metadata.creator?.identifier?.value ||
-                          file.metadata.creator?.["@id"] ||
-                          file.metadata.author?.did ||
-                          file.metadata.creatorId;
+      const fileOwnerId = getCreatorIdentifier(file);
+      if (!fileOwnerId) return false;
+      
       const normalizedOwnerId = normalizeId(fileOwnerId);
       return normalizedOwnerId === normalizedViewingId;
     });
@@ -2525,15 +2550,10 @@ function App() {
       return trimmed.startsWith('MII') || trimmed.length > 100;
     };
     
-    let fileOwnerId = (fullFile as any).pnIdentifier || (f as any).pnIdentifier;
-    if (!fileOwnerId) {
-      const candidate = f.metadata.creator?.identifier?.value || 
-                        f.metadata.creator?.["@id"] || 
-                        f.metadata.author?.did ||
-                        f.metadata.creatorId;
-      if (candidate && !isPublicKey(candidate)) {
-        fileOwnerId = candidate;
-      }
+    // PRIMARY: Use pnIdentifier first (consistent with getCreatorIdentifier)
+    const fileOwnerId = getCreatorIdentifier(fullFile) || getCreatorIdentifier(f);
+    if (!fileOwnerId || isPublicKey(fileOwnerId)) {
+      return true; // If no identifier or public key, treat as third party
     }
     
     const normalizedOwnerId = normalizeId(fileOwnerId);
@@ -3333,11 +3353,7 @@ function App() {
               return cleaned.trim().toLowerCase();
             };
             
-            const creatorIdRaw = file.metadata.creator?.identifier?.value ||
-                                file.metadata.creator?.["@id"] ||
-                                file.metadata.author?.did ||
-                                file.metadata.creatorId ||
-                                (file as any).pnIdentifier;
+            const creatorIdRaw = getCreatorIdentifier(file);
             
             if (!creatorIdRaw) {
               console.error('No creator ID found for file:', file.metadata.fileId);

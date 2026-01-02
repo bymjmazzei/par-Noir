@@ -239,17 +239,18 @@ export function DiscoveryPage({
       .filter((url): url is string => url !== null);
   };
 
-  // Helper to get creator ID from file metadata (prefer pN identifier over DID)
+  // Helper to get creator ID from file metadata (pnIdentifier is primary, others are compatibility fallbacks)
   const getCreatorId = (file: IndexedFile): string => {
-    // First try to use pnIdentifier from the file (most reliable)
+    // PRIMARY: Use top-level pnIdentifier field first
     if (file.pnIdentifier) {
       return file.pnIdentifier;
     }
     
-    // Then try to get pN identifier from metadata
+    // FALLBACK: Use metadata fields only for compatibility with older data
     const creatorId = file.metadata.creator?.identifier?.value || 
                       file.metadata.creator?.["@id"] || 
                       file.metadata.author?.did ||
+                      file.metadata.creatorId ||
                       'Unknown';
     return creatorId;
   };

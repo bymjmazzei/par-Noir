@@ -174,11 +174,12 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
     
     // Find file where isTopPost === true for this creator
     const topPost = indexedFiles.find(f => {
-      // Check multiple possible creator ID fields
-      const fileCreatorId = (f.metadata as any).creatorId || 
+      // PRIMARY: Use top-level pnIdentifier field first, then fallback to metadata fields
+      const fileCreatorId = (f as any).pnIdentifier ||
                             f.metadata.creator?.identifier?.value || 
+                            f.metadata.creator?.["@id"] ||
                             f.metadata.author?.did ||
-                            f.metadata.creator?.["@id"];
+                            (f.metadata as any).creatorId;
       const normalizedFileCreatorId = normalizeId(fileCreatorId);
       const isTopPost = f.metadata.isTopPost === true;
       const matches = normalizedFileCreatorId === normalizedCreatorId;

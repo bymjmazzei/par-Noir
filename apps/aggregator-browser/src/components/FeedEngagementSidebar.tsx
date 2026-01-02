@@ -65,11 +65,12 @@ export function FeedEngagementSidebar({
   const [isSaved, setIsSaved] = useState(false);
   const [isCheckingSaved, setIsCheckingSaved] = useState(false);
   
-  // Get creatorId - this is now the pN identifier (set from entry.pnIdentifier during conversion)
-  const creatorId = (file.metadata as any).creatorId || 
+  // Get creatorId - pnIdentifier is primary, others are compatibility fallbacks
+  const creatorId = (file as any).pnIdentifier ||
                     file.metadata.creator?.identifier?.value || 
                     file.metadata.creator?.["@id"] || 
-                    file.metadata.author?.did;
+                    file.metadata.author?.did ||
+                    (file.metadata as any).creatorId;
   
   // Normalize identifiers for comparison (remove "pn-" prefix if present)
   const normalizeId = (id: string | undefined | null): string => {

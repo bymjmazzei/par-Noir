@@ -148,6 +148,20 @@ export class MetadataIndexService {
               collection: metadata.collection !== undefined ? metadata.collection : undefined,
               // Use normalized pnIdentifier as creatorId - they're the same thing
               creatorId: normalizedPnId || metadata.creatorId,
+              // CRITICAL FIX: Populate creator and author fields from pnIdentifier if missing
+              // This ensures filtering logic can find files by any of these fields
+              creator: metadata.creator || (entry.pnIdentifier ? {
+                "@type": "Person",
+                "@id": entry.pnIdentifier,
+                identifier: {
+                  "@type": "PropertyValue",
+                  name: "DID",
+                  value: entry.pnIdentifier
+                }
+              } : undefined),
+              author: metadata.author || (entry.pnIdentifier ? {
+                did: entry.pnIdentifier
+              } : undefined),
               // Include publicToken from entry level if it exists (API may return it at entry level)
               publicToken: entry.publicToken || metadata.publicToken
             },
