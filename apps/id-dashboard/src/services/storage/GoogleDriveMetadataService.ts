@@ -925,7 +925,8 @@ export class GoogleDriveMetadataService {
                   headers: {
                     'Authorization': `Bearer ${accessToken}`
                   }
-                );
+                }
+              );
               
               if (searchResponse.ok) {
                 const searchData = await searchResponse.json();
