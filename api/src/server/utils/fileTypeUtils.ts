@@ -74,11 +74,13 @@ export function determineFileType(options: {
  * Priority order:
  * 1. Collection data -> 'collection'
  * 2. Thought (including thumbnails) -> 'thought'
- * 3. Media (images, videos, audio) -> 'media'
- * 4. Default -> 'media'
+ * 3. Default -> 'media'
+ * 
+ * NOTE: fileType is NOT used here - it's only for rendering/technical metadata.
+ * contentClass is determined ONLY from semantic/content flags.
  */
 export function determineContentClass(options: {
-  fileType?: string;
+  fileType?: string; // Not used - kept for interface compatibility
   collection?: { collectionFileIds: string[] };
   textPost?: any;
   thought?: any;
@@ -90,17 +92,13 @@ export function determineContentClass(options: {
     return 'collection';
   }
   
-  // Thought (including thumbnails)
-  if (options.thought || options.textPost || options.isThoughtThumbnail) {
+  // Thought (including thumbnails) - CRITICAL: isThoughtThumbnail must be checked
+  if (options.isThoughtThumbnail || options.thought || options.textPost) {
     return 'thought';
   }
   
-  // Media (images, videos, audio)
-  if (['image', 'video', 'audio'].includes(options.fileType || '')) {
-    return 'media';
-  }
-  
-  // Default to media for unknown types
+  // Default to media for everything else
+  // fileType is NOT checked - contentClass is for feed filtering, not technical file type
   return 'media';
 }
 

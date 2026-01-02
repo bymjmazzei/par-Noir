@@ -813,15 +813,21 @@ export class GoogleDriveMetadataService {
       console.log('Metadata folder ID:', metadataFolderId);
 
       // Determine contentClass from metadata
+      // Use same logic as server-side determineContentClass utility for consistency
       let contentClass = fileMetadata.contentClass;
       if (!contentClass) {
-        // Determine from metadata content (cast to any to access extended properties)
         const metadataAny = fileMetadata as any;
+        // Collection takes precedence
         if (metadataAny.collection?.collectionFileIds?.length) {
           contentClass = 'collection';
-        } else if (metadataAny.textPost || metadataAny.thought || metadataAny.isThoughtThumbnail) {
+        }
+        // Thought (including thumbnails) - CRITICAL: isThoughtThumbnail must be checked
+        else if (metadataAny.isThoughtThumbnail || metadataAny.thought || metadataAny.textPost) {
           contentClass = 'thought';
-        } else {
+        }
+        // Default to media for everything else
+        // fileType is NOT checked - contentClass is for feed filtering, not technical file type
+        else {
           contentClass = 'media';
         }
       }

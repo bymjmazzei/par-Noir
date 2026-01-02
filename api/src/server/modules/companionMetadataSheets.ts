@@ -154,15 +154,17 @@ export class CompanionMetadataSheets {
       // 2. Determine contentClass and get/create subfolder
       let contentClass = metadata.contentClass;
       if (!contentClass) {
-        // Determine from metadata content (cast to any to access extended properties)
+        // Use centralized utility function for consistency
+        const { determineContentClass } = await import('../utils/fileTypeUtils');
         const metadataAny = metadata as any;
-        if (metadataAny.collection?.collectionFileIds?.length) {
-          contentClass = 'collection';
-        } else if (metadataAny.textPost || metadataAny.thought || metadataAny.isThoughtThumbnail) {
-          contentClass = 'thought';
-        } else {
-          contentClass = 'media';
-        }
+        contentClass = determineContentClass({
+          fileType: metadataAny.fileType,
+          collection: metadataAny.collection,
+          textPost: metadataAny.textPost,
+          thought: metadataAny.thought,
+          isThoughtThumbnail: metadataAny.isThoughtThumbnail,
+          isPartOfCollection: metadataAny.isPartOfCollection
+        });
       }
 
       // Get or create content type subfolder
