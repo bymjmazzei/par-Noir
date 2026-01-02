@@ -618,10 +618,6 @@ function App() {
   // Auth modal state - MUST be before early returns to satisfy Rules of Hooks
   const [showAuthModal, setShowAuthModal] = useState(false);
   
-  // Creator files state for INDEX view - MUST be before early returns to satisfy Rules of Hooks
-  const [creatorFilesState, setCreatorFilesState] = useState<IndexedFile[]>([]);
-  const [isLoadingCreatorFiles, setIsLoadingCreatorFiles] = useState(false);
-  const isLoadingCreatorFilesRef = useRef(false);
   
   // Create a stable key for indexedFilesMap based on fileIds (not array reference)
   // MUST be declared before any useEffect that uses it
@@ -1700,213 +1696,6 @@ function App() {
     });
   };
 
-  // Load creator files when viewing a creator (especially own index)
-  useEffect(() => {
-    if (!viewingCreatorId) {
-      setCreatorFilesState([]);
-      setIsLoadingCreatorFiles(false);
-      isLoadingCreatorFilesRef.current = false;
-      return;
-    }
-    
-    // Prevent multiple simultaneous fetches
-    if (isLoadingCreatorFilesRef.current) {
-      return;
-    }
-    
-    // If viewing own profile and unlocked, load from API (which has Google Drive credentials)
-    if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
-      const loadUserFiles = async () => {
-        isLoadingCreatorFilesRef.current = true;
-        setIsLoadingCreatorFiles(true);
-        try {
-          const { PNOAuthService } = await import('./services/pnOAuthService');
-          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-          
-          // Force refresh token to ensure it's valid
-          const accessToken = await PNOAuthService.getValidAccessToken(true);
-          
-          if (!accessToken) {
-            console.warn('⚠️ No access token available for API call - user may need to reconnect');
-            setCreatorFilesState([]);
-            return;
-          }
-
-          // Load from API instead of Google Drive directly - API has access to Google Drive credentials
-          const response = await fetch(`${apiEndpoint}/api/aggregator/my-files`, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            }
-          });
-
-          if (!response.ok) {
-            if (response.status === 401) {
-              console.error('⚠️ Authentication failed - token may be invalid. User may need to reconnect.');
-              // Try to refresh token and retry once
-              const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-              if (refreshedToken) {
-                const retryResponse = await fetch(`${apiEndpoint}/api/aggregator/my-files`, {
-                  headers: {
-                    'Authorization': `Bearer ${refreshedToken}`,
-                    'Content-Type': 'application/json'
-                  }
-                });
-                if (retryResponse.ok) {
-                  const retryData = await retryResponse.json();
-                  const indexedFiles: IndexedFile[] = (retryData.files || []).map((entry: any) => ({
-                    metadata: entry.metadata,
-                    thumbnail: entry.metadata?.thumbnail
-                  }));
-                  setCreatorFilesState(indexedFiles);
-                  return;
-                }
-              }
-            }
-            throw new Error(`Failed to load files: ${response.status}`);
-          }
-
-          const data = await response.json();
-          
-          // Convert API response to IndexedFile format
-          const indexedFiles: IndexedFile[] = (data.files || []).map((entry: any) => ({
-            metadata: entry.metadata,
-            thumbnail: entry.metadata?.thumbnail
-          }));
-          
-          console.log(`✅ Loaded ${indexedFiles.length} files from API for me page`);
-          setCreatorFilesState(indexedFiles);
-        } catch (error) {
-          console.error('Failed to load user files from API:', error);
-          setCreatorFilesState([]);
-        } finally {
-          setIsLoadingCreatorFiles(false);
-          isLoadingCreatorFilesRef.current = false;
-        }
-      };
-
-      loadUserFiles();
-    } else {
-      // For other creators (or when not logged in), load from public API
-      const loadPublicCreatorFiles = async () => {
-        isLoadingCreatorFilesRef.current = true;
-        setIsLoadingCreatorFiles(true);
-        try {
-          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-          // Normalize the creator ID - API might expect "pn-" prefix
-          const normalizedCreatorId = viewingCreatorId.startsWith('pn-') 
-            ? viewingCreatorId 
-            : `pn-${viewingCreatorId}`;
-          const response = await fetch(
-            `${apiEndpoint}/api/aggregator/metadata-index?authorDid=${encodeURIComponent(normalizedCreatorId)}`,
-            {
-              method: 'GET',
-              headers: {
-                'Content-Type': 'application/json'
-              }
-            }
-          );
-
-          let apiFiles: IndexedFile[] = [];
-          if (response.ok) {
-            const data = await response.json();
-            if (data.files && Array.isArray(data.files)) {
-              // Normalize identifiers for comparison
-              const normalizeIdentifier = (id: string | undefined | null): string => {
-                if (!id) return '';
-                const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
-                return cleaned.trim().toLowerCase();
-              };
-              
-              const userIdentifier = normalizeIdentifier(viewingCreatorId);
-              
-              // Filter files by creatorId
-              const userFiles = data.files.filter((entry: any) => {
-                const entryPnId = normalizeIdentifier(entry.pnIdentifier);
-                const metadata = entry.metadata || {};
-                const creatorIdRaw = metadata.creator?.identifier?.value ||
-                                    metadata.creator?.["@id"] ||
-                                    metadata.author?.did ||
-                                    metadata.creatorId;
-                const creatorId = normalizeIdentifier(creatorIdRaw);
-                
-                return entryPnId === userIdentifier || creatorId === userIdentifier;
-              });
-
-              // Convert to IndexedFile format
-              apiFiles = userFiles.map((entry: any) => {
-                const metadata = entry.metadata || {};
-                return {
-                  metadata: {
-                    ...metadata,
-                    fileId: entry.fileId || metadata.fileId,
-                    creatorId: entry.pnIdentifier || metadata.creatorId || viewingCreatorId,
-                    creator: metadata.creator || {
-                      identifier: { value: entry.pnIdentifier || viewingCreatorId }
-                    },
-                    author: metadata.author || {
-                      did: entry.pnIdentifier || viewingCreatorId
-                    }
-                  }
-                } as IndexedFile;
-              });
-            }
-          }
-
-          // Also check already-loaded public index as fallback
-          const publicIndexFiles = indexedFiles.filter(f => {
-            const fileOwnerId = f.metadata.creator?.identifier?.value || 
-                                f.metadata.creator?.["@id"] || 
-                                f.metadata.author?.did ||
-                                f.metadata.creatorId;
-            const normalizeIdentifier = (id: string | undefined | null): string => {
-              if (!id) return '';
-              const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
-              return cleaned.trim().toLowerCase();
-            };
-            const normalizedOwnerId = normalizeIdentifier(fileOwnerId);
-            const normalizedViewingId = normalizeIdentifier(viewingCreatorId);
-            return normalizedOwnerId === normalizedViewingId;
-          });
-
-          // Combine and deduplicate
-          const combinedFiles = Array.from(
-            new Map([...apiFiles, ...publicIndexFiles]
-              .map(f => [f.metadata.fileId, f])).values()
-          );
-
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`[Me Page] Loaded ${combinedFiles.length} files for creator ${viewingCreatorId}`);
-          }
-          setCreatorFilesState(combinedFiles);
-        } catch (error) {
-          console.error('Failed to load creator files:', error);
-          // Fallback to filtering from already-loaded index
-          const filtered = indexedFiles.filter(f => {
-            const fileOwnerId = f.metadata.creator?.identifier?.value || 
-                                f.metadata.creator?.["@id"] || 
-                                f.metadata.author?.did ||
-                                f.metadata.creatorId;
-            const normalizeIdentifier = (id: string | undefined | null): string => {
-              if (!id) return '';
-              const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
-              return cleaned.trim().toLowerCase();
-            };
-            const normalizedOwnerId = normalizeIdentifier(fileOwnerId);
-            const normalizedViewingId = normalizeIdentifier(viewingCreatorId);
-            return normalizedOwnerId === normalizedViewingId;
-          });
-          setCreatorFilesState(filtered);
-        } finally {
-          setIsLoadingCreatorFiles(false);
-          isLoadingCreatorFilesRef.current = false;
-        }
-      };
-
-      loadPublicCreatorFiles();
-    }
-  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]); // Removed indexedFilesKey to prevent re-fetching when public index updates
-
   // Load user's liked and commented files when viewing own index
   const [userLikedFiles, setUserLikedFiles] = useState<IndexedFile[]>([]);
   const [userCommentedFiles, setUserCommentedFiles] = useState<IndexedFile[]>([]);
@@ -2420,8 +2209,8 @@ function App() {
         return false;
       }
       
-      // Use creatorFilesState directly instead of computed creatorFiles to avoid initialization issues
-      const currentCreatorFiles = viewingCreatorId ? creatorFilesState : [];
+      // Use creatorFiles (computed from public indices)
+      const currentCreatorFiles = creatorFiles;
       const currentIsOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
       let currentFilteredMeFiles: IndexedFile[] = [];
       
@@ -2696,19 +2485,36 @@ function App() {
     };
     // Note: currentFeedIndex is intentionally NOT in dependencies to prevent infinite loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleFileId, viewingCreatorId, mePageTab, creatorFilesState, userState.pnIdentifier, userState.isUnlocked, userLikedFiles, userCommentedFiles, viewedUserLikedFiles, viewedUserCommentedFiles, savedFiles]);
+  }, [visibleFileId, viewingCreatorId, mePageTab, mediaFiles, thoughtsFiles, collectionsFiles, userState.pnIdentifier, userState.isUnlocked, userLikedFiles, userCommentedFiles, viewedUserLikedFiles, viewedUserCommentedFiles, savedFiles]);
 
   // Prepare data for conditional rendering
-  // Use stable empty array reference to prevent unnecessary re-renders
-  const creatorFiles = viewingCreatorId ? creatorFilesState : EMPTY_ARRAY;
-  const isOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
-  
   // Helper function to normalize IDs for comparison
   const normalizeId = (id: string | undefined | null): string => {
     if (!id) return '';
     const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
     return cleaned.trim().toLowerCase();
   };
+  
+  // Filter creator files from public indices
+  const creatorFiles = useMemo(() => {
+    if (!viewingCreatorId) return EMPTY_ARRAY;
+    
+    const normalizedViewingId = normalizeId(viewingCreatorId);
+    
+    // Filter all public indices by owner ID
+    const allPublicFiles = [...mediaFiles, ...thoughtsFiles, ...collectionsFiles];
+    
+    return allPublicFiles.filter(file => {
+      const fileOwnerId = file.metadata.creator?.identifier?.value ||
+                          file.metadata.creator?.["@id"] ||
+                          file.metadata.author?.did ||
+                          file.metadata.creatorId;
+      const normalizedOwnerId = normalizeId(fileOwnerId);
+      return normalizedOwnerId === normalizedViewingId;
+    });
+  }, [viewingCreatorId, mediaFiles, thoughtsFiles, collectionsFiles]);
+  
+  const isOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
 
   // Helper function to check if a file is from a third party (not the viewing user)
   const isThirdPartyContent = (f: IndexedFile, viewingId: string): boolean => {
@@ -4546,13 +4352,7 @@ function App() {
             file={editingFile}
             onClose={() => setEditingFile(null)}
             onSave={async (updatedFile) => {
-              // Update the file in creatorFilesState
-              setCreatorFilesState(prev => 
-                prev.map(f => 
-                  f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f
-                )
-              );
-              // Update in appropriate content-type indices
+              // Update in appropriate content-type indices (creatorFiles will update automatically since it filters from these)
               setMediaFiles(prev =>
                 prev.map(f =>
                   f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f
