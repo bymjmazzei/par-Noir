@@ -83,8 +83,19 @@ export function DiscoveryPage({
         const fileName = file.name || file.title || '';
         
         // Skip if already loaded or provided externally
-        if (thumbnails.has(fileId) || (externalThumbnails && externalThumbnails.has(fileId))) {
-          console.log(`[DiscoveryPage] Skipping ${fileId} - already loaded`);
+        // We need to check current thumbnails state, but since it's not in deps,
+        // we'll use a functional update pattern to check and update atomically
+        let shouldLoad = true;
+        setThumbnails(prev => {
+          if (prev.has(fileId) || (externalThumbnails && externalThumbnails.has(fileId))) {
+            console.log(`[DiscoveryPage] Skipping ${fileId} - already loaded`);
+            shouldLoad = false;
+            return prev; // Return unchanged map
+          }
+          return prev; // Will be updated below if loading
+        });
+        
+        if (!shouldLoad) {
           return;
         }
 
