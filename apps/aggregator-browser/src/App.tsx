@@ -1714,26 +1714,44 @@ function App() {
       return;
     }
     
-    // If viewing own profile and unlocked, load directly from Google Drive owner indices
+    // If viewing own profile and unlocked, load from API (which has Google Drive credentials)
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
       const loadUserFiles = async () => {
         isLoadingCreatorFilesRef.current = true;
         setIsLoadingCreatorFiles(true);
         try {
           const { PNOAuthService } = await import('./services/pnOAuthService');
-          const { loadUserFilesFromGoogleDrive } = await import('./services/googleDriveUserFilesService');
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
           const accessToken = await PNOAuthService.getValidAccessToken();
           
           if (!accessToken) {
-            console.warn('⚠️ No access token available for Google Drive file fetch');
+            console.warn('⚠️ No access token available for API call');
             return;
           }
 
-          // Load directly from Google Drive owner indices - no API, no filtering
-          const allFiles = await loadUserFilesFromGoogleDrive(accessToken, viewingCreatorId);
-          setCreatorFilesState(allFiles);
+          // Load from API instead of Google Drive directly - API has access to Google Drive credentials
+          const response = await fetch(`${apiEndpoint}/api/aggregator/my-files`, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to load files: ${response.status}`);
+          }
+
+          const data = await response.json();
+          
+          // Convert API response to IndexedFile format
+          const indexedFiles: IndexedFile[] = (data.files || []).map((entry: any) => ({
+            metadata: entry.metadata,
+            thumbnail: entry.metadata?.thumbnail
+          }));
+          
+          setCreatorFilesState(indexedFiles);
         } catch (error) {
-          console.error('Failed to load user files from Google Drive:', error);
+          console.error('Failed to load user files from API:', error);
           setCreatorFilesState([]);
         } finally {
           setIsLoadingCreatorFiles(false);
