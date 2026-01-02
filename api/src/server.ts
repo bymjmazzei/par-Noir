@@ -8154,6 +8154,13 @@ class ProductionServer {
             if (fileMetadata.thumbnailFileId) {
               pairedFileId = fileMetadata.thumbnailFileId;
             }
+            
+            // CRITICAL FIX: For thumbnails, check for mainFileId in metadata
+            // This is the direct reference to the source file that should be deleted too
+            if (isThumbnail && fileMetadata.mainFileId) {
+              pairedFileId = fileMetadata.mainFileId;
+              console.log(`✅ [DeleteFile] Found mainFileId ${pairedFileId} for thumbnail ${fileId} from database metadata`);
+            }
           }
           
           // Also try to get metadata from Google Drive as fallback
@@ -8162,6 +8169,12 @@ class ProductionServer {
             fileMetadata = await googleDriveProxyService.getFileMetadata(userIdentifier, fileId, accountId);
             fileName = fileMetadata.name?.toLowerCase() || '';
             isThumbnail = fileName.startsWith('thumb_');
+            
+            // CRITICAL FIX: For thumbnails loaded from Google Drive, check for mainFileId
+            if (isThumbnail && fileMetadata.mainFileId) {
+              pairedFileId = fileMetadata.mainFileId;
+              console.log(`✅ [DeleteFile] Found mainFileId ${pairedFileId} for thumbnail ${fileId} from Google Drive metadata`);
+            }
           }
           
           // Find paired file (thumbnail if main, main if thumbnail)
