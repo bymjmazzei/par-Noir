@@ -33,6 +33,7 @@ export function DiscoveryPage({
   onFeedClick,
   onCreatorClick
 }: DiscoveryPageProps) {
+  console.log('[DiscoveryPage] Component rendering with files:', files.length, 'externalThumbnails:', externalThumbnails?.size || 0);
   const { userState, getDisplayName, setUserDisplayName } = useUserState();
   const [activeTopFeed, setActiveTopFeed] = useState<TopFeedOption>('all');
   const [selectedNiche, setSelectedNiche] = useState<NicheFeedOption>(null);
@@ -62,6 +63,7 @@ export function DiscoveryPage({
 
   // Load thumbnails for all thumbnail files in the feed (same logic as FullScreenFeed)
   useEffect(() => {
+    console.log('[DiscoveryPage] Thumbnail loading useEffect triggered, files:', files.length);
     const loadThumbnails = async () => {
       // Process ALL files to find thumbnail files
       const thumbnailFiles = files.filter((indexedFile) => {
@@ -70,6 +72,15 @@ export function DiscoveryPage({
       });
 
       console.log(`[DiscoveryPage] Found ${thumbnailFiles.length} thumbnail files out of ${files.length} total files`);
+      
+      // Log all file names for debugging
+      if (files.length > 0) {
+        console.log('[DiscoveryPage] All file names:', files.map(f => ({
+          fileId: f.metadata.fileId,
+          fileName: f.metadata.name || f.metadata.title,
+          fileType: f.metadata.fileType
+        })));
+      }
       if (thumbnailFiles.length > 0) {
         console.log('[DiscoveryPage] Thumbnail files:', thumbnailFiles.map(f => ({
           fileId: f.metadata.fileId,
