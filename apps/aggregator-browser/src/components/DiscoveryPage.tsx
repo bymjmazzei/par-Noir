@@ -11,6 +11,7 @@ import { useUserState } from '../contexts/UserStateContext';
 import { getUserProfile } from '../services/profileService';
 import { cleanTitle } from '../utils/cleanTitle';
 import { isNSFWContent } from '../constants/contentRatings';
+import { ShareToken } from '../utils/tokenDecryption';
 
 interface DiscoveryPageProps {
   files: IndexedFile[];
@@ -27,7 +28,7 @@ type NicheFeedOption = string | null; // Feed category ID
 export function DiscoveryPage({
   files,
   feeds,
-  thumbnails,
+  thumbnails: externalThumbnails,
   onFileClick,
   onFeedClick,
   onCreatorClick
@@ -38,6 +39,99 @@ export function DiscoveryPage({
   const [showInfo, setShowInfo] = useState<string | null>(null);
   // Use ref to track fetched creators to avoid re-fetching (persists across renders)
   const fetchedCreatorsRef = useRef<Set<string>>(new Set());
+  // Track blob URLs we create for cleanup
+  const createdBlobUrlsRef = useRef<Set<string>>(new Set());
+  
+  // Local thumbnails state (starts with external thumbnails, can load additional ones)
+  const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
+
+  // Sync external thumbnails into local state when they change
+  useEffect(() => {
+    if (externalThumbnails) {
+      setThumbnails(prev => {
+        const newMap = new Map(prev);
+        externalThumbnails.forEach((url, fileId) => {
+          newMap.set(fileId, url);
+        });
+        return newMap;
+      });
+    }
+  }, [externalThumbnails]);
+
+  // Load thumbnails for all thumbnail files in the feed (same logic as FullScreenFeed)
+  useEffect(() => {
+    const loadThumbnails = async () => {
+      // Process ALL files to find thumbnail files
+      const thumbnailFiles = files.filter((indexedFile) => {
+        const fileName = (indexedFile.metadata?.name || indexedFile.metadata?.title || '').toLowerCase();
+        return fileName.startsWith('thumb_');
+      });
+
+      // Load each thumbnail file
+      await Promise.all(thumbnailFiles.map(async (indexedFile) => {
+        const file = indexedFile.metadata;
+        const fileId = file.fileId;
+        const fileName = file.name || file.title || '';
+        
+        // Skip if already loaded or provided externally
+        if (thumbnails.has(fileId) || (externalThumbnails && externalThumbnails.has(fileId))) {
+          return;
+        }
+
+        // Get publicToken (REQUIRED - no fallback)
+        const publicToken = indexedFile.publicToken || file.publicToken;
+        if (!publicToken) {
+          console.warn(`[DiscoveryPage] Thumbnail ${fileId} (${fileName}) has no publicToken - cannot decrypt`);
+          return;
+        }
+
+        try {
+          // Parse publicToken
+          let token: ShareToken;
+          try {
+            token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
+          } catch (e) {
+            console.warn(`[DiscoveryPage] Failed to parse token for thumbnail ${fileId}:`, e);
+            return;
+          }
+          
+          // Decrypt using token directly (token contains shareEncrypted data)
+          // No need to fetch from API - the token has everything we need
+          const { decryptWithToken } = await import('../utils/tokenDecryption');
+          const decryptedBlob = await decryptWithToken(token);
+          const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+          
+          // Track this blob URL for cleanup
+          createdBlobUrlsRef.current.add(thumbnailUrlObj);
+          
+          setThumbnails(prev => {
+            const newMap = new Map(prev);
+            newMap.set(fileId, thumbnailUrlObj);
+            return newMap;
+          });
+        } catch (err) {
+          console.error(`[DiscoveryPage] Failed to decrypt thumbnail for ${fileId} (${fileName}):`, err);
+        }
+      }));
+    };
+
+    loadThumbnails();
+  }, [files, externalThumbnails, thumbnails]);
+
+  // Cleanup blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      // Revoke all blob URLs we created when component unmounts
+      createdBlobUrlsRef.current.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch (err) {
+          // Ignore errors during cleanup
+        }
+      });
+      createdBlobUrlsRef.current.clear();
+    };
+  }, []);
 
   // Helper to check if file should be shown based on NSFW preference
   // LOCKED USERS: Never show NSFW content, period
@@ -269,7 +363,7 @@ export function DiscoveryPage({
 
   // Helper to get thumbnail URL for a file
   const getThumbnail = (file: IndexedFile): string => {
-    if (thumbnails && thumbnails.has(file.metadata.fileId)) {
+    if (thumbnails.has(file.metadata.fileId)) {
       return thumbnails.get(file.metadata.fileId)!;
     }
     return file.thumbnail || '/placeholder-thumbnail.png';
@@ -283,7 +377,7 @@ export function DiscoveryPage({
     return collectionData.collectionFileIds
       .map((fileId: string) => {
         // First try thumbnails map
-        if (thumbnails && thumbnails.has(fileId)) {
+        if (thumbnails.has(fileId)) {
           return thumbnails.get(fileId)!;
         }
         // Then try to find the file in the files array and use its thumbnail
