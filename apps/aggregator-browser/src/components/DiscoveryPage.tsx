@@ -927,14 +927,62 @@ export function DiscoveryPage({
                   })()
                 ) : (
                   // Render regular thumbnail (includes thought thumbnails which are just PNG images)
-                  <img
-                    src={item.thumbnail}
-                    alt={item.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                    onError={(e) => {
-                      e.currentTarget.src = '/placeholder-thumbnail.png';
-                    }}
-                  />
+                  // Use thumbnails.get() directly like FullScreenFeed does
+                  (() => {
+                    const file = item.item as IndexedFile;
+                    const fileId = file.metadata.fileId;
+                    
+                    // Check if this is a thought file that needs its thumbnail file
+                    let thumbnailFileId = fileId;
+                    const fileType = file.metadata.fileType || '';
+                    const isThought = fileType === 'text' || 
+                                     fileType === 'thought' ||
+                                     !!(file.metadata as any).textPost ||
+                                     !!(file.metadata as any).thought;
+                    
+                    if (isThought) {
+                      const fileName = (file.metadata.name || file.metadata.title || '').toLowerCase();
+                      const thoughtNameMatch = fileName.match(/^thought-(\d+)/);
+                      
+                      if (thoughtNameMatch) {
+                        const thoughtId = thoughtNameMatch[1];
+                        const thumbnailFileName = `thumb_thought-${thoughtId}`;
+                        const thumbnailFile = files.find((f) => {
+                          const thumbFileName = (f.metadata.name || f.metadata.title || '').toLowerCase();
+                          return thumbFileName.startsWith(thumbnailFileName);
+                        });
+                        
+                        if (thumbnailFile) {
+                          thumbnailFileId = thumbnailFile.metadata.fileId;
+                        }
+                      }
+                    }
+                    
+                    const thumbnailUrl = thumbnails.get(thumbnailFileId);
+                    
+                    if (!thumbnailUrl) {
+                      // Show placeholder while thumbnail loads (like FullScreenFeed)
+                      return (
+                        <div className="w-full h-full flex items-center justify-center bg-neutral-800">
+                          <div className="flex flex-col items-center justify-center text-neutral-500">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-neutral-400 mb-1"></div>
+                            <span className="text-xs">Loading...</span>
+                          </div>
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <img
+                        src={thumbnailUrl}
+                        alt={item.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        onError={(e) => {
+                          e.currentTarget.src = '/placeholder-thumbnail.png';
+                        }}
+                      />
+                    );
+                  })()
                 )}
                 
                 {/* Info Button */}
