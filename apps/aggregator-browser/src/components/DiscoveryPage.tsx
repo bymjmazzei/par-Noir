@@ -285,13 +285,20 @@ export function DiscoveryPage({
     return Array.from(creatorMap.entries())
       .sort((a, b) => b[1].latestUpload.getTime() - a[1].latestUpload.getTime())
       .slice(0, 20)
-      .map(([creatorId, data]) => ({
-        creatorId,
-        file: data.files[0], // Use first file as thumbnail
-        fileCount: data.files.length,
-        totalViews7Days: data.totalViews7Days,
-        primaryNiche: data.primaryNiche
-      }));
+      .map(([creatorId, data]) => {
+        // Prioritize top post file (isTopPost === true) for creator thumbnail
+        // This matches how ProfileActionMenu handles profile images
+        const topPostFile = data.files.find(f => f.metadata.isTopPost === true);
+        const thumbnailFile = topPostFile || data.files[0]; // Fallback to first file if no top post
+        
+        return {
+          creatorId,
+          file: thumbnailFile, // Use top post or first file as thumbnail
+          fileCount: data.files.length,
+          totalViews7Days: data.totalViews7Days,
+          primaryNiche: data.primaryNiche
+        };
+      });
   }, [files]);
 
 
@@ -363,9 +370,50 @@ export function DiscoveryPage({
 
   // Helper to get thumbnail URL for a file
   const getThumbnail = (file: IndexedFile): string => {
+    // First, check if thumbnail is already loaded for this file
     if (thumbnails.has(file.metadata.fileId)) {
       return thumbnails.get(file.metadata.fileId)!;
     }
+    
+    // If this is a thought file (fileType: 'text'), try to find its corresponding thumbnail file
+    const fileType = file.metadata.fileType || '';
+    const isThought = fileType === 'text' || 
+                     fileType === 'thought' ||
+                     !!(file.metadata as any).textPost ||
+                     !!(file.metadata as any).thought;
+    
+    if (isThought) {
+      // Look for the corresponding thought thumbnail file
+      // Thumbnail files are named like: thumb_thought-123.png
+      // Thought files are named like: thought-123.thought or thought-123.png
+      const fileName = (file.metadata.name || file.metadata.title || '').toLowerCase();
+      const thoughtNameMatch = fileName.match(/^thought-(\d+)/);
+      
+      if (thoughtNameMatch) {
+        const thoughtId = thoughtNameMatch[1];
+        const thumbnailFileName = `thumb_thought-${thoughtId}`;
+        
+        // Find the thumbnail file in the files array
+        const thumbnailFile = files.find((f) => {
+          const thumbFileName = (f.metadata.name || f.metadata.title || '').toLowerCase();
+          return thumbFileName.startsWith(thumbnailFileName);
+        });
+        
+        // If we found the thumbnail file, get its thumbnail URL
+        if (thumbnailFile) {
+          const thumbnailFileId = thumbnailFile.metadata.fileId;
+          if (thumbnails.has(thumbnailFileId)) {
+            return thumbnails.get(thumbnailFileId)!;
+          }
+          // If thumbnail file exists but not loaded yet, return its thumbnail property if available
+          if (thumbnailFile.thumbnail) {
+            return thumbnailFile.thumbnail;
+          }
+        }
+      }
+    }
+    
+    // Fallback to file.thumbnail or placeholder
     return file.thumbnail || '/placeholder-thumbnail.png';
   };
 
