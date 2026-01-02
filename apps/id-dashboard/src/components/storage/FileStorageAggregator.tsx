@@ -2623,7 +2623,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               console.warn('⚠️ [Metadata] Failed to cleanup orphaned index entries (non-critical):', cleanupError);
             }
             
-            const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(token, metadataFolderId, pnIdentifier);
+            // Try loading from content class-specific indices first, fallback to root index
+            const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndexFromContentClasses(token, metadataFolderId, pnIdentifier);
 
             if (ownerIndex && ownerIndex.files) {
               const metadataMap = new Map<string, PublicMetadata>();
@@ -3036,7 +3037,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
             const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(accessToken, currentPnIdentifier);
             const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(accessToken, pnFolderId);
-            ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(accessToken, metadataFolderId, currentPnIdentifier);
+            // Try loading from content class-specific indices first, fallback to root index
+            ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndexFromContentClasses(accessToken, metadataFolderId, currentPnIdentifier);
             console.debug('📋 [loadFiles] Owner index response', {
               backendId,
               hasIndex: !!ownerIndex,

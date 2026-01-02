@@ -96,15 +96,229 @@ export async function loadUserFilesFromGoogleDrive(
 
     console.log('✅ Found _metadata folder:', metadataFolder.id);
 
-    // Step 3: List all .metadata.json files in content type subfolders
-    // Check for new structure (subfolders) first, fallback to old structure (flat)
+    // Step 3: Try loading from content class-specific owner indices first (new structure)
+    const contentTypes = ['media', 'thoughts', 'collections'];
+    const indexedFiles: IndexedFile[] = [];
+    let loadedFromContentClassIndices = false;
+    
+    for (const contentType of contentTypes) {
+      // Look for content class folder
+      const subfolderQuery = `name='${contentType}' and '${metadataFolder.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const subfolderResponse = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(subfolderQuery)}&fields=files(id,name)&pageSize=1`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        }
+      );
+
+      if (subfolderResponse.ok) {
+        const subfolderData = await subfolderResponse.json();
+        if (subfolderData.files && subfolderData.files.length > 0) {
+          const subfolderId = subfolderData.files[0].id;
+          
+          // Look for owner-file-index.json inside this content class folder
+          const indexFileQuery = `name='owner-file-index.json' and '${subfolderId}' in parents and trashed=false`;
+          const indexFileResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(indexFileQuery)}&fields=files(id)`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            }
+          );
+          
+          if (indexFileResponse.ok) {
+            const indexFileData = await indexFileResponse.json();
+            const indexFiles = indexFileData.files || [];
+            
+            if (indexFiles.length > 0) {
+              loadedFromContentClassIndices = true;
+              const indexFileId = indexFiles[0].id;
+              console.log(`📄 Found ${contentType}/owner-file-index.json (ID: ${indexFileId})`);
+              
+              // Download and parse the content class-specific owner index
+              const downloadResponse = await fetch(
+                `https://www.googleapis.com/drive/v3/files/${indexFileId}?alt=media`,
+                {
+                  headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                  }
+                }
+              );
+              
+              if (downloadResponse.ok) {
+                const indexText = await downloadResponse.text();
+                try {
+                  const indexData = JSON.parse(indexText);
+                  
+                  if (indexData && Array.isArray(indexData.files)) {
+                    // Convert each file entry to IndexedFile format
+                    for (const fileEntry of indexData.files) {
+                      const publicMetadata: any = {
+                        fileId: fileEntry.fileId || fileEntry.googleDriveFileId,
+                        name: fileEntry.originalName || fileEntry.fileName,
+                        title: fileEntry.originalName || fileEntry.fileName,
+                        fileType: getFileTypeFromMime(fileEntry.mimeType),
+                        size: fileEntry.size,
+                        uploadDate: fileEntry.uploadedAt,
+                        isPublic: fileEntry.visibility === 'public',
+                        visibility: fileEntry.visibility,
+                        isNSFW: fileEntry.isNSFW || false,
+                        keywords: fileEntry.tags || [],
+                        description: fileEntry.description,
+                        backend: 'google_drive',
+                        backendFileId: fileEntry.googleDriveFileId,
+                        creator: {
+                          identifier: {
+                            value: fileEntry.owner?.identifier || pnIdentifier
+                          }
+                        },
+                        author: {
+                          did: fileEntry.owner?.identifier || pnIdentifier
+                        },
+                        publicToken: fileEntry.publicToken,
+                        thumbnail: fileEntry.thumbnail,
+                        engagement: fileEntry.engagement ? {
+                          views: fileEntry.engagement.views || 0,
+                          likes: fileEntry.engagement.likes || 0,
+                          comments: fileEntry.engagement.comments || 0,
+                          shares: fileEntry.engagement.shares || 0
+                        } : undefined,
+                        isArchived: fileEntry.visibility !== 'public',
+                        contentClass: contentType === 'thoughts' ? 'thought' : contentType
+                      };
+
+                      indexedFiles.push({
+                        metadata: publicMetadata,
+                        thumbnail: fileEntry.thumbnail
+                      });
+                    }
+                    console.log(`✅ Loaded ${indexData.files.length} ${contentType} file(s) from owner index`);
+                  }
+                } catch (parseError) {
+                  console.error(`❌ Failed to parse ${contentType} owner index:`, parseError);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // Fallback to root owner-file-index.json if content class indices don't exist
+    if (!loadedFromContentClassIndices) {
+      console.log('📁 No content class-specific owner indices found, trying root owner index');
+      const rootIndexQuery = `name='owner-file-index.json' and '${metadataFolder.id}' in parents and trashed=false`;
+      const rootIndexResponse = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(rootIndexQuery)}&fields=files(id)`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        }
+      );
+      
+      if (rootIndexResponse.ok) {
+        const rootIndexData = await rootIndexResponse.json();
+        const rootIndexFiles = rootIndexData.files || [];
+        
+        if (rootIndexFiles.length > 0) {
+          const rootIndexFileId = rootIndexFiles[0].id;
+          console.log(`📄 Found root owner-file-index.json (ID: ${rootIndexFileId})`);
+          
+          const downloadResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${rootIndexFileId}?alt=media`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            }
+          );
+          
+          if (downloadResponse.ok) {
+            const indexText = await downloadResponse.text();
+            try {
+              const indexData = JSON.parse(indexText);
+              
+              if (indexData && Array.isArray(indexData.files)) {
+                for (const fileEntry of indexData.files) {
+                  const publicMetadata: any = {
+                    fileId: fileEntry.fileId || fileEntry.googleDriveFileId,
+                    name: fileEntry.originalName || fileEntry.fileName,
+                    title: fileEntry.originalName || fileEntry.fileName,
+                    fileType: getFileTypeFromMime(fileEntry.mimeType),
+                    size: fileEntry.size,
+                    uploadDate: fileEntry.uploadedAt,
+                    isPublic: fileEntry.visibility === 'public',
+                    visibility: fileEntry.visibility,
+                    isNSFW: fileEntry.isNSFW || false,
+                    keywords: fileEntry.tags || [],
+                    description: fileEntry.description,
+                    backend: 'google_drive',
+                    backendFileId: fileEntry.googleDriveFileId,
+                    creator: {
+                      identifier: {
+                        value: fileEntry.owner?.identifier || pnIdentifier
+                      }
+                    },
+                    author: {
+                      did: fileEntry.owner?.identifier || pnIdentifier
+                    },
+                    publicToken: fileEntry.publicToken,
+                    thumbnail: fileEntry.thumbnail,
+                    engagement: fileEntry.engagement ? {
+                      views: fileEntry.engagement.views || 0,
+                      likes: fileEntry.engagement.likes || 0,
+                      comments: fileEntry.engagement.comments || 0,
+                      shares: fileEntry.engagement.shares || 0
+                    } : undefined,
+                    isArchived: fileEntry.visibility !== 'public'
+                  };
+
+                  indexedFiles.push({
+                    metadata: publicMetadata,
+                    thumbnail: fileEntry.thumbnail
+                  });
+                }
+                console.log(`✅ Loaded ${indexData.files.length} file(s) from root owner index`);
+              }
+            } catch (parseError) {
+              console.error(`❌ Failed to parse root owner index:`, parseError);
+            }
+          }
+        } else {
+          // Final fallback: scan .metadata.json files (old behavior)
+          console.log('📁 No owner indices found, falling back to scanning metadata files');
+          await this.loadFromMetadataFiles(accessToken, metadataFolder.id, indexedFiles);
+        }
+      } else {
+        // Final fallback: scan .metadata.json files (old behavior)
+        console.log('📁 Failed to load root owner index, falling back to scanning metadata files');
+        await this.loadFromMetadataFiles(accessToken, metadataFolder.id, indexedFiles);
+      }
+    }
+
+    console.log(`✅ Loaded ${indexedFiles.length} files from Google Drive (${indexedFiles.filter(f => f.metadata.isArchived).length} archived)`);
+    return indexedFiles;
+  }
+
+  /**
+   * Fallback: Load files by scanning .metadata.json files (old behavior)
+   */
+  static async loadFromMetadataFiles(
+    accessToken: string,
+    metadataFolderId: string,
+    indexedFiles: IndexedFile[]
+  ): Promise<void> {
     const contentTypes = ['media', 'thoughts', 'collections'];
     let allMetadataFiles: any[] = [];
     
     // Try new structure first (subfolders)
     let foundSubfolders = false;
     for (const contentType of contentTypes) {
-      const subfolderQuery = `name='${contentType}' and '${metadataFolder.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const subfolderQuery = `name='${contentType}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
       const subfolderResponse = await fetch(
         `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(subfolderQuery)}&fields=files(id,name)&pageSize=1`,
         {
@@ -150,8 +364,7 @@ export async function loadUserFilesFromGoogleDrive(
 
     // Fallback to old structure (flat) if no subfolders found
     if (!foundSubfolders) {
-      console.log('📁 No content type subfolders found, using flat structure');
-      const metadataFilesQuery = `'${metadataFolder.id}' in parents and name contains '.metadata.json' and trashed=false`;
+      const metadataFilesQuery = `'${metadataFolderId}' in parents and name contains '.metadata.json' and trashed=false`;
       let nextPageToken: string | undefined;
       
       do {
@@ -178,9 +391,7 @@ export async function loadUserFilesFromGoogleDrive(
 
     console.log(`📄 Found ${allMetadataFiles.length} metadata files`);
 
-    // Step 4: Download and parse each metadata file
-    const indexedFiles: IndexedFile[] = [];
-    
+    // Download and parse each metadata file
     for (const metadataFile of allMetadataFiles) {
       try {
         const metadataContentResponse = await fetch(
@@ -245,9 +456,6 @@ export async function loadUserFilesFromGoogleDrive(
         continue;
       }
     }
-
-    console.log(`✅ Loaded ${indexedFiles.length} files from Google Drive (${indexedFiles.filter(f => f.metadata.isArchived).length} archived)`);
-    return indexedFiles;
   } catch (error) {
     console.error('❌ Failed to load files from Google Drive:', error);
     throw error;

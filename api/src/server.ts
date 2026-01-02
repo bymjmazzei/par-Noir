@@ -268,10 +268,14 @@ class ProductionServer {
           headers: { 'Authorization': `Bearer ${accessToken}` }
         });
 
+        let folderId: string | null = null;
         if (searchResponse.ok) {
           const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
           if (searchData.files && searchData.files.length > 0) {
+            folderId = searchData.files[0].id;
             console.log(`[initializeContentClassFolders] Folder '${folderName}' already exists`);
+            // Still initialize index files even if folder exists (they might not exist yet)
+            await this.initializeContentClassIndexFiles(accessToken, folderId, folderName);
             continue;
           }
         }
@@ -292,7 +296,11 @@ class ProductionServer {
 
         if (createResponse.ok) {
           const folderData = await createResponse.json() as { id: string };
-          console.log(`[initializeContentClassFolders] Created folder '${folderName}' (ID: ${folderData.id})`);
+          folderId = folderData.id;
+          console.log(`[initializeContentClassFolders] Created folder '${folderName}' (ID: ${folderId})`);
+          
+          // Create content class-specific index files in this folder
+          await this.initializeContentClassIndexFiles(accessToken, folderId, folderName);
         } else {
           const errorText = await createResponse.text();
           console.warn(`[initializeContentClassFolders] Failed to create folder '${folderName}': ${createResponse.status} ${errorText}`);
@@ -300,6 +308,221 @@ class ProductionServer {
       } catch (error: any) {
         console.error(`[initializeContentClassFolders] Error creating folder '${folderName}':`, error);
         // Don't throw - continue with other folders
+      }
+    }
+  }
+
+  /**
+   * Initialize content class-specific index files in a content class folder
+   */
+  private async initializeContentClassIndexFiles(
+    accessToken: string,
+    folderId: string,
+    folderName: string
+  ): Promise<void> {
+    const indexFiles = [
+      { name: 'public-file-index.json', isPublic: true },
+      { name: 'owner-file-index.json', isPublic: false }
+    ];
+
+    for (const indexFile of indexFiles) {
+      try {
+        // Check if index file already exists
+        const searchUrl = `https://www.googleapis.com/drive/v3/files?q=name='${indexFile.name}' and '${folderId}' in parents and trashed=false&fields=files(id)&pageSize=1`;
+        const searchResponse = await fetch(searchUrl, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+
+        if (searchResponse.ok) {
+          const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
+          if (searchData.files && searchData.files.length > 0) {
+            console.log(`[initializeContentClassIndexFiles] Index file '${indexFile.name}' already exists in '${folderName}'`);
+            continue;
+          }
+        }
+
+        // Create empty index file (identifier will be set when first file is added)
+        const emptyIndex = {
+          identifier: '',
+          files: [],
+          updatedAt: new Date().toISOString()
+        };
+        const indexContent = JSON.stringify(emptyIndex, null, 2);
+
+        // Create using multipart upload
+        const boundary = `----WebKitFormBoundary${Date.now()}`;
+        const metadataPart = JSON.stringify({
+          name: indexFile.name,
+          parents: [folderId]
+        });
+        
+        const multipartBody = [
+          `--${boundary}`,
+          'Content-Disposition: form-data; name="metadata"',
+          'Content-Type: application/json',
+          '',
+          metadataPart,
+          `--${boundary}`,
+          'Content-Disposition: form-data; name="file"; filename="index.json"',
+          'Content-Type: application/json',
+          '',
+          indexContent,
+          `--${boundary}--`
+        ].join('\r\n');
+
+        const createResponse = await fetch(
+          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': `multipart/form-data; boundary=${boundary}`
+            },
+            body: multipartBody
+          }
+        );
+
+        if (createResponse.ok) {
+          const fileData = await createResponse.json() as { id: string };
+          console.log(`[initializeContentClassIndexFiles] Created index file '${indexFile.name}' in '${folderName}' (ID: ${fileData.id})`);
+
+          // Make public index file publicly readable
+          if (indexFile.isPublic) {
+            try {
+              await fetch(
+                `https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    role: 'reader',
+                    type: 'anyone'
+                  })
+                }
+              );
+              console.log(`[initializeContentClassIndexFiles] Set public permissions on '${indexFile.name}' in '${folderName}'`);
+            } catch (permError: any) {
+              console.warn(`[initializeContentClassIndexFiles] Failed to set public permissions on '${indexFile.name}' in '${folderName}':`, permError);
+            }
+          }
+        } else {
+          const errorText = await createResponse.text();
+          console.warn(`[initializeContentClassIndexFiles] Failed to create '${indexFile.name}' in '${folderName}': ${createResponse.status} ${errorText}`);
+        }
+      } catch (error: any) {
+        console.error(`[initializeContentClassIndexFiles] Error creating '${indexFile.name}' in '${folderName}':`, error);
+        // Don't throw - continue with other files
+      }
+    }
+  }
+
+  /**
+   * Initialize root index files (public-file-index.json and owner-file-index.json)
+   * These are read by the browser to discover files, so they should exist even if empty
+   */
+  private async initializeIndexFiles(
+    accessToken: string,
+    metadataFolderId: string,
+    pnIdentifier: string
+  ): Promise<void> {
+    const indexFiles = [
+      { name: 'public-file-index.json', isPublic: true },
+      { name: 'owner-file-index.json', isPublic: false }
+    ];
+
+    for (const indexFile of indexFiles) {
+      try {
+        // Check if index file already exists
+        const searchUrl = `https://www.googleapis.com/drive/v3/files?q=name='${indexFile.name}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)&pageSize=1`;
+        const searchResponse = await fetch(searchUrl, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+
+        if (searchResponse.ok) {
+          const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
+          if (searchData.files && searchData.files.length > 0) {
+            console.log(`[initializeIndexFiles] Index file '${indexFile.name}' already exists`);
+            continue;
+          }
+        }
+
+        // Create empty index file
+        const emptyIndex = {
+          identifier: pnIdentifier,
+          files: [],
+          updatedAt: new Date().toISOString()
+        };
+        const indexContent = JSON.stringify(emptyIndex, null, 2);
+
+        // Create using multipart upload
+        const boundary = `----WebKitFormBoundary${Date.now()}`;
+        const metadataPart = JSON.stringify({
+          name: indexFile.name,
+          parents: [metadataFolderId]
+        });
+        
+        const multipartBody = [
+          `--${boundary}`,
+          'Content-Disposition: form-data; name="metadata"',
+          'Content-Type: application/json',
+          '',
+          metadataPart,
+          `--${boundary}`,
+          'Content-Disposition: form-data; name="file"; filename="index.json"',
+          'Content-Type: application/json',
+          '',
+          indexContent,
+          `--${boundary}--`
+        ].join('\r\n');
+
+        const createResponse = await fetch(
+          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': `multipart/form-data; boundary=${boundary}`
+            },
+            body: multipartBody
+          }
+        );
+
+        if (createResponse.ok) {
+          const fileData = await createResponse.json() as { id: string };
+          console.log(`[initializeIndexFiles] Created index file '${indexFile.name}' (ID: ${fileData.id})`);
+
+          // Make public index file publicly readable
+          if (indexFile.isPublic) {
+            try {
+              await fetch(
+                `https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    role: 'reader',
+                    type: 'anyone'
+                  })
+                }
+              );
+              console.log(`[initializeIndexFiles] Set public permissions on '${indexFile.name}'`);
+            } catch (permError: any) {
+              console.warn(`[initializeIndexFiles] Failed to set public permissions on '${indexFile.name}':`, permError);
+            }
+          }
+        } else {
+          const errorText = await createResponse.text();
+          console.warn(`[initializeIndexFiles] Failed to create '${indexFile.name}': ${createResponse.status} ${errorText}`);
+        }
+      } catch (error: any) {
+        console.error(`[initializeIndexFiles] Error creating '${indexFile.name}':`, error);
+        // Don't throw - continue with other files
       }
     }
   }
@@ -562,12 +785,27 @@ class ProductionServer {
 
     index.updatedAt = new Date().toISOString();
 
-    // Save owner index file
-    const indexContent = JSON.stringify(index, null, 2);
+    // Save root owner index file
+    await this.saveIndexFileToFolder(accessToken, metadataFolderId, OWNER_INDEX_FILE_NAME, index, false);
+    
+    // Also update content class-specific owner index
+    // Determine contentClass from fileMetadata
+    const { determineContentClass } = await import('./server/utils/fileTypeUtils');
+    const metadataAny = fileMetadata as any;
+    const contentClass = determineContentClass({
+      fileType: metadataAny.fileType,
+      collection: metadataAny.collection,
+      textPost: metadataAny.textPost,
+      thought: metadataAny.thought,
+      isThoughtThumbnail: metadataAny.isThoughtThumbnail,
+      isPartOfCollection: metadataAny.isPartOfCollection
+    });
 
-    // Check if index file exists
-    const searchResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${OWNER_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
+    // Get content class folder ID
+    const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass;
+    const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const contentTypeFolderResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`
@@ -575,69 +813,32 @@ class ProductionServer {
       }
     );
 
-    if (!searchResponse.ok) {
-      throw new Error('Failed to search for owner index file');
-    }
+    if (contentTypeFolderResponse.ok) {
+      const contentTypeFolderData = await contentTypeFolderResponse.json() as { files?: Array<{ id: string }> };
+      if (contentTypeFolderData.files && contentTypeFolderData.files.length > 0) {
+        const contentTypeFolderId = contentTypeFolderData.files[0].id;
+        
+        // Get or create content class-specific owner index
+        const contentClassOwnerIndex = await this.getContentClassOwnerIndex(accessToken, contentTypeFolderId, pnIdentifier);
+        const contentClassIndex = contentClassOwnerIndex || {
+          identifier: pnIdentifier,
+          files: [],
+          updatedAt: new Date().toISOString()
+        };
 
-    const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-    
-    if (searchData.files && searchData.files.length > 0) {
-      // Update existing index
-      const fileId = searchData.files[0].id;
+        // Update content class-specific index with same logic
+        const contentClassFileIndex = contentClassIndex.files.findIndex(
+          (f: any) => f.googleDriveFileId === fileMetadata.googleDriveFileId
+        );
 
-      const updateResponse = await fetch(
-        `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json; charset=UTF-8'
-          },
-          body: indexContent
+        if (contentClassFileIndex >= 0) {
+          contentClassIndex.files[contentClassFileIndex] = indexEntry;
+        } else {
+          contentClassIndex.files.push(indexEntry);
         }
-      );
 
-      if (!updateResponse.ok) {
-        const errorText = await updateResponse.text();
-        throw new Error(`Failed to update owner index file: ${errorText}`);
-      }
-    } else {
-      // Create new owner index file using multipart upload
-      const boundary = `----WebKitFormBoundary${Date.now()}`;
-      const metadataPart = JSON.stringify({
-        name: OWNER_INDEX_FILE_NAME,
-        parents: [metadataFolderId]
-      });
-      
-      const multipartBody = [
-        `--${boundary}`,
-        'Content-Disposition: form-data; name="metadata"',
-        'Content-Type: application/json',
-        '',
-        metadataPart,
-        `--${boundary}`,
-        'Content-Disposition: form-data; name="file"; filename="index.json"',
-        'Content-Type: application/json',
-        '',
-        indexContent,
-        `--${boundary}--`
-      ].join('\r\n');
-      
-      const createResponse = await fetch(
-        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': `multipart/form-data; boundary=${boundary}`
-          },
-          body: multipartBody
-        }
-      );
-
-      if (!createResponse.ok) {
-        const errorText = await createResponse.text();
-        throw new Error(`Failed to create owner index file: ${errorText}`);
+        contentClassIndex.updatedAt = new Date().toISOString();
+        await this.saveIndexFileToFolder(accessToken, contentTypeFolderId, OWNER_INDEX_FILE_NAME, contentClassIndex, false);
       }
     }
   }
@@ -777,7 +978,22 @@ class ProductionServer {
       return;
     }
     
-    // Remove file from index
+    // Find the file to determine its contentClass
+    const fileEntry = index.files.find((f: any) => f.googleDriveFileId === fileId || f.fileId === fileId);
+    let contentClass: string | null = null;
+    if (fileEntry) {
+      // Try to determine contentClass from file entry
+      const metadataAny = fileEntry as any;
+      if (metadataAny.collection?.collectionFileIds?.length) {
+        contentClass = 'collection';
+      } else if (metadataAny.isThoughtThumbnail || metadataAny.thought || metadataAny.textPost) {
+        contentClass = 'thought';
+      } else {
+        contentClass = 'media';
+      }
+    }
+    
+    // Remove file from root index
     const initialLength = index.files.length;
     index.files = index.files.filter((f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId);
     
@@ -788,43 +1004,41 @@ class ProductionServer {
     
     index.updatedAt = new Date().toISOString();
     
-    // Save updated index
-    const indexContent = JSON.stringify(index, null, 2);
+    // Save updated root index
+    await this.saveIndexFileToFolder(accessToken, metadataFolderId, OWNER_INDEX_FILE_NAME, index, false);
     
-    // Find and update the index file
-    const searchResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${OWNER_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-    
-    if (!searchResponse.ok) {
-      throw new Error('Failed to search for owner index file');
-    }
-    
-    const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-    
-    if (searchData.files && searchData.files.length > 0) {
-      const indexFileId = searchData.files[0].id;
-      
-      const updateResponse = await fetch(
-        `https://www.googleapis.com/upload/drive/v3/files/${indexFileId}?uploadType=media`,
+    // Also remove from content class-specific index if we know the contentClass
+    if (contentClass) {
+      const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass;
+      const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const contentTypeFolderResponse = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
         {
-          method: 'PATCH',
           headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json; charset=UTF-8'
-          },
-          body: indexContent
+            'Authorization': `Bearer ${accessToken}`
+          }
         }
       );
-      
-      if (!updateResponse.ok) {
-        const errorText = await updateResponse.text();
-        throw new Error(`Failed to update owner index file: ${errorText}`);
+
+      if (contentTypeFolderResponse.ok) {
+        const contentTypeFolderData = await contentTypeFolderResponse.json() as { files?: Array<{ id: string }> };
+        if (contentTypeFolderData.files && contentTypeFolderData.files.length > 0) {
+          const contentTypeFolderId = contentTypeFolderData.files[0].id;
+          
+          // Get content class-specific owner index
+          const contentClassIndex = await this.getContentClassOwnerIndex(accessToken, contentTypeFolderId, pnIdentifier);
+          if (contentClassIndex && contentClassIndex.files) {
+            const contentClassInitialLength = contentClassIndex.files.length;
+            contentClassIndex.files = contentClassIndex.files.filter(
+              (f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId
+            );
+            
+            if (contentClassIndex.files.length !== contentClassInitialLength) {
+              contentClassIndex.updatedAt = new Date().toISOString();
+              await this.saveIndexFileToFolder(accessToken, contentTypeFolderId, OWNER_INDEX_FILE_NAME, contentClassIndex, false);
+            }
+          }
+        }
       }
     }
   }
@@ -840,7 +1054,7 @@ class ProductionServer {
   ): Promise<void> {
     const PUBLIC_INDEX_FILE_NAME = 'public-file-index.json';
     
-    // Get existing public index
+    // Get existing public index to find the file and determine contentClass
     const index = await this.getPublicFileIndex(accessToken, metadataFolderId, pnIdentifier);
     
     if (!index || !index.files) {
@@ -848,7 +1062,22 @@ class ProductionServer {
       return;
     }
     
-    // Remove file from index
+    // Find the file to determine its contentClass
+    const fileEntry = index.files.find((f: any) => f.googleDriveFileId === fileId || f.fileId === fileId);
+    let contentClass: string | null = null;
+    if (fileEntry) {
+      // Try to determine contentClass from file entry
+      const metadataAny = fileEntry as any;
+      if (metadataAny.collection?.collectionFileIds?.length) {
+        contentClass = 'collection';
+      } else if (metadataAny.isThoughtThumbnail || metadataAny.thought || metadataAny.textPost) {
+        contentClass = 'thought';
+      } else {
+        contentClass = 'media';
+      }
+    }
+    
+    // Remove file from root index
     const initialLength = index.files.length;
     index.files = index.files.filter((f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId);
     
@@ -859,43 +1088,41 @@ class ProductionServer {
     
     index.updatedAt = new Date().toISOString();
     
-    // Save updated index
-    const indexContent = JSON.stringify(index, null, 2);
+    // Save updated root index
+    await this.saveIndexFileToFolder(accessToken, metadataFolderId, PUBLIC_INDEX_FILE_NAME, index, true);
     
-    // Find and update the index file
-    const searchResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${PUBLIC_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-    
-    if (!searchResponse.ok) {
-      throw new Error('Failed to search for public index file');
-    }
-    
-    const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-    
-    if (searchData.files && searchData.files.length > 0) {
-      const indexFileId = searchData.files[0].id;
-      
-      const updateResponse = await fetch(
-        `https://www.googleapis.com/upload/drive/v3/files/${indexFileId}?uploadType=media`,
+    // Also remove from content class-specific index if we know the contentClass
+    if (contentClass) {
+      const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass;
+      const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const contentTypeFolderResponse = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
         {
-          method: 'PATCH',
           headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json; charset=UTF-8'
-          },
-          body: indexContent
+            'Authorization': `Bearer ${accessToken}`
+          }
         }
       );
-      
-      if (!updateResponse.ok) {
-        const errorText = await updateResponse.text();
-        throw new Error(`Failed to update public index file: ${errorText}`);
+
+      if (contentTypeFolderResponse.ok) {
+        const contentTypeFolderData = await contentTypeFolderResponse.json() as { files?: Array<{ id: string }> };
+        if (contentTypeFolderData.files && contentTypeFolderData.files.length > 0) {
+          const contentTypeFolderId = contentTypeFolderData.files[0].id;
+          
+          // Get content class-specific public index
+          const contentClassIndex = await this.getContentClassPublicIndex(accessToken, contentTypeFolderId, pnIdentifier);
+          if (contentClassIndex && contentClassIndex.files) {
+            const contentClassInitialLength = contentClassIndex.files.length;
+            contentClassIndex.files = contentClassIndex.files.filter(
+              (f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId
+            );
+            
+            if (contentClassIndex.files.length !== contentClassInitialLength) {
+              contentClassIndex.updatedAt = new Date().toISOString();
+              await this.saveIndexFileToFolder(accessToken, contentTypeFolderId, PUBLIC_INDEX_FILE_NAME, contentClassIndex, true);
+            }
+          }
+        }
       }
     }
   }
@@ -1039,12 +1266,129 @@ class ProductionServer {
 
     index.updatedAt = new Date().toISOString();
 
-    // Save index file
+    // Save root public index file
+    await this.saveIndexFileToFolder(accessToken, metadataFolderId, PUBLIC_INDEX_FILE_NAME, index, true);
+    
+    // Also update content class-specific public index
+    // Determine contentClass from fileMetadata
+    const { determineContentClass } = await import('./server/utils/fileTypeUtils');
+    const metadataAny = fileMetadata as any;
+    const contentClass = determineContentClass({
+      fileType: metadataAny.fileType,
+      collection: metadataAny.collection,
+      textPost: metadataAny.textPost,
+      thought: metadataAny.thought,
+      isThoughtThumbnail: metadataAny.isThoughtThumbnail,
+      isPartOfCollection: metadataAny.isPartOfCollection
+    });
+
+    // Get content class folder ID
+    const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass;
+    const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const contentTypeFolderResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (contentTypeFolderResponse.ok) {
+      const contentTypeFolderData = await contentTypeFolderResponse.json() as { files?: Array<{ id: string }> };
+      if (contentTypeFolderData.files && contentTypeFolderData.files.length > 0) {
+        const contentTypeFolderId = contentTypeFolderData.files[0].id;
+        
+        // Get or create content class-specific public index
+        const contentClassPublicIndex = await this.getContentClassPublicIndex(accessToken, contentTypeFolderId, pnIdentifier);
+        const contentClassIndex = contentClassPublicIndex || {
+          identifier: pnIdentifier,
+          files: [],
+          updatedAt: new Date().toISOString()
+        };
+
+        // Update content class-specific index with same logic
+        const contentClassFileIndex = contentClassIndex.files.findIndex(
+          (f: any) => f.googleDriveFileId === fileMetadata.googleDriveFileId
+        );
+
+        if (fileMetadata.visibility === 'public') {
+          // Create index entry for content class-specific index (same as root index)
+          const publicMetadata = this.companionToPublicMetadata(fileMetadata, fileMetadata.owner.did);
+          const contentClassIndexEntry: any = {
+            ...publicMetadata,
+            fileId: fileMetadata.fileId,
+            googleDriveFileId: fileMetadata.googleDriveFileId,
+            fileName: fileMetadata.fileName,
+            originalName: fileMetadata.originalName,
+            mimeType: fileMetadata.mimeType,
+            size: fileMetadata.size,
+            visibility: fileMetadata.visibility,
+            uploadedAt: fileMetadata.uploadedAt,
+            owner: fileMetadata.owner,
+            tags: fileMetadata.tags || [],
+            description: fileMetadata.description,
+            thumbnail: fileMetadata.thumbnail,
+            publicToken: fileMetadata.publicToken,
+            indexingPermissions: fileMetadata.indexingPermissions
+          };
+          
+          if (contentClassFileIndex >= 0) {
+            // Update existing entry
+            const existingEntry = contentClassIndex.files[contentClassFileIndex] as any;
+            
+            // Preserve publicToken if new one not provided
+            if (!contentClassIndexEntry.publicToken && existingEntry.publicToken) {
+              contentClassIndexEntry.publicToken = existingEntry.publicToken;
+            }
+            
+            // Merge engagement metrics
+            if (existingEntry.engagement) {
+              contentClassIndexEntry.engagement = {
+                views: contentClassIndexEntry.engagement?.views ?? existingEntry.engagement.views ?? 0,
+                likes: contentClassIndexEntry.engagement?.likes ?? existingEntry.engagement.likes ?? 0,
+                comments: contentClassIndexEntry.engagement?.comments ?? existingEntry.engagement.comments ?? 0,
+                shares: contentClassIndexEntry.engagement?.shares ?? existingEntry.engagement.shares ?? 0,
+                lastUpdated: contentClassIndexEntry.engagement?.lastUpdated || existingEntry.engagement.lastUpdated || fileMetadata.uploadedAt,
+                engagementHistory: [
+                  ...(existingEntry.engagement.engagementHistory || []),
+                  ...(contentClassIndexEntry.engagement?.engagementHistory || [])
+                ]
+              };
+            }
+            
+            contentClassIndex.files[contentClassFileIndex] = contentClassIndexEntry;
+          } else {
+            contentClassIndex.files.push(contentClassIndexEntry);
+          }
+        } else {
+          // Remove from content class index if not public
+          if (contentClassFileIndex >= 0) {
+            contentClassIndex.files.splice(contentClassFileIndex, 1);
+          }
+        }
+
+        contentClassIndex.updatedAt = new Date().toISOString();
+        await this.saveIndexFileToFolder(accessToken, contentTypeFolderId, PUBLIC_INDEX_FILE_NAME, contentClassIndex, true);
+      }
+    }
+  }
+
+  /**
+   * Save index file to a specific folder in Google Drive (helper method)
+   */
+  private async saveIndexFileToFolder(
+    accessToken: string,
+    folderId: string,
+    fileName: string,
+    index: any,
+    isPublic: boolean = false
+  ): Promise<void> {
     const indexContent = JSON.stringify(index, null, 2);
 
     // Check if index file exists
     const searchResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${PUBLIC_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
+      `https://www.googleapis.com/drive/v3/files?q=name='${fileName}' and '${folderId}' in parents and trashed=false&fields=files(id)`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`
@@ -1076,35 +1420,37 @@ class ProductionServer {
 
       if (!updateResponse.ok) {
         const errorText = await updateResponse.text();
-        throw new Error(`Failed to update public index file: ${errorText}`);
+        throw new Error(`Failed to update index file: ${errorText}`);
       }
 
-      // Make index file publicly readable
-      try {
-        await fetch(
-          `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              role: 'reader',
-              type: 'anyone'
-            })
-          }
-        );
-      } catch (permError: any) {
-        // Permission might already exist, ignore
-        console.warn(`[Upload] Failed to set public permissions:`, permError?.message || permError);
+      // Make index file publicly readable if it's a public index
+      if (isPublic) {
+        try {
+          await fetch(
+            `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                role: 'reader',
+                type: 'anyone'
+              })
+            }
+          );
+        } catch (permError: any) {
+          // Permission might already exist, ignore
+          console.warn(`[saveIndexFileToFolder] Failed to set public permissions:`, permError?.message || permError);
+        }
       }
     } else {
       // Create new index using multipart upload
       const boundary = `----WebKitFormBoundary${Date.now()}`;
       const metadataPart = JSON.stringify({
-        name: PUBLIC_INDEX_FILE_NAME,
-        parents: [metadataFolderId]
+        name: fileName,
+        parents: [folderId]
       });
       
       const multipartBody = [
@@ -1140,25 +1486,133 @@ class ProductionServer {
 
       const fileData = await createResponse.json() as { id: string };
       
-      // Make index file publicly readable
-      try {
-        await fetch(
-          `https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              role: 'reader',
-              type: 'anyone'
-            })
-          }
-        );
-      } catch (permError: any) {
-        console.warn(`[Upload] Failed to set public permissions:`, permError?.message || permError);
+      // Make index file publicly readable if it's a public index
+      if (isPublic) {
+        try {
+          await fetch(
+            `https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                role: 'reader',
+                type: 'anyone'
+              })
+            }
+          );
+        } catch (permError: any) {
+          console.warn(`[saveIndexFileToFolder] Failed to set public permissions:`, permError?.message || permError);
+        }
       }
+    }
+  }
+
+  /**
+   * Get content class-specific public index
+   */
+  private async getContentClassPublicIndex(
+    accessToken: string,
+    folderId: string,
+    pnIdentifier: string
+  ): Promise<any | null> {
+    const PUBLIC_INDEX_FILE_NAME = 'public-file-index.json';
+    const searchResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='${PUBLIC_INDEX_FILE_NAME}' and '${folderId}' in parents and trashed=false&fields=files(id)`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!searchResponse.ok) {
+      return null;
+    }
+
+    const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
+    
+    if (!searchData.files || searchData.files.length === 0) {
+      return null;
+    }
+
+    const fileId = searchData.files[0].id;
+    const getResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!getResponse.ok) {
+      return null;
+    }
+
+    try {
+      return await getResponse.json();
+    } catch {
+      return {
+        identifier: pnIdentifier,
+        files: [],
+        updatedAt: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get content class-specific owner index
+   */
+  private async getContentClassOwnerIndex(
+    accessToken: string,
+    folderId: string,
+    pnIdentifier: string
+  ): Promise<any | null> {
+    const OWNER_INDEX_FILE_NAME = 'owner-file-index.json';
+    const searchResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='${OWNER_INDEX_FILE_NAME}' and '${folderId}' in parents and trashed=false&fields=files(id)`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!searchResponse.ok) {
+      return null;
+    }
+
+    const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
+    
+    if (!searchData.files || searchData.files.length === 0) {
+      return null;
+    }
+
+    const fileId = searchData.files[0].id;
+    const getResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!getResponse.ok) {
+      return null;
+    }
+
+    try {
+      return await getResponse.json();
+    } catch {
+      return {
+        identifier: pnIdentifier,
+        files: [],
+        updatedAt: new Date().toISOString()
+      };
     }
   }
 
@@ -4035,6 +4489,10 @@ class ProductionServer {
               // Initialize all content class folders (media, thoughts, collections)
               console.log(`[StorageCredentials PUT] Initializing content class folders for identityId: ${sanitizedIdentityId}`);
               await this.initializeContentClassFolders(accessToken, metadataFolderId);
+              
+              // Initialize root index files (public-file-index.json and owner-file-index.json)
+              console.log(`[StorageCredentials PUT] Initializing index files for identityId: ${sanitizedIdentityId}`);
+              await this.initializeIndexFiles(accessToken, metadataFolderId, identityId);
               
               console.log(`[StorageCredentials PUT] Successfully initialized folder structure for identityId: ${sanitizedIdentityId}`);
               

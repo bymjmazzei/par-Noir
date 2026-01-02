@@ -123,71 +123,136 @@ export class GoogleDriveScanner {
               const metadataFolderId = metadataFolders[0].id;
               console.log(`📁 Found _metadata folder in pN ${pnFolder.name}`);
               
-              // Step 3: Look for public-file-index.json inside the _metadata folder
-              const indexFileQuery = `name='public-file-index.json' and '${metadataFolderId}' in parents and trashed=false`;
+              // Step 3: Try loading from content class-specific indices first (new structure)
+              const contentTypes = ['media', 'thoughts', 'collections'];
+              let loadedFromContentClassIndices = false;
               
-              const indexFileUrl = useApiKey
-                ? `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(indexFileQuery)}&fields=files(id,name)&key=${GoogleDriveScanner.API_KEY}`
-                : `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(indexFileQuery)}&fields=files(id,name)`;
-              
-              const indexFileHeaders: HeadersInit = {
-                    'Content-Type': 'application/json'
-              };
-              if (authHeader) {
-                indexFileHeaders['Authorization'] = authHeader;
+              for (const contentType of contentTypes) {
+                // Look for content class folder
+                const subfolderQuery = `name='${contentType}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const subfolderUrl = useApiKey
+                  ? `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(subfolderQuery)}&fields=files(id,name)&key=${GoogleDriveScanner.API_KEY}`
+                  : `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(subfolderQuery)}&fields=files(id,name)`;
+                
+                const subfolderHeaders: HeadersInit = {
+                      'Content-Type': 'application/json'
+                };
+                if (authHeader) {
+                  subfolderHeaders['Authorization'] = authHeader;
                 }
-              
-              const indexFileResponse = await fetch(indexFileUrl, { headers: indexFileHeaders });
-
-              if (indexFileResponse.ok) {
-                const indexFileData = await indexFileResponse.json();
-                const indexFiles = indexFileData.files || [];
-
-                if (indexFiles.length === 0) {
-                  console.log(`ℹ️ No public-file-index.json found in _metadata folder of pN ${pnFolder.name}`);
-                }
-
-                if (indexFiles.length > 0) {
-                  const indexFileId = indexFiles[0].id;
-                  console.log(`📄 Found public-file-index.json in pN ${pnFolder.name} (ID: ${indexFileId})`);
+                
+                const subfolderResponse = await fetch(subfolderUrl, { headers: subfolderHeaders });
+                
+                if (subfolderResponse.ok) {
+                  const subfolderData = await subfolderResponse.json();
+                  const subfolders = subfolderData.files || [];
                   
-                  // Step 4: Download and parse the metadata index
-                  // For public files, we can use the direct download URL with API key
-                  const downloadUrl = useApiKey
-                    ? `https://www.googleapis.com/drive/v3/files/${indexFileId}?alt=media&key=${GoogleDriveScanner.API_KEY}`
-                    : `https://www.googleapis.com/drive/v3/files/${indexFileId}?alt=media`;
-                  
-                  const downloadHeaders: HeadersInit = {};
-                  if (authHeader) {
-                    downloadHeaders['Authorization'] = authHeader;
-                  }
-                  
-                  const downloadResponse = await fetch(downloadUrl, { headers: downloadHeaders });
-
-                  if (downloadResponse.ok) {
-                    const indexText = await downloadResponse.text();
-                    try {
-                    const indexData = JSON.parse(indexText);
-
-                      // public-file-index.json structure: { identifier: string, files: [...], updatedAt: string }
-                      if (indexData && Array.isArray(indexData.files)) {
-                        // Filter for public files only
-                        const publicFiles = indexData.files.filter((file: any) => file.visibility === 'public');
-                      // Add all public files from this pN's metadata
-                        // Each file entry in the array is already the metadata object
-                        allMetadata.push(...publicFiles);
-                        console.log(`✅ Loaded ${publicFiles.length} public file(s) from pN ${pnFolder.name} (${indexData.files.length} total files in index)`);
-                      } else {
-                        console.warn(`⚠️ Invalid index format in pN ${pnFolder.name}: expected files array`);
+                  if (subfolders.length > 0) {
+                    const subfolderId = subfolders[0].id;
+                    
+                    // Look for public-file-index.json inside this content class folder
+                    const indexFileQuery = `name='public-file-index.json' and '${subfolderId}' in parents and trashed=false`;
+                    const indexFileUrl = useApiKey
+                      ? `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(indexFileQuery)}&fields=files(id,name)&key=${GoogleDriveScanner.API_KEY}`
+                      : `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(indexFileQuery)}&fields=files(id,name)`;
+                    
+                    const indexFileResponse = await fetch(indexFileUrl, { headers: subfolderHeaders });
+                    
+                    if (indexFileResponse.ok) {
+                      const indexFileData = await indexFileResponse.json();
+                      const indexFiles = indexFileData.files || [];
+                      
+                      if (indexFiles.length > 0) {
+                        loadedFromContentClassIndices = true;
+                        const indexFileId = indexFiles[0].id;
+                        console.log(`📄 Found ${contentType}/public-file-index.json in pN ${pnFolder.name} (ID: ${indexFileId})`);
+                        
+                        // Download and parse the content class-specific index
+                        const downloadUrl = useApiKey
+                          ? `https://www.googleapis.com/drive/v3/files/${indexFileId}?alt=media&key=${GoogleDriveScanner.API_KEY}`
+                          : `https://www.googleapis.com/drive/v3/files/${indexFileId}?alt=media`;
+                        
+                        const downloadHeaders: HeadersInit = {};
+                        if (authHeader) {
+                          downloadHeaders['Authorization'] = authHeader;
+                        }
+                        
+                        const downloadResponse = await fetch(downloadUrl, { headers: downloadHeaders });
+                        
+                        if (downloadResponse.ok) {
+                          const indexText = await downloadResponse.text();
+                          try {
+                            const indexData = JSON.parse(indexText);
+                            
+                            if (indexData && Array.isArray(indexData.files)) {
+                              // Filter for public files only
+                              const publicFiles = indexData.files.filter((file: any) => file.visibility === 'public');
+                              allMetadata.push(...publicFiles);
+                              console.log(`✅ Loaded ${publicFiles.length} ${contentType} file(s) from pN ${pnFolder.name}`);
+                            }
+                          } catch (parseError) {
+                            console.error(`❌ Failed to parse ${contentType} index from pN ${pnFolder.name}:`, parseError);
+                          }
+                        }
                       }
-                    } catch (parseError) {
-                      console.error(`❌ Failed to parse index from pN ${pnFolder.name}:`, parseError);
-                      console.error('Index content:', indexText.substring(0, 500));
+                    }
+                  }
+                }
+              }
+              
+              // Fallback to root public-file-index.json if content class indices don't exist (backward compatibility)
+              if (!loadedFromContentClassIndices) {
+                console.log(`ℹ️ No content class-specific indices found, falling back to root index for pN ${pnFolder.name}`);
+                const indexFileQuery = `name='public-file-index.json' and '${metadataFolderId}' in parents and trashed=false`;
+                
+                const indexFileUrl = useApiKey
+                  ? `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(indexFileQuery)}&fields=files(id,name)&key=${GoogleDriveScanner.API_KEY}`
+                  : `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(indexFileQuery)}&fields=files(id,name)`;
+                
+                const indexFileHeaders: HeadersInit = {
+                      'Content-Type': 'application/json'
+                };
+                if (authHeader) {
+                  indexFileHeaders['Authorization'] = authHeader;
+                }
+                
+                const indexFileResponse = await fetch(indexFileUrl, { headers: indexFileHeaders });
+
+                if (indexFileResponse.ok) {
+                  const indexFileData = await indexFileResponse.json();
+                  const indexFiles = indexFileData.files || [];
+
+                  if (indexFiles.length > 0) {
+                    const indexFileId = indexFiles[0].id;
+                    console.log(`📄 Found root public-file-index.json in pN ${pnFolder.name} (ID: ${indexFileId})`);
+                    
+                    const downloadUrl = useApiKey
+                      ? `https://www.googleapis.com/drive/v3/files/${indexFileId}?alt=media&key=${GoogleDriveScanner.API_KEY}`
+                      : `https://www.googleapis.com/drive/v3/files/${indexFileId}?alt=media`;
+                    
+                    const downloadHeaders: HeadersInit = {};
+                    if (authHeader) {
+                      downloadHeaders['Authorization'] = authHeader;
+                    }
+                    
+                    const downloadResponse = await fetch(downloadUrl, { headers: downloadHeaders });
+
+                    if (downloadResponse.ok) {
+                      const indexText = await downloadResponse.text();
+                      try {
+                        const indexData = JSON.parse(indexText);
+
+                        if (indexData && Array.isArray(indexData.files)) {
+                          const publicFiles = indexData.files.filter((file: any) => file.visibility === 'public');
+                          allMetadata.push(...publicFiles);
+                          console.log(`✅ Loaded ${publicFiles.length} public file(s) from root index of pN ${pnFolder.name}`);
+                        }
+                      } catch (parseError) {
+                        console.error(`❌ Failed to parse root index from pN ${pnFolder.name}:`, parseError);
+                      }
                     }
                   } else {
-                    const errorText = await downloadResponse.text();
-                    console.error(`❌ Failed to download index from pN ${pnFolder.name}: ${downloadResponse.status} ${downloadResponse.statusText}`);
-                    console.error('Error response:', errorText);
+                    console.log(`ℹ️ No public-file-index.json found in _metadata folder of pN ${pnFolder.name}`);
                   }
                 }
               }
