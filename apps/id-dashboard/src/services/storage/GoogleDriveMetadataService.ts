@@ -1099,7 +1099,7 @@ export class GoogleDriveMetadataService {
 
       // Determine contentClass from metadata
       // Use same logic as server-side determineContentClass utility for consistency
-      let contentClass = fileMetadata.contentClass;
+      let contentClass = (fileMetadata as any).contentClass;
       if (!contentClass) {
         const metadataAny = fileMetadata as any;
         // Collection takes precedence
@@ -1508,7 +1508,7 @@ export class GoogleDriveMetadataService {
       }
 
       // Determine contentClass from metadata
-      let contentClass = fileMetadata.contentClass;
+      let contentClass = (fileMetadata as any).contentClass;
       if (!contentClass) {
         const metadataAny = fileMetadata as any;
         // Collection takes precedence
@@ -1593,26 +1593,9 @@ export class GoogleDriveMetadataService {
       await this.saveIndexFile(accessToken, metadataFolderId, this.OWNER_INDEX_FILE_NAME, index);
       
       // Also update content class-specific owner index
-      // Determine contentClass from metadata
-      let contentClass = fileMetadata.contentClass;
-      if (!contentClass) {
-        const metadataAny = fileMetadata as any;
-        // Collection takes precedence
-        if (metadataAny.collection?.collectionFileIds?.length) {
-          contentClass = 'collection';
-        }
-        // Thought (including thumbnails) - CRITICAL: isThoughtThumbnail must be checked
-        else if (metadataAny.isThoughtThumbnail || metadataAny.thought || metadataAny.textPost) {
-          contentClass = 'thought';
-        }
-        // Default to media for everything else
-        else {
-          contentClass = 'media';
-        }
-      }
-
-      // Get content class folder ID
-      const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass;
+      // contentClass was already determined above when creating indexEntry
+      // Use the contentClass from indexEntry
+      const contentTypeFolderName = indexEntry.contentClass === 'thought' ? 'thoughts' : indexEntry.contentClass;
       const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
       const contentTypeFolderResponse = await fetch(
         `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
@@ -1805,73 +1788,63 @@ export class GoogleDriveMetadataService {
         if (isNewPublicFile) {
           await this.shareFolderWithServiceAccount(accessToken, pnFolderId);
         }
-      } else {
-        // Remove from index if not public (should not be in index, but clean up just in case)
-        if (fileIndex >= 0) {
-          console.log(`Removing file ${fileMetadata.googleDriveFileId} from public index (visibility: ${fileMetadata.visibility})`);
-          index.files.splice(fileIndex, 1);
-        }
-      }
-
-      index.updatedAt = new Date().toISOString();
-
-      // Save root public index file
-      await this.saveIndexFile(accessToken, metadataFolderId, this.PUBLIC_INDEX_FILE_NAME, index);
-      
-      // Also update content class-specific public index
-      // Determine contentClass from metadata
-      let contentClass = fileMetadata.contentClass;
-      if (!contentClass) {
-        const metadataAny = fileMetadata as any;
-        // Collection takes precedence
-        if (metadataAny.collection?.collectionFileIds?.length) {
-          contentClass = 'collection';
-        }
-        // Thought (including thumbnails) - CRITICAL: isThoughtThumbnail must be checked
-        else if (metadataAny.isThoughtThumbnail || metadataAny.thought || metadataAny.textPost) {
-          contentClass = 'thought';
-        }
-        // Default to media for everything else
-        else {
-          contentClass = 'media';
-        }
-      }
-
-      // Get content class folder ID
-      const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass;
-      const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-      const contentTypeFolderResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
+        
+        // Also update content class-specific public index (only for public files)
+        // Determine contentClass from metadata
+        let contentClass = (fileMetadata as any).contentClass;
+        if (!contentClass) {
+          const metadataAny = fileMetadata as any;
+          // Collection takes precedence
+          if (metadataAny.collection?.collectionFileIds?.length) {
+            contentClass = 'collection';
+          }
+          // Thought (including thumbnails) - CRITICAL: isThoughtThumbnail must be checked
+          else if (metadataAny.isThoughtThumbnail || metadataAny.thought || metadataAny.textPost) {
+            contentClass = 'thought';
+          }
+          // Default to media for everything else
+          else {
+            contentClass = 'media';
           }
         }
-      );
 
-      if (contentTypeFolderResponse.ok) {
-        const contentTypeFolderData = await contentTypeFolderResponse.json();
-        if (contentTypeFolderData.files && contentTypeFolderData.files.length > 0) {
-          const contentTypeFolderId = contentTypeFolderData.files[0].id;
-          
-          // Get or create content class-specific public index
-          const contentClassPublicIndex = await this.getContentClassPublicIndex(accessToken, contentTypeFolderId, pnIdentifier);
-          const contentClassIndex = contentClassPublicIndex || {
-            identifier: pnIdentifier,
-            files: [],
-            updatedAt: new Date().toISOString()
-          };
+        // Get content class folder ID
+        const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass;
+        const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const contentTypeFolderResponse = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          }
+        );
 
-          // Update content class-specific index with same logic
-          const contentClassFileIndex = contentClassIndex.files.findIndex(
-            f => f.googleDriveFileId === fileMetadata.googleDriveFileId
-          );
+        if (contentTypeFolderResponse.ok) {
+          const contentTypeFolderData = await contentTypeFolderResponse.json();
+          if (contentTypeFolderData.files && contentTypeFolderData.files.length > 0) {
+            const contentTypeFolderId = contentTypeFolderData.files[0].id;
+            
+            // Get or create content class-specific public index
+            const contentClassPublicIndex = await this.getContentClassPublicIndex(accessToken, contentTypeFolderId, pnIdentifier);
+            const contentClassIndex = contentClassPublicIndex || {
+              identifier: pnIdentifier,
+              files: [],
+              updatedAt: new Date().toISOString()
+            };
 
-          if (fileMetadata.visibility === 'public') {
+            // Update content class-specific index with same logic
+            const contentClassFileIndex = contentClassIndex.files.findIndex(
+              f => f.googleDriveFileId === fileMetadata.googleDriveFileId
+            );
+
+            // Use the indexEntry that was created earlier in this method (it's in scope)
+            // Create a copy for the content class-specific index
+            const contentClassIndexEntry: any = { ...indexEntry };
+            
             if (contentClassFileIndex >= 0) {
               // Update existing entry
               const existingEntry = contentClassIndex.files[contentClassFileIndex] as any;
-              const contentClassIndexEntry = { ...indexEntry };
               
               // Preserve publicToken if new one not provided
               if (!contentClassIndexEntry.publicToken && existingEntry.publicToken) {
@@ -1895,19 +1868,68 @@ export class GoogleDriveMetadataService {
               
               contentClassIndex.files[contentClassFileIndex] = contentClassIndexEntry;
             } else {
-              contentClassIndex.files.push(indexEntry);
+              contentClassIndex.files.push(contentClassIndexEntry);
             }
-          } else {
-            // Remove from content class index if not public
-            if (contentClassFileIndex >= 0) {
-              contentClassIndex.files.splice(contentClassFileIndex, 1);
+
+            contentClassIndex.updatedAt = new Date().toISOString();
+            await this.saveIndexFileToFolder(accessToken, contentTypeFolderId, this.PUBLIC_INDEX_FILE_NAME, contentClassIndex);
+          }
+        }
+      } else {
+        // Remove from index if not public (should not be in index, but clean up just in case)
+        if (fileIndex >= 0) {
+          console.log(`Removing file ${fileMetadata.googleDriveFileId} from public index (visibility: ${fileMetadata.visibility})`);
+          index.files.splice(fileIndex, 1);
+          
+          // Also remove from content class-specific index
+          // Determine contentClass from metadata
+          let contentClass = (fileMetadata as any).contentClass;
+          if (!contentClass) {
+            const metadataAny = fileMetadata as any;
+            if (metadataAny.collection?.collectionFileIds?.length) {
+              contentClass = 'collection';
+            } else if (metadataAny.isThoughtThumbnail || metadataAny.thought || metadataAny.textPost) {
+              contentClass = 'thought';
+            } else {
+              contentClass = 'media';
             }
           }
+          
+          const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass;
+          const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+          const contentTypeFolderResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            }
+          );
 
-          contentClassIndex.updatedAt = new Date().toISOString();
-          await this.saveIndexFileToFolder(accessToken, contentTypeFolderId, this.PUBLIC_INDEX_FILE_NAME, contentClassIndex);
+          if (contentTypeFolderResponse.ok) {
+            const contentTypeFolderData = await contentTypeFolderResponse.json();
+            if (contentTypeFolderData.files && contentTypeFolderData.files.length > 0) {
+              const contentTypeFolderId = contentTypeFolderData.files[0].id;
+              const contentClassPublicIndex = await this.getContentClassPublicIndex(accessToken, contentTypeFolderId, pnIdentifier);
+              if (contentClassPublicIndex && contentClassPublicIndex.files) {
+                const contentClassFileIndex = contentClassPublicIndex.files.findIndex(
+                  f => f.googleDriveFileId === fileMetadata.googleDriveFileId
+                );
+                if (contentClassFileIndex >= 0) {
+                  contentClassPublicIndex.files.splice(contentClassFileIndex, 1);
+                  contentClassPublicIndex.updatedAt = new Date().toISOString();
+                  await this.saveIndexFileToFolder(accessToken, contentTypeFolderId, this.PUBLIC_INDEX_FILE_NAME, contentClassPublicIndex);
+                }
+              }
+            }
+          }
         }
       }
+
+      index.updatedAt = new Date().toISOString();
+
+      // Save root public index file
+      await this.saveIndexFile(accessToken, metadataFolderId, this.PUBLIC_INDEX_FILE_NAME, index);
     } catch (error) {
       console.error('Failed to update public file index:', error);
       throw error;
