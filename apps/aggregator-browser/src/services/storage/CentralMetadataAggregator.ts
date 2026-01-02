@@ -208,7 +208,10 @@ export class CentralMetadataAggregator {
             return keywords.some(tag => filters.tags!.includes(tag));
           });
         }
-        if (filters.fileType) {
+        if (filters.fileType && !filters.contentClass) {
+          // Only filter by fileType if contentClass is not provided
+          // When contentClass is provided, the API already filtered correctly
+          // fileType is for technical rendering, contentClass is for feed classification
           files = files.filter(f => f.metadata.fileType === filters.fileType);
         }
         if (filters.authorDid) {

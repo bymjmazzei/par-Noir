@@ -726,6 +726,18 @@ class ProductionServer {
       };
     }
 
+    // Determine contentClass from fileMetadata before creating index entry
+    const { determineContentClass } = await import('./server/utils/fileTypeUtils');
+    const metadataAny = fileMetadata as any;
+    const contentClass = determineContentClass({
+      fileType: metadataAny.fileType,
+      collection: metadataAny.collection,
+      textPost: metadataAny.textPost,
+      thought: metadataAny.thought,
+      isThoughtThumbnail: metadataAny.isThoughtThumbnail,
+      isPartOfCollection: metadataAny.isPartOfCollection
+    });
+
     // Convert companion metadata to index entry format
     const indexEntry: any = {
       fileId: fileMetadata.fileId,
@@ -745,7 +757,13 @@ class ProductionServer {
       inReplyTo: fileMetadata.inReplyTo,
       repostOf: fileMetadata.repostOf,
       isPartOf: fileMetadata.isPartOf,
-      indexingPermissions: fileMetadata.indexingPermissions
+      indexingPermissions: fileMetadata.indexingPermissions,
+      contentClass: contentClass, // Store contentClass for proper filtering
+      // Preserve thought metadata flags
+      isThoughtThumbnail: metadataAny.isThoughtThumbnail,
+      thought: metadataAny.thought,
+      textPost: metadataAny.textPost,
+      collection: metadataAny.collection
     };
 
     // Update or add file entry (all files go in owner index)
@@ -789,20 +807,10 @@ class ProductionServer {
     await this.saveIndexFileToFolder(accessToken, metadataFolderId, OWNER_INDEX_FILE_NAME, index, false);
     
     // Also update content class-specific owner index
-    // Determine contentClass from fileMetadata
-    const { determineContentClass } = await import('./server/utils/fileTypeUtils');
-    const metadataAny = fileMetadata as any;
-    const contentClass = determineContentClass({
-      fileType: metadataAny.fileType,
-      collection: metadataAny.collection,
-      textPost: metadataAny.textPost,
-      thought: metadataAny.thought,
-      isThoughtThumbnail: metadataAny.isThoughtThumbnail,
-      isPartOfCollection: metadataAny.isPartOfCollection
-    });
+    // Use the contentClass that was determined above when creating indexEntry
 
     // Get content class folder ID
-    const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass;
+    const contentTypeFolderName = indexEntry.contentClass === 'thought' ? 'thoughts' : indexEntry.contentClass;
     const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     const contentTypeFolderResponse = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,

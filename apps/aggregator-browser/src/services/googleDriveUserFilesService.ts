@@ -156,6 +156,20 @@ export async function loadUserFilesFromGoogleDrive(
                   if (indexData && Array.isArray(indexData.files)) {
                     // Convert each file entry to IndexedFile format
                     for (const fileEntry of indexData.files) {
+                      // Determine contentClass from fileEntry metadata or folder name
+                      let determinedContentClass = fileEntry.contentClass;
+                      if (!determinedContentClass) {
+                        // Check metadata flags
+                        if (fileEntry.collection?.collectionFileIds?.length) {
+                          determinedContentClass = 'collection';
+                        } else if (fileEntry.isThoughtThumbnail || fileEntry.thought || fileEntry.textPost) {
+                          determinedContentClass = 'thought';
+                        } else {
+                          // Use folder name as fallback
+                          determinedContentClass = contentType === 'thoughts' ? 'thought' : contentType;
+                        }
+                      }
+                      
                       const publicMetadata: any = {
                         fileId: fileEntry.fileId || fileEntry.googleDriveFileId,
                         name: fileEntry.originalName || fileEntry.fileName,
@@ -187,7 +201,11 @@ export async function loadUserFilesFromGoogleDrive(
                           shares: fileEntry.engagement.shares || 0
                         } : undefined,
                         isArchived: fileEntry.visibility !== 'public',
-                        contentClass: contentType === 'thoughts' ? 'thought' : contentType
+                        contentClass: determinedContentClass,
+                        // Preserve thought metadata flags
+                        isThoughtThumbnail: fileEntry.isThoughtThumbnail,
+                        thought: fileEntry.thought,
+                        textPost: fileEntry.textPost
                       };
 
                       indexedFiles.push({
@@ -244,6 +262,19 @@ export async function loadUserFilesFromGoogleDrive(
               
               if (indexData && Array.isArray(indexData.files)) {
                 for (const fileEntry of indexData.files) {
+                  // Determine contentClass from fileEntry metadata
+                  let determinedContentClass = fileEntry.contentClass;
+                  if (!determinedContentClass) {
+                    // Check metadata flags
+                    if (fileEntry.collection?.collectionFileIds?.length) {
+                      determinedContentClass = 'collection';
+                    } else if (fileEntry.isThoughtThumbnail || fileEntry.thought || fileEntry.textPost) {
+                      determinedContentClass = 'thought';
+                    } else {
+                      determinedContentClass = 'media';
+                    }
+                  }
+                  
                   const publicMetadata: any = {
                     fileId: fileEntry.fileId || fileEntry.googleDriveFileId,
                     name: fileEntry.originalName || fileEntry.fileName,
@@ -274,7 +305,12 @@ export async function loadUserFilesFromGoogleDrive(
                       comments: fileEntry.engagement.comments || 0,
                       shares: fileEntry.engagement.shares || 0
                     } : undefined,
-                    isArchived: fileEntry.visibility !== 'public'
+                    isArchived: fileEntry.visibility !== 'public',
+                    contentClass: determinedContentClass,
+                    // Preserve thought metadata flags
+                    isThoughtThumbnail: fileEntry.isThoughtThumbnail,
+                    thought: fileEntry.thought,
+                    textPost: fileEntry.textPost
                   };
 
                   indexedFiles.push({
@@ -410,6 +446,24 @@ export async function loadUserFilesFromGoogleDrive(
 
         const metadataContent = await metadataContentResponse.json() as CompanionMetadata;
         
+        // Determine contentClass from metadata
+        let determinedContentClass = metadataContent.contentClass;
+        if (!determinedContentClass) {
+          const metadataAny = metadataContent as any;
+          // Collection takes precedence
+          if (metadataAny.collection?.collectionFileIds?.length) {
+            determinedContentClass = 'collection';
+          }
+          // Thought (including thumbnails) - CRITICAL: isThoughtThumbnail must be checked
+          else if (metadataAny.isThoughtThumbnail || metadataAny.thought || metadataAny.textPost) {
+            determinedContentClass = 'thought';
+          }
+          // Default to media for everything else
+          else {
+            determinedContentClass = 'media';
+          }
+        }
+        
         // Convert CompanionMetadata to PublicMetadata format (IndexedFile)
         const publicMetadata: any = {
           fileId: metadataContent.fileId || metadataContent.googleDriveFileId,
@@ -443,6 +497,11 @@ export async function loadUserFilesFromGoogleDrive(
           } : undefined,
           // Mark as archived if it has metadata but is not public
           isArchived: metadataContent.visibility !== 'public',
+          contentClass: determinedContentClass,
+          // Preserve thought metadata flags
+          isThoughtThumbnail: (metadataContent as any).isThoughtThumbnail,
+          thought: (metadataContent as any).thought,
+          textPost: (metadataContent as any).textPost,
           // Include schema.org metadata if available
           ...(metadataContent.schema && { schema: metadataContent.schema })
         };

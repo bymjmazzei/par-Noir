@@ -1507,6 +1507,24 @@ export class GoogleDriveMetadataService {
         };
       }
 
+      // Determine contentClass from metadata
+      let contentClass = fileMetadata.contentClass;
+      if (!contentClass) {
+        const metadataAny = fileMetadata as any;
+        // Collection takes precedence
+        if (metadataAny.collection?.collectionFileIds?.length) {
+          contentClass = 'collection';
+        }
+        // Thought (including thumbnails) - CRITICAL: isThoughtThumbnail must be checked
+        else if (metadataAny.isThoughtThumbnail || metadataAny.thought || metadataAny.textPost) {
+          contentClass = 'thought';
+        }
+        // Default to media for everything else
+        else {
+          contentClass = 'media';
+        }
+      }
+
       // Convert companion metadata to index entry format (includes thumbnails)
       const indexEntry: any = {
         fileId: fileMetadata.fileId,
@@ -1526,7 +1544,12 @@ export class GoogleDriveMetadataService {
         inReplyTo: fileMetadata.inReplyTo,
         repostOf: fileMetadata.repostOf,
         isPartOf: fileMetadata.isPartOf,
-        indexingPermissions: fileMetadata.indexingPermissions
+        indexingPermissions: fileMetadata.indexingPermissions,
+        contentClass: contentClass, // Store contentClass for proper filtering
+        // Preserve thought metadata flags
+        isThoughtThumbnail: (fileMetadata as any).isThoughtThumbnail,
+        thought: (fileMetadata as any).thought,
+        textPost: (fileMetadata as any).textPost
       };
 
       // Update or add file entry (all files go in owner index)
