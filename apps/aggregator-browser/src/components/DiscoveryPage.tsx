@@ -67,6 +67,15 @@ export function DiscoveryPage({
         return fileName.startsWith('thumb_');
       });
 
+      console.log(`[DiscoveryPage] Found ${thumbnailFiles.length} thumbnail files out of ${files.length} total files`);
+      if (thumbnailFiles.length > 0) {
+        console.log('[DiscoveryPage] Thumbnail files:', thumbnailFiles.map(f => ({
+          fileId: f.metadata.fileId,
+          fileName: f.metadata.name || f.metadata.title,
+          hasPublicToken: !!(f.publicToken || f.metadata.publicToken)
+        })));
+      }
+
       // Load each thumbnail file
       await Promise.all(thumbnailFiles.map(async (indexedFile) => {
         const file = indexedFile.metadata;
@@ -75,6 +84,7 @@ export function DiscoveryPage({
         
         // Skip if already loaded or provided externally
         if (thumbnails.has(fileId) || (externalThumbnails && externalThumbnails.has(fileId))) {
+          console.log(`[DiscoveryPage] Skipping ${fileId} - already loaded`);
           return;
         }
 
@@ -86,6 +96,7 @@ export function DiscoveryPage({
         }
 
         try {
+          console.log(`[DiscoveryPage] Loading thumbnail for ${fileId} (${fileName})`);
           // Parse publicToken
           let token: ShareToken;
           try {
@@ -100,6 +111,8 @@ export function DiscoveryPage({
           const { decryptWithToken } = await import('../utils/tokenDecryption');
           const decryptedBlob = await decryptWithToken(token);
           const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+          
+          console.log(`[DiscoveryPage] Successfully loaded thumbnail for ${fileId} (${fileName}), blob URL: ${thumbnailUrlObj.substring(0, 50)}...`);
           
           // Track this blob URL for cleanup
           createdBlobUrlsRef.current.add(thumbnailUrlObj);
@@ -116,7 +129,7 @@ export function DiscoveryPage({
     };
 
     loadThumbnails();
-  }, [files, externalThumbnails, thumbnails]);
+  }, [files, externalThumbnails]); // REMOVED thumbnails from dependencies to prevent infinite loops
 
   // Cleanup blob URLs on unmount
   useEffect(() => {
@@ -370,9 +383,14 @@ export function DiscoveryPage({
 
   // Helper to get thumbnail URL for a file
   const getThumbnail = (file: IndexedFile): string => {
+    const fileId = file.metadata.fileId;
+    const fileName = file.metadata.name || file.metadata.title || '';
+    
     // First, check if thumbnail is already loaded for this file
-    if (thumbnails.has(file.metadata.fileId)) {
-      return thumbnails.get(file.metadata.fileId)!;
+    if (thumbnails.has(fileId)) {
+      const url = thumbnails.get(fileId)!;
+      console.log(`[DiscoveryPage getThumbnail] Found thumbnail in map for ${fileId} (${fileName}): ${url.substring(0, 50)}...`);
+      return url;
     }
     
     // If this is a thought file (fileType: 'text'), try to find its corresponding thumbnail file
@@ -383,15 +401,18 @@ export function DiscoveryPage({
                      !!(file.metadata as any).thought;
     
     if (isThought) {
+      console.log(`[DiscoveryPage getThumbnail] File ${fileId} (${fileName}) is a thought, looking for thumbnail file`);
       // Look for the corresponding thought thumbnail file
       // Thumbnail files are named like: thumb_thought-123.png
       // Thought files are named like: thought-123.thought or thought-123.png
-      const fileName = (file.metadata.name || file.metadata.title || '').toLowerCase();
-      const thoughtNameMatch = fileName.match(/^thought-(\d+)/);
+      const fileNameLower = fileName.toLowerCase();
+      const thoughtNameMatch = fileNameLower.match(/^thought-(\d+)/);
       
       if (thoughtNameMatch) {
         const thoughtId = thoughtNameMatch[1];
         const thumbnailFileName = `thumb_thought-${thoughtId}`;
+        
+        console.log(`[DiscoveryPage getThumbnail] Looking for thumbnail file starting with: ${thumbnailFileName}`);
         
         // Find the thumbnail file in the files array
         const thumbnailFile = files.find((f) => {
@@ -399,22 +420,30 @@ export function DiscoveryPage({
           return thumbFileName.startsWith(thumbnailFileName);
         });
         
-        // If we found the thumbnail file, get its thumbnail URL
         if (thumbnailFile) {
+          console.log(`[DiscoveryPage getThumbnail] Found thumbnail file: ${thumbnailFile.metadata.fileId} (${thumbnailFile.metadata.name || thumbnailFile.metadata.title})`);
           const thumbnailFileId = thumbnailFile.metadata.fileId;
           if (thumbnails.has(thumbnailFileId)) {
-            return thumbnails.get(thumbnailFileId)!;
+            const url = thumbnails.get(thumbnailFileId)!;
+            console.log(`[DiscoveryPage getThumbnail] Thumbnail file ${thumbnailFileId} has URL in map: ${url.substring(0, 50)}...`);
+            return url;
           }
           // If thumbnail file exists but not loaded yet, return its thumbnail property if available
           if (thumbnailFile.thumbnail) {
+            console.log(`[DiscoveryPage getThumbnail] Using thumbnailFile.thumbnail property: ${thumbnailFile.thumbnail}`);
             return thumbnailFile.thumbnail;
           }
+          console.log(`[DiscoveryPage getThumbnail] Thumbnail file ${thumbnailFileId} found but no URL available yet`);
+        } else {
+          console.log(`[DiscoveryPage getThumbnail] No thumbnail file found for thought ${thoughtId}`);
         }
       }
     }
     
     // Fallback to file.thumbnail or placeholder
-    return file.thumbnail || '/placeholder-thumbnail.png';
+    const fallback = file.thumbnail || '/placeholder-thumbnail.png';
+    console.log(`[DiscoveryPage getThumbnail] Using fallback for ${fileId} (${fileName}): ${fallback}`);
+    return fallback;
   };
 
   // Helper to get thumbnails for collection files
