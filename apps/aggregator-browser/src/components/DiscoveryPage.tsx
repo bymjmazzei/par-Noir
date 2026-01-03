@@ -44,8 +44,6 @@ export function DiscoveryPage({
   const createdBlobUrlsRef = useRef<Set<string>>(new Set());
   // Track which thumbnail fileIds we've already processed (to avoid duplicates)
   const processedThumbnailsRef = useRef<Set<string>>(new Set());
-  // Track which thumbnails we've triggered immediate loading for (to prevent duplicate triggers)
-  const triggeredImmediateLoadRef = useRef<Set<string>>(new Set());
   
   // Local thumbnails state (starts with external thumbnails, can load additional ones)
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
@@ -929,75 +927,11 @@ export function DiscoveryPage({
                   })()
                 ) : (
                   // Render regular thumbnail (includes thought thumbnails which are just PNG images)
-                  // Use thumbnails.get() directly like FullScreenFeed does
+                  // Files array contains thumbnail files, not thought files - use fileId directly like FullScreenFeed does
                   (() => {
                     const file = item.item as IndexedFile;
                     const fileId = file.metadata.fileId;
-                    
-                    // Check if this is a thought file that needs its thumbnail file
-                    let thumbnailFileId = fileId;
-                    const fileType = file.metadata.fileType || '';
-                    const isThought = fileType === 'text' || 
-                                     fileType === 'thought' ||
-                                     !!(file.metadata as any).textPost ||
-                                     !!(file.metadata as any).thought;
-                    
-                    if (isThought) {
-                      const fileName = (file.metadata.name || file.metadata.title || '').toLowerCase();
-                      const thoughtNameMatch = fileName.match(/^thought-(\d+)/);
-                      
-                      if (thoughtNameMatch) {
-                        const thoughtId = thoughtNameMatch[1];
-                        const thumbnailFileName = `thumb_thought-${thoughtId}`;
-                        const thumbnailFile = files.find((f) => {
-                          const thumbFileName = (f.metadata.name || f.metadata.title || '').toLowerCase();
-                          return thumbFileName.startsWith(thumbnailFileName);
-                        });
-                        
-                        if (thumbnailFile) {
-                          thumbnailFileId = thumbnailFile.metadata.fileId;
-                          
-                          // CRITICAL: If thumbnail isn't loaded, trigger immediate load (like FullScreenFeed does)
-                          if (!thumbnails.has(thumbnailFileId) && 
-                              !triggeredImmediateLoadRef.current.has(thumbnailFileId) &&
-                              !processedThumbnailsRef.current.has(thumbnailFileId)) {
-                            const publicToken = thumbnailFile.publicToken || thumbnailFile.metadata.publicToken;
-                            if (publicToken) {
-                              triggeredImmediateLoadRef.current.add(thumbnailFileId);
-                              (async () => {
-                                try {
-                                  let token: ShareToken;
-                                  try {
-                                    token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
-                                  } catch (e) {
-                                    triggeredImmediateLoadRef.current.delete(thumbnailFileId);
-                                    return;
-                                  }
-                                  
-                                  const { decryptWithToken } = await import('../utils/tokenDecryption');
-                                  const decryptedBlob = await decryptWithToken(token);
-                                  const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
-                                  
-                                  createdBlobUrlsRef.current.add(thumbnailUrlObj);
-                                  processedThumbnailsRef.current.add(thumbnailFileId);
-                                  
-                                  setThumbnails(prev => {
-                                    const newMap = new Map(prev);
-                                    newMap.set(thumbnailFileId, thumbnailUrlObj);
-                                    return newMap;
-                                  });
-                                } catch (err) {
-                                  console.error(`[DiscoveryPage] Failed to immediately load thumbnail for ${thumbnailFileId}:`, err);
-                                  triggeredImmediateLoadRef.current.delete(thumbnailFileId);
-                                }
-                              })();
-                            }
-                          }
-                        }
-                      }
-                    }
-                    
-                    const thumbnailUrl = thumbnails.get(thumbnailFileId);
+                    const thumbnailUrl = thumbnails.get(fileId);
                     
                     if (!thumbnailUrl) {
                       // Show placeholder while thumbnail loads (like FullScreenFeed)
