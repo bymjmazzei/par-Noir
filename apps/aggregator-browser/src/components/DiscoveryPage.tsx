@@ -44,6 +44,8 @@ export function DiscoveryPage({
   const createdBlobUrlsRef = useRef<Set<string>>(new Set());
   // Track which thumbnail fileIds we've already processed (to avoid duplicates)
   const processedThumbnailsRef = useRef<Set<string>>(new Set());
+  // Track which thumbnails we've triggered immediate loading for (to prevent duplicate triggers)
+  const triggeredImmediateLoadRef = useRef<Set<string>>(new Set());
   
   // Local thumbnails state (starts with external thumbnails, can load additional ones)
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
