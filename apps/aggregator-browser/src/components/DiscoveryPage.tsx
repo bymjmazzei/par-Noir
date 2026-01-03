@@ -166,7 +166,7 @@ export function DiscoveryPage({
     };
 
     loadThumbnails();
-  }, [files, externalThumbnails]); // REMOVED thumbnails from dependencies to prevent infinite loops
+  }, [files, externalThumbnails, thumbnails]); // Include thumbnails like FullScreenFeed - checks thumbnails.has() before loading so won't reload
 
   // Cleanup blob URLs on unmount
   useEffect(() => {
@@ -954,6 +954,43 @@ export function DiscoveryPage({
                         
                         if (thumbnailFile) {
                           thumbnailFileId = thumbnailFile.metadata.fileId;
+                          
+                          // CRITICAL: If thumbnail isn't loaded, trigger immediate load (like FullScreenFeed does)
+                          if (!thumbnails.has(thumbnailFileId) && 
+                              !triggeredImmediateLoadRef.current.has(thumbnailFileId) &&
+                              !processedThumbnailsRef.current.has(thumbnailFileId)) {
+                            const publicToken = thumbnailFile.publicToken || thumbnailFile.metadata.publicToken;
+                            if (publicToken) {
+                              triggeredImmediateLoadRef.current.add(thumbnailFileId);
+                              (async () => {
+                                try {
+                                  let token: ShareToken;
+                                  try {
+                                    token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
+                                  } catch (e) {
+                                    triggeredImmediateLoadRef.current.delete(thumbnailFileId);
+                                    return;
+                                  }
+                                  
+                                  const { decryptWithToken } = await import('../utils/tokenDecryption');
+                                  const decryptedBlob = await decryptWithToken(token);
+                                  const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+                                  
+                                  createdBlobUrlsRef.current.add(thumbnailUrlObj);
+                                  processedThumbnailsRef.current.add(thumbnailFileId);
+                                  
+                                  setThumbnails(prev => {
+                                    const newMap = new Map(prev);
+                                    newMap.set(thumbnailFileId, thumbnailUrlObj);
+                                    return newMap;
+                                  });
+                                } catch (err) {
+                                  console.error(`[DiscoveryPage] Failed to immediately load thumbnail for ${thumbnailFileId}:`, err);
+                                  triggeredImmediateLoadRef.current.delete(thumbnailFileId);
+                                }
+                              })();
+                            }
+                          }
                         }
                       }
                     }
