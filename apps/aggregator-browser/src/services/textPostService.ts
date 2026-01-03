@@ -7,6 +7,7 @@ import { TextPostData, TextPostStyle } from '../types/aggregator';
 import { PNOAuthService } from './pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from './encryptionService';
+import { uploadQueueService } from './uploadQueueService';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -225,7 +226,61 @@ export async function createTextPost(
     isNSFW?: boolean;
     isPartOfCollection?: boolean; // If true, thumbnail will be private (only collection shows in feeds)
   }
+): Promise<{ fileId: string; thumbnailFileId?: string; thumbnailShareToken?: any; success: boolean; error?: string; taskId?: string }> {
+  // Use upload queue for non-blocking upload
+  return new Promise((resolve, reject) => {
+    const taskId = uploadQueueService.addTask({
+      type: 'textPost',
+      textPost,
+      accountId,
+      metadata: {
+        title: metadata?.title,
+        description: metadata?.description,
+        keywords: metadata?.keywords || [],
+        tags: metadata?.tags || [],
+        isPublic: metadata?.isPublic || false,
+        isNSFW: metadata?.isNSFW || false,
+      },
+      onComplete: (result) => {
+        resolve({
+          fileId: result.fileId || '',
+          thumbnailFileId: result.thumbnailFileId,
+          thumbnailShareToken: result.thumbnailShareToken,
+          success: true,
+          taskId,
+        });
+      },
+      onError: (error) => {
+        resolve({
+          fileId: '',
+          success: false,
+          error: error.message,
+          taskId,
+        });
+      },
+    });
+  });
+}
+
+// Keep the old implementation for reference but mark as deprecated
+// The upload processor handles all the actual work
+async function createTextPostSync(
+  textPost: TextPostData,
+  accountId: string,
+  metadata?: {
+    title?: string;
+    description?: string;
+    keywords?: string[];
+    tags?: string[];
+    isPublic?: boolean;
+    isNSFW?: boolean;
+    isPartOfCollection?: boolean;
+  }
 ): Promise<{ fileId: string; thumbnailFileId?: string; thumbnailShareToken?: any; success: boolean; error?: string }> {
+  // This function is no longer used - upload processor handles it
+  // Keeping for reference only
+  throw new Error('createTextPostSync is deprecated - use createTextPost which uses the upload queue');
+  
   try {
     // Force refresh token to ensure it's fresh for the entire upload process
     const accessToken = await PNOAuthService.getValidAccessToken(true);

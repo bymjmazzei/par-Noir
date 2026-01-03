@@ -17,6 +17,7 @@ import { Settings } from 'lucide-react';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
 import { accountsCacheService } from '../services/accountsCacheService';
+import { uploadQueueService } from '../services/uploadQueueService';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -140,352 +141,28 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
       const isMultiPage = (textPost as any).isMultiPage && (textPost as any).pages && Array.isArray((textPost as any).pages) && (textPost as any).pages.length > 1;
       
       if (isMultiPage) {
-        // Multi-page thought: create ONE thought file with pages array, generate thumbnails, create collection
+        // Multi-page thought: use upload queue for non-blocking upload
         const pages = (textPost as any).pages as TextPostData[];
         const metadata = textPost.metadata || {};
         
-        console.log(`[UploadModal] NEW CODE: Creating multi-page thought with ${pages.length} pages - will create ONE thought-collection file, NOT individual thought files`);
+        console.log(`[UploadModal] Creating multi-page thought with ${pages.length} pages via upload queue`);
         
-        // Get session and encryption setup
-        const accessToken = await PNOAuthService.getValidAccessToken(true);
-        if (!accessToken) {
-          throw new Error('No valid access token');
-        }
-
-        const session = PNOAuthService.loadSession();
-        if (!session?.did) {
-          throw new Error('No DID in session for encryption');
-        }
-
-        let publicKey = session?.publicKey;
-        if (!publicKey && session.accessToken) {
-          try {
-            const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
-            if (userInfo.public_key) {
-              publicKey = userInfo.public_key;
-              const updatedSession = { ...session, publicKey };
-              PNOAuthService.saveSession(updatedSession);
-            }
-          } catch (err) {
-            // Silent fail
-          }
-        }
-        
-        if (!publicKey) {
-          throw new Error('No publicKey available for encryption. Please unlock your pN.');
-        }
-
-        const encryptionManager = new EncryptionManager();
-
-        // Create ONE thought file with pages array
-        const thoughtCollectionData = {
-          textPost: {
-            ...pages[0], // Use first page as base structure
-            pages: pages // Include all pages as an array
-          },
-          version: '1.0',
-          createdAt: new Date().toISOString(),
-          isMultiPage: true
-        };
-        
-        const fileName = `thought-collection-${Date.now()}.thought-collection`;
-        const fileContent = JSON.stringify(thoughtCollectionData);
-        const thoughtFile = new File([fileContent], fileName, { type: 'application/json' });
-
-        // Upload the thought file
-        const fileArrayBuffer = await thoughtFile.arrayBuffer();
-        const fileData = new Uint8Array(fileArrayBuffer);
-        const encrypted = await encryptionManager.encrypt(fileData, session.did, publicKey);
-        
-        const packageData = {
-          encrypted: encrypted.encrypted,
-          iv: encrypted.iv,
-          salt: encrypted.salt,
+        // Add to upload queue
+        const taskId = uploadQueueService.addTask({
+          type: 'multiPage',
+          pages,
+          accountId,
           metadata: {
-            originalName: fileName,
-            originalSize: thoughtFile.size,
-            originalMimeType: 'application/json',
-          },
-        };
-        
-        let shareToken: any = undefined;
-        try {
-          const encryptionService = getEncryptionService();
-          shareToken = await encryptionService.generateShareToken(packageData, {
-            id: session.did,
-            publicKey: publicKey
-          });
-        } catch (tokenError) {
-          console.warn('[UploadModal] Share token generation failed:', tokenError);
-        }
-        
-        const encryptedBlob = new Blob([JSON.stringify(packageData)], { type: 'application/json' });
-        const base64File = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const result = reader.result as string;
-            resolve(result.includes(',') ? result.split(',')[1] : result);
-          };
-          reader.onerror = () => reject(new Error('Failed to read encrypted file'));
-          reader.readAsDataURL(encryptedBlob);
-        });
-        
-        const encryptedFileName = `${fileName}.encrypted`;
-        const uploadResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-          },
-          body: JSON.stringify({
-            fileData: base64File,
-            fileName: encryptedFileName,
-            mimeType: 'application/json',
-            accountId: accountId
-          })
-        });
-        
-        if (!uploadResponse.ok) {
-          const errorText = await uploadResponse.text().catch(() => 'Unknown error');
-          throw new Error(`Upload failed: ${errorText}`);
-        }
-        
-        const uploadResult = await uploadResponse.json();
-        const uploadedFile = uploadResult.file;
-        
-        if (!uploadedFile || !uploadedFile.id) {
-          throw new Error('Upload succeeded but no file ID returned');
-        }
-        
-        const thoughtFileId = uploadedFile.id;
-        console.log(`[UploadModal] Thought collection file uploaded, fileId: ${thoughtFileId}`);
-
-        // Generate thumbnails for each page using renderTextPostToBlob
-        const { renderTextPostToBlob } = await import('../services/textPostService');
-        const thumbnailFileIds: string[] = [];
-        const thumbnailTokens: Record<string, string> = {};
-        const baseFileName = metadata.name || 'thought-collection';
-        
-        // Helper function to extract title from content (same as single thoughts)
-        const getFirstLine = (text: string): string => {
-          // Remove HTML tags if present
-          const textWithoutHtml = text.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ');
-          // Get first line (split by newline or <br>)
-          const lines = textWithoutHtml.split(/\n|<br\s*\/?>/i);
-          const firstLine = lines[0] || textWithoutHtml;
-          // Trim and limit length
-          return firstLine.trim().substring(0, 100);
-        };
-        
-        // Extract subjects helper (will be imported and used per page)
-        const { extractSubjects } = await import('../utils/subjectExtractor');
-        
-        // Generate thumbnail for each page - using same exact flow as single thoughts
-        for (let i = 0; i < pages.length; i++) {
-          const page = pages[i];
-          let thumbnailFileId: string | undefined = undefined;
-          let thumbnailShareToken: any = undefined;
-          
-          try {
-            // Generate full-size PNG thumbnail (1080x1080) - this is what users see in feeds (same as single thoughts)
-            console.log(`[UploadModal] Rendering thumbnail for page ${i + 1}/${pages.length} at scale 1.0 (1080x1080)`);
-            const thumbnailBlob = await renderTextPostToBlob(page, 1.0);
-            console.log(`[UploadModal] Thumbnail blob size: ${thumbnailBlob.size} bytes`);
-            
-            // Encrypt thumbnail (same as single thoughts)
-            const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
-            const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
-            const encryptedThumbnail = await encryptionManager.encrypt(
-              thumbnailData,
-              session.did,
-              publicKey
-            );
-            
-            // Create encrypted thumbnail package (same as single thoughts)
-            const thumbnailPackage: EncryptedFilePackage = {
-              encrypted: encryptedThumbnail.encrypted,
-              iv: encryptedThumbnail.iv,
-              salt: encryptedThumbnail.salt,
-              metadata: {
-                originalName: `thumb_${baseFileName}-page-${i + 1}.png`,
-                originalSize: thumbnailBlob.size,
-                originalMimeType: 'image/png',
-              },
-            };
-            
-            // Generate share token for thumbnail (same as single thoughts - BEFORE upload)
-            try {
-              const encryptionService = getEncryptionService();
-              thumbnailShareToken = await encryptionService.generateShareToken(
-                thumbnailPackage,
-                {
-                  id: session.did,
-                  publicKey: publicKey
-                }
-              );
-              console.log(`✅ [UploadModal] Thumbnail share token generated successfully for page ${i + 1}`);
-            } catch (tokenError: any) {
-              console.error(`❌ [UploadModal] Thumbnail share token generation failed for page ${i + 1}:`, tokenError?.message || tokenError);
-              thumbnailShareToken = undefined;
-            }
-            
-            // Convert to base64 (same as single thoughts)
-            const thumbnailBlobJson = new Blob([JSON.stringify(thumbnailPackage)], {
-              type: 'application/json',
-            });
-            
-            const thumbnailBase64 = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => {
-                const result = reader.result as string;
-                resolve(result.includes(',') ? result.split(',')[1] : result);
-              };
-              reader.onerror = () => reject(new Error('Failed to read thumbnail'));
-              reader.readAsDataURL(thumbnailBlobJson);
-            });
-            
-            // Upload encrypted thumbnail (same as single thoughts)
-            const thumbnailFileName = `thumb_${baseFileName}-page-${i + 1}.png.encrypted`;
-            const thumbnailUploadResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${accessToken}`
-              },
-              body: JSON.stringify({
-                fileData: thumbnailBase64,
-                fileName: thumbnailFileName,
-                mimeType: 'application/json',
-                accountId: accountId
-              })
-            });
-            
-            if (thumbnailUploadResponse.ok) {
-              const thumbnailResult = await thumbnailUploadResponse.json();
-              thumbnailFileId = thumbnailResult.file?.id;
-              if (thumbnailFileId) {
-                console.log(`✅ [UploadModal] Thumbnail uploaded successfully for page ${i + 1}, thumbnailFileId: ${thumbnailFileId}`);
-              }
-            } else {
-              const errorText = await thumbnailUploadResponse.text().catch(() => 'Unknown error');
-              console.warn(`⚠️ [UploadModal] Thumbnail upload failed for page ${i + 1}, continuing without thumbnail:`, errorText);
-            }
-          } catch (thumbnailError: any) {
-            console.error(`❌ [UploadModal] Thumbnail generation/upload failed for page ${i + 1}:`, thumbnailError);
-            // Continue without thumbnail for this page
-          }
-          
-          if (thumbnailFileId) {
-            // Store share token for this thumbnail
-            if (thumbnailShareToken) {
-              thumbnailTokens[thumbnailFileId] = JSON.stringify(thumbnailShareToken);
-            }
-            
-            // Extract title from page content (same as single thoughts)
-            const titleFromContent = getFirstLine(page.content || '');
-            
-            // Extract subjects from page content and metadata (same as single thoughts)
-            const subjects = extractSubjects(
-              metadata?.description || page.content,
-              metadata?.tags || [],
-              metadata?.keywords || []
-            );
-            
-            // Create metadata for thumbnail (private, only collection shows)
-            // Use same exact flow and standards as single thought thumbnails
-            try {
-              const thumbnailPublicToken = thumbnailShareToken ? JSON.stringify(thumbnailShareToken) : undefined;
-              
-              await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}?accountId=${accountId}`, {
-                method: 'PUT',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${accessToken}`
-                },
-                body: JSON.stringify({
-                  name: `thumb_${baseFileName}-page-${i + 1}.png`,
-                  title: metadata?.title || titleFromContent || 'Thought',
-                  // No description - thoughts don't show captions by default (can be added later via metadata edit)
-                  keywords: metadata?.keywords || [],
-                  tags: metadata?.tags || [],
-                  // Use different fileType for thumbnails of collection thoughts vs single thoughts
-                  fileType: 'thought-collection-thumbnail', // Explicit fileType for filtering
-                  isPublic: false, // Private if part of collection (like PDF page thumbnails)
-                  uploadDate: new Date().toISOString(),
-                  isNSFW: metadata?.isNSFW || false,
-                  // Mark as thought thumbnail so UI knows to render title only (no caption)
-                  isThoughtThumbnail: true,
-                  // Mark if part of collection (for filtering)
-                  isPartOfCollection: true,
-                  // Store reference to main file for editing
-                  mainFileId: thoughtFileId, // Reference to JSON file for editing
-                  publicToken: thumbnailPublicToken,
-                  feedCategories: metadata?.keywords && metadata.keywords.length > 0 ? metadata.keywords : undefined,
-                  category: metadata?.keywords && metadata.keywords.length > 0 ? metadata.keywords[0] : undefined,
-                  subjects: subjects.length > 0 ? subjects : undefined,
-                })
-              });
-              
-              console.log(`✅ [UploadModal] Thumbnail metadata created for page ${i + 1}`);
-            } catch (err) {
-              console.warn(`[UploadModal] Failed to create metadata for thumbnail page ${i + 1}:`, err);
-            }
-            
-            thumbnailFileIds.push(thumbnailFileId);
-            console.log(`[UploadModal] Generated thumbnail for page ${i + 1}/${pages.length}`);
-          }
-        }
-        
-        // Create metadata for the thought collection file (private, for editing)
-        await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thoughtFileId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-          },
-          body: JSON.stringify({
-            name: metadata.name || baseFileName,
-            title: metadata.name || baseFileName,
+            name: metadata.name || 'thought-collection',
+            title: metadata.title || metadata.name || 'thought-collection',
             description: metadata.description || '',
             keywords: metadata.keywords || metadata.tags || [],
             tags: metadata.tags || metadata.keywords || [],
-            fileType: 'thought-collection', // New fileType for thought collections
-            isPublic: false, // Private - only collection shows
-            isNSFW: false,
-            publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
-            uploadDate: new Date().toISOString(),
-            textPost: thoughtCollectionData.textPost, // Store the full thought data with pages array
-            thought: thoughtCollectionData.textPost, // Alias for compatibility
-          }),
-        });
-        
-        // Create collection from thumbnails
-        if (thumbnailFileIds.length > 0) {
-          const collectionResult = await createCollection(
-            {
-              collectionFileIds: thumbnailFileIds,
-              title: metadata.name || baseFileName,
-              thumbnailTokens: thumbnailTokens
-            },
-            accountId,
-            {
-              title: metadata.name || baseFileName,
-              description: metadata.description || '',
-              keywords: metadata.keywords || metadata.tags || [],
-              tags: metadata.tags || metadata.keywords || [],
-              isPublic: true, // Collection is public
-              isNSFW: false,
-              isThoughtCollection: true // Mark as thought collection
-            }
-          );
-          
-          if (collectionResult.success) {
-            console.log(`[UploadModal] Created collection with ${thumbnailFileIds.length} pages`);
-          } else {
-            console.warn('[UploadModal] Failed to create collection:', collectionResult.error);
-          }
-        }
-        
+            isPublic: metadata.isPublic !== undefined ? metadata.isPublic : true,
+            isNSFW: metadata.isNSFW || false,
+          },
+          onComplete: (result) => {
+            console.log('[UploadModal] Multi-page thought upload completed:', result);
         setShowTextEditor(false);
         if (onUploadComplete) {
           onUploadComplete();
@@ -493,6 +170,14 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         setTimeout(() => {
           onClose();
         }, 500);
+          },
+          onError: (error) => {
+            console.error('[UploadModal] Multi-page thought upload failed:', error);
+            alert(`Failed to create multi-page thought: ${error.message}`);
+          },
+        });
+        
+        console.log(`[UploadModal] Multi-page thought queued for upload, taskId: ${taskId}`);
       } else {
         // Single page thought - save normally
         const result = await createTextPost(

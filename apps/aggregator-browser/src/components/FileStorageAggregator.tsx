@@ -10,6 +10,7 @@ import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
 import { createCollection } from '../services/collectionService';
+import { uploadQueueService } from '../services/uploadQueueService';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../constants/feedCategories';
 import { LICENSE_TYPES } from '../constants/licenses';
 import { FeedCategory } from '../types/aggregator';
@@ -999,6 +1000,9 @@ interface DriveFile {
   accountId?: string; // Track which account this file belongs to
   mainFileId?: string; // ID of the main file (if this is a thumbnail)
   isThumbnail?: boolean; // Whether this file is a thumbnail
+  isUploading?: boolean; // Whether this is a placeholder for an uploading file
+  uploadProgress?: number; // Upload progress (0-100)
+  uploadTaskId?: string; // ID of the upload task
 }
 
 interface FileStorageAggregatorProps {
@@ -1012,6 +1016,208 @@ interface FileStorageAggregatorProps {
   hideSecureFolderSection?: boolean;
   onOpenTextEditor?: (accountId: string) => void;
 }
+
+// Parallelized PDF processing for background upload queue
+// This function processes all PDF pages in parallel for faster uploads
+export const processPDFPagesParallel = async (
+  pdfFile: File,
+  accountId: string,
+  session: any,
+  publicKey: string,
+  accessToken: string
+): Promise<{ thumbnailFileIds: string[]; thumbnailTokens: Record<string, string> }> => {
+  const { workerManager } = await import('../services/workerManager');
+  const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+  
+  const pdfjsLib = await import('pdfjs-dist');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+  
+  const arrayBuffer = await pdfFile.arrayBuffer();
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const pdf = await loadingTask.promise;
+  const numPages = pdf.numPages;
+  
+  const baseFileName = pdfFile.name.replace(/\.pdf$/i, '');
+  
+  console.log(`[PDF Upload] Processing ${numPages} pages in parallel...`);
+  
+  // Helper: Convert blob to base64
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.includes(',') ? result.split(',')[1] : result);
+      };
+      reader.onerror = () => reject(new Error('Failed to read blob'));
+      reader.readAsDataURL(blob);
+    });
+  };
+  
+  // Helper: Upload file
+  const uploadFile = async (base64Data: string, fileName: string): Promise<{ id: string }> => {
+    const response = await fetch(`${apiEndpoint}/api/drive/files`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        fileData: base64Data,
+        fileName,
+        mimeType: 'application/json',
+        accountId
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      throw new Error(`Upload failed: ${errorText}`);
+    }
+
+    const result = await response.json();
+    const uploadedFile = result.file;
+
+    if (!uploadedFile || !uploadedFile.id) {
+      throw new Error('Upload succeeded but no file ID returned');
+    }
+
+    return { id: uploadedFile.id };
+  };
+  
+  // Helper: Create metadata
+  const createMetadataForThumbnail = async (fileId: string, fileName: string, shareToken: any): Promise<void> => {
+    await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}?accountId=${accountId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        name: `thumb_${fileName}`,
+        fileType: 'image',
+        isPublic: false,
+        publicToken: shareToken ? JSON.stringify(shareToken) : undefined
+      })
+    });
+  };
+  
+  // Step 1: Load all pages in parallel
+  const pagePromises = Array.from({ length: numPages }, (_, i) => 
+    pdf.getPage(i + 1)
+  );
+  const pages = await Promise.all(pagePromises);
+  
+  // Step 2: Generate all thumbnails in parallel (canvas rendering)
+  const thumbnailBlobPromises = pages.map(async (page, index) => {
+    const pageNum = index + 1;
+    const viewport = page.getViewport({ scale: 1.0 });
+    const scale = Math.min(800 / viewport.width, 800 / viewport.height, 1.0);
+    const scaledViewport = page.getViewport({ scale });
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = scaledViewport.width;
+    canvas.height = scaledViewport.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error(`Failed to get canvas context for page ${pageNum}`);
+    }
+    
+    await page.render({ canvasContext: ctx, viewport: scaledViewport } as any).promise;
+    
+    const thumbnailBlob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Failed to create blob')), 'image/jpeg', 0.85);
+    });
+    
+    return { pageNum, thumbnailBlob, fileName: `${baseFileName}-page-${pageNum}.png` };
+  });
+  
+  const thumbnailData = await Promise.all(thumbnailBlobPromises);
+  
+  // Step 3: Encrypt all thumbnails in parallel using workers
+  const encryptedThumbnailPromises = thumbnailData.map(async ({ thumbnailBlob, fileName }) => {
+    const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
+    const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
+    const encrypted = await workerManager.encrypt(thumbnailData, session.did, publicKey);
+    
+    return {
+      fileName,
+      encrypted,
+      thumbnailBlob,
+    };
+  });
+  
+  const encryptedThumbnails = await Promise.all(encryptedThumbnailPromises);
+  
+  // Step 4: Create share tokens for all thumbnails in parallel
+  const encryptionService = getEncryptionService();
+  const thumbnailPackagePromises = encryptedThumbnails.map(async ({ fileName, encrypted, thumbnailBlob }) => {
+    const thumbnailPackage: EncryptedFilePackage = {
+      encrypted: encrypted.encrypted,
+      iv: encrypted.iv,
+      salt: encrypted.salt,
+      metadata: {
+        originalName: `thumb_${fileName}`,
+        originalSize: thumbnailBlob.size,
+        originalMimeType: 'image/jpeg',
+      },
+    };
+    
+    let shareToken: any = undefined;
+    try {
+      shareToken = await encryptionService.generateShareToken(thumbnailPackage, {
+        id: session.did,
+        publicKey: publicKey
+      });
+    } catch (err) {
+      console.warn(`[PDF Upload] Failed to generate share token for ${fileName}:`, err);
+    }
+    
+    return { fileName, thumbnailPackage, shareToken };
+  });
+  
+  const thumbnailPackages = await Promise.all(thumbnailPackagePromises);
+  
+  // Step 5: Upload all thumbnails in parallel
+  const thumbnailUploadPromises = thumbnailPackages.map(async ({ fileName, thumbnailPackage, shareToken }) => {
+    const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
+    const thumbnailFileName = `thumb_${fileName}.encrypted`;
+    const result = await uploadFile(thumbnailBase64, thumbnailFileName);
+    return { fileName, fileId: result?.id, shareToken };
+  });
+  
+  const thumbnailUploadResults = await Promise.all(thumbnailUploadPromises);
+  
+  // Step 6: Create metadata for all thumbnails in parallel
+  const metadataPromises = thumbnailUploadResults
+    .filter(result => result.fileId)
+    .map(async ({ fileName, fileId, shareToken }) => {
+      try {
+        await createMetadataForThumbnail(fileId, fileName, shareToken);
+      } catch (err) {
+        console.warn(`[PDF Upload] Failed to create metadata for ${fileName}:`, err);
+      }
+      return { fileName, fileId, shareToken };
+    });
+  
+  await Promise.all(metadataPromises);
+  
+  // Build results
+  const thumbnailFileIds: string[] = [];
+  const thumbnailTokens: Record<string, string> = {};
+  
+  thumbnailUploadResults.forEach(({ fileId, shareToken }) => {
+    if (fileId) {
+      thumbnailFileIds.push(fileId);
+      if (shareToken) {
+        thumbnailTokens[fileId] = JSON.stringify(shareToken);
+      }
+    }
+  });
+  
+  console.log(`[PDF Upload] Completed processing ${numPages} pages in parallel`);
+  return { thumbnailFileIds, thumbnailTokens };
+};
 
 export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ 
   authenticatedUser, 
@@ -1107,6 +1313,121 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
     loadAccounts();
   }, [authenticatedUser?.id, selectedAccountId, userState.isUnlocked, userState.pnIdentifier]);
+
+  // Subscribe to upload queue for optimistic UI updates
+  useEffect(() => {
+    const handleTaskAdded = (task: any) => {
+      // Create placeholder file entry for optimistic UI
+      if (task.type === 'file' && task.file) {
+        const placeholderFile: DriveFile = {
+          id: `uploading_${task.id}`, // Temporary ID
+          name: task.file.name,
+          mimeType: task.file.type || 'application/octet-stream',
+          size: `${Math.round(task.file.size / 1024)} KB`,
+          accountId: task.accountId,
+          isUploading: true,
+          uploadProgress: 0,
+          uploadTaskId: task.id,
+          modifiedTime: new Date().toISOString(),
+        };
+
+        setFilesByAccount(prev => {
+          const newMap = new Map(prev);
+          const accountFiles = newMap.get(task.accountId) || [];
+          // Add placeholder at the beginning of the list
+          newMap.set(task.accountId, [placeholderFile, ...accountFiles]);
+          return newMap;
+        });
+      } else if (task.type === 'textPost' && task.textPost) {
+        // For text posts, create a placeholder with the content preview
+        const placeholderFile: DriveFile = {
+          id: `uploading_${task.id}`,
+          name: task.metadata?.name || task.textPost.content?.substring(0, 50) || 'New Thought',
+          mimeType: 'application/json',
+          size: '0 KB',
+          accountId: task.accountId,
+          isUploading: true,
+          uploadProgress: 0,
+          uploadTaskId: task.id,
+          modifiedTime: new Date().toISOString(),
+        };
+
+        setFilesByAccount(prev => {
+          const newMap = new Map(prev);
+          const accountFiles = newMap.get(task.accountId) || [];
+          newMap.set(task.accountId, [placeholderFile, ...accountFiles]);
+          return newMap;
+        });
+      }
+    };
+
+    const handleTaskUpdated = (task: any) => {
+      // Update progress for placeholder files
+      if (task.status === 'processing' || task.status === 'uploading') {
+        setFilesByAccount(prev => {
+          const newMap = new Map(prev);
+          const accountFiles = newMap.get(task.accountId) || [];
+          const updatedFiles = accountFiles.map(file => {
+            if (file.uploadTaskId === task.id) {
+              return { ...file, uploadProgress: task.progress };
+            }
+            return file;
+          });
+          newMap.set(task.accountId, updatedFiles);
+          return newMap;
+        });
+      } else if (task.status === 'completed' || task.status === 'failed') {
+        // Remove placeholder and refresh file list when upload completes or fails
+        setFilesByAccount(prev => {
+          const newMap = new Map(prev);
+          const accountFiles = newMap.get(task.accountId) || [];
+          // Remove placeholder file
+          const filteredFiles = accountFiles.filter(file => file.uploadTaskId !== task.id);
+          newMap.set(task.accountId, filteredFiles);
+          return newMap;
+        });
+
+        // Refresh file list to get the actual uploaded file (or confirm it's gone if failed)
+        if (task.status === 'completed' && task.accountId) {
+          // Small delay to ensure server has processed the upload
+          setTimeout(() => {
+            loadFilesForAccount(task.accountId);
+          }, 500);
+        }
+      }
+    };
+
+    const handleTaskProgress = ({ id, progress }: { id: string; progress: number }) => {
+      // Update progress for all accounts (we'll need to find which account the task belongs to)
+      const task = uploadQueueService.getTask(id);
+      if (task) {
+        setFilesByAccount(prev => {
+          const newMap = new Map(prev);
+          const accountFiles = newMap.get(task.accountId) || [];
+          const updatedFiles = accountFiles.map(file => {
+            if (file.uploadTaskId === id) {
+              return { ...file, uploadProgress: progress };
+            }
+            return file;
+          });
+          newMap.set(task.accountId, updatedFiles);
+          return newMap;
+        });
+      }
+    };
+
+    // Subscribe to upload queue events
+    uploadQueueService.on('taskAdded', handleTaskAdded);
+    uploadQueueService.on('taskUpdated', handleTaskUpdated);
+    uploadQueueService.on('taskProgress', handleTaskProgress);
+
+    // Cleanup
+    return () => {
+      uploadQueueService.off('taskAdded', handleTaskAdded);
+      uploadQueueService.off('taskUpdated', handleTaskUpdated);
+      uploadQueueService.off('taskProgress', handleTaskProgress);
+    };
+  }, []); // Empty deps - only subscribe once
 
   // Load files for a specific account
   const loadFilesForAccount = async (accountId: string) => {
@@ -3377,415 +3698,47 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       return;
     }
 
-    setIsLoading(true);
+    // Clear any previous errors
     setError(null);
 
-    try {
-      const accessToken = await PNOAuthService.getValidAccessToken();
-      if (!accessToken) {
-        throw new Error('No valid access token');
-      }
-
-      // Get session for encryption (need DID and publicKey)
-      const session = PNOAuthService.loadSession();
-      if (!session?.did) {
-        throw new Error('No DID in session for encryption');
-      }
-
-      let publicKey = session?.publicKey;
-      
-      // If publicKey is missing, try to refresh it from userinfo
-      if (!publicKey && session.accessToken) {
-        try {
-          const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
-          if (userInfo.public_key) {
-            publicKey = userInfo.public_key;
-            // Update session with publicKey
-            const updatedSession = { ...session, publicKey };
-            PNOAuthService.saveSession(updatedSession);
-          }
-        } catch (err) {
-          // Silent fail - will throw error below if still missing
-        }
-      }
-      
-      if (!publicKey) {
-        throw new Error('No publicKey available for encryption. Please unlock your pN.');
-      }
-
-      console.log('📤 [Upload] Starting upload...', { fileName: file.name, fileSize: file.size });
-
+    // Determine file type
       const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    const taskType = isPDF ? 'pdf' : 'file';
 
-      // Initialize encryption manager
-      const encryptionManager = new EncryptionManager();
-      
-      // Upload the original file
-      let fileId: string | undefined = undefined;
-      let shareToken: any = undefined;
-      let freshAccessToken: string | undefined = undefined;
-      let thumbnailShareToken: any = undefined;
-      let thumbnailFileId: string | undefined = undefined;
-      let pdfThumbnailFileIds: string[] = [];
-      let pdfThumbnailTokens: Record<string, string> = {};
-      
-      // Refresh access token before uploading main file
-      const token = await PNOAuthService.getValidAccessToken();
-      if (!token) {
-        throw new Error('No valid access token available for upload');
-      }
-      freshAccessToken = token;
-
-      // Process PDF pages if it's a PDF
-      if (isPDF) {
-        try {
-          const pdfResult = await processPDFPages(
+    // Add task to upload queue (non-blocking)
+    const taskId = uploadQueueService.addTask({
+      type: taskType,
             file,
             accountId,
-            session,
-            publicKey,
-            encryptionManager,
-            freshAccessToken
-          );
-          pdfThumbnailFileIds = pdfResult.thumbnailFileIds;
-          pdfThumbnailTokens = pdfResult.thumbnailTokens;
-          console.log(`[PDF Upload] Created ${pdfThumbnailFileIds.length} page thumbnails`);
-        } catch (pdfError: any) {
-          console.error('[PDF Upload] Failed to process PDF:', pdfError);
-          throw new Error(`Failed to process PDF: ${pdfError.message || pdfError}`);
-        }
-      }
-
-        // Generate thumbnail for images and videos BEFORE encryption
-        const isImage = file.type.startsWith('image/');
-        const isVideo = file.type.startsWith('video/');
-        
-        if ((isImage || isVideo) && !thumbnailFileId) {
-          try {
-            let thumbnailBlob: Blob;
-            
-            if (isImage) {
-              // Generate thumbnail from image using the local helper function
-              // File extends Blob, so we can pass it directly
-              thumbnailBlob = await createThumbnailFromBlobLocal(file, 800, 800);
-            } else if (isVideo) {
-              // Generate thumbnail from video (extract first frame)
-              thumbnailBlob = await createVideoThumbnailLocal(file, 800, 800);
-            } else {
-              throw new Error('Unsupported file type for thumbnail generation');
-            }
-            
-            // Upload thumbnail using the local helper function
-            // CRITICAL: Generate publicToken for thumbnail BEFORE uploading so it can be included in metadata
-            if (thumbnailBlob) {
-              // Create thumbnail package to generate share token
-              const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
-              const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
-              const thumbnailEncrypted = await encryptionManager.encrypt(
-                thumbnailData,
-                session.did,
-                publicKey
-              );
-              
-              const thumbnailPackage: EncryptedFilePackage = {
-                encrypted: thumbnailEncrypted.encrypted,
-                iv: thumbnailEncrypted.iv,
-                salt: thumbnailEncrypted.salt,
                 metadata: {
-                  originalName: `thumb_${file.name}`,
-                  originalSize: thumbnailBlob.size,
-                  originalMimeType: 'image/jpeg',
-                },
-              };
-              
-              // Generate share token for thumbnail (required for public feed decryption)
-              try {
-                const encryptionService = getEncryptionService();
-                thumbnailShareToken = await encryptionService.generateShareToken(
-                  thumbnailPackage,
-                  {
-                    id: session.did,
-                    publicKey: publicKey
-                  }
-                );
-                console.log('✅ [Upload] Thumbnail share token generated');
-              } catch (tokenError) {
-                console.warn('⚠️ [Upload] Share token generation failed for thumbnail:', tokenError);
-              }
-              
-              // Now upload the thumbnail
-              thumbnailFileId = await uploadThumbnailLocal(
-                thumbnailBlob,
-                file.name,
-                encryptionManager,
-                session,
-                publicKey,
-                freshAccessToken,
-                accountId
-              );
-              
-              // CRITICAL: Submit THUMBNAIL FILE to public index (not main file)
-              // The thumbnail is what appears in the feed, main file is only for downloads
-              // Note: This will be done after main file upload so we have fileId reference
-            } else {
-              throw new Error('Thumbnail blob not available');
-            }
-          } catch (thumbError: any) {
-            // Don't fail upload if thumbnail fails
-          }
-        }
-
-      // Encrypt file using the same standard as dashboard
-      const fileArrayBuffer = await file.arrayBuffer();
-      const fileData = new Uint8Array(fileArrayBuffer);
-      
-        // encryptionManager already initialized above
-      const encrypted = await encryptionManager.encrypt(
-        fileData,
-        session.did, // Use DID as pnId (matches dashboard)
-        publicKey
-      );
-
-      // Create encrypted file package (same format as dashboard)
-      const packageData: EncryptedFilePackage = {
-        encrypted: encrypted.encrypted,
-        iv: encrypted.iv,
-        salt: encrypted.salt,
-        metadata: {
-          originalName: file.name,
-          originalSize: file.size,
-          originalMimeType: file.type,
-        },
-      };
-
-      // Generate share token now (during upload) so it's ready for public sharing
-      // This matches the dashboard's behavior and avoids having to regenerate it later
-      console.log('🔑 [Upload] Generating share token for future public sharing...');
-      try {
-        const encryptionService = getEncryptionService();
-        shareToken = await encryptionService.generateShareToken(
-          packageData,
-          {
-            id: session.did,
-            publicKey: publicKey
-          }
-        );
-        console.log('✅ [Upload] Share token generated successfully');
-      } catch (tokenError: any) {
-        console.error('❌ [Upload] Share token generation failed:', {
-          error: tokenError?.message || tokenError,
-        });
-        // Don't fail the upload if token generation fails - user can try making it public later
-        shareToken = undefined;
-      }
-
-      // Convert to JSON string (will be uploaded as .encrypted file)
-      const encryptedBlob = new Blob([JSON.stringify(packageData)], {
-        type: 'application/json',
-      });
-
-      // Convert encrypted blob to base64
-      const base64File = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          const base64 = result.includes(',') ? result.split(',')[1] : result;
-          resolve(base64);
-        };
-        reader.onerror = () => reject(new Error('Failed to read encrypted file'));
-        reader.readAsDataURL(encryptedBlob);
-      });
-
-        // Upload encrypted file with .encrypted extension (use fresh token)
-      const encryptedFileName = `${file.name}.encrypted`;
-      const response = await fetch(`${apiEndpoint}/api/drive/files`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-            'Authorization': `Bearer ${freshAccessToken}`
-        },
-        body: JSON.stringify({
-          fileData: base64File,
-          fileName: encryptedFileName,
-          mimeType: 'application/json', // Encrypted files are stored as JSON
-          accountId: accountId
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`Upload failed: ${errorText}`);
-      }
-
-      const uploadResult = await response.json();
-      const uploadedFile = uploadResult.file;
-      
-      if (!uploadedFile || !uploadedFile.id) {
-        throw new Error('Upload succeeded but no file ID returned');
-      }
-
-      fileId = uploadedFile.id;
-      console.log('✅ [Upload] File uploaded successfully, fileId:', fileId);
-
-      // Create initial metadata entry (matches dashboard behavior)
-      // This ensures the file appears properly in the system and can be edited/shared later
-      try {
-        console.log('📝 [Upload] Creating initial metadata entry...');
-        
-        // Determine file type from MIME type
-        const fileType = isPDF ? 'document'
-          : file.type.startsWith('image/') ? 'image' 
-          : file.type.startsWith('video/') ? 'video'
-          : file.type.startsWith('audio/') ? 'audio'
-          : 'document';
-
-        // Default to public content (isNSFW: false)
-        // Users can mark content as NSFW during upload or edit
-        
-        // Create metadata entry for MAIN FILE (private - not in public index)
-        // Main file is only used for downloads, thumbnail is what appears in feed
-        console.log(`📝 [Upload] Saving metadata for main file (private)`);
-        const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${freshAccessToken}` // Use fresh token
-          },
-          body: JSON.stringify({
-            name: file.name,
+        title: file.name,
             description: '',
             keywords: [],
             tags: [],
-            fileType: fileType,
-            isPublic: false, // Main file is PRIVATE - only thumbnail appears in public index
-            publicToken: shareToken ? JSON.stringify(shareToken) : undefined, // Store share token for downloads
-            uploadDate: new Date().toISOString(),
+        isPublic: false,
             isNSFW: false,
-            thumbnailFileId: thumbnailFileId, // Store thumbnail file ID reference
-            // Include accountId in query params if needed
-          }),
-        });
-
-        if (metadataResponse.ok) {
-          const metadataResult = await metadataResponse.json();
-          console.log('✅ [Upload] Main file metadata entry created (private)');
-          
-          // CRITICAL: Submit THUMBNAIL FILE to public index (not main file)
-          // The thumbnail is what appears in the feed, main file is only for downloads
-          const hasThumbnail = thumbnailFileId && (file.type.startsWith('image/') || file.type.startsWith('video/'));
-          
-          if (hasThumbnail && thumbnailFileId) {
-            try {
-              let thumbnailPublicToken: string | undefined = undefined;
-              if (thumbnailShareToken) {
-                thumbnailPublicToken = JSON.stringify(thumbnailShareToken);
-              }
-              
-              // Submit thumbnail to public index
-              const thumbnailMetadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}`, {
-                method: 'PUT',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${freshAccessToken}`
-                },
-                body: JSON.stringify({
-                  name: `thumb_${file.name}`, // Include thumb_ prefix so public index query can find it
-                  title: cleanTitle(file.name), // Clean title for display (no thumb_ prefix, no extension)
-                  description: '',
-                  keywords: [],
-                  tags: [],
-                  fileType: 'image',
-                  isPublic: false, // Thumbnail is PRIVATE by default - only becomes public when user shares the file
-                  uploadDate: new Date().toISOString(),
-                  isNSFW: false,
-                  // Store reference to main file for downloads
-                  mainFileId: fileId, // Reference to the full file for downloads
-                  publicToken: thumbnailPublicToken, // Store token for when file becomes public
-                }),
-              });
-              
-              if (thumbnailMetadataResponse.ok) {
-                console.log('✅ [Upload] Thumbnail submitted to public index');
-              } else {
-                const errorText = await thumbnailMetadataResponse.text().catch(() => 'Unknown error');
-                console.warn('⚠️ [Upload] Failed to submit thumbnail to public index:', errorText);
-              }
-            } catch (thumbIndexError) {
-              console.error('❌ [Upload] Failed to submit thumbnail to public index:', thumbIndexError);
-              // Don't fail upload if thumbnail indexing fails
-            }
-          }
-          
-          // Update local metadata map
-          if (metadataResult.metadata && fileId) {
-            setFileMetadataMap(prev => {
-              const next = new Map(prev);
-              next.set(fileId, metadataResult.metadata);
-              return next;
-            });
-          }
-        } else {
-          const errorText = await metadataResponse.text().catch(() => 'Unknown error');
-          console.warn('⚠️ [Upload] Failed to create metadata entry (non-critical):', errorText);
-          // Don't fail the upload - metadata can be created later
+      },
+      onComplete: (result) => {
+        console.log('✅ [Upload] File upload completed:', result);
+        // Refresh file list
+        if (onRefresh) {
+          onRefresh();
         }
-      } catch (metadataError: any) {
-        console.warn('⚠️ [Upload] Metadata creation failed (non-critical):', metadataError?.message || metadataError);
-        // Don't fail the upload - metadata can be created later
-      }
+      },
+      onError: (error) => {
+        console.error('❌ [Upload] File upload failed:', error);
+        setError(`Upload failed: ${error.message}`);
+      },
+    });
 
-      // If PDF, create collection from thumbnails
-      if (isPDF && pdfThumbnailFileIds.length > 0) {
-        try {
-          console.log('[PDF Upload] Creating collection from PDF thumbnails...', {
-            thumbnailCount: pdfThumbnailFileIds.length,
-            tokenCount: Object.keys(pdfThumbnailTokens).length,
-            hasAllTokens: pdfThumbnailFileIds.every(id => pdfThumbnailTokens[id])
-          });
-          const result = await createCollection(
-            {
-              collectionFileIds: pdfThumbnailFileIds,
-              title: file.name.replace(/\.pdf$/i, ''),
-              thumbnailTokens: pdfThumbnailTokens // Include tokens for instant thumbnail loading
-            },
-            accountId,
-            {
-              isPublic: false,
-              isNSFW: false
-            }
-          );
+    console.log('📤 [Upload] File queued for upload:', { fileName: file.name, taskId });
 
-          if (result.success) {
-            console.log('[PDF Upload] Collection created successfully');
-          } else {
-            console.warn('[PDF Upload] Failed to create collection:', result.error);
-          }
-        } catch (collectionError: any) {
-          console.error('[PDF Upload] Collection creation failed:', collectionError);
-          // Don't fail the upload if collection creation fails
-        }
-      }
+    // Optimistic UI: Show file immediately (if we have a way to display pending uploads)
+    // The status circle will show the progress
 
-      // Reload files for this account
-      console.log('🔄 [Upload] Reloading files...');
-      await loadFilesForAccount(accountId);
-      
-      const input = fileInputRefs.current.get(accountId);
-      if (input) {
-        input.value = ''; // Reset so onChange fires even if same file is selected again
-      }
-      
-      console.log('✅ [Upload] Upload flow completed successfully');
-    } catch (err: any) {
-      const errorMessage = err.message || 'Failed to upload file';
-      setError(errorMessage);
-      console.error('[FileStorageAggregator] Upload error:', err);
-      
-      // Reset file input on error too
-      const input = fileInputRefs.current.get(accountId);
-      if (input) input.value = '';
-    } finally {
-      setIsLoading(false);
+    // Reset file input
+    if (event.target) {
+      event.target.value = '';
     }
   };
 
@@ -4129,8 +4082,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           <Lock className="h-8 w-8 text-blue-400" />
                         </div>
                       )}
+                      {/* Uploading indicator */}
+                      {file.isUploading && (
+                        <>
+                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-20">
+                            <div className="text-center">
+                              <RefreshCw className="h-8 w-8 text-blue-400 animate-spin mx-auto mb-2" />
+                              <div className="text-white text-xs font-semibold">
+                                {file.uploadProgress || 0}%
+                              </div>
+                            </div>
+                          </div>
+                          {/* Progress bar at bottom */}
+                          <div className="absolute bottom-0 left-0 right-0 h-1 bg-neutral-700 z-30">
+                            <div 
+                              className="h-full bg-blue-500 transition-all duration-300"
+                              style={{ width: `${file.uploadProgress || 0}%` }}
+                            />
+                          </div>
+                        </>
+                      )}
                       {/* Public indicator - moved to bottom left to avoid conflict with checkbox/number */}
-                      {file.isPublic && (
+                      {file.isPublic && !file.isUploading && (
                         <div className="absolute bottom-2 left-2 bg-green-500/80 rounded-full p-1 z-10">
                           <Globe className="h-3 w-3 text-white" />
                         </div>
@@ -4293,13 +4266,31 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           <p className="text-white text-sm truncate">
                             {cleanTitle(fileMetadataMap.get(file.id)?.title || fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name)}
                           </p>
-                          {file.isPublic && (
+                          {file.isUploading && (
+                            <RefreshCw className="h-3 w-3 text-blue-400 animate-spin flex-shrink-0" />
+                          )}
+                          {file.isPublic && !file.isUploading && (
                             <Globe className="h-3 w-3 text-green-400 flex-shrink-0" aria-label="Public" />
                           )}
                         </div>
-                        <p className="text-text-secondary text-xs">
-                          {account.accountId || 'google_drive'} • {(parseInt(file.size || '0') / 1024).toFixed(2)} KB
-                        </p>
+                        <div className="flex items-center space-x-2">
+                          <p className="text-text-secondary text-xs">
+                            {account.accountId || 'google_drive'} • {(parseInt(file.size || '0') / 1024).toFixed(2)} KB
+                          </p>
+                          {file.isUploading && (
+                            <span className="text-blue-400 text-xs">
+                              Uploading {file.uploadProgress || 0}%
+                            </span>
+                          )}
+                        </div>
+                        {file.isUploading && (
+                          <div className="mt-1 h-1 bg-neutral-700 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-blue-500 transition-all duration-300"
+                              style={{ width: `${file.uploadProgress || 0}%` }}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                     {!isBulkDeleteMode && !isCollectionMode && (

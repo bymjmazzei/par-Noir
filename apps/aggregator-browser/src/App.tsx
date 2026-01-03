@@ -30,6 +30,8 @@ import { NotificationBell } from './components/NotificationBell';
 import { ToastContainer } from './components/Toast';
 import { EditFileModal } from './components/EditFileModal';
 import { MePageTabsRail } from './components/MePageTabsRail';
+import { UploadStatusCircle } from './components/UploadStatusCircle';
+import { UploadQueueOverlay } from './components/UploadQueueOverlay';
 import { Settings, Upload, Plus } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useHorizontalSwipe } from './hooks/useHorizontalSwipe';
@@ -119,6 +121,7 @@ function App() {
   const [showUploadModal, setShowUploadModal] = useState(false); // Show upload modal
   const [showCreateFeedModal, setShowCreateFeedModal] = useState(false); // Show create feed modal
   const [addingToFeedFile, setAddingToFeedFile] = useState<IndexedFile | null>(null); // File being added to feed
+  const [showUploadQueueOverlay, setShowUploadQueueOverlay] = useState(false); // Show upload queue overlay
   const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null); // Creator ID for index view
   const [feedViewedTimestamps, setFeedViewedTimestamps] = useState<Map<string, string>>(
     () => loadFeedViewedTimestamps()
@@ -3274,6 +3277,15 @@ function App() {
       )}
       
       <div className={`min-h-screen ${viewMode === 'feed' ? 'h-screen overflow-hidden bg-black' : 'bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900'}`}>
+        {/* Upload Status Circle - Top left corner, always visible when uploads are active */}
+        <UploadStatusCircle onClick={() => setShowUploadQueueOverlay(true)} />
+        
+        {/* Upload Queue Overlay */}
+        <UploadQueueOverlay
+          isOpen={showUploadQueueOverlay}
+          onClose={() => setShowUploadQueueOverlay(false)}
+        />
+        
         {/* Lock/Unlock Button with Context Switcher - Top right corner, always visible on ALL screens */}
         <LockButtonWithContext
           onLockUnlock={handleLockUnlock}
