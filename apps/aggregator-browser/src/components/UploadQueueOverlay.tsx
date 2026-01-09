@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, CheckCircle, XCircle, Loader2, Clock, Upload as UploadIcon } from 'lucide-react';
+import { X, CheckCircle, XCircle, Loader2, Clock, Upload as UploadIcon, Settings, Edit, FolderPlus, Trash2, Share2, Bookmark } from 'lucide-react';
 import { uploadQueueService, UploadTask, QueueProgress } from '../services/uploadQueueService';
 
 interface UploadQueueOverlayProps {
@@ -97,7 +97,32 @@ export const UploadQueueOverlay: React.FC<UploadQueueOverlayProps> = ({ isOpen, 
     }
   };
 
+  const getTaskIcon = (task: UploadTask) => {
+    switch (task.type) {
+      case 'file':
+      case 'textPost':
+      case 'multiPage':
+      case 'pdf':
+        return <UploadIcon className="w-5 h-5 text-blue-400" />;
+      case 'updateShareSettings':
+        return <Share2 className="w-5 h-5 text-purple-400" />;
+      case 'updateMetadata':
+        return <Edit className="w-5 h-5 text-yellow-400" />;
+      case 'createCollection':
+        return <FolderPlus className="w-5 h-5 text-green-400" />;
+      case 'deleteFile':
+      case 'bulkDelete':
+        return <Trash2 className="w-5 h-5 text-red-400" />;
+      case 'addToFeed':
+      case 'saveToFeed':
+        return <Bookmark className="w-5 h-5 text-orange-400" />;
+      default:
+        return <Settings className="w-5 h-5 text-gray-400" />;
+    }
+  };
+
   const getTaskName = (task: UploadTask): string => {
+    // Handle upload types
     if (task.file) {
       return task.file.name;
     }
@@ -108,7 +133,51 @@ export const UploadQueueOverlay: React.FC<UploadQueueOverlayProps> = ({ isOpen, 
     if (task.pages && task.pages.length > 0) {
       return `Multi-page thought (${task.pages.length} pages)`;
     }
-    return `Upload ${task.id.substring(0, 8)}`;
+
+    // Handle background task types
+    switch (task.type) {
+      case 'updateShareSettings': {
+        const fileId = task.metadata?.fileId || 'file';
+        const fileName = task.metadata?.existingMetadata?.name || fileId.substring(0, 16);
+        return `Updating share settings for ${fileName}`;
+      }
+      case 'updateMetadata': {
+        const fileId = task.metadata?.fileId || 'file';
+        const fileName = task.metadata?.metadata?.name || fileId.substring(0, 16);
+        return `Updating metadata for ${fileName}`;
+      }
+      case 'createCollection': {
+        const collectionName = task.metadata?.metadata?.name || 'Collection';
+        return `Creating collection: ${collectionName}`;
+      }
+      case 'deleteFile': {
+        const fileId = task.metadata?.fileId || 'file';
+        const fileName = fileId.substring(0, 16);
+        return `Deleting ${fileName}`;
+      }
+      case 'bulkDelete': {
+        const fileCount = task.metadata?.fileIds?.length || 0;
+        return `Deleting ${fileCount} file${fileCount !== 1 ? 's' : ''}`;
+      }
+      case 'addToFeed': {
+        const feedsToAdd = task.metadata?.feedsToAdd?.length || 0;
+        const feedsToRemove = task.metadata?.feedsToRemove?.length || 0;
+        if (feedsToAdd > 0 && feedsToRemove > 0) {
+          return `Updating ${feedsToAdd + feedsToRemove} feeds`;
+        } else if (feedsToAdd > 0) {
+          return `Adding to ${feedsToAdd} feed${feedsToAdd > 1 ? 's' : ''}`;
+        } else if (feedsToRemove > 0) {
+          return `Removing from ${feedsToRemove} feed${feedsToRemove > 1 ? 's' : ''}`;
+        }
+        return 'Updating feeds...';
+      }
+      case 'saveToFeed': {
+        const isSaved = task.metadata?.isSaved;
+        return isSaved ? 'Removing from collection...' : 'Saving to collection...';
+      }
+      default:
+        return `Task ${task.id.substring(0, 8)}`;
+    }
   };
 
   const handleCancel = (taskId: string) => {
@@ -132,7 +201,7 @@ export const UploadQueueOverlay: React.FC<UploadQueueOverlayProps> = ({ isOpen, 
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-neutral-800">
             <div>
-              <h2 className="text-xl font-semibold text-white">Upload Queue</h2>
+              <h2 className="text-xl font-semibold text-white">Background Operations</h2>
               <p className="text-sm text-text-secondary mt-1">
                 {progress.total} total • {progress.completed} completed • {progress.failed} failed
               </p>
@@ -165,7 +234,7 @@ export const UploadQueueOverlay: React.FC<UploadQueueOverlayProps> = ({ isOpen, 
             {tasks.length === 0 ? (
               <div className="text-center py-12 text-text-secondary">
                 <UploadIcon className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No uploads in queue</p>
+                <p>No operations in queue</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -176,7 +245,17 @@ export const UploadQueueOverlay: React.FC<UploadQueueOverlayProps> = ({ isOpen, 
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3 flex-1 min-w-0">
-                        {getStatusIcon(task.status)}
+                        <div className="flex-shrink-0">
+                          {task.status === 'processing' || task.status === 'uploading' ? (
+                            <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+                          ) : task.status === 'completed' ? (
+                            <CheckCircle className="w-5 h-5 text-green-500" />
+                          ) : task.status === 'failed' ? (
+                            <XCircle className="w-5 h-5 text-red-500" />
+                          ) : (
+                            getTaskIcon(task)
+                          )}
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <p className="text-sm font-medium text-white truncate">
@@ -206,7 +285,7 @@ export const UploadQueueOverlay: React.FC<UploadQueueOverlayProps> = ({ isOpen, 
                         <button
                           onClick={() => handleCancel(task.id)}
                           className="ml-4 p-1.5 text-text-secondary hover:text-red-400 transition-colors rounded"
-                          aria-label="Cancel upload"
+                          aria-label="Cancel operation"
                         >
                           <X className="w-4 h-4" />
                         </button>

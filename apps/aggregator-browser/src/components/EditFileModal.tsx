@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Globe, Lock, Users, Star } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
+import { uploadQueueService } from '../services/uploadQueueService';
 
 interface EditFileModalProps {
   file: IndexedFile;
@@ -26,69 +27,76 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!userState.isUnlocked || !userState.pnIdentifier) {
       setError('You must be unlocked to edit files');
       return;
     }
 
-    setSaving(true);
     setError(null);
+    const fileId = file.metadata.fileId || file.metadata.backendFileId;
 
-    try {
-      const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-      const fileId = file.metadata.fileId || file.metadata.backendFileId;
-
-      // Update metadata via dashboard API
-      const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: name.trim() || undefined,
-          title: name.trim() || undefined, // Also send as title for display
-          description: description.trim() || undefined,
-          keywords: tags.split(',').map(t => t.trim()).filter(Boolean),
-          tags: tags.split(',').map(t => t.trim()).filter(Boolean),
-          isPublic: visibility === 'public',
-          visibility: visibility,
-          isTopPost: isTopPost
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to update metadata: ${errorText}`);
+    // Optimistically update local file state
+    const updatedFile: IndexedFile = {
+      ...file,
+      metadata: {
+        ...file.metadata,
+        visibility: visibility,
+        isPublic: visibility === 'public',
+        name: name.trim() || file.metadata.name,
+        title: name.trim() || file.metadata.title,
+        description: description.trim() || undefined,
+        keywords: tags.split(',').map(t => t.trim()).filter(Boolean),
+        tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+        isTopPost: isTopPost
       }
+    };
+    onSave(updatedFile);
+    onClose();
 
-      const updatedMetadata = await response.json();
-
-      // Update local file state
-      const updatedFile: IndexedFile = {
-        ...file,
+    // Queue background task
+    uploadQueueService.addTask({
+      type: 'updateMetadata',
+      accountId: '', // Not used in aggregator-browser context
+      metadata: {
+        fileId,
+        accountId: '', // Optional - not used for metadata updates in aggregator-browser
         metadata: {
-          ...file.metadata,
-          ...updatedMetadata.metadata,
-          visibility: visibility,
-          isPublic: visibility === 'public',
-          name: name.trim() || file.metadata.name,
-          title: name.trim() || file.metadata.title,
+          name: name.trim() || undefined,
+          title: name.trim() || undefined,
           description: description.trim() || undefined,
-          keywords: tags.split(',').map(t => t.trim()).filter(Boolean),
-          tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+          tags: tags,
+          genre: '', // Not used in EditFileModal
+          categories: [], // Not used in EditFileModal
+          locationName: '', // Not used in EditFileModal
+          locationAddress: '', // Not used in EditFileModal
+          license: undefined, // Not used in EditFileModal
+          // Additional fields for EditFileModal
+          isPublic: visibility === 'public',
+          visibility: visibility,
           isTopPost: isTopPost
         }
-      };
-
-      onSave(updatedFile);
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update file');
-      console.error('Failed to update file:', err);
-    } finally {
-      setSaving(false);
-    }
+      },
+      onComplete: (result) => {
+        console.log('✅ [EditFileModal] Metadata updated:', result);
+        // Update with actual result if needed
+        if (result?.metadata) {
+          const finalUpdatedFile: IndexedFile = {
+            ...updatedFile,
+            metadata: {
+              ...updatedFile.metadata,
+              ...result.metadata
+            }
+          };
+          onSave(finalUpdatedFile);
+        }
+      },
+      onError: (error) => {
+        console.error('❌ [EditFileModal] Failed to update metadata:', error);
+        setError(error.message || 'Failed to update file');
+        // Rollback optimistic update - would need to re-open modal or show undo toast
+      }
+    });
   };
 
   return (

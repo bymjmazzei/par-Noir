@@ -47,10 +47,12 @@ import { FullScreenFeed } from './components/FullScreenFeed';
 import { BottomNav } from './components/BottomNav';
 import { useAppContext } from './hooks/useAppContext';
 import './services/uploadProcessor'; // Initialize upload processor event listeners
+import './services/backgroundTaskProcessor'; // Initialize background task processor event listeners
 import { DiscoveryPage } from './components/DiscoveryPage';
 import { SearchResults } from './components/SearchResults';
 import { Inbox } from './components/Inbox';
 import { saveToFeed, getSavedFeed } from './services/savedFeedService';
+import { uploadQueueService } from './services/uploadQueueService';
 import { getUserProfile } from './services/profileService';
 import { isNSFWContent } from './constants/contentRatings';
 import { calculateMediaScaling, type MediaDimensions } from './utils/mediaScaling';
@@ -3451,40 +3453,58 @@ function App() {
                   setActiveBottomTab('messages');
                 }}
                 onEdit={isOwnIndex ? (file) => setEditingFile(file) : undefined}
-                onSave={userState.isUnlocked && userState.pnIdentifier ? async (file) => {
-                  try {
-                    await saveToFeed(userState.pnIdentifier!, file.metadata.fileId);
-                    success('Saved to your private collection!');
-                    // Optimistically update the saved feed fileIds
-                    setSavedFeedFileIds(prev => {
-                      if (!prev.includes(file.metadata.fileId)) {
-                        return [...prev, file.metadata.fileId];
-                      }
-                      return prev;
-                    });
-                    // Don't refresh from API if we're in backoff - just use optimistic update
-                    if (!savedFeedErrorRef.current || 
-                        (Date.now() - savedFeedErrorRef.current.timestamp) >= 
-                        Math.min(30000 * Math.pow(2, savedFeedErrorRef.current.count), 300000)) {
-                      // Only refresh if not in backoff period
-                      try {
-                        if (!userState.pnIdentifier) return;
-                        const savedFeed = await getSavedFeed(userState.pnIdentifier);
-                        if (savedFeed && savedFeed.fileIds.length > 0) {
-                          setSavedFeedFileIds(savedFeed.fileIds);
-                          savedFeedErrorRef.current = null; // Clear error on success
-                          lastSavedFeedFetchRef.current = {
-                            userDid: userState.pnIdentifier,
-                            timestamp: Date.now()
-                          };
-                        }
-                      } catch (refreshError) {
-                        // Silently fail - we've already optimistically updated
-                      }
+                onSave={userState.isUnlocked && userState.pnIdentifier ? (file) => {
+                  const fileId = file.metadata.fileId;
+                  // Optimistically update the saved feed fileIds
+                  setSavedFeedFileIds(prev => {
+                    if (!prev.includes(fileId)) {
+                      return [...prev, fileId];
                     }
-                  } catch (error) {
-                    showErrorToast('Failed to save. Please try again.');
-                  }
+                    return prev;
+                  });
+                  success('Saved to your private collection!');
+
+                  // Queue background task
+                  uploadQueueService.addTask({
+                    type: 'saveToFeed',
+                    accountId: '', // Not used for saved feed operations
+                    metadata: {
+                      fileId,
+                      userDid: userState.pnIdentifier!,
+                      isSaved: false // Always saving (not removing) from this handler
+                    },
+                    onComplete: (result) => {
+                      console.log('✅ [SaveToFeed] Save operation completed:', result);
+                      // Refresh saved feed if not in backoff period
+                      if (!savedFeedErrorRef.current || 
+                          (Date.now() - savedFeedErrorRef.current.timestamp) >= 
+                          Math.min(30000 * Math.pow(2, savedFeedErrorRef.current.count), 300000)) {
+                        try {
+                          if (!userState.pnIdentifier) return;
+                          getSavedFeed(userState.pnIdentifier).then(savedFeed => {
+                            if (savedFeed && savedFeed.fileIds.length > 0) {
+                              setSavedFeedFileIds(savedFeed.fileIds);
+                              savedFeedErrorRef.current = null;
+                              lastSavedFeedFetchRef.current = {
+                                userDid: userState.pnIdentifier!,
+                                timestamp: Date.now()
+                              };
+                            }
+                          }).catch(() => {
+                            // Silently fail - we've already optimistically updated
+                          });
+                        } catch (refreshError) {
+                          // Silently fail
+                        }
+                      }
+                    },
+                    onError: (error) => {
+                      console.error('❌ [SaveToFeed] Failed to save:', error);
+                      showErrorToast('Failed to save. Please try again.');
+                      // Rollback optimistic update
+                      setSavedFeedFileIds(prev => prev.filter(id => id !== fileId));
+                    }
+                  });
                 } : undefined}
               />
             </div>

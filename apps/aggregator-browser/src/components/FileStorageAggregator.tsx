@@ -2466,7 +2466,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   };
 
   // Handle save metadata
-  const handleSaveMetadata = async (metadata?: MetadataFormData) => {
+  const handleSaveMetadata = (metadata?: MetadataFormData) => {
     if (!editingFile) return;
 
     // Use provided metadata or fall back to editForm state
@@ -2481,140 +2481,122 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       license: editForm.license
     };
 
-    try {
-      setIsLoading(true);
-      setError(null);
+    // Validate required category
+    const categories = formData.categories || [];
+    if (categories.length === 0) {
+      setError('At least one category is required');
+      return;
+    }
 
-      const accessToken = await PNOAuthService.getValidAccessToken();
-      if (!accessToken) {
-        throw new Error('Not authenticated');
-      }
+    setError(null);
 
-      // Parse tags from comma-separated string
-      const tags = formData.tags
-        .split(',')
-        .map(t => t.trim())
-        .filter(t => t.length > 0);
+    // Optimistically update local metadata map
+    const existingMetadata = fileMetadataMap.get(editingFile.id);
+    const optimisticMetadata = {
+      ...existingMetadata,
+      name: formData.name,
+      description: formData.description,
+      keywords: formData.tags.split(',').map(t => t.trim()).filter(t => t.length > 0),
+      tags: formData.tags.split(',').map(t => t.trim()).filter(t => t.length > 0),
+      feedCategories: categories,
+      category: categories[0]
+    };
+    setFileMetadataMap(prev => {
+      const next = new Map(prev);
+      next.set(editingFile.id, optimisticMetadata as any);
+      return next;
+    });
 
-      // Parse genre from comma-separated string
-      const genre = formData.genre
-        .split(',')
-        .map(g => g.trim())
-        .filter(g => g.length > 0);
-
-      // Extract subjects from description, tags, and keywords
-      const { extractSubjects } = await import('../utils/subjectExtractor');
-      const subjects = extractSubjects(
-        formData.description,
-        tags,
-        tags // keywords same as tags
-      );
-
-      // Validate required category
-      const categories = formData.categories || [];
-      if (categories.length === 0) {
-        setError('At least one category is required');
-        setIsLoading(false);
-        return;
-      }
-
-      // Build location object if provided (without lat/lng)
-      let locationCreated = undefined;
-      if (formData.locationName || formData.locationAddress) {
-        locationCreated = {
-          '@type': 'Place',
-          ...(formData.locationName && { name: formData.locationName }),
-          ...(formData.locationAddress && {
-            address: {
-              '@type': 'PostalAddress',
-              addressLocality: formData.locationAddress.split(',')[0]?.trim() || '',
-              addressRegion: formData.locationAddress.split(',')[1]?.trim() || '',
-              addressCountry: formData.locationAddress.split(',')[2]?.trim() || ''
-            }
-          })
-        };
-      }
-
-      // Update via API endpoint
-      const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${editingFile.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
-        },
-        body: JSON.stringify({
-          name: formData.name,
-          description: formData.description,
-          keywords: tags,
-          tags: tags,
-          genre: genre.length > 0 ? genre : undefined,
-          feedCategories: categories.length > 0 ? categories : undefined,
-          category: categories.length > 0 ? categories[0] : undefined,
-          locationCreated: locationCreated,
-          license: formData.license || undefined,
-          subjects: subjects.length > 0 ? subjects : undefined
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to update metadata: ${errorText}`);
-      }
-
-      const updatedMetadata = await response.json();
-      
-      // Update local metadata map
-      setFileMetadataMap(prev => {
+    // Optimistically update displayName in file list
+    if (editingFile.accountId) {
+      const accountId = editingFile.accountId;
+      setFilesByAccount(prev => {
         const next = new Map(prev);
-        next.set(editingFile.id, updatedMetadata.metadata || updatedMetadata);
+        const accountFiles = next.get(accountId) || [];
+        const updatedFiles = accountFiles.map(file => {
+          if (file.id === editingFile.id) {
+            return {
+              ...file,
+              displayName: formData.name || (file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name)
+            };
+          }
+          return file;
+        });
+        next.set(accountId, updatedFiles);
         return next;
       });
-
-      // Update displayName in file list if name was changed
-      if (editingFile.accountId) {
-        const accountId = editingFile.accountId; // Store in const for type narrowing
-        setFilesByAccount(prev => {
-          const next = new Map(prev);
-          const accountFiles = next.get(accountId) || [];
-          const updatedFiles = accountFiles.map(file => {
-            if (file.id === editingFile.id) {
-              return {
-                ...file,
-                displayName: formData.name || (file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name)
-              };
-            }
-            return file;
-          });
-          next.set(accountId, updatedFiles);
-          return next;
-        });
-      }
-      
-
-      // Reload files to ensure metadata is fresh
-      if (editingFile.accountId) {
-        await loadFilesForAccount(editingFile.accountId);
-      }
-
-      setEditingFile(null);
-      setEditForm({
-        name: '',
-        description: '',
-        tags: '',
-        genre: '',
-        category: '',
-        categories: [],
-        locationName: '',
-        locationAddress: '',
-        license: 'all-rights-reserved'
-      });
-    } catch (err: any) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to update metadata';
-      setError(errorMessage);
-      console.error('[FileStorageAggregator] Failed to save metadata:', err);
-    } finally {
-      setIsLoading(false);
     }
+
+    // Queue background task
+    const taskId = uploadQueueService.addTask({
+      type: 'updateMetadata',
+      accountId: editingFile.accountId || '',
+      metadata: {
+        fileId: editingFile.id,
+        accountId: editingFile.accountId || '',
+        metadata: formData
+      },
+      onComplete: (result) => {
+        console.log('✅ [Metadata] Metadata updated:', result);
+        // Update with actual result
+        if (result?.metadata) {
+          setFileMetadataMap(prev => {
+            const next = new Map(prev);
+            next.set(editingFile.id, result.metadata);
+            return next;
+          });
+        }
+        // Reload files to ensure metadata is fresh
+        if (editingFile.accountId) {
+          setTimeout(() => {
+            loadFilesForAccount(editingFile.accountId);
+          }, 500);
+        }
+      },
+      onError: (error) => {
+        console.error('❌ [Metadata] Failed to update metadata:', error);
+        setError(error.message || 'Failed to update metadata');
+        // Rollback optimistic update
+        if (existingMetadata) {
+          setFileMetadataMap(prev => {
+            const next = new Map(prev);
+            next.set(editingFile.id, existingMetadata);
+            return next;
+          });
+        }
+        if (editingFile.accountId) {
+          setFilesByAccount(prev => {
+            const next = new Map(prev);
+            const accountFiles = next.get(editingFile.accountId) || [];
+            const updatedFiles = accountFiles.map(file => {
+              if (file.id === editingFile.id) {
+                return {
+                  ...file,
+                  displayName: file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name
+                };
+              }
+              return file;
+            });
+            next.set(editingFile.accountId, updatedFiles);
+            return next;
+          });
+        }
+      }
+    });
+
+    // Close modal immediately (optimistic UI)
+    setEditingFile(null);
+    setEditForm({
+      name: '',
+      description: '',
+      tags: '',
+      genre: '',
+      category: '',
+      categories: [],
+      locationName: '',
+      locationAddress: '',
+      license: 'all-rights-reserved'
+    });
   };
 
   // Handle share settings
@@ -2663,267 +2645,127 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   };
 
   // Handle save share settings
-  const handleSaveShareSettings = async () => {
+  const handleSaveShareSettings = () => {
     if (!sharingFile) return;
 
-    try {
-      setIsSavingShare(true);
-      setError(null);
+    setError(null);
 
-      const accessToken = await PNOAuthService.getValidAccessToken();
-      if (!accessToken) {
-        throw new Error('Not authenticated');
-      }
+    const existingMetadata = fileMetadataMap.get(sharingFile.id);
+    const targetFileId = existingMetadata?.fileId || sharingFile.id;
+    const isCurrentlyPublic = existingMetadata?.isPublic || false;
+    const existingIsNSFW = existingMetadata?.isNSFW === true;
+    const makePublic = shareVisibility === 'public';
 
-      const existingMetadata = fileMetadataMap.get(sharingFile.id);
-      const targetFileId = existingMetadata?.fileId || sharingFile.id;
-      const isCurrentlyPublic = existingMetadata?.isPublic || false;
-      const existingIsNSFW = existingMetadata?.isNSFW === true;
-      const makePublic = shareVisibility === 'public';
+    const blockedIds = Object.entries(indexerToggles)
+      .filter(([, enabled]) => !enabled)
+      .map(([id]) => id);
+    const enabledIds = Object.entries(indexerToggles)
+      .filter(([, enabled]) => enabled)
+      .map(([id]) => id);
 
-      const blockedIds = Object.entries(indexerToggles)
-        .filter(([, enabled]) => !enabled)
-        .map(([id]) => id);
-      const enabledIds = Object.entries(indexerToggles)
-        .filter(([, enabled]) => enabled)
-        .map(([id]) => id);
-
-      let nextPermissions: any = null;
-      if (thirdPartyIndexers.length > 0) {
-        if (blockedIds.length === 0) {
-          nextPermissions = {
-            mode: 'all',
-            blocked: [],
-            allowed: enabledIds,
-            updatedAt: new Date().toISOString()
-          };
-        } else if (blockedIds.length === thirdPartyIndexers.length) {
-          nextPermissions = {
-            mode: 'none',
-            blocked: [...blockedIds],
-            allowed: [],
-            updatedAt: new Date().toISOString()
-          };
-        } else {
-          nextPermissions = {
-            mode: 'all',
-            blocked: [...blockedIds],
-            allowed: enabledIds,
-            updatedAt: new Date().toISOString()
-          };
-        }
-      } else if (indexingPermissionsState) {
+    let nextPermissions: any = null;
+    if (thirdPartyIndexers.length > 0) {
+      if (blockedIds.length === 0) {
         nextPermissions = {
-          ...indexingPermissionsState,
+          mode: 'all',
+          blocked: [],
+          allowed: enabledIds,
+          updatedAt: new Date().toISOString()
+        };
+      } else if (blockedIds.length === thirdPartyIndexers.length) {
+        nextPermissions = {
+          mode: 'none',
+          blocked: [...blockedIds],
+          allowed: [],
+          updatedAt: new Date().toISOString()
+        };
+      } else {
+        nextPermissions = {
+          mode: 'all',
+          blocked: [...blockedIds],
+          allowed: enabledIds,
           updatedAt: new Date().toISOString()
         };
       }
-
-      // Check if file needs token generation (either making public OR already public but missing token)
-      const existingPublicToken = existingMetadata?.publicToken;
-      const hasValidToken = existingPublicToken && 
-                            typeof existingPublicToken === 'string' && 
-                            existingPublicToken.trim().length > 0;
-      const isPublicAfterUpdate = makePublic || isCurrentlyPublic;
-      const needsTokenGeneration = isPublicAfterUpdate && !hasValidToken;
-      
-      // Update if visibility changed OR if token needs to be generated
-      if (makePublic !== isCurrentlyPublic || needsTokenGeneration) {
-        let publicToken: string | undefined = undefined;
-        
-        // Generate share token if making public OR if already public but missing token
-        if (needsTokenGeneration) {
-          try {
-            const session = PNOAuthService.loadSession();
-            if (session?.did) {
-              // Regular file - download and generate share token as usual
-              const downloadResponse = await fetch(
-              `${apiEndpoint}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(sharingAccountId || '')}&download=true`,
-              {
-                headers: {
-                  'Authorization': `Bearer ${accessToken}`
-                }
-              }
-            );
-
-            if (downloadResponse.ok) {
-              const fileBlob = await downloadResponse.blob();
-              const contentType = downloadResponse.headers.get('content-type') || '';
-              
-              
-              // Encrypted files are stored as JSON, so parse as text
-              const fileText = await fileBlob.text();
-              
-              if (!fileText || fileText.trim().length === 0) {
-                throw new Error('Downloaded file is empty');
-              }
-              
-              // Parse encrypted file package (JSON format)
-              let encryptedPackage: EncryptedFilePackage;
-              try {
-                encryptedPackage = JSON.parse(fileText);
-              } catch (parseError: any) {
-                console.error('❌ [ShareSettings] Failed to parse encrypted file package:', {
-                  error: parseError?.message,
-                  fileTextPreview: fileText.substring(0, 200)
-                });
-                throw new Error(`Failed to parse encrypted file: ${parseError?.message}`);
-              }
-              
-              // Validate package structure
-              if (!encryptedPackage.encrypted || !encryptedPackage.iv || !encryptedPackage.salt) {
-                throw new Error('Invalid encrypted file package structure - missing required fields');
-              }
-              
-              // Generate share token using session
-              if (session?.publicKey) {
-                const encryptionService = getEncryptionService();
-                const shareToken = await encryptionService.generateShareToken(
-                  encryptedPackage,
-                  {
-                    id: session.did,
-                    publicKey: session.publicKey
-                  }
-                );
-                publicToken = JSON.stringify(shareToken);
-              } else {
-                console.warn('⚠️ [ShareSettings] Missing session data for token generation');
-              }
-            } else {
-              console.warn('⚠️ [ShareSettings] Failed to download file for token generation:', downloadResponse.status);
-              }
-            }
-          } catch (tokenError: any) {
-            console.error('❌ [ShareSettings] Failed to generate share token:', tokenError);
-            // Don't fail the request - file can be made public without token (will need to be regenerated later)
-          }
-        }
-        
-        // Update metadata - either toggle public status OR regenerate token for existing public file
-        const accountIdParam = sharingAccountId ? `?accountId=${encodeURIComponent(sharingAccountId)}` : '';
-        const updateBody: any = {};
-        
-        // Always send isPublic when making public (even if already marked public in DB)
-        // This ensures companion metadata is created/updated even if DB state is inconsistent
-        if (makePublic) {
-          updateBody.isPublic = true;
-        } else if (makePublic !== isCurrentlyPublic) {
-          // Only send false if explicitly making private
-          updateBody.isPublic = false;
-        }
-        
-        // ALWAYS update NSFW status if file is public (whether making public or already public)
-        // This ensures NSFW status is always persisted for public files
-        if (makePublic || isCurrentlyPublic) {
-          updateBody.isNSFW = shareNSFW;
-        } else if (shareNSFW !== existingIsNSFW) {
-          // File is private - only update if changed
-          updateBody.isNSFW = shareNSFW;
-        }
-        
-        // Always include publicToken if we have one (newly generated or existing)
-        // This ensures the API has the token for public files
-        if (publicToken) {
-          updateBody.publicToken = publicToken;
-          console.log('📤 [ShareSettings] Sending publicToken to API:', {
-            hasToken: !!publicToken,
-            tokenLength: publicToken.length,
-            isNewToken: !hasValidToken
-          });
-        } else if (hasValidToken && existingPublicToken) {
-          // If file already has a token, preserve it by sending it to API
-          updateBody.publicToken = existingPublicToken;
-        } else if (makePublic) {
-          console.warn('⚠️ [ShareSettings] Making file public but no publicToken available - file may not load in public feed');
-        }
-        
-        const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${targetFileId}${accountIdParam}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-          },
-          body: JSON.stringify(updateBody),
-        });
-        
-        if (!metadataResponse.ok) {
-          const errorText = await metadataResponse.text().catch(() => 'Unknown error');
-          console.error('❌ [ShareSettings] API update failed:', errorText);
-          throw new Error(`Failed to update file visibility: ${errorText}`);
-        }
-
-        if (!metadataResponse.ok) {
-          throw new Error('Failed to update file visibility');
-        }
-
-        // Reload metadata
-        await loadFileMetadata(sharingFile.id);
-        
-        // If making file public, wait a moment for API to update owner/public indexes
-        // Then reload files to reflect the change in the UI
-        if (makePublic && sharingAccountId) {
-          console.log('🔄 [ShareSettings] Waiting for API to update indexes...');
-          // Give API time to update owner index and public index
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          await loadFilesForAccount(sharingAccountId);
-        }
-      }
-
-      // Update index visibility if public and permissions changed
-      if (makePublic && nextPermissions) {
-        const response = await fetch(
-          `${apiEndpoint}/api/third-party/files/${encodeURIComponent(targetFileId)}/index-visibility`,
-          {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${accessToken}`
-            },
-            body: JSON.stringify({
-              indexingPermissions: nextPermissions
-            })
-          }
-        );
-
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => response.statusText);
-          throw new Error(errorText || `Failed to update index visibility (${response.status})`);
-        }
-      }
-
-      // Update local metadata map
-      if (makePublic || nextPermissions || shareNSFW !== existingMetadata?.isNSFW) {
-        setFileMetadataMap(prev => {
-          const next = new Map(prev);
-          const current = next.get(sharingFile.id);
-          if (current) {
-            next.set(sharingFile.id, {
-              ...current,
-              isPublic: makePublic,
-              isNSFW: shareNSFW,
-              ...(nextPermissions && { indexingPermissions: nextPermissions })
-            });
-          } else {
-            // If metadata doesn't exist locally, create it
-            next.set(sharingFile.id, {
-              fileId: sharingFile.id,
-              isPublic: makePublic,
-              isNSFW: shareNSFW,
-              ...(nextPermissions && { indexingPermissions: nextPermissions })
-            } as any);
-          }
-          return next;
-        });
-      }
-
-      closeShareSettings();
-    } catch (err: any) {
-      const message = err instanceof Error ? err.message : 'Failed to update sharing settings';
-      setError(message);
-      console.error('[FileStorageAggregator] Failed to save share settings:', err);
-    } finally {
-      setIsSavingShare(false);
+    } else if (indexingPermissionsState) {
+      nextPermissions = {
+        ...indexingPermissionsState,
+        updatedAt: new Date().toISOString()
+      };
     }
+
+    // Optimistically update local metadata map
+    if (makePublic || nextPermissions || shareNSFW !== existingIsNSFW) {
+      setFileMetadataMap(prev => {
+        const next = new Map(prev);
+        const current = next.get(sharingFile.id);
+        if (current) {
+          next.set(sharingFile.id, {
+            ...current,
+            isPublic: makePublic,
+            isNSFW: shareNSFW,
+            ...(nextPermissions && { indexingPermissions: nextPermissions })
+          });
+        } else {
+          next.set(sharingFile.id, {
+            fileId: sharingFile.id,
+            isPublic: makePublic,
+            isNSFW: shareNSFW,
+            ...(nextPermissions && { indexingPermissions: nextPermissions })
+          } as any);
+        }
+        return next;
+      });
+    }
+
+    // Queue background task
+    const taskId = uploadQueueService.addTask({
+      type: 'updateShareSettings',
+      accountId: sharingAccountId || '',
+      metadata: {
+        fileId: targetFileId,
+        accountId: sharingAccountId || '',
+        shareVisibility,
+        shareNSFW,
+        indexerToggles,
+        thirdPartyIndexers,
+        nextPermissions,
+        existingMetadata: {
+          ...existingMetadata,
+          fileId: targetFileId,
+          isPublic: isCurrentlyPublic,
+          isNSFW: existingIsNSFW
+        }
+      },
+      onComplete: (result) => {
+        console.log('✅ [ShareSettings] Share settings updated:', result);
+        // Reload metadata and files if making public
+        if (result?.isPublic && sharingAccountId) {
+          loadFileMetadata(sharingFile.id).then(() => {
+            setTimeout(() => {
+              loadFilesForAccount(sharingAccountId);
+            }, 1000);
+          });
+        } else {
+          loadFileMetadata(sharingFile.id);
+        }
+      },
+      onError: (error) => {
+        console.error('❌ [ShareSettings] Failed to update share settings:', error);
+        setError(error.message || 'Failed to update sharing settings');
+        // Rollback optimistic update on error
+        if (existingMetadata) {
+          setFileMetadataMap(prev => {
+            const next = new Map(prev);
+            next.set(sharingFile.id, existingMetadata);
+            return next;
+          });
+        }
+      }
+    });
+
+    // Close modal immediately (optimistic UI)
+    closeShareSettings();
   };
 
   // Handle file delete
@@ -2967,103 +2809,47 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     
     if (!confirm(confirmMessage)) return;
 
-    setIsLoading(true);
     setError(null);
 
-    try {
-      const accessToken = await PNOAuthService.getValidAccessToken();
-      if (!accessToken) {
-        throw new Error('No valid access token');
-      }
+    // Optimistically remove from UI immediately
+    setFilesByAccount(prev => {
+      const next = new Map(prev);
+      const accountFiles = next.get(accountId) || [];
+      const filteredFiles = accountFiles.filter(f => f.id !== file.id);
+      next.set(accountId, filteredFiles);
+      return next;
+    });
+    setOpenMenuFor(null);
 
-      // If it's a collection, delete all associated files first
-      if (isCollection && collectionFileIds.length > 0) {
-        console.log(`[FileStorageAggregator] Deleting collection with ${collectionFileIds.length} associated files`);
-        
-        let thoughtCollectionFileId: string | null = null;
-        
-        // For thought collections, collectionFileIds are thumbnail IDs
-        // All thumbnails point to the same main thought-collection file
-        if (isThoughtCollection && collectionFileIds.length > 0) {
-          // Load metadata from first thumbnail to get mainFileId (the thought-collection file)
-          try {
-            const firstThumbnailMetadata = await loadFileMetadata(collectionFileIds[0]);
-            thoughtCollectionFileId = firstThumbnailMetadata?.mainFileId || null;
-            console.log(`[FileStorageAggregator] Found thought-collection file ID: ${thoughtCollectionFileId}`);
-          } catch (err) {
-            console.warn(`[FileStorageAggregator] Failed to load metadata for first thumbnail:`, err);
-          }
-        }
-        
-        // Delete all thumbnail files first
-        for (const thumbnailId of collectionFileIds) {
-          try {
-            const deleteResponse = await fetch(`${apiEndpoint}/api/drive/files/${thumbnailId}?accountId=${accountId}`, {
-              method: 'DELETE',
-              headers: {
-                'Authorization': `Bearer ${accessToken}`
-              }
-            });
-            
-            if (!deleteResponse.ok) {
-              console.warn(`[FileStorageAggregator] Failed to delete thumbnail ${thumbnailId}`);
-            } else {
-              console.log(`[FileStorageAggregator] Deleted thumbnail ${thumbnailId}`);
-            }
-          } catch (err: any) {
-            console.warn(`[FileStorageAggregator] Error deleting thumbnail ${thumbnailId}:`, err);
-          }
-        }
-        
-        // Delete the main thought-collection file (for thought collections)
-        if (isThoughtCollection && thoughtCollectionFileId) {
-          try {
-            const deleteResponse = await fetch(`${apiEndpoint}/api/drive/files/${thoughtCollectionFileId}?accountId=${accountId}`, {
-              method: 'DELETE',
-              headers: {
-                'Authorization': `Bearer ${accessToken}`
-              }
-            });
-            
-            if (!deleteResponse.ok) {
-              console.warn(`[FileStorageAggregator] Failed to delete thought-collection file ${thoughtCollectionFileId}`);
-            } else {
-              console.log(`[FileStorageAggregator] Deleted thought-collection file ${thoughtCollectionFileId}`);
-            }
-          } catch (err: any) {
-            console.warn(`[FileStorageAggregator] Error deleting thought-collection file ${thoughtCollectionFileId}:`, err);
-          }
-        }
+    // Queue background task
+    uploadQueueService.addTask({
+      type: 'deleteFile',
+      accountId,
+      metadata: {
+        fileId: file.id,
+        accountId,
+        isCollection,
+        collectionFileIds: isCollection ? collectionFileIds : undefined,
+        isThoughtCollection: isCollection ? isThoughtCollection : undefined
+      },
+      onComplete: (result) => {
+        console.log('✅ [Delete] File deleted:', result);
+        // Reload files to ensure consistency
+        setTimeout(() => {
+          loadFilesForAccount(accountId);
+        }, 500);
+      },
+      onError: (error) => {
+        console.error('❌ [Delete] Failed to delete file:', error);
+        setError(error.message || 'Failed to delete file');
+        // Reload files to restore UI state on error
+        loadFilesForAccount(accountId);
       }
-
-      // Delete the collection file itself (or the single file if not a collection)
-      const response = await fetch(`${apiEndpoint}/api/drive/files/${file.id}?accountId=${accountId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
-
-      if (response.ok) {
-        // Cleanup: The file will be removed from indexedFiles which will trigger thumbnail cleanup
-        // But we also need to clean up any local blob URLs created by ThumbnailImage components
-        // This happens automatically when components unmount, but we can force cleanup here
-        
-        await loadFilesForAccount(accountId); // Reload files for this account
-        setOpenMenuFor(null);
-      } else {
-        throw new Error('Failed to delete file');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete file');
-      console.error('[FileStorageAggregator] Delete error:', err);
-    } finally {
-      setIsLoading(false);
-    }
+    });
   };
 
   // Bulk delete handler
-  const handleBulkDelete = async (accountId: string) => {
+  const handleBulkDelete = (accountId: string) => {
     if (!authenticatedUser?.id || !accountId) return;
     
     // Get files to delete for this account only
@@ -3075,56 +2861,52 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     const fileCount = filesToDelete.length;
     if (!confirm(`Are you sure you want to delete ${fileCount} file${fileCount > 1 ? 's' : ''}?`)) return;
 
-    setIsLoading(true);
     setError(null);
 
-    try {
-      const accessToken = await PNOAuthService.getValidAccessToken();
-      if (!accessToken) {
-        throw new Error('No valid access token');
-      }
+    const fileIdsToDelete = filesToDelete.map(f => f.id);
+    const filesSnapshot = [...filesToDelete];
 
-      // Delete files sequentially
-      let successCount = 0;
-      let failCount = 0;
-      
-      for (const file of filesToDelete) {
-        try {
-          const response = await fetch(`${apiEndpoint}/api/drive/files/${file.id}?accountId=${accountId}`, {
-            method: 'DELETE',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          });
+    // Optimistically remove from UI immediately
+    setFilesByAccount(prev => {
+      const next = new Map(prev);
+      const accountFilesList = next.get(accountId) || [];
+      const filteredFiles = accountFilesList.filter(f => !fileIdsToDelete.includes(f.id));
+      next.set(accountId, filteredFiles);
+      return next;
+    });
+    
+    // Clear selection and exit bulk delete mode
+    setSelectedFiles(new Set());
+    setIsBulkDeleteMode(false);
 
-          if (response.ok) {
-            successCount++;
-          } else {
-            failCount++;
-            console.error(`[FileStorageAggregator] Failed to delete file ${file.id}:`, response.statusText);
-          }
-        } catch (err: any) {
-          failCount++;
-          console.error(`[FileStorageAggregator] Error deleting file ${file.id}:`, err);
+    // Queue background task
+    uploadQueueService.addTask({
+      type: 'bulkDelete',
+      accountId,
+      metadata: {
+        fileIds: fileIdsToDelete,
+        accountId
+      },
+      onComplete: (result) => {
+        console.log('✅ [BulkDelete] Files deleted:', result);
+        const deletedCount = result?.deletedCount || 0;
+        const totalFiles = result?.totalFiles || fileCount;
+        if (deletedCount < totalFiles) {
+          const failCount = totalFiles - deletedCount;
+          setError(`Deleted ${deletedCount} file${deletedCount !== 1 ? 's' : ''}, ${failCount} failed`);
         }
+        // Reload files to ensure consistency
+        setTimeout(() => {
+          loadFilesForAccount(accountId);
+        }, 500);
+      },
+      onError: (error) => {
+        console.error('❌ [BulkDelete] Failed to delete files:', error);
+        setError(error.message || 'Failed to delete files');
+        // Reload files to restore UI state on error
+        loadFilesForAccount(accountId);
       }
-
-      // Reload files after bulk delete
-      await loadFilesForAccount(accountId);
-      
-      // Clear selection and exit bulk delete mode
-      setSelectedFiles(new Set());
-      setIsBulkDeleteMode(false);
-      
-      if (failCount > 0) {
-        setError(`Deleted ${successCount} file${successCount !== 1 ? 's' : ''}, ${failCount} failed`);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete files');
-      console.error('[FileStorageAggregator] Bulk delete error:', err);
-    } finally {
-      setIsLoading(false);
-    }
+    });
   };
 
   // Collection creation handler
@@ -3149,86 +2931,50 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     setShowCollectionMetadataModal(true);
   };
   
-  const handleCollectionMetadataSave = async (metadata: MetadataFormData) => {
+  const handleCollectionMetadataSave = (metadata: MetadataFormData) => {
     if (!pendingCollectionData) return;
     
     setShowCollectionMetadataModal(false);
-    setIsLoading(true);
     setError(null);
 
-    try {
-      // Parse tags and genre from comma-separated strings
-      const tags = metadata.tags.split(',').map(t => t.trim()).filter(Boolean);
-      const genre = metadata.genre.split(',').map(g => g.trim()).filter(Boolean);
-      
-      // Build location object if provided
-      let locationCreated = undefined;
-      if (metadata.locationName || metadata.locationAddress) {
-        locationCreated = {
-          '@type': 'Place',
-          ...(metadata.locationName && { name: metadata.locationName }),
-          ...(metadata.locationAddress && {
-            address: {
-              '@type': 'PostalAddress',
-              addressLocality: metadata.locationAddress.split(',')[0]?.trim() || '',
-              addressRegion: metadata.locationAddress.split(',')[1]?.trim() || '',
-              addressCountry: metadata.locationAddress.split(',')[2]?.trim() || ''
-            }
-          })
-        };
-      }
-      
-      // Extract subjects from description, tags, and keywords
-      const { extractSubjects } = await import('../utils/subjectExtractor');
-      const subjects = extractSubjects(
-        metadata.description,
-        tags,
-        tags // keywords same as tags
-      );
-      
-      // Use collection service with full metadata
-      const result = await createCollection(
-        {
-          collectionFileIds: pendingCollectionData.fileIds,
-          title: metadata.name || `Collection of ${pendingCollectionData.fileIds.length} files`
-        },
-        pendingCollectionData.accountId,
-        {
-          name: metadata.name,
-          title: metadata.name,
-          description: metadata.description,
-          keywords: tags,
-          tags: tags,
-          genre: genre.length > 0 ? genre : undefined,
-          feedCategories: metadata.categories && metadata.categories.length > 0 ? metadata.categories : undefined,
-          category: metadata.categories && metadata.categories.length > 0 ? metadata.categories[0] : undefined,
-          locationCreated: locationCreated,
-          license: metadata.license || undefined,
-          subjects: subjects.length > 0 ? subjects : undefined,
-          isPublic: true, // Collections default to public
-          isNSFW: false
-        }
-      );
+    const accountId = pendingCollectionData.accountId;
 
-      if (result.success) {
-        // Clear selection and exit collection mode
-        setSelectedFiles(new Set());
-        setCollectionFileOrder(new Map());
-        setIsCollectionMode(false);
-        setPendingCollectionData(null);
-        
+    // Clear selection and exit collection mode immediately (optimistic UI)
+    setSelectedFiles(new Set());
+    setCollectionFileOrder(new Map());
+    setIsCollectionMode(false);
+    const collectionDataSnapshot = { ...pendingCollectionData };
+    setPendingCollectionData(null);
+
+    // Queue background task
+    uploadQueueService.addTask({
+      type: 'createCollection',
+      accountId,
+      metadata: {
+        collectionData: {
+          collectionFileIds: collectionDataSnapshot.fileIds,
+          title: metadata.name || `Collection of ${collectionDataSnapshot.fileIds.length} files`
+        },
+        accountId,
+        metadata: metadata
+      },
+      onComplete: (result) => {
+        console.log('✅ [Collection] Collection created:', result);
         // Reload files
-        await loadFilesForAccount(pendingCollectionData.accountId);
-      } else {
-        throw new Error(result.error || 'Failed to create collection');
+        if (accountId && result?.fileId) {
+          setTimeout(() => {
+            loadFilesForAccount(accountId);
+          }, 1000);
+        }
+      },
+      onError: (error) => {
+        console.error('❌ [Collection] Failed to create collection:', error);
+        setError(error.message || 'Failed to create collection');
+        // Re-enter collection mode on error (could show undo toast instead)
+        setPendingCollectionData(collectionDataSnapshot);
+        setIsCollectionMode(true);
       }
-      
-    } catch (err: any) {
-      setError(err.message || 'Failed to create collection');
-      console.error('[FileStorageAggregator] Collection creation error:', err);
-    } finally {
-      setIsLoading(false);
-    }
+    });
   };
 
   // Toggle file selection

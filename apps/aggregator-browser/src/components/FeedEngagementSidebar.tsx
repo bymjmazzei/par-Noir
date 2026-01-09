@@ -11,6 +11,7 @@ import { Lock } from 'lucide-react';
 import { ProfileActionMenu } from './ProfileActionMenu';
 import { useToast } from '../hooks/useToast';
 import { isFileSaved, saveToFeed, removeFromSavedFeed } from '../services/savedFeedService';
+import { uploadQueueService } from '../services/uploadQueueService';
 
 interface FeedEngagementSidebarProps {
   file: IndexedFile;
@@ -102,7 +103,7 @@ export function FeedEngagementSidebar({
     }
   }, [userState.isUnlocked, userState.pnIdentifier, file.metadata.fileId]);
 
-  const handleSave = async (e: React.MouseEvent) => {
+  const handleSave = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
     
@@ -111,46 +112,39 @@ export function FeedEngagementSidebar({
     }
     
     const fileId = file.metadata.fileId;
-    const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+    const newIsSaved = !isSaved;
     
-    try {
-      if (isSaved) {
-        await removeFromSavedFeed(userState.pnIdentifier, fileId);
-        // Also record save engagement (toggle off)
-        try {
-          await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/save`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ userDid: userState.pnIdentifier })
-          });
-        } catch (engagementErr) {
-          console.warn('Failed to record save engagement:', engagementErr);
-        }
-        setIsSaved(false);
-        success('Removed from saved');
-      } else {
-        await saveToFeed(userState.pnIdentifier, fileId);
-        // Also record save engagement (toggle on)
-        try {
-          await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/save`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ userDid: userState.pnIdentifier })
-          });
-        } catch (engagementErr) {
-          console.warn('Failed to record save engagement:', engagementErr);
-        }
-        setIsSaved(true);
-        success('Saved to your collection');
-      }
-    } catch (err) {
-      console.error('Failed to save/unsave file:', err);
-      error('Failed to save. Please try again.');
+    // Optimistically update UI immediately
+    setIsSaved(newIsSaved);
+    if (newIsSaved) {
+      success('Saved to your collection');
+    } else {
+      success('Removed from saved');
     }
+
+    // Queue background task
+    uploadQueueService.addTask({
+      type: 'saveToFeed',
+      accountId: '', // Not used for saved feed operations
+      metadata: {
+        fileId,
+        userDid: userState.pnIdentifier,
+        isSaved: isSaved // Current state before toggle
+      },
+      onComplete: (result) => {
+        console.log('✅ [SaveToFeed] Save operation completed:', result);
+        // Update state with result
+        if (result?.isSaved !== undefined) {
+          setIsSaved(result.isSaved);
+        }
+      },
+      onError: (error) => {
+        console.error('❌ [SaveToFeed] Failed to save/unsave file:', error);
+        error('Failed to save. Please try again.');
+        // Rollback optimistic update
+        setIsSaved(isSaved);
+      }
+    });
   };
 
   const handleShare = async (e: React.MouseEvent) => {

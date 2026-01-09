@@ -1,0 +1,800 @@
+/**
+ * Background Task Processor
+ * Handles non-upload background operations: share settings, metadata, collections, deletions, feeds
+ */
+
+import { uploadQueueService, UploadTask } from './uploadQueueService';
+import { PNOAuthService } from './pnOAuthService';
+import { getEncryptionService } from './encryptionService';
+import { createCollection } from './collectionService';
+import { FeedService } from './feedService';
+import { saveToFeed, removeFromSavedFeed } from './savedFeedService';
+
+const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+
+interface EncryptedFilePackage {
+  encrypted: string;
+  iv: string;
+  salt: string;
+  metadata: {
+    originalName: string;
+    originalSize: number;
+    originalMimeType: string;
+  };
+}
+
+/**
+ * Process background task (routes to specific processor)
+ */
+export async function processBackgroundTask(task: UploadTask): Promise<void> {
+  try {
+    // Get session and encryption keys
+    const session = PNOAuthService.loadSession();
+    if (!session?.did) {
+      throw new Error('No DID in session for encryption');
+    }
+
+    let publicKey = session?.publicKey;
+    if (!publicKey && session.accessToken) {
+      try {
+        const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
+        if (userInfo.public_key) {
+          publicKey = userInfo.public_key;
+          const updatedSession = { ...session, publicKey };
+          PNOAuthService.saveSession(updatedSession);
+        }
+      } catch (err) {
+        // Silent fail
+      }
+    }
+
+    if (!publicKey && (task.type === 'updateShareSettings' || task.type === 'createCollection')) {
+      throw new Error('No publicKey available for encryption');
+    }
+
+    const accessToken = await PNOAuthService.getValidAccessToken(true);
+    if (!accessToken) {
+      throw new Error('No valid access token');
+    }
+
+    // Route to specific processor
+    switch (task.type) {
+      case 'updateShareSettings':
+        await processShareSettingsUpdate(task, session, publicKey, accessToken);
+        break;
+      case 'updateMetadata':
+        await processMetadataUpdate(task, session, publicKey, accessToken);
+        break;
+      case 'createCollection':
+        await processCollectionCreation(task, session, publicKey, accessToken);
+        break;
+      case 'deleteFile':
+        await processFileDeletion(task, session, publicKey, accessToken);
+        break;
+      case 'bulkDelete':
+        await processBulkDeletion(task, session, publicKey, accessToken);
+        break;
+      case 'addToFeed':
+        await processAddToFeed(task, session, publicKey, accessToken);
+        break;
+      case 'saveToFeed':
+        await processSaveToFeed(task, session, publicKey, accessToken);
+        break;
+      default:
+        throw new Error(`Unknown background task type: ${task.type}`);
+    }
+
+    uploadQueueService.updateTaskStatus(task.id, 'completed');
+    uploadQueueService.notifyTaskFinished(task.id);
+  } catch (error: any) {
+    console.error(`[BackgroundTaskProcessor] Task ${task.id} failed:`, error);
+    uploadQueueService.updateTaskStatus(task.id, 'failed', error?.message || 'Operation failed');
+    uploadQueueService.notifyTaskFinished(task.id);
+  }
+}
+
+/**
+ * Process share settings update
+ */
+async function processShareSettingsUpdate(
+  task: UploadTask,
+  session: any,
+  publicKey: string,
+  accessToken: string
+): Promise<void> {
+  const { fileId, accountId, shareVisibility, shareNSFW, indexerToggles, thirdPartyIndexers, nextPermissions: providedNextPermissions, existingMetadata } = task.metadata || {};
+  
+  if (!fileId || !accountId) {
+    throw new Error('Missing required fields: fileId, accountId');
+  }
+
+  uploadQueueService.updateTaskProgress(task.id, 10);
+
+  const targetFileId = existingMetadata?.fileId || fileId;
+  const isCurrentlyPublic = existingMetadata?.isPublic || false;
+  const existingIsNSFW = existingMetadata?.isNSFW === true;
+  const makePublic = shareVisibility === 'public';
+
+  // Use provided permissions or calculate from indexerToggles
+  let nextPermissions: any = providedNextPermissions || null;
+  if (!nextPermissions && thirdPartyIndexers && thirdPartyIndexers.length > 0) {
+    const blockedIds = Object.entries(indexerToggles || {})
+      .filter(([, enabled]) => !enabled)
+      .map(([id]) => id);
+    const enabledIds = Object.entries(indexerToggles || {})
+      .filter(([, enabled]) => enabled)
+      .map(([id]) => id);
+    
+    if (blockedIds.length === 0) {
+      nextPermissions = {
+        mode: 'all',
+        blocked: [],
+        allowed: enabledIds,
+        updatedAt: new Date().toISOString()
+      };
+    } else if (blockedIds.length === thirdPartyIndexers.length) {
+      nextPermissions = {
+        mode: 'none',
+        blocked: [...blockedIds],
+        allowed: [],
+        updatedAt: new Date().toISOString()
+      };
+    } else {
+      nextPermissions = {
+        mode: 'all',
+        blocked: [...blockedIds],
+        allowed: enabledIds,
+        updatedAt: new Date().toISOString()
+      };
+    }
+  }
+
+  // Check if file needs token generation
+  const existingPublicToken = existingMetadata?.publicToken;
+  const hasValidToken = existingPublicToken && 
+                        typeof existingPublicToken === 'string' && 
+                        existingPublicToken.trim().length > 0;
+  const isPublicAfterUpdate = makePublic || isCurrentlyPublic;
+  const needsTokenGeneration = isPublicAfterUpdate && !hasValidToken;
+
+  uploadQueueService.updateTaskProgress(task.id, 20);
+
+  // Generate share token if needed
+  let publicToken: string | undefined = undefined;
+  if (needsTokenGeneration) {
+    try {
+      // Download file for token generation
+      const downloadResponse = await fetch(
+        `${apiEndpoint}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(accountId)}&download=true`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        }
+      );
+
+      uploadQueueService.updateTaskProgress(task.id, 30);
+
+      if (downloadResponse.ok) {
+        const fileBlob = await downloadResponse.blob();
+        const fileText = await fileBlob.text();
+        
+        if (!fileText || fileText.trim().length === 0) {
+          throw new Error('Downloaded file is empty');
+        }
+        
+        const encryptedPackage: EncryptedFilePackage = JSON.parse(fileText);
+        
+        if (!encryptedPackage.encrypted || !encryptedPackage.iv || !encryptedPackage.salt) {
+          throw new Error('Invalid encrypted file package structure');
+        }
+        
+        // Generate share token
+        if (session?.publicKey) {
+          const encryptionService = getEncryptionService();
+          const shareToken = await encryptionService.generateShareToken(
+            encryptedPackage,
+            {
+              id: session.did,
+              publicKey: session.publicKey
+            }
+          );
+          publicToken = JSON.stringify(shareToken);
+        }
+      }
+    } catch (tokenError: any) {
+      console.error('[BackgroundTaskProcessor] Failed to generate share token:', tokenError);
+      // Continue without token - file can be made public without token (will need regeneration later)
+    }
+  }
+
+  uploadQueueService.updateTaskProgress(task.id, 50);
+
+  // Update metadata
+  const accountIdParam = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
+  const updateBody: any = {};
+  
+  if (makePublic) {
+    updateBody.isPublic = true;
+  } else if (makePublic !== isCurrentlyPublic) {
+    updateBody.isPublic = false;
+  }
+  
+  if (makePublic || isCurrentlyPublic) {
+    updateBody.isNSFW = shareNSFW;
+  } else if (shareNSFW !== existingIsNSFW) {
+    updateBody.isNSFW = shareNSFW;
+  }
+  
+  if (publicToken) {
+    updateBody.publicToken = publicToken;
+  } else if (hasValidToken && existingPublicToken) {
+    updateBody.publicToken = existingPublicToken;
+  }
+  
+  const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${targetFileId}${accountIdParam}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(updateBody),
+  });
+  
+  if (!metadataResponse.ok) {
+    const errorText = await metadataResponse.text().catch(() => 'Unknown error');
+    throw new Error(`Failed to update file visibility: ${errorText}`);
+  }
+
+  uploadQueueService.updateTaskProgress(task.id, 70);
+
+  // Wait for API propagation if making public
+  if (makePublic && accountId) {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+
+  uploadQueueService.updateTaskProgress(task.id, 80);
+
+  // Update index visibility if public and permissions changed
+  if (makePublic && nextPermissions) {
+    const response = await fetch(
+      `${apiEndpoint}/api/third-party/files/${encodeURIComponent(targetFileId)}/index-visibility`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          indexingPermissions: nextPermissions
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => response.statusText);
+      throw new Error(errorText || `Failed to update index visibility (${response.status})`);
+    }
+  }
+
+  uploadQueueService.updateTaskProgress(task.id, 90);
+  
+  // Set result for callbacks
+  uploadQueueService.setTaskResult(task.id, {
+    fileId: targetFileId,
+    accountId,
+    isPublic: makePublic,
+    isNSFW: shareNSFW,
+    indexingPermissions: nextPermissions
+  });
+
+  uploadQueueService.updateTaskProgress(task.id, 100);
+}
+
+/**
+ * Process metadata update
+ */
+async function processMetadataUpdate(
+  task: UploadTask,
+  session: any,
+  publicKey: string | undefined,
+  accessToken: string
+): Promise<void> {
+  const { fileId, accountId, metadata: formData } = task.metadata || {};
+  
+  if (!fileId || !formData) {
+    throw new Error('Missing required fields: fileId, metadata');
+  }
+
+  // accountId is optional - some contexts (like EditFileModal) don't use accounts
+
+  uploadQueueService.updateTaskProgress(task.id, 10);
+
+  // Parse tags and genre
+  const tags = (formData.tags || '').split(',').map(t => t.trim()).filter(t => t.length > 0);
+  const genre = (formData.genre || '').split(',').map(g => g.trim()).filter(g => g.length > 0);
+
+  uploadQueueService.updateTaskProgress(task.id, 15);
+
+  // Extract subjects
+  const { extractSubjects } = await import('../utils/subjectExtractor');
+  const subjects = extractSubjects(
+    formData.description || '',
+    tags,
+    tags // keywords same as tags
+  );
+
+  // Build location object if provided
+  let locationCreated = undefined;
+  if (formData.locationName || formData.locationAddress) {
+    locationCreated = {
+      '@type': 'Place',
+      ...(formData.locationName && { name: formData.locationName }),
+      ...(formData.locationAddress && {
+        address: {
+          '@type': 'PostalAddress',
+          addressLocality: formData.locationAddress.split(',')[0]?.trim() || '',
+          addressRegion: formData.locationAddress.split(',')[1]?.trim() || '',
+          addressCountry: formData.locationAddress.split(',')[2]?.trim() || ''
+        }
+      })
+    };
+  }
+
+  uploadQueueService.updateTaskProgress(task.id, 20);
+
+  // Validate categories
+  const categories = formData.categories || [];
+  if (categories.length === 0) {
+    throw new Error('At least one category is required');
+  }
+
+  // Build update body - include all fields from formData
+  const updateBody: any = {
+    name: formData.name,
+    description: formData.description,
+    keywords: tags,
+    tags: tags,
+  };
+
+  // Add optional fields if present
+  if (genre.length > 0) updateBody.genre = genre;
+  if (categories.length > 0) {
+    updateBody.feedCategories = categories;
+    updateBody.category = categories[0];
+  }
+  if (locationCreated) updateBody.locationCreated = locationCreated;
+  if (formData.license) updateBody.license = formData.license;
+  if (subjects.length > 0) updateBody.subjects = subjects;
+
+  // Handle EditFileModal-specific fields
+  if ('isPublic' in formData) updateBody.isPublic = formData.isPublic;
+  if ('visibility' in formData) updateBody.visibility = formData.visibility;
+  if ('isTopPost' in formData) updateBody.isTopPost = formData.isTopPost;
+  if ('title' in formData) updateBody.title = formData.title;
+
+  // Update via API endpoint
+  const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(updateBody),
+  });
+
+  uploadQueueService.updateTaskProgress(task.id, 80);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to update metadata: ${errorText}`);
+  }
+
+  const updatedMetadata = await response.json();
+  
+  uploadQueueService.setTaskResult(task.id, {
+    fileId,
+    accountId,
+    metadata: updatedMetadata.metadata || updatedMetadata
+  });
+
+  uploadQueueService.updateTaskProgress(task.id, 100);
+}
+
+/**
+ * Process collection creation
+ */
+async function processCollectionCreation(
+  task: UploadTask,
+  session: any,
+  publicKey: string,
+  accessToken: string
+): Promise<void> {
+  const { collectionData, accountId, metadata: formData } = task.metadata || {};
+  
+  if (!collectionData || !accountId) {
+    throw new Error('Missing required fields: collectionData, accountId');
+  }
+
+  uploadQueueService.updateTaskProgress(task.id, 10);
+
+  // Parse tags and genre
+  const tags = (formData?.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+  const genre = (formData?.genre || '').split(',').map(g => g.trim()).filter(Boolean);
+
+  uploadQueueService.updateTaskProgress(task.id, 15);
+
+  // Build location object if provided
+  let locationCreated = undefined;
+  if (formData?.locationName || formData?.locationAddress) {
+    locationCreated = {
+      '@type': 'Place',
+      ...(formData.locationName && { name: formData.locationName }),
+      ...(formData.locationAddress && {
+        address: {
+          '@type': 'PostalAddress',
+          addressLocality: formData.locationAddress.split(',')[0]?.trim() || '',
+          addressRegion: formData.locationAddress.split(',')[1]?.trim() || '',
+          addressCountry: formData.locationAddress.split(',')[2]?.trim() || ''
+        }
+      })
+    };
+  }
+
+  // Extract subjects
+  const { extractSubjects } = await import('../utils/subjectExtractor');
+  const subjects = extractSubjects(
+    formData?.description || '',
+    tags,
+    tags
+  );
+
+  uploadQueueService.updateTaskProgress(task.id, 30);
+
+  // Create collection using service
+  const result = await createCollection(
+    {
+      collectionFileIds: collectionData.collectionFileIds,
+      title: formData?.name || collectionData.title || `Collection of ${collectionData.collectionFileIds.length} files`
+    },
+    accountId,
+    {
+      name: formData?.name,
+      title: formData?.name,
+      description: formData?.description,
+      keywords: tags,
+      tags: tags,
+      genre: genre.length > 0 ? genre : undefined,
+      feedCategories: formData?.categories && formData.categories.length > 0 ? formData.categories : undefined,
+      category: formData?.categories && formData.categories.length > 0 ? formData.categories[0] : undefined,
+      locationCreated: locationCreated,
+      license: formData?.license || undefined,
+      subjects: subjects.length > 0 ? subjects : undefined,
+      isPublic: true, // Collections default to public
+      isNSFW: false
+    }
+  );
+
+  uploadQueueService.updateTaskProgress(task.id, 90);
+
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to create collection');
+  }
+
+  uploadQueueService.setTaskResult(task.id, {
+    fileId: result.fileId,
+    accountId,
+    success: true
+  });
+
+  uploadQueueService.updateTaskProgress(task.id, 100);
+}
+
+/**
+ * Process file deletion
+ */
+async function processFileDeletion(
+  task: UploadTask,
+  session: any,
+  publicKey: string | undefined,
+  accessToken: string
+): Promise<void> {
+  const { fileId, accountId, isCollection, collectionFileIds, isThoughtCollection } = task.metadata || {};
+  
+  if (!fileId || !accountId) {
+    throw new Error('Missing required fields: fileId, accountId');
+  }
+
+  uploadQueueService.updateTaskProgress(task.id, 10);
+
+  // Delete associated files if collection
+  if (isCollection && collectionFileIds && Array.isArray(collectionFileIds) && collectionFileIds.length > 0) {
+    let thoughtCollectionFileId: string | null = null;
+    
+    // For thought collections, get main file ID from first thumbnail
+    if (isThoughtCollection && collectionFileIds.length > 0) {
+      try {
+        const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${collectionFileIds[0]}`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+        if (metadataResponse.ok) {
+          const metadata = await metadataResponse.json();
+          thoughtCollectionFileId = metadata.metadata?.mainFileId || null;
+        }
+      } catch (err) {
+        console.warn('[BackgroundTaskProcessor] Failed to load metadata for first thumbnail:', err);
+      }
+    }
+    
+    uploadQueueService.updateTaskProgress(task.id, 20);
+    
+    // Delete all thumbnail files
+    const totalFiles = collectionFileIds.length + (thoughtCollectionFileId ? 1 : 0);
+    let deletedCount = 0;
+    
+    for (const thumbnailId of collectionFileIds) {
+      try {
+        const deleteResponse = await fetch(`${apiEndpoint}/api/drive/files/${thumbnailId}?accountId=${accountId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+        
+        if (deleteResponse.ok) {
+          deletedCount++;
+          const progress = 20 + (deletedCount / totalFiles) * 60;
+          uploadQueueService.updateTaskProgress(task.id, Math.min(progress, 80));
+        }
+      } catch (err: any) {
+        console.warn(`[BackgroundTaskProcessor] Error deleting thumbnail ${thumbnailId}:`, err);
+      }
+    }
+    
+    // Delete main thought-collection file if exists
+    if (isThoughtCollection && thoughtCollectionFileId) {
+      try {
+        const deleteResponse = await fetch(`${apiEndpoint}/api/drive/files/${thoughtCollectionFileId}?accountId=${accountId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+        
+        if (deleteResponse.ok) {
+          deletedCount++;
+        }
+      } catch (err: any) {
+        console.warn(`[BackgroundTaskProcessor] Error deleting thought-collection file ${thoughtCollectionFileId}:`, err);
+      }
+    }
+    
+    uploadQueueService.updateTaskProgress(task.id, 80);
+  } else {
+    uploadQueueService.updateTaskProgress(task.id, 20);
+  }
+
+  // Delete main file
+  const response = await fetch(`${apiEndpoint}/api/drive/files/${fileId}?accountId=${accountId}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`
+    }
+  });
+
+  uploadQueueService.updateTaskProgress(task.id, 95);
+
+  if (!response.ok) {
+    throw new Error('Failed to delete file');
+  }
+
+  uploadQueueService.setTaskResult(task.id, {
+    fileId,
+    accountId,
+    deleted: true
+  });
+
+  uploadQueueService.updateTaskProgress(task.id, 100);
+}
+
+/**
+ * Process bulk deletion
+ */
+async function processBulkDeletion(
+  task: UploadTask,
+  session: any,
+  publicKey: string | undefined,
+  accessToken: string
+): Promise<void> {
+  const { fileIds, accountId } = task.metadata || {};
+  
+  if (!fileIds || !Array.isArray(fileIds) || fileIds.length === 0 || !accountId) {
+    throw new Error('Missing required fields: fileIds (array), accountId');
+  }
+
+  uploadQueueService.updateTaskProgress(task.id, 10);
+
+  let deletedCount = 0;
+  const totalFiles = fileIds.length;
+
+  for (let i = 0; i < fileIds.length; i++) {
+    const fileId = fileIds[i];
+    try {
+      const response = await fetch(`${apiEndpoint}/api/drive/files/${fileId}?accountId=${accountId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+
+      if (response.ok) {
+        deletedCount++;
+      }
+    } catch (err: any) {
+      console.warn(`[BackgroundTaskProcessor] Error deleting file ${fileId}:`, err);
+    }
+
+    const progress = 10 + ((i + 1) / totalFiles) * 90;
+    uploadQueueService.updateTaskProgress(task.id, Math.min(progress, 100));
+  }
+
+  uploadQueueService.setTaskResult(task.id, {
+    deletedCount,
+    totalFiles,
+    accountId
+  });
+
+  uploadQueueService.updateTaskProgress(task.id, 100);
+}
+
+/**
+ * Process add to feed
+ */
+async function processAddToFeed(
+  task: UploadTask,
+  session: any,
+  publicKey: string | undefined,
+  accessToken: string
+): Promise<void> {
+  const { fileId, feedsToAdd, feedsToRemove, addedBy } = task.metadata || {};
+  
+  if (!fileId || !addedBy) {
+    throw new Error('Missing required fields: fileId, addedBy');
+  }
+
+  uploadQueueService.updateTaskProgress(task.id, 10);
+
+  const feedsToAddArray = feedsToAdd || [];
+  const feedsToRemoveArray = feedsToRemove || [];
+  const totalOperations = feedsToAddArray.length + feedsToRemoveArray.length;
+
+  if (totalOperations === 0) {
+    uploadQueueService.updateTaskProgress(task.id, 100);
+    uploadQueueService.setTaskResult(task.id, { success: true, added: 0, removed: 0 });
+    return;
+  }
+
+  let addedCount = 0;
+  let removedCount = 0;
+  const errors: string[] = [];
+
+  // Add to feeds
+  for (let i = 0; i < feedsToAddArray.length; i++) {
+    const feedId = feedsToAddArray[i];
+    try {
+      await FeedService.addPostToFeed(feedId, fileId, addedBy);
+      addedCount++;
+    } catch (err: any) {
+      const errorMsg = `Failed to add to feed ${feedId}: ${err.message}`;
+      console.error(`[BackgroundTaskProcessor] ${errorMsg}`, err);
+      errors.push(errorMsg);
+    }
+    
+    const progress = 10 + ((i + 1) / totalOperations) * 40;
+    uploadQueueService.updateTaskProgress(task.id, Math.min(progress, 50));
+  }
+
+  // Remove from feeds
+  for (let i = 0; i < feedsToRemoveArray.length; i++) {
+    const feedId = feedsToRemoveArray[i];
+    try {
+      await FeedService.removePostFromFeed(feedId, fileId, addedBy);
+      removedCount++;
+    } catch (err: any) {
+      const errorMsg = `Failed to remove from feed ${feedId}: ${err.message}`;
+      console.error(`[BackgroundTaskProcessor] ${errorMsg}`, err);
+      errors.push(errorMsg);
+    }
+    
+    const progress = 50 + ((i + 1) / feedsToRemoveArray.length) * 40;
+    uploadQueueService.updateTaskProgress(task.id, Math.min(progress, 90));
+  }
+
+  uploadQueueService.updateTaskProgress(task.id, 90);
+
+  // Set result
+  uploadQueueService.setTaskResult(task.id, {
+    success: errors.length === 0,
+    added: addedCount,
+    removed: removedCount,
+    errors: errors.length > 0 ? errors : undefined
+  });
+
+  uploadQueueService.updateTaskProgress(task.id, 100);
+
+  // Throw if all operations failed
+  if (addedCount === 0 && removedCount === 0 && totalOperations > 0) {
+    throw new Error(`All feed operations failed: ${errors.join('; ')}`);
+  }
+}
+
+/**
+ * Process save to feed
+ */
+async function processSaveToFeed(
+  task: UploadTask,
+  session: any,
+  publicKey: string | undefined,
+  accessToken: string
+): Promise<void> {
+  const { fileId, userDid, isSaved } = task.metadata || {};
+  
+  if (!fileId || !userDid) {
+    throw new Error('Missing required fields: fileId, userDid');
+  }
+
+  uploadQueueService.updateTaskProgress(task.id, 10);
+
+  const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+
+  // Save or remove from saved feed
+  if (isSaved) {
+    // Remove from saved feed
+    await removeFromSavedFeed(userDid, fileId);
+    uploadQueueService.updateTaskProgress(task.id, 60);
+  } else {
+    // Save to feed
+    await saveToFeed(userDid, fileId);
+    uploadQueueService.updateTaskProgress(task.id, 60);
+  }
+
+  // Record engagement (save/unsave)
+  try {
+    await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/save`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({ userDid })
+    });
+  } catch (engagementErr) {
+    console.warn('[BackgroundTaskProcessor] Failed to record save engagement:', engagementErr);
+    // Don't fail the operation if engagement recording fails
+  }
+
+  uploadQueueService.updateTaskProgress(task.id, 90);
+
+  uploadQueueService.setTaskResult(task.id, {
+    fileId,
+    userDid,
+    isSaved: !isSaved, // Toggle state
+    success: true
+  });
+
+  uploadQueueService.updateTaskProgress(task.id, 100);
+}
+
+// Register background task processor for taskReady events
+uploadQueueService.on('taskReady', (task: UploadTask) => {
+  // Only handle background task types (not upload types which are handled by uploadProcessor)
+  if (task.type === 'updateShareSettings' || task.type === 'updateMetadata' || 
+      task.type === 'createCollection' || task.type === 'deleteFile' || task.type === 'bulkDelete' ||
+      task.type === 'addToFeed' || task.type === 'saveToFeed') {
+    processBackgroundTask(task).catch(error => {
+      console.error('[BackgroundTaskProcessor] Error processing task:', error);
+    });
+  }
+});

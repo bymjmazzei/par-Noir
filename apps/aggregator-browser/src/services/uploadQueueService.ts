@@ -5,7 +5,7 @@
 
 import { EventEmitter } from 'events';
 
-export type UploadTaskType = 'file' | 'textPost' | 'multiPage' | 'pdf';
+export type UploadTaskType = 'file' | 'textPost' | 'multiPage' | 'pdf' | 'updateShareSettings' | 'updateMetadata' | 'createCollection' | 'deleteFile' | 'bulkDelete' | 'addToFeed' | 'saveToFeed';
 
 export type UploadTaskStatus = 'pending' | 'processing' | 'uploading' | 'completed' | 'failed' | 'cancelled';
 

@@ -10,6 +10,7 @@ import { useToast } from '../hooks/useToast';
 import { Feed } from '../types/aggregator';
 import { FeedService } from '../services/feedService';
 import { IndexedFile } from '../types/aggregator';
+import { uploadQueueService } from '../services/uploadQueueService';
 
 interface AddToFeedModalProps {
   file: IndexedFile;
@@ -73,7 +74,7 @@ export function AddToFeedModal({ file, feeds, onClose, onAdded }: AddToFeedModal
     });
   };
 
-  const handleAddToFeeds = async () => {
+  const handleAddToFeeds = () => {
     if (!userState.isUnlocked || !userState.pnIdentifier) {
       showError('Connect your pN to add files to feeds');
       return;
@@ -84,64 +85,62 @@ export function AddToFeedModal({ file, feeds, onClose, onAdded }: AddToFeedModal
       return;
     }
 
-    setAdding(true);
+    const fileId = file.metadata.fileId;
+    const addedBy = userState.pnIdentifier;
+    
+    // Get feeds to add and remove
+    const feedsToAdd = Array.from(selectedFeeds).filter(
+      feedId => !currentFeedMembership.has(feedId)
+    );
+    const feedsToRemove = Array.from(currentFeedMembership).filter(
+      feedId => !selectedFeeds.has(feedId) && userFeeds.some(f => f.feedId === feedId)
+    );
 
-    try {
-      const fileId = file.metadata.fileId;
-      const addedBy = userState.pnIdentifier;
-      
-      // Get feeds to add and remove
-      const feedsToAdd = Array.from(selectedFeeds).filter(
-        feedId => !currentFeedMembership.has(feedId)
-      );
-      const feedsToRemove = Array.from(currentFeedMembership).filter(
-        feedId => !selectedFeeds.has(feedId) && userFeeds.some(f => f.feedId === feedId)
-      );
-
-      // Add file to new feeds
-      for (const feedId of feedsToAdd) {
-        try {
-          await FeedService.addPostToFeed(feedId, fileId, addedBy);
-        } catch (err: any) {
-          console.error(`Failed to add to feed ${feedId}:`, err);
-          showError(`Failed to add to feed: ${err.message}`);
-        }
-      }
-
-      // Remove file from feeds that were deselected
-      for (const feedId of feedsToRemove) {
-        try {
-          await FeedService.removePostFromFeed(feedId, fileId, addedBy);
-        } catch (err: any) {
-          console.error(`Failed to remove from feed ${feedId}:`, err);
-          showError(`Failed to remove from feed: ${err.message}`);
-        }
-      }
-
-      if (feedsToAdd.length > 0 || feedsToRemove.length > 0) {
-        success(
-          feedsToAdd.length > 0 && feedsToRemove.length > 0
-            ? `Updated ${feedsToAdd.length + feedsToRemove.length} feeds`
-            : feedsToAdd.length > 0
-            ? `Added to ${feedsToAdd.length} feed${feedsToAdd.length > 1 ? 's' : ''}`
-            : `Removed from ${feedsToRemove.length} feed${feedsToRemove.length > 1 ? 's' : ''}`
-        );
-        
-        // Notify parent of changes
-        if (feedsToAdd.length > 0 && onAdded) {
-          onAdded(feedsToAdd[0]); // Call with first added feed
-        }
-        
-        onClose();
-      } else {
-        // No changes made
-        onClose();
-      }
-    } catch (err: any) {
-      showError(err.message || 'Failed to update feeds');
-    } finally {
-      setAdding(false);
+    if (feedsToAdd.length === 0 && feedsToRemove.length === 0) {
+      // No changes made
+      onClose();
+      return;
     }
+
+    // Optimistically update UI - close modal immediately
+    if (feedsToAdd.length > 0 && onAdded) {
+      onAdded(feedsToAdd[0]); // Call with first added feed
+    }
+    onClose();
+
+    // Queue background task
+    uploadQueueService.addTask({
+      type: 'addToFeed',
+      accountId: '', // Not used for feed operations
+      metadata: {
+        fileId,
+        feedsToAdd,
+        feedsToRemove,
+        addedBy
+      },
+      onComplete: (result) => {
+        console.log('✅ [AddToFeed] Feeds updated:', result);
+        const added = result?.added || 0;
+        const removed = result?.removed || 0;
+        if (added > 0 || removed > 0) {
+          success(
+            added > 0 && removed > 0
+              ? `Updated ${added + removed} feeds`
+              : added > 0
+              ? `Added to ${added} feed${added > 1 ? 's' : ''}`
+              : `Removed from ${removed} feed${removed > 1 ? 's' : ''}`
+          );
+        }
+      },
+      onError: (error) => {
+        console.error('❌ [AddToFeed] Failed to update feeds:', error);
+        if (error.message) {
+          showError(error.message);
+        } else {
+          showError('Failed to update feeds. Please try again.');
+        }
+      }
+    });
   };
 
   if (!userState.isUnlocked || !userState.pnIdentifier) {
