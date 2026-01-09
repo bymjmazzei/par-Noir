@@ -3752,10 +3752,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       },
       onComplete: (result) => {
         console.log('✅ [Upload] File upload completed:', result);
-        // Refresh file list
-        if (onRefresh) {
-          onRefresh();
-        }
+        // File list will be refreshed automatically by the upload queue listener
       },
       onError: (error) => {
         console.error('❌ [Upload] File upload failed:', error);
