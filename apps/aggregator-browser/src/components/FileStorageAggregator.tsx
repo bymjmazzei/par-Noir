@@ -47,6 +47,14 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
     
     const loadThumbnail = async () => {
       try {
+        // Skip loading thumbnail for files that are still uploading
+        // Files with "uploading_" prefix are placeholders that don't exist on the server yet
+        if (fileId.startsWith('uploading_')) {
+          console.log('[ThumbnailImage] Skipping thumbnail load for uploading file:', fileId);
+          setError(false); // Don't show error, just skip loading
+          return;
+        }
+
         const accessToken = await PNOAuthService.getValidAccessToken();
         if (!accessToken) {
           console.warn('[ThumbnailImage] No access token available');
@@ -791,6 +799,14 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
   useEffect(() => {
     const loadFile = async () => {
       try {
+        // Skip loading files that are still uploading
+        if (file.id.startsWith('uploading_')) {
+          console.log('[FileViewer] Skipping load for uploading file:', file.id);
+          setLoading(false);
+          setError(false);
+          return;
+        }
+
         setLoading(true);
         const accessToken = await PNOAuthService.getValidAccessToken();
         if (!accessToken) {
@@ -2207,6 +2223,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   // Handle file download
   const handleDownload = async (file: DriveFile, accountId: string) => {
     if (!authenticatedUser?.id || !accountId) return;
+
+    // Skip download for files that are still uploading
+    if (file.id.startsWith('uploading_') || (file as any).isUploading) {
+      console.log('[FileStorageAggregator] Cannot download file that is still uploading');
+      return;
+    }
 
     try {
       const accessToken = await PNOAuthService.getValidAccessToken();
