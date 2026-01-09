@@ -172,9 +172,10 @@ async function processFileUpload(
           },
         };
 
+        let token: any = undefined;
         try {
           const encryptionService = getEncryptionService();
-          thumbnailShareToken = await encryptionService.generateShareToken(thumbnailPackage, {
+          token = await encryptionService.generateShareToken(thumbnailPackage, {
             id: session.did,
             publicKey: publicKey
           });
@@ -183,7 +184,9 @@ async function processFileUpload(
         }
 
         const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
-        return uploadFile(thumbnailBase64, `thumb_${file.name}.encrypted`, accessToken, task.accountId);
+        const uploadResult = await uploadFile(thumbnailBase64, `thumb_${file.name}.encrypted`, accessToken, task.accountId);
+        // Return both the upload result and the token so we can use both
+        return { uploadResult, thumbnailShareToken: token };
       })()
     );
   }
@@ -191,7 +194,9 @@ async function processFileUpload(
   const uploadResults = await Promise.all(uploadPromises);
   const fileId = uploadResults[0]?.id;
   if (uploadResults.length > 1) {
-    thumbnailFileId = uploadResults[1]?.id;
+    const thumbnailResult = uploadResults[1] as { uploadResult?: any; thumbnailShareToken?: any };
+    thumbnailFileId = thumbnailResult.uploadResult?.id;
+    thumbnailShareToken = thumbnailResult.thumbnailShareToken;
   }
 
   uploadQueueService.updateTaskProgress(task.id, 90);
@@ -209,6 +214,13 @@ async function processFileUpload(
 
   // Only create thumbnail metadata if we have a thumbnail
   if (thumbnailFileId) {
+    // CRITICAL: Always store publicToken if thumbnailShareToken exists (even for private files)
+    // This ensures the token is available when the file is later made public
+    const publicTokenString = thumbnailShareToken ? JSON.stringify(thumbnailShareToken) : undefined;
+    if (!publicTokenString) {
+      console.warn('[UploadProcessor] Warning: Thumbnail metadata created without publicToken - thumbnail will not be decryptable in public feed');
+    }
+    
     await createMetadata(thumbnailFileId, {
       name: `thumb_${file.name}`,
       description: task.metadata?.description || '',
@@ -216,7 +228,7 @@ async function processFileUpload(
       tags: task.metadata?.tags || [],
       fileType: 'image', // Thumbnails are always images
       isPublic: task.metadata?.isPublic || false,
-      publicToken: thumbnailShareToken ? JSON.stringify(thumbnailShareToken) : undefined,
+      publicToken: publicTokenString,
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,
       mainFileId: fileId, // Reference to main file for downloads
