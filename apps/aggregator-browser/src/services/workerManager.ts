@@ -42,9 +42,9 @@ class WorkerManager {
   private async getEncryptionWorker(): Promise<Worker> {
     if (!this.encryptionWorker) {
       try {
-        // Use dynamic import for worker
-        const workerUrl = new URL('../workers/upload.worker.ts', import.meta.url);
-        this.encryptionWorker = new Worker(workerUrl, { type: 'module' });
+        // Use Vite's worker import syntax - this ensures proper transformation to .js
+        const WorkerConstructor = (await import('../workers/upload.worker.ts?worker')).default;
+        this.encryptionWorker = new WorkerConstructor();
         this.setupWorkerHandlers(this.encryptionWorker);
       } catch (error) {
         console.error('Failed to create encryption worker:', error);
@@ -60,8 +60,9 @@ class WorkerManager {
   private async getThumbnailWorker(): Promise<Worker> {
     if (!this.thumbnailWorker) {
       try {
-        const workerUrl = new URL('../workers/thumbnail.worker.ts', import.meta.url);
-        this.thumbnailWorker = new Worker(workerUrl, { type: 'module' });
+        // Use Vite's worker import syntax - this ensures proper transformation to .js
+        const WorkerConstructor = (await import('../workers/thumbnail.worker.ts?worker')).default;
+        this.thumbnailWorker = new WorkerConstructor();
         this.setupWorkerHandlers(this.thumbnailWorker);
       } catch (error) {
         console.error('Failed to create thumbnail worker:', error);

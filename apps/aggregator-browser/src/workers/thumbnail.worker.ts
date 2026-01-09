@@ -183,8 +183,8 @@ async function renderTextPost(textPost: TextPostData, scale: number): Promise<Ar
 
 async function createImageThumbnail(imageData: ArrayBuffer, maxWidth: number, maxHeight: number): Promise<ArrayBuffer> {
   // Create ImageBitmap from ArrayBuffer
-  const blob = new Blob([imageData]);
-  const imageBitmap = await createImageBitmap(blob);
+  const imageBlob = new Blob([imageData]);
+  const imageBitmap = await createImageBitmap(imageBlob);
   
   let width = imageBitmap.width;
   let height = imageBitmap.height;
@@ -214,8 +214,8 @@ async function createImageThumbnail(imageData: ArrayBuffer, maxWidth: number, ma
   imageBitmap.close();
   
   // Convert to JPEG blob
-  const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
-  return await blob.arrayBuffer();
+  const jpegBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
+  return await jpegBlob.arrayBuffer();
 }
 
 async function createVideoThumbnail(videoData: ArrayBuffer, maxWidth: number, maxHeight: number): Promise<ArrayBuffer> {
