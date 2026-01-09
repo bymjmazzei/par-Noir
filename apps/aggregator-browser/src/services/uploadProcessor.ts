@@ -219,20 +219,32 @@ async function processFileUpload(
     const publicTokenString = thumbnailShareToken ? JSON.stringify(thumbnailShareToken) : undefined;
     if (!publicTokenString) {
       console.warn('[UploadProcessor] Warning: Thumbnail metadata created without publicToken - thumbnail will not be decryptable in public feed');
+    } else {
+      console.log('[UploadProcessor] Creating thumbnail metadata with publicToken:', {
+        thumbnailFileId,
+        hasPublicToken: !!publicTokenString,
+        isPublic: task.metadata?.isPublic || false
+      });
     }
     
-    await createMetadata(thumbnailFileId, {
-      name: `thumb_${file.name}`,
-      description: task.metadata?.description || '',
-      keywords: task.metadata?.keywords || [],
-      tags: task.metadata?.tags || [],
-      fileType: 'image', // Thumbnails are always images
-      isPublic: task.metadata?.isPublic || false,
-      publicToken: publicTokenString,
-      uploadDate: new Date().toISOString(),
-      isNSFW: task.metadata?.isNSFW || false,
-      mainFileId: fileId, // Reference to main file for downloads
-    }, accessToken);
+    try {
+      await createMetadata(thumbnailFileId, {
+        name: `thumb_${file.name}`,
+        description: task.metadata?.description || '',
+        keywords: task.metadata?.keywords || [],
+        tags: task.metadata?.tags || [],
+        fileType: 'image', // Thumbnails are always images
+        isPublic: task.metadata?.isPublic || false,
+        publicToken: publicTokenString,
+        uploadDate: new Date().toISOString(),
+        isNSFW: task.metadata?.isNSFW || false,
+        mainFileId: fileId, // Reference to main file for downloads
+      }, accessToken);
+      console.log('[UploadProcessor] Thumbnail metadata created successfully');
+    } catch (metadataError: any) {
+      console.error('[UploadProcessor] Failed to create thumbnail metadata:', metadataError);
+      throw new Error(`Failed to create thumbnail metadata: ${metadataError.message}`);
+    }
   } else {
     // Fallback: if no thumbnail, create metadata for main file (shouldn't happen for images/videos)
     await createMetadata(fileId, {
