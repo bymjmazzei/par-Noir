@@ -62,6 +62,11 @@ export class UploadQueueService extends EventEmitter {
 
   private constructor() {
     super();
+    // Ensure .off() method exists (fallback for polyfills that might not have it)
+    // Node.js EventEmitter.off() was added in v10.0.0, but browser polyfills may not include it
+    if (typeof this.off !== 'function') {
+      this.off = this.removeListener.bind(this);
+    }
   }
 
   static getInstance(): UploadQueueService {

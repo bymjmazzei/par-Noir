@@ -43,9 +43,19 @@ export const UploadQueueOverlay: React.FC<UploadQueueOverlayProps> = ({ isOpen, 
     uploadQueueService.on('taskProgress', handleTaskUpdate);
 
     return () => {
-      uploadQueueService.off('queueChanged', handleQueueChange);
-      uploadQueueService.off('taskUpdated', handleTaskUpdate);
-      uploadQueueService.off('taskProgress', handleTaskUpdate);
+      try {
+        if (typeof uploadQueueService.off === 'function') {
+          uploadQueueService.off('queueChanged', handleQueueChange);
+          uploadQueueService.off('taskUpdated', handleTaskUpdate);
+          uploadQueueService.off('taskProgress', handleTaskUpdate);
+        } else if (typeof uploadQueueService.removeListener === 'function') {
+          uploadQueueService.removeListener('queueChanged', handleQueueChange);
+          uploadQueueService.removeListener('taskUpdated', handleTaskUpdate);
+          uploadQueueService.removeListener('taskProgress', handleTaskUpdate);
+        }
+      } catch (error) {
+        console.warn('[UploadQueueOverlay] Error removing upload queue listeners:', error);
+      }
     };
   }, [isOpen]);
 

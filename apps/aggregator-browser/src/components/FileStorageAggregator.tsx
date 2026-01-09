@@ -1421,11 +1421,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     uploadQueueService.on('taskUpdated', handleTaskUpdated);
     uploadQueueService.on('taskProgress', handleTaskProgress);
 
-    // Cleanup
+    // Cleanup - defensive check for .off() method availability
     return () => {
-      uploadQueueService.off('taskAdded', handleTaskAdded);
-      uploadQueueService.off('taskUpdated', handleTaskUpdated);
-      uploadQueueService.off('taskProgress', handleTaskProgress);
+      try {
+        if (typeof uploadQueueService.off === 'function') {
+          uploadQueueService.off('taskAdded', handleTaskAdded);
+          uploadQueueService.off('taskUpdated', handleTaskUpdated);
+          uploadQueueService.off('taskProgress', handleTaskProgress);
+        } else if (typeof uploadQueueService.removeListener === 'function') {
+          uploadQueueService.removeListener('taskAdded', handleTaskAdded);
+          uploadQueueService.removeListener('taskUpdated', handleTaskUpdated);
+          uploadQueueService.removeListener('taskProgress', handleTaskProgress);
+        }
+      } catch (error) {
+        console.warn('[FileStorageAggregator] Error removing upload queue listeners:', error);
+      }
     };
   }, []); // Empty deps - only subscribe once
 

@@ -28,7 +28,15 @@ export const UploadStatusCircle: React.FC<UploadStatusCircleProps> = ({ onClick 
     uploadQueueService.on('queueChanged', handleQueueChange);
 
     return () => {
-      uploadQueueService.off('queueChanged', handleQueueChange);
+      try {
+        if (typeof uploadQueueService.off === 'function') {
+          uploadQueueService.off('queueChanged', handleQueueChange);
+        } else if (typeof uploadQueueService.removeListener === 'function') {
+          uploadQueueService.removeListener('queueChanged', handleQueueChange);
+        }
+      } catch (error) {
+        console.warn('[UploadStatusCircle] Error removing upload queue listeners:', error);
+      }
     };
   }, []);
 

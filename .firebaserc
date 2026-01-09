@@ -3,14 +3,11 @@
   "targets": {
     "par-noir-dashboard": {
       "hosting": {
-        "browse-parnoir": [
-          "browse-parnoir"
-        ],
         "par-noir-dashboard": [
           "par-noir-dashboard"
         ],
         "browse": [
-          "apps/aggregator-browser/dist"
+          "browse-parnoir"
         ]
       }
     }
