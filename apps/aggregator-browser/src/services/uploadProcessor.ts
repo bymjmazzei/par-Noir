@@ -197,24 +197,44 @@ async function processFileUpload(
   uploadQueueService.updateTaskProgress(task.id, 90);
 
   // Step 3: Create metadata
+  // CRITICAL: Only create metadata for the THUMBNAIL, not the main file
+  // Main files are excluded from feeds - only thumbnails appear
+  // The thumbnail metadata should reference the main file via mainFileId for downloads
+  
   const fileType = isPDF ? 'document'
     : isImage ? 'image'
     : isVideo ? 'video'
     : file.type.startsWith('audio/') ? 'audio'
     : 'document';
 
-  await createMetadata(fileId, {
-    name: file.name,
-    description: task.metadata?.description || '',
-    keywords: task.metadata?.keywords || [],
-    tags: task.metadata?.tags || [],
-    fileType,
-    isPublic: task.metadata?.isPublic || false,
-    publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
-    uploadDate: new Date().toISOString(),
-    isNSFW: task.metadata?.isNSFW || false,
-    thumbnailFileId,
-  }, accessToken);
+  // Only create thumbnail metadata if we have a thumbnail
+  if (thumbnailFileId) {
+    await createMetadata(thumbnailFileId, {
+      name: `thumb_${file.name}`,
+      description: task.metadata?.description || '',
+      keywords: task.metadata?.keywords || [],
+      tags: task.metadata?.tags || [],
+      fileType: 'image', // Thumbnails are always images
+      isPublic: task.metadata?.isPublic || false,
+      publicToken: thumbnailShareToken ? JSON.stringify(thumbnailShareToken) : undefined,
+      uploadDate: new Date().toISOString(),
+      isNSFW: task.metadata?.isNSFW || false,
+      mainFileId: fileId, // Reference to main file for downloads
+    }, accessToken);
+  } else {
+    // Fallback: if no thumbnail, create metadata for main file (shouldn't happen for images/videos)
+    await createMetadata(fileId, {
+      name: file.name,
+      description: task.metadata?.description || '',
+      keywords: task.metadata?.keywords || [],
+      tags: task.metadata?.tags || [],
+      fileType,
+      isPublic: task.metadata?.isPublic || false,
+      publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
+      uploadDate: new Date().toISOString(),
+      isNSFW: task.metadata?.isNSFW || false,
+    }, accessToken);
+  }
 
   uploadQueueService.setTaskResult(task.id, {
     fileId,
