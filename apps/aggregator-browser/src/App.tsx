@@ -46,6 +46,7 @@ import { PNOAuthService } from './services/pnOAuthService';
 import { FullScreenFeed } from './components/FullScreenFeed';
 import { BottomNav } from './components/BottomNav';
 import { useAppContext } from './hooks/useAppContext';
+import './services/uploadProcessor'; // Initialize upload processor event listeners
 import { DiscoveryPage } from './components/DiscoveryPage';
 import { SearchResults } from './components/SearchResults';
 import { Inbox } from './components/Inbox';
