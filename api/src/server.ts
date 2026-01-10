@@ -3297,6 +3297,21 @@ class ProductionServer {
             await service.removeMetadata(fileId);
             console.log(`[MetadataIndex PUT] Removed file ${fileId} from public index FIRST (made private)`);
             
+            // CRITICAL: If this is a main file with a thumbnail, also remove the thumbnail from public table
+            // Thumbnails are what appear in feeds, so they must be removed too
+            const currentMetadata = current?.metadata || {} as any;
+            const thumbnailFileId = (currentMetadata as any).thumbnailFileId;
+            
+            if (thumbnailFileId) {
+              try {
+                await service.removeMetadata(thumbnailFileId);
+                console.log(`[MetadataIndex PUT] Also removed thumbnail ${thumbnailFileId} from public index (main file ${fileId} made private)`);
+              } catch (thumbError: any) {
+                console.warn(`[MetadataIndex PUT] Failed to remove thumbnail from public index:`, thumbError?.message || thumbError);
+                // Continue even if thumbnail removal fails - main file removal is more important
+              }
+            }
+            
             // Invalidate cache immediately so file disappears from feeds
             try {
               const { invalidateIndexCache } = await import('./server/utils/cache');
@@ -3306,7 +3321,6 @@ class ProductionServer {
               console.warn(`[MetadataIndex PUT] Cache invalidation failed (non-critical):`, cacheError?.message || cacheError);
             }
           }
-          
           // STEP 2: Update companion metadata (source of truth)
           // For private: This happens AFTER removal from public table
           // For public: This happens FIRST (before adding to public table)
