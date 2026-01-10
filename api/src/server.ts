@@ -3537,11 +3537,40 @@ class ProductionServer {
           // actualFileId is already resolved to thumbnail if fileId was a main file
           if (isBecomingPrivate && current) {
             try {
-              await service.removeMetadata(actualFileId);
-              console.log(`[MetadataIndex PUT] Removed thumbnail ${actualFileId} from public index FIRST (made private)`);
+              const removed = await service.removeMetadata(actualFileId);
+              if (removed) {
+                console.log(`✅ [MetadataIndex PUT] Successfully removed thumbnail ${actualFileId} from all public database tables (made private)`);
+                
+                // Verify deletion - check that file is actually gone
+                const verifyDeleted = await service.getFileMetadata(actualFileId);
+                if (verifyDeleted) {
+                  console.error(`❌ [MetadataIndex PUT] CRITICAL: File ${actualFileId} still exists in database after removeMetadata()! This should not happen.`);
+                } else {
+                  console.log(`✅ [MetadataIndex PUT] Verified: File ${actualFileId} is completely removed from database`);
+                }
+              } else {
+                console.error(`❌ [MetadataIndex PUT] CRITICAL: removeMetadata() returned false - file ${actualFileId} was NOT found in database to delete!`);
+                console.error(`❌ [MetadataIndex PUT] File ${actualFileId} may still be in feeds because it was not deleted from database!`);
+                // This is a critical error - the file will still appear in feeds
+                // Try to find the file in all tables to debug
+                try {
+                  const db = (await import('./server/utils/database')).getDatabasePool();
+                  const allTables = ['aggregator_media', 'aggregator_thoughts', 'aggregator_collections'];
+                  for (const table of allTables) {
+                    const checkResult = await db.query(`SELECT file_id FROM ${table} WHERE file_id = $1`, [actualFileId]);
+                    if (checkResult.rows.length > 0) {
+                      console.error(`❌ [MetadataIndex PUT] File ${actualFileId} still exists in table ${table}!`);
+                    }
+                  }
+                } catch (debugError: any) {
+                  console.error(`❌ [MetadataIndex PUT] Failed to debug file existence:`, debugError?.message || debugError);
+                }
+              }
             } catch (removeError: any) {
-              console.warn(`[MetadataIndex PUT] Failed to remove thumbnail from public index:`, removeError?.message || removeError);
-              // Continue - file might not be in public table
+              console.error(`❌ [MetadataIndex PUT] CRITICAL ERROR: Failed to remove thumbnail from public index:`, removeError?.message || removeError);
+              console.error(`❌ [MetadataIndex PUT] Stack trace:`, removeError?.stack);
+              // Log critical error but continue - this will help us debug why files remain in feeds
+              // The error is logged so we can investigate the root cause
             }
             
             // Invalidate cache immediately so file disappears from feeds
