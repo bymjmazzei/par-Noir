@@ -3215,21 +3215,6 @@ class ProductionServer {
           }
         }
 
-        // If request says private, remove from public table FIRST
-        if (isPublic === false && current) {
-          await service.removeMetadata(fileId);
-          console.log(`[MetadataIndex PUT] Removed file ${fileId} from public index (made private)`);
-          
-          // Invalidate cache
-          try {
-            const { invalidateIndexCache } = await import('./server/utils/cache');
-            await invalidateIndexCache();
-            console.log(`[MetadataIndex PUT] Invalidated index cache after removal for ${fileId}`);
-          } catch (cacheError: any) {
-            console.warn(`[MetadataIndex PUT] Cache invalidation failed (non-critical):`, cacheError?.message || cacheError);
-          }
-        }
-
         // Then update database (cache) - only after companion metadata update succeeds
         const updated = await service.updateMetadata(fileId, {
           name,
@@ -3303,8 +3288,28 @@ class ProductionServer {
             isBecomingPrivate
           });
           
-          // ARCHITECTURAL FIX: Update companion metadata FIRST (source of truth), then database (cache)
-          // This ensures companion metadata is always authoritative
+          // CRITICAL FIX: Handle private and public transitions with correct order
+          // When making private: Remove from public table FIRST (so it disappears from feeds immediately)
+          // When making public: Update companion metadata FIRST, then add to public table
+          
+          // STEP 1: If making private, remove from public table FIRST (immediate feed disappearance)
+          if (isBecomingPrivate && current) {
+            await service.removeMetadata(fileId);
+            console.log(`[MetadataIndex PUT] Removed file ${fileId} from public index FIRST (made private)`);
+            
+            // Invalidate cache immediately so file disappears from feeds
+            try {
+              const { invalidateIndexCache } = await import('./server/utils/cache');
+              await invalidateIndexCache();
+              console.log(`[MetadataIndex PUT] Invalidated index cache after removal for ${fileId}`);
+            } catch (cacheError: any) {
+              console.warn(`[MetadataIndex PUT] Cache invalidation failed (non-critical):`, cacheError?.message || cacheError);
+            }
+          }
+          
+          // STEP 2: Update companion metadata (source of truth)
+          // For private: This happens AFTER removal from public table
+          // For public: This happens FIRST (before adding to public table)
           if (isBecomingPublic || isBecomingPrivate) {
             try {
               const authHeader = req.headers.authorization;
@@ -3373,7 +3378,9 @@ class ProductionServer {
                     }
                     
                     if (metadataFolderId) {
-                      // Update companion metadata FIRST (source of truth)
+                      // Update companion metadata (source of truth)
+                      // For private: This happens AFTER removal from public table
+                      // For public: This happens FIRST (before adding to public table)
                       const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
                       const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
                         accessToken,
@@ -3417,7 +3424,7 @@ class ProductionServer {
                             thumbnailFileId: metadataForType.thumbnailFileId
                           }
                         );
-                        console.log(`[MetadataIndex PUT] Updated companion metadata FIRST (source of truth) for ${fileId} to ${visibility} (contentClass: ${determinedContentClass})`);
+                        console.log(`[MetadataIndex PUT] Updated companion metadata (source of truth) for ${fileId} to ${visibility} (contentClass: ${determinedContentClass})`);
                       } else {
                         console.log(`[MetadataIndex PUT] Companion metadata spreadsheet not found for ${fileId} - will be created in companion metadata creation block`);
                       }
@@ -3436,13 +3443,18 @@ class ProductionServer {
             }
           }
           
-          // Then update database (cache) - only after companion metadata update succeeds
-          // Remove from public index if becoming private, update if becoming public
+          // STEP 3: Update database metadata (for public files, also add to public table)
+          // For private: Database metadata is updated (isPublic: false) - file already removed from public table in STEP 1
+          // For public: Database metadata is updated and file is added to public table
           if (current) {
             if (isBecomingPrivate) {
-              // Remove from public index tables completely
-              await service.removeMetadata(fileId);
-              console.log(`[MetadataIndex PUT] Removed file ${fileId} from public index (made private)`);
+              // File already removed from public table in STEP 1
+              // Just update the database metadata to reflect isPublic: false
+              await service.updateMetadata(fileId, {
+                isPublic: false,
+                ...(isNSFW !== undefined && { isNSFW: isNSFW === true })
+              });
+              console.log(`[MetadataIndex PUT] Updated database metadata for ${fileId} to private`);
             } else {
               // Update existing entry if not becoming private
               await service.updateMetadata(fileId, {
@@ -3457,8 +3469,9 @@ class ProductionServer {
             }
           }
           
-          // CRITICAL: Invalidate cache when isPublic changes (public or private)
-          // This ensures the feed immediately reflects the change
+          // STEP 4: Final cache invalidation when isPublic changes (public or private)
+          // For private: Cache was already invalidated immediately after removal in STEP 1
+          // This final invalidation ensures consistency after all updates complete
           // Note: Cache invalidation runs regardless of whether file existed or not
           if (isBecomingPublic || isBecomingPrivate) {
             try {
