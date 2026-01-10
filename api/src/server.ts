@@ -3215,6 +3215,21 @@ class ProductionServer {
           }
         }
 
+        // If request says private, remove from public table FIRST
+        if (isPublic === false && current) {
+          await service.removeMetadata(fileId);
+          console.log(`[MetadataIndex PUT] Removed file ${fileId} from public index (made private)`);
+          
+          // Invalidate cache
+          try {
+            const { invalidateIndexCache } = await import('./server/utils/cache');
+            await invalidateIndexCache();
+            console.log(`[MetadataIndex PUT] Invalidated index cache after removal for ${fileId}`);
+          } catch (cacheError: any) {
+            console.warn(`[MetadataIndex PUT] Cache invalidation failed (non-critical):`, cacheError?.message || cacheError);
+          }
+        }
+
         // Then update database (cache) - only after companion metadata update succeeds
         const updated = await service.updateMetadata(fileId, {
           name,
