@@ -3945,7 +3945,6 @@ class ProductionServer {
                 // Don't fail the request - index update is important but not critical for the API response
               }
             }
-          }
           
           // Handle making file private - remove from public index
           if (isBecomingPrivate) {
