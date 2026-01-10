@@ -3504,7 +3504,6 @@ class ProductionServer {
                 console.error(`[MetadataIndex PUT] Failed to submit metadata to aggregator:`, submitError?.message || submitError);
                 // Don't fail the request - metadata is updated, just not in aggregator yet
               }
-            }
           }
           
           // Handle making file public - create companion metadata and update indexes
