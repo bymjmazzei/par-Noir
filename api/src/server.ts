@@ -3638,8 +3638,9 @@ class ProductionServer {
                         const visibility = isBecomingPublic ? 'public' : 'private';
                         
                         // Get current metadata to determine contentClass and thumbnailFileId
-                        const currentMetadataForUpdate = await service.getFileMetadata(actualFileId);
-                        const metadataForType = (currentMetadataForUpdate?.metadata || {}) as any;
+                        // CRITICAL: For private files, use current.metadata (row was already deleted in STEP 1)
+                        // For public files, we can still use current.metadata since it's being made public (not deleted)
+                        const metadataForType = (current?.metadata || {}) as any;
                         
                         // Determine fileType and contentClass
                         const determinedFileType = determineFileType({
@@ -3690,17 +3691,15 @@ class ProductionServer {
           }
           
           // STEP 3: Update database metadata (for public files, also add to public table)
-          // For private: Database metadata is updated (isPublic: false) - file already removed from public table in STEP 1
+          // For private: File is COMPLETELY DELETED from all public database tables in STEP 1 - NO UPDATE needed
           // For public: Database metadata is updated and file is added to public table
           if (current) {
             if (isBecomingPrivate) {
-              // File already removed from public table in STEP 1
-              // Just update the database metadata to reflect isPublic: false
-              await service.updateMetadata(actualFileId, {
-                isPublic: false,
-                ...(isNSFW !== undefined && { isNSFW: isNSFW === true })
-              });
-              console.log(`[MetadataIndex PUT] Updated database metadata for ${actualFileId} to private`);
+              // File already COMPLETELY DELETED from all public database tables in STEP 1 via removeMetadata()
+              // NO UPDATE needed - the row doesn't exist anymore
+              // Companion metadata Google Sheets was updated to visibility='private' in STEP 2
+              // Actual files remain in user's Google Drive (not deleted)
+              console.log(`[MetadataIndex PUT] File ${actualFileId} is now private - completely removed from all public database tables`);
             } else {
               // Update existing entry if not becoming private
               await service.updateMetadata(actualFileId, {
