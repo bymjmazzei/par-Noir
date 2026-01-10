@@ -378,37 +378,44 @@ async function processTextPostUpload(
 
   uploadQueueService.updateTaskProgress(task.id, 90);
 
-  // Step 3: Create metadata
+  // Step 3: Create metadata for THUMBNAIL only (main file has no metadata - only used for downloads)
   const titleFromContent = (task.textPost.content || '').replace(/<[^>]*>/g, '').split(/\n|<br\s*\/?>/i)[0]?.trim().substring(0, 100) || 'Thought';
 
-  await createMetadata(fileId, {
-    name: fileName,
-    title: task.metadata?.title || titleFromContent,
-    description: task.metadata?.description || task.textPost.content,
-    keywords: task.metadata?.keywords || task.metadata?.tags || [],
-    tags: task.metadata?.tags || task.metadata?.keywords || [],
-    fileType: 'thought',
-    isPublic: task.metadata?.isPublic || false,
-    publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
-    uploadDate: new Date().toISOString(),
-    isNSFW: task.metadata?.isNSFW || false,
-    thumbnailFileId,
-    textPost: thoughtData.textPost,
-    thought: thoughtData.textPost,
-  }, accessToken);
-
-  // Create thumbnail metadata if needed
+  // CRITICAL: Only create metadata for the THUMBNAIL, not the main file
+  // Main file is only for owner downloads - it has no metadata entry
+  // Thumbnail is the public face of the file and has the ONE metadata entry
   if (thumbnailFileId) {
     await createMetadata(thumbnailFileId, {
       name: `thumb_${fileName.replace('.thought', '.png')}`,
       title: task.metadata?.title || titleFromContent,
+      description: task.metadata?.description || task.textPost.content,
+      keywords: task.metadata?.keywords || task.metadata?.tags || [],
+      tags: task.metadata?.tags || task.metadata?.keywords || [],
       fileType: 'thought-thumbnail',
       isPublic: task.metadata?.isPublic || false,
       isThoughtThumbnail: true,
-      mainFileId: fileId,
+      mainFileId: fileId, // Reference to main file for downloads
       publicToken: thumbnailShareToken ? JSON.stringify(thumbnailShareToken) : undefined,
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,
+      textPost: thoughtData.textPost,
+      thought: thoughtData.textPost,
+    }, accessToken);
+  } else {
+    // Fallback: if no thumbnail, create metadata for main file (shouldn't happen for thoughts)
+    await createMetadata(fileId, {
+      name: fileName,
+      title: task.metadata?.title || titleFromContent,
+      description: task.metadata?.description || task.textPost.content,
+      keywords: task.metadata?.keywords || task.metadata?.tags || [],
+      tags: task.metadata?.tags || task.metadata?.keywords || [],
+      fileType: 'thought',
+      isPublic: task.metadata?.isPublic || false,
+      publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
+      uploadDate: new Date().toISOString(),
+      isNSFW: task.metadata?.isNSFW || false,
+      textPost: thoughtData.textPost,
+      thought: thoughtData.textPost,
     }, accessToken);
   }
 
@@ -537,9 +544,11 @@ async function processMultiPageUpload(
   });
 
   const thumbnailResults = await Promise.all(thumbnailUploadPromises);
-  uploadQueueService.updateTaskProgress(task.id, 90);
+  uploadQueueService.updateTaskProgress(task.id, 85);
 
-  // Create metadata for thumbnails and collection
+  // CRITICAL: Thought collections are ONE file entity
+  // Create a SEPARATE collection thumbnail file (not one of the page thumbnails)
+  // This collection thumbnail uses the first page thumbnail's image as its content
   const thumbnailFileIds = thumbnailResults.map(r => r.fileId).filter(Boolean) as string[];
   const thumbnailTokens: Record<string, string> = {};
   thumbnailResults.forEach(r => {
@@ -548,47 +557,83 @@ async function processMultiPageUpload(
     }
   });
 
-  // Create metadata for each thumbnail
-  await Promise.all(thumbnailResults.map(async ({ index, fileId, shareToken }) => {
-    if (!fileId) return;
-    const page = task.pages![index];
+  let collectionThumbnailFileId: string | undefined;
+  let collectionThumbnailShareToken: any = undefined;
+
+  // Create separate collection thumbnail file using first page thumbnail's image
+  if (thumbnailResults.length > 0 && thumbnails[0]?.blob) {
+    const firstPageBlob = thumbnails[0].blob;
+    const collectionThumbnailArrayBuffer = await firstPageBlob.arrayBuffer();
+    const collectionThumbnailData = new Uint8Array(collectionThumbnailArrayBuffer);
+    const encryptedCollectionThumbnail = await workerManager.encrypt(collectionThumbnailData, session.did, publicKey);
+    
+    const collectionThumbnailPackage: EncryptedFilePackage = {
+      encrypted: encryptedCollectionThumbnail.encrypted,
+      iv: encryptedCollectionThumbnail.iv,
+      salt: encryptedCollectionThumbnail.salt,
+      metadata: {
+        originalName: `thumb_${task.metadata?.name || 'thought-collection'}.png`,
+        originalSize: firstPageBlob.size,
+        originalMimeType: 'image/png',
+      },
+    };
+
+    try {
+      const encryptionService = getEncryptionService();
+      collectionThumbnailShareToken = await encryptionService.generateShareToken(collectionThumbnailPackage, {
+        id: session.did,
+        publicKey: publicKey
+      });
+    } catch (tokenError) {
+      console.warn('Collection thumbnail share token generation failed:', tokenError);
+    }
+
+    const collectionThumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(collectionThumbnailPackage)], { type: 'application/json' }));
+    const collectionThumbnailFileName = `thumb_${task.metadata?.name || 'thought-collection'}.png.encrypted`;
+    const collectionThumbnailResult = await uploadFile(collectionThumbnailBase64, collectionThumbnailFileName, accessToken, task.accountId);
+    collectionThumbnailFileId = collectionThumbnailResult?.id;
+    
+    uploadQueueService.updateTaskProgress(task.id, 90);
+  }
+
+  // Create ONE metadata entry for the collection thumbnail (not for page thumbnails)
+  if (collectionThumbnailFileId) {
+    const page = task.pages![0];
     const titleFromContent = (page.content || '').replace(/<[^>]*>/g, '').split(/\n|<br\s*\/?>/i)[0]?.trim().substring(0, 100) || 'Thought';
     
-    await createMetadata(fileId, {
-      name: `thumb_${task.metadata?.name || 'thought-collection'}-page-${index + 1}.png`,
+    await createMetadata(collectionThumbnailFileId, {
+      name: `thumb_${task.metadata?.name || 'thought-collection'}.png`,
       title: task.metadata?.title || titleFromContent,
-      keywords: task.metadata?.keywords || [],
-      tags: task.metadata?.tags || [],
-      fileType: 'thought-collection-thumbnail',
+      description: task.metadata?.description || '',
+      keywords: task.metadata?.keywords || task.metadata?.tags || [],
+      tags: task.metadata?.tags || task.metadata?.keywords || [],
+      fileType: 'thought-collection',
       isPublic: false,
       isThoughtThumbnail: true,
       isPartOfCollection: true,
-      mainFileId: thoughtFileId,
-      publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
+      mainFileId: thoughtFileId, // Reference to main file for downloads
+      publicToken: collectionThumbnailShareToken ? JSON.stringify(collectionThumbnailShareToken) : undefined,
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,
+      // Include collection data - all page thumbnail IDs
+      collection: {
+        collectionFileIds: thumbnailFileIds
+      },
+      // Include collection textPost/thought data
+      textPost: thoughtCollectionData.textPost,
+      thought: thoughtCollectionData.textPost,
     }, accessToken);
-  }));
-
-  // Create metadata for main file
-  await createMetadata(thoughtFileId, {
-    name: task.metadata?.name || fileName,
-    title: task.metadata?.name || fileName,
-    description: task.metadata?.description || '',
-    keywords: task.metadata?.keywords || task.metadata?.tags || [],
-    tags: task.metadata?.tags || task.metadata?.keywords || [],
-    fileType: 'thought-collection',
-    isPublic: false,
-    publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
-    uploadDate: new Date().toISOString(),
-    textPost: thoughtCollectionData.textPost,
-    thought: thoughtCollectionData.textPost,
-  }, accessToken);
+    console.log(`[UploadProcessor] Created collection metadata for collection thumbnail ${collectionThumbnailFileId} with ${thumbnailResults.length} pages`);
+  }
+  
+  // Page thumbnails are just visual proxies - NO metadata entries
 
   uploadQueueService.setTaskResult(task.id, {
     fileId: thoughtFileId,
     thumbnailFileIds,
     thumbnailTokens,
+    collectionThumbnailFileId, // The separate collection thumbnail file
+    collectionThumbnailShareToken,
   });
 }
 

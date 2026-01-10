@@ -94,6 +94,37 @@ export async function processBackgroundTask(task: UploadTask): Promise<void> {
 }
 
 /**
+ * Helper: Resolve fileId to thumbnail fileId
+ * If fileId is a main file, finds the thumbnail that references it via mainFileId
+ * If fileId is already a thumbnail, returns it
+ */
+async function resolveToThumbnailFileId(fileId: string, accessToken: string): Promise<string> {
+  try {
+    // Try to get metadata for fileId
+    const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      const metadata = data.metadata || data;
+      // If metadata exists, fileId is a thumbnail (or has metadata) - return it
+      return fileId;
+    }
+    
+    // If not found, fileId might be a main file
+    // The API GET endpoint will handle the resolution, so just return fileId
+    // The API will resolve it to thumbnail if needed
+    return fileId;
+  } catch (error: any) {
+    console.warn(`[resolveToThumbnailFileId] Failed to resolve ${fileId}, using as-is:`, error?.message || error);
+    return fileId; // Fallback to original fileId
+  }
+}
+
+/**
  * Process share settings update
  */
 async function processShareSettingsUpdate(
@@ -110,7 +141,9 @@ async function processShareSettingsUpdate(
 
   uploadQueueService.updateTaskProgress(task.id, 10);
 
-  const targetFileId = existingMetadata?.fileId || fileId;
+  // Resolve to thumbnail fileId (main files don't have metadata, only thumbnails do)
+  const resolvedThumbnailFileId = await resolveToThumbnailFileId(fileId, accessToken);
+  const targetFileId = existingMetadata?.fileId || resolvedThumbnailFileId;
   const isCurrentlyPublic = existingMetadata?.isPublic || false;
   const existingIsNSFW = existingMetadata?.isNSFW === true;
   const makePublic = shareVisibility === 'public';
@@ -499,10 +532,34 @@ async function processFileDeletion(
   publicKey: string | undefined,
   accessToken: string
 ): Promise<void> {
-  const { fileId, accountId, isCollection, collectionFileIds, isThoughtCollection } = task.metadata || {};
+  let { fileId, accountId, isCollection, collectionFileIds, isThoughtCollection } = task.metadata || {};
   
   if (!fileId || !accountId) {
     throw new Error('Missing required fields: fileId, accountId');
+  }
+
+  uploadQueueService.updateTaskProgress(task.id, 5);
+
+  // Load metadata if isCollection wasn't determined upfront (non-blocking in UI)
+  if (isCollection === undefined) {
+    try {
+      const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      if (metadataResponse.ok) {
+        const metadata = await metadataResponse.json();
+        const metadataObj = metadata.metadata || metadata;
+        isCollection = metadataObj.fileType === 'collection' && metadataObj.collection?.collectionFileIds;
+        if (isCollection) {
+          collectionFileIds = metadataObj.collection.collectionFileIds;
+          isThoughtCollection = metadataObj.isThoughtCollection === true;
+        }
+      }
+    } catch (err) {
+      console.warn('[BackgroundTaskProcessor] Failed to load metadata for delete check:', err);
+    }
   }
 
   uploadQueueService.updateTaskProgress(task.id, 10);

@@ -2193,57 +2193,215 @@ class ProductionServer {
       }
     });
 
-    // DELETE /api/aggregator/metadata-index/:fileId - Remove public metadata
+    // DELETE /api/aggregator/metadata-index/:fileId - Remove public metadata and delete files
     this.app.delete('/api/aggregator/metadata-index/:fileId', async (req, res) => {
       try {
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
         const service = AggregatorMetadataServiceDB.getInstance();
 
         const { fileId } = req.params;
+        const accountId = req.query.accountId as string | undefined;
 
         if (!fileId) {
           return res.status(400).json({ error: 'Missing fileId parameter' });
         }
 
-        // CRITICAL: OWNERSHIP VERIFICATION - Only owner can delete metadata
-        const current = await service.getFileMetadata(fileId);
-        if (current) {
-          const fileOwnerDid = current.metadata.creator?.identifier?.value || 
-                             current.metadata.creator?.["@id"] || 
-                             current.metadata.author?.did ||
-                             current.pnIdentifier;
-          const authHeader = req.headers.authorization;
-          if (authHeader && authHeader.startsWith('Bearer ')) {
-            const token = authHeader.substring(7);
-            const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-            const tokenPayload = PNOAuthService.validateAccessToken(token);
-            if (tokenPayload) {
-              const requestingUserDid = tokenPayload.pnIdentifier || tokenPayload.did;
-              if (fileOwnerDid !== requestingUserDid && current.pnIdentifier !== requestingUserDid) {
-                console.error(`[MetadataIndex DELETE] UNAUTHORIZED: Attempt to delete metadata for file ${fileId} by non-owner. Owner: ${fileOwnerDid}, Requesting: ${requestingUserDid}`);
-                return res.status(403).json({ 
-                  error: 'Forbidden',
-                  message: 'Only the file owner can delete metadata'
-                });
-              }
-            } else {
-              return res.status(401).json({
-                error: 'unauthorized',
-                error_description: 'Invalid or expired access token'
-              });
-            }
+        // STEP 0: Validate token and get user identifier
+        const authHeader = req.headers.authorization;
+        let tokenPayload = null;
+        let userIdentifier: string | null = null;
+        let pnIdentifier: string | null = null;
+        
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.substring(7);
+          const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+          tokenPayload = PNOAuthService.validateAccessToken(token);
+          if (tokenPayload) {
+            userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+            pnIdentifier = tokenPayload.pnIdentifier || null;
           } else {
             return res.status(401).json({
               error: 'unauthorized',
-              error_description: 'Missing or invalid Authorization header'
+              error_description: 'Invalid or expired access token'
             });
+          }
+        } else {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Missing or invalid Authorization header'
+          });
+        }
+
+        // CRITICAL: Only thumbnails have metadata
+        // If fileId is a main file, find the thumbnail that references it
+        let current = await service.getFileMetadata(fileId);
+        let actualFileId = fileId; // The fileId we'll actually operate on (might be thumbnail if fileId was main file)
+        
+        if (!current) {
+          try {
+            const db = (await import('./server/utils/database')).getDatabasePool();
+            // Search for thumbnail with mainFileId = fileId
+            const thumbnailQuery = await db.query(
+              `SELECT file_id, metadata FROM aggregator_metadata 
+               WHERE metadata->>'mainFileId' = $1 
+               LIMIT 1`,
+              [fileId]
+            );
+            
+            if (thumbnailQuery.rows.length > 0) {
+              const thumbnailRow = thumbnailQuery.rows[0];
+              actualFileId = thumbnailRow.file_id;
+              current = {
+                fileId: thumbnailRow.file_id,
+                metadata: typeof thumbnailRow.metadata === 'string' 
+                  ? JSON.parse(thumbnailRow.metadata) 
+                  : thumbnailRow.metadata
+              };
+              console.log(`[MetadataIndex DELETE] Resolved main file ${fileId} to thumbnail ${actualFileId}`);
+            }
+          } catch (lookupError: any) {
+            console.warn(`[MetadataIndex DELETE] Failed to lookup thumbnail for main file ${fileId}:`, lookupError?.message || lookupError);
+          }
+        }
+        
+        // CRITICAL: OWNERSHIP VERIFICATION - Only owner can delete metadata
+        if (!current) {
+          return res.status(404).json({ error: 'File not found in index' });
+        }
+
+        const fileOwnerDid = current.metadata.creator?.identifier?.value || 
+                           current.metadata.creator?.["@id"] || 
+                           current.metadata.author?.did ||
+                           current.pnIdentifier;
+        
+        if (fileOwnerDid !== userIdentifier && current.pnIdentifier !== userIdentifier) {
+          console.error(`[MetadataIndex DELETE] UNAUTHORIZED: Attempt to delete metadata for file ${fileId} by non-owner. Owner: ${fileOwnerDid}, Requesting: ${userIdentifier}`);
+          return res.status(403).json({ 
+            error: 'Forbidden',
+            message: 'Only the file owner can delete metadata'
+          });
+        }
+
+        // STEP 1: Collect all files to delete
+        const filesToDelete: string[] = [];
+        const metadata = current.metadata;
+
+        // Add thumbnail file (actualFileId)
+        filesToDelete.push(actualFileId);
+
+        // Add main file if it exists
+        if (metadata.mainFileId) {
+          filesToDelete.push(metadata.mainFileId);
+          console.log(`[MetadataIndex DELETE] Will delete main file: ${metadata.mainFileId}`);
+        }
+
+        // For collections, add all page thumbnails
+        if (metadata.collection?.collectionFileIds && Array.isArray(metadata.collection.collectionFileIds)) {
+          for (const pageThumbnailId of metadata.collection.collectionFileIds) {
+            if (pageThumbnailId && !filesToDelete.includes(pageThumbnailId)) {
+              filesToDelete.push(pageThumbnailId);
+              console.log(`[MetadataIndex DELETE] Will delete collection page thumbnail: ${pageThumbnailId}`);
+            }
           }
         }
 
-        const removed = await service.removeMetadata(fileId);
+        // STEP 2: Delete files from Google Drive
+        if (userIdentifier && filesToDelete.length > 0) {
+          const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+          
+          for (const driveFileId of filesToDelete) {
+            try {
+              await googleDriveProxyService.deleteFile(userIdentifier, driveFileId, accountId);
+              console.log(`✅ [MetadataIndex DELETE] Deleted file ${driveFileId} from Google Drive`);
+            } catch (driveError: any) {
+              const errorMsg = driveError?.message || String(driveError);
+              // 404 is okay - file might already be deleted
+              if (!errorMsg.includes('404') && !errorMsg.includes('not found')) {
+                console.error(`❌ [MetadataIndex DELETE] Failed to delete ${driveFileId} from Google Drive:`, errorMsg);
+              } else {
+                console.log(`ℹ️ [MetadataIndex DELETE] File ${driveFileId} not found in Google Drive (may already be deleted)`);
+              }
+            }
+          }
+        }
+
+        // STEP 3: Delete companion metadata spreadsheet
+        if (userIdentifier && pnIdentifier) {
+          try {
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
+            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
+            
+            // Get metadata folder
+            const pnFolderName = `par Noir - ${pnIdentifier}`;
+            const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+            const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+            
+            const folderResponse = await fetch(folderSearchUrl, {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            
+            if (folderResponse.ok) {
+              const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
+              if (folderData.files && folderData.files.length > 0) {
+                const pnFolderId = folderData.files[0].id;
+                
+                // Get metadata folder
+                const metadataFolderName = '_metadata';
+                const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id,name)&pageSize=1`;
+                
+                const metadataFolderResponse = await fetch(metadataSearchUrl, {
+                  headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                if (metadataFolderResponse.ok) {
+                  const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                  if (metadataFolderData.files && metadataFolderData.files.length > 0) {
+                    const metadataFolderId = metadataFolderData.files[0].id;
+                    
+                    // Find companion metadata spreadsheet
+                    const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
+                      accessToken,
+                      metadataFolderId,
+                      actualFileId
+                    );
+                    
+                    if (spreadsheetId) {
+                      try {
+                        await googleDriveProxyService.deleteFile(userIdentifier, spreadsheetId, accountId);
+                        console.log(`✅ [MetadataIndex DELETE] Deleted companion metadata spreadsheet: ${spreadsheetId}`);
+                      } catch (spreadsheetError: any) {
+                        const errorMsg = spreadsheetError?.message || String(spreadsheetError);
+                        if (!errorMsg.includes('404') && !errorMsg.includes('not found')) {
+                          console.error(`❌ [MetadataIndex DELETE] Failed to delete companion metadata spreadsheet:`, errorMsg);
+                        } else {
+                          console.log(`ℹ️ [MetadataIndex DELETE] Companion metadata spreadsheet not found (may already be deleted)`);
+                        }
+                      }
+                    } else {
+                      console.log(`ℹ️ [MetadataIndex DELETE] Companion metadata spreadsheet not found for ${actualFileId}`);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (companionError: any) {
+            console.warn(`⚠️ [MetadataIndex DELETE] Failed to delete companion metadata:`, companionError?.message || companionError);
+            // Continue even if companion metadata deletion fails
+          }
+        }
+
+        // STEP 4: Remove thumbnail metadata from database (actualFileId is already resolved to thumbnail)
+        const removed = await service.removeMetadata(actualFileId);
 
         if (removed) {
-          return res.json({ success: true, fileId });
+          return res.json({ 
+            success: true, 
+            fileId: actualFileId,
+            deletedFiles: filesToDelete.length,
+            deletedFromDrive: filesToDelete
+          });
         } else {
           return res.status(404).json({ error: 'File not found in index' });
         }
@@ -2721,7 +2879,34 @@ class ProductionServer {
         let metadata = await service.getFileMetadata(fileId);
         console.log(`[MetadataIndex GET] Existing entry check for ${fileId}: ${metadata ? 'found' : 'not found'}`);
 
-        // If not found, try to create it from Google Drive
+        // If not found, fileId might be a main file - try to find thumbnail that references it
+        if (!metadata) {
+          try {
+            const db = (await import('./server/utils/database')).getDatabasePool();
+            // Search for thumbnail with mainFileId = fileId
+            const thumbnailQuery = await db.query(
+              `SELECT file_id, metadata FROM aggregator_metadata 
+               WHERE metadata->>'mainFileId' = $1 
+               LIMIT 1`,
+              [fileId]
+            );
+            
+            if (thumbnailQuery.rows.length > 0) {
+              const thumbnailRow = thumbnailQuery.rows[0];
+              metadata = {
+                fileId: thumbnailRow.file_id,
+                metadata: typeof thumbnailRow.metadata === 'string' 
+                  ? JSON.parse(thumbnailRow.metadata) 
+                  : thumbnailRow.metadata
+              };
+              console.log(`[MetadataIndex GET] Found thumbnail ${thumbnailRow.file_id} for main file ${fileId}`);
+            }
+          } catch (lookupError: any) {
+            console.warn(`[MetadataIndex GET] Failed to lookup thumbnail for main file ${fileId}:`, lookupError?.message || lookupError);
+          }
+        }
+
+        // If still not found, try to create it from Google Drive
         if (!metadata) {
           const authHeader = req.headers.authorization;
           if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -2846,8 +3031,38 @@ class ProductionServer {
 
         // Check if metadata entry exists BEFORE creating/updating (to detect new files)
         let current = await service.getFileMetadata(fileId);
+        let actualFileId = fileId; // The fileId we'll actually operate on (might be thumbnail if fileId was main file)
+        
+        // If fileId has no metadata, it might be a main file - try to find thumbnail that references it
+        if (!current) {
+          try {
+            const db = (await import('./server/utils/database')).getDatabasePool();
+            // Search for thumbnail with mainFileId = fileId
+            const thumbnailQuery = await db.query(
+              `SELECT file_id, metadata FROM aggregator_metadata 
+               WHERE metadata->>'mainFileId' = $1 
+               LIMIT 1`,
+              [fileId]
+            );
+            
+            if (thumbnailQuery.rows.length > 0) {
+              const thumbnailRow = thumbnailQuery.rows[0];
+              actualFileId = thumbnailRow.file_id;
+              current = {
+                fileId: thumbnailRow.file_id,
+                metadata: typeof thumbnailRow.metadata === 'string' 
+                  ? JSON.parse(thumbnailRow.metadata) 
+                  : thumbnailRow.metadata
+              };
+              console.log(`[MetadataIndex PUT] Resolved main file ${fileId} to thumbnail ${actualFileId}`);
+            }
+          } catch (lookupError: any) {
+            console.warn(`[MetadataIndex PUT] Failed to lookup thumbnail for main file ${fileId}:`, lookupError?.message || lookupError);
+          }
+        }
+        
         const fileExistedBefore = !!current;
-        console.log(`[MetadataIndex PUT] Existing entry check for ${fileId}: ${current ? 'found' : 'not found'}, existedBefore: ${fileExistedBefore}`);
+        console.log(`[MetadataIndex PUT] Existing entry check for ${fileId} (actualFileId: ${actualFileId}): ${current ? 'found' : 'not found'}, existedBefore: ${fileExistedBefore}`);
         
         // Get auth token for operations (needed for both new and existing files)
         const authHeader = req.headers.authorization;
@@ -3178,7 +3393,7 @@ class ProductionServer {
                       const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
                         accessToken,
                         metadataFolderId,
-                        fileId
+                        actualFileId
                       );
                       
                       if (spreadsheetId) {
@@ -3195,9 +3410,9 @@ class ProductionServer {
                           spreadsheetId,
                           companionMetadataUpdate
                         );
-                        console.log(`[MetadataIndex PUT] Updated companion metadata FIRST (source of truth) for ${fileId} with metadata fields`);
+                        console.log(`[MetadataIndex PUT] Updated companion metadata FIRST (source of truth) for ${actualFileId} with metadata fields`);
                       } else {
-                        console.log(`[MetadataIndex PUT] Companion metadata spreadsheet not found for ${fileId} - metadata fields will be saved to database only`);
+                        console.log(`[MetadataIndex PUT] Companion metadata spreadsheet not found for ${actualFileId} - metadata fields will be saved to database only`);
                       }
                     }
                   }
@@ -3216,7 +3431,8 @@ class ProductionServer {
         }
 
         // Then update database (cache) - only after companion metadata update succeeds
-        const updated = await service.updateMetadata(fileId, {
+        // Use actualFileId (resolved to thumbnail if fileId was main file)
+        const updated = await service.updateMetadata(actualFileId, {
           name,
           title,
           description,
@@ -3293,30 +3509,22 @@ class ProductionServer {
           // When making public: Update companion metadata FIRST, then add to public table
           
           // STEP 1: If making private, remove from public table FIRST (immediate feed disappearance)
+          // CRITICAL: Only thumbnails have metadata and are in the public table
+          // actualFileId is already resolved to thumbnail if fileId was a main file
           if (isBecomingPrivate && current) {
-            await service.removeMetadata(fileId);
-            console.log(`[MetadataIndex PUT] Removed file ${fileId} from public index FIRST (made private)`);
-            
-            // CRITICAL: If this is a main file with a thumbnail, also remove the thumbnail from public table
-            // Thumbnails are what appear in feeds, so they must be removed too
-            const currentMetadata = current?.metadata || {} as any;
-            const thumbnailFileId = (currentMetadata as any).thumbnailFileId;
-            
-            if (thumbnailFileId) {
-              try {
-                await service.removeMetadata(thumbnailFileId);
-                console.log(`[MetadataIndex PUT] Also removed thumbnail ${thumbnailFileId} from public index (main file ${fileId} made private)`);
-              } catch (thumbError: any) {
-                console.warn(`[MetadataIndex PUT] Failed to remove thumbnail from public index:`, thumbError?.message || thumbError);
-                // Continue even if thumbnail removal fails - main file removal is more important
-              }
+            try {
+              await service.removeMetadata(actualFileId);
+              console.log(`[MetadataIndex PUT] Removed thumbnail ${actualFileId} from public index FIRST (made private)`);
+            } catch (removeError: any) {
+              console.warn(`[MetadataIndex PUT] Failed to remove thumbnail from public index:`, removeError?.message || removeError);
+              // Continue - file might not be in public table
             }
             
             // Invalidate cache immediately so file disappears from feeds
             try {
               const { invalidateIndexCache } = await import('./server/utils/cache');
               await invalidateIndexCache();
-              console.log(`[MetadataIndex PUT] Invalidated index cache after removal for ${fileId}`);
+              console.log(`[MetadataIndex PUT] Invalidated index cache after removal for ${actualFileId}`);
             } catch (cacheError: any) {
               console.warn(`[MetadataIndex PUT] Cache invalidation failed (non-critical):`, cacheError?.message || cacheError);
             }
@@ -3399,14 +3607,14 @@ class ProductionServer {
                       const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
                         accessToken,
                         metadataFolderId,
-                        fileId
+                        actualFileId
                       );
                       
                       if (spreadsheetId) {
                         const visibility = isBecomingPublic ? 'public' : 'private';
                         
                         // Get current metadata to determine contentClass and thumbnailFileId
-                        const currentMetadataForUpdate = await service.getFileMetadata(fileId);
+                        const currentMetadataForUpdate = await service.getFileMetadata(actualFileId);
                         const metadataForType = (currentMetadataForUpdate?.metadata || {}) as any;
                         
                         // Determine fileType and contentClass
@@ -3438,7 +3646,7 @@ class ProductionServer {
                             thumbnailFileId: metadataForType.thumbnailFileId
                           }
                         );
-                        console.log(`[MetadataIndex PUT] Updated companion metadata (source of truth) for ${fileId} to ${visibility} (contentClass: ${determinedContentClass})`);
+                        console.log(`[MetadataIndex PUT] Updated companion metadata (source of truth) for ${actualFileId} to ${visibility} (contentClass: ${determinedContentClass})`);
                       } else {
                         console.log(`[MetadataIndex PUT] Companion metadata spreadsheet not found for ${fileId} - will be created in companion metadata creation block`);
                       }
@@ -3464,22 +3672,22 @@ class ProductionServer {
             if (isBecomingPrivate) {
               // File already removed from public table in STEP 1
               // Just update the database metadata to reflect isPublic: false
-              await service.updateMetadata(fileId, {
+              await service.updateMetadata(actualFileId, {
                 isPublic: false,
                 ...(isNSFW !== undefined && { isNSFW: isNSFW === true })
               });
-              console.log(`[MetadataIndex PUT] Updated database metadata for ${fileId} to private`);
+              console.log(`[MetadataIndex PUT] Updated database metadata for ${actualFileId} to private`);
             } else {
               // Update existing entry if not becoming private
-              await service.updateMetadata(fileId, {
+              await service.updateMetadata(actualFileId, {
                 isPublic: finalIsPublic,
                 ...(publicToken && { publicToken }),
                 ...(isNSFW !== undefined && { isNSFW: isNSFW === true })
                 // Note: textPost, thought, collection, fileType are preserved automatically by updateMetadata
               });
-              
-              // Refetch after update (only if still exists in database)
-              current = await service.getFileMetadata(fileId);
+                
+                // Refetch after update (only if still exists in database)
+                current = await service.getFileMetadata(actualFileId);
             }
           }
           
@@ -3525,11 +3733,11 @@ class ProductionServer {
                 const publicMetadata = {
                   ...current.metadata,
                   isPublic: true,
-                  fileId: current.metadata.fileId || fileId,
+                  fileId: current.metadata.fileId || actualFileId,
                   // Ensure required fields are present
                   backend: current.metadata.backend || 'google_drive',
-                  backendFileId: current.metadata.backendFileId || fileId,
-                  name: current.metadata.name || current.metadata.title || fileId,
+                  backendFileId: current.metadata.backendFileId || actualFileId,
+                  name: current.metadata.name || current.metadata.title || actualFileId,
                   uploadDate: current.metadata.uploadDate || new Date().toISOString(),
                   fileType: determinedFileType,
                   contentClass: determinedContentClass,
@@ -3541,42 +3749,16 @@ class ProductionServer {
                   tokenPayload?.pnIdentifier,
                   tokenPayload?.did || tokenPayload?.pnIdentifier
                 );
-                console.log(`[MetadataIndex PUT] Submitted metadata to aggregator for public file ${fileId}`);
+                console.log(`[MetadataIndex PUT] Submitted metadata to aggregator for public file ${actualFileId}`);
               } catch (submitError: any) {
                 console.error(`[MetadataIndex PUT] Failed to submit metadata to aggregator:`, submitError?.message || submitError);
                 // Don't fail the request - metadata is updated, just not in aggregator yet
               }
           }
           
-          // Handle making file public - create companion metadata and update indexes
-          if (isBecomingPublic) {
-            // CRITICAL: If this is a main file with a thumbnail, make the thumbnail public too
-            // Main files are excluded from feeds - only thumbnails appear
-            const currentMetadata = current?.metadata || {} as any;
-            const thumbnailFileId = (currentMetadata as any).thumbnailFileId;
-            
-            if (thumbnailFileId) {
-              // Regular image/video thumbnail - make thumbnail public
-              try {
-                const thumbnailMetadata = await service.getFileMetadata(thumbnailFileId);
-                if (thumbnailMetadata) {
-                  const updatedThumbnailMetadata = {
-                    ...thumbnailMetadata.metadata,
-                    isPublic: true
-                  };
-                  const db = (await import('./server/utils/database')).getDatabasePool();
-                  await db.query(
-                    `UPDATE aggregator_metadata 
-                     SET metadata = $1, updated_at = NOW()
-                     WHERE file_id = $2`,
-                    [JSON.stringify(updatedThumbnailMetadata), thumbnailFileId]
-                  );
-                  console.log(`[MetadataIndex PUT] Made thumbnail ${thumbnailFileId} public for main file ${fileId}`);
-                }
-              } catch (thumbError: any) {
-                console.warn(`[MetadataIndex PUT] Failed to make thumbnail public:`, thumbError?.message || thumbError);
-              }
-            }
+          // Note: Making file public is handled above in the submitMetadata block (line 3503)
+          // Since only thumbnails have metadata, the current metadata is always for a thumbnail
+          // No need for separate thumbnail handling
             
             // Ensure publicToken is saved before proceeding
             if (publicToken) {

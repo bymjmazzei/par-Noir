@@ -683,15 +683,8 @@ const FileViewerModal: React.FC<{ file: DriveFile; fileMetadataMap: Map<string, 
           return;
         }
 
-        // If it's a thumbnail, try to get title from main file metadata
-        if (isThoughtThumbnail && (file as any).mainFileId) {
-          const mainFileMetadata = fileMetadataMap.get((file as any).mainFileId);
-          if (mainFileMetadata?.title) {
-            setThoughtTitle(mainFileMetadata.title);
-            setIsLoadingTitle(false);
-            return;
-          }
-        }
+        // CRITICAL: Thumbnails have the metadata, not main files
+        // No need to check main file metadata - thumbnail metadata is the source of truth
 
         // Try to load from API metadata
         const accessToken = await PNOAuthService.getValidAccessToken();
@@ -700,8 +693,10 @@ const FileViewerModal: React.FC<{ file: DriveFile; fileMetadataMap: Map<string, 
           return;
         }
 
-        // Use mainFileId if it's a thumbnail, otherwise use file.id
-        const fileIdToCheck = isThoughtThumbnail && (file as any).mainFileId ? (file as any).mainFileId : file.id;
+        // CRITICAL: Thumbnails have the metadata, not main files
+        // If this is a thumbnail, use file.id directly (thumbnail has metadata)
+        // If this is a main file, the API GET endpoint will resolve it to thumbnail
+        const fileIdToCheck = file.id;
         
         const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileIdToCheck}`, {
           headers: {
@@ -2769,24 +2764,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   };
 
   // Handle file delete
-  const handleDelete = async (file: DriveFile, accountId: string) => {
+  const handleDelete = (file: DriveFile, accountId: string) => {
     if (!authenticatedUser?.id || !accountId) return;
     
-    // Check if this is a collection - if so, we need to delete all associated files
-    let isCollection = false;
-    let collectionFileIds: string[] = [];
-    let isThoughtCollection = false;
-    
-    try {
-      const metadata = await loadFileMetadata(file.id);
-      if (metadata?.fileType === 'collection' && metadata?.collection?.collectionFileIds) {
-        isCollection = true;
-        collectionFileIds = metadata.collection.collectionFileIds;
-        isThoughtCollection = metadata?.isThoughtCollection === true;
-      }
-    } catch (err) {
-      console.warn('[FileStorageAggregator] Failed to load metadata for delete check:', err);
-    }
+    // Check if this is a collection by checking local metadata cache
+    // Don't block on loading metadata - let the background processor handle it
+    const existingMetadata = fileMetadataMap.get(file.id);
+    const isCollection = existingMetadata?.fileType === 'collection' && existingMetadata?.collection?.collectionFileIds;
+    const collectionFileIds = isCollection ? existingMetadata.collection.collectionFileIds : [];
+    const isThoughtCollection = existingMetadata?.isThoughtCollection === true;
     
     // For thought collections, we need to count: collection + thumbnails + main thought-collection file
     // For regular collections, we count: collection + collectionFileIds
@@ -2822,14 +2808,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     setOpenMenuFor(null);
 
     // Queue background task
+    // Background processor will load metadata if needed
     uploadQueueService.addTask({
       type: 'deleteFile',
       accountId,
       metadata: {
         fileId: file.id,
         accountId,
-        isCollection,
-        collectionFileIds: isCollection ? collectionFileIds : undefined,
+        isCollection: !!isCollection,
+        collectionFileIds: isCollection && collectionFileIds ? collectionFileIds : undefined,
         isThoughtCollection: isCollection ? isThoughtCollection : undefined
       },
       onComplete: (result) => {
