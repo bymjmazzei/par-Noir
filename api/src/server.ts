@@ -3422,30 +3422,43 @@ class ProductionServer {
           }
           
           // Then update database (cache) - only after companion metadata update succeeds
+          // Remove from public index if becoming private, update if becoming public
           if (current) {
-            const updatedMetadata = {
-              ...current.metadata,
-              isPublic: finalIsPublic,
-              ...(publicToken && { publicToken }),
-              // Preserve textPost, thought, and collection when updating isPublic
-              ...(textPost && { textPost }),
-              ...(thought && { thought }),
-              ...(collection && { collection }),
-              ...(fileType && { fileType }),
-              ...(isNSFW !== undefined && { isNSFW: isNSFW === true })
-            };
-            const db = (await import('./server/utils/database')).getDatabasePool();
-            await db.query(
-              `UPDATE aggregator_metadata 
-               SET metadata = $1, updated_at = NOW()
-               WHERE file_id = $2`,
-              [JSON.stringify(updatedMetadata), fileId]
-            );
-            // Refetch after isPublic update
-            current = await service.getFileMetadata(fileId);
-            
-            // CRITICAL: Submit metadata to aggregator service so it appears in feeds
-            if (isBecomingPublic && current) {
+            if (isBecomingPrivate) {
+              // Remove from public index tables completely
+              await service.removeMetadata(fileId);
+              console.log(`[MetadataIndex PUT] Removed file ${fileId} from public index (made private)`);
+            } else {
+              // Update existing entry if not becoming private
+              await service.updateMetadata(fileId, {
+                isPublic: finalIsPublic,
+                ...(publicToken && { publicToken }),
+                ...(isNSFW !== undefined && { isNSFW: isNSFW === true })
+                // Note: textPost, thought, collection, fileType are preserved automatically by updateMetadata
+              });
+              
+              // Refetch after update (only if still exists in database)
+              current = await service.getFileMetadata(fileId);
+            }
+          }
+          
+          // CRITICAL: Invalidate cache when isPublic changes (public or private)
+          // This ensures the feed immediately reflects the change
+          // Note: Cache invalidation runs regardless of whether file existed or not
+          if (isBecomingPublic || isBecomingPrivate) {
+            try {
+              const { invalidateIndexCache } = await import('./server/utils/cache');
+              await invalidateIndexCache();
+              console.log(`[MetadataIndex PUT] Invalidated index cache after isPublic change for ${fileId}`);
+            } catch (cacheError: any) {
+              console.warn(`[MetadataIndex PUT] Cache invalidation failed (non-critical):`, cacheError?.message || cacheError);
+              // Continue even if cache invalidation fails
+            }
+          }
+          
+          // CRITICAL: Submit metadata to aggregator service so it appears in feeds
+          // Only runs if file is becoming public and exists in database
+          if (isBecomingPublic && current) {
               try {
                 // Determine fileType and contentClass from current metadata
                 const metadataForType = (current.metadata || {}) as any;
