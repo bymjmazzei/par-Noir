@@ -69,38 +69,9 @@ export class MetadataIndexService {
 
       // Transform to IndexedFile format
       // result.files are CentralIndexEntry objects from the API
-      // Backend already filters for public files, so we trust what the API returns
-      // But we also check: isPublic !== false OR has publicToken (means it's meant to be public)
-      let files: IndexedFile[] = result.files
-        .filter((entry: any) => {
-          const metadata = entry.metadata || {};
-          const isPublic = metadata.isPublic;
-          const hasPublicToken = metadata.publicToken != null;
-          
-          // Include if: isPublic is true/undefined/null OR has publicToken
-          const shouldInclude = isPublic !== false || hasPublicToken;
-          
-          // Debug logging for thoughts (only in development)
-          if (process.env.NODE_ENV === 'development') {
-            const fileType = metadata.fileType;
-            const hasTextPost = !!(metadata.textPost || metadata.thought);
-            const fileName = metadata.name || metadata.title || '';
-            const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(fileName);
-            if (fileType === 'text' || fileType === 'thought' || hasTextPost || isThoughtFile) {
-              if (!shouldInclude) {
-                console.warn(`[MetadataIndexService] Thought excluded: ${entry.fileId}`, {
-                  isPublic,
-                  hasPublicToken,
-                  fileType,
-                  hasTextPost,
-                  fileName
-                });
-              }
-            }
-          }
-          
-          return shouldInclude;
-        });
+      // Backend already filters for public files (isPublic = 'true' or isPublic = true)
+      // So we just use what the backend returns - no additional filtering needed
+      let files: IndexedFile[] = result.files;
       files = files.map((entry: any) => {
           // Normalize pnIdentifier - remove "pn-" prefix if present
           const pnId = entry.pnIdentifier;
