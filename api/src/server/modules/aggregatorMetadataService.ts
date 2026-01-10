@@ -97,6 +97,7 @@ export interface PublicMetadata {
   
   // Thumbnail for fast feed loading (images, videos, slideshows)
   thumbnailFileId?: string; // File ID of encrypted thumbnail (800px width, JPEG)
+  mainFileId?: string; // Reference to the main file (for thumbnails) - the main file is for owner download only
   
   // Thought/Collection metadata
   isThoughtThumbnail?: boolean; // True if this is a thumbnail image for a thought

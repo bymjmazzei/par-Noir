@@ -2242,7 +2242,7 @@ class ProductionServer {
             const db = (await import('./server/utils/database')).getDatabasePool();
             // Search for thumbnail with mainFileId = fileId
             const thumbnailQuery = await db.query(
-              `SELECT file_id, metadata FROM aggregator_metadata 
+              `SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_metadata 
                WHERE metadata->>'mainFileId' = $1 
                LIMIT 1`,
               [fileId]
@@ -2255,7 +2255,9 @@ class ProductionServer {
                 fileId: thumbnailRow.file_id,
                 metadata: typeof thumbnailRow.metadata === 'string' 
                   ? JSON.parse(thumbnailRow.metadata) 
-                  : thumbnailRow.metadata
+                  : thumbnailRow.metadata,
+                submittedAt: thumbnailRow.submitted_at ? (thumbnailRow.submitted_at instanceof Date ? thumbnailRow.submitted_at.toISOString() : thumbnailRow.submitted_at) : new Date().toISOString(),
+                pnIdentifier: thumbnailRow.pn_identifier
               };
               console.log(`[MetadataIndex DELETE] Resolved main file ${fileId} to thumbnail ${actualFileId}`);
             }
@@ -2885,7 +2887,7 @@ class ProductionServer {
             const db = (await import('./server/utils/database')).getDatabasePool();
             // Search for thumbnail with mainFileId = fileId
             const thumbnailQuery = await db.query(
-              `SELECT file_id, metadata FROM aggregator_metadata 
+              `SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_metadata 
                WHERE metadata->>'mainFileId' = $1 
                LIMIT 1`,
               [fileId]
@@ -2897,7 +2899,9 @@ class ProductionServer {
                 fileId: thumbnailRow.file_id,
                 metadata: typeof thumbnailRow.metadata === 'string' 
                   ? JSON.parse(thumbnailRow.metadata) 
-                  : thumbnailRow.metadata
+                  : thumbnailRow.metadata,
+                submittedAt: thumbnailRow.submitted_at ? (thumbnailRow.submitted_at instanceof Date ? thumbnailRow.submitted_at.toISOString() : thumbnailRow.submitted_at) : new Date().toISOString(),
+                pnIdentifier: thumbnailRow.pn_identifier
               };
               console.log(`[MetadataIndex GET] Found thumbnail ${thumbnailRow.file_id} for main file ${fileId}`);
             }
@@ -3039,7 +3043,7 @@ class ProductionServer {
             const db = (await import('./server/utils/database')).getDatabasePool();
             // Search for thumbnail with mainFileId = fileId
             const thumbnailQuery = await db.query(
-              `SELECT file_id, metadata FROM aggregator_metadata 
+              `SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_metadata 
                WHERE metadata->>'mainFileId' = $1 
                LIMIT 1`,
               [fileId]
@@ -3052,7 +3056,9 @@ class ProductionServer {
                 fileId: thumbnailRow.file_id,
                 metadata: typeof thumbnailRow.metadata === 'string' 
                   ? JSON.parse(thumbnailRow.metadata) 
-                  : thumbnailRow.metadata
+                  : thumbnailRow.metadata,
+                submittedAt: thumbnailRow.submitted_at ? (thumbnailRow.submitted_at instanceof Date ? thumbnailRow.submitted_at.toISOString() : thumbnailRow.submitted_at) : new Date().toISOString(),
+                pnIdentifier: thumbnailRow.pn_identifier
               };
               console.log(`[MetadataIndex PUT] Resolved main file ${fileId} to thumbnail ${actualFileId}`);
             }
