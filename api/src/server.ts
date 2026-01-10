@@ -2240,9 +2240,15 @@ class ProductionServer {
         if (!current) {
           try {
             const db = (await import('./server/utils/database')).getDatabasePool();
-            // Search for thumbnail with mainFileId = fileId
+            // Search for thumbnail with mainFileId = fileId across all content type tables
             const thumbnailQuery = await db.query(
-              `SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_metadata 
+              `SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_media 
+               WHERE metadata->>'mainFileId' = $1 
+               UNION ALL
+               SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_thoughts 
+               WHERE metadata->>'mainFileId' = $1 
+               UNION ALL
+               SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_collections 
                WHERE metadata->>'mainFileId' = $1 
                LIMIT 1`,
               [fileId]
@@ -2885,9 +2891,15 @@ class ProductionServer {
         if (!metadata) {
           try {
             const db = (await import('./server/utils/database')).getDatabasePool();
-            // Search for thumbnail with mainFileId = fileId
+            // Search for thumbnail with mainFileId = fileId across all content type tables
             const thumbnailQuery = await db.query(
-              `SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_metadata 
+              `SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_media 
+               WHERE metadata->>'mainFileId' = $1 
+               UNION ALL
+               SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_thoughts 
+               WHERE metadata->>'mainFileId' = $1 
+               UNION ALL
+               SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_collections 
                WHERE metadata->>'mainFileId' = $1 
                LIMIT 1`,
               [fileId]
@@ -3041,9 +3053,15 @@ class ProductionServer {
         if (!current) {
           try {
             const db = (await import('./server/utils/database')).getDatabasePool();
-            // Search for thumbnail with mainFileId = fileId
+            // Search for thumbnail with mainFileId = fileId across all content type tables
             const thumbnailQuery = await db.query(
-              `SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_metadata 
+              `SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_media 
+               WHERE metadata->>'mainFileId' = $1 
+               UNION ALL
+               SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_thoughts 
+               WHERE metadata->>'mainFileId' = $1 
+               UNION ALL
+               SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_collections 
                WHERE metadata->>'mainFileId' = $1 
                LIMIT 1`,
               [fileId]
