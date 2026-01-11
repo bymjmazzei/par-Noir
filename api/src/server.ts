@@ -3475,6 +3475,7 @@ class ProductionServer {
           // Only update isPublic if we have a value (either from request or companion metadata)
           // If undefined, updateMetadata will preserve existing value
           isPublic: finalIsPublic !== undefined ? finalIsPublic : isPublic,
+          publicToken, // Include publicToken from request body (null = delete, undefined = preserve)
           subjects,
           feedCategories,
           thumbnailFileId,

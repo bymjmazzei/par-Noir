@@ -182,21 +182,16 @@ async function processShareSettingsUpdate(
     }
   }
 
-  // Check if file needs token generation
-  const existingPublicToken = existingMetadata?.publicToken;
-  const hasValidToken = existingPublicToken && 
-                        typeof existingPublicToken === 'string' && 
-                        existingPublicToken.trim().length > 0;
-  const isPublicAfterUpdate = makePublic || isCurrentlyPublic;
-  const needsTokenGeneration = isPublicAfterUpdate && !hasValidToken;
-
-  uploadQueueService.updateTaskProgress(task.id, 20);
-
-  // Generate share token if needed
+  // When making public, we MUST generate publicToken (private files don't have it)
+  // When making private, we MUST delete publicToken (remove from server)
   let publicToken: string | undefined = undefined;
-  if (needsTokenGeneration) {
+  if (makePublic) {
+    // Making public: generate publicToken if needed
+    // Don't check for existingPublicToken - private files don't have it on server
+    uploadQueueService.updateTaskProgress(task.id, 20);
+    
+    // Generate share token
     try {
-      // Download file for token generation
       const downloadResponse = await fetch(
         `${apiEndpoint}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(accountId)}&download=true`,
         {
@@ -237,7 +232,7 @@ async function processShareSettingsUpdate(
       }
     } catch (tokenError: any) {
       console.error('[BackgroundTaskProcessor] Failed to generate share token:', tokenError);
-      // Continue without token - file can be made public without token (will need regeneration later)
+      throw new Error(`Failed to generate share token: ${tokenError.message}`);
     }
   }
 
@@ -246,23 +241,24 @@ async function processShareSettingsUpdate(
   // Update metadata
   const accountIdParam = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
   const updateBody: any = {};
-  
+
   if (makePublic) {
     updateBody.isPublic = true;
+    // CRITICAL: Always include publicToken when making public
+    if (!publicToken) {
+      throw new Error('Cannot make file public without publicToken');
+    }
+    updateBody.publicToken = publicToken;
   } else if (makePublic !== isCurrentlyPublic) {
     updateBody.isPublic = false;
+    // CRITICAL: Delete publicToken when making private (set to null/undefined)
+    updateBody.publicToken = null;
   }
   
   if (makePublic || isCurrentlyPublic) {
     updateBody.isNSFW = shareNSFW;
   } else if (shareNSFW !== existingIsNSFW) {
     updateBody.isNSFW = shareNSFW;
-  }
-  
-  if (publicToken) {
-    updateBody.publicToken = publicToken;
-  } else if (hasValidToken && existingPublicToken) {
-    updateBody.publicToken = existingPublicToken;
   }
   
   const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${targetFileId}${accountIdParam}`, {

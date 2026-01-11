@@ -1832,6 +1832,7 @@ export class AggregatorMetadataServiceDB {
       collection?: any; // Collection data with collectionFileIds
       isNSFW?: boolean;
       isPublic?: boolean;
+      publicToken?: string | null; // null = delete, string = set, undefined = preserve
       subjects?: string[];
       feedCategories?: string[];
       thumbnailFileId?: string;
@@ -1860,9 +1861,12 @@ export class AggregatorMetadataServiceDB {
       const existingThought = (metadata as any).thought;
       const existingCollection = (metadata as any).collection;
       
+      // Extract publicToken from metadata so we can handle it explicitly
+      const { publicToken: existingPublicToken, ...metadataWithoutToken } = metadata as any;
+      
       // Apply updates
       const updatedMetadata: PublicMetadata = {
-        ...metadata,
+        ...metadataWithoutToken,
         ...(updates.name && { name: updates.name }),
         ...(updates.title !== undefined && { title: updates.title }),
         ...(updates.description !== undefined && { description: updates.description }),
@@ -1902,7 +1906,15 @@ export class AggregatorMetadataServiceDB {
         // Update classification flags - thumbnails inherit classification from source
         ...(updates.isThoughtThumbnail !== undefined && { isThoughtThumbnail: updates.isThoughtThumbnail }),
         ...(updates.isPartOfCollection !== undefined && { isPartOfCollection: updates.isPartOfCollection }),
-        ...(updates.mainFileId !== undefined && { mainFileId: updates.mainFileId })
+        ...(updates.mainFileId !== undefined && { mainFileId: updates.mainFileId }),
+        // Handle publicToken: null = delete, string = set, undefined = preserve
+        ...(updates.publicToken !== undefined ? (
+          updates.publicToken === null 
+            ? {} // Delete publicToken (don't include it in spread)
+            : { publicToken: updates.publicToken } // Set publicToken
+        ) : (
+          existingPublicToken ? { publicToken: existingPublicToken } : {} // Preserve existing
+        ))
       };
 
       // Ensure keywords and tags are in sync

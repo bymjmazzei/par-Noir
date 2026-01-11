@@ -214,16 +214,16 @@ async function processFileUpload(
 
   // Only create thumbnail metadata if we have a thumbnail
   if (thumbnailFileId) {
-    // CRITICAL: Always store publicToken if thumbnailShareToken exists (even for private files)
-    // This ensures the token is available when the file is later made public
-    const publicTokenString = thumbnailShareToken ? JSON.stringify(thumbnailShareToken) : undefined;
-    if (!publicTokenString) {
-      console.warn('[UploadProcessor] Warning: Thumbnail metadata created without publicToken - thumbnail will not be decryptable in public feed');
-    } else {
+    // Only store publicToken if file is public (security: private files shouldn't have share tokens on server)
+    const isPublic = task.metadata?.isPublic || false;
+    const publicTokenString = (isPublic && thumbnailShareToken) ? JSON.stringify(thumbnailShareToken) : undefined;
+    if (!publicTokenString && isPublic) {
+      console.warn('[UploadProcessor] Warning: Public file metadata created without publicToken - thumbnail will not be decryptable in public feed');
+    } else if (publicTokenString) {
       console.log('[UploadProcessor] Creating thumbnail metadata with publicToken:', {
         thumbnailFileId,
         hasPublicToken: !!publicTokenString,
-        isPublic: task.metadata?.isPublic || false
+        isPublic: isPublic
       });
     }
     
@@ -234,8 +234,8 @@ async function processFileUpload(
         keywords: task.metadata?.keywords || [],
         tags: task.metadata?.tags || [],
         fileType: 'image', // Thumbnails are always images
-        isPublic: task.metadata?.isPublic || false,
-        publicToken: publicTokenString,
+        isPublic: isPublic,
+        publicToken: publicTokenString, // Only set if public
         uploadDate: new Date().toISOString(),
         isNSFW: task.metadata?.isNSFW || false,
         mainFileId: fileId, // Reference to main file for downloads
