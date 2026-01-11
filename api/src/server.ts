@@ -8188,6 +8188,30 @@ class ProductionServer {
           }
         }
         
+        // STEP 3.5: Delete companion metadata files (JSON and spreadsheet)
+        if (pnIdentifier && userIdentifier && filesToDelete.length > 0) {
+          try {
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            const metadataResult = await googleDriveProxyService.deleteCompanionMetadataFiles(
+              userIdentifier,
+              pnIdentifier,
+              filesToDelete,
+              accountId
+            );
+            
+            if (metadataResult.deletedJson > 0 || metadataResult.deletedSpreadsheets > 0) {
+              console.log(`✅ [DeleteFile] Deleted companion metadata: ${metadataResult.deletedJson} JSON file(s), ${metadataResult.deletedSpreadsheets} spreadsheet(s)`);
+            }
+            
+            if (metadataResult.errors.length > 0) {
+              console.warn(`⚠️ [DeleteFile] Some metadata deletion errors (non-critical):`, metadataResult.errors);
+            }
+          } catch (metadataDeleteError: any) {
+            // Non-critical - continue even if metadata deletion fails
+            console.warn(`⚠️ [DeleteFile] Failed to delete companion metadata (non-critical):`, metadataDeleteError?.message || metadataDeleteError);
+          }
+        }
+        
         // STEP 4: Remove from Google Drive indexes
         if (pnIdentifier && userIdentifier) {
           try {

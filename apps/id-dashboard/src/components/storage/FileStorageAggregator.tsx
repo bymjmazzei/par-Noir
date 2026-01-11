@@ -6078,74 +6078,78 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         throw new Error('Backend is not connected');
       }
 
-      console.log('🗑️ [Delete] Deleting file from backend...', {
+      console.log('🗑️ [Delete] Deleting file via API endpoint...', {
         fileId: file.backendFileId,
         fileName: file.name,
         backend: file.backend
       });
 
-      // Delete file from Google Drive using backend
-      await backend.deleteFile(file.backendFileId);
-
-      console.log('✅ [Delete] File deleted from Google Drive successfully');
-
-      // Try to update indexes via API (non-critical, handles errors gracefully)
+      // Use API endpoint for complete deletion (handles file, thumbnail, and metadata)
       const accessToken = authenticatedUser?.accessToken;
-      if (accessToken) {
-        const account = driveAccounts.find(acc => acc.backendId === file.backend);
-        const accountId = account?.accountId || account?.backendId;
-        const accountIdParam = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
+      if (!accessToken) {
+        throw new Error('No access token available - cannot delete file');
+      }
 
-        try {
-          // Call API to update owner/public indexes
-          // This may fail with 401 if token is invalid, but that's okay - file is already deleted
-          const response = await fetch(`${apiEndpoint}/api/drive/files/${file.backendFileId}${accountIdParam}`, {
-            method: 'DELETE',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          });
+      const account = driveAccounts.find(acc => acc.backendId === file.backend);
+      const accountId = account?.accountId || account?.backendId;
+      const accountIdParam = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
 
-          if (response.ok) {
-            const result = await response.json().catch(() => ({}));
-            console.log('✅ [Delete] Indexes updated successfully', result);
-          } else if (response.status === 401) {
-            // Token expired - but API should still remove from database
-            // Try to parse response to see if database removal succeeded
-            try {
-              const result = await response.json().catch(() => ({}));
-              if (result.removedFromDatabase) {
-                console.log('✅ [Delete] File removed from database (token expired but cleanup succeeded)');
-              } else {
-                console.warn('⚠️ [Delete] Token expired - attempting direct database removal...');
-                // Fallback: Try to remove from database directly via metadata-index endpoint
-                try {
-                  const dbResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${file.backendFileId}`, {
-                    method: 'DELETE',
-                    headers: {
-                      'Authorization': `Bearer ${accessToken}` // Still try with expired token
-                    }
-                  });
-                  if (dbResponse.ok) {
-                    console.log('✅ [Delete] File removed from database via fallback endpoint');
-                  }
-                } catch (fallbackError) {
-                  console.warn('⚠️ [Delete] Fallback database removal also failed:', fallbackError);
-                }
-              }
-            } catch (parseError) {
-              console.warn('⚠️ [Delete] Could not parse response (token expired) - file deleted but database may need manual cleanup');
-            }
-          } else {
-            const errorText = await response.text().catch(() => 'Unknown error');
-            console.warn('⚠️ [Delete] Index cleanup failed (non-critical):', errorText);
+      try {
+        // Call API endpoint which handles: file deletion, thumbnail deletion, metadata deletion, and index cleanup
+        const response = await fetch(`${apiEndpoint}/api/drive/files/${file.backendFileId}${accountIdParam}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
           }
-        } catch (indexError) {
-          console.warn('⚠️ [Delete] Index cleanup failed (non-critical):', indexError);
-          // File is already deleted, so this is not a critical error
+        });
+
+        if (response.ok) {
+          const result = await response.json().catch(() => ({}));
+          console.log('✅ [Delete] File deleted successfully via API (includes file, thumbnail, and metadata)', result);
+        } else if (response.status === 401) {
+          // Token expired - try fallback to direct backend deletion
+          console.warn('⚠️ [Delete] Token expired - attempting fallback to direct backend deletion...');
+          try {
+            await backend.deleteFile(file.backendFileId);
+            console.log('✅ [Delete] File deleted from Google Drive via backend (fallback)');
+            
+            // Try to remove from database via metadata-index endpoint
+            try {
+              const dbResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${file.backendFileId}`, {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Bearer ${accessToken}` // Still try with expired token
+                }
+              });
+              if (dbResponse.ok) {
+                console.log('✅ [Delete] File removed from database via fallback endpoint');
+              }
+            } catch (fallbackError) {
+              console.warn('⚠️ [Delete] Fallback database removal failed:', fallbackError);
+            }
+          } catch (backendError) {
+            throw new Error(`Failed to delete file: ${backendError instanceof Error ? backendError.message : 'Unknown error'}`);
+          }
+        } else {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          // If API fails, try fallback to direct backend deletion
+          console.warn(`⚠️ [Delete] API deletion failed (${response.status}): ${errorText} - attempting fallback...`);
+          try {
+            await backend.deleteFile(file.backendFileId);
+            console.log('✅ [Delete] File deleted from Google Drive via backend (fallback)');
+          } catch (backendError) {
+            throw new Error(`Failed to delete file via API and fallback: ${errorText}`);
+          }
         }
-      } else {
-        console.warn('⚠️ [Delete] No access token available - file deleted but indexes may need manual cleanup');
+      } catch (apiError) {
+        // If API call fails completely, try fallback to direct backend deletion
+        console.warn('⚠️ [Delete] API deletion failed - attempting fallback to direct backend deletion:', apiError);
+        try {
+          await backend.deleteFile(file.backendFileId);
+          console.log('✅ [Delete] File deleted from Google Drive via backend (fallback)');
+        } catch (backendError) {
+          throw new Error(`Failed to delete file: ${apiError instanceof Error ? apiError.message : 'API error'} and ${backendError instanceof Error ? backendError.message : 'backend error'}`);
+        }
       }
 
       // AUTOMATIC CLEANUP: Clean up indexes after deletion

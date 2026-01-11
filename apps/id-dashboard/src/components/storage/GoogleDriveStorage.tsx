@@ -723,36 +723,114 @@ export const GoogleDriveStorage: React.FC = () => {
     }
 
     try {
-      const token = localStorage.getItem('google_drive_token');
-      if (!token) {
+      const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+      
+      // Get access token from authenticated_user (preferred) or fallback to google_drive_token
+      const authenticatedUserStr = localStorage.getItem('authenticated_user');
+      let accessToken: string | null = null;
+      let accountId: string | null = null;
+      
+      if (authenticatedUserStr) {
+        try {
+          const authenticatedUser = JSON.parse(authenticatedUserStr);
+          accessToken = authenticatedUser.accessToken || null;
+          
+          // Try to get accountId
+          try {
+            const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+            const { SecureCredentialManager } = await import('../../utils/secureCredentialManager');
+            
+            const sessionId = authenticatedUser.id || authenticatedUser.publicKey || null;
+            const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+            const pnName = credentials?.pnName || null;
+            const publicKey = authenticatedUser.publicKey;
+            
+            if (pnName && credentials?.passcode && publicKey) {
+              const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+                pnName,
+                passcode: credentials.passcode,
+                publicKey
+              });
+              
+              const credResponse = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`);
+              if (credResponse.ok) {
+                const credData = await credResponse.json();
+                if (credData.credentials?.googleDriveAccounts) {
+                  const accounts = Object.keys(credData.credentials.googleDriveAccounts);
+                  if (accounts.length > 0) {
+                    accountId = accounts[0];
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('Could not get accountId for deletion:', err);
+          }
+        } catch (err) {
+          console.warn('Could not parse authenticated_user:', err);
+        }
+      }
+      
+      // Fallback to google_drive_token if no accessToken from authenticated_user
+      if (!accessToken) {
+        accessToken = localStorage.getItem('google_drive_token');
+      }
+      
+      if (!accessToken) {
         throw new Error('No access token found');
       }
       
-      // Delete from Google Drive
-      const response = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${fileId}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
+      // Use unified API endpoint which handles: file deletion, thumbnail deletion, metadata deletion, and index cleanup
+      const accountIdParam = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
+      const response = await fetch(`${apiEndpoint}/api/drive/files/${fileId}${accountIdParam}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
         }
-      );
+      });
       
       if (!response.ok) {
-        throw new Error('Failed to delete file from Google Drive');
-      }
-
-      // Remove from API metadata index
-      try {
-        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-        await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
-          method: 'DELETE'
-        });
-        console.log('✅ Removed file from metadata index');
-      } catch (apiErr) {
-        console.warn('Failed to remove from metadata index:', apiErr);
-        // Non-critical - file is deleted from Drive, sync service will clean up
+        // If API fails, try fallback to direct Google Drive deletion
+        if (response.status === 401 || response.status === 403) {
+          console.warn('⚠️ [Delete] API authentication failed - attempting direct Google Drive deletion...');
+          const driveToken = localStorage.getItem('google_drive_token');
+          if (driveToken) {
+            const driveResponse = await fetch(
+              `https://www.googleapis.com/drive/v3/files/${fileId}`,
+              {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Bearer ${driveToken}`
+                }
+              }
+            );
+            
+            if (!driveResponse.ok) {
+              throw new Error('Failed to delete file from Google Drive');
+            }
+            
+            // Try to remove from metadata index as fallback
+            try {
+              await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`
+                }
+              });
+              console.log('✅ Removed file from metadata index (fallback)');
+            } catch (apiErr) {
+              console.warn('Failed to remove from metadata index:', apiErr);
+            }
+          } else {
+            throw new Error('Failed to delete file: API authentication failed and no fallback token available');
+          }
+        } else {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          throw new Error(`Failed to delete file: ${errorText}`);
+        }
+      } else {
+        const result = await response.json().catch(() => ({}));
+        console.log('✅ [Delete] File deleted successfully via API (includes file, thumbnail, and metadata)', result);
       }
       
       await loadFiles();

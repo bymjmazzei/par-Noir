@@ -492,6 +492,137 @@ export class GoogleDriveProxyService {
   }
 
   /**
+   * Delete companion metadata files (JSON and spreadsheet) for given file IDs
+   * This is a non-throwing function that gracefully handles errors
+   */
+  async deleteCompanionMetadataFiles(
+    userDid: string,
+    pnIdentifier: string,
+    fileIds: string[],
+    accountId?: string
+  ): Promise<{ deletedJson: number; deletedSpreadsheets: number; errors: string[] }> {
+    const result = {
+      deletedJson: 0,
+      deletedSpreadsheets: 0,
+      errors: [] as string[]
+    };
+
+    if (!pnIdentifier || !fileIds || fileIds.length === 0) {
+      return result;
+    }
+
+    try {
+      const accessToken = await this.getAccessToken(userDid, accountId);
+      
+      // Get pN folder and metadata folder
+      const pnFolderName = `par Noir - ${pnIdentifier}`;
+      const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+      
+      const folderResponse = await fetch(folderSearchUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      
+      if (!folderResponse.ok) {
+        result.errors.push('Failed to find pN folder');
+        return result;
+      }
+
+      const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
+      if (!folderData.files || folderData.files.length === 0) {
+        result.errors.push('pN folder not found');
+        return result;
+      }
+
+      const pnFolderId = folderData.files[0].id;
+      
+      // Get metadata folder
+      const metadataFolderName = '_metadata';
+      const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id,name)&pageSize=1`;
+      
+      const metadataFolderResponse = await fetch(metadataSearchUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      
+      if (!metadataFolderResponse.ok) {
+        result.errors.push('Failed to find metadata folder');
+        return result;
+      }
+
+      const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+      if (!metadataFolderData.files || metadataFolderData.files.length === 0) {
+        result.errors.push('Metadata folder not found');
+        return result;
+      }
+
+      const metadataFolderId = metadataFolderData.files[0].id;
+      const { CompanionMetadataSheets } = await import('./companionMetadataSheets');
+
+      // Delete metadata files for each fileId
+      for (const fileId of fileIds) {
+        try {
+          // Delete JSON metadata file: {fileId}.metadata.json
+          const jsonMetadataFileName = `${fileId}.metadata.json`;
+          const jsonSearchQuery = `name='${jsonMetadataFileName.replace(/'/g, "\\'")}' and '${metadataFolderId}' in parents and trashed=false`;
+          const jsonSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(jsonSearchQuery)}&fields=files(id)&pageSize=1`;
+          
+          const jsonResponse = await fetch(jsonSearchUrl, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+          
+          if (jsonResponse.ok) {
+            const jsonData = await jsonResponse.json() as { files?: Array<{ id: string }> };
+            if (jsonData.files && jsonData.files.length > 0) {
+              try {
+                await this.deleteFile(userDid, jsonData.files[0].id, accountId);
+                result.deletedJson++;
+                console.log(`✅ [deleteCompanionMetadataFiles] Deleted JSON metadata file for ${fileId}`);
+              } catch (jsonDeleteError: any) {
+                const errorMsg = jsonDeleteError?.message || String(jsonDeleteError);
+                if (!errorMsg.includes('404') && !errorMsg.includes('not found')) {
+                  result.errors.push(`Failed to delete JSON metadata for ${fileId}: ${errorMsg}`);
+                }
+              }
+            }
+          }
+
+          // Delete spreadsheet metadata file
+          try {
+            const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
+              accessToken,
+              metadataFolderId,
+              fileId
+            );
+            
+            if (spreadsheetId) {
+              try {
+                await this.deleteFile(userDid, spreadsheetId, accountId);
+                result.deletedSpreadsheets++;
+                console.log(`✅ [deleteCompanionMetadataFiles] Deleted spreadsheet metadata for ${fileId}`);
+              } catch (spreadsheetDeleteError: any) {
+                const errorMsg = spreadsheetDeleteError?.message || String(spreadsheetDeleteError);
+                if (!errorMsg.includes('404') && !errorMsg.includes('not found')) {
+                  result.errors.push(`Failed to delete spreadsheet metadata for ${fileId}: ${errorMsg}`);
+                }
+              }
+            }
+          } catch (spreadsheetFindError: any) {
+            // Non-critical - spreadsheet might not exist
+            console.log(`ℹ️ [deleteCompanionMetadataFiles] Could not find spreadsheet metadata for ${fileId}`);
+          }
+        } catch (fileError: any) {
+          result.errors.push(`Error processing metadata deletion for ${fileId}: ${fileError?.message || fileError}`);
+        }
+      }
+    } catch (error: any) {
+      result.errors.push(`Failed to delete companion metadata files: ${error?.message || error}`);
+    }
+
+    return result;
+  }
+
+  /**
    * Update file metadata in Google Drive
    */
   async updateFileMetadata(
