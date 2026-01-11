@@ -3569,7 +3569,7 @@ class ProductionServer {
                           },
                           tags: [],
                           ...(thumbnailFileId && { thumbnailFileId }),
-                          ...(mainFileId && { mainFileId }),
+                          mainFileId: mainFileId,
                           ...(tokenToUse && { publicToken: tokenToUse }),
                           engagement: {
                             views: 0,
@@ -3615,7 +3615,7 @@ class ProductionServer {
                           },
                           tags: [],
                           ...(thumbnailFileIdForUpdate && { thumbnailFileId: thumbnailFileIdForUpdate }),
-                          ...(mainFileIdForUpdate && { mainFileId: mainFileIdForUpdate }),
+                          mainFileId: mainFileIdForUpdate,
                           ...(tokenToUse && { publicToken: tokenToUse }),
                           engagement: {
                             views: 0,
