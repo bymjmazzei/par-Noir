@@ -3346,6 +3346,376 @@ class ProductionServer {
           isPartOfCollection
         });
 
+        // Create companion metadata file for ALL files at upload/creation time (just like share tokens)
+        // Companion metadata is created regardless of public/private status - it's just metadata storage
+        // This matches the behavior of share tokens which are generated at upload time
+        // ARCHITECTURAL: Companion metadata is created FIRST (source of truth) before database update (cache)
+        const shouldCreateCompanionMetadata = !fileExistedBefore; // Only create on initial upload, not on updates
+        
+        if (shouldCreateCompanionMetadata) {
+          // Determine final visibility status from req.body - companion metadata is source of truth
+          let finalVisibility: 'public' | 'private' = 'private';
+          if (isPublic !== undefined || textPost || thought) {
+            const finalIsPublic = isPublic !== undefined ? isPublic : ((textPost || thought) ? true : false);
+            finalVisibility = finalIsPublic ? 'public' : 'private';
+          }
+          
+          console.log(`[MetadataIndex PUT] Companion metadata creation check for ${fileId}:`, {
+            fileExistedBefore,
+            shouldCreateCompanionMetadata,
+            finalVisibility,
+            hasAuthHeader: !!(req.headers.authorization && req.headers.authorization.startsWith('Bearer '))
+          });
+          
+          console.log(`[MetadataIndex PUT] File ${fileId} is new - creating companion metadata (visibility=${finalVisibility})...`);
+          try {
+            const authHeader = req.headers.authorization;
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+              const token = authHeader.substring(7);
+              const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+              const tokenPayload = PNOAuthService.validateAccessToken(token);
+              
+              if (tokenPayload) {
+                const pnIdentifier = tokenPayload.pnIdentifier;
+                if (!pnIdentifier) {
+                  console.error(`[MetadataIndex PUT] Missing pnIdentifier in token payload`);
+                  throw new Error('Missing pnIdentifier in token');
+                }
+                const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+                const identifierCandidates: string[] = [];
+                if (tokenPayload.pnIdentifier) {
+                  identifierCandidates.push(tokenPayload.pnIdentifier);
+                }
+                if (tokenPayload.did) {
+                  identifierCandidates.push(tokenPayload.did);
+                  if (tokenPayload.did.startsWith('did:key:')) {
+                    const keyPart = tokenPayload.did.substring(8);
+                    if (keyPart) {
+                      identifierCandidates.push(keyPart);
+                    }
+                  }
+                }
+                
+                const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+                const accountId = req.query.accountId as string | undefined;
+                const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+                
+                // Fetch file info from Google Drive
+                const driveResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime`, {
+                  headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                if (!driveResponse.ok) {
+                  const errorText = await driveResponse.text().catch(() => 'Unknown error');
+                  console.error(`[MetadataIndex PUT] Failed to fetch file info: ${driveResponse.status} ${driveResponse.statusText} - ${errorText}`);
+                  throw new Error(`Failed to fetch file info: ${driveResponse.status}`);
+                }
+                
+                const driveFile = await driveResponse.json() as { name?: string; mimeType?: string; size?: string; createdTime?: string };
+                const originalFileName = driveFile.name?.replace(/\.encrypted$/i, '') || fileId;
+                const originalMimeType = driveFile.mimeType || 'application/octet-stream';
+                
+                // Get or create pN folder
+                // Try both formats: "par Noir - pn-{hash}" and "par Noir - {hash}"
+                let pnFolderId: string | null = null;
+                const pnFolderName1 = `par Noir - ${pnIdentifier}`;
+                const pnFolderName2 = `par Noir - pn-${pnIdentifier}`;
+                
+                for (const pnFolderName of [pnFolderName1, pnFolderName2]) {
+                  const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                  const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+                  
+                  const folderResponse = await fetch(folderSearchUrl, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                  });
+                  
+                  if (folderResponse.ok) {
+                    const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                    if (folderData.files && folderData.files.length > 0) {
+                      pnFolderId = folderData.files[0].id;
+                      console.log(`[MetadataIndex PUT] Found pN folder: ${pnFolderName} (ID: ${pnFolderId})`);
+                      break;
+                    }
+                  }
+                }
+                
+                // If pN folder not found, create it
+                if (!pnFolderId) {
+                  console.log(`[MetadataIndex PUT] pN folder not found - creating: ${pnFolderName2}`);
+                  const createPnFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${accessToken}`,
+                      'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                      name: pnFolderName2,
+                      mimeType: 'application/vnd.google-apps.folder'
+                    })
+                  });
+                  
+                  if (createPnFolderResponse.ok) {
+                    const createdFolder = await createPnFolderResponse.json() as { id: string };
+                    pnFolderId = createdFolder.id;
+                    console.log(`[MetadataIndex PUT] ✅ Created pN folder: ${pnFolderName2} (ID: ${pnFolderId})`);
+                  } else {
+                    const errorText = await createPnFolderResponse.text().catch(() => 'Unknown error');
+                    console.error(`[MetadataIndex PUT] ❌ Failed to create pN folder: ${createPnFolderResponse.status} ${errorText}`);
+                    throw new Error(`Failed to create pN folder: ${createPnFolderResponse.status}`);
+                  }
+                }
+                
+                if (pnFolderId) {
+                  // Get or create _metadata folder
+                  const metadataFolderName = '_metadata';
+                  const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                  const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id,name)&pageSize=1`;
+                  
+                  const metadataFolderResponse = await fetch(metadataSearchUrl, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                  });
+                  
+                  let metadataFolderId: string | null = null;
+                  if (metadataFolderResponse.ok) {
+                    const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                    if (metadataFolderData.files && metadataFolderData.files.length > 0) {
+                      metadataFolderId = metadataFolderData.files[0].id;
+                      console.log(`[MetadataIndex PUT] Found _metadata folder (ID: ${metadataFolderId})`);
+                    }
+                  }
+                  
+                  // Create _metadata folder if it doesn't exist
+                  if (!metadataFolderId) {
+                    console.log(`[MetadataIndex PUT] _metadata folder not found - creating...`);
+                    const createMetadataFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+                      method: 'POST',
+                      headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                      },
+                      body: JSON.stringify({
+                        name: metadataFolderName,
+                        mimeType: 'application/vnd.google-apps.folder',
+                        parents: [pnFolderId]
+                      })
+                    });
+                    
+                    if (createMetadataFolderResponse.ok) {
+                      const createdFolder = await createMetadataFolderResponse.json() as { id: string };
+                      metadataFolderId = createdFolder.id;
+                      console.log(`[MetadataIndex PUT] ✅ Created _metadata folder (ID: ${metadataFolderId})`);
+                    } else {
+                      const errorText = await createMetadataFolderResponse.text().catch(() => 'Unknown error');
+                      console.error(`[MetadataIndex PUT] ❌ Failed to create _metadata folder: ${createMetadataFolderResponse.status} ${errorText}`);
+                      throw new Error(`Failed to create _metadata folder: ${createMetadataFolderResponse.status}`);
+                    }
+                  }
+                    
+                    if (metadataFolderId) {
+                      const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
+                      
+                      // Check if companion metadata already exists
+                      const existingSpreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
+                        accessToken,
+                        metadataFolderId,
+                        fileId
+                      );
+                      
+                      if (!existingSpreadsheetId) {
+                        // Companion metadata doesn't exist - create it
+                        console.log(`[MetadataIndex PUT] Companion metadata not found for file ${fileId} - creating (visibility=${finalVisibility})...`);
+                        
+                        // Use publicToken from req.body - companion metadata is source of truth
+                        const tokenToUse = publicToken;
+                        
+                        console.log(`[MetadataIndex PUT] Companion metadata for file ${fileId}:`, {
+                          hasPublicTokenInRequest: !!publicToken,
+                          usingToken: !!tokenToUse
+                        });
+                        
+                        // Determine fileType and contentClass from req.body values - companion metadata is source of truth
+                        const determinedFileType = determineFileType({
+                          fileType: fileType,
+                          collection: collection,
+                          textPost: textPost,
+                          thought: thought,
+                          mimeType: originalMimeType,
+                          isThoughtThumbnail: isThoughtThumbnail,
+                          isPartOfCollection: isPartOfCollection
+                        });
+                        const determinedContentClass = determineContentClass({
+                          fileType: determinedFileType,
+                          collection: collection,
+                          textPost: textPost,
+                          thought: thought,
+                          isThoughtThumbnail: isThoughtThumbnail,
+                          isPartOfCollection: isPartOfCollection
+                        });
+                        
+                        const companionMetadata = {
+                          fileId: fileId,
+                          googleDriveFileId: fileId,
+                          fileName: driveFile.name || fileId,
+                          originalName: originalFileName,
+                          mimeType: originalMimeType,
+                          fileType: determinedFileType,
+                          contentClass: determinedContentClass,
+                          size: parseInt(driveFile.size || '0', 10),
+                          visibility: finalVisibility,
+                          uploadedAt: driveFile.createdTime || new Date().toISOString(),
+                          owner: {
+                            did: tokenPayload.did,
+                            identifier: pnIdentifier
+                          },
+                          tags: [],
+                          ...(thumbnailFileId && { thumbnailFileId }),
+                          ...(mainFileId && { mainFileId }),
+                          ...(tokenToUse && { publicToken: tokenToUse }),
+                          engagement: {
+                            views: 0,
+                            likes: 0,
+                            comments: 0,
+                            shares: 0,
+                            lastUpdated: new Date().toISOString(),
+                            engagementHistory: []
+                          }
+                        };
+                        
+                        // Create new metadata spreadsheet
+                        const spreadsheetId = await CompanionMetadataSheets.createSpreadsheet(
+                          accessToken,
+                          metadataFolderId,
+                          fileId,
+                          companionMetadata
+                        );
+                        console.log(`[MetadataIndex PUT] ✅ Created new companion metadata spreadsheet for ${fileId}: ${spreadsheetId}`);
+                      } else {
+                        // Companion metadata exists - update it if needed
+                        console.log(`[MetadataIndex PUT] Companion metadata already exists for ${fileId} - updating if needed...`);
+                        
+                        const currentMetadata = await service.getFileMetadata(fileId);
+                        const existingPublicToken = currentMetadata?.metadata?.publicToken;
+                        const tokenToUse = publicToken || existingPublicToken;
+                        const metadataForUpdate = (currentMetadata?.metadata || {}) as any;
+                        const mainFileIdForUpdate = mainFileId || metadataForUpdate.mainFileId;
+                        const thumbnailFileIdForUpdate = thumbnailFileId || metadataForUpdate.thumbnailFileId;
+                        
+                        const companionMetadata = {
+                          fileId: fileId,
+                          googleDriveFileId: fileId,
+                          fileName: driveFile.name || fileId,
+                          originalName: originalFileName,
+                          mimeType: originalMimeType,
+                          size: parseInt(driveFile.size || '0', 10),
+                          visibility: finalVisibility,
+                          uploadedAt: driveFile.createdTime || new Date().toISOString(),
+                          owner: {
+                            did: tokenPayload.did,
+                            identifier: pnIdentifier
+                          },
+                          tags: [],
+                          ...(thumbnailFileIdForUpdate && { thumbnailFileId: thumbnailFileIdForUpdate }),
+                          ...(mainFileIdForUpdate && { mainFileId: mainFileIdForUpdate }),
+                          ...(tokenToUse && { publicToken: tokenToUse }),
+                          engagement: {
+                            views: 0,
+                            likes: 0,
+                            comments: 0,
+                            shares: 0,
+                            lastUpdated: new Date().toISOString(),
+                            engagementHistory: []
+                          }
+                        };
+                        
+                        await CompanionMetadataSheets.updateMetadata(
+                          accessToken,
+                          existingSpreadsheetId,
+                          companionMetadata
+                        );
+                        console.log(`[MetadataIndex PUT] ✅ Updated existing companion metadata spreadsheet for ${fileId}`);
+                      }
+                      
+                      // Use req.body values for index updates - companion metadata is source of truth
+                      const tokenToUseForIndex = publicToken;
+                      const mainFileIdForIndex = mainFileId;
+                      const thumbnailFileIdForIndex = thumbnailFileId;
+                      
+                      const companionMetadataForIndex = {
+                        fileId: fileId,
+                        googleDriveFileId: fileId,
+                        fileName: driveFile.name || fileId,
+                        originalName: originalFileName,
+                        mimeType: originalMimeType,
+                        size: parseInt(driveFile.size || '0', 10),
+                        visibility: finalVisibility,
+                        uploadedAt: driveFile.createdTime || new Date().toISOString(),
+                        owner: {
+                          did: tokenPayload.did,
+                          identifier: pnIdentifier
+                        },
+                        tags: [],
+                        ...(thumbnailFileIdForIndex && { thumbnailFileId: thumbnailFileIdForIndex }),
+                        ...(mainFileIdForIndex && { mainFileId: mainFileIdForIndex }),
+                        ...(tokenToUseForIndex && { publicToken: tokenToUseForIndex }),
+                        engagement: {
+                          views: 0,
+                          likes: 0,
+                          comments: 0,
+                          shares: 0,
+                          lastUpdated: new Date().toISOString(),
+                          engagementHistory: []
+                        }
+                      };
+                      
+                      // Update owner index (contains ALL files for the owner)
+                      try {
+                        await this.updateOwnerFileIndex(
+                          accessToken,
+                          pnIdentifier,
+                          metadataFolderId,
+                          companionMetadataForIndex
+                        );
+                      } catch (ownerIndexError: any) {
+                        console.warn(`[MetadataIndex] Failed to update owner index (non-critical):`, ownerIndexError?.message || ownerIndexError);
+                      }
+                      
+                      // Update public file index (only if file is public)
+                      if (finalVisibility === 'public') {
+                        if (!companionMetadataForIndex.publicToken) {
+                          console.warn(`[MetadataIndex] No publicToken found for public file ${fileId} - file may not load in public feed`);
+                        } else {
+                          console.log(`[MetadataIndex] Using publicToken for public file index update: ${fileId}`);
+                        }
+                        
+                        try {
+                          await this.updatePublicFileIndex(
+                            accessToken,
+                            pnIdentifier,
+                            metadataFolderId,
+                            pnFolderId,
+                            companionMetadataForIndex
+                          );
+                          console.log(`[MetadataIndex] Successfully updated public file index for file ${fileId}`);
+                        } catch (indexError: any) {
+                          console.error(`[MetadataIndex] Failed to update public file index:`, indexError?.message || indexError);
+                          console.error(`[MetadataIndex] Stack trace:`, indexError?.stack);
+                        }
+                      } else {
+                        console.log(`[MetadataIndex] File ${fileId} is private - skipping public index update`);
+                      }
+                    }
+                  }
+                }
+              }
+          } catch (metadataError: any) {
+            // Don't fail the update if metadata creation fails - log and continue
+            console.error(`[MetadataIndex] Failed to create companion metadata file for ${fileId}:`, metadataError?.message || metadataError);
+            console.error(`[MetadataIndex] Stack trace:`, metadataError?.stack);
+          }
+        } else {
+          console.log(`[MetadataIndex PUT] File ${fileId} already existed (fileExistedBefore=${fileExistedBefore}) - skipping companion metadata creation`);
+        }
+
         // ARCHITECTURAL FIX: Update companion metadata FIRST (source of truth), then database (cache)
         // This ensures companion metadata is always authoritative for metadata fields
         if (name || description || keywords || tags || genre || category || locationCreated || license) {
@@ -3454,7 +3824,7 @@ class ProductionServer {
           }
         }
 
-        // Update database metadata FIRST (so file exists when we update it)
+        // Update database metadata AFTER companion metadata (cache syncs from source of truth)
         // Use actualFileId (resolved to thumbnail if fileId was main file)
         const updated = await service.updateMetadata(actualFileId, {
           name,
@@ -3718,389 +4088,6 @@ class ProductionServer {
           }
         }
         
-        // Create companion metadata file for ALL files at upload/creation time (just like share tokens)
-        // Companion metadata is created regardless of public/private status - it's just metadata storage
-        // This matches the behavior of share tokens which are generated at upload time
-        // IMPORTANT: This runs OUTSIDE the shouldUpdateIsPublic block so it always runs for new files
-        const shouldCreateCompanionMetadata = !fileExistedBefore; // Only create on initial upload, not on updates
-        
-        if (shouldCreateCompanionMetadata) {
-          // Determine final visibility status (use from request, or check current metadata, or default to private)
-          let finalVisibility: 'public' | 'private' = 'private';
-          if (isPublic !== undefined || textPost || thought) {
-            const finalIsPublic = isPublic !== undefined ? isPublic : ((textPost || thought) ? true : false);
-            finalVisibility = finalIsPublic ? 'public' : 'private';
-          } else {
-            // Check current metadata if available
-            const currentMeta = await service.getFileMetadata(fileId);
-            if (currentMeta?.metadata?.isPublic) {
-              finalVisibility = 'public';
-            }
-          }
-          
-          console.log(`[MetadataIndex PUT] Companion metadata creation check for ${fileId}:`, {
-            fileExistedBefore,
-            shouldCreateCompanionMetadata,
-            finalVisibility,
-            hasAuthHeader: !!(req.headers.authorization && req.headers.authorization.startsWith('Bearer '))
-          });
-          
-          console.log(`[MetadataIndex PUT] File ${fileId} is new - creating companion metadata (visibility=${finalVisibility})...`);
-          try {
-            const authHeader = req.headers.authorization;
-            if (authHeader && authHeader.startsWith('Bearer ')) {
-              const token = authHeader.substring(7);
-              const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-              const tokenPayload = PNOAuthService.validateAccessToken(token);
-              
-              if (tokenPayload) {
-                const pnIdentifier = tokenPayload.pnIdentifier;
-                if (!pnIdentifier) {
-                  console.error(`[MetadataIndex PUT] Missing pnIdentifier in token payload`);
-                  throw new Error('Missing pnIdentifier in token');
-                }
-                const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
-                const identifierCandidates: string[] = [];
-                if (tokenPayload.pnIdentifier) {
-                  identifierCandidates.push(tokenPayload.pnIdentifier);
-                }
-                if (tokenPayload.did) {
-                  identifierCandidates.push(tokenPayload.did);
-                  if (tokenPayload.did.startsWith('did:key:')) {
-                    const keyPart = tokenPayload.did.substring(8);
-                    if (keyPart) {
-                      identifierCandidates.push(keyPart);
-                    }
-                  }
-                }
-                
-                const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-                const accountId = req.query.accountId as string | undefined;
-                const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
-                
-                // Fetch file info from Google Drive
-                const driveResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime`, {
-                  headers: { 'Authorization': `Bearer ${accessToken}` }
-                });
-                
-                if (!driveResponse.ok) {
-                  const errorText = await driveResponse.text().catch(() => 'Unknown error');
-                  console.error(`[MetadataIndex PUT] Failed to fetch file info: ${driveResponse.status} ${driveResponse.statusText} - ${errorText}`);
-                  throw new Error(`Failed to fetch file info: ${driveResponse.status}`);
-                }
-                
-                const driveFile = await driveResponse.json() as { name?: string; mimeType?: string; size?: string; createdTime?: string };
-                const originalFileName = driveFile.name?.replace(/\.encrypted$/i, '') || fileId;
-                const originalMimeType = driveFile.mimeType || 'application/octet-stream';
-                
-                // Get or create pN folder
-                // Try both formats: "par Noir - pn-{hash}" and "par Noir - {hash}"
-                let pnFolderId: string | null = null;
-                const pnFolderName1 = `par Noir - ${pnIdentifier}`;
-                const pnFolderName2 = `par Noir - pn-${pnIdentifier}`;
-                
-                for (const pnFolderName of [pnFolderName1, pnFolderName2]) {
-                  const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                  const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-                  
-                  const folderResponse = await fetch(folderSearchUrl, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` }
-                  });
-                  
-                  if (folderResponse.ok) {
-                    const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                    if (folderData.files && folderData.files.length > 0) {
-                      pnFolderId = folderData.files[0].id;
-                      console.log(`[MetadataIndex PUT] Found pN folder: ${pnFolderName} (ID: ${pnFolderId})`);
-                      break;
-                    }
-                  }
-                }
-                
-                // If pN folder not found, create it
-                if (!pnFolderId) {
-                  console.log(`[MetadataIndex PUT] pN folder not found - creating: ${pnFolderName2}`);
-                  const createPnFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-                    method: 'POST',
-                    headers: {
-                      'Authorization': `Bearer ${accessToken}`,
-                      'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                      name: pnFolderName2,
-                      mimeType: 'application/vnd.google-apps.folder'
-                    })
-                  });
-                  
-                  if (createPnFolderResponse.ok) {
-                    const createdFolder = await createPnFolderResponse.json() as { id: string };
-                    pnFolderId = createdFolder.id;
-                    console.log(`[MetadataIndex PUT] ✅ Created pN folder: ${pnFolderName2} (ID: ${pnFolderId})`);
-                  } else {
-                    const errorText = await createPnFolderResponse.text().catch(() => 'Unknown error');
-                    console.error(`[MetadataIndex PUT] ❌ Failed to create pN folder: ${createPnFolderResponse.status} ${errorText}`);
-                    throw new Error(`Failed to create pN folder: ${createPnFolderResponse.status}`);
-                  }
-                }
-                
-                if (pnFolderId) {
-                  // Get or create _metadata folder
-                  const metadataFolderName = '_metadata';
-                  const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                  const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id,name)&pageSize=1`;
-                  
-                  const metadataFolderResponse = await fetch(metadataSearchUrl, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` }
-                  });
-                  
-                  let metadataFolderId: string | null = null;
-                  if (metadataFolderResponse.ok) {
-                    const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                    if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-                      metadataFolderId = metadataFolderData.files[0].id;
-                      console.log(`[MetadataIndex PUT] Found _metadata folder (ID: ${metadataFolderId})`);
-                    }
-                  }
-                  
-                  // Create _metadata folder if it doesn't exist
-                  if (!metadataFolderId) {
-                    console.log(`[MetadataIndex PUT] _metadata folder not found - creating...`);
-                    const createMetadataFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-                      method: 'POST',
-                      headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Content-Type': 'application/json'
-                      },
-                      body: JSON.stringify({
-                        name: metadataFolderName,
-                        mimeType: 'application/vnd.google-apps.folder',
-                        parents: [pnFolderId]
-                      })
-                    });
-                    
-                    if (createMetadataFolderResponse.ok) {
-                      const createdFolder = await createMetadataFolderResponse.json() as { id: string };
-                      metadataFolderId = createdFolder.id;
-                      console.log(`[MetadataIndex PUT] ✅ Created _metadata folder (ID: ${metadataFolderId})`);
-                    } else {
-                      const errorText = await createMetadataFolderResponse.text().catch(() => 'Unknown error');
-                      console.error(`[MetadataIndex PUT] ❌ Failed to create _metadata folder: ${createMetadataFolderResponse.status} ${errorText}`);
-                      throw new Error(`Failed to create _metadata folder: ${createMetadataFolderResponse.status}`);
-                    }
-                  }
-                    
-                    if (metadataFolderId) {
-                      const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
-                      
-                      // Check if companion metadata already exists
-                      const existingSpreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
-                        accessToken,
-                        metadataFolderId,
-                        fileId
-                      );
-                      
-                      if (!existingSpreadsheetId) {
-                        // Companion metadata doesn't exist - create it
-                        console.log(`[MetadataIndex PUT] Companion metadata not found for file ${fileId} - creating (visibility=${finalVisibility})...`);
-                        
-                        // Get publicToken from request body if provided (generated client-side)
-                        // IMPORTANT: Refetch metadata AFTER database update to ensure we have the latest publicToken
-                        const currentMetadata = await service.getFileMetadata(fileId);
-                        const existingPublicToken = currentMetadata?.metadata?.publicToken;
-                        const tokenToUse = publicToken || existingPublicToken;
-                        
-                        console.log(`[MetadataIndex PUT] Companion metadata for file ${fileId}:`, {
-                          hasPublicTokenInRequest: !!publicToken,
-                          hasPublicTokenInDatabase: !!existingPublicToken,
-                          usingToken: !!tokenToUse
-                        });
-                        
-                        // Determine fileType and contentClass from current metadata
-                        const metadataForType = (currentMetadata?.metadata || {}) as any;
-                        const determinedFileType = determineFileType({
-                          fileType: metadataForType.fileType,
-                          collection: metadataForType.collection,
-                          textPost: metadataForType.textPost,
-                          thought: metadataForType.thought,
-                          mimeType: originalMimeType,
-                          isThoughtThumbnail: metadataForType.isThoughtThumbnail,
-                          isPartOfCollection: metadataForType.isPartOfCollection
-                        });
-                        const determinedContentClass = determineContentClass({
-                          fileType: determinedFileType,
-                          collection: metadataForType.collection,
-                          textPost: metadataForType.textPost,
-                          thought: metadataForType.thought,
-                          isThoughtThumbnail: metadataForType.isThoughtThumbnail,
-                          isPartOfCollection: metadataForType.isPartOfCollection
-                        });
-                        
-                        const companionMetadata = {
-                          fileId: fileId,
-                          googleDriveFileId: fileId,
-                          fileName: driveFile.name || fileId,
-                          originalName: originalFileName,
-                          mimeType: originalMimeType,
-                          fileType: determinedFileType,
-                          contentClass: determinedContentClass,
-                          size: parseInt(driveFile.size || '0', 10),
-                          visibility: finalVisibility,
-                          uploadedAt: driveFile.createdTime || new Date().toISOString(),
-                          owner: {
-                            did: tokenPayload.did,
-                            identifier: pnIdentifier
-                          },
-                          tags: [],
-                          ...(thumbnailFileId && { thumbnailFileId }),
-                          ...(mainFileId && { mainFileId }),
-                          ...(tokenToUse && { publicToken: tokenToUse }),
-                          engagement: {
-                            views: 0,
-                            likes: 0,
-                            comments: 0,
-                            shares: 0,
-                            lastUpdated: new Date().toISOString(),
-                            engagementHistory: []
-                          }
-                        };
-                        
-                        // Create new metadata spreadsheet
-                        const spreadsheetId = await CompanionMetadataSheets.createSpreadsheet(
-                          accessToken,
-                          metadataFolderId,
-                          fileId,
-                          companionMetadata
-                        );
-                        console.log(`[MetadataIndex PUT] ✅ Created new companion metadata spreadsheet for ${fileId}: ${spreadsheetId}`);
-                      } else {
-                        // Companion metadata exists - update it if needed
-                        console.log(`[MetadataIndex PUT] Companion metadata already exists for ${fileId} - updating if needed...`);
-                        
-                        const currentMetadata = await service.getFileMetadata(fileId);
-                        const existingPublicToken = currentMetadata?.metadata?.publicToken;
-                        const tokenToUse = publicToken || existingPublicToken;
-                        const metadataForUpdate = (currentMetadata?.metadata || {}) as any;
-                        const mainFileIdForUpdate = mainFileId || metadataForUpdate.mainFileId;
-                        const thumbnailFileIdForUpdate = thumbnailFileId || metadataForUpdate.thumbnailFileId;
-                        
-                        const companionMetadata = {
-                          fileId: fileId,
-                          googleDriveFileId: fileId,
-                          fileName: driveFile.name || fileId,
-                          originalName: originalFileName,
-                          mimeType: originalMimeType,
-                          size: parseInt(driveFile.size || '0', 10),
-                          visibility: finalVisibility,
-                          uploadedAt: driveFile.createdTime || new Date().toISOString(),
-                          owner: {
-                            did: tokenPayload.did,
-                            identifier: pnIdentifier
-                          },
-                          tags: [],
-                          ...(thumbnailFileIdForUpdate && { thumbnailFileId: thumbnailFileIdForUpdate }),
-                          ...(mainFileIdForUpdate && { mainFileId: mainFileIdForUpdate }),
-                          ...(tokenToUse && { publicToken: tokenToUse }),
-                          engagement: {
-                            views: 0,
-                            likes: 0,
-                            comments: 0,
-                            shares: 0,
-                            lastUpdated: new Date().toISOString(),
-                            engagementHistory: []
-                          }
-                        };
-                        
-                        await CompanionMetadataSheets.updateMetadata(
-                          accessToken,
-                          existingSpreadsheetId,
-                          companionMetadata
-                        );
-                        console.log(`[MetadataIndex PUT] ✅ Updated existing companion metadata spreadsheet for ${fileId}`);
-                      }
-                      
-                      // Get companion metadata for index updates
-                      const currentMetadataForIndex = await service.getFileMetadata(fileId);
-                      const existingPublicTokenForIndex = currentMetadataForIndex?.metadata?.publicToken;
-                      const tokenToUseForIndex = publicToken || existingPublicTokenForIndex;
-                      const metadataForIndex = (currentMetadataForIndex?.metadata || {}) as any;
-                      const mainFileIdForIndex = mainFileId || metadataForIndex.mainFileId;
-                      const thumbnailFileIdForIndex = thumbnailFileId || metadataForIndex.thumbnailFileId;
-                      
-                      const companionMetadataForIndex = {
-                        fileId: fileId,
-                        googleDriveFileId: fileId,
-                        fileName: driveFile.name || fileId,
-                        originalName: originalFileName,
-                        mimeType: originalMimeType,
-                        size: parseInt(driveFile.size || '0', 10),
-                        visibility: finalVisibility,
-                        uploadedAt: driveFile.createdTime || new Date().toISOString(),
-                        owner: {
-                          did: tokenPayload.did,
-                          identifier: pnIdentifier
-                        },
-                        tags: [],
-                        ...(thumbnailFileIdForIndex && { thumbnailFileId: thumbnailFileIdForIndex }),
-                        ...(mainFileIdForIndex && { mainFileId: mainFileIdForIndex }),
-                        ...(tokenToUseForIndex && { publicToken: tokenToUseForIndex }),
-                        engagement: {
-                          views: 0,
-                          likes: 0,
-                          comments: 0,
-                          shares: 0,
-                          lastUpdated: new Date().toISOString(),
-                          engagementHistory: []
-                        }
-                      };
-                      
-                      // Update owner index (contains ALL files for the owner)
-                      try {
-                        await this.updateOwnerFileIndex(
-                          accessToken,
-                          pnIdentifier,
-                          metadataFolderId,
-                          companionMetadataForIndex
-                        );
-                      } catch (ownerIndexError: any) {
-                        console.warn(`[MetadataIndex] Failed to update owner index (non-critical):`, ownerIndexError?.message || ownerIndexError);
-                      }
-                      
-                      // Update public file index (only if file is public)
-                      if (finalVisibility === 'public') {
-                        if (!companionMetadataForIndex.publicToken) {
-                          console.warn(`[MetadataIndex] No publicToken found for public file ${fileId} - file may not load in public feed`);
-                        } else {
-                          console.log(`[MetadataIndex] Using publicToken for public file index update: ${fileId}`);
-                        }
-                        
-                        try {
-                          await this.updatePublicFileIndex(
-                            accessToken,
-                            pnIdentifier,
-                            metadataFolderId,
-                            pnFolderId,
-                            companionMetadataForIndex
-                          );
-                          console.log(`[MetadataIndex] Successfully updated public file index for file ${fileId}`);
-                        } catch (indexError: any) {
-                          console.error(`[MetadataIndex] Failed to update public file index:`, indexError?.message || indexError);
-                          console.error(`[MetadataIndex] Stack trace:`, indexError?.stack);
-                        }
-                      } else {
-                        console.log(`[MetadataIndex] File ${fileId} is private - skipping public index update`);
-                      }
-                    }
-                  }
-                }
-              }
-          } catch (metadataError: any) {
-            // Don't fail the update if metadata creation fails - log and continue
-            console.error(`[MetadataIndex] Failed to create companion metadata file for ${fileId}:`, metadataError?.message || metadataError);
-            console.error(`[MetadataIndex] Stack trace:`, metadataError?.stack);
-          }
-        } else {
-          console.log(`[MetadataIndex PUT] File ${fileId} already existed (fileExistedBefore=${fileExistedBefore}) - skipping companion metadata creation`);
-        }
 
         // Handle isTopPost update
         if (isTopPost !== undefined) {
