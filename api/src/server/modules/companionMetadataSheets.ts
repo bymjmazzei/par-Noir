@@ -425,7 +425,7 @@ export class CompanionMetadataSheets {
         description: data[getColumnIndex('description')] || undefined,
         thumbnail: data[getColumnIndex('thumbnail')] || undefined,
         thumbnailFileId: getColumnIndex('thumbnailFileId') >= 0 ? (data[getColumnIndex('thumbnailFileId')] || undefined) : undefined,
-        mainFileId: data[getColumnIndex('mainFileId')] || undefined,
+        mainFileId: getColumnIndex('mainFileId') >= 0 ? (data[getColumnIndex('mainFileId')] || undefined) : undefined,
         publicToken: (() => {
           const decrypted = MetadataEncryption.decryptField(publicTokenEncrypted);
           if (!decrypted) return undefined;
@@ -609,7 +609,7 @@ export class CompanionMetadataSheets {
       }
       if (metadata.mainFileId !== undefined) {
         const idx = headers.indexOf('mainFileId');
-        currentData[idx] = metadata.mainFileId || '';
+        if (idx >= 0) currentData[idx] = metadata.mainFileId || '';
       }
       if (metadata.publicToken !== undefined) {
         const idx = headers.indexOf('publicToken');
