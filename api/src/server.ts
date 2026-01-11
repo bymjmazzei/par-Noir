@@ -3934,8 +3934,6 @@ class ProductionServer {
                           isThoughtThumbnail: metadataForType.isThoughtThumbnail,
                           isPartOfCollection: metadataForType.isPartOfCollection
                         });
-                        const thumbnailFileId = metadataForType.thumbnailFileId;
-                        const mainFileId = metadataForType.mainFileId;
                         
                         const companionMetadata = {
                           fileId: fileId,
@@ -3982,8 +3980,8 @@ class ProductionServer {
                         const existingPublicToken = currentMetadata?.metadata?.publicToken;
                         const tokenToUse = publicToken || existingPublicToken;
                         const metadataForUpdate = (currentMetadata?.metadata || {}) as any;
-                        const mainFileIdForUpdate = metadataForUpdate.mainFileId;
-                        const thumbnailFileIdForUpdate = metadataForUpdate.thumbnailFileId;
+                        const mainFileIdForUpdate = mainFileId || metadataForUpdate.mainFileId;
+                        const thumbnailFileIdForUpdate = thumbnailFileId || metadataForUpdate.thumbnailFileId;
                         
                         const companionMetadata = {
                           fileId: fileId,
@@ -4025,8 +4023,8 @@ class ProductionServer {
                       const existingPublicTokenForIndex = currentMetadataForIndex?.metadata?.publicToken;
                       const tokenToUseForIndex = publicToken || existingPublicTokenForIndex;
                       const metadataForIndex = (currentMetadataForIndex?.metadata || {}) as any;
-                      const mainFileIdForIndex = metadataForIndex.mainFileId;
-                      const thumbnailFileIdForIndex = metadataForIndex.thumbnailFileId;
+                      const mainFileIdForIndex = mainFileId || metadataForIndex.mainFileId;
+                      const thumbnailFileIdForIndex = thumbnailFileId || metadataForIndex.thumbnailFileId;
                       
                       const companionMetadataForIndex = {
                         fileId: fileId,
