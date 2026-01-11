@@ -2485,8 +2485,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
     setError(null);
 
+    // Store file reference before closing modal
+    const fileToUpdate = editingFile;
+    const fileId = fileToUpdate.id;
+    const accountId = fileToUpdate.accountId || '';
+
     // Optimistically update local metadata map
-    const existingMetadata = fileMetadataMap.get(editingFile.id);
+    const existingMetadata = fileMetadataMap.get(fileId);
     const optimisticMetadata = {
       ...existingMetadata,
       name: formData.name,
@@ -2498,18 +2503,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     };
     setFileMetadataMap(prev => {
       const next = new Map(prev);
-      next.set(editingFile.id, optimisticMetadata as any);
+      next.set(fileId, optimisticMetadata as any);
       return next;
     });
 
     // Optimistically update displayName in file list
-    if (editingFile.accountId) {
-      const accountId = editingFile.accountId;
+    if (accountId) {
       setFilesByAccount(prev => {
         const next = new Map(prev);
         const accountFiles = next.get(accountId) || [];
         const updatedFiles = accountFiles.map(file => {
-          if (file.id === editingFile.id) {
+          if (file.id === fileId) {
             return {
               ...file,
               displayName: formData.name || (file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name)
@@ -2522,64 +2526,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       });
     }
 
-    // Queue background task
-    const taskId = uploadQueueService.addTask({
-      type: 'updateMetadata',
-      accountId: editingFile.accountId || '',
-      metadata: {
-        fileId: editingFile.id,
-        accountId: editingFile.accountId || '',
-        metadata: formData
-      },
-      onComplete: (result) => {
-        console.log('✅ [Metadata] Metadata updated:', result);
-        // Update with actual result
-        if (result?.metadata) {
-          setFileMetadataMap(prev => {
-            const next = new Map(prev);
-            next.set(editingFile.id, result.metadata);
-            return next;
-          });
-        }
-        // Reload files to ensure metadata is fresh
-        if (editingFile.accountId) {
-          setTimeout(() => {
-            loadFilesForAccount(editingFile.accountId);
-          }, 500);
-        }
-      },
-      onError: (error) => {
-        console.error('❌ [Metadata] Failed to update metadata:', error);
-        setError(error.message || 'Failed to update metadata');
-        // Rollback optimistic update
-        if (existingMetadata) {
-          setFileMetadataMap(prev => {
-            const next = new Map(prev);
-            next.set(editingFile.id, existingMetadata);
-            return next;
-          });
-        }
-        if (editingFile.accountId) {
-          setFilesByAccount(prev => {
-            const next = new Map(prev);
-            const accountFiles = next.get(editingFile.accountId) || [];
-            const updatedFiles = accountFiles.map(file => {
-              if (file.id === editingFile.id) {
-                return {
-                  ...file,
-                  displayName: file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name
-                };
-              }
-              return file;
-            });
-            next.set(editingFile.accountId, updatedFiles);
-            return next;
-          });
-        }
-      }
-    });
-
-    // Close modal immediately (optimistic UI)
+    // Close modal immediately (before queuing task)
     setEditingFile(null);
     setEditForm({
       name: '',
@@ -2591,6 +2538,63 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       locationName: '',
       locationAddress: '',
       license: 'all-rights-reserved'
+    });
+
+    // Queue background task after closing modal
+    uploadQueueService.addTask({
+      type: 'updateMetadata',
+      accountId: accountId,
+      metadata: {
+        fileId: fileId,
+        accountId: accountId,
+        metadata: formData
+      },
+      onComplete: (result) => {
+        console.log('✅ [Metadata] Metadata updated:', result);
+        // Update with actual result
+        if (result?.metadata) {
+          setFileMetadataMap(prev => {
+            const next = new Map(prev);
+            next.set(fileId, result.metadata);
+            return next;
+          });
+        }
+        // Reload files to ensure metadata is fresh
+        if (accountId) {
+          setTimeout(() => {
+            loadFilesForAccount(accountId);
+          }, 500);
+        }
+      },
+      onError: (error) => {
+        console.error('❌ [Metadata] Failed to update metadata:', error);
+        setError(error.message || 'Failed to update metadata');
+        // Rollback optimistic update
+        if (existingMetadata) {
+          setFileMetadataMap(prev => {
+            const next = new Map(prev);
+            next.set(fileId, existingMetadata);
+            return next;
+          });
+        }
+        if (accountId) {
+          setFilesByAccount(prev => {
+            const next = new Map(prev);
+            const accountFiles = next.get(accountId) || [];
+            const updatedFiles = accountFiles.map(file => {
+              if (file.id === fileId) {
+                return {
+                  ...file,
+                  displayName: file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name
+                };
+              }
+              return file;
+            });
+            next.set(accountId, updatedFiles);
+            return next;
+          });
+        }
+      }
     });
   };
 
@@ -2645,8 +2649,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
     setError(null);
 
-    const existingMetadata = fileMetadataMap.get(sharingFile.id);
-    const targetFileId = existingMetadata?.fileId || sharingFile.id;
+    // Store references before closing modal
+    const fileToUpdate = sharingFile;
+    const fileId = fileToUpdate.id;
+    const accountId = sharingAccountId || '';
+
+    const existingMetadata = fileMetadataMap.get(fileId);
+    const targetFileId = existingMetadata?.fileId || fileId;
     const isCurrentlyPublic = existingMetadata?.isPublic || false;
     const existingIsNSFW = existingMetadata?.isNSFW === true;
     const makePublic = shareVisibility === 'public';
@@ -2693,17 +2702,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     if (makePublic || nextPermissions || shareNSFW !== existingIsNSFW) {
       setFileMetadataMap(prev => {
         const next = new Map(prev);
-        const current = next.get(sharingFile.id);
+        const current = next.get(fileId);
         if (current) {
-          next.set(sharingFile.id, {
+          next.set(fileId, {
             ...current,
             isPublic: makePublic,
             isNSFW: shareNSFW,
             ...(nextPermissions && { indexingPermissions: nextPermissions })
           });
         } else {
-          next.set(sharingFile.id, {
-            fileId: sharingFile.id,
+          next.set(fileId, {
+            fileId: fileId,
             isPublic: makePublic,
             isNSFW: shareNSFW,
             ...(nextPermissions && { indexingPermissions: nextPermissions })
@@ -2713,13 +2722,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       });
     }
 
-    // Queue background task
-    const taskId = uploadQueueService.addTask({
+    // Close modal immediately (before queuing task)
+    closeShareSettings();
+
+    // Queue background task after closing modal
+    uploadQueueService.addTask({
       type: 'updateShareSettings',
-      accountId: sharingAccountId || '',
+      accountId: accountId,
       metadata: {
         fileId: targetFileId,
-        accountId: sharingAccountId || '',
+        accountId: accountId,
         shareVisibility,
         shareNSFW,
         indexerToggles,
@@ -2735,14 +2747,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       onComplete: (result) => {
         console.log('✅ [ShareSettings] Share settings updated:', result);
         // Reload metadata and files if making public
-        if (result?.isPublic && sharingAccountId) {
-          loadFileMetadata(sharingFile.id).then(() => {
+        if (result?.isPublic && accountId) {
+          loadFileMetadata(fileId).then(() => {
             setTimeout(() => {
-              loadFilesForAccount(sharingAccountId);
+              loadFilesForAccount(accountId);
             }, 1000);
           });
         } else {
-          loadFileMetadata(sharingFile.id);
+          loadFileMetadata(fileId);
         }
       },
       onError: (error) => {
@@ -2752,15 +2764,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         if (existingMetadata) {
           setFileMetadataMap(prev => {
             const next = new Map(prev);
-            next.set(sharingFile.id, existingMetadata);
+            next.set(fileId, existingMetadata);
             return next;
           });
         }
       }
     });
-
-    // Close modal immediately (optimistic UI)
-    closeShareSettings();
   };
 
   // Handle file delete
