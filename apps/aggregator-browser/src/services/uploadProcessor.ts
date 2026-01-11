@@ -818,8 +818,11 @@ function blobToBase64(blob: Blob): Promise<string> {
 
 // Listen for task ready events from queue
 uploadQueueService.on('taskReady', (task: UploadTask) => {
-  processUploadTask(task).catch(error => {
-    console.error('[UploadProcessor] Error processing task:', error);
-  });
+  // Only handle upload task types (background tasks are handled by backgroundTaskProcessor)
+  if (task.type === 'file' || task.type === 'textPost' || task.type === 'multiPage' || task.type === 'pdf') {
+    processUploadTask(task).catch(error => {
+      console.error('[UploadProcessor] Error processing task:', error);
+    });
+  }
 });
 
