@@ -782,10 +782,12 @@ export class GoogleDriveProxyService {
             spreadsheetId
           );
           
-          // Note: CompanionMetadata interface doesn't have mainFileId, but check if it exists in the raw data
-          // For now, spreadsheets may not have mainFileId, so return null if not found in JSON
-          // The user confirmed mainFileId is in companion metadata files, so it should be in JSON
-          return null;
+          if (spreadsheetMetadata?.mainFileId) {
+            console.log(`[readCompanionMetadata] Found mainFileId ${spreadsheetMetadata.mainFileId} in spreadsheet metadata for ${fileId}`);
+            return { mainFileId: spreadsheetMetadata.mainFileId };
+          } else {
+            console.log(`[readCompanionMetadata] Spreadsheet metadata for ${fileId} exists but does not contain mainFileId`);
+          }
         }
       } catch (spreadsheetError) {
         // Non-critical - spreadsheet might not exist

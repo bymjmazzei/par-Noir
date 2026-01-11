@@ -34,6 +34,7 @@ export interface CompanionMetadata {
   description?: string;
   thumbnail?: string;
   thumbnailFileId?: string; // Reference to thumbnail file used in feeds
+  mainFileId?: string; // Reference to main file (for thumbnails) - the main file is for owner download only
   publicToken?: string;
   engagement?: {
     views: number;
@@ -102,7 +103,7 @@ export class CompanionMetadataSheets {
                 title: 'Metadata',
                 gridProperties: {
                   rowCount: 2,
-                  columnCount: 18
+                  columnCount: 19
                 }
               }
             },
@@ -224,6 +225,7 @@ export class CompanionMetadataSheets {
               'description',
               'thumbnail',
               'thumbnailFileId',
+              'mainFileId',
               'publicToken',
               'lastUpdated'
             ],
@@ -245,6 +247,7 @@ export class CompanionMetadataSheets {
               metadata.description || '',
               metadata.thumbnail || '',
               metadata.thumbnailFileId || '',
+              metadata.mainFileId || '',
               MetadataEncryption.encryptField(metadata.publicToken ? (typeof metadata.publicToken === 'string' ? metadata.publicToken : JSON.stringify(metadata.publicToken)) : undefined), // Encrypted
               new Date().toISOString()
             ]
@@ -378,10 +381,10 @@ export class CompanionMetadataSheets {
     const sheets = google.sheets({ version: 'v4', auth });
 
     try {
-      // Read Metadata sheet (read up to 18 columns for new schema, but handle fewer gracefully)
+      // Read Metadata sheet (read up to 19 columns for new schema, but handle fewer gracefully)
       const metadataResponse = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: 'Metadata!A1:R2'
+        range: 'Metadata!A1:S2'
       });
 
       const rows = metadataResponse.data.values;
@@ -422,6 +425,7 @@ export class CompanionMetadataSheets {
         description: data[getColumnIndex('description')] || undefined,
         thumbnail: data[getColumnIndex('thumbnail')] || undefined,
         thumbnailFileId: getColumnIndex('thumbnailFileId') >= 0 ? (data[getColumnIndex('thumbnailFileId')] || undefined) : undefined,
+        mainFileId: data[getColumnIndex('mainFileId')] || undefined,
         publicToken: (() => {
           const decrypted = MetadataEncryption.decryptField(publicTokenEncrypted);
           if (!decrypted) return undefined;
@@ -560,10 +564,10 @@ export class CompanionMetadataSheets {
     const sheets = google.sheets({ version: 'v4', auth });
 
     try {
-      // Read current metadata to get headers (read up to 18 columns for new schema)
+      // Read current metadata to get headers (read up to 19 columns for new schema)
       const metadataResponse = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: 'Metadata!A1:R2'
+        range: 'Metadata!A1:S2'
       });
 
       const rows = metadataResponse.data.values;
@@ -602,6 +606,10 @@ export class CompanionMetadataSheets {
       if (metadata.thumbnailFileId !== undefined) {
         const idx = headers.indexOf('thumbnailFileId');
         if (idx >= 0) currentData[idx] = metadata.thumbnailFileId || '';
+      }
+      if (metadata.mainFileId !== undefined) {
+        const idx = headers.indexOf('mainFileId');
+        currentData[idx] = metadata.mainFileId || '';
       }
       if (metadata.publicToken !== undefined) {
         const idx = headers.indexOf('publicToken');
