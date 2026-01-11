@@ -3454,40 +3454,7 @@ class ProductionServer {
           }
         }
 
-        // SIMPLE RULE: If isPublic === false, DELETE from public tables FIRST
-        // This must happen BEFORE updateMetadata() so we can check if file exists
-        if (isPublic === false && current) {
-          try {
-            const removed = await service.removeMetadata(actualFileId);
-            if (removed) {
-              console.log(`✅ [MetadataIndex PUT] Deleted file ${actualFileId} from public tables (isPublic: false)`);
-              
-              // Verify deletion
-              const verifyDeleted = await service.getFileMetadata(actualFileId);
-              if (verifyDeleted) {
-                console.error(`❌ [MetadataIndex PUT] CRITICAL: File ${actualFileId} still exists after deletion!`);
-              } else {
-                console.log(`✅ [MetadataIndex PUT] Verified: File ${actualFileId} removed from database`);
-              }
-              
-              // Invalidate cache immediately
-              try {
-                const { invalidateIndexCache } = await import('./server/utils/cache');
-                await invalidateIndexCache();
-                console.log(`✅ [MetadataIndex PUT] Cache invalidated after deletion`);
-              } catch (cacheError: any) {
-                console.warn(`⚠️ [MetadataIndex PUT] Cache invalidation failed:`, cacheError?.message);
-              }
-            } else {
-              console.warn(`⚠️ [MetadataIndex PUT] File ${actualFileId} not found in database to delete`);
-            }
-          } catch (deleteError: any) {
-            console.error(`❌ [MetadataIndex PUT] Failed to delete file ${actualFileId}:`, deleteError?.message || deleteError);
-            // Continue - updateMetadata() will still set isPublic: false
-          }
-        }
-
-        // Then update database (cache) - only after companion metadata update succeeds
+        // Update database metadata FIRST (so file exists when we update it)
         // Use actualFileId (resolved to thumbnail if fileId was main file)
         const updated = await service.updateMetadata(actualFileId, {
           name,
@@ -3516,9 +3483,51 @@ class ProductionServer {
           mainFileId // Reference to source file for thumbnails
         });
 
+        // Track if we successfully deleted the file (so we can return success even if file no longer exists)
+        let fileWasDeleted = false;
+
+        // If isPublic === false, DELETE from public tables AFTER updating metadata
+        // This ensures the file is completely removed from feeds
+        if (isPublic === false) {
+          try {
+            const removed = await service.removeMetadata(actualFileId);
+            if (removed) {
+              fileWasDeleted = true;
+              console.log(`✅ [MetadataIndex PUT] Deleted file ${actualFileId} from public tables (isPublic: false)`);
+              
+              // Verify deletion
+              const verifyDeleted = await service.getFileMetadata(actualFileId);
+              if (verifyDeleted) {
+                console.error(`❌ [MetadataIndex PUT] CRITICAL: File ${actualFileId} still exists after deletion!`);
+              } else {
+                console.log(`✅ [MetadataIndex PUT] Verified: File ${actualFileId} removed from database`);
+              }
+              
+              // Invalidate cache immediately
+              try {
+                const { invalidateIndexCache } = await import('./server/utils/cache');
+                await invalidateIndexCache();
+                console.log(`✅ [MetadataIndex PUT] Cache invalidated after deletion`);
+              } catch (cacheError: any) {
+                console.warn(`⚠️ [MetadataIndex PUT] Cache invalidation failed:`, cacheError?.message);
+              }
+            } else {
+              console.warn(`⚠️ [MetadataIndex PUT] File ${actualFileId} not found in database to delete`);
+            }
+          } catch (deleteError: any) {
+            console.error(`❌ [MetadataIndex PUT] Failed to delete file ${actualFileId}:`, deleteError?.message || deleteError);
+            // Continue - companion metadata will still be updated
+          }
+        }
+
+        // Refetch current after updateMetadata() to get latest state (or null if deleted)
+        current = await service.getFileMetadata(actualFileId);
+
         // SIMPLIFIED: Update companion metadata if isPublic is being changed
-        // Deletion already happened BEFORE updateMetadata() if isPublic === false
-        if ((isPublic === false || isPublic === true) && current) {
+        // For private files, current might be null if we just deleted it, so use updated metadata from updateMetadata()
+        if ((isPublic === false || isPublic === true)) {
+          // Use current metadata if available, otherwise use updated metadata from updateMetadata() call
+          const metadataForCompanion = current?.metadata || updated;
           try {
             const authHeader = req.headers.authorization;
             if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -3596,9 +3605,9 @@ class ProductionServer {
                     if (spreadsheetId) {
                       const visibility = isPublic === true ? 'public' : 'private';
                       
-                      // Get current metadata to determine contentClass and thumbnailFileId
-                      // For private files, current might be null if already deleted, so use the metadata we had before deletion
-                      const metadataForType = (current?.metadata || {}) as any;
+                      // Get metadata to determine contentClass and thumbnailFileId
+                      // For private files, current might be null if already deleted, so use metadataForCompanion
+                      const metadataForType = (metadataForCompanion || {}) as any;
                       
                       // Determine fileType and contentClass
                       const determinedFileType = determineFileType({
@@ -3647,9 +3656,6 @@ class ProductionServer {
             });
           }
         }
-        
-        // Refetch current after updateMetadata() to get latest state
-        current = await service.getFileMetadata(actualFileId);
         
         // CRITICAL: Submit metadata to aggregator service so it appears in feeds
         // Only runs if file is public and exists in database
@@ -4146,9 +4152,15 @@ class ProductionServer {
         }
 
         // Return the updated metadata (or current if updateMetadata returned null)
+        // If file was deleted (made private), return success even if file no longer exists in database
         const result = updated || current;
-        if (!result) {
+        if (!result && !fileWasDeleted) {
           return res.status(404).json({ error: 'File not found in index' });
+        }
+
+        // If file was deleted, return success with the metadata we had before deletion
+        if (fileWasDeleted && !result) {
+          return res.json({ success: true, metadata: updated || null, deleted: true });
         }
 
         return res.json({ success: true, metadata: result });
