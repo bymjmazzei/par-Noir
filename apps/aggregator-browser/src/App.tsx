@@ -3607,7 +3607,6 @@ function App() {
             feeds={feeds}
             onClose={() => {
               setShowUploadModal(false);
-              setActiveBottomTab('home');
             }}
             onUploadComplete={() => {
               // Refresh files after upload - reset to page 0

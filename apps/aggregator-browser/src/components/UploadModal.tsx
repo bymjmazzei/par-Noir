@@ -147,6 +147,9 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         
         console.log(`[UploadModal] Creating multi-page thought with ${pages.length} pages via upload queue`);
         
+        // Close editor immediately - returns to upload page
+        setShowTextEditor(false);
+        
         // Add to upload queue
         const taskId = uploadQueueService.addTask({
           type: 'multiPage',
@@ -163,13 +166,10 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
           },
           onComplete: (result) => {
             console.log('[UploadModal] Multi-page thought upload completed:', result);
-        setShowTextEditor(false);
-        if (onUploadComplete) {
-          onUploadComplete();
-        }
-        setTimeout(() => {
-          onClose();
-        }, 500);
+            if (onUploadComplete) {
+              onUploadComplete();
+            }
+            // Don't close modal - user stays on upload page
           },
           onError: (error) => {
             console.error('[UploadModal] Multi-page thought upload failed:', error);
@@ -179,30 +179,41 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         
         console.log(`[UploadModal] Multi-page thought queued for upload, taskId: ${taskId}`);
       } else {
-        // Single page thought - save normally
-        const result = await createTextPost(
+        // Single page thought - use upload queue for non-blocking upload
+        const metadata = textPost.metadata || {};
+        
+        console.log(`[UploadModal] Creating single-page thought via upload queue`);
+        
+        // Close editor immediately - returns to upload page
+        setShowTextEditor(false);
+        
+        // Add to upload queue
+        const taskId = uploadQueueService.addTask({
+          type: 'textPost',
           textPost,
           accountId,
-          {
+          metadata: {
             title: textPost.metadata?.name || textPost.content.substring(0, 50),
             description: textPost.metadata?.description || textPost.content,
-            isNSFW: textPost.isNSFW || false,
             keywords: textPost.metadata?.keywords || textPost.metadata?.tags || (textPost.category ? [textPost.category] : undefined),
             tags: textPost.metadata?.tags || textPost.metadata?.keywords || (textPost.category ? [textPost.category] : undefined),
-          }
-        );
-
-        if (result.success) {
-          setShowTextEditor(false);
-          if (onUploadComplete) {
-            onUploadComplete();
-          }
-          setTimeout(() => {
-            onClose();
-          }, 500);
-        } else {
-          alert(`Failed to create thought: ${result.error}`);
-        }
+            isPublic: metadata.isPublic !== undefined ? metadata.isPublic : true,
+            isNSFW: textPost.isNSFW || false,
+          },
+          onComplete: (result) => {
+            console.log('[UploadModal] Single-page thought upload completed:', result);
+            if (onUploadComplete) {
+              onUploadComplete();
+            }
+            // Don't close modal - user stays on upload page
+          },
+          onError: (error) => {
+            console.error('[UploadModal] Single-page thought upload failed:', error);
+            alert(`Failed to create thought: ${error.message}`);
+          },
+        });
+        
+        console.log(`[UploadModal] Single-page thought queued for upload, taskId: ${taskId}`);
       }
     } catch (error: any) {
       console.error('Failed to create text post:', error);
