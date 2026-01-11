@@ -8052,150 +8052,56 @@ class ProductionServer {
         }
         }
         
-        // STEP 1: READ METADATA FIRST (before deleting!) to find paired files
-        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
-        const metadataService = AggregatorMetadataServiceDB.getInstance();
+        // STEP 1: Read companion metadata to get mainFileId connection
+        // Deletions from frontend are ALWAYS thumbnails - main files never appear in frontend
+        let mainFileId: string | null = null;
         
-        let fileMetadata: any = null;
-        let fileName = '';
-        let isThumbnail = false;
-        let pairedFileId: string | null = null;
-        
-        try {
-          // Get metadata from database first (more reliable than Drive API)
-          const dbMetadata = await metadataService.getFileMetadata(fileId);
-          if (dbMetadata?.metadata) {
-            fileMetadata = dbMetadata.metadata;
-            fileName = (fileMetadata.name || '').toLowerCase();
-            isThumbnail = fileName.startsWith('thumb_');
-            
-            // Get main thumbnail file ID (if exists)
-            if (fileMetadata.thumbnailFileId) {
-              pairedFileId = fileMetadata.thumbnailFileId;
-            }
-            
-            // CRITICAL FIX: For thumbnails, check for mainFileId in metadata
-            // This is the direct reference to the source file that should be deleted too
-            if (isThumbnail && fileMetadata.mainFileId) {
-              pairedFileId = fileMetadata.mainFileId;
-              console.log(`✅ [DeleteFile] Found mainFileId ${pairedFileId} for thumbnail ${fileId} from database metadata`);
-            }
-          }
-          
-          // Also try to get metadata from Google Drive as fallback
-          if (!fileMetadata && userIdentifier) {
-            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-            fileMetadata = await googleDriveProxyService.getFileMetadata(userIdentifier, fileId, accountId);
-            fileName = fileMetadata.name?.toLowerCase() || '';
-            isThumbnail = fileName.startsWith('thumb_');
-            
-            // CRITICAL FIX: For thumbnails loaded from Google Drive, check for mainFileId
-            if (isThumbnail && fileMetadata.mainFileId) {
-              pairedFileId = fileMetadata.mainFileId;
-              console.log(`✅ [DeleteFile] Found mainFileId ${pairedFileId} for thumbnail ${fileId} from Google Drive metadata`);
-            }
-          }
-          
-          // Find paired file (thumbnail if main, main if thumbnail)
-          if (userIdentifier && !pairedFileId) {
-            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
-            
-            if (isThumbnail) {
-              // This is a thumbnail - find the main file
-              const mainFileName = fileName.replace(/^thumb_/, '').replace(/\.encrypted$/, '');
-              const searchQuery = `name contains '${mainFileName.replace(/'/g, "\\'")}' and not name contains 'thumb_' and trashed=false`;
-              const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id,name)&pageSize=10`;
-              
-              const searchResponse = await fetch(searchUrl, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-              });
-              
-              if (searchResponse.ok) {
-                const searchData = await searchResponse.json() as { files?: Array<{ id: string; name: string }> };
-                if (searchData.files && searchData.files.length > 0) {
-                  const mainFile = searchData.files.find(f => {
-                    const fName = f.name.toLowerCase().replace(/\.encrypted$/, '');
-                    return fName === mainFileName;
-                  });
-                  if (mainFile) {
-                    pairedFileId = mainFile.id;
-                  }
-                }
-              }
-            } else {
-              // This is a main file - find the thumbnail
-              const thumbnailFileName = `thumb_${fileName.replace(/\.encrypted$/, '')}.encrypted`;
-              const searchQuery = `name='${thumbnailFileName.replace(/'/g, "\\'")}' and trashed=false`;
-              const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id,name)&pageSize=1`;
-              
-              const searchResponse = await fetch(searchUrl, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-              });
-              
-              if (searchResponse.ok) {
-                const searchData = await searchResponse.json() as { files?: Array<{ id: string; name: string }> };
-                if (searchData.files && searchData.files.length > 0) {
-                  pairedFileId = searchData.files[0].id;
-                }
-              }
-            }
-          }
-        } catch (metadataError: any) {
-          // File might already be deleted - continue with database cleanup
-          console.warn(`⚠️ [DeleteFile] Could not get file metadata (may already be deleted):`, metadataError?.message || metadataError);
-        }
-        
-        // STEP 2: Remove from database metadata (main file and paired file)
-        const filesToRemoveFromDb = [fileId];
-        if (pairedFileId) {
-          filesToRemoveFromDb.push(pairedFileId);
-        }
-        
-        for (const dbFileId of filesToRemoveFromDb) {
+        if (pnIdentifier && userIdentifier) {
           try {
-            const removed = await metadataService.removeMetadata(dbFileId);
-            if (removed) {
-              console.log(`✅ [DeleteFile] Removed ${dbFileId} from database metadata`);
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            const companionMetadata = await googleDriveProxyService.readCompanionMetadata(
+              userIdentifier,
+              pnIdentifier,
+              fileId,
+              accountId
+            );
+            
+            if (companionMetadata?.mainFileId) {
+              mainFileId = companionMetadata.mainFileId;
+              console.log(`✅ [DeleteFile] Found mainFileId ${mainFileId} for thumbnail ${fileId} from companion metadata`);
+            } else {
+              console.log(`ℹ️ [DeleteFile] No mainFileId found in companion metadata for ${fileId} (may not be a thumbnail or metadata not found)`);
             }
-          } catch (dbError: any) {
-            console.error(`❌ [DeleteFile] Failed to remove ${dbFileId} from database:`, dbError);
+          } catch (metadataError: any) {
+            console.warn(`⚠️ [DeleteFile] Could not read companion metadata (may already be deleted):`, metadataError?.message || metadataError);
           }
         }
         
-        // STEP 3: Delete files from Google Drive (main file, paired file, PDF thumbnails, and PDF page thumbnails)
-        const filesToDelete = [fileId];
-        if (pairedFileId) {
-          filesToDelete.push(pairedFileId);
-        }
-        
-        if (userIdentifier) {
-          const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-          
-          for (const driveFileId of filesToDelete) {
-            try {
-              await googleDriveProxyService.deleteFile(userIdentifier, driveFileId, accountId);
-              console.log(`✅ [DeleteFile] Deleted file ${driveFileId} from Google Drive`);
-            } catch (driveError: any) {
-              const errorMsg = driveError?.message || String(driveError);
-              // 404 is okay - file might already be deleted
-              if (!errorMsg.includes('404') && !errorMsg.includes('not found')) {
-                console.error(`❌ [DeleteFile] Failed to delete ${driveFileId} from Google Drive:`, errorMsg);
-              } else {
-                console.log(`ℹ️ [DeleteFile] File ${driveFileId} not found in Google Drive (may already be deleted)`);
-              }
+        // STEP 2: Delete main file (if found)
+        if (mainFileId && userIdentifier) {
+          try {
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            await googleDriveProxyService.deleteFile(userIdentifier, mainFileId, accountId);
+            console.log(`✅ [DeleteFile] Deleted main file ${mainFileId} from Google Drive`);
+          } catch (driveError: any) {
+            const errorMsg = driveError?.message || String(driveError);
+            // 404 is okay - file might already be deleted
+            if (!errorMsg.includes('404') && !errorMsg.includes('not found')) {
+              console.error(`❌ [DeleteFile] Failed to delete main file ${mainFileId} from Google Drive:`, errorMsg);
+            } else {
+              console.log(`ℹ️ [DeleteFile] Main file ${mainFileId} not found in Google Drive (may already be deleted)`);
             }
           }
         }
         
-        // STEP 3.5: Delete companion metadata files (JSON and spreadsheet)
-        if (pnIdentifier && userIdentifier && filesToDelete.length > 0) {
+        // STEP 3: Delete companion metadata files (JSON and spreadsheet for the thumbnail fileId)
+        if (pnIdentifier && userIdentifier) {
           try {
             const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
             const metadataResult = await googleDriveProxyService.deleteCompanionMetadataFiles(
               userIdentifier,
               pnIdentifier,
-              filesToDelete,
+              [fileId], // Delete metadata for the thumbnail fileId being deleted
               accountId
             );
             
@@ -8212,7 +8118,49 @@ class ProductionServer {
           }
         }
         
-        // STEP 4: Remove from Google Drive indexes
+        // STEP 4: Delete thumbnail (the fileId being deleted)
+        if (userIdentifier) {
+          try {
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            await googleDriveProxyService.deleteFile(userIdentifier, fileId, accountId);
+            console.log(`✅ [DeleteFile] Deleted thumbnail ${fileId} from Google Drive`);
+          } catch (driveError: any) {
+            const errorMsg = driveError?.message || String(driveError);
+            // 404 is okay - file might already be deleted
+            if (!errorMsg.includes('404') && !errorMsg.includes('not found')) {
+              console.error(`❌ [DeleteFile] Failed to delete thumbnail ${fileId} from Google Drive:`, errorMsg);
+            } else {
+              console.log(`ℹ️ [DeleteFile] Thumbnail ${fileId} not found in Google Drive (may already be deleted)`);
+            }
+          }
+        }
+        
+        // STEP 5: Remove from database metadata (thumbnail and main file if found)
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const metadataService = AggregatorMetadataServiceDB.getInstance();
+        const filesToRemoveFromDb = [fileId];
+        if (mainFileId) {
+          filesToRemoveFromDb.push(mainFileId);
+        }
+        
+        for (const dbFileId of filesToRemoveFromDb) {
+          try {
+            const removed = await metadataService.removeMetadata(dbFileId);
+            if (removed) {
+              console.log(`✅ [DeleteFile] Removed ${dbFileId} from database metadata`);
+            }
+          } catch (dbError: any) {
+            console.error(`❌ [DeleteFile] Failed to remove ${dbFileId} from database:`, dbError);
+          }
+        }
+        
+        // Files to delete for index cleanup (used in STEP 6)
+        const filesToDelete = [fileId];
+        if (mainFileId) {
+          filesToDelete.push(mainFileId);
+        }
+        
+        // STEP 6: Remove from Google Drive indexes
         if (pnIdentifier && userIdentifier) {
           try {
             const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');

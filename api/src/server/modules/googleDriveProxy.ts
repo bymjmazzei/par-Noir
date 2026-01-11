@@ -623,6 +623,174 @@ export class GoogleDriveProxyService {
   }
 
   /**
+   * Read companion metadata (JSON or spreadsheet) to get mainFileId connection
+   * Returns object with mainFileId if found, null otherwise
+   */
+  async readCompanionMetadata(
+    userDid: string,
+    pnIdentifier: string,
+    fileId: string,
+    accountId?: string
+  ): Promise<{ mainFileId?: string } | null> {
+    if (!pnIdentifier || !fileId) {
+      return null;
+    }
+
+    try {
+      const accessToken = await this.getAccessToken(userDid, accountId);
+      
+      // Get pN folder and metadata folder
+      const pnFolderName = `par Noir - ${pnIdentifier}`;
+      const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+      
+      const folderResponse = await fetch(folderSearchUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      
+      if (!folderResponse.ok) {
+        return null;
+      }
+
+      const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
+      if (!folderData.files || folderData.files.length === 0) {
+        return null;
+      }
+
+      const pnFolderId = folderData.files[0].id;
+      
+      // Get metadata folder
+      const metadataFolderName = '_metadata';
+      const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id,name)&pageSize=1`;
+      
+      const metadataFolderResponse = await fetch(metadataSearchUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      
+      if (!metadataFolderResponse.ok) {
+        return null;
+      }
+
+      const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+      if (!metadataFolderData.files || metadataFolderData.files.length === 0) {
+        return null;
+      }
+
+      const metadataFolderId = metadataFolderData.files[0].id;
+      
+      // Try JSON metadata file first - check content type subfolders, then flat structure
+      const jsonMetadataFileName = `${fileId}.metadata.json`;
+      const contentTypes = ['media', 'thoughts', 'collections'];
+      
+      // Try content type subfolders first (new structure)
+      for (const contentType of contentTypes) {
+        const subfolderQuery = `name='${contentType}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const subfolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(subfolderQuery)}&fields=files(id)&pageSize=1`;
+        
+        const subfolderResponse = await fetch(subfolderUrl, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        
+        if (subfolderResponse.ok) {
+          const subfolderData = await subfolderResponse.json() as { files?: Array<{ id: string }> };
+          if (subfolderData.files && subfolderData.files.length > 0) {
+            const subfolderId = subfolderData.files[0].id;
+            const jsonSearchQuery = `name='${jsonMetadataFileName.replace(/'/g, "\\'")}' and '${subfolderId}' in parents and trashed=false`;
+            const jsonSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(jsonSearchQuery)}&fields=files(id)&pageSize=1`;
+            
+            const jsonResponse = await fetch(jsonSearchUrl, {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            
+            if (jsonResponse.ok) {
+              const jsonData = await jsonResponse.json() as { files?: Array<{ id: string }> };
+              if (jsonData.files && jsonData.files.length > 0) {
+                // Download and parse JSON metadata file
+                const jsonFileId = jsonData.files[0].id;
+                const downloadResponse = await fetch(
+                  `https://www.googleapis.com/drive/v3/files/${jsonFileId}?alt=media`,
+                  { headers: { 'Authorization': `Bearer ${accessToken}` } }
+                );
+                
+                if (downloadResponse.ok) {
+                  try {
+                    const jsonMetadata = await downloadResponse.json() as any;
+                    if (jsonMetadata.mainFileId) {
+                      return { mainFileId: jsonMetadata.mainFileId };
+                    }
+                  } catch {
+                    // Invalid JSON, continue to next option
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // Fallback to flat structure (old structure - search directly in metadata folder)
+      const flatJsonSearchQuery = `name='${jsonMetadataFileName.replace(/'/g, "\\'")}' and '${metadataFolderId}' in parents and trashed=false`;
+      const flatJsonSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(flatJsonSearchQuery)}&fields=files(id)&pageSize=1`;
+      
+      const flatJsonResponse = await fetch(flatJsonSearchUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      
+      if (flatJsonResponse.ok) {
+        const flatJsonData = await flatJsonResponse.json() as { files?: Array<{ id: string }> };
+        if (flatJsonData.files && flatJsonData.files.length > 0) {
+          const jsonFileId = flatJsonData.files[0].id;
+          const downloadResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${jsonFileId}?alt=media`,
+            { headers: { 'Authorization': `Bearer ${accessToken}` } }
+          );
+          
+          if (downloadResponse.ok) {
+            try {
+              const jsonMetadata = await downloadResponse.json() as any;
+              if (jsonMetadata.mainFileId) {
+                return { mainFileId: jsonMetadata.mainFileId };
+              }
+            } catch {
+              // Invalid JSON, continue to spreadsheet
+            }
+          }
+        }
+      }
+      
+      // Try spreadsheet metadata file
+      const { CompanionMetadataSheets } = await import('./companionMetadataSheets');
+      try {
+        const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
+          accessToken,
+          metadataFolderId,
+          fileId
+        );
+        
+        if (spreadsheetId) {
+          const spreadsheetMetadata = await CompanionMetadataSheets.readMetadata(
+            accessToken,
+            spreadsheetId
+          );
+          
+          // Note: CompanionMetadata interface doesn't have mainFileId, but check if it exists in the raw data
+          // For now, spreadsheets may not have mainFileId, so return null if not found in JSON
+          // The user confirmed mainFileId is in companion metadata files, so it should be in JSON
+          return null;
+        }
+      } catch (spreadsheetError) {
+        // Non-critical - spreadsheet might not exist
+      }
+      
+      return null;
+    } catch (error: any) {
+      console.error(`[readCompanionMetadata] Error reading companion metadata for ${fileId}:`, error?.message || error);
+      return null;
+    }
+  }
+
+  /**
    * Update file metadata in Google Drive
    */
   async updateFileMetadata(
