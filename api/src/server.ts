@@ -8222,7 +8222,7 @@ class ProductionServer {
         return res.json({ 
           success: true, 
           fileId,
-          pairedFileId: pairedFileId || undefined,
+          mainFileId: mainFileId || undefined,
           removedFromDatabase: dbRemoved 
         });
       } catch (error: any) {
