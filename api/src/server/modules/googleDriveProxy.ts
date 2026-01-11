@@ -716,11 +716,15 @@ export class GoogleDriveProxyService {
                 if (downloadResponse.ok) {
                   try {
                     const jsonMetadata = await downloadResponse.json() as any;
+                    console.log(`[readCompanionMetadata] Found JSON metadata in ${contentType} folder for ${fileId}, checking for mainFileId...`);
                     if (jsonMetadata.mainFileId) {
+                      console.log(`[readCompanionMetadata] Found mainFileId ${jsonMetadata.mainFileId} in JSON metadata for ${fileId}`);
                       return { mainFileId: jsonMetadata.mainFileId };
+                    } else {
+                      console.log(`[readCompanionMetadata] JSON metadata for ${fileId} exists but does not contain mainFileId`);
                     }
-                  } catch {
-                    // Invalid JSON, continue to next option
+                  } catch (parseError) {
+                    console.warn(`[readCompanionMetadata] Failed to parse JSON metadata for ${fileId} in ${contentType} folder:`, parseError);
                   }
                 }
               }
@@ -749,11 +753,15 @@ export class GoogleDriveProxyService {
           if (downloadResponse.ok) {
             try {
               const jsonMetadata = await downloadResponse.json() as any;
+              console.log(`[readCompanionMetadata] Found JSON metadata in flat structure for ${fileId}, checking for mainFileId...`);
               if (jsonMetadata.mainFileId) {
+                console.log(`[readCompanionMetadata] Found mainFileId ${jsonMetadata.mainFileId} in JSON metadata for ${fileId}`);
                 return { mainFileId: jsonMetadata.mainFileId };
+              } else {
+                console.log(`[readCompanionMetadata] JSON metadata for ${fileId} exists but does not contain mainFileId`);
               }
-            } catch {
-              // Invalid JSON, continue to spreadsheet
+            } catch (parseError) {
+              console.warn(`[readCompanionMetadata] Failed to parse JSON metadata for ${fileId} in flat structure:`, parseError);
             }
           }
         }
@@ -783,6 +791,7 @@ export class GoogleDriveProxyService {
         // Non-critical - spreadsheet might not exist
       }
       
+      console.log(`[readCompanionMetadata] No companion metadata found for ${fileId} (tried JSON in content type subfolders, flat structure, and spreadsheets)`);
       return null;
     } catch (error: any) {
       console.error(`[readCompanionMetadata] Error reading companion metadata for ${fileId}:`, error?.message || error);
