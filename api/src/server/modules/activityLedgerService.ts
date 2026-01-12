@@ -24,7 +24,9 @@ export type ActivityType =
   | 'connection_accepted'
   | 'feed_subscription'
   | 'view'
-  | 'share';
+  | 'share'
+  | 'message_sent'
+  | 'message_received';
 
 export interface ActivityLedgerFile {
   identifier: string;

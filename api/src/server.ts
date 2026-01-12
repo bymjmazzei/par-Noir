@@ -11497,7 +11497,8 @@ class ProductionServer {
           return res.status(400).json({ error: 'userDid, targetType, and targetId are required' });
         }
 
-        if (targetType !== 'user' && targetType !== 'feed') {
+        const targetTypeStr = String(targetType);
+        if (targetTypeStr !== 'user' && targetTypeStr !== 'feed') {
           return res.status(400).json({ error: 'targetType must be "user" or "feed"' });
         }
 
@@ -11508,7 +11509,8 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        const userDidStr = typeof userDid === 'string' ? userDid : String(userDid);
+        const pnIdentifier = userDidStr.startsWith('pn-') ? userDidStr : `pn-${userDidStr}`;
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.status(404).json({ error: 'User credentials not found' });
@@ -11550,14 +11552,14 @@ class ProductionServer {
           userAccessToken,
           followingSheetId,
           {
-            targetType: targetType as 'user' | 'feed',
-            targetId,
+            targetType: targetTypeStr as 'user' | 'feed',
+            targetId: String(targetId),
             followedAt: new Date().toISOString()
           }
         );
 
         // If following a user with paid feed, add to their followers sheet
-        if (targetType === 'user') {
+        if (targetTypeStr === 'user') {
           try {
             const targetPnIdentifier = targetId.startsWith('pn-') ? targetId : `pn-${targetId}`;
             const targetCredentials = await storageCredentialsService.getCredentials(targetPnIdentifier);
@@ -11592,11 +11594,17 @@ class ProductionServer {
 
                 // Send notification to target user
                 try {
-                  await NotificationService.notifyFollow(
+                  await NotificationService.createNotification(
                     targetAccessToken,
                     targetMetadataFolderId,
-                    userDid,
-                    targetCredentials.identityId
+                    targetCredentials.identityId,
+                    {
+                      user_did: targetCredentials.identityId,
+                      type: 'follow',
+                      title: 'New Follower',
+                      message: `${userDid} started following you`,
+                      data: { user_did: userDid }
+                    }
                   );
                 } catch (notificationError) {
                   console.warn('Failed to send follow notification:', notificationError);
@@ -11627,11 +11635,15 @@ class ProductionServer {
           return res.status(400).json({ error: 'userDid, targetType, and targetId are required' });
         }
 
+        const targetTypeStr = String(targetType);
+        const targetIdStr = String(targetId);
+
         const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        const userDidStr = typeof userDid === 'string' ? userDid : String(userDid);
+        const pnIdentifier = userDidStr.startsWith('pn-') ? userDidStr : `pn-${userDidStr}`;
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.status(404).json({ error: 'User credentials not found' });
@@ -11659,14 +11671,14 @@ class ProductionServer {
         await ConnectionsSheetsService.removeFollowing(
           userAccessToken,
           followingSheetId,
-          targetType as 'user' | 'feed',
-          targetId
+          targetTypeStr as 'user' | 'feed',
+          targetIdStr
         );
 
         // If unfollowing a user, remove from their followers sheet
-        if (targetType === 'user') {
+        if (targetTypeStr === 'user') {
           try {
-            const targetPnIdentifier = targetId.startsWith('pn-') ? targetId : `pn-${targetId}`;
+            const targetPnIdentifier = targetIdStr.startsWith('pn-') ? targetIdStr : `pn-${targetIdStr}`;
             const targetCredentials = await storageCredentialsService.getCredentials(targetPnIdentifier);
             
             if (targetCredentials?.credentials) {
@@ -11689,7 +11701,7 @@ class ProductionServer {
                 await ConnectionsSheetsService.removeFollower(
                   targetAccessToken,
                   followersSheetId,
-                  userDid
+                  String(userDid)
                 );
               }
             }
@@ -11721,7 +11733,8 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        const userDidStr = typeof userDid === 'string' ? userDid : String(userDid);
+        const pnIdentifier = userDidStr.startsWith('pn-') ? userDidStr : `pn-${userDidStr}`;
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.json({ followers: [] });
@@ -11768,7 +11781,8 @@ class ProductionServer {
     // GET /api/connections/following - Get users/feeds user is following
     this.app.get('/api/connections/following', async (req, res) => {
       try {
-        const { userDid, targetType } = req.query;
+        const userDid = typeof req.query.userDid === 'string' ? req.query.userDid : String(req.query.userDid || '');
+        const targetType = typeof req.query.targetType === 'string' ? req.query.targetType : undefined;
         if (!userDid) {
           return res.status(400).json({ error: 'userDid is required' });
         }
@@ -11777,7 +11791,8 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        const userDidStr = typeof userDid === 'string' ? userDid : String(userDid);
+        const pnIdentifier = userDidStr.startsWith('pn-') ? userDidStr : `pn-${userDidStr}`;
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.json({ following: [] });
@@ -11805,7 +11820,7 @@ class ProductionServer {
           userAccessToken,
           followingSheetId,
           {
-            targetType: targetType as 'user' | 'feed' | undefined
+            targetType: (targetType as 'user' | 'feed' | undefined) || undefined
           }
         );
 
@@ -11822,7 +11837,7 @@ class ProductionServer {
     // GET /api/connections/following/feeds - Get followed feeds
     this.app.get('/api/connections/following/feeds', async (req, res) => {
       try {
-        const { userDid } = req.query;
+        const userDid = typeof req.query.userDid === 'string' ? req.query.userDid : String(req.query.userDid || '');
         if (!userDid) {
           return res.status(400).json({ error: 'userDid is required' });
         }
@@ -11873,7 +11888,7 @@ class ProductionServer {
     // GET /api/connections/following/users - Get followed users
     this.app.get('/api/connections/following/users', async (req, res) => {
       try {
-        const { userDid } = req.query;
+        const userDid = typeof req.query.userDid === 'string' ? req.query.userDid : String(req.query.userDid || '');
         if (!userDid) {
           return res.status(400).json({ error: 'userDid is required' });
         }
