@@ -2335,9 +2335,11 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('[CleanupOrphaned] Error:', error);
+        console.error('[CleanupOrphaned] Error stack:', error?.stack);
         return res.status(500).json({
           error: 'Failed to cleanup orphaned metadata',
-          message: error.message
+          message: error?.message || String(error),
+          details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
         });
       }
     });
