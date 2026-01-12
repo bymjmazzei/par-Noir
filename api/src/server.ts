@@ -2156,44 +2156,8 @@ class ProductionServer {
       }
     });
 
-    // DELETE /api/aggregator/metadata-index/cleanup - Clear all database entries (for fresh start)
-    // MUST be before /:fileId route to avoid route conflict
-    this.app.delete('/api/aggregator/metadata-index/cleanup', async (req, res) => {
-      try {
-        const db = (await import('./server/utils/database')).getDatabasePool();
-        
-        // Get count before deletion
-        const countResult = await db.query('SELECT COUNT(*) as count FROM aggregator_metadata');
-        const beforeCount = parseInt(countResult.rows[0].count, 10);
-        
-        // Delete all entries
-        await db.query('DELETE FROM aggregator_metadata');
-        
-        // Also clear feed_posts if they exist
-        try {
-          await db.query('DELETE FROM feed_posts');
-        } catch (feedError) {
-          // Table might not exist, ignore
-          console.log('feed_posts table not found or already empty');
-        }
-        
-        console.log(`🗑️ [Cleanup] Cleared ${beforeCount} entries from aggregator_metadata`);
-        
-        return res.json({
-          success: true,
-          deletedCount: beforeCount,
-          message: `Cleared ${beforeCount} entries from database. Public feed should now be empty.`
-        });
-      } catch (error: any) {
-        console.error('Error in cleanup endpoint:', error);
-        return res.status(500).json({ 
-          error: 'Failed to cleanup database',
-          message: error.message 
-        });
-      }
-    });
-
     // POST /api/aggregator/metadata-index/cleanup-orphaned - Remove orphaned metadata entries (metadata without corresponding Google Drive files)
+    // MUST be before /:fileId route to avoid route conflict
     this.app.post('/api/aggregator/metadata-index/cleanup-orphaned', async (req, res) => {
       console.log('[CleanupOrphaned] Endpoint called');
       try {
@@ -2372,6 +2336,44 @@ class ProductionServer {
         });
       }
     });
+
+    // DELETE /api/aggregator/metadata-index/cleanup - Clear all database entries (for fresh start)
+    // MUST be before /:fileId route to avoid route conflict
+    this.app.delete('/api/aggregator/metadata-index/cleanup', async (req, res) => {
+      try {
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        
+        // Get count before deletion
+        const countResult = await db.query('SELECT COUNT(*) as count FROM aggregator_metadata');
+        const beforeCount = parseInt(countResult.rows[0].count, 10);
+        
+        // Delete all entries
+        await db.query('DELETE FROM aggregator_metadata');
+        
+        // Also clear feed_posts if they exist
+        try {
+          await db.query('DELETE FROM feed_posts');
+        } catch (feedError) {
+          // Table might not exist, ignore
+          console.log('feed_posts table not found or already empty');
+        }
+        
+        console.log(`🗑️ [Cleanup] Cleared ${beforeCount} entries from aggregator_metadata`);
+        
+        return res.json({
+          success: true,
+          deletedCount: beforeCount,
+          message: `Cleared ${beforeCount} entries from database. Public feed should now be empty.`
+        });
+      } catch (error: any) {
+        console.error('Error in cleanup endpoint:', error);
+        return res.status(500).json({ 
+          error: 'Failed to cleanup database',
+          message: error.message 
+        });
+      }
+    });
+
 
     // DELETE /api/aggregator/metadata-index/:fileId - Remove public metadata and delete files
     this.app.delete('/api/aggregator/metadata-index/:fileId', async (req, res) => {
