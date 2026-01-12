@@ -405,7 +405,8 @@ export class AggregatorMetadataServiceDB {
       // Delete from feed_posts using all possible file_id variations
       try {
         // Try deleting by file_id directly
-        await db.query('DELETE FROM feed_posts WHERE file_id = $1', [fileIdOrBackendFileId]);
+        const feedPostsResult = await db.query('DELETE FROM feed_posts WHERE file_id = $1', [fileIdOrBackendFileId]);
+        const feedPostsDeleted = feedPostsResult.rowCount || 0;
         
         // Also try deleting by backendFileId if it's different - search all tables
         const allTables = this.getAllContentTypeTables();
@@ -426,11 +427,18 @@ export class AggregatorMetadataServiceDB {
           }
         }
         
+        let additionalFeedPostsDeleted = 0;
         if (actualFileId && actualFileId !== fileIdOrBackendFileId) {
-          await db.query('DELETE FROM feed_posts WHERE file_id = $1', [actualFileId]);
+          const additionalResult = await db.query('DELETE FROM feed_posts WHERE file_id = $1', [actualFileId]);
+          additionalFeedPostsDeleted = additionalResult.rowCount || 0;
         }
         
-        console.log(`🗑️ [removeMetadata] Attempted to remove file ${fileIdOrBackendFileId} from feed_posts`);
+        const totalFeedPostsDeleted = feedPostsDeleted + additionalFeedPostsDeleted;
+        if (totalFeedPostsDeleted > 0) {
+          console.log(`🗑️ [removeMetadata] Removed ${totalFeedPostsDeleted} feed_posts entry/entries for file ${fileIdOrBackendFileId}`);
+        } else {
+          console.log(`ℹ️ [removeMetadata] No feed_posts entries found for file ${fileIdOrBackendFileId} (may not have been in any feeds)`);
+        }
       } catch (feedPostsError: any) {
         // Table might not exist or have different structure - that's okay
         console.warn(`⚠️ [removeMetadata] Could not delete from feed_posts (non-critical):`, feedPostsError?.message || feedPostsError);

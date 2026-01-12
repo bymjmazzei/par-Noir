@@ -4600,6 +4600,34 @@ class ProductionServer {
               console.log(`[StorageCredentials PUT] Initializing folder structure for identityId: ${sanitizedIdentityId}`);
               const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, identityId);
               
+              // Get pN folder ID for messages folder creation
+              const normalizedPn = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
+              const pnFolderName = `par Noir - ${normalizedPn}`;
+              const pnFolderQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+              const pnFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderQuery)}&fields=files(id)&pageSize=1`;
+              const pnFolderResponse = await fetch(pnFolderUrl, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+              });
+              
+              let pnFolderId: string | null = null;
+              if (pnFolderResponse.ok) {
+                const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string }> };
+                if (pnFolderData.files && pnFolderData.files.length > 0) {
+                  pnFolderId = pnFolderData.files[0].id;
+                }
+              }
+              
+              // Initialize messages folder (in pN folder, not _metadata)
+              if (pnFolderId) {
+                try {
+                  const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+                  await MessageSheetsService.getOrCreateMessagesFolder(accessToken, pnFolderId);
+                  console.log(`[StorageCredentials PUT] Initialized messages folder for identityId: ${sanitizedIdentityId}`);
+                } catch (msgFolderError: any) {
+                  console.warn(`[StorageCredentials PUT] Failed to initialize messages folder:`, msgFolderError?.message || msgFolderError);
+                }
+              }
+              
               // Initialize all content class folders (media, thoughts, collections)
               console.log(`[StorageCredentials PUT] Initializing content class folders for identityId: ${sanitizedIdentityId}`);
               await this.initializeContentClassFolders(accessToken, metadataFolderId);

@@ -73,25 +73,95 @@ export class IndexSheetsService {
       return searchResponse.data.files[0].id!;
     }
 
-    // Also check if file exists elsewhere
-    const broadQuery = `name='${fileName}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    // Also check if file exists elsewhere (but scope to user's folder structure if possible)
+    // First, try to get the pN folder that contains this metadata folder
+    let pnFolderId: string | null = null;
+    try {
+      const metadataFolderInfo = await drive.files.get({
+        fileId: metadataFolderId,
+        fields: 'parents'
+      });
+      const metadataParents = metadataFolderInfo.data.parents || [];
+      if (metadataParents.length > 0) {
+        pnFolderId = metadataParents[0];
+      }
+    } catch (e) {
+      // Can't determine pN folder, will use broad search
+    }
+
+    // Build query - prefer files in the same pN folder if we can determine it
+    let broadQuery = `name='${fileName}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    if (pnFolderId) {
+      // Scope to files that are descendants of the pN folder (more likely to be the right one)
+      // Note: Google Drive API doesn't support recursive parent queries, so we'll search broadly but filter
+      broadQuery = `name='${fileName}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    }
+    
     const broadSearchResponse = await drive.files.list({
       q: broadQuery,
       fields: 'files(id,name,parents)',
-      pageSize: 5
+      pageSize: 10 // Increased to catch more duplicates
     });
 
     if (broadSearchResponse.data.files && broadSearchResponse.data.files.length > 0) {
-      const existingFile = broadSearchResponse.data.files[0];
-      const existingFileId = existingFile.id!;
-      const existingParents = existingFile.parents || [];
+      const foundFiles = broadSearchResponse.data.files;
       
-      await drive.files.update({
-        fileId: existingFileId,
-        removeParents: existingParents.join(','),
-        addParents: metadataFolderId,
-        fields: 'id, parents'
-      });
+      // If multiple files found, deduplicate:
+      // 1. Prefer file already in metadata folder
+      // 2. If pN folder known, prefer file in that folder structure
+      // 3. Delete all others
+      let fileToUse = foundFiles[0];
+      
+      // Check if any file is already in metadata folder
+      const inMetadataFolder = foundFiles.find(f => f.parents?.includes(metadataFolderId));
+      if (inMetadataFolder) {
+        fileToUse = inMetadataFolder;
+      } else if (pnFolderId) {
+        // Check if any file is in the pN folder structure
+        // Get all parent folders for each file to check hierarchy
+        for (const file of foundFiles) {
+          try {
+            const fileInfo = await drive.files.get({
+              fileId: file.id!,
+              fields: 'parents'
+            });
+            const fileParents = fileInfo.data.parents || [];
+            // Check if metadata folder or pN folder is in parent chain
+            if (fileParents.includes(metadataFolderId) || fileParents.includes(pnFolderId)) {
+              fileToUse = file;
+              break;
+            }
+          } catch (e) {
+            // Skip this file if we can't check its parents
+          }
+        }
+      }
+      
+      // Delete duplicate files (all except the one we're using)
+      for (const file of foundFiles) {
+        if (file.id !== fileToUse.id) {
+          try {
+            await drive.files.delete({ fileId: file.id! });
+            console.log(`🗑️ [IndexSheetsService] Deleted duplicate ${fileName}: ${file.id}`);
+          } catch (deleteError: any) {
+            console.warn(`⚠️ [IndexSheetsService] Failed to delete duplicate ${fileName} (${file.id}):`, deleteError?.message || deleteError);
+            // Continue - non-critical
+          }
+        }
+      }
+      
+      // Move the file we're using to metadata folder if not already there
+      const existingFileId = fileToUse.id!;
+      const existingParents = fileToUse.parents || [];
+      
+      if (!existingParents.includes(metadataFolderId)) {
+        await drive.files.update({
+          fileId: existingFileId,
+          removeParents: existingParents.join(','),
+          addParents: metadataFolderId,
+          fields: 'id, parents'
+        });
+      }
       
       return existingFileId;
     }

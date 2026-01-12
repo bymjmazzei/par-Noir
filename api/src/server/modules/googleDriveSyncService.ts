@@ -191,6 +191,8 @@ export class GoogleDriveSyncService {
       const allMetadata: { metadata: PublicMetadata; pnIdentifier?: string }[] = [];
       let hasErrors = false;
       let successfullyScannedFolders = 0;
+      // Track users whose index was successfully READ (even if empty) - needed for cleanup
+      const successfullyReadIndexUsers = new Set<string>();
 
       for (const pnFolder of pnFolders) {
         let folderScannedSuccessfully = false;
@@ -250,7 +252,12 @@ export class GoogleDriveSyncService {
           const sheetsIndexFiles = sheetsIndexData.files || [];
 
           if (sheetsIndexFiles.length === 0) {
-            // Expected: No public-file-index.xlsx - this is normal if user has no public files, just skip
+            // Expected: No public-file-index.xlsx - this is normal if user has no public files
+            // Mark as successfully read (empty index) so cleanup knows this user has no public files
+            if (pnIdentifier) {
+              successfullyReadIndexUsers.add(pnIdentifier);
+              console.log(`ℹ️ [Sync] No public-file-index.xlsx for pN ${pnFolder.name} (empty index - no public files)`);
+            }
             continue;
           }
 
@@ -266,10 +273,14 @@ export class GoogleDriveSyncService {
               files,
               updatedAt: new Date().toISOString()
             };
+            // Mark as successfully read (even if files array is empty)
+            if (pnIdentifier) {
+              successfullyReadIndexUsers.add(pnIdentifier);
+            }
           } catch (sheetsError) {
             // Error reading index file - might be permission issue or corrupted file
             console.warn(`⚠️ [Sync] Failed to read public-file-index.xlsx for pN ${pnFolder.name}:`, sheetsError instanceof Error ? sheetsError.message : sheetsError);
-            // Don't mark as error - might be temporary issue, skip this user for now
+            // Don't mark as successfully read - skip cleanup for this user (might be temporary issue)
             continue;
           }
 
@@ -407,9 +418,18 @@ export class GoogleDriveSyncService {
          UNION SELECT DISTINCT pn_identifier FROM aggregator_collections WHERE pn_identifier IS NOT NULL`
       );
       const dbUsers = new Set(allDbUsers.rows.map((r: any) => r.pn_identifier));
+      
+      // Use successfullyReadIndexUsers for cleanup - includes users with empty indexes
+      console.log(`🔍 [Cleanup] Starting cleanup process...`);
+      console.log(`🔍 [Cleanup] Users with successfully read index: ${successfullyReadIndexUsers.size}`);
+      console.log(`🔍 [Cleanup] Users with files in allMetadata: ${successfullyScannedUsers.size}`);
+      console.log(`🔍 [Cleanup] Total folders found: ${foldersFound.size}`);
+      console.log(`🔍 [Cleanup] Total users in database: ${dbUsers.size}`);
 
-      // Case 1: Users we successfully scanned - remove individual orphaned files
-      for (const pnIdentifier of successfullyScannedUsers) {
+      // Case 1: Users whose index was successfully read (even if empty) - remove individual orphaned files
+      // CRITICAL: Use successfullyReadIndexUsers, not successfullyScannedUsers
+      // This ensures users with empty indexes are handled correctly (no files = empty set, not all files orphaned)
+      for (const pnIdentifier of successfullyReadIndexUsers) {
         // Get all files currently in database for this user
         const dbFiles = await db.query(
           `SELECT file_id FROM aggregator_media WHERE pn_identifier = $1
@@ -419,11 +439,14 @@ export class GoogleDriveSyncService {
         );
         
         // Get files that exist in Google Drive (what we just synced)
+        // If user has empty index, this will be an empty set (correct - no public files)
         const googleDriveFileIds = new Set(
           allMetadata
             .filter(m => m.pnIdentifier === pnIdentifier)
             .map(m => m.metadata.fileId)
         );
+        
+        console.log(`🔍 [Cleanup] User ${pnIdentifier}: ${dbFiles.rows.length} files in DB, ${googleDriveFileIds.size} files in Google Drive index`);
         
         // Find orphaned files: in database but NOT in Google Drive
         const orphanedFiles = dbFiles.rows
@@ -432,30 +455,42 @@ export class GoogleDriveSyncService {
         
         // Remove orphaned files from database
         if (orphanedFiles.length > 0) {
+          console.log(`🧹 [Cleanup] Removing ${orphanedFiles.length} orphaned file(s) for ${pnIdentifier}:`, orphanedFiles.slice(0, 5));
           for (const fileId of orphanedFiles) {
             await metadataService.removeMetadata(fileId);
           }
-          console.log(`🧹 Cleaned up ${orphanedFiles.length} orphaned file(s) for ${pnIdentifier}`);
+          console.log(`✅ [Cleanup] Cleaned up ${orphanedFiles.length} orphaned file(s) for ${pnIdentifier}`);
+        } else {
+          console.log(`✅ [Cleanup] No orphaned files for ${pnIdentifier} (${dbFiles.rows.length} files in DB match Google Drive)`);
         }
       }
 
       // Case 2: Users whose folders don't exist - all files are orphaned
       // (pnIdentifier in database but folder not found in Google Drive)
+      let case2Processed = 0;
+      let case2Removed = 0;
       for (const pnIdentifier of dbUsers) {
-        if (successfullyScannedUsers.has(pnIdentifier)) {
+        if (successfullyReadIndexUsers.has(pnIdentifier)) {
           continue; // Already handled in Case 1
         }
         
         if (!foldersFound.has(pnIdentifier)) {
           // Folder doesn't exist - all files for this user are orphaned
+          case2Processed++;
+          console.log(`🔍 [Cleanup Case 2] User ${pnIdentifier}: folder not found, removing all files`);
           // Use existing removeAllMetadataForUser method
           const removed = await metadataService.removeAllMetadataForUser(pnIdentifier);
           if (removed > 0) {
-            console.log(`🧹 Cleaned up all ${removed} file(s) for ${pnIdentifier} (folder deleted)`);
+            case2Removed += removed;
+            console.log(`🧹 [Cleanup Case 2] Cleaned up all ${removed} file(s) for ${pnIdentifier} (folder deleted)`);
           }
+        } else {
+          // Folder exists but we couldn't scan it (error reading index), skip cleanup for safety
+          console.log(`ℹ️ [Cleanup] User ${pnIdentifier}: folder exists but index couldn't be read - skipping cleanup (safe default)`);
         }
-        // If folder exists but we couldn't scan it (error reading index), skip cleanup for safety
       }
+      
+      console.log(`✅ [Cleanup] Complete - Case 1: ${successfullyReadIndexUsers.size} users processed, Case 2: ${case2Processed} users processed (${case2Removed} files removed)`);
 
     } catch (error) {
       console.error('❌ Google Drive sync failed:', error);
