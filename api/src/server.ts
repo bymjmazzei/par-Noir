@@ -2037,22 +2037,20 @@ class ProductionServer {
         if (validatedMetadata.isPublic === true && pnIdentifier) {
           try {
             const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-            const { getStorageCredentials } = await import('./server/modules/storageCredentialsService');
-            const { GoogleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
             
             // Get user's credentials
-            const credentials = await getStorageCredentials(pnIdentifier);
-            if (credentials?.access_token) {
+            const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
+            if (credentialsRecord?.credentials?.access_token) {
               // Get metadata folder
-              const driveService = GoogleDriveProxyService.getInstance();
-              const metadataFolder = await driveService.getOrCreateMetadataFolder(
-                credentials.access_token,
+              const metadataFolder = await this.getOrCreateMetadataFolder(
+                credentialsRecord.credentials.access_token,
                 pnIdentifier
               );
               
               // Get or create public-file-index.xlsx
               const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
-                credentials.access_token,
+                credentialsRecord.credentials.access_token,
                 metadataFolder,
                 'public'
               );
@@ -2088,7 +2086,7 @@ class ProductionServer {
               // Check if file exists in index, update or add accordingly
               try {
                 await IndexSheetsService.updateFile(
-                  credentials.access_token,
+                  credentialsRecord.credentials.access_token,
                   spreadsheetId,
                   validatedMetadata.fileId,
                   indexEntry
@@ -2098,7 +2096,7 @@ class ProductionServer {
                 // If update fails (file not found), try adding it
                 if (updateError.message?.includes('not found')) {
                   await IndexSheetsService.addFile(
-                    credentials.access_token,
+                    credentialsRecord.credentials.access_token,
                     spreadsheetId,
                     indexEntry
                   );
@@ -3971,24 +3969,22 @@ class ProductionServer {
         if (updatedIsPublic === true && updated) {
           try {
             const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-            const { getStorageCredentials } = await import('./server/modules/storageCredentialsService');
-            const { GoogleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
             
             // Get user's credentials
             const pnIdentifier = tokenPayload.pnIdentifier;
             if (pnIdentifier) {
-              const credentials = await getStorageCredentials(pnIdentifier);
-              if (credentials?.access_token) {
+              const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
+              if (credentialsRecord?.credentials?.access_token) {
                 // Get metadata folder
-                const driveService = GoogleDriveProxyService.getInstance();
-                const metadataFolder = await driveService.getOrCreateMetadataFolder(
-                  credentials.access_token,
+                const metadataFolder = await this.getOrCreateMetadataFolder(
+                  credentialsRecord.credentials.access_token,
                   pnIdentifier
                 );
                 
                 // Get or create public-file-index.xlsx
                 const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
-                  credentials.access_token,
+                  credentialsRecord.credentials.access_token,
                   metadataFolder,
                   'public'
                 );
@@ -4021,7 +4017,7 @@ class ProductionServer {
                 // Check if file exists in index, update or add accordingly
                 try {
                   await IndexSheetsService.updateFile(
-                    credentials.access_token,
+                    credentialsRecord.credentials.access_token,
                     spreadsheetId,
                     actualFileId,
                     indexEntry
@@ -4031,7 +4027,7 @@ class ProductionServer {
                   // If update fails (file not found), try adding it
                   if (updateError.message?.includes('not found')) {
                     await IndexSheetsService.addFile(
-                      credentials.access_token,
+                      credentialsRecord.credentials.access_token,
                       spreadsheetId,
                       indexEntry
                     );

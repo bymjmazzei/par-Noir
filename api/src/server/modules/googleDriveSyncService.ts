@@ -385,7 +385,7 @@ export class GoogleDriveSyncService {
       }
 
       // Step 6: Smart cleanup - remove orphaned files (in DB but not in Google Drive)
-      const db = getDatabasePool();
+      // Reuse db from earlier in the function
 
       // Track which users we successfully scanned (have metadata in allMetadata)
       const successfullyScannedUsers = new Set(
