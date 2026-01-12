@@ -2336,32 +2336,16 @@ class ProductionServer {
     // POST /api/aggregator/metadata-index/cleanup-tables - Clear all database entries (for fresh start)
     // MUST be before /:fileId route to avoid route conflict
     this.app.post('/api/aggregator/metadata-index/cleanup-tables', async (req, res) => {
+      const db = (await import('./server/utils/database')).getDatabasePool();
+      await db.query('DELETE FROM aggregator_media');
+      await db.query('DELETE FROM aggregator_thoughts');
+      await db.query('DELETE FROM aggregator_collections');
       try {
-        const { getDatabasePool } = await import('./server/utils/database');
-        const db = getDatabasePool();
-        
-        // Clear all three aggregator tables
-        await db.query('DELETE FROM aggregator_media');
-        await db.query('DELETE FROM aggregator_thoughts');
-        await db.query('DELETE FROM aggregator_collections');
-        
-        // Also clear feed_posts if they exist
-        try {
-          await db.query('DELETE FROM feed_posts');
-        } catch (feedError) {
-          // Table might not exist, ignore
-        }
-        
-        return res.json({
-          success: true,
-          message: 'Cleared all aggregator tables (aggregator_media, aggregator_thoughts, aggregator_collections)'
-        });
-      } catch (error: any) {
-        return res.status(500).json({ 
-          error: 'Failed to cleanup database',
-          message: error?.message || String(error)
-        });
+        await db.query('DELETE FROM feed_posts');
+      } catch (e) {
+        // Ignore if table doesn't exist
       }
+      return res.json({ success: true, message: 'Cleared all aggregator tables' });
     });
 
 
