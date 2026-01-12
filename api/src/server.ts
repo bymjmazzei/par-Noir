@@ -2322,9 +2322,13 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('[CleanupOrphaned] Error:', error);
+        console.error('[CleanupOrphaned] Error stack:', error?.stack);
+        // Return error details in response so we can debug
         return res.status(500).json({
           error: 'Failed to cleanup orphaned metadata',
-          message: error?.message || String(error)
+          message: error?.message || String(error),
+          errorType: error?.constructor?.name,
+          stack: error?.stack
         });
       }
     });
