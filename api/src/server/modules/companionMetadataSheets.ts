@@ -8,7 +8,7 @@
  * 
  * Engagement counts are derived by counting rows in engagement sheets.
  * 
- * SECURITY: Sensitive fields (publicToken, ownerDid, ownerIdentifier) are encrypted
+ * SECURITY: Sensitive fields (ownerDid, ownerIdentifier) are encrypted
  * before storage to make them machine-readable only.
  */
 
@@ -246,7 +246,6 @@ export class CompanionMetadataSheets {
               metadata.thumbnail || '',
               metadata.thumbnailFileId || '',
               metadata.mainFileId || '',
-              MetadataEncryption.encryptField(metadata.publicToken ? (typeof metadata.publicToken === 'string' ? metadata.publicToken : JSON.stringify(metadata.publicToken)) : undefined), // Encrypted
               new Date().toISOString()
             ]
           ]
