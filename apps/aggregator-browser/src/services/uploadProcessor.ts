@@ -791,7 +791,7 @@ async function uploadFile(base64Data: string, fileName: string, accessToken: str
  * Helper: Create metadata entry
  */
 async function createMetadata(fileId: string, metadata: any, accessToken: string): Promise<void> {
-  await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+  const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -799,6 +799,12 @@ async function createMetadata(fileId: string, metadata: any, accessToken: string
     },
     body: JSON.stringify(metadata)
   });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    console.error(`[createMetadata] Failed to create metadata for ${fileId}:`, response.status, errorText);
+    throw new Error(`Failed to create metadata: ${response.status} ${errorText}`);
+  }
 }
 
 /**
