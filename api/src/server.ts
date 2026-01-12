@@ -3242,10 +3242,17 @@ class ProductionServer {
             });
 
             if (!driveResponse.ok) {
-              throw new Error(`Failed to fetch file info: ${driveResponse.status}`);
+              const errorText = await driveResponse.text().catch(() => 'Unknown error');
+              console.error(`[MetadataIndex PUT] Failed to fetch file info from Google Drive for ${fileId}:`, driveResponse.status, errorText);
+              throw new Error(`Failed to fetch file info: ${driveResponse.status} ${errorText}`);
             }
 
             const driveFile = await driveResponse.json() as { name?: string; mimeType?: string; createdTime?: string };
+            console.log(`[MetadataIndex PUT] Successfully fetched file info from Google Drive for ${fileId}:`, {
+              name: driveFile.name,
+              mimeType: driveFile.mimeType,
+              hasCreatedTime: !!driveFile.createdTime
+            });
             
             // Create initial metadata entry
             // IMPORTANT: Default isPublic to true for text posts, false for other files
@@ -3363,6 +3370,13 @@ class ProductionServer {
               }
             } catch (submitError: any) {
               console.error(`[MetadataIndex] Failed to submit initial metadata for ${fileId}:`, submitError);
+              console.error(`[MetadataIndex] Submit error details:`, {
+                message: submitError?.message,
+                stack: submitError?.stack,
+                metadata: initialMetadata,
+                pnIdentifier: tokenPayload.pnIdentifier,
+                ownerDid: tokenPayload.did || tokenPayload.pnIdentifier
+              });
               throw submitError; // Re-throw to be caught by outer catch
             }
           } catch (driveError: any) {
@@ -3477,16 +3491,59 @@ class ProductionServer {
               }
             } catch (minimalSubmitError: any) {
               console.error(`[MetadataIndex] Failed to submit minimal metadata for ${fileId}:`, minimalSubmitError);
+              console.error(`[MetadataIndex] Minimal submit error details:`, {
+                message: minimalSubmitError?.message,
+                stack: minimalSubmitError?.stack,
+                metadata: minimalMetadata
+              });
               // Don't throw - we'll check if entry exists after and handle accordingly
+              // But log extensively so we can debug
             }
           }
         }
 
         // Refetch to ensure entry exists (in case it was just created)
+        // Add a small delay for database consistency if this was a new file
+        if (!fileExistedBefore) {
+          // Small delay to allow database transaction to commit
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
         current = await service.getFileMetadata(fileId);
         console.log(`[MetadataIndex PUT] After upsert, refetch for ${fileId}: ${current ? 'found' : 'not found'}, existedBefore: ${fileExistedBefore}`);
+        
+        // If still not found after delay, try one more time
+        if (!current && !fileExistedBefore) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+          current = await service.getFileMetadata(fileId);
+          console.log(`[MetadataIndex PUT] Second refetch attempt for ${fileId}: ${current ? 'found' : 'not found'}`);
+        }
+        
         if (!current) {
           console.error(`[MetadataIndex PUT] Failed to create/find metadata entry for ${fileId}`);
+          console.error(`[MetadataIndex PUT] Debug info:`, {
+            fileId,
+            fileExistedBefore,
+            requestBody: {
+              name,
+              fileType,
+              isPublic,
+              mainFileId,
+              isThoughtThumbnail,
+              hasTextPost: !!textPost,
+              hasThought: !!thought
+            }
+          });
+          
+          // If this was a new file creation that failed, try to provide more helpful error
+          if (!fileExistedBefore) {
+            return res.status(500).json({ 
+              error: 'Failed to create metadata entry',
+              message: 'Metadata creation appeared to succeed but entry was not found in database. This may be a database consistency issue.',
+              fileId
+            });
+          }
+          
           return res.status(404).json({ error: 'File not found in index' });
         }
 
