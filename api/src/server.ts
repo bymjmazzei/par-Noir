@@ -2193,6 +2193,155 @@ class ProductionServer {
       }
     });
 
+    // POST /api/aggregator/metadata-index/cleanup-orphaned - Remove orphaned metadata entries (metadata without corresponding Google Drive files)
+    this.app.post('/api/aggregator/metadata-index/cleanup-orphaned', async (req, res) => {
+      try {
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const service = AggregatorMetadataServiceDB.getInstance();
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        
+        console.log('[CleanupOrphaned] Starting orphaned metadata cleanup...');
+        
+        // Get service account access token for authenticated requests
+        let accessToken: string | null = null;
+        try {
+          const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
+          const syncService = GoogleDriveSyncService.getInstance();
+          accessToken = await syncService.getAccessToken();
+          console.log('[CleanupOrphaned] Got service account access token');
+        } catch (error) {
+          console.error('[CleanupOrphaned] Failed to get service account token:', error);
+          return res.status(500).json({
+            error: 'Failed to get Google Drive access token',
+            message: 'Service account not configured or authentication failed'
+          });
+        }
+        
+        // Query all three tables to get all metadata entries
+        const allTables = ['aggregator_media', 'aggregator_thoughts', 'aggregator_collections'];
+        const allEntries: Array<{ fileId: string; metadata: any; googleDriveFileId: string }> = [];
+        
+        for (const table of allTables) {
+          const result = await db.query(
+            `SELECT file_id, metadata FROM ${table}`
+          );
+          
+          for (const row of result.rows) {
+            const metadata = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+            
+            // Only check Google Drive files
+            if (metadata.backend !== 'google_drive') {
+              continue;
+            }
+            
+            const googleDriveFileId = (metadata as any).googleDriveFileId || metadata.backendFileId || row.file_id;
+            if (!googleDriveFileId) {
+              continue;
+            }
+            
+            allEntries.push({
+              fileId: row.file_id,
+              metadata: metadata,
+              googleDriveFileId: googleDriveFileId
+            });
+          }
+        }
+        
+        console.log(`[CleanupOrphaned] Found ${allEntries.length} Google Drive file(s) to verify`);
+        
+        const filesToRemove: string[] = [];
+        
+        // Verify files in batches (rate limiting)
+        const batchSize = 10;
+        for (let i = 0; i < allEntries.length; i += batchSize) {
+          const batch = allEntries.slice(i, i + batchSize);
+          const batchPromises = batch.map(async (entry) => {
+            try {
+              const response = await fetch(
+                `https://www.googleapis.com/drive/v3/files/${entry.googleDriveFileId}?fields=id,trashed`,
+                {
+                  method: 'GET',
+                  headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                  }
+                }
+              );
+              
+              if (response.status === 404) {
+                // File doesn't exist - mark for removal
+                console.log(`[CleanupOrphaned] File ${entry.googleDriveFileId} not found (404): ${entry.metadata.name || 'unknown'}`);
+                return entry.fileId;
+              }
+              
+              if (response.status === 403 || response.status === 401) {
+                // Permission denied - assume it exists (might be private)
+                console.warn(`[CleanupOrphaned] Permission denied for ${entry.googleDriveFileId} (${response.status}): ${entry.metadata.name || 'unknown'}`);
+                return null;
+              }
+              
+              if (!response.ok) {
+                // Other error - log and assume file exists to avoid false positives
+                const errorText = await response.text().catch(() => 'Unknown error');
+                console.warn(`[CleanupOrphaned] Error ${response.status} for ${entry.googleDriveFileId}: ${errorText.substring(0, 100)}`);
+                return null;
+              }
+              
+              const fileData = await response.json() as { id?: string; trashed?: boolean };
+              if (fileData.trashed) {
+                // File is trashed - mark for removal
+                console.log(`[CleanupOrphaned] File ${entry.googleDriveFileId} is trashed: ${entry.metadata.name || 'unknown'}`);
+                return entry.fileId;
+              }
+              
+              return null; // File exists
+            } catch (error) {
+              // On error (network, etc.), log and assume file exists to avoid false positives
+              console.warn(`[CleanupOrphaned] Error verifying ${entry.googleDriveFileId}:`, error);
+              return null;
+            }
+          });
+          
+          const batchResults = await Promise.all(batchPromises);
+          const orphanedFileIds = batchResults.filter((fileId): fileId is string => fileId !== null);
+          filesToRemove.push(...orphanedFileIds);
+          
+          // Small delay between batches to avoid rate limiting
+          if (i + batchSize < allEntries.length) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+        }
+        
+        // Remove orphaned entries using removeMetadata method
+        let removedCount = 0;
+        for (const fileId of filesToRemove) {
+          try {
+            const removed = await service.removeMetadata(fileId);
+            if (removed) {
+              removedCount++;
+            }
+          } catch (error) {
+            console.error(`[CleanupOrphaned] Failed to remove metadata for ${fileId}:`, error);
+          }
+        }
+        
+        console.log(`[CleanupOrphaned] Removed ${removedCount} orphaned metadata entry/entries`);
+        
+        return res.json({
+          success: true,
+          checked: allEntries.length,
+          removed: removedCount,
+          message: `Checked ${allEntries.length} file(s), removed ${removedCount} orphaned metadata entry/entries`
+        });
+      } catch (error: any) {
+        console.error('[CleanupOrphaned] Error:', error);
+        return res.status(500).json({
+          error: 'Failed to cleanup orphaned metadata',
+          message: error.message
+        });
+      }
+    });
+
     // DELETE /api/aggregator/metadata-index/:fileId - Remove public metadata and delete files
     this.app.delete('/api/aggregator/metadata-index/:fileId', async (req, res) => {
       try {
@@ -2870,7 +3019,7 @@ class ProductionServer {
     // Migration endpoint removed - feed system migration completed successfully
     // Tables created: feed_payments, feed_delegations
 
-    // GET /api/aggregator/metadata-index/:fileId - Get metadata for a specific file (creates entry if doesn't exist)
+    // GET /api/aggregator/metadata-index/:fileId - Get metadata for a specific file
     this.app.get('/api/aggregator/metadata-index/:fileId', async (req, res) => {
       try {
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
@@ -2919,75 +3068,6 @@ class ProductionServer {
             }
           } catch (lookupError: any) {
             console.warn(`[MetadataIndex GET] Failed to lookup thumbnail for main file ${fileId}:`, lookupError?.message || lookupError);
-          }
-        }
-
-        // If still not found, try to create it from Google Drive
-        if (!metadata) {
-          const authHeader = req.headers.authorization;
-          if (authHeader && authHeader.startsWith('Bearer ')) {
-            const token = authHeader.substring(7);
-            const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-            const tokenPayload = PNOAuthService.validateAccessToken(token);
-
-            if (tokenPayload) {
-              const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
-              const identifierCandidates: string[] = [];
-              if (tokenPayload.pnIdentifier) {
-                identifierCandidates.push(tokenPayload.pnIdentifier);
-              }
-              if (tokenPayload.did) {
-                identifierCandidates.push(tokenPayload.did);
-                if (tokenPayload.did.startsWith('did:key:')) {
-                  const keyPart = tokenPayload.did.substring(8);
-                  if (keyPart) {
-                    identifierCandidates.push(keyPart);
-                  }
-                }
-              }
-
-              const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-              const accountId = req.query.accountId as string | undefined;
-
-              try {
-                const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
-                const driveResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime`, {
-                  headers: { 'Authorization': `Bearer ${accessToken}` }
-                });
-
-                if (driveResponse.ok) {
-                  const driveFile = await driveResponse.json() as { name?: string; mimeType?: string; createdTime?: string };
-                  const initialMetadata: any = {
-                    fileId: fileId,
-                    backendFileId: fileId,
-                    backend: 'google_drive',
-                    name: driveFile.name?.replace(/\.encrypted$/i, '') || fileId,
-                    fileType: getFileTypeFromMime(driveFile.mimeType),
-                    uploadDate: driveFile.createdTime || new Date().toISOString(),
-                    isPublic: false,
-                    "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
-                    "@id": `https://parnoir.com/resource/${fileId}`,
-                    engagement: {
-                      views: 0,
-                      likes: 0,
-                      comments: 0,
-                      shares: 0,
-                      lastUpdated: new Date().toISOString()
-                    }
-                  };
-
-                  try {
-                    await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier);
-                    console.log(`[MetadataIndex GET] Created metadata entry for ${fileId}`);
-                    metadata = await service.getFileMetadata(fileId);
-                  } catch (submitError: any) {
-                    console.error(`[MetadataIndex GET] Failed to submit metadata for ${fileId}:`, submitError);
-                  }
-                }
-              } catch (driveError: any) {
-                console.error(`[MetadataIndex GET] Failed to fetch file info for ${fileId}:`, driveError);
-              }
-            }
           }
         }
 
