@@ -41,7 +41,7 @@ export class NotificationsSheetsService {
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
-    // Search for existing notifications sheet
+    // Search for existing notifications sheet in metadata folder
     const fileQuery = `name='${this.NOTIFICATIONS_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
     const searchResponse = await drive.files.list({
       q: fileQuery,
@@ -51,6 +51,31 @@ export class NotificationsSheetsService {
 
     if (searchResponse.data.files && searchResponse.data.files.length > 0) {
       return searchResponse.data.files[0].id!;
+    }
+
+    // Also check if file exists elsewhere (might have been created in wrong location)
+    const broadQuery = `name='${this.NOTIFICATIONS_FILE_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    const broadSearchResponse = await drive.files.list({
+      q: broadQuery,
+      fields: 'files(id,name,parents)',
+      pageSize: 5
+    });
+
+    // If found elsewhere, move it to metadata folder
+    if (broadSearchResponse.data.files && broadSearchResponse.data.files.length > 0) {
+      const existingFile = broadSearchResponse.data.files[0];
+      const existingFileId = existingFile.id!;
+      const existingParents = existingFile.parents || [];
+      
+      // Move to metadata folder
+      await drive.files.update({
+        fileId: existingFileId,
+        removeParents: existingParents.join(','),
+        addParents: metadataFolderId,
+        fields: 'id, parents'
+      });
+      
+      return existingFileId;
     }
 
     // Create new notifications sheet
@@ -78,9 +103,17 @@ export class NotificationsSheetsService {
       throw new Error('Failed to create notifications sheet: no ID returned');
     }
 
-    // Move to metadata folder
+    // Get current parents and move to metadata folder (removing root folder)
+    const fileInfo = await drive.files.get({
+      fileId: spreadsheetId,
+      fields: 'parents'
+    });
+    
+    const currentParents = fileInfo.data.parents || [];
+    // Remove all current parents and set only metadata folder as parent
     await drive.files.update({
       fileId: spreadsheetId,
+      removeParents: currentParents.join(','),
       addParents: metadataFolderId,
       fields: 'id, parents'
     });

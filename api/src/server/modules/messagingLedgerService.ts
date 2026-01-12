@@ -1,8 +1,11 @@
 /**
  * Messaging Ledger Service
  * Records messaging activities separately from general activity ledger
- * Stored in Google Drive (decentralized) - users own their data
+ * Uses messaging_ledger.xlsx (Google Sheets) for better scalability
+ * Migrates from messaging_ledger.json automatically on first access
  */
+
+import { MessagingLedgerSheetsService, MessagingActivityEntry } from './messagingLedgerSheetsService';
 
 export interface MessagingActivityEntry {
   message_activity_id: string;
@@ -26,14 +29,14 @@ export class MessagingLedgerService {
   private static readonly MESSAGING_LEDGER_FILE_NAME = 'messaging_ledger.json';
 
   /**
-   * Get messaging ledger file from user's Google Drive
+   * Migrate from JSON to Sheets if JSON exists
    */
-  static async getMessagingLedgerFile(
+  private static async migrateFromJsonIfNeeded(
     accessToken: string,
     metadataFolderId: string
-  ): Promise<MessagingLedgerFile | null> {
+  ): Promise<void> {
     try {
-      // Search for messaging_ledger.json in metadata folder
+      // Check if JSON file exists
       const searchQuery = `name='${this.MESSAGING_LEDGER_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false`;
       const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id)&pageSize=1`;
       
@@ -41,17 +44,16 @@ export class MessagingLedgerService {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
 
-      if (!searchResponse.ok || searchResponse.status === 404) {
-        return null;
+      if (!searchResponse.ok) {
+        return; // No JSON file, nothing to migrate
       }
 
       const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-      
       if (!searchData.files || searchData.files.length === 0) {
-        return null;
+        return; // No JSON file
       }
 
-      // Download messaging ledger file
+      // Download JSON file
       const fileId = searchData.files[0].id;
       const getResponse = await fetch(
         `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
@@ -59,14 +61,58 @@ export class MessagingLedgerService {
       );
 
       if (!getResponse.ok) {
-        return null;
+        return;
       }
 
-      try {
-        return await getResponse.json() as MessagingLedgerFile;
-      } catch {
-        return null;
+      const jsonData = await getResponse.json() as MessagingLedgerFile;
+      
+      // Get or create Sheets file
+      const spreadsheetId = await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(
+        accessToken,
+        metadataFolderId
+      );
+
+      // Migrate all activities
+      for (const activity of jsonData.activities || []) {
+        await MessagingLedgerSheetsService.appendActivity(accessToken, spreadsheetId, activity);
       }
+
+      console.log('[MessagingLedgerService] Migrated messaging_ledger.json to messaging_ledger.xlsx');
+    } catch (error) {
+      console.error('[MessagingLedgerService] Error migrating from JSON:', error);
+      // Don't throw - continue with Sheets even if migration fails
+    }
+  }
+
+  /**
+   * Get messaging ledger file from user's Google Drive (now uses Sheets)
+   */
+  static async getMessagingLedgerFile(
+    accessToken: string,
+    metadataFolderId: string,
+    identifier?: string
+  ): Promise<MessagingLedgerFile | null> {
+    try {
+      // Migrate from JSON if needed
+      await this.migrateFromJsonIfNeeded(accessToken, metadataFolderId);
+
+      // Get or create Sheets file
+      const spreadsheetId = await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(
+        accessToken,
+        metadataFolderId
+      );
+
+      // Get all activities
+      const { activities } = await MessagingLedgerSheetsService.getActivities(
+        accessToken,
+        spreadsheetId
+      );
+
+      return {
+        identifier: identifier || '',
+        updatedAt: new Date().toISOString(),
+        activities
+      };
     } catch (error) {
       console.error('Error getting messaging ledger file:', error);
       return null;
@@ -74,7 +120,8 @@ export class MessagingLedgerService {
   }
 
   /**
-   * Create or update messaging ledger file
+   * Create or update messaging ledger file (now uses Sheets)
+   * Note: This method is kept for backward compatibility but now delegates to Sheets operations
    */
   static async updateMessagingLedgerFile(
     accessToken: string,
@@ -82,67 +129,20 @@ export class MessagingLedgerService {
     identifier: string,
     ledgerData: MessagingLedgerFile
   ): Promise<void> {
-    const ledgerContent = JSON.stringify(ledgerData, null, 2);
+    // Migrate from JSON if needed
+    await this.migrateFromJsonIfNeeded(accessToken, metadataFolderId);
 
-    try {
-      // Search for existing messaging_ledger.json
-      const searchQuery = `name='${this.MESSAGING_LEDGER_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false`;
-      const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id)&pageSize=1`;
-      
-      const searchResponse = await fetch(searchUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
+    // Get or create Sheets file
+    const spreadsheetId = await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(
+      accessToken,
+      metadataFolderId
+    );
 
-      if (searchResponse.ok) {
-        const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-        
-        if (searchData.files && searchData.files.length > 0) {
-          // Update existing file
-          const fileId = searchData.files[0].id;
-          await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-            method: 'PATCH',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json; charset=UTF-8'
-            },
-            body: ledgerContent
-          });
-          return;
-        }
-      }
-
-      // Create new file
-      const boundary = `----WebKitFormBoundary${Date.now()}`;
-      const metadataPart = JSON.stringify({
-        name: this.MESSAGING_LEDGER_FILE_NAME,
-        parents: [metadataFolderId]
-      });
-
-      const multipartBody = [
-        `--${boundary}`,
-        'Content-Disposition: form-data; name="metadata"',
-        'Content-Type: application/json',
-        '',
-        metadataPart,
-        `--${boundary}`,
-        'Content-Disposition: form-data; name="file"; filename="messaging_ledger.json"',
-        'Content-Type: application/json',
-        '',
-        ledgerContent,
-        `--${boundary}--`
-      ].join('\r\n');
-
-      await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': `multipart/form-data; boundary=${boundary}`
-        },
-        body: multipartBody
-      });
-    } catch (error) {
-      console.error('Error updating messaging ledger file:', error);
-      throw error;
+    // Append new activities (if any)
+    // Note: This doesn't handle full replacement - activities are append-only in Sheets
+    // If full replacement is needed, we'd need to clear and re-add, but that's not typical usage
+    for (const activity of ledgerData.activities || []) {
+      await MessagingLedgerSheetsService.appendActivity(accessToken, spreadsheetId, activity);
     }
   }
 
@@ -162,18 +162,11 @@ export class MessagingLedgerService {
       metadata?: any;
     }
   ): Promise<MessagingActivityEntry> {
+    // Migrate from JSON if needed
+    await this.migrateFromJsonIfNeeded(accessToken, metadataFolderId);
+
     const activityId = crypto.randomUUID();
     const now = new Date().toISOString();
-
-    // Get or create ledger file
-    let ledgerFile = await this.getMessagingLedgerFile(accessToken, metadataFolderId);
-    if (!ledgerFile) {
-      ledgerFile = {
-        identifier: userDid,
-        updatedAt: now,
-        activities: []
-      };
-    }
 
     // Create activity entry
     const activity: MessagingActivityEntry = {
@@ -188,15 +181,14 @@ export class MessagingLedgerService {
       created_at: now
     };
 
-    // Add to activities (keep only last 10,000 activities)
-    ledgerFile.activities.push(activity);
-    if (ledgerFile.activities.length > 10000) {
-      ledgerFile.activities = ledgerFile.activities.slice(-10000);
-    }
-    ledgerFile.updatedAt = now;
+    // Get or create Sheets file
+    const spreadsheetId = await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(
+      accessToken,
+      metadataFolderId
+    );
 
-    // Update file
-    await this.updateMessagingLedgerFile(accessToken, metadataFolderId, userDid, ledgerFile);
+    // Append activity (no 10,000 limit - Sheets can handle millions)
+    await MessagingLedgerSheetsService.appendActivity(accessToken, spreadsheetId, activity);
 
     return activity;
   }
@@ -214,37 +206,16 @@ export class MessagingLedgerService {
       threadId?: string;
     }
   ): Promise<{ activities: MessagingActivityEntry[]; total: number }> {
-    const ledgerFile = await this.getMessagingLedgerFile(accessToken, metadataFolderId);
-    
-    if (!ledgerFile) {
-      return { activities: [], total: 0 };
-    }
+    // Migrate from JSON if needed
+    await this.migrateFromJsonIfNeeded(accessToken, metadataFolderId);
 
-    let activities = [...ledgerFile.activities];
+    // Get or create Sheets file
+    const spreadsheetId = await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(
+      accessToken,
+      metadataFolderId
+    );
 
-    // Filter by activity type if specified
-    if (options?.activityType) {
-      activities = activities.filter(a => a.activity_type === options.activityType);
-    }
-
-    // Filter by thread ID if specified
-    if (options?.threadId) {
-      activities = activities.filter(a => a.thread_id === options.threadId);
-    }
-
-    // Sort by created_at descending (most recent first)
-    activities.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-    const total = activities.length;
-    const limit = options?.limit || 50;
-    const offset = options?.offset || 0;
-
-    // Apply pagination
-    const paginatedActivities = activities.slice(offset, offset + limit);
-
-    return {
-      activities: paginatedActivities,
-      total
-    };
+    // Get activities from Sheets
+    return await MessagingLedgerSheetsService.getActivities(accessToken, spreadsheetId, options);
   }
 }

@@ -428,102 +428,43 @@ class ProductionServer {
     metadataFolderId: string,
     pnIdentifier: string
   ): Promise<void> {
-    const indexFiles = [
-      { name: 'public-file-index.json', isPublic: true },
-      { name: 'owner-file-index.json', isPublic: false }
-    ];
-
-    for (const indexFile of indexFiles) {
+    // Initialize index files using Sheets (replaces JSON files)
+    const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+    
+    try {
+      // Initialize public-file-index.xlsx
+      const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'public');
+      
+      // Set public permissions on the sheet
       try {
-        // Check if index file already exists
-        const searchUrl = `https://www.googleapis.com/drive/v3/files?q=name='${indexFile.name}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)&pageSize=1`;
-        const searchResponse = await fetch(searchUrl, {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        });
-
-        if (searchResponse.ok) {
-          const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-          if (searchData.files && searchData.files.length > 0) {
-            console.log(`[initializeIndexFiles] Index file '${indexFile.name}' already exists`);
-            continue;
-          }
-        }
-
-        // Create empty index file
-        const emptyIndex = {
-          identifier: pnIdentifier,
-          files: [],
-          updatedAt: new Date().toISOString()
-        };
-        const indexContent = JSON.stringify(emptyIndex, null, 2);
-
-        // Create using multipart upload
-        const boundary = `----WebKitFormBoundary${Date.now()}`;
-        const metadataPart = JSON.stringify({
-          name: indexFile.name,
-          parents: [metadataFolderId]
-        });
+        const { google } = await import('googleapis');
+        const auth = new google.auth.OAuth2();
+        auth.setCredentials({ access_token: accessToken });
+        const drive = google.drive({ version: 'v3', auth });
         
-        const multipartBody = [
-          `--${boundary}`,
-          'Content-Disposition: form-data; name="metadata"',
-          'Content-Type: application/json',
-          '',
-          metadataPart,
-          `--${boundary}`,
-          'Content-Disposition: form-data; name="file"; filename="index.json"',
-          'Content-Type: application/json',
-          '',
-          indexContent,
-          `--${boundary}--`
-        ].join('\r\n');
-
-        const createResponse = await fetch(
-          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': `multipart/form-data; boundary=${boundary}`
-            },
-            body: multipartBody
+        await drive.permissions.create({
+          fileId: publicSheetId,
+          requestBody: {
+            role: 'reader',
+            type: 'anyone'
           }
-        );
-
-        if (createResponse.ok) {
-          const fileData = await createResponse.json() as { id: string };
-          console.log(`[initializeIndexFiles] Created index file '${indexFile.name}' (ID: ${fileData.id})`);
-
-          // Make public index file publicly readable
-          if (indexFile.isPublic) {
-            try {
-              await fetch(
-                `https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`,
-                {
-                  method: 'POST',
-                  headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify({
-                    role: 'reader',
-                    type: 'anyone'
-                  })
-                }
-              );
-              console.log(`[initializeIndexFiles] Set public permissions on '${indexFile.name}'`);
-            } catch (permError: any) {
-              console.warn(`[initializeIndexFiles] Failed to set public permissions on '${indexFile.name}':`, permError);
-            }
-          }
-        } else {
-          const errorText = await createResponse.text();
-          console.warn(`[initializeIndexFiles] Failed to create '${indexFile.name}': ${createResponse.status} ${errorText}`);
-        }
-      } catch (error: any) {
-        console.error(`[initializeIndexFiles] Error creating '${indexFile.name}':`, error);
-        // Don't throw - continue with other files
+        });
+        console.log(`[initializeIndexFiles] Set public permissions on public-file-index.xlsx`);
+      } catch (permError: any) {
+        console.warn(`[initializeIndexFiles] Failed to set public permissions on public-file-index.xlsx:`, permError);
       }
+      
+      console.log(`[initializeIndexFiles] Initialized public-file-index.xlsx`);
+    } catch (error: any) {
+      console.error(`[initializeIndexFiles] Error creating public-file-index.xlsx:`, error);
+    }
+
+    try {
+      // Initialize owner-file-index.xlsx
+      await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'owner');
+      console.log(`[initializeIndexFiles] Initialized owner-file-index.xlsx`);
+    } catch (error: any) {
+      console.error(`[initializeIndexFiles] Error creating owner-file-index.xlsx:`, error);
     }
   }
 
@@ -657,50 +598,33 @@ class ProductionServer {
 
   /**
    * Get owner file index (contains all files owned by the user)
+   * Now uses Sheets instead of JSON
    */
   private async getOwnerFileIndex(
     accessToken: string,
     metadataFolderId: string,
     pnIdentifier: string
   ): Promise<any | null> {
-    const OWNER_INDEX_FILE_NAME = 'owner-file-index.json';
-    const searchResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${OWNER_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!searchResponse.ok) {
-      return null;
-    }
-
-    const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-    
-    if (!searchData.files || searchData.files.length === 0) {
-      return null;
-    }
-
-    // Download existing index
-    const fileId = searchData.files[0].id;
-    const getResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!getResponse.ok) {
-      return null;
-    }
-
     try {
-      return await getResponse.json();
-    } catch {
+      const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+      
+      // Get or create owner index sheet
+      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
+        accessToken,
+        metadataFolderId,
+        'owner'
+      );
+
+      // Get all files from sheet
+      const { files } = await IndexSheetsService.getFiles(accessToken, spreadsheetId);
+
+      return {
+        identifier: pnIdentifier,
+        files,
+        updatedAt: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('[getOwnerFileIndex] Error getting owner index:', error);
       return {
         identifier: pnIdentifier,
         files: [],
@@ -711,6 +635,7 @@ class ProductionServer {
 
   /**
    * Update owner file index (includes ALL files, regardless of visibility)
+   * Now uses Sheets instead of JSON
    */
   private async updateOwnerFileIndex(
     accessToken: string,
@@ -718,17 +643,14 @@ class ProductionServer {
     metadataFolderId: string,
     fileMetadata: any
   ): Promise<void> {
-    const OWNER_INDEX_FILE_NAME = 'owner-file-index.json';
+    const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
     
-    let index = await this.getOwnerFileIndex(accessToken, metadataFolderId, pnIdentifier);
-    
-    if (!index) {
-      index = {
-        identifier: pnIdentifier,
-        files: [],
-        updatedAt: new Date().toISOString()
-      };
-    }
+    // Get or create owner index sheet
+    const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
+      accessToken,
+      metadataFolderId,
+      'owner'
+    );
 
     // Determine contentClass from fileMetadata before creating index entry
     const { determineContentClass } = await import('./server/utils/fileTypeUtils');
@@ -762,29 +684,26 @@ class ProductionServer {
       repostOf: fileMetadata.repostOf,
       isPartOf: fileMetadata.isPartOf,
       indexingPermissions: fileMetadata.indexingPermissions,
-      contentClass: contentClass, // Store contentClass for proper filtering
-      // Preserve thought metadata flags
+      contentClass: contentClass,
       isThoughtThumbnail: metadataAny.isThoughtThumbnail,
       thought: metadataAny.thought,
       textPost: metadataAny.textPost,
       collection: metadataAny.collection
     };
 
-    // Update or add file entry (all files go in owner index)
-    const fileIndex = index.files.findIndex(
-      (f: any) => f.googleDriveFileId === fileMetadata.googleDriveFileId
+    // Check if file already exists in index
+    const existingEntry = await IndexSheetsService.getFileById(
+      accessToken,
+      spreadsheetId,
+      fileMetadata.fileId
     );
 
-    if (fileIndex >= 0) {
-      // Update existing entry
-      const existingEntry = index.files[fileIndex] as any;
-      
-      // Preserve publicToken if new one not provided
+    if (existingEntry) {
+      // Merge with existing entry
       if (!indexEntry.publicToken && existingEntry.publicToken) {
         indexEntry.publicToken = existingEntry.publicToken;
       }
       
-      // Merge engagement metrics
       if (existingEntry.engagement) {
         indexEntry.engagement = {
           views: indexEntry.engagement?.views ?? existingEntry.engagement.views ?? 0,
@@ -799,21 +718,14 @@ class ProductionServer {
         };
       }
       
-      index.files[fileIndex] = indexEntry;
+      // Update existing entry
+      await IndexSheetsService.updateFile(accessToken, spreadsheetId, fileMetadata.fileId, indexEntry);
     } else {
-      // Add new file to owner index
-      index.files.push(indexEntry);
+      // Add new entry
+      await IndexSheetsService.addFile(accessToken, spreadsheetId, indexEntry);
     }
 
-    index.updatedAt = new Date().toISOString();
-
-    // Save root owner index file
-    await this.saveIndexFileToFolder(accessToken, metadataFolderId, OWNER_INDEX_FILE_NAME, index, false);
-    
-    // Also update content class-specific owner index
-    // Use the contentClass that was determined above when creating indexEntry
-
-    // Get content class folder ID
+    // Also update content class-specific owner index (still using JSON for now - can be migrated later)
     const contentTypeFolderName = indexEntry.contentClass === 'thought' ? 'thoughts' : indexEntry.contentClass;
     const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     const contentTypeFolderResponse = await fetch(
@@ -850,57 +762,42 @@ class ProductionServer {
         }
 
         contentClassIndex.updatedAt = new Date().toISOString();
-        await this.saveIndexFileToFolder(accessToken, contentTypeFolderId, OWNER_INDEX_FILE_NAME, contentClassIndex, false);
+        await this.saveIndexFileToFolder(accessToken, contentTypeFolderId, 'owner-file-index.json', contentClassIndex, false);
       }
     }
   }
 
   /**
    * Get public file index
+   * Now uses Sheets instead of JSON
    */
   private async getPublicFileIndex(
     accessToken: string,
     metadataFolderId: string,
     pnIdentifier: string
   ): Promise<any | null> {
-    const PUBLIC_INDEX_FILE_NAME = 'public-file-index.json';
-    const searchResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${PUBLIC_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!searchResponse.ok) {
-      return null;
-    }
-
-    const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-    
-    if (!searchData.files || searchData.files.length === 0) {
-      return null;
-    }
-
-    // Download existing index
-    const fileId = searchData.files[0].id;
-    const getResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!getResponse.ok) {
-      return null;
-    }
-
     try {
-      return await getResponse.json();
-    } catch {
+      const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+      
+      // Get or create public index sheet
+      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
+        accessToken,
+        metadataFolderId,
+        'public'
+      );
+
+      // Get only public files
+      const { files } = await IndexSheetsService.getFiles(accessToken, spreadsheetId, {
+        visibility: 'public'
+      });
+
+      return {
+        identifier: pnIdentifier,
+        files,
+        updatedAt: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('[getPublicFileIndex] Error getting public index:', error);
       return {
         identifier: pnIdentifier,
         files: [],
@@ -4555,24 +4452,7 @@ class ProductionServer {
                 console.warn(`[StorageCredentials PUT] Failed to initialize preferences.json:`, prefError?.message || prefError);
               }
               
-              // Initialize engagement.json
-              try {
-                const existingEngagement = await EngagementDriveService.getEngagementFile(accessToken, metadataFolderId);
-                if (!existingEngagement) {
-                  await EngagementDriveService.updateEngagementFile(accessToken, metadataFolderId, identityId, {
-                    userDid: identityId,
-                    updatedAt: now,
-                    likes: [],
-                    dislikes: [],
-                    comments: [],
-                    shares: [],
-                    saves: []
-                  });
-                  console.log(`[StorageCredentials PUT] Initialized engagement.json for identityId: ${sanitizedIdentityId}`);
-                }
-              } catch (engError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize engagement.json:`, engError?.message || engError);
-              }
+              // Note: engagement.json is no longer initialized - we use engagement.xlsx (Sheets) instead
               
               // Initialize notifications.xlsx
               try {
@@ -4601,6 +4481,42 @@ class ProductionServer {
                 console.warn(`[StorageCredentials PUT] Failed to initialize connections.xlsx:`, connError?.message || connError);
               }
               
+              // Initialize engagement.xlsx
+              try {
+                const { EngagementSheetsService } = await import('./server/modules/engagementSheetsService');
+                await EngagementSheetsService.getOrCreateEngagementSheet(accessToken, metadataFolderId);
+                console.log(`[StorageCredentials PUT] Initialized engagement.xlsx for identityId: ${sanitizedIdentityId}`);
+              } catch (engError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize engagement.xlsx:`, engError?.message || engError);
+              }
+              
+              // Initialize messaging_ledger.xlsx
+              try {
+                const { MessagingLedgerSheetsService } = await import('./server/modules/messagingLedgerSheetsService');
+                await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(accessToken, metadataFolderId);
+                console.log(`[StorageCredentials PUT] Initialized messaging_ledger.xlsx for identityId: ${sanitizedIdentityId}`);
+              } catch (msgError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize messaging_ledger.xlsx:`, msgError?.message || msgError);
+              }
+              
+              // Initialize public-file-index.xlsx
+              try {
+                const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+                await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'public');
+                console.log(`[StorageCredentials PUT] Initialized public-file-index.xlsx for identityId: ${sanitizedIdentityId}`);
+              } catch (pubIndexError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize public-file-index.xlsx:`, pubIndexError?.message || pubIndexError);
+              }
+              
+              // Initialize owner-file-index.xlsx
+              try {
+                const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+                await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'owner');
+                console.log(`[StorageCredentials PUT] Initialized owner-file-index.xlsx for identityId: ${sanitizedIdentityId}`);
+              } catch (ownerIndexError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize owner-file-index.xlsx:`, ownerIndexError?.message || ownerIndexError);
+              }
+              
               // Initialize profile.json
               try {
                 const existingProfile = await ProfileService.getProfileFile(accessToken, metadataFolderId);
@@ -4615,36 +4531,9 @@ class ProductionServer {
                 console.warn(`[StorageCredentials PUT] Failed to initialize profile.json:`, profileError?.message || profileError);
               }
               
-              // Initialize connections.json
-              try {
-                const existingConnections = await ConnectionsService.getConnectionsFile(accessToken, metadataFolderId);
-                if (!existingConnections) {
-                  await ConnectionsService.updateConnectionsFile(accessToken, metadataFolderId, identityId, {
-                    identifier: identityId,
-                    updatedAt: now,
-                    connections: [],
-                    blocked: []
-                  });
-                  console.log(`[StorageCredentials PUT] Initialized connections.json for identityId: ${sanitizedIdentityId}`);
-                }
-              } catch (connError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize connections.json:`, connError?.message || connError);
-              }
+              // Note: connections.json is no longer initialized - we use connections.xlsx (Sheets) instead
               
-              // Initialize messaging_ledger.json
-              try {
-                const existingMessaging = await MessagingLedgerService.getMessagingLedgerFile(accessToken, metadataFolderId);
-                if (!existingMessaging) {
-                  await MessagingLedgerService.updateMessagingLedgerFile(accessToken, metadataFolderId, identityId, {
-                    identifier: identityId,
-                    updatedAt: now,
-                    activities: []
-                  });
-                  console.log(`[StorageCredentials PUT] Initialized messaging_ledger.json for identityId: ${sanitizedIdentityId}`);
-                }
-              } catch (messagingError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize messaging_ledger.json:`, messagingError?.message || messagingError);
-              }
+              // Note: messaging_ledger.json is no longer initialized - we use messaging_ledger.xlsx (Sheets) instead
               
               // Initialize zkp-data-points.json (special case - direct multipart upload)
               try {

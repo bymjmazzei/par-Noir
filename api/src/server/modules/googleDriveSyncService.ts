@@ -214,11 +214,13 @@ export class GoogleDriveSyncService {
 
           const metadataFolderId = metadataFolders[0].id;
           
-          // Step 3: Look for public-file-index.json inside the _metadata folder
-          const indexFileQuery = `name='public-file-index.json' and '${metadataFolderId}' in parents and trashed=false`;
+          // Step 3: Look for public-file-index (prefer .xlsx, fallback to .json for backward compatibility)
+          let indexData: any = null;
           
-          const indexFileResponse = await fetch(
-            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(indexFileQuery)}&fields=files(id,name)`,
+          // Try Sheets first
+          const sheetsIndexQuery = `name='public-file-index.xlsx' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+          const sheetsIndexResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(sheetsIndexQuery)}&fields=files(id,name)`,
             {
               headers: {
                 'Authorization': `Bearer ${accessToken}`,
@@ -227,43 +229,86 @@ export class GoogleDriveSyncService {
             }
           );
 
-          if (!indexFileResponse.ok) {
-            console.warn(`⚠️ Failed to find public-file-index.json for pN ${pnFolder.name}: ${indexFileResponse.status}`);
-            hasErrors = true;
-            continue;
-          }
-
-          const indexFileData = await indexFileResponse.json() as { files?: Array<{ id: string; name: string }> };
-          const indexFiles = indexFileData.files || [];
-
-          if (indexFiles.length === 0) {
-            // No public-file-index.json - this is normal if no public files, just skip
-            continue;
-          }
-
-          const indexFileId = indexFiles[0].id;
-          
-          // Step 4: Download and parse the metadata index
-          const downloadResponse = await fetch(
-            `https://www.googleapis.com/drive/v3/files/${indexFileId}?alt=media`,
-            {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`
+          if (sheetsIndexResponse.ok) {
+            const sheetsIndexData = await sheetsIndexResponse.json() as { files?: Array<{ id: string; name: string }> };
+            const sheetsIndexFiles = sheetsIndexData.files || [];
+            
+            if (sheetsIndexFiles.length > 0) {
+              // Read from Sheets
+              try {
+                const { IndexSheetsService } = await import('./indexSheetsService');
+                const { files } = await IndexSheetsService.getFiles(accessToken, sheetsIndexFiles[0].id, {
+                  visibility: 'public'
+                });
+                indexData = {
+                  identifier: pnIdentifier,
+                  files,
+                  updatedAt: new Date().toISOString()
+                };
+              } catch (sheetsError) {
+                console.warn(`⚠️ Failed to read public-file-index.xlsx for pN ${pnFolder.name}:`, sheetsError);
               }
             }
-          );
-
-          if (!downloadResponse.ok) {
-            console.error(`❌ Failed to download index from pN ${pnFolder.name}: ${downloadResponse.status}`);
-            hasErrors = true;
-            continue;
           }
 
-          const indexText = await downloadResponse.text();
-          try {
-            const indexData = JSON.parse(indexText);
+          // Fallback to JSON if Sheets not found
+          if (!indexData) {
+            const jsonIndexQuery = `name='public-file-index.json' and '${metadataFolderId}' in parents and trashed=false`;
+            const jsonIndexResponse = await fetch(
+              `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(jsonIndexQuery)}&fields=files(id,name)`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                  'Content-Type': 'application/json'
+                }
+              }
+            );
 
-            // public-file-index.json structure: { identifier: string, files: [...], updatedAt: string }
+            if (!jsonIndexResponse.ok) {
+              console.warn(`⚠️ Failed to find public-file-index for pN ${pnFolder.name}: ${jsonIndexResponse.status}`);
+              hasErrors = true;
+              continue;
+            }
+
+            const jsonIndexData = await jsonIndexResponse.json() as { files?: Array<{ id: string; name: string }> };
+            const jsonIndexFiles = jsonIndexData.files || [];
+
+            if (jsonIndexFiles.length === 0) {
+              // No public-file-index - this is normal if no public files, just skip
+              continue;
+            }
+
+            const indexFileId = jsonIndexFiles[0].id;
+            
+            // Download and parse the JSON index
+            const downloadResponse = await fetch(
+              `https://www.googleapis.com/drive/v3/files/${indexFileId}?alt=media`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`
+                }
+              }
+            );
+
+            if (!downloadResponse.ok) {
+              console.error(`❌ Failed to download index from pN ${pnFolder.name}: ${downloadResponse.status}`);
+              hasErrors = true;
+              continue;
+            }
+
+            const indexText = await downloadResponse.text();
+            try {
+              indexData = JSON.parse(indexText);
+            } catch (parseError) {
+              console.error(`❌ Failed to parse index from pN ${pnFolder.name}:`, parseError);
+              hasErrors = true;
+              continue;
+            }
+          }
+
+          // Step 4: Process the index data
+          try {
+            // public-file-index structure: { identifier: string, files: [...], updatedAt: string }
             if (indexData && Array.isArray(indexData.files)) {
               // Filter for public files only and transform to PublicMetadata format
               // New metadata structure includes @context, @type, @id, engagement, relationships

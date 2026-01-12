@@ -1,0 +1,521 @@
+/**
+ * Engagement Sheets Service
+ * Manages user engagement data in Google Sheets
+ * Replaces engagement.json for better scalability
+ */
+
+import { google } from 'googleapis';
+
+export interface UserComment {
+  fileId: string;
+  commentId: string;
+  content: string;
+  authorName: string;
+  timestamp: string;
+  parentCommentId?: string;
+  likes: string[]; // User DIDs who liked
+  postReply?: {
+    fileId: string;
+    thumbnail?: string;
+    title?: string;
+  };
+}
+
+export class EngagementSheetsService {
+  private static readonly ENGAGEMENT_FILE_NAME = 'engagement.xlsx';
+
+  /**
+   * Get or create engagement sheet
+   */
+  static async getOrCreateEngagementSheet(
+    accessToken: string,
+    metadataFolderId: string
+  ): Promise<string> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+    const drive = google.drive({ version: 'v3', auth });
+
+    // Search for existing engagement sheet in metadata folder
+    const fileQuery = `name='${this.ENGAGEMENT_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    const searchResponse = await drive.files.list({
+      q: fileQuery,
+      fields: 'files(id,name)',
+      pageSize: 1
+    });
+
+    if (searchResponse.data.files && searchResponse.data.files.length > 0) {
+      return searchResponse.data.files[0].id!;
+    }
+
+    // Also check if file exists elsewhere
+    const broadQuery = `name='${this.ENGAGEMENT_FILE_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    const broadSearchResponse = await drive.files.list({
+      q: broadQuery,
+      fields: 'files(id,name,parents)',
+      pageSize: 5
+    });
+
+    if (broadSearchResponse.data.files && broadSearchResponse.data.files.length > 0) {
+      const existingFile = broadSearchResponse.data.files[0];
+      const existingFileId = existingFile.id!;
+      const existingParents = existingFile.parents || [];
+      
+      await drive.files.update({
+        fileId: existingFileId,
+        removeParents: existingParents.join(','),
+        addParents: metadataFolderId,
+        fields: 'id, parents'
+      });
+      
+      return existingFileId;
+    }
+
+    // Create new engagement sheet with multiple sheets
+    const spreadsheet = await sheets.spreadsheets.create({
+      requestBody: {
+        properties: {
+          title: this.ENGAGEMENT_FILE_NAME.replace('.xlsx', '')
+        },
+        sheets: [
+          {
+            properties: {
+              title: 'Likes',
+              gridProperties: {
+                rowCount: 100000,
+                columnCount: 2
+              }
+            }
+          },
+          {
+            properties: {
+              title: 'Dislikes',
+              gridProperties: {
+                rowCount: 100000,
+                columnCount: 2
+              }
+            }
+          },
+          {
+            properties: {
+              title: 'Comments',
+              gridProperties: {
+                rowCount: 100000,
+                columnCount: 8
+              }
+            }
+          },
+          {
+            properties: {
+              title: 'Shares',
+              gridProperties: {
+                rowCount: 100000,
+                columnCount: 2
+              }
+            }
+          },
+          {
+            properties: {
+              title: 'Saves',
+              gridProperties: {
+                rowCount: 100000,
+                columnCount: 2
+              }
+            }
+          }
+        ]
+      }
+    });
+
+    const spreadsheetId = spreadsheet.data.spreadsheetId;
+    if (!spreadsheetId) {
+      throw new Error('Failed to create engagement sheet: no ID returned');
+    }
+
+    // Move to metadata folder
+    const fileInfo = await drive.files.get({
+      fileId: spreadsheetId,
+      fields: 'parents'
+    });
+    
+    const currentParents = fileInfo.data.parents || [];
+    await drive.files.update({
+      fileId: spreadsheetId,
+      removeParents: currentParents.join(','),
+      addParents: metadataFolderId,
+      fields: 'id, parents'
+    });
+
+    // Set up headers for each sheet
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: 'RAW',
+        data: [
+          {
+            range: 'Likes!A1:B1',
+            values: [['File ID', 'Timestamp']]
+          },
+          {
+            range: 'Dislikes!A1:B1',
+            values: [['File ID', 'Timestamp']]
+          },
+          {
+            range: 'Comments!A1:H1',
+            values: [['Comment ID', 'File ID', 'Content', 'Author Name', 'Timestamp', 'Parent Comment ID', 'Likes (JSON)', 'Post Reply (JSON)']]
+          },
+          {
+            range: 'Shares!A1:B1',
+            values: [['File ID', 'Timestamp']]
+          },
+          {
+            range: 'Saves!A1:B1',
+            values: [['File ID', 'Timestamp']]
+          }
+        ]
+      }
+    });
+
+    return spreadsheetId;
+  }
+
+  /**
+   * Add like
+   */
+  static async addLike(
+    accessToken: string,
+    spreadsheetId: string,
+    fileId: string
+  ): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    const timestamp = new Date().toISOString();
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: 'Likes!A:B',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[fileId, timestamp]]
+      }
+    });
+  }
+
+  /**
+   * Remove like
+   */
+  static async removeLike(
+    accessToken: string,
+    spreadsheetId: string,
+    fileId: string
+  ): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    // Get all likes
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Likes!A2:B'
+    });
+
+    if (!response.data.values) {
+      return;
+    }
+
+    // Find and remove the like
+    const rows = response.data.values.filter((row: any[]) => row[0] !== fileId);
+    
+    // Clear and rewrite
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range: 'Likes!A2:B'
+    });
+
+    if (rows.length > 0) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Likes!A2:B',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: rows
+        }
+      });
+    }
+  }
+
+  /**
+   * Get likes
+   */
+  static async getLikes(
+    accessToken: string,
+    spreadsheetId: string
+  ): Promise<string[]> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Likes!A2:A'
+    });
+
+    if (!response.data.values) {
+      return [];
+    }
+
+    return response.data.values.map((row: any[]) => row[0] as string).filter(Boolean);
+  }
+
+  /**
+   * Add dislike
+   */
+  static async addDislike(
+    accessToken: string,
+    spreadsheetId: string,
+    fileId: string
+  ): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    const timestamp = new Date().toISOString();
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: 'Dislikes!A:B',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[fileId, timestamp]]
+      }
+    });
+  }
+
+  /**
+   * Remove dislike
+   */
+  static async removeDislike(
+    accessToken: string,
+    spreadsheetId: string,
+    fileId: string
+  ): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Dislikes!A2:B'
+    });
+
+    if (!response.data.values) {
+      return;
+    }
+
+    const rows = response.data.values.filter((row: any[]) => row[0] !== fileId);
+    
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range: 'Dislikes!A2:B'
+    });
+
+    if (rows.length > 0) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Dislikes!A2:B',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: rows
+        }
+      });
+    }
+  }
+
+  /**
+   * Get dislikes
+   */
+  static async getDislikes(
+    accessToken: string,
+    spreadsheetId: string
+  ): Promise<string[]> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Dislikes!A2:A'
+    });
+
+    if (!response.data.values) {
+      return [];
+    }
+
+    return response.data.values.map((row: any[]) => row[0] as string).filter(Boolean);
+  }
+
+  /**
+   * Add comment
+   */
+  static async addComment(
+    accessToken: string,
+    spreadsheetId: string,
+    comment: UserComment
+  ): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: 'Comments!A:H',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[
+          comment.commentId,
+          comment.fileId,
+          comment.content,
+          comment.authorName,
+          comment.timestamp,
+          comment.parentCommentId || '',
+          JSON.stringify(comment.likes || []),
+          JSON.stringify(comment.postReply || {})
+        ]]
+      }
+    });
+  }
+
+  /**
+   * Get comments
+   */
+  static async getComments(
+    accessToken: string,
+    spreadsheetId: string,
+    fileId?: string
+  ): Promise<UserComment[]> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Comments!A2:H'
+    });
+
+    if (!response.data.values) {
+      return [];
+    }
+
+    let comments = response.data.values.map((row: any[]) => {
+      const comment: UserComment = {
+        commentId: row[0],
+        fileId: row[1],
+        content: row[2],
+        authorName: row[3],
+        timestamp: row[4],
+        parentCommentId: row[5] || undefined,
+        likes: row[6] ? JSON.parse(row[6]) : [],
+        postReply: row[7] ? JSON.parse(row[7]) : undefined
+      };
+      return comment;
+    });
+
+    if (fileId) {
+      comments = comments.filter(c => c.fileId === fileId);
+    }
+
+    return comments;
+  }
+
+  /**
+   * Add share
+   */
+  static async addShare(
+    accessToken: string,
+    spreadsheetId: string,
+    fileId: string
+  ): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    const timestamp = new Date().toISOString();
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: 'Shares!A:B',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[fileId, timestamp]]
+      }
+    });
+  }
+
+  /**
+   * Get shares
+   */
+  static async getShares(
+    accessToken: string,
+    spreadsheetId: string
+  ): Promise<string[]> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Shares!A2:A'
+    });
+
+    if (!response.data.values) {
+      return [];
+    }
+
+    return response.data.values.map((row: any[]) => row[0] as string).filter(Boolean);
+  }
+
+  /**
+   * Add save
+   */
+  static async addSave(
+    accessToken: string,
+    spreadsheetId: string,
+    fileId: string
+  ): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    const timestamp = new Date().toISOString();
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: 'Saves!A:B',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[fileId, timestamp]]
+      }
+    });
+  }
+
+  /**
+   * Get saves
+   */
+  static async getSaves(
+    accessToken: string,
+    spreadsheetId: string
+  ): Promise<string[]> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Saves!A2:A'
+    });
+
+    if (!response.data.values) {
+      return [];
+    }
+
+    return response.data.values.map((row: any[]) => row[0] as string).filter(Boolean);
+  }
+}
