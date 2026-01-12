@@ -2160,16 +2160,9 @@ class ProductionServer {
     // MUST be before /:fileId route to avoid route conflict
     this.app.post('/api/aggregator/metadata-index/cleanup-orphaned', async (req, res) => {
       try {
-        console.error('[CleanupOrphaned] ===== ENDPOINT CALLED =====');
-        console.error('[CleanupOrphaned] Request received at', new Date().toISOString());
-        console.log('[CleanupOrphaned] Importing modules...');
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
-        console.log('[CleanupOrphaned] Getting service instance...');
         const service = AggregatorMetadataServiceDB.getInstance();
-        console.log('[CleanupOrphaned] Getting database pool...');
         const db = (await import('./server/utils/database')).getDatabasePool();
-        
-        console.log('[CleanupOrphaned] Starting orphaned metadata cleanup...');
         
         // Get service account access token for authenticated requests
         let accessToken: string | null = null;
@@ -2328,14 +2321,10 @@ class ProductionServer {
           message: `Checked ${allEntries.length} file(s), removed ${removedCount} orphaned metadata entry/entries`
         });
       } catch (error: any) {
-        console.error('[CleanupOrphaned] ===== ERROR CAUGHT =====');
         console.error('[CleanupOrphaned] Error:', error);
-        console.error('[CleanupOrphaned] Error message:', error?.message);
-        console.error('[CleanupOrphaned] Error stack:', error?.stack);
         return res.status(500).json({
           error: 'Failed to cleanup orphaned metadata',
-          message: error?.message || String(error),
-          details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+          message: error?.message || String(error)
         });
       }
     });
