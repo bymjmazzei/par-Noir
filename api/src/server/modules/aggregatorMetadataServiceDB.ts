@@ -1,7 +1,16 @@
 /**
  * Aggregator Metadata Service (Database-Backed)
- * Maintains centralized index of all public file metadata from all pNs
- * Uses PostgreSQL for persistent storage
+ * 
+ * IMPORTANT: This service maintains a PERFORMANCE CACHE, not the source of truth.
+ * 
+ * Architecture:
+ * - Google Drive (`public-file-index.xlsx`) is the SOURCE OF TRUTH (decentralized, user-owned)
+ * - This database is a PERFORMANCE CACHE for fast queries (PostgreSQL)
+ * - Sync service (GoogleDriveSyncService) keeps cache fresh by syncing from Google Drive
+ * - Users own their data on Google Drive; this cache is just for performance
+ * 
+ * When files are updated via API, both the cache (this database) and the source of truth
+ * (Google Drive index) should be updated to keep them in sync.
  */
 
 import { getDatabasePool } from '../utils/database';
@@ -2058,6 +2067,17 @@ export class AggregatorMetadataServiceDB {
       }
 
       console.log(`✅ Updated metadata for file: ${fileId}`);
+      
+      // Invalidate cache when metadata is updated
+      try {
+        const { invalidateIndexCache } = await import('../utils/cache');
+        await invalidateIndexCache();
+        console.log(`🗑️ [updateMetadata] Invalidated index cache after metadata update`);
+      } catch (cacheError) {
+        console.warn('⚠️ [updateMetadata] Cache invalidation failed (non-critical):', cacheError);
+        // Continue even if cache invalidation fails
+      }
+      
       return updatedMetadata;
     } catch (error) {
       console.error(`❌ Failed to update metadata for file ${fileId}:`, error);

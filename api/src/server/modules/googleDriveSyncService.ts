@@ -1,7 +1,21 @@
 /**
  * Google Drive Sync Service
- * Periodically scans Google Drive for public-file-index.json files
- * and syncs them to the database
+ * 
+ * Syncs from Google Drive (source of truth) → Database (performance cache)
+ * 
+ * Architecture:
+ * - Google Drive (`public-file-index.xlsx`) is the SOURCE OF TRUTH (decentralized, user-owned)
+ * - Database is a PERFORMANCE CACHE for fast queries
+ * - This service keeps the cache fresh by periodically syncing from Google Drive
+ * - Handles cleanup of orphaned files (files in cache but not in Google Drive)
+ * 
+ * Sync Process:
+ * 1. Scans Google Drive for all pN folders
+ * 2. Reads `public-file-index.xlsx` from each user's `_metadata` folder
+ * 3. Upserts metadata to database (updates existing, inserts new)
+ * 4. Cleans up orphaned files (in DB but not in Google Drive)
+ * 
+ * Can be triggered manually via API or runs periodically (default: every 10 minutes)
  */
 
 import { GoogleAuth } from 'google-auth-library';
@@ -199,8 +213,8 @@ export class GoogleDriveSyncService {
           );
 
           if (!metadataFolderResponse.ok) {
-            console.warn(`⚠️ Failed to find _metadata folder for pN ${pnFolder.name}: ${metadataFolderResponse.status}`);
-            hasErrors = true;
+            // Expected: Some users may not have a _metadata folder yet
+            console.warn(`⚠️ [Sync] Could not access _metadata folder for pN ${pnFolder.name} (status: ${metadataFolderResponse.status}) - skipping`);
             continue;
           }
 
@@ -208,7 +222,7 @@ export class GoogleDriveSyncService {
           const metadataFolders = metadataFolderData.files || [];
 
           if (metadataFolders.length === 0) {
-            // No _metadata folder - this is normal, just skip
+            // Expected: No _metadata folder - this is normal for new users, just skip
             continue;
           }
 
@@ -227,8 +241,8 @@ export class GoogleDriveSyncService {
           );
 
           if (!sheetsIndexResponse.ok) {
-            console.warn(`⚠️ Failed to find public-file-index.xlsx for pN ${pnFolder.name}: ${sheetsIndexResponse.status}`);
-            hasErrors = true;
+            // Expected: Index file may not exist if user has no public files yet
+            console.warn(`⚠️ [Sync] Could not access public-file-index.xlsx for pN ${pnFolder.name} (status: ${sheetsIndexResponse.status}) - skipping`);
             continue;
           }
 
@@ -236,7 +250,7 @@ export class GoogleDriveSyncService {
           const sheetsIndexFiles = sheetsIndexData.files || [];
 
           if (sheetsIndexFiles.length === 0) {
-            // No public-file-index.xlsx - this is normal if no public files, just skip
+            // Expected: No public-file-index.xlsx - this is normal if user has no public files, just skip
             continue;
           }
 
@@ -253,8 +267,9 @@ export class GoogleDriveSyncService {
               updatedAt: new Date().toISOString()
             };
           } catch (sheetsError) {
-            console.error(`❌ Failed to read public-file-index.xlsx for pN ${pnFolder.name}:`, sheetsError);
-            hasErrors = true;
+            // Error reading index file - might be permission issue or corrupted file
+            console.warn(`⚠️ [Sync] Failed to read public-file-index.xlsx for pN ${pnFolder.name}:`, sheetsError instanceof Error ? sheetsError.message : sheetsError);
+            // Don't mark as error - might be temporary issue, skip this user for now
             continue;
           }
 
@@ -337,16 +352,19 @@ export class GoogleDriveSyncService {
               console.log(`✅ Loaded ${publicFiles.length} public file(s) from pN ${pnFolder.name}`);
               folderScannedSuccessfully = true;
             } else {
-              console.warn(`⚠️ Invalid index format in pN ${pnFolder.name}: expected files array`);
+              // Unexpected: Index file exists but has invalid format
+              console.warn(`⚠️ [Sync] Invalid index format in pN ${pnFolder.name}: expected files array - skipping`);
               hasErrors = true;
             }
           } catch (parseError) {
-            console.error(`❌ Failed to parse index from pN ${pnFolder.name}:`, parseError);
+            // Error parsing index data - might be corrupted
+            console.warn(`⚠️ [Sync] Failed to parse index from pN ${pnFolder.name}:`, parseError instanceof Error ? parseError.message : parseError);
             hasErrors = true;
           }
         } catch (pnError) {
-          console.warn(`⚠️ Failed to scan pN folder ${pnFolder.name}:`, pnError);
-          hasErrors = true;
+          // Error accessing folder - might be permission issue or temporary outage
+          console.warn(`⚠️ [Sync] Failed to scan pN folder ${pnFolder.name}:`, pnError instanceof Error ? pnError.message : pnError);
+          // Don't mark as error - might be temporary, skip this user for now
         }
         
         if (folderScannedSuccessfully) {
@@ -366,9 +384,78 @@ export class GoogleDriveSyncService {
         }
       }
 
-      // Step 6: Cleanup logic removed - was causing all posts to be removed from feeds
-      // Cleanup has been disabled per user request due to configuration issues
-      console.log('ℹ️ Cleanup logic disabled - files will not be automatically removed from feeds');
+      // Step 6: Smart cleanup - remove orphaned files (in DB but not in Google Drive)
+      const db = getDatabasePool();
+
+      // Track which users we successfully scanned (have metadata in allMetadata)
+      const successfullyScannedUsers = new Set(
+        allMetadata.map(m => m.pnIdentifier).filter(Boolean)
+      );
+
+      // Track which pnIdentifiers we found folders for (even if we couldn't read their index)
+      const foldersFound = new Set(
+        pnFolders.map(f => {
+          const match = f.name.match(/pn-([a-zA-Z0-9]+)/);
+          return match ? `pn-${match[1]}` : null;
+        }).filter(Boolean) as string[]
+      );
+
+      // Get all pnIdentifiers that have files in database
+      const allDbUsers = await db.query(
+        `SELECT DISTINCT pn_identifier FROM aggregator_media WHERE pn_identifier IS NOT NULL
+         UNION SELECT DISTINCT pn_identifier FROM aggregator_thoughts WHERE pn_identifier IS NOT NULL
+         UNION SELECT DISTINCT pn_identifier FROM aggregator_collections WHERE pn_identifier IS NOT NULL`
+      );
+      const dbUsers = new Set(allDbUsers.rows.map((r: any) => r.pn_identifier));
+
+      // Case 1: Users we successfully scanned - remove individual orphaned files
+      for (const pnIdentifier of successfullyScannedUsers) {
+        // Get all files currently in database for this user
+        const dbFiles = await db.query(
+          `SELECT file_id FROM aggregator_media WHERE pn_identifier = $1
+           UNION SELECT file_id FROM aggregator_thoughts WHERE pn_identifier = $1
+           UNION SELECT file_id FROM aggregator_collections WHERE pn_identifier = $1`,
+          [pnIdentifier]
+        );
+        
+        // Get files that exist in Google Drive (what we just synced)
+        const googleDriveFileIds = new Set(
+          allMetadata
+            .filter(m => m.pnIdentifier === pnIdentifier)
+            .map(m => m.metadata.fileId)
+        );
+        
+        // Find orphaned files: in database but NOT in Google Drive
+        const orphanedFiles = dbFiles.rows
+          .map((r: any) => r.file_id)
+          .filter((fileId: string) => !googleDriveFileIds.has(fileId));
+        
+        // Remove orphaned files from database
+        if (orphanedFiles.length > 0) {
+          for (const fileId of orphanedFiles) {
+            await metadataService.removeMetadata(fileId);
+          }
+          console.log(`🧹 Cleaned up ${orphanedFiles.length} orphaned file(s) for ${pnIdentifier}`);
+        }
+      }
+
+      // Case 2: Users whose folders don't exist - all files are orphaned
+      // (pnIdentifier in database but folder not found in Google Drive)
+      for (const pnIdentifier of dbUsers) {
+        if (successfullyScannedUsers.has(pnIdentifier)) {
+          continue; // Already handled in Case 1
+        }
+        
+        if (!foldersFound.has(pnIdentifier)) {
+          // Folder doesn't exist - all files for this user are orphaned
+          // Use existing removeAllMetadataForUser method
+          const removed = await metadataService.removeAllMetadataForUser(pnIdentifier);
+          if (removed > 0) {
+            console.log(`🧹 Cleaned up all ${removed} file(s) for ${pnIdentifier} (folder deleted)`);
+          }
+        }
+        // If folder exists but we couldn't scan it (error reading index), skip cleanup for safety
+      }
 
     } catch (error) {
       console.error('❌ Google Drive sync failed:', error);

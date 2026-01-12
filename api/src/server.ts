@@ -2033,6 +2033,87 @@ class ProductionServer {
         // Submit metadata to central index
         await service.submitMetadata(validatedMetadata, pnIdentifier);
 
+        // Also update Google Drive index (source of truth) if file is public
+        if (validatedMetadata.isPublic === true && pnIdentifier) {
+          try {
+            const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+            const { getStorageCredentials } = await import('./server/modules/storageCredentialsService');
+            const { GoogleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            
+            // Get user's credentials
+            const credentials = await getStorageCredentials(pnIdentifier);
+            if (credentials?.access_token) {
+              // Get metadata folder
+              const driveService = GoogleDriveProxyService.getInstance();
+              const metadataFolder = await driveService.getOrCreateMetadataFolder(
+                credentials.access_token,
+                pnIdentifier
+              );
+              
+              // Get or create public-file-index.xlsx
+              const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
+                credentials.access_token,
+                metadataFolder,
+                'public'
+              );
+              
+              // Convert metadata to IndexFileEntry format
+              const indexEntry: any = {
+                fileId: validatedMetadata.fileId,
+                googleDriveFileId: validatedMetadata.backendFileId || validatedMetadata.fileId,
+                fileName: validatedMetadata.name || validatedMetadata.title,
+                originalName: validatedMetadata.name || validatedMetadata.title,
+                mimeType: (validatedMetadata as any).mimeType,
+                visibility: 'public',
+                uploadedAt: validatedMetadata.uploadDate || new Date().toISOString(),
+                owner: validatedMetadata.creator ? {
+                  did: validatedMetadata.creator['@id'] || validatedMetadata.creator.identifier?.value,
+                  identifier: validatedMetadata.creator.identifier?.value || validatedMetadata.creator['@id']
+                } : (validatedMetadata.author ? {
+                  did: validatedMetadata.author.did,
+                  identifier: validatedMetadata.author.did
+                } : undefined),
+                tags: validatedMetadata.tags || validatedMetadata.keywords || [],
+                description: validatedMetadata.description,
+                thumbnail: (validatedMetadata as any).thumbnail,
+                publicToken: validatedMetadata.publicToken,
+                engagement: validatedMetadata.engagement,
+                contentClass: (validatedMetadata as any).contentClass,
+                isThoughtThumbnail: (validatedMetadata as any).isThoughtThumbnail,
+                thought: validatedMetadata.thought,
+                textPost: validatedMetadata.textPost,
+                collection: validatedMetadata.collection
+              };
+              
+              // Check if file exists in index, update or add accordingly
+              try {
+                await IndexSheetsService.updateFile(
+                  credentials.access_token,
+                  spreadsheetId,
+                  validatedMetadata.fileId,
+                  indexEntry
+                );
+                console.log(`✅ [${requestId}] Updated Google Drive public-file-index.xlsx for ${validatedMetadata.fileId}`);
+              } catch (updateError: any) {
+                // If update fails (file not found), try adding it
+                if (updateError.message?.includes('not found')) {
+                  await IndexSheetsService.addFile(
+                    credentials.access_token,
+                    spreadsheetId,
+                    indexEntry
+                  );
+                  console.log(`✅ [${requestId}] Added to Google Drive public-file-index.xlsx for ${validatedMetadata.fileId}`);
+                } else {
+                  throw updateError;
+                }
+              }
+            }
+          } catch (driveError: any) {
+            console.warn(`⚠️ [${requestId}] Failed to update Google Drive index (non-critical):`, driveError?.message || driveError);
+            // Don't fail the request - database cache is updated
+          }
+        }
+
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/src/server.ts:1611',message:'Metadata submitted successfully',data:{fileId:validatedMetadata.fileId,isPublic:validatedMetadata.isPublic},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
@@ -3884,6 +3965,88 @@ class ProductionServer {
           isPartOfCollection, // Collection files inherit collection classification
           mainFileId // Reference to source file for thumbnails
         });
+
+        // Also update Google Drive index (source of truth) if file is public
+        const updatedIsPublic = finalIsPublic !== undefined ? finalIsPublic : (isPublic !== undefined ? isPublic : updated?.isPublic);
+        if (updatedIsPublic === true && updated) {
+          try {
+            const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+            const { getStorageCredentials } = await import('./server/modules/storageCredentialsService');
+            const { GoogleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            
+            // Get user's credentials
+            const pnIdentifier = tokenPayload.pnIdentifier;
+            if (pnIdentifier) {
+              const credentials = await getStorageCredentials(pnIdentifier);
+              if (credentials?.access_token) {
+                // Get metadata folder
+                const driveService = GoogleDriveProxyService.getInstance();
+                const metadataFolder = await driveService.getOrCreateMetadataFolder(
+                  credentials.access_token,
+                  pnIdentifier
+                );
+                
+                // Get or create public-file-index.xlsx
+                const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
+                  credentials.access_token,
+                  metadataFolder,
+                  'public'
+                );
+                
+                // Convert metadata to IndexFileEntry format
+                const indexEntry: any = {
+                  fileId: actualFileId,
+                  googleDriveFileId: updated.backendFileId || actualFileId,
+                  fileName: updated.name || updated.title,
+                  originalName: updated.name || updated.title,
+                  mimeType: (updated as any).mimeType,
+                  visibility: 'public',
+                  uploadedAt: updated.uploadDate || new Date().toISOString(),
+                  owner: updated.creator ? {
+                    did: updated.creator['@id'] || updated.creator.identifier?.value,
+                    identifier: updated.creator.identifier?.value || updated.creator['@id']
+                  } : undefined,
+                  tags: updated.tags || updated.keywords || [],
+                  description: updated.description,
+                  thumbnail: (updated as any).thumbnail,
+                  publicToken: updated.publicToken,
+                  engagement: updated.engagement,
+                  contentClass: (updated as any).contentClass,
+                  isThoughtThumbnail: (updated as any).isThoughtThumbnail,
+                  thought: updated.thought,
+                  textPost: updated.textPost,
+                  collection: updated.collection
+                };
+                
+                // Check if file exists in index, update or add accordingly
+                try {
+                  await IndexSheetsService.updateFile(
+                    credentials.access_token,
+                    spreadsheetId,
+                    actualFileId,
+                    indexEntry
+                  );
+                  console.log(`✅ [MetadataIndex PUT] Updated Google Drive public-file-index.xlsx for ${actualFileId}`);
+                } catch (updateError: any) {
+                  // If update fails (file not found), try adding it
+                  if (updateError.message?.includes('not found')) {
+                    await IndexSheetsService.addFile(
+                      credentials.access_token,
+                      spreadsheetId,
+                      indexEntry
+                    );
+                    console.log(`✅ [MetadataIndex PUT] Added to Google Drive public-file-index.xlsx for ${actualFileId}`);
+                  } else {
+                    throw updateError;
+                  }
+                }
+              }
+            }
+          } catch (driveError: any) {
+            console.warn(`⚠️ [MetadataIndex PUT] Failed to update Google Drive index (non-critical):`, driveError?.message || driveError);
+            // Don't fail the request - database cache is updated
+          }
+        }
 
         // Track if we successfully deleted the file (so we can return success even if file no longer exists)
         let fileWasDeleted = false;
