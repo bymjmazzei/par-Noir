@@ -2336,16 +2336,25 @@ class ProductionServer {
     // POST /api/aggregator/metadata-index/cleanup-tables - Clear all database entries (for fresh start)
     // MUST be before /:fileId route to avoid route conflict
     this.app.post('/api/aggregator/metadata-index/cleanup-tables', async (req, res) => {
-      const db = (await import('./server/utils/database')).getDatabasePool();
-      await db.query('DELETE FROM aggregator_media');
-      await db.query('DELETE FROM aggregator_thoughts');
-      await db.query('DELETE FROM aggregator_collections');
       try {
-        await db.query('DELETE FROM feed_posts');
-      } catch (e) {
-        // Ignore if table doesn't exist
+        const { getDatabasePool } = await import('./server/utils/database');
+        const db = getDatabasePool();
+        await db.query('DELETE FROM aggregator_media');
+        await db.query('DELETE FROM aggregator_thoughts');
+        await db.query('DELETE FROM aggregator_collections');
+        try {
+          await db.query('DELETE FROM feed_posts');
+        } catch (e) {
+          // Ignore if table doesn't exist
+        }
+        return res.json({ success: true, message: 'Cleared all aggregator tables' });
+      } catch (error: any) {
+        console.error('Error in cleanup-tables endpoint:', error);
+        return res.status(500).json({ 
+          error: 'Failed to cleanup database',
+          message: error?.message || String(error)
+        });
       }
-      return res.json({ success: true, message: 'Cleared all aggregator tables' });
     });
 
 
