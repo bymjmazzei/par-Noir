@@ -69,24 +69,28 @@ export function useAppContext(pnIdentifier?: string) {
         console.error('❌ [useAppContext] Failed to load owned feeds:', err);
       }
 
-      // Load delegated feeds
+      // Load delegated feeds - only if user has a valid session
       let delegatedFeedContexts: AppContext[] = [];
-      try {
-        const delegatedFeeds = await FeedService.getDelegatedFeeds(pnIdentifier);
-        // Removed verbose logging
-        delegatedFeedContexts = delegatedFeeds.map(f => ({
-          type: 'feed' as const,
-          id: f.feedId,
-          name: f.feedName,
-          feedId: f.feedId,
-          isOwned: false
-        }));
-      } catch (err: any) {
-        // Handle 401/403 gracefully - endpoint might not be available or user might not have delegated feeds
-        if (err.message?.includes('Not authorized') || err.message?.includes('Invalid token') || err.message?.includes('403') || err.message?.includes('401')) {
-          // Silently skip - user might not have delegated feeds or endpoint not available
-        } else {
-          console.error('❌ [useAppContext] Failed to load delegated feeds:', err);
+      if (session?.accessToken) {
+        try {
+          const delegatedFeeds = await FeedService.getDelegatedFeeds(pnIdentifier);
+          delegatedFeedContexts = delegatedFeeds.map(f => ({
+            type: 'feed' as const,
+            id: f.feedId,
+            name: f.feedName,
+            feedId: f.feedId,
+            isOwned: false
+          }));
+        } catch (err: any) {
+          // Handle 401/403 gracefully - endpoint might not be available or user might not have delegated feeds
+          if (err.message?.includes('Not authorized') || err.message?.includes('Invalid token') || err.message?.includes('403') || err.message?.includes('401')) {
+            // Silently skip - user might not have delegated feeds or endpoint not available
+          } else {
+            // Only log unexpected errors
+            if (process.env.NODE_ENV === 'development') {
+              console.error('❌ [useAppContext] Failed to load delegated feeds:', err);
+            }
+          }
         }
       }
 

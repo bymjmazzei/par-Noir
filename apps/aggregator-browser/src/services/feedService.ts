@@ -362,13 +362,16 @@ export class FeedService {
    */
   static async getDelegatedFeeds(userDid: string): Promise<Feed[]> {
     const session = PNOAuthService.loadSession();
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json'
-    };
     
-    if (session?.accessToken) {
-      headers['Authorization'] = `Bearer ${session.accessToken}`;
+    // Don't make request if no access token - user is not authenticated
+    if (!session?.accessToken) {
+      return [];
     }
+    
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.accessToken}`
+    };
 
     const response = await fetch(`${API_ENDPOINT}/api/users/${userDid}/delegated-feeds`, {
       headers

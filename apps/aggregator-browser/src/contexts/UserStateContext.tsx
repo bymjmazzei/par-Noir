@@ -354,11 +354,14 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
 
         if (zkpResponse.ok) {
           const responseData = await zkpResponse.json();
-          console.log('[Age ZKP Check] Response:', responseData);
           const { dataPoints } = responseData;
-          console.log('[Age ZKP Check] Data points received:', dataPoints);
           const ageZKP = dataPoints?.find((dp: any) => dp.dataPointId === 'age_attestation');
-          console.log('[Age ZKP Check] Age ZKP found:', !!ageZKP, ageZKP);
+          
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[Age ZKP Check] Response:', responseData);
+            console.log('[Age ZKP Check] Data points received:', dataPoints);
+            console.log('[Age ZKP Check] Age ZKP found:', !!ageZKP, ageZKP);
+          }
           
           if (ageZKP) {
             // User has granted access to age ZKP - verify the proof for "age >= 18"
@@ -379,9 +382,12 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
 
           if (verifyResponse.ok) {
             const verifyData = await verifyResponse.json();
-            console.log('[Age ZKP Check] Verify response:', verifyData);
             const { verification } = verifyData;
-            console.log('[Age ZKP Check] Verification result:', verification);
+            
+            if (process.env.NODE_ENV === 'development') {
+              console.log('[Age ZKP Check] Verify response:', verifyData);
+              console.log('[Age ZKP Check] Verification result:', verification);
+            }
             
             if (verification && verification.isValid) {
                 // Age ZKP is shared and valid (age >= 18) - user can access NSFW content
@@ -396,44 +402,71 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
                     showNSFW: prev.preferences.showNSFW || false
                   }
                 };
-                console.log('✅ Age ZKP shared and verified (age >= 18) - NSFW content now accessible. New state:', newState);
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('✅ Age ZKP shared and verified (age >= 18) - NSFW content now accessible. New state:', newState);
+                }
                 return newState;
               });
             } else {
-              console.warn('[Age ZKP Check] Verification failed or invalid:', verification);
+              if (process.env.NODE_ENV === 'development') {
+                console.warn('[Age ZKP Check] Verification failed or invalid:', verification);
+              }
             }
           } else {
             const errorText = await verifyResponse.text().catch(() => 'Unknown error');
-            console.warn('[Age ZKP Check] Verify request failed:', {
-              status: verifyResponse.status,
-              statusText: verifyResponse.statusText,
-              error: errorText
-            });
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('[Age ZKP Check] Verify request failed:', {
+                status: verifyResponse.status,
+                statusText: verifyResponse.statusText,
+                error: errorText
+              });
+            }
           }
           } else if (retryCount < 2) {
             // Retry after a delay - permissions might still be storing
-            console.log(`ℹ️ Age ZKP not found yet, retrying in ${(retryCount + 1) * 2} seconds...`);
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`ℹ️ Age ZKP not found yet, retrying in ${(retryCount + 1) * 2} seconds...`);
+            }
             setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000 * (retryCount + 1));
-          } else {
-            console.log('ℹ️ Age ZKP not shared - only GA content available');
           }
+          // Age ZKP not shared - silently continue
         } else {
-          const errorText = await zkpResponse.text().catch(() => 'Unknown error');
-          console.warn(`[Age ZKP Check] Failed to check ZKP age verification:`, {
-            status: zkpResponse.status,
-            statusText: zkpResponse.statusText,
-            error: errorText
-          });
+          // Handle 401/403 as expected - user not authenticated or token expired
+          if (zkpResponse.status === 401 || zkpResponse.status === 403) {
+            // Silently handle - user is not authenticated or token expired
+            if (retryCount === 0) {
+              // Only log once, not on retries
+              if (process.env.NODE_ENV === 'development') {
+                console.log('ℹ️ Age ZKP check skipped - user not authenticated or token expired');
+              }
+            }
+            // Age ZKP not available - user not authenticated
+            setUserState(prev => ({
+              ...prev,
+              preferences: {
+                ...prev.preferences,
+                hasAgeZKP: false,
+                isOver18: false
+              }
+            }));
+            return;
+          }
           
-          // Retry on server errors
+          // Retry on server errors (500+)
           if (zkpResponse.status >= 500 && retryCount < 2) {
+            if (process.env.NODE_ENV === 'development') {
+              const errorText = await zkpResponse.text().catch(() => 'Unknown error');
+              console.warn(`[Age ZKP Check] Server error, retrying:`, {
+                status: zkpResponse.status,
+                error: errorText
+              });
+            }
             setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000 * (retryCount + 1));
           } else if (zkpResponse.status === 404 && retryCount < 1) {
             // User hasn't granted access to age ZKP or doesn't have it
             // Retry once in case permissions are still being stored
             setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000);
           } else {
-            console.log('ℹ️ Age ZKP not shared - only public content available');
             // Age ZKP not shared
             setUserState(prev => ({
               ...prev,
