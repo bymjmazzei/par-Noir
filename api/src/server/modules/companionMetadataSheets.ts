@@ -35,7 +35,6 @@ export interface CompanionMetadata {
   thumbnail?: string;
   thumbnailFileId?: string; // Reference to thumbnail file used in feeds
   mainFileId?: string; // Reference to main file (for thumbnails) - the main file is for owner download only
-  publicToken?: string;
   engagement?: {
     views: number;
     likes: number;
@@ -103,7 +102,7 @@ export class CompanionMetadataSheets {
                 title: 'Metadata',
                 gridProperties: {
                   rowCount: 2,
-                  columnCount: 19
+                  columnCount: 18
                 }
               }
             },
@@ -226,7 +225,6 @@ export class CompanionMetadataSheets {
               'thumbnail',
               'thumbnailFileId',
               'mainFileId',
-              'publicToken',
               'lastUpdated'
             ],
             // Data row (encrypt sensitive fields)
@@ -381,10 +379,10 @@ export class CompanionMetadataSheets {
     const sheets = google.sheets({ version: 'v4', auth });
 
     try {
-      // Read Metadata sheet (read up to 19 columns for new schema, but handle fewer gracefully)
+      // Read Metadata sheet (read up to 18 columns for new schema, but handle fewer gracefully)
       const metadataResponse = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: 'Metadata!A1:S2'
+        range: 'Metadata!A1:R2'
       });
 
       const rows = metadataResponse.data.values;
@@ -425,17 +423,7 @@ export class CompanionMetadataSheets {
         description: data[getColumnIndex('description')] || undefined,
         thumbnail: data[getColumnIndex('thumbnail')] || undefined,
         thumbnailFileId: getColumnIndex('thumbnailFileId') >= 0 ? (data[getColumnIndex('thumbnailFileId')] || undefined) : undefined,
-        mainFileId: getColumnIndex('mainFileId') >= 0 ? (data[getColumnIndex('mainFileId')] || undefined) : undefined,
-        publicToken: (() => {
-          const decrypted = MetadataEncryption.decryptField(publicTokenEncrypted);
-          if (!decrypted) return undefined;
-          // Try to parse as JSON if it looks like JSON (for backward compatibility)
-          try {
-            return JSON.parse(decrypted);
-          } catch {
-            return decrypted; // Return as string if not valid JSON
-          }
-        })()
+        mainFileId: getColumnIndex('mainFileId') >= 0 ? (data[getColumnIndex('mainFileId')] || undefined) : undefined
       };
 
       // Derive engagement counts from sheets
@@ -610,15 +598,6 @@ export class CompanionMetadataSheets {
       if (metadata.mainFileId !== undefined) {
         const idx = headers.indexOf('mainFileId');
         if (idx >= 0) currentData[idx] = metadata.mainFileId || '';
-      }
-      if (metadata.publicToken !== undefined) {
-        const idx = headers.indexOf('publicToken');
-        if (idx >= 0) {
-          const tokenValue = typeof metadata.publicToken === 'string' 
-            ? metadata.publicToken 
-            : JSON.stringify(metadata.publicToken);
-          currentData[idx] = MetadataEncryption.encryptField(tokenValue); // Encrypted
-        }
       }
       // Update owner fields if provided (encrypted)
       if (metadata.owner?.did !== undefined) {
