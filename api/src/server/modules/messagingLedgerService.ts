@@ -26,66 +26,9 @@ export interface MessagingLedgerFile {
 }
 
 export class MessagingLedgerService {
-  private static readonly MESSAGING_LEDGER_FILE_NAME = 'messaging_ledger.json';
 
   /**
-   * Migrate from JSON to Sheets if JSON exists
-   */
-  private static async migrateFromJsonIfNeeded(
-    accessToken: string,
-    metadataFolderId: string
-  ): Promise<void> {
-    try {
-      // Check if JSON file exists
-      const searchQuery = `name='${this.MESSAGING_LEDGER_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false`;
-      const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id)&pageSize=1`;
-      
-      const searchResponse = await fetch(searchUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-
-      if (!searchResponse.ok) {
-        return; // No JSON file, nothing to migrate
-      }
-
-      const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-      if (!searchData.files || searchData.files.length === 0) {
-        return; // No JSON file
-      }
-
-      // Download JSON file
-      const fileId = searchData.files[0].id;
-      const getResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-        { headers: { 'Authorization': `Bearer ${accessToken}` } }
-      );
-
-      if (!getResponse.ok) {
-        return;
-      }
-
-      const jsonData = await getResponse.json() as MessagingLedgerFile;
-      
-      // Get or create Sheets file
-      const spreadsheetId = await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(
-        accessToken,
-        metadataFolderId
-      );
-
-      // Migrate all activities
-      for (const activity of jsonData.activities || []) {
-        await MessagingLedgerSheetsService.appendActivity(accessToken, spreadsheetId, activity);
-      }
-
-      console.log('[MessagingLedgerService] Migrated messaging_ledger.json to messaging_ledger.xlsx');
-    } catch (error) {
-      console.error('[MessagingLedgerService] Error migrating from JSON:', error);
-      // Don't throw - continue with Sheets even if migration fails
-    }
-  }
-
-  /**
-   * Get messaging ledger file from user's Google Drive (now uses Sheets)
+   * Get messaging ledger file from user's Google Drive (uses Sheets)
    */
   static async getMessagingLedgerFile(
     accessToken: string,
@@ -93,8 +36,6 @@ export class MessagingLedgerService {
     identifier?: string
   ): Promise<MessagingLedgerFile | null> {
     try {
-      // Migrate from JSON if needed
-      await this.migrateFromJsonIfNeeded(accessToken, metadataFolderId);
 
       // Get or create Sheets file
       const spreadsheetId = await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(
@@ -120,8 +61,7 @@ export class MessagingLedgerService {
   }
 
   /**
-   * Create or update messaging ledger file (now uses Sheets)
-   * Note: This method is kept for backward compatibility but now delegates to Sheets operations
+   * Create or update messaging ledger file (uses Sheets)
    */
   static async updateMessagingLedgerFile(
     accessToken: string,
@@ -129,8 +69,6 @@ export class MessagingLedgerService {
     identifier: string,
     ledgerData: MessagingLedgerFile
   ): Promise<void> {
-    // Migrate from JSON if needed
-    await this.migrateFromJsonIfNeeded(accessToken, metadataFolderId);
 
     // Get or create Sheets file
     const spreadsheetId = await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(
@@ -162,8 +100,6 @@ export class MessagingLedgerService {
       metadata?: any;
     }
   ): Promise<MessagingActivityEntry> {
-    // Migrate from JSON if needed
-    await this.migrateFromJsonIfNeeded(accessToken, metadataFolderId);
 
     const activityId = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -206,8 +142,6 @@ export class MessagingLedgerService {
       threadId?: string;
     }
   ): Promise<{ activities: MessagingActivityEntry[]; total: number }> {
-    // Migrate from JSON if needed
-    await this.migrateFromJsonIfNeeded(accessToken, metadataFolderId);
 
     // Get or create Sheets file
     const spreadsheetId = await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(

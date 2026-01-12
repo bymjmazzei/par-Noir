@@ -33,86 +33,9 @@ export interface UserEngagement {
 }
 
 export class EngagementDriveService {
-  private static readonly ENGAGEMENT_FILE_NAME = 'engagement.json';
 
   /**
-   * Migrate from JSON to Sheets if JSON exists
-   */
-  private static async migrateFromJsonIfNeeded(
-    accessToken: string,
-    metadataFolderId: string
-  ): Promise<void> {
-    try {
-      // Check if JSON file exists
-      const searchQuery = `name='${this.ENGAGEMENT_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false`;
-      const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id)&pageSize=1`;
-      
-      const searchResponse = await fetch(searchUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-
-      if (!searchResponse.ok) {
-        return; // No JSON file, nothing to migrate
-      }
-
-      const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-      if (!searchData.files || searchData.files.length === 0) {
-        return; // No JSON file
-      }
-
-      // Download JSON file
-      const fileId = searchData.files[0].id;
-      const getResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-        { headers: { 'Authorization': `Bearer ${accessToken}` } }
-      );
-
-      if (!getResponse.ok) {
-        return;
-      }
-
-      const jsonData = await getResponse.json() as UserEngagement;
-      
-      // Get or create Sheets file
-      const spreadsheetId = await EngagementSheetsService.getOrCreateEngagementSheet(
-        accessToken,
-        metadataFolderId
-      );
-
-      // Migrate likes
-      for (const fileId of jsonData.likes || []) {
-        await EngagementSheetsService.addLike(accessToken, spreadsheetId, fileId);
-      }
-
-      // Migrate dislikes
-      for (const fileId of jsonData.dislikes || []) {
-        await EngagementSheetsService.addDislike(accessToken, spreadsheetId, fileId);
-      }
-
-      // Migrate comments
-      for (const comment of jsonData.comments || []) {
-        await EngagementSheetsService.addComment(accessToken, spreadsheetId, comment);
-      }
-
-      // Migrate shares
-      for (const fileId of jsonData.shares || []) {
-        await EngagementSheetsService.addShare(accessToken, spreadsheetId, fileId);
-      }
-
-      // Migrate saves
-      for (const fileId of jsonData.saves || []) {
-        await EngagementSheetsService.addSave(accessToken, spreadsheetId, fileId);
-      }
-
-      console.log('[EngagementDriveService] Migrated engagement.json to engagement.xlsx');
-    } catch (error) {
-      console.error('[EngagementDriveService] Error migrating from JSON:', error);
-      // Don't throw - continue with Sheets even if migration fails
-    }
-  }
-
-  /**
-   * Get engagement file from user's Google Drive (now uses Sheets)
+   * Get engagement file from user's Google Drive (uses Sheets)
    */
   static async getEngagementFile(
     accessToken: string,
@@ -120,9 +43,6 @@ export class EngagementDriveService {
     userDid?: string
   ): Promise<UserEngagement | null> {
     try {
-      // Migrate from JSON if needed
-      await this.migrateFromJsonIfNeeded(accessToken, metadataFolderId);
-
       // Get or create Sheets file
       const spreadsheetId = await EngagementSheetsService.getOrCreateEngagementSheet(
         accessToken,
@@ -154,8 +74,7 @@ export class EngagementDriveService {
   }
 
   /**
-   * Create or update engagement file (now uses Sheets)
-   * Note: This method is kept for backward compatibility but now delegates to Sheets operations
+   * Create or update engagement file (uses Sheets)
    */
   static async updateEngagementFile(
     accessToken: string,
@@ -163,8 +82,6 @@ export class EngagementDriveService {
     userDid: string,
     engagement: Partial<UserEngagement>
   ): Promise<UserEngagement> {
-    // Migrate from JSON if needed
-    await this.migrateFromJsonIfNeeded(accessToken, metadataFolderId);
 
     // Get or create Sheets file
     const spreadsheetId = await EngagementSheetsService.getOrCreateEngagementSheet(
@@ -217,8 +134,6 @@ export class EngagementDriveService {
     accessToken: string,
     metadataFolderId: string
   ): Promise<{ liked: boolean }> {
-    // Migrate from JSON if needed
-    await this.migrateFromJsonIfNeeded(accessToken, metadataFolderId);
 
     const spreadsheetId = await EngagementSheetsService.getOrCreateEngagementSheet(
       accessToken,
@@ -258,8 +173,6 @@ export class EngagementDriveService {
     accessToken: string,
     metadataFolderId: string
   ): Promise<{ disliked: boolean }> {
-    // Migrate from JSON if needed
-    await this.migrateFromJsonIfNeeded(accessToken, metadataFolderId);
 
     const spreadsheetId = await EngagementSheetsService.getOrCreateEngagementSheet(
       accessToken,
@@ -293,8 +206,6 @@ export class EngagementDriveService {
     accessToken: string,
     metadataFolderId: string
   ): Promise<boolean> {
-    // Migrate from JSON if needed
-    await this.migrateFromJsonIfNeeded(accessToken, metadataFolderId);
 
     const spreadsheetId = await EngagementSheetsService.getOrCreateEngagementSheet(
       accessToken,
@@ -313,8 +224,6 @@ export class EngagementDriveService {
     accessToken: string,
     metadataFolderId: string
   ): Promise<boolean> {
-    // Migrate from JSON if needed
-    await this.migrateFromJsonIfNeeded(accessToken, metadataFolderId);
 
     const spreadsheetId = await EngagementSheetsService.getOrCreateEngagementSheet(
       accessToken,
@@ -335,8 +244,6 @@ export class EngagementDriveService {
     accessToken: string,
     metadataFolderId: string
   ): Promise<UserComment> {
-    // Migrate from JSON if needed
-    await this.migrateFromJsonIfNeeded(accessToken, metadataFolderId);
 
     const spreadsheetId = await EngagementSheetsService.getOrCreateEngagementSheet(
       accessToken,
