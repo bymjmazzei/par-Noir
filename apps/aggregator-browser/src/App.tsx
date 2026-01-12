@@ -3778,8 +3778,6 @@ function App() {
           )
         ) : indexedFiles.length === 0 ? (
           (() => {
-              activeFeedId
-            });
             return (
               <EmptyState
                 type="no-content"
