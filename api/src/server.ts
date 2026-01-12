@@ -2158,8 +2158,11 @@ class ProductionServer {
 
     // POST /api/aggregator/metadata-index/cleanup-orphaned - Remove orphaned metadata entries (metadata without corresponding Google Drive files)
     // MUST be before /:fileId route to avoid route conflict
-    this.app.post('/api/aggregator/metadata-index/cleanup-orphaned', async (req, res) => {
-      console.log('[CleanupOrphaned] Endpoint called');
+    this.app.post('/api/aggregator/metadata-index/cleanup-orphaned', (req, res, next) => {
+      console.log('[CleanupOrphaned] ===== ENDPOINT CALLED =====');
+      console.log('[CleanupOrphaned] Request received');
+      (async () => {
+        try {
       try {
         console.log('[CleanupOrphaned] Importing modules...');
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
@@ -2326,15 +2329,18 @@ class ProductionServer {
           removed: removedCount,
           message: `Checked ${allEntries.length} file(s), removed ${removedCount} orphaned metadata entry/entries`
         });
-      } catch (error: any) {
-        console.error('[CleanupOrphaned] Error:', error);
-        console.error('[CleanupOrphaned] Error stack:', error?.stack);
-        return res.status(500).json({
-          error: 'Failed to cleanup orphaned metadata',
-          message: error?.message || String(error),
-          details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
-        });
-      }
+        } catch (error: any) {
+          console.error('[CleanupOrphaned] ===== ERROR CAUGHT =====');
+          console.error('[CleanupOrphaned] Error:', error);
+          console.error('[CleanupOrphaned] Error message:', error?.message);
+          console.error('[CleanupOrphaned] Error stack:', error?.stack);
+          return res.status(500).json({
+            error: 'Failed to cleanup orphaned metadata',
+            message: error?.message || String(error),
+            details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+          });
+        }
+      })();
     });
 
     // DELETE /api/aggregator/metadata-index/cleanup - Clear all database entries (for fresh start)
