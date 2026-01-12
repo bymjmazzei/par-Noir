@@ -7,6 +7,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, Users, UserPlus, UserMinus, Check, X as XIcon } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { getUserProfile } from '../services/profileService';
+import { PNOAuthService } from '../services/pnOAuthService';
 import {
   getConnections,
   getPendingRequests,
@@ -40,7 +41,6 @@ interface ConnectionsPanelProps {
 const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
 function getAuthHeaders(): HeadersInit {
-  const { PNOAuthService } = require('../services/pnOAuthService');
   const session = PNOAuthService.loadSession();
   const headers: HeadersInit = {
     'Content-Type': 'application/json'

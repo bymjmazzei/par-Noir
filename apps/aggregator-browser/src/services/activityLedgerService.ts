@@ -3,6 +3,8 @@
  * Handles fetching activity ledger data from the API
  */
 
+import { PNOAuthService } from './pnOAuthService';
+
 const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
 export interface ActivityEntry {
@@ -24,7 +26,6 @@ export interface ActivityListResponse {
 }
 
 function getAuthHeaders(): HeadersInit {
-  const { PNOAuthService } = require('./pnOAuthService');
   const session = PNOAuthService.loadSession();
   const headers: HeadersInit = {
     'Content-Type': 'application/json'
