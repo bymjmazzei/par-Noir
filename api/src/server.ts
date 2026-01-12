@@ -2159,9 +2159,9 @@ class ProductionServer {
     // POST /api/aggregator/metadata-index/cleanup-orphaned - Remove orphaned metadata entries (metadata without corresponding Google Drive files)
     // MUST be before /:fileId route to avoid route conflict
     this.app.post('/api/aggregator/metadata-index/cleanup-orphaned', async (req, res) => {
-      console.log('[CleanupOrphaned] ===== ENDPOINT CALLED =====');
-      console.log('[CleanupOrphaned] Request received');
       try {
+        console.error('[CleanupOrphaned] ===== ENDPOINT CALLED =====');
+        console.error('[CleanupOrphaned] Request received at', new Date().toISOString());
         console.log('[CleanupOrphaned] Importing modules...');
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
         console.log('[CleanupOrphaned] Getting service instance...');
