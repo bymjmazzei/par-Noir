@@ -2335,54 +2335,59 @@ class ProductionServer {
 
     // DELETE /api/aggregator/metadata-index/cleanup - Clear all database entries (for fresh start)
     // MUST be before /:fileId route to avoid route conflict
-    this.app.delete('/api/aggregator/metadata-index/cleanup', async (req, res) => {
-      console.error('🗑️ [Cleanup] DELETE endpoint called');
-      try {
-        console.error('🗑️ [Cleanup] Getting database pool...');
-        const { getDatabasePool } = await import('./server/utils/database');
-        const db = getDatabasePool();
-        console.error('🗑️ [Cleanup] Database pool obtained');
-        
-        // Clear all three aggregator tables
-        console.error('🗑️ [Cleanup] Deleting from aggregator_media...');
-        await db.query('DELETE FROM aggregator_media');
-        console.error('🗑️ [Cleanup] Deleted from aggregator_media');
-        
-        console.error('🗑️ [Cleanup] Deleting from aggregator_thoughts...');
-        await db.query('DELETE FROM aggregator_thoughts');
-        console.error('🗑️ [Cleanup] Deleted from aggregator_thoughts');
-        
-        console.error('🗑️ [Cleanup] Deleting from aggregator_collections...');
-        await db.query('DELETE FROM aggregator_collections');
-        console.error('🗑️ [Cleanup] Deleted from aggregator_collections');
-        
-        // Also clear feed_posts if they exist
+    this.app.delete('/api/aggregator/metadata-index/cleanup', (req, res, next) => {
+      console.error('🗑️ [Cleanup] DELETE endpoint HIT - route matched');
+      (async () => {
         try {
-          console.error('🗑️ [Cleanup] Deleting from feed_posts...');
-          await db.query('DELETE FROM feed_posts');
-          console.error('🗑️ [Cleanup] Deleted from feed_posts');
-        } catch (feedError) {
-          // Table might not exist, ignore
-          console.error('🗑️ [Cleanup] feed_posts table not found or already empty');
+          console.error('🗑️ [Cleanup] Getting database pool...');
+          const { getDatabasePool } = await import('./server/utils/database');
+          const db = getDatabasePool();
+          console.error('🗑️ [Cleanup] Database pool obtained');
+          
+          // Clear all three aggregator tables
+          console.error('🗑️ [Cleanup] Deleting from aggregator_media...');
+          await db.query('DELETE FROM aggregator_media');
+          console.error('🗑️ [Cleanup] Deleted from aggregator_media');
+          
+          console.error('🗑️ [Cleanup] Deleting from aggregator_thoughts...');
+          await db.query('DELETE FROM aggregator_thoughts');
+          console.error('🗑️ [Cleanup] Deleted from aggregator_thoughts');
+          
+          console.error('🗑️ [Cleanup] Deleting from aggregator_collections...');
+          await db.query('DELETE FROM aggregator_collections');
+          console.error('🗑️ [Cleanup] Deleted from aggregator_collections');
+          
+          // Also clear feed_posts if they exist
+          try {
+            console.error('🗑️ [Cleanup] Deleting from feed_posts...');
+            await db.query('DELETE FROM feed_posts');
+            console.error('🗑️ [Cleanup] Deleted from feed_posts');
+          } catch (feedError) {
+            // Table might not exist, ignore
+            console.error('🗑️ [Cleanup] feed_posts table not found or already empty');
+          }
+          
+          console.error('🗑️ [Cleanup] Cleared all aggregator tables');
+          
+          return res.json({
+            success: true,
+            message: 'Cleared all aggregator tables (aggregator_media, aggregator_thoughts, aggregator_collections)'
+          });
+        } catch (error: any) {
+          console.error('🗑️ [Cleanup] ERROR:', error);
+          console.error('🗑️ [Cleanup] Error message:', error?.message);
+          console.error('🗑️ [Cleanup] Error stack:', error?.stack);
+          return res.status(500).json({ 
+            error: 'Failed to cleanup database',
+            message: error?.message || String(error),
+            stack: error?.stack,
+            errorType: error?.constructor?.name
+          });
         }
-        
-        console.error('🗑️ [Cleanup] Cleared all aggregator tables');
-        
-        return res.json({
-          success: true,
-          message: 'Cleared all aggregator tables (aggregator_media, aggregator_thoughts, aggregator_collections)'
-        });
-      } catch (error: any) {
-        console.error('🗑️ [Cleanup] ERROR:', error);
-        console.error('🗑️ [Cleanup] Error message:', error?.message);
-        console.error('🗑️ [Cleanup] Error stack:', error?.stack);
-        return res.status(500).json({ 
-          error: 'Failed to cleanup database',
-          message: error?.message || String(error),
-          stack: error?.stack,
-          errorType: error?.constructor?.name
-        });
-      }
+      })().catch((err) => {
+        console.error('🗑️ [Cleanup] Unhandled async error:', err);
+        next(err);
+      });
     });
 
 
