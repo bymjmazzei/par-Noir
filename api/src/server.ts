@@ -2362,7 +2362,9 @@ class ProductionServer {
         console.error('Error in cleanup endpoint:', error);
         return res.status(500).json({ 
           error: 'Failed to cleanup database',
-          message: error.message 
+          message: error?.message || String(error),
+          stack: error?.stack,
+          errorType: error?.constructor?.name
         });
       }
     });
