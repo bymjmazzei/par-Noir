@@ -2259,6 +2259,33 @@ class ProductionServer {
 
 
     // DELETE /api/aggregator/metadata-index/:fileId - Remove public metadata and delete files
+    // DELETE /api/aggregator/metadata-index/user/:pnIdentifier - Remove all metadata for a user
+    this.app.delete('/api/aggregator/metadata-index/user/:pnIdentifier', async (req, res) => {
+      try {
+        const { pnIdentifier } = req.params;
+        if (!pnIdentifier) {
+          return res.status(400).json({ error: 'pnIdentifier is required' });
+        }
+
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const service = AggregatorMetadataServiceDB.getInstance();
+        
+        const removedCount = await service.removeAllMetadataForUser(pnIdentifier);
+        
+        return res.json({
+          success: true,
+          message: `Removed ${removedCount} file(s) from aggregator database`,
+          removedCount
+        });
+      } catch (error: any) {
+        console.error('Error removing all metadata for user:', error);
+        return res.status(500).json({
+          error: 'Failed to remove user metadata',
+          error_description: error.message || 'Failed to remove user metadata'
+        });
+      }
+    });
+
     this.app.delete('/api/aggregator/metadata-index/:fileId', async (req, res) => {
       try {
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');

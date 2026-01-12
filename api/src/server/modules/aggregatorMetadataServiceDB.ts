@@ -326,6 +326,65 @@ export class AggregatorMetadataServiceDB {
   }
 
   /**
+   * Remove all metadata for a specific pnIdentifier
+   * This removes all files belonging to a user from the aggregator database
+   */
+  async removeAllMetadataForUser(pnIdentifier: string): Promise<number> {
+    const db = getDatabasePool();
+    let totalRemoved = 0;
+
+    try {
+      const allTables = this.getAllContentTypeTables();
+      
+      // Get all file IDs for this user before deleting (for feed_posts cleanup)
+      const fileIds: string[] = [];
+      for (const table of allTables) {
+        const result = await db.query(
+          `SELECT file_id FROM ${table} WHERE pn_identifier = $1`,
+          [pnIdentifier]
+        );
+        fileIds.push(...result.rows.map((row: any) => row.file_id));
+      }
+
+      // Delete from all three tables
+      for (const table of allTables) {
+        const result = await db.query(
+          `DELETE FROM ${table} WHERE pn_identifier = $1`,
+          [pnIdentifier]
+        );
+        totalRemoved += result.rowCount || 0;
+      }
+
+      // Also remove from feed_posts
+      if (fileIds.length > 0) {
+        try {
+          await db.query(
+            `DELETE FROM feed_posts WHERE file_id = ANY($1::text[])`,
+            [fileIds]
+          );
+          console.log(`🗑️ [removeAllMetadataForUser] Removed ${fileIds.length} file(s) from feed_posts`);
+        } catch (feedPostsError: any) {
+          console.warn(`⚠️ [removeAllMetadataForUser] Could not delete from feed_posts:`, feedPostsError?.message || feedPostsError);
+        }
+      }
+
+      // Invalidate cache
+      try {
+        const { invalidateIndexCache } = await import('../utils/cache');
+        await invalidateIndexCache();
+      } catch (error) {
+        console.warn('⚠️ [removeAllMetadataForUser] Cache invalidation failed (non-critical):', error);
+      }
+
+      console.log(`🗑️ [removeAllMetadataForUser] Removed ${totalRemoved} file(s) for pnIdentifier: ${pnIdentifier}`);
+      return totalRemoved;
+    } catch (error) {
+      console.error(`❌ Failed to remove all metadata for pnIdentifier ${pnIdentifier}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Remove metadata from central index
    * Accepts either fileId (pN file ID) or backendFileId (Google Drive file ID)
    */
