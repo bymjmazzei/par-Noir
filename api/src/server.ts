@@ -3294,6 +3294,73 @@ class ProductionServer {
               // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
               await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
               console.log(`[MetadataIndex] Created metadata entry for ${fileId}`);
+              
+              // Also add to Google Drive index if file is public (source of truth)
+              if (initialMetadata.isPublic === true) {
+                try {
+                  const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+                  const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+                  
+                  const pnIdentifier = tokenPayload.pnIdentifier;
+                  if (pnIdentifier) {
+                    const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
+                    if (credentialsRecord?.credentials?.access_token) {
+                      // Get metadata folder
+                      const metadataFolder = await this.getOrCreateMetadataFolder(
+                        credentialsRecord.credentials.access_token,
+                        pnIdentifier
+                      );
+                      
+                      // Get or create public-file-index.xlsx
+                      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
+                        credentialsRecord.credentials.access_token,
+                        metadataFolder,
+                        'public'
+                      );
+                      
+                      // Convert metadata to IndexFileEntry format
+                      const indexEntry: any = {
+                        fileId: fileId,
+                        googleDriveFileId: initialMetadata.backendFileId || fileId,
+                        fileName: initialMetadata.name || initialMetadata.title,
+                        originalName: initialMetadata.name || initialMetadata.title,
+                        mimeType: driveFile.mimeType,
+                        visibility: 'public',
+                        uploadedAt: initialMetadata.uploadDate || new Date().toISOString(),
+                        owner: tokenPayload.did ? {
+                          did: tokenPayload.did,
+                          identifier: tokenPayload.did
+                        } : (tokenPayload.pnIdentifier ? {
+                          did: tokenPayload.pnIdentifier,
+                          identifier: tokenPayload.pnIdentifier
+                        } : undefined),
+                        tags: initialMetadata.tags || initialMetadata.keywords || [],
+                        description: initialMetadata.description,
+                        thumbnail: (initialMetadata as any).thumbnail,
+                        publicToken: initialMetadata.publicToken,
+                        engagement: initialMetadata.engagement,
+                        contentClass: (initialMetadata as any).contentClass,
+                        isThoughtThumbnail: (initialMetadata as any).isThoughtThumbnail,
+                        thought: initialMetadata.thought,
+                        textPost: initialMetadata.textPost,
+                        collection: initialMetadata.collection,
+                        mainFileId: initialMetadata.mainFileId
+                      };
+                      
+                      // Add to Google Drive index
+                      await IndexSheetsService.addFile(
+                        credentialsRecord.credentials.access_token,
+                        spreadsheetId,
+                        indexEntry
+                      );
+                      console.log(`✅ [MetadataIndex] Added new file to Google Drive public-file-index.xlsx: ${fileId}`);
+                    }
+                  }
+                } catch (driveError: any) {
+                  console.warn(`⚠️ [MetadataIndex] Failed to add new file to Google Drive index (non-critical):`, driveError?.message || driveError);
+                  // Don't fail the request - database cache is updated
+                }
+              }
             } catch (submitError: any) {
               console.error(`[MetadataIndex] Failed to submit initial metadata for ${fileId}:`, submitError);
               throw submitError; // Re-throw to be caught by outer catch
@@ -3343,6 +3410,71 @@ class ProductionServer {
               // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
               await service.submitMetadata(minimalMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
               console.log(`[MetadataIndex] Created minimal metadata entry for ${fileId}`);
+              
+              // Also add to Google Drive index if file is public (source of truth)
+              if (minimalMetadata.isPublic === true) {
+                try {
+                  const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+                  const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+                  
+                  const pnIdentifier = tokenPayload.pnIdentifier;
+                  if (pnIdentifier) {
+                    const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
+                    if (credentialsRecord?.credentials?.access_token) {
+                      // Get metadata folder
+                      const metadataFolder = await this.getOrCreateMetadataFolder(
+                        credentialsRecord.credentials.access_token,
+                        pnIdentifier
+                      );
+                      
+                      // Get or create public-file-index.xlsx
+                      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
+                        credentialsRecord.credentials.access_token,
+                        metadataFolder,
+                        'public'
+                      );
+                      
+                      // Convert metadata to IndexFileEntry format
+                      const indexEntry: any = {
+                        fileId: fileId,
+                        googleDriveFileId: minimalMetadata.backendFileId || fileId,
+                        fileName: minimalMetadata.name || minimalMetadata.title,
+                        originalName: minimalMetadata.name || minimalMetadata.title,
+                        visibility: 'public',
+                        uploadedAt: minimalMetadata.uploadDate || new Date().toISOString(),
+                        owner: tokenPayload.did ? {
+                          did: tokenPayload.did,
+                          identifier: tokenPayload.did
+                        } : (tokenPayload.pnIdentifier ? {
+                          did: tokenPayload.pnIdentifier,
+                          identifier: tokenPayload.pnIdentifier
+                        } : undefined),
+                        tags: minimalMetadata.tags || minimalMetadata.keywords || [],
+                        description: minimalMetadata.description,
+                        publicToken: minimalMetadata.publicToken,
+                        engagement: minimalMetadata.engagement,
+                        contentClass: (minimalMetadata as any).contentClass,
+                        isThoughtThumbnail: (minimalMetadata as any).isThoughtThumbnail,
+                        thought: minimalMetadata.thought,
+                        textPost: minimalMetadata.textPost,
+                        collection: minimalMetadata.collection,
+                        mainFileId: minimalMetadata.mainFileId
+                      };
+                      
+                      // Add to Google Drive index
+                      await IndexSheetsService.addFile(
+                        credentialsRecord.credentials.access_token,
+                        spreadsheetId,
+                        indexEntry
+                      );
+                      console.log(`✅ [MetadataIndex] Added new file (minimal) to Google Drive public-file-index.xlsx: ${fileId}`);
+                    }
+                  }
+                } catch (driveError: any) {
+                  console.warn(`⚠️ [MetadataIndex] Failed to add new file (minimal) to Google Drive index (non-critical):`, driveError?.message || driveError);
+                  // Don't fail the request - database cache is updated
+                }
+              }
             } catch (minimalSubmitError: any) {
               console.error(`[MetadataIndex] Failed to submit minimal metadata for ${fileId}:`, minimalSubmitError);
               // Don't throw - we'll check if entry exists after and handle accordingly
