@@ -2339,12 +2339,10 @@ class ProductionServer {
       try {
         const db = (await import('./server/utils/database')).getDatabasePool();
         
-        // Get count before deletion
-        const countResult = await db.query('SELECT COUNT(*) as count FROM aggregator_metadata');
-        const beforeCount = parseInt(countResult.rows[0].count, 10);
-        
-        // Delete all entries
-        await db.query('DELETE FROM aggregator_metadata');
+        // Clear all three aggregator tables
+        await db.query('DELETE FROM aggregator_media');
+        await db.query('DELETE FROM aggregator_thoughts');
+        await db.query('DELETE FROM aggregator_collections');
         
         // Also clear feed_posts if they exist
         try {
@@ -2354,12 +2352,11 @@ class ProductionServer {
           console.log('feed_posts table not found or already empty');
         }
         
-        console.log(`🗑️ [Cleanup] Cleared ${beforeCount} entries from aggregator_metadata`);
+        console.log('🗑️ [Cleanup] Cleared all aggregator tables');
         
         return res.json({
           success: true,
-          deletedCount: beforeCount,
-          message: `Cleared ${beforeCount} entries from database. Public feed should now be empty.`
+          message: 'Cleared all aggregator tables (aggregator_media, aggregator_thoughts, aggregator_collections)'
         });
       } catch (error: any) {
         console.error('Error in cleanup endpoint:', error);
