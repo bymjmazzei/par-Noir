@@ -2162,7 +2162,6 @@ class ProductionServer {
       console.log('[CleanupOrphaned] ===== ENDPOINT CALLED =====');
       console.log('[CleanupOrphaned] Request received');
       try {
-      try {
         console.log('[CleanupOrphaned] Importing modules...');
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
         console.log('[CleanupOrphaned] Getting service instance...');
