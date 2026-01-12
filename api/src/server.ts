@@ -14287,20 +14287,24 @@ class ProductionServer {
     // Start Google Drive sync service (if configured)
     // try {
     //   const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
-    //   const syncService = GoogleDriveSyncService.getInstance();
-    //   
-    //   // Start periodic sync (every 10 minutes)
-    //   // Only if service account is configured
-    //   if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-    //     syncService.startPeriodicSync(10);
-    //   } else {
-    //     console.log('ℹ️ Google Drive sync disabled - GOOGLE_SERVICE_ACCOUNT_KEY not set');
-    //   }
-    // } catch (error) {
-    //   console.warn('⚠️ Failed to start Google Drive sync service:', error);
-    //   // Continue anyway - sync is optional
-    // }
-    console.log('ℹ️ Google Drive sync disabled - files are now submitted directly via API when marked as public');
+    // Start periodic sync for cache cleanup (every 10 minutes)
+    // This ensures orphaned files (deleted from Google Drive) are removed from database cache
+    try {
+      const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
+      const syncService = GoogleDriveSyncService.getInstance();
+      
+      // Start periodic sync (every 10 minutes)
+      // Only if service account is configured
+      if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+        syncService.startPeriodicSync(10);
+        console.log('✅ Google Drive sync enabled - will run cleanup every 10 minutes');
+      } else {
+        console.log('ℹ️ Google Drive sync disabled - GOOGLE_SERVICE_ACCOUNT_KEY not set');
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to start Google Drive sync service:', error);
+      // Continue anyway - sync is optional
+    }
 
     // Warm third-party catalog
     try {
