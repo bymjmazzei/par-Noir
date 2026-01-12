@@ -143,23 +143,7 @@ class ProductionServer {
     // Normalize pn identifier
     const normalizedPn = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
     
-    // First, try to find _metadata folder at root level (for backward compatibility)
-    for (const folderName of ['_metadata', 'Metadata']) {
-      const rootFolderQuery = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-      const rootFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(rootFolderQuery)}&fields=files(id)&pageSize=1`;
-      const rootFolderResponse = await fetch(rootFolderUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-
-      if (rootFolderResponse.ok) {
-        const rootFolderData = await rootFolderResponse.json() as { files?: Array<{ id: string }> };
-        if (rootFolderData.files && rootFolderData.files.length > 0) {
-          return rootFolderData.files[0].id;
-        }
-      }
-    }
-
-    // If not found at root, try inside pN folder
+    // Find or create pN folder
     const pnFolderName = `par Noir - ${normalizedPn}`;
     const pnFolderQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     const pnFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderQuery)}&fields=files(id)&pageSize=1`;
