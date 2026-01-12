@@ -293,7 +293,6 @@ function App() {
         PNOAuthService.clearSession();
       } else if (session.did && session.did !== userState.pnIdentifier) {
         // Session exists but DID doesn't match, sync it
-        console.log('🔐 Syncing user state with OAuth session');
         // Use pN identifier from session if available, otherwise use DID
         const pnId = session.pnIdentifier || session.did;
         setUnlocked(pnId);
@@ -381,8 +380,7 @@ function App() {
           // Update user state with subscriptions
           subscribedFeeds.forEach(feed => {
             if (!userState.preferences.subscribedFeedIds.includes(feed.feedId)) {
-              // This will be handled by UserStateContext - for now just log
-              console.log('User subscribed to:', feed.feedId);
+              // This will be handled by UserStateContext
             }
           });
         } catch (error) {
@@ -656,8 +654,6 @@ function App() {
   // The only place thoughts are excluded is the me page "media" tab, which handles it separately
 
   const filteredFilesByFeed = useMemo(() => {
-    console.log('[DEBUG] filteredFilesByFeed computing', { activeFeedId, mediaCount: mediaFiles.length, thoughtsCount: thoughtsFiles.length, collectionsCount: collectionsFiles.length, viewMode });
-    
     // Helper to check if file should be shown based on NSFW preference
     // LOCKED USERS: Never show NSFW content, period
     // UNLOCKED USERS: Only show NSFW if age-verified and enabled
@@ -828,7 +824,6 @@ function App() {
       // Exclude if fileType is 'thought-collection-thumbnail', 'thought-collection-page', or 'thought-collection'
       // These are the new types for thoughts that are part of collections
       if (fileType === 'thought-collection-thumbnail' || fileType === 'thought-collection-page' || fileType === 'thought-collection') {
-        console.log(`[App] Excluding ${fileType} ${file.metadata.fileId} - collection thought`);
         return true;
       }
       
@@ -879,33 +874,12 @@ function App() {
       return processed;
     }
     if (activeFeedId === 'media') {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[DEBUG] Media feed:', {
-          totalMedia: mediaFiles.length,
-          filteredMedia: filteredMedia.length,
-          sampleFileIds: filteredMedia.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType }))
-        });
-      }
       return processPublicFeed(filteredMedia, connectionsList);
     }
     if (activeFeedId === 'thoughts') {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[DEBUG] Thoughts feed:', {
-          totalThoughts: thoughtsFiles.length,
-          filteredThoughts: filteredThoughts.length,
-          sampleFileIds: filteredThoughts.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType }))
-        });
-      }
       return processPublicFeed(filteredThoughts, connectionsList);
     }
     if (activeFeedId === 'collections') {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[DEBUG] Collections feed:', {
-          totalCollections: collectionsFiles.length,
-          filteredCollections: filteredCollections.length,
-          sampleFileIds: filteredCollections.slice(0, 5).map(f => ({ fileId: f.metadata.fileId, name: f.metadata.name, fileType: f.metadata.fileType, hasCollection: !!f.metadata.collection }))
-        });
-      }
       return processPublicFeed(filteredCollections, connectionsList);
     }
     if (activeFeedId === 'discovery') {
@@ -945,8 +919,6 @@ function App() {
       }
       return true;
     });
-    
-    console.log('[DEBUG] filteredFilesByFeed result', { activeFeedId, resultLength: filtered.length });
     
     // Use full algorithm (public + user personalization) for individual feeds
     return sortByScore(filtered, true);
@@ -1332,12 +1304,6 @@ function App() {
         }
       }
       
-      console.log('[DEBUG] loadContentTypeIndices complete', {
-        activeFeedId,
-        mediaCount: media.length,
-        thoughtsCount: thoughts.length,
-        collectionsCount: collections.length
-      });
     } catch (error: any) {
       console.error('Failed to load content-type indices:', error);
       setError(error.message || 'Failed to load files');
@@ -2130,9 +2096,7 @@ function App() {
         try {
           if (!userState.pnIdentifier) return;
           const { getConnections } = await import('./services/connectionService');
-          console.log(`[App] Loading connections for: ${userState.pnIdentifier}`);
           const connections = await getConnections(userState.pnIdentifier);
-          console.log(`[App] Loaded ${connections.length} connections`);
           
           // Store the connections list
           setConnectionsList(connections);
@@ -2821,7 +2785,6 @@ function App() {
   }, [isLiked, toggleLike, success]);
 
   const handleComment = useCallback((indexedFile: IndexedFile) => {
-    console.log('[App] handleComment called', { fileId: indexedFile.metadata.fileId });
     setCommentingFile(indexedFile);
   }, []);
   
@@ -3273,7 +3236,6 @@ function App() {
           key={commentingFile.metadata.fileId} // Force remount on file change
           file={commentingFile}
           onClose={() => {
-            console.log('[App] CommentModal onClose called', { viewingCreatorId, viewMode });
             setCommentingFile(null);
           }}
         />
@@ -3816,12 +3778,6 @@ function App() {
           )
         ) : indexedFiles.length === 0 ? (
           (() => {
-            console.log('[App] Showing EmptyState - indexedFiles.length is 0', {
-              mediaFiles: mediaFiles.length,
-              thoughtsFiles: thoughtsFiles.length,
-              collectionsFiles: collectionsFiles.length,
-              indexedFiles: indexedFiles.length,
-              viewMode,
               activeFeedId
             });
             return (
@@ -3837,15 +3793,6 @@ function App() {
           })()
         ) : viewMode === 'feed' && activeFeedId === 'discovery' ? (
           (() => {
-            console.log('[App] Rendering DiscoveryPage', {
-              indexedFilesLength: indexedFiles.length,
-              mediaFiles: mediaFiles.length,
-              thoughtsFiles: thoughtsFiles.length,
-              collectionsFiles: collectionsFiles.length,
-              thumbnailsSize: thumbnails.size,
-              viewMode,
-              activeFeedId
-            });
             return (
               // Discovery Page - uses all indexedFiles (virtual feed)
               <div className="flex-1 h-full pt-20 pb-20">
@@ -3884,10 +3831,7 @@ function App() {
             className="flex-1 relative"
             style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}
           >
-            {(() => {
-              console.log('[DEBUG] Feed render check', { viewMode, activeFeedId, filteredFilesByFeedLength: filteredFilesByFeed.length, indexedFilesLength: indexedFiles.length });
-              return filteredFilesByFeed.length > 0;
-            })() ? (
+            {filteredFilesByFeed.length > 0 ? (
               <>
               <FullScreenFeed
                 files={filteredFilesByFeed}
@@ -3914,14 +3858,7 @@ function App() {
                 }}
                 isDisliked={isDisliked}
                 onComment={(file) => {
-                  console.log('[App] Me page onComment called', { 
-                    file: file?.metadata?.fileId, 
-                    viewingCreatorId,
-                    viewMode,
-                    commentingFile: !!commentingFile 
-                  });
                   setCommentingFile(file);
-                  console.log('[App] After setCommentingFile on Me page', { commentingFile: !!commentingFile });
                 }}
                 onShare={async (fileId) => {
                   share(fileId);

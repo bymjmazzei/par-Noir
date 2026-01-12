@@ -237,13 +237,6 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
                 ...(data.preferences.mePageSortOrder !== undefined && { mePageSortOrder: data.preferences.mePageSortOrder })
               };
               
-              console.log('Loaded preferences from Google Drive:', {
-                apiResponse: data.preferences,
-                blockedCategoriesFromAPI: apiBlockedCategories,
-                localBlockedCategories,
-                finalBlockedCategories,
-                preservedLocal: finalBlockedCategories === localBlockedCategories
-              });
               
               return {
                 ...prev,
@@ -309,7 +302,6 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
               }
             }));
 
-            console.log('✅ Loaded tag preferences from backend:', { subscribedTags, blockedTags });
           }
         } else if (response.status === 404) {
           // Endpoint not deployed yet - just use local state

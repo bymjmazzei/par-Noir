@@ -81,7 +81,6 @@ export class CentralMetadataAggregator {
     
     // If there's already a pending request with the same filters and pagination, return it
     if (!forceRefresh && this.pendingRequests.has(requestKey)) {
-      console.log('⏸️ [CentralMetadataAggregator] Request already in progress, reusing promise');
       return this.pendingRequests.get(requestKey)!;
     }
     
