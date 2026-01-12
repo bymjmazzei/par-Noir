@@ -3530,7 +3530,10 @@ class ProductionServer {
                         
                         console.log(`[MetadataIndex PUT] Companion metadata for file ${fileId}:`, {
                           hasPublicTokenInRequest: !!publicToken,
-                          usingToken: !!tokenToUse
+                          usingToken: !!tokenToUse,
+                          hasMainFileId: !!mainFileId,
+                          mainFileId: mainFileId,
+                          isThoughtThumbnail: isThoughtThumbnail
                         });
                         
                         // Determine fileType and contentClass from req.body values - companion metadata is source of truth
@@ -3580,6 +3583,13 @@ class ProductionServer {
                             engagementHistory: []
                           }
                         };
+                        
+                        console.log(`[MetadataIndex PUT] Companion metadata object before creating spreadsheet:`, {
+                          fileId: companionMetadata.fileId,
+                          hasMainFileId: !!companionMetadata.mainFileId,
+                          mainFileId: companionMetadata.mainFileId,
+                          isThoughtThumbnail: isThoughtThumbnail
+                        });
                         
                         // Create new metadata spreadsheet
                         const spreadsheetId = await CompanionMetadataSheets.createSpreadsheet(
