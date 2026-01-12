@@ -272,7 +272,7 @@ export const GoogleDriveStorage: React.FC = () => {
         
         const clientId = '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
         const redirectUri = window.location.origin;
-        const scope = 'https://www.googleapis.com/auth/drive.file';
+        const scope = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets';
         
         const authUrl = `https://accounts.google.com/oauth/authorize?` +
           `client_id=${clientId}&` +

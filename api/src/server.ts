@@ -4574,34 +4574,31 @@ class ProductionServer {
                 console.warn(`[StorageCredentials PUT] Failed to initialize engagement.json:`, engError?.message || engError);
               }
               
-              // Initialize notifications.json
+              // Initialize notifications.xlsx
               try {
-                const existingNotifications = await NotificationService.getNotificationsFile(accessToken, metadataFolderId);
-                if (!existingNotifications) {
-                  await NotificationService.updateNotificationsFile(accessToken, metadataFolderId, identityId, {
-                    identifier: identityId,
-                    updatedAt: now,
-                    notifications: []
-                  });
-                  console.log(`[StorageCredentials PUT] Initialized notifications.json for identityId: ${sanitizedIdentityId}`);
-                }
+                const { NotificationsSheetsService } = await import('./server/modules/notificationsSheetsService');
+                await NotificationsSheetsService.getOrCreateNotificationsSheet(accessToken, metadataFolderId);
+                console.log(`[StorageCredentials PUT] Initialized notifications.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (notifError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize notifications.json:`, notifError?.message || notifError);
+                console.warn(`[StorageCredentials PUT] Failed to initialize notifications.xlsx:`, notifError?.message || notifError);
               }
               
-              // Initialize activity_ledger.json
+              // Initialize activity_ledger.xlsx
               try {
-                const existingActivity = await ActivityLedgerService.getActivityLedgerFile(accessToken, metadataFolderId);
-                if (!existingActivity) {
-                  await ActivityLedgerService.updateActivityLedgerFile(accessToken, metadataFolderId, identityId, {
-                    identifier: identityId,
-                    updatedAt: now,
-                    activities: []
-                  });
-                  console.log(`[StorageCredentials PUT] Initialized activity_ledger.json for identityId: ${sanitizedIdentityId}`);
-                }
+                const { ActivityLedgerSheetsService } = await import('./server/modules/activityLedgerSheetsService');
+                await ActivityLedgerSheetsService.getOrCreateActivityLedgerSheet(accessToken, metadataFolderId);
+                console.log(`[StorageCredentials PUT] Initialized activity_ledger.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (activityError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize activity_ledger.json:`, activityError?.message || activityError);
+                console.warn(`[StorageCredentials PUT] Failed to initialize activity_ledger.xlsx:`, activityError?.message || activityError);
+              }
+              
+              // Initialize connections.xlsx
+              try {
+                const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+                await ConnectionsSheetsService.getOrCreateConnectionsSheet(accessToken, metadataFolderId);
+                console.log(`[StorageCredentials PUT] Initialized connections.xlsx for identityId: ${sanitizedIdentityId}`);
+              } catch (connError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize connections.xlsx:`, connError?.message || connError);
               }
               
               // Initialize profile.json
@@ -11300,14 +11297,105 @@ class ProductionServer {
           }
         }
 
+        // Get other user's credentials (requester) - will be reused for multiple operations
+        const otherUserPnIdentifier = otherUserDid.startsWith('pn-') ? otherUserDid : `pn-${otherUserDid}`;
+        let otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
+        if (!otherUserCredentials?.credentials && otherUserDid !== otherUserPnIdentifier) {
+          otherUserCredentials = await storageCredentialsService.getCredentials(otherUserDid);
+        }
+
         // Update other user's file to accepted
-        try {
-          // Normalize other user DID
-          const otherUserPnIdentifier = otherUserDid.startsWith('pn-') ? otherUserDid : `pn-${otherUserDid}`;
-          let otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
-          if (!otherUserCredentials?.credentials && otherUserDid !== otherUserPnIdentifier) {
-            otherUserCredentials = await storageCredentialsService.getCredentials(otherUserDid);
+        let otherAccessToken: string | null = null;
+        let otherMetadataFolderId: string | null = null;
+        
+        if (otherUserCredentials?.credentials) {
+          const otherGoogleDriveAccounts = otherUserCredentials.credentials.googleDriveAccounts || 
+            (otherUserCredentials.credentials.googleDrive ? [otherUserCredentials.credentials.googleDrive] : []);
+          
+          if (otherGoogleDriveAccounts.length > 0) {
+            const otherAccount = otherGoogleDriveAccounts[0];
+            const otherAccountId = (otherAccount as any).backendId || (otherAccount as any).keyPrefix || (otherAccount as any).accountId || (otherAccount as any).id || undefined;
+            otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherAccountId, [otherUserCredentials.identityId]);
+            otherMetadataFolderId = await this.getOrCreateMetadataFolder(otherAccessToken, otherUserCredentials.identityId);
+
+            try {
+              await ConnectionsService.updateOtherUserConnectionStatus(
+                otherAccessToken,
+                otherMetadataFolderId,
+                otherUserCredentials.identityId,
+                connectionId,
+                'accepted',
+                userCredentials.identityId
+              );
+              
+              // Verify the update was successful
+              const verifyOtherFile = await ConnectionsService.getConnectionsFile(otherAccessToken, otherMetadataFolderId);
+              if (verifyOtherFile) {
+                const verifyOtherConnection = verifyOtherFile.connections.find(c => c.connectionId === connectionId);
+                if (verifyOtherConnection && verifyOtherConnection.status === 'accepted') {
+                  console.log(`[AcceptConnection] Verified: Connection ${connectionId} is now accepted in other user's file`);
+                } else {
+                  console.error(`[AcceptConnection] WARNING: Connection ${connectionId} not found or not accepted in other user's file after update`);
+                }
+              }
+            } catch (otherUserFolderError: any) {
+              console.warn('Failed to update other user connection status:', otherUserFolderError?.message || otherUserFolderError);
+            }
           }
+        }
+
+        // Send notification and record activity for requester
+        if (otherAccessToken && otherMetadataFolderId && otherUserCredentials?.credentials) {
+          try {
+            const { NotificationService } = await import('./server/modules/notificationService');
+
+            await ActivityLedgerService.recordActivity(
+              otherAccessToken,
+              otherMetadataFolderId,
+              otherUserCredentials.identityId,
+              'connection_accepted',
+              {
+                targetType: 'user',
+                targetId: userCredentials.identityId,
+                actorDid: userCredentials.identityId,
+                metadata: { connectionId }
+              }
+            );
+
+            await NotificationService.notifyConnectionAccepted(
+              otherAccessToken,
+              otherMetadataFolderId,
+              connectionId,
+              userCredentials.identityId,
+              otherUserCredentials.identityId
+            );
+          } catch (otherUserActivityError: any) {
+            console.warn('Failed to record activity/notification for other user:', otherUserActivityError);
+          }
+        }
+
+        // Create conversation sheets for both users when connection is accepted
+        try {
+          const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+          const { ProfileService } = await import('./server/modules/profileService');
+          
+          // Get display names for the system message
+          // Acceptor is the user accepting (user B), Requester is the user who sent the request (user A)
+          let acceptorDisplayName = userCredentials.identityId.substring(0, 8);
+          let requesterDisplayName = otherUserDid.substring(0, 8);
+          
+          try {
+            const acceptorProfile = await ProfileService.getProfileFile(userAccessToken, metadataFolderId);
+            if (acceptorProfile?.displayName) {
+              acceptorDisplayName = acceptorProfile.displayName;
+            }
+          } catch (e) {
+            // Use short identifier if profile not found
+          }
+          
+          // Get requester's credentials and profile if available
+          let otherAccessToken: string | null = null;
+          let otherMetadataFolderId: string | null = null;
           
           if (otherUserCredentials?.credentials) {
             const otherGoogleDriveAccounts = otherUserCredentials.credentials.googleDriveAccounts || 
@@ -11315,97 +11403,121 @@ class ProductionServer {
             
             if (otherGoogleDriveAccounts.length > 0) {
               const otherAccount = otherGoogleDriveAccounts[0];
-              // Try backendId first, then keyPrefix, then accountId/id for backward compatibility
               const otherAccountId = (otherAccount as any).backendId || (otherAccount as any).keyPrefix || (otherAccount as any).accountId || (otherAccount as any).id || undefined;
-              // Use the identityId from credentials
-              const otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherAccountId, [otherUserCredentials.identityId]);
-
-              // Get or create other user's metadata folder
-              try {
-                const otherMetadataFolderId = await this.getOrCreateMetadataFolder(otherAccessToken, otherUserCredentials.identityId);
-                
-                await ConnectionsService.updateOtherUserConnectionStatus(
-                  otherAccessToken,
-                  otherMetadataFolderId,
-                  otherUserCredentials.identityId, // Use identityId from credentials
-                  connectionId,
-                  'accepted',
-                  userCredentials.identityId // Pass acceptor's DID to create connection if missing
-                );
-                
-                // Verify the update was successful
-                const verifyOtherFile = await ConnectionsService.getConnectionsFile(otherAccessToken, otherMetadataFolderId);
-                if (verifyOtherFile) {
-                  const verifyOtherConnection = verifyOtherFile.connections.find(c => c.connectionId === connectionId);
-                  if (verifyOtherConnection && verifyOtherConnection.status === 'accepted') {
-                    console.log(`[AcceptConnection] Verified: Connection ${connectionId} is now accepted in other user's file`);
-                  } else {
-                    console.error(`[AcceptConnection] WARNING: Connection ${connectionId} not found or not accepted in other user's file after update`);
-                    console.error(`[AcceptConnection] Other user's connection status:`, verifyOtherConnection?.status || 'not found');
-                  }
-                }
-              } catch (otherUserFolderError: any) {
-                console.warn('Failed to get/create other user metadata folder:', otherUserFolderError?.message || otherUserFolderError);
-                // Continue even if we can't update other user's folder
-              }
-            }
-          }
-        } catch (otherUserError: any) {
-          console.warn('Failed to update other user\'s connection status:', otherUserError?.message || otherUserError);
-          // Continue even if other user update fails
-        }
-
-        // Send notification (activity already recorded above)
-        try {
-          const { NotificationService } = await import('./server/modules/notificationService');
-
-          // Record activity for requester (need to get their credentials)
-          try {
-            const otherUserPnIdentifier = otherUserDid.startsWith('pn-') ? otherUserDid : `pn-${otherUserDid}`;
-            let otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
-            if (!otherUserCredentials?.credentials && otherUserDid !== otherUserPnIdentifier) {
-              otherUserCredentials = await storageCredentialsService.getCredentials(otherUserDid);
-            }
-            
-            if (otherUserCredentials?.credentials) {
-              const otherGoogleDriveAccounts = otherUserCredentials.credentials.googleDriveAccounts || 
-                (otherUserCredentials.credentials.googleDrive ? [otherUserCredentials.credentials.googleDrive] : []);
+              otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherAccountId, [otherUserCredentials.identityId]);
+              otherMetadataFolderId = await this.getOrCreateMetadataFolder(otherAccessToken, otherUserCredentials.identityId);
               
-              if (otherGoogleDriveAccounts.length > 0) {
-                const otherAccount = otherGoogleDriveAccounts[0];
-                const otherAccountId = (otherAccount as any).backendId || (otherAccount as any).keyPrefix || (otherAccount as any).accountId || (otherAccount as any).id || undefined;
-                const otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherAccountId, [otherUserCredentials.identityId]);
-                const otherMetadataFolderId = await this.getOrCreateMetadataFolder(otherAccessToken, otherUserCredentials.identityId);
+              try {
+                const requesterProfile = await ProfileService.getProfileFile(otherAccessToken, otherMetadataFolderId);
+                if (requesterProfile?.displayName) {
+                  requesterDisplayName = requesterProfile.displayName;
+                }
+              } catch (e) {
+                // Use short identifier if profile not found
+              }
+            }
+          }
 
-                await ActivityLedgerService.recordActivity(
+          // Find acceptor's pN folder
+          const acceptorPnFolderName = `par Noir - ${userCredentials.identityId}`;
+          const acceptorFolderQuery = `name='${acceptorPnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+          const acceptorFoldersResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(acceptorFolderQuery)}&fields=files(id,name)`,
+            { headers: { 'Authorization': `Bearer ${userAccessToken}` } }
+          );
+
+          if (acceptorFoldersResponse.ok) {
+            const acceptorFoldersData = await acceptorFoldersResponse.json() as { files?: Array<{ id: string }> };
+            const acceptorPnFolder = acceptorFoldersData.files?.[0];
+            
+            if (acceptorPnFolder) {
+              // Get or create messages folder for acceptor
+              const acceptorMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+                userAccessToken,
+                acceptorPnFolder.id
+              );
+
+              // Get or create conversation sheet for acceptor
+              const acceptorConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+                userAccessToken,
+                acceptorMessagesFolderId,
+                otherUserDid
+              );
+
+              // Add initial system message to acceptor's conversation
+              const systemMessageId = crypto.randomUUID();
+              const now = new Date().toISOString();
+              await MessageSheetsService.appendMessage(
+                userAccessToken,
+                acceptorConversationSheetId,
+                {
+                  messageId: systemMessageId,
+                  fromDid: 'system',
+                  toDid: userCredentials.identityId,
+                  content: `${acceptorDisplayName} accepted ${requesterDisplayName}'s connection request`,
+                  timestamp: now,
+                  read: false
+                }
+              );
+            }
+          }
+
+          // Find requester's pN folder and create conversation (if we have their credentials)
+          if (otherAccessToken && otherMetadataFolderId && otherUserCredentials?.credentials) {
+            const requesterPnFolderName = `par Noir - ${otherUserCredentials.identityId}`;
+            const requesterFolderQuery = `name='${requesterPnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+            const requesterFoldersResponse = await fetch(
+              `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(requesterFolderQuery)}&fields=files(id,name)`,
+              { headers: { 'Authorization': `Bearer ${otherAccessToken}` } }
+            );
+
+            if (requesterFoldersResponse.ok) {
+              const requesterFoldersData = await requesterFoldersResponse.json() as { files?: Array<{ id: string }> };
+              const requesterPnFolder = requesterFoldersData.files?.[0];
+              
+              if (requesterPnFolder) {
+                // Get or create messages folder for requester
+                const requesterMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
                   otherAccessToken,
-                  otherMetadataFolderId,
-                  otherUserCredentials.identityId,
-                  'connection_accepted',
-                  {
-                    targetType: 'user',
-                    targetId: pnIdentifier,
-                    actorDid: pnIdentifier,
-                    metadata: { connectionId }
-                  }
+                  requesterPnFolder.id
                 );
 
-                // Send notification to requester that their request was accepted
-                await NotificationService.notifyConnectionAccepted(
+                // Get or create conversation sheet for requester
+                const requesterConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
                   otherAccessToken,
-                  otherMetadataFolderId,
-                  connectionId,
-                  pnIdentifier,
-                  otherUserCredentials.identityId
+                  requesterMessagesFolderId,
+                  userCredentials.identityId
+                );
+
+                // Add initial system message to requester's conversation
+                // Message: "user b accepted user a's connection request" (acceptor accepted requester's request)
+                const systemMessageId2 = crypto.randomUUID();
+                const now2 = new Date().toISOString();
+                await MessageSheetsService.appendMessage(
+                  otherAccessToken,
+                  requesterConversationSheetId,
+                  {
+                    messageId: systemMessageId2,
+                    fromDid: 'system',
+                    toDid: otherUserCredentials.identityId,
+                    content: `${acceptorDisplayName} accepted ${requesterDisplayName}'s connection request`,
+                    timestamp: now2,
+                    read: false
+                  }
                 );
               }
             }
-          } catch (otherUserActivityError: any) {
-            console.warn('Failed to record activity/notification for other user:', otherUserActivityError);
           }
-        } catch (activityError: any) {
-          console.warn('Failed to record connection acceptance activity/notification:', activityError);
-          // Don't fail the request if activity logging fails
+        } catch (conversationError: any) {
+          console.error('[AcceptConnection] Failed to create conversation sheets:', conversationError);
+          console.error('[AcceptConnection] Error details:', {
+            connectionId,
+            acceptorDid: userCredentials.identityId,
+            requesterDid: otherUserDid,
+            error: conversationError?.message,
+            stack: conversationError?.stack
+          });
+          // Don't fail the request if conversation creation fails
         }
 
         return res.json({ success: true });

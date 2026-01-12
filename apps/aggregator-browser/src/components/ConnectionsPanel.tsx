@@ -380,13 +380,13 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
                               <p className="text-white text-sm font-medium">
                                 {getDisplayName(request.userDid)}
                               </p>
-                              <p className="text-neutral-400 text-xs">Request sent</p>
+                              <p className="text-neutral-400 text-xs">Pending request</p>
                             </button>
                             <button
                               onClick={() => handleCancel(request.connectionId)}
                               className="px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 text-white text-xs rounded transition-colors ml-3"
                             >
-                              Cancel
+                              Revoke
                             </button>
                           </div>
                         ))}

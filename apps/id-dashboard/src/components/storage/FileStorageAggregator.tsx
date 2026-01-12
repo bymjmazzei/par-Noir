@@ -4468,7 +4468,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
       // Use oauth-callback.html as redirect URI (must match Google Cloud Console settings)
       const redirectUri = `${window.location.origin}/oauth-callback.html`;
-      const scope = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
+      const scope = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/spreadsheets';
       
       // Debug: Log the exact redirect URI being used
       console.log('[Google OAuth] Redirect URI:', redirectUri);

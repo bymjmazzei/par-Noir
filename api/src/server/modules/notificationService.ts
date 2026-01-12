@@ -3,7 +3,10 @@
  * Handles push notifications for feed subscriptions, comments, likes, etc.
  * Stored in Google Drive (decentralized) - users own their data
  * Event-driven: When event A happens, triggers push notification
+ * Uses Google Sheets for better performance and querying
  */
+
+import { NotificationsSheetsService, Notification as SheetsNotification } from './notificationsSheetsService';
 
 export interface Notification {
   notification_id: string;
@@ -178,43 +181,43 @@ export class NotificationService {
     userDid: string,
     notification: Omit<Notification, 'notification_id' | 'created_at' | 'read'>
   ): Promise<Notification> {
-    const notificationId = crypto.randomUUID();
-    const now = new Date().toISOString();
+    try {
+      const notificationId = crypto.randomUUID();
+      const now = new Date().toISOString();
 
-    // Get or create notifications file
-    let notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
-    if (!notificationsFile) {
-      notificationsFile = {
-        identifier: userDid,
-        updatedAt: now,
-        notifications: [],
-        preferences: this.getDefaultPreferences(userDid)
+      // Get or create notifications sheet
+      const spreadsheetId = await NotificationsSheetsService.getOrCreateNotificationsSheet(
+        accessToken,
+        metadataFolderId
+      );
+
+      // Create notification entry
+      const newNotification: SheetsNotification = {
+        notification_id: notificationId,
+        user_did: userDid,
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        data: notification.data || {},
+        read: false,
+        created_at: now
       };
+
+      // Append to sheet
+      await NotificationsSheetsService.appendNotification(accessToken, spreadsheetId, newNotification);
+
+      return newNotification;
+    } catch (error) {
+      console.error('[NotificationService] Error creating notification via sheets:', error);
+      console.error('[NotificationService] Error details:', {
+        userDid,
+        notificationType: notification.type,
+        metadataFolderId,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      throw error;
     }
-
-    // Create notification entry
-    const newNotification: Notification = {
-      notification_id: notificationId,
-      user_did: userDid,
-      type: notification.type,
-      title: notification.title,
-      message: notification.message,
-      data: notification.data || {},
-      read: false,
-      created_at: now
-    };
-
-    // Add to notifications (keep only last 5,000 notifications)
-    notificationsFile.notifications.push(newNotification);
-    if (notificationsFile.notifications.length > 5000) {
-      notificationsFile.notifications = notificationsFile.notifications.slice(-5000);
-    }
-    notificationsFile.updatedAt = now;
-
-    // Update file
-    await this.updateNotificationsFile(accessToken, metadataFolderId, userDid, notificationsFile);
-
-    return newNotification;
   }
 
   /**
@@ -230,38 +233,33 @@ export class NotificationService {
       type?: Notification['type'];
     }
   ): Promise<{ notifications: Notification[]; total: number }> {
-    const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
-    
-    if (!notificationsFile) {
+    try {
+      // Get or create notifications sheet
+      const spreadsheetId = await NotificationsSheetsService.getOrCreateNotificationsSheet(
+        accessToken,
+        metadataFolderId
+      );
+
+      // Get notifications from sheet
+      const result = await NotificationsSheetsService.getNotifications(accessToken, spreadsheetId, {
+        limit: options?.limit,
+        offset: options?.offset,
+        unreadOnly: options?.unreadOnly,
+        type: options?.type
+      });
+
+      return result;
+    } catch (error) {
+      console.error('[NotificationService] Error getting notifications via sheets:', error);
+      console.error('[NotificationService] Error details:', {
+        metadataFolderId,
+        options,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      // Return empty for now - can add JSON fallback later if needed
       return { notifications: [], total: 0 };
     }
-
-    let notifications = [...notificationsFile.notifications];
-
-    // Filter by read status if specified
-    if (options?.unreadOnly) {
-      notifications = notifications.filter(n => !n.read);
-    }
-
-    // Filter by type if specified
-    if (options?.type) {
-      notifications = notifications.filter(n => n.type === options.type);
-    }
-
-    // Sort by created_at descending (most recent first)
-    notifications.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-    const total = notifications.length;
-    const limit = options?.limit || 50;
-    const offset = options?.offset || 0;
-
-    // Apply pagination
-    const paginatedNotifications = notifications.slice(offset, offset + limit);
-
-    return {
-      notifications: paginatedNotifications,
-      total
-    };
   }
 
   /**
@@ -273,21 +271,26 @@ export class NotificationService {
     userDid: string,
     notificationId: string
   ): Promise<boolean> {
-    const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
-    if (!notificationsFile) {
+    try {
+      // Get or create notifications sheet
+      const spreadsheetId = await NotificationsSheetsService.getOrCreateNotificationsSheet(
+        accessToken,
+        metadataFolderId
+      );
+
+      // Mark as read in sheet
+      return await NotificationsSheetsService.markAsRead(accessToken, spreadsheetId, notificationId);
+    } catch (error) {
+      console.error('[NotificationService] Error marking notification as read via sheets:', error);
+      console.error('[NotificationService] Error details:', {
+        userDid,
+        notificationId,
+        metadataFolderId,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       return false;
     }
-
-    const notification = notificationsFile.notifications.find(n => n.notification_id === notificationId);
-    if (!notification || notification.read) {
-      return false;
-    }
-
-    notification.read = true;
-    notificationsFile.updatedAt = new Date().toISOString();
-
-    await this.updateNotificationsFile(accessToken, metadataFolderId, userDid, notificationsFile);
-    return true;
   }
 
   /**
@@ -298,25 +301,25 @@ export class NotificationService {
     metadataFolderId: string,
     userDid: string
   ): Promise<number> {
-    const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
-    if (!notificationsFile) {
+    try {
+      // Get or create notifications sheet
+      const spreadsheetId = await NotificationsSheetsService.getOrCreateNotificationsSheet(
+        accessToken,
+        metadataFolderId
+      );
+
+      // Mark all as read in sheet
+      return await NotificationsSheetsService.markAllAsRead(accessToken, spreadsheetId, userDid);
+    } catch (error) {
+      console.error('[NotificationService] Error marking all notifications as read via sheets:', error);
+      console.error('[NotificationService] Error details:', {
+        userDid,
+        metadataFolderId,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       return 0;
     }
-
-    let markedCount = 0;
-    notificationsFile.notifications.forEach(notification => {
-      if (!notification.read) {
-        notification.read = true;
-        markedCount++;
-      }
-    });
-
-    if (markedCount > 0) {
-      notificationsFile.updatedAt = new Date().toISOString();
-      await this.updateNotificationsFile(accessToken, metadataFolderId, userDid, notificationsFile);
-    }
-
-    return markedCount;
   }
 
   /**
@@ -354,12 +357,29 @@ export class NotificationService {
     accessToken: string,
     metadataFolderId: string
   ): Promise<number> {
-    const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
-    if (!notificationsFile) {
+    try {
+      // Get or create notifications sheet
+      const spreadsheetId = await NotificationsSheetsService.getOrCreateNotificationsSheet(
+        accessToken,
+        metadataFolderId
+      );
+
+      // Get unread notifications count
+      const result = await NotificationsSheetsService.getNotifications(accessToken, spreadsheetId, {
+        unreadOnly: true,
+        limit: 10000 // Get all unread to count them
+      });
+
+      return result.total;
+    } catch (error) {
+      console.error('[NotificationService] Error getting unread count via sheets:', error);
+      console.error('[NotificationService] Error details:', {
+        metadataFolderId,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       return 0;
     }
-
-    return notificationsFile.notifications.filter(n => !n.read).length;
   }
 
   /**
