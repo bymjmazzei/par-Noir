@@ -4553,6 +4553,20 @@ class ProductionServer {
         // Return the updated metadata (or current if updateMetadata returned null)
         // If file was deleted (made private), return success even if file no longer exists in database
         const result = updated || current;
+        
+        // For new private files, return success even though they're not in database
+        // Private files are only stored in Google Drive + companion metadata, not in the aggregator database
+        const isNewPrivateFile = !fileExistedBefore && actualIsPublicForRefetch === false;
+        if (isNewPrivateFile && !result && !fileWasDeleted) {
+          // Return success - private files are only in Google Drive + companion metadata
+          return res.json({ 
+            success: true, 
+            metadata: null, 
+            private: true,
+            message: 'Private file metadata created successfully (stored in Google Drive only)'
+          });
+        }
+        
         if (!result && !fileWasDeleted) {
           return res.status(404).json({ error: 'File not found in index' });
         }
