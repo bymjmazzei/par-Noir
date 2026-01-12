@@ -2222,28 +2222,53 @@ class ProductionServer {
         const allEntries: Array<{ fileId: string; metadata: any; googleDriveFileId: string }> = [];
         
         for (const table of allTables) {
-          const result = await db.query(
-            `SELECT file_id, metadata FROM ${table}`
-          );
-          
-          for (const row of result.rows) {
-            const metadata = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+          try {
+            const result = await db.query(
+              `SELECT file_id, metadata FROM ${table}`
+            );
             
-            // Only check Google Drive files
-            if (metadata.backend !== 'google_drive') {
-              continue;
+            for (const row of result.rows) {
+              try {
+                if (!row.metadata) {
+                  console.warn(`[CleanupOrphaned] Skipping row with null metadata in ${table}: ${row.file_id}`);
+                  continue;
+                }
+                
+                let metadata: any;
+                if (typeof row.metadata === 'string') {
+                  try {
+                    metadata = JSON.parse(row.metadata);
+                  } catch (parseError) {
+                    console.warn(`[CleanupOrphaned] Failed to parse metadata JSON for ${row.file_id} in ${table}:`, parseError);
+                    continue;
+                  }
+                } else {
+                  metadata = row.metadata;
+                }
+                
+                // Only check Google Drive files
+                if (!metadata || metadata.backend !== 'google_drive') {
+                  continue;
+                }
+                
+                const googleDriveFileId = (metadata as any).googleDriveFileId || metadata.backendFileId || row.file_id;
+                if (!googleDriveFileId) {
+                  continue;
+                }
+                
+                allEntries.push({
+                  fileId: row.file_id,
+                  metadata: metadata,
+                  googleDriveFileId: googleDriveFileId
+                });
+              } catch (rowError) {
+                console.error(`[CleanupOrphaned] Error processing row ${row.file_id} in ${table}:`, rowError);
+                // Continue with next row
+              }
             }
-            
-            const googleDriveFileId = (metadata as any).googleDriveFileId || metadata.backendFileId || row.file_id;
-            if (!googleDriveFileId) {
-              continue;
-            }
-            
-            allEntries.push({
-              fileId: row.file_id,
-              metadata: metadata,
-              googleDriveFileId: googleDriveFileId
-            });
+          } catch (tableError) {
+            console.error(`[CleanupOrphaned] Error querying table ${table}:`, tableError);
+            // Continue with next table
           }
         }
         
