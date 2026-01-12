@@ -3296,14 +3296,15 @@ class ProductionServer {
               }
             };
 
-            // Submit initial metadata
-            try {
-              // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
-              await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
-              console.log(`[MetadataIndex] Created metadata entry for ${fileId}`);
-              
-              // Also add to Google Drive index if file is public (source of truth)
-              if (initialMetadata.isPublic === true) {
+            // Submit initial metadata - ONLY for public files
+            // Private files should NOT be in the database (they only exist in Google Drive + companion metadata)
+            if (initialMetadata.isPublic === true) {
+              try {
+                // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
+                await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
+                console.log(`[MetadataIndex] Created metadata entry for ${fileId}`);
+                
+                // Also add to Google Drive index if file is public (source of truth)
                 try {
                   const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
                   const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
@@ -3367,17 +3368,19 @@ class ProductionServer {
                   console.warn(`⚠️ [MetadataIndex] Failed to add new file to Google Drive index (non-critical):`, driveError?.message || driveError);
                   // Don't fail the request - database cache is updated
                 }
+              } catch (submitError: any) {
+                console.error(`[MetadataIndex] Failed to submit initial metadata for ${fileId}:`, submitError);
+                console.error(`[MetadataIndex] Submit error details:`, {
+                  message: submitError?.message,
+                  stack: submitError?.stack,
+                  metadata: initialMetadata,
+                  pnIdentifier: tokenPayload.pnIdentifier,
+                  ownerDid: tokenPayload.did || tokenPayload.pnIdentifier
+                });
+                throw submitError; // Re-throw to be caught by outer catch
               }
-            } catch (submitError: any) {
-              console.error(`[MetadataIndex] Failed to submit initial metadata for ${fileId}:`, submitError);
-              console.error(`[MetadataIndex] Submit error details:`, {
-                message: submitError?.message,
-                stack: submitError?.stack,
-                metadata: initialMetadata,
-                pnIdentifier: tokenPayload.pnIdentifier,
-                ownerDid: tokenPayload.did || tokenPayload.pnIdentifier
-              });
-              throw submitError; // Re-throw to be caught by outer catch
+            } else {
+              console.log(`[MetadataIndex] File ${fileId} is private - skipping database submission (private files only exist in Google Drive + companion metadata)`);
             }
           } catch (driveError: any) {
             console.error(`[MetadataIndex] Failed to fetch file info for ${fileId}:`, driveError);
@@ -3420,13 +3423,15 @@ class ProductionServer {
                 lastUpdated: new Date().toISOString()
               }
             };
-            try {
-              // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
-              await service.submitMetadata(minimalMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
-              console.log(`[MetadataIndex] Created minimal metadata entry for ${fileId}`);
-              
-              // Also add to Google Drive index if file is public (source of truth)
-              if (minimalMetadata.isPublic === true) {
+            // Submit minimal metadata - ONLY for public files
+            // Private files should NOT be in the database (they only exist in Google Drive + companion metadata)
+            if (minimalMetadata.isPublic === true) {
+              try {
+                // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
+                await service.submitMetadata(minimalMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
+                console.log(`[MetadataIndex] Created minimal metadata entry for ${fileId}`);
+                
+                // Also add to Google Drive index if file is public (source of truth)
                 try {
                   const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
                   const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
@@ -3488,71 +3493,86 @@ class ProductionServer {
                   console.warn(`⚠️ [MetadataIndex] Failed to add new file (minimal) to Google Drive index (non-critical):`, driveError?.message || driveError);
                   // Don't fail the request - database cache is updated
                 }
+              } catch (minimalSubmitError: any) {
+                console.error(`[MetadataIndex] Failed to submit minimal metadata for ${fileId}:`, minimalSubmitError);
+                console.error(`[MetadataIndex] Minimal submit error details:`, {
+                  message: minimalSubmitError?.message,
+                  stack: minimalSubmitError?.stack,
+                  metadata: minimalMetadata
+                });
+                // Don't throw - we'll check if entry exists after and handle accordingly
+                // But log extensively so we can debug
               }
-            } catch (minimalSubmitError: any) {
-              console.error(`[MetadataIndex] Failed to submit minimal metadata for ${fileId}:`, minimalSubmitError);
-              console.error(`[MetadataIndex] Minimal submit error details:`, {
-                message: minimalSubmitError?.message,
-                stack: minimalSubmitError?.stack,
-                metadata: minimalMetadata
-              });
-              // Don't throw - we'll check if entry exists after and handle accordingly
-              // But log extensively so we can debug
+            } else {
+              console.log(`[MetadataIndex] File ${fileId} is private (minimal) - skipping database submission (private files only exist in Google Drive + companion metadata)`);
             }
           }
         }
 
         // Refetch to ensure entry exists (in case it was just created)
-        // Add a small delay for database consistency if this was a new file
-        if (!fileExistedBefore) {
-          // Small delay to allow database transaction to commit
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
+        // BUT: Private files should NOT be in the database, so skip refetch for private files
+        // Determine if file is private by checking isPublic with defaults
+        const defaultIsPublicForRefetch = (textPost || thought) ? true : false;
+        const actualIsPublicForRefetch = isPublic !== undefined ? isPublic : defaultIsPublicForRefetch;
         
-        current = await service.getFileMetadata(fileId);
-        console.log(`[MetadataIndex PUT] After upsert, refetch for ${fileId}: ${current ? 'found' : 'not found'}, existedBefore: ${fileExistedBefore}`);
-        
-        // If still not found after delay, try one more time
-        if (!current && !fileExistedBefore) {
-          await new Promise(resolve => setTimeout(resolve, 200));
-          current = await service.getFileMetadata(fileId);
-          console.log(`[MetadataIndex PUT] Second refetch attempt for ${fileId}: ${current ? 'found' : 'not found'}`);
-        }
-        
-        if (!current) {
-          console.error(`[MetadataIndex PUT] Failed to create/find metadata entry for ${fileId}`);
-          console.error(`[MetadataIndex PUT] Debug info:`, {
-            fileId,
-            fileExistedBefore,
-            requestBody: {
-              name,
-              fileType,
-              isPublic,
-              mainFileId,
-              isThoughtThumbnail,
-              hasTextPost: !!textPost,
-              hasThought: !!thought
-            }
-          });
-          
-          // If this was a new file creation that failed, try to provide more helpful error
+        if (actualIsPublicForRefetch === true) {
+          // Only refetch for public files (or files being made public)
+          // Add a small delay for database consistency if this was a new file
           if (!fileExistedBefore) {
-            return res.status(500).json({ 
-              error: 'Failed to create metadata entry',
-              message: 'Metadata creation appeared to succeed but entry was not found in database. This may be a database consistency issue.',
-              fileId
-            });
+            // Small delay to allow database transaction to commit
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
           
-          return res.status(404).json({ error: 'File not found in index' });
+          current = await service.getFileMetadata(fileId);
+          console.log(`[MetadataIndex PUT] After upsert, refetch for ${fileId}: ${current ? 'found' : 'not found'}, existedBefore: ${fileExistedBefore}`);
+          
+          // If still not found after delay, try one more time
+          if (!current && !fileExistedBefore) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+            current = await service.getFileMetadata(fileId);
+            console.log(`[MetadataIndex PUT] Second refetch attempt for ${fileId}: ${current ? 'found' : 'not found'}`);
+          }
+          
+          if (!current) {
+            console.error(`[MetadataIndex PUT] Failed to create/find metadata entry for ${fileId}`);
+            console.error(`[MetadataIndex PUT] Debug info:`, {
+              fileId,
+              fileExistedBefore,
+              requestBody: {
+                name,
+                fileType,
+                isPublic,
+                mainFileId,
+                isThoughtThumbnail,
+                hasTextPost: !!textPost,
+                hasThought: !!thought
+              }
+            });
+            
+            // If this was a new file creation that failed, try to provide more helpful error
+            if (!fileExistedBefore) {
+              return res.status(500).json({ 
+                error: 'Failed to create metadata entry',
+                message: 'Metadata creation appeared to succeed but entry was not found in database. This may be a database consistency issue.',
+                fileId
+              });
+            }
+            
+            return res.status(404).json({ error: 'File not found in index' });
+          }
+        } else {
+          // Private file - should not be in database, so don't refetch
+          console.log(`[MetadataIndex PUT] File ${fileId} is private - skipping database refetch (private files only exist in Google Drive + companion metadata)`);
+          current = null; // Ensure current is null for private files
         }
 
         // CRITICAL: If isPublic is not explicitly provided, read from companion metadata
         // Companion metadata is the source of truth for visibility
         // IMPORTANT: If isPublic is undefined, we should preserve the existing value OR read from companion metadata
         // Only set to false if explicitly provided as false
+        // NOTE: For private files, current will be null (they're not in database), so skip companion metadata reading
         let finalIsPublic = isPublic;
-        if (isPublic === undefined && current.metadata.backend === 'google_drive') {
+        if (isPublic === undefined && current && current.metadata.backend === 'google_drive') {
           // #region agent log
           fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.ts:2100',message:'Reading companion metadata for isPublic',data:{fileId,currentIsPublic:current.metadata.isPublic},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
           // #endregion
@@ -3599,7 +3619,7 @@ class ProductionServer {
             // #endregion
             console.warn(`[MetadataIndex PUT] Failed to read companion metadata for ${fileId}:`, companionError.message);
             // If companion metadata read failed, preserve existing isPublic value (don't change it)
-            if (finalIsPublic === undefined) {
+            if (finalIsPublic === undefined && current) {
               finalIsPublic = current.metadata.isPublic;
               console.log(`[MetadataIndex PUT] Preserving existing isPublic value: ${finalIsPublic}`);
             }
@@ -3607,7 +3627,7 @@ class ProductionServer {
         }
 
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.ts:2142',message:'Updating metadata with isPublic',data:{fileId,isPublicProvided:isPublic,finalIsPublic,currentIsPublic:current.metadata.isPublic},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.ts:2142',message:'Updating metadata with isPublic',data:{fileId,isPublicProvided:isPublic,finalIsPublic,currentIsPublic:current?.metadata.isPublic},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
         // #endregion
 
         // CRITICAL: OWNERSHIP VERIFICATION - Only owner can update metadata
