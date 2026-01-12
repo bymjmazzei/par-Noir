@@ -2337,8 +2337,7 @@ class ProductionServer {
     // MUST be before /:fileId route to avoid route conflict
     this.app.post('/api/aggregator/metadata-index/cleanup-tables', async (req, res) => {
       try {
-        const { getDatabasePool } = await import('./server/utils/database');
-        const db = getDatabasePool();
+        const db = (await import('./server/utils/database')).getDatabasePool();
         await db.query('DELETE FROM aggregator_media');
         await db.query('DELETE FROM aggregator_thoughts');
         await db.query('DELETE FROM aggregator_collections');
