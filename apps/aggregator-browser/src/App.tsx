@@ -3287,6 +3287,7 @@ function App() {
         <div className="h-screen w-full bg-neutral-900">
           <Inbox
             initialThread={initialThread}
+            onCreatorClick={handleCreatorClick}
             onNotificationClick={(notification) => {
               setShowInbox(false);
               setActiveBottomTab('home');

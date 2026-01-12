@@ -38,7 +38,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
         const unreadMessages = threadMessages.filter(m => !m.read && m.toDid === userState.pnIdentifier);
         for (const message of unreadMessages) {
           try {
-            await markAsRead(message.messageId, userState.pnIdentifier!);
+            await markAsRead(message.messageId, userState.pnIdentifier!, participantDid);
           } catch (error) {
             console.error('Failed to mark as read:', error);
           }

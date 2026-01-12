@@ -156,6 +156,7 @@ export class ConnectionsService {
   /**
    * Get connection status between two users
    * Returns status from perspective of userDid1
+   * Uses Google Sheets instead of JSON file
    */
   static async getConnectionStatus(
     user1AccessToken: string,
@@ -163,34 +164,173 @@ export class ConnectionsService {
     user1Did: string,
     user2Did: string
   ): Promise<{ status: 'not_connected' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked'; connectionId?: string }> {
-    const connectionsFile = await this.getConnectionsFile(user1AccessToken, user1MetadataFolder);
-    
-    if (!connectionsFile) {
-      return { status: 'not_connected' };
-    }
+    try {
+      const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
+      
+      // Get or create connections sheet
+      const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+        user1AccessToken,
+        user1MetadataFolder
+      );
 
-    // Check if user2 is blocked
-    if (connectionsFile.blocked.includes(user2Did)) {
-      return { status: 'blocked' };
-    }
+      // Get all connections
+      const result = await ConnectionsSheetsService.getConnections(
+        user1AccessToken,
+        spreadsheetId
+      );
 
-    // Find connection with user2
-    const connection = connectionsFile.connections.find(c => c.userDid === user2Did);
-    
-    if (!connection) {
-      return { status: 'not_connected' };
-    }
+      // Find connection with user2
+      const connection = result.connections.find(c => c.userDid === user2Did);
+      
+      if (!connection) {
+        return { status: 'not_connected' };
+      }
 
-    return {
-      status: connection.status === 'accepted' ? 'connected' : connection.status,
-      connectionId: connection.connectionId
-    };
+      // Check if blocked (would need separate blocked sheet or column)
+      if (connection.status === 'blocked') {
+        return { status: 'blocked', connectionId: connection.connectionId };
+      }
+
+      return {
+        status: connection.status === 'accepted' ? 'connected' : connection.status,
+        connectionId: connection.connectionId
+      };
+    } catch (error) {
+      console.error('Error getting connection status from sheets, falling back to JSON:', error);
+      // Fallback to JSON for backward compatibility
+      const connectionsFile = await this.getConnectionsFile(user1AccessToken, user1MetadataFolder);
+      if (!connectionsFile) {
+        return { status: 'not_connected' };
+      }
+
+      if (connectionsFile.blocked.includes(user2Did)) {
+        return { status: 'blocked' };
+      }
+
+      const connection = connectionsFile.connections.find(c => c.userDid === user2Did);
+      if (!connection) {
+        return { status: 'not_connected' };
+      }
+
+      return {
+        status: connection.status === 'accepted' ? 'connected' : connection.status,
+        connectionId: connection.connectionId
+      };
+    }
   }
 
   /**
-   * Send connection request (adds to both users' files)
+   * Send connection request (adds to both users' sheets)
+   * Uses Google Sheets instead of JSON file
    */
   static async sendConnectionRequest(
+    requesterAccessToken: string,
+    requesterMetadataFolder: string,
+    requesterDid: string,
+    recipientAccessToken: string,
+    recipientMetadataFolder: string,
+    recipientDid: string
+  ): Promise<Connection> {
+    try {
+      const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
+      
+      const connectionId = this.generateConnectionId(requesterDid, recipientDid);
+      const now = new Date().toISOString();
+
+      // Get or create connections sheets for both users
+      const requesterSheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+        requesterAccessToken,
+        requesterMetadataFolder
+      );
+
+      const recipientSheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+        recipientAccessToken,
+        recipientMetadataFolder
+      );
+
+      // Remove existing connections if any (by checking if connection exists)
+      try {
+        const existingRequester = await ConnectionsSheetsService.getConnections(
+          requesterAccessToken,
+          requesterSheetId
+        );
+        const existingReq = existingRequester.connections.find(c => c.userDid === recipientDid);
+        if (existingReq) {
+          await ConnectionsSheetsService.removeConnection(
+            requesterAccessToken,
+            requesterSheetId,
+            existingReq.connectionId
+          );
+        }
+      } catch (error) {
+        // Ignore if connection doesn't exist
+      }
+
+      try {
+        const existingRecipient = await ConnectionsSheetsService.getConnections(
+          recipientAccessToken,
+          recipientSheetId
+        );
+        const existingRec = existingRecipient.connections.find(c => c.userDid === requesterDid);
+        if (existingRec) {
+          await ConnectionsSheetsService.removeConnection(
+            recipientAccessToken,
+            recipientSheetId,
+            existingRec.connectionId
+          );
+        }
+      } catch (error) {
+        // Ignore if connection doesn't exist
+      }
+
+      // Add connection request to requester's sheet
+      await ConnectionsSheetsService.addConnection(
+        requesterAccessToken,
+        requesterSheetId,
+        {
+          connectionId,
+          userDid: recipientDid,
+          status: 'pending_sent',
+          createdAt: now
+        }
+      );
+
+      // Add connection request to recipient's sheet
+      await ConnectionsSheetsService.addConnection(
+        recipientAccessToken,
+        recipientSheetId,
+        {
+          connectionId,
+          userDid: requesterDid,
+          status: 'pending_received',
+          createdAt: now
+        }
+      );
+
+      return {
+        connectionId,
+        userDid: recipientDid,
+        status: 'pending_sent',
+        createdAt: now
+      };
+    } catch (error) {
+      console.error('Error sending connection request via sheets, falling back to JSON:', error);
+      // Fallback to JSON for backward compatibility
+      return this.sendConnectionRequestJSON(
+        requesterAccessToken,
+        requesterMetadataFolder,
+        requesterDid,
+        recipientAccessToken,
+        recipientMetadataFolder,
+        recipientDid
+      );
+    }
+  }
+
+  /**
+   * Fallback method using JSON (for backward compatibility)
+   */
+  private static async sendConnectionRequestJSON(
     requesterAccessToken: string,
     requesterMetadataFolder: string,
     requesterDid: string,
@@ -212,10 +352,7 @@ export class ConnectionsService {
       };
     }
 
-    // Remove existing connection if any
     requesterFile.connections = requesterFile.connections.filter(c => c.userDid !== recipientDid);
-    
-    // Add new connection request
     requesterFile.connections.push({
       connectionId,
       userDid: recipientDid,
@@ -223,7 +360,6 @@ export class ConnectionsService {
       createdAt: now
     });
     requesterFile.updatedAt = now;
-
     await this.updateConnectionsFile(requesterAccessToken, requesterMetadataFolder, requesterDid, requesterFile);
 
     // Update recipient's connections file
@@ -237,64 +373,20 @@ export class ConnectionsService {
       };
     }
 
-    // Remove existing connection if any (check both normalized and original DID formats)
     recipientFile.connections = recipientFile.connections.filter(c => {
       const normalizedC = c.userDid.startsWith('pn-') ? c.userDid : `pn-${c.userDid}`;
       const normalizedRequester = requesterDid.startsWith('pn-') ? requesterDid : `pn-${requesterDid}`;
       return normalizedC !== normalizedRequester && c.userDid !== requesterDid;
     });
     
-    // Add new connection request
-    const recipientConnection: Connection = {
+    recipientFile.connections.push({
       connectionId,
       userDid: requesterDid,
       status: 'pending_received',
       createdAt: now
-    };
-    recipientFile.connections.push(recipientConnection);
-    recipientFile.updatedAt = now;
-
-    console.log(`[ConnectionsService] Updating recipient's connections file:`, {
-      recipientDid,
-      connectionId,
-      requesterDid,
-      status: recipientConnection.status,
-      totalConnections: recipientFile.connections.length
     });
-
-    try {
-      await this.updateConnectionsFile(recipientAccessToken, recipientMetadataFolder, recipientDid, recipientFile);
-      console.log(`[ConnectionsService] Successfully updated recipient's connections file`);
-    } catch (updateError: any) {
-      console.error(`[ConnectionsService] ERROR: Failed to update recipient's connections file:`, updateError);
-      throw new Error(`Failed to save connection request to recipient's file: ${updateError.message || updateError}`);
-    }
-
-    // Verify the update was successful
-    try {
-      const verifyFile = await this.getConnectionsFile(recipientAccessToken, recipientMetadataFolder);
-      if (verifyFile) {
-        const verifyConnection = verifyFile.connections.find(c => c.connectionId === connectionId);
-        if (!verifyConnection) {
-          console.error(`[ConnectionsService] WARNING: Connection ${connectionId} not found in recipient's file after update!`);
-          console.error(`[ConnectionsService] Recipient's file contents:`, JSON.stringify(verifyFile, null, 2));
-          throw new Error(`Connection was not saved to recipient's file`);
-        } else if (verifyConnection.status !== 'pending_received') {
-          console.error(`[ConnectionsService] WARNING: Connection ${connectionId} has wrong status: ${verifyConnection.status}, expected pending_received`);
-          console.error(`[ConnectionsService] Connection details:`, JSON.stringify(verifyConnection, null, 2));
-          throw new Error(`Connection saved with wrong status: ${verifyConnection.status}, expected pending_received`);
-        } else {
-          console.log(`[ConnectionsService] Verified: Connection ${connectionId} correctly saved with status pending_received`);
-        }
-      } else {
-        console.error(`[ConnectionsService] WARNING: Could not verify recipient's file - file not found after update`);
-        throw new Error(`Recipient's connections file not found after update`);
-      }
-    } catch (verifyError: any) {
-      console.error(`[ConnectionsService] Verification failed:`, verifyError);
-      // Don't throw here - the update might have succeeded but verification failed due to timing
-      // But log it so we can see what's happening
-    }
+    recipientFile.updatedAt = now;
+    await this.updateConnectionsFile(recipientAccessToken, recipientMetadataFolder, recipientDid, recipientFile);
 
     return {
       connectionId,
@@ -357,8 +449,8 @@ export class ConnectionsService {
   }
 
   /**
-   * Update connection status in other user's file (requires both access tokens)
-   * Also creates the connection if it doesn't exist (for mutual request scenarios)
+   * Update connection status in other user's sheet (requires both access tokens)
+   * Uses Google Sheets instead of JSON file
    */
   static async updateOtherUserConnectionStatus(
     otherUserAccessToken: string,
@@ -367,6 +459,77 @@ export class ConnectionsService {
     connectionId: string,
     newStatus: 'accepted' | 'blocked',
     acceptorDid?: string // The DID of the user who accepted (to create connection if missing)
+  ): Promise<void> {
+    try {
+      const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
+      
+      // Get or create connections sheet
+      const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+        otherUserAccessToken,
+        otherUserMetadataFolder
+      );
+
+      // Get all connections to find the one to update
+      const allConnections = await ConnectionsSheetsService.getConnections(
+        otherUserAccessToken,
+        spreadsheetId
+      );
+
+      // Find connection by ID
+      const connection = allConnections.connections.find(c => c.connectionId === connectionId);
+
+      if (!connection) {
+        // Connection doesn't exist - create it if accepting
+        if (newStatus === 'accepted' && acceptorDid) {
+          await ConnectionsSheetsService.addConnection(
+            otherUserAccessToken,
+            spreadsheetId,
+            {
+              connectionId,
+              userDid: acceptorDid,
+              status: 'accepted',
+              createdAt: new Date().toISOString(),
+              acceptedAt: new Date().toISOString()
+            }
+          );
+          return;
+        }
+        throw new Error('Connection not found');
+      }
+
+      // Update connection status
+      const now = new Date().toISOString();
+      await ConnectionsSheetsService.updateConnectionStatus(
+        otherUserAccessToken,
+        spreadsheetId,
+        connectionId,
+        newStatus,
+        newStatus === 'accepted' ? now : undefined
+      );
+    } catch (error) {
+      console.error('Error updating other user connection via sheets, falling back to JSON:', error);
+      // Fallback to JSON for backward compatibility
+      await this.updateOtherUserConnectionStatusJSON(
+        otherUserAccessToken,
+        otherUserMetadataFolder,
+        otherUserDid,
+        connectionId,
+        newStatus,
+        acceptorDid
+      );
+    }
+  }
+
+  /**
+   * Fallback method using JSON (for backward compatibility)
+   */
+  private static async updateOtherUserConnectionStatusJSON(
+    otherUserAccessToken: string,
+    otherUserMetadataFolder: string,
+    otherUserDid: string,
+    connectionId: string,
+    newStatus: 'accepted' | 'blocked',
+    acceptorDid?: string
   ): Promise<void> {
     const otherUserFile = await this.getConnectionsFile(otherUserAccessToken, otherUserMetadataFolder);
     if (!otherUserFile) {
@@ -470,44 +633,87 @@ export class ConnectionsService {
 
   /**
    * Get all accepted connections for a user
+   * Uses Google Sheets instead of JSON file
    */
   static async getConnections(
     accessToken: string,
     metadataFolderId: string
   ): Promise<Connection[]> {
-    const connectionsFile = await this.getConnectionsFile(accessToken, metadataFolderId);
-    if (!connectionsFile) {
-      console.log(`[ConnectionsService.getConnections] Connections file not found`);
-      return [];
+    try {
+      const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
+      
+      // Get or create connections sheet
+      const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+        accessToken,
+        metadataFolderId
+      );
+
+      // Get accepted connections
+      const result = await ConnectionsSheetsService.getConnections(
+        accessToken,
+        spreadsheetId,
+        { status: 'accepted' }
+      );
+
+      return result.connections;
+    } catch (error) {
+      console.error('Error getting connections from sheets, falling back to JSON:', error);
+      // Fallback to JSON for backward compatibility
+      const connectionsFile = await this.getConnectionsFile(accessToken, metadataFolderId);
+      if (!connectionsFile) {
+        return [];
+      }
+      const allConnections = connectionsFile.connections || [];
+      return allConnections.filter(c => c.status === 'accepted');
     }
-
-    const allConnections = connectionsFile.connections || [];
-    const acceptedConnections = allConnections.filter(c => c.status === 'accepted');
-    
-    console.log(`[ConnectionsService.getConnections] Total connections: ${allConnections.length}, Accepted: ${acceptedConnections.length}`);
-    console.log(`[ConnectionsService.getConnections] Connection statuses:`, 
-      allConnections.map(c => ({ connectionId: c.connectionId, userDid: c.userDid, status: c.status }))
-    );
-
-    return acceptedConnections;
   }
 
   /**
    * Get pending requests (both sent and received)
+   * Uses Google Sheets instead of JSON file
    */
   static async getPendingRequests(
     accessToken: string,
     metadataFolderId: string
   ): Promise<{ sent: Connection[]; received: Connection[] }> {
-    const connectionsFile = await this.getConnectionsFile(accessToken, metadataFolderId);
-    if (!connectionsFile) {
-      return { sent: [], received: [] };
+    try {
+      const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
+      
+      // Get or create connections sheet
+      const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+        accessToken,
+        metadataFolderId
+      );
+
+      // Get pending sent
+      const sentResult = await ConnectionsSheetsService.getConnections(
+        accessToken,
+        spreadsheetId,
+        { status: 'pending_sent' }
+      );
+
+      // Get pending received
+      const receivedResult = await ConnectionsSheetsService.getConnections(
+        accessToken,
+        spreadsheetId,
+        { status: 'pending_received' }
+      );
+
+      return {
+        sent: sentResult.connections,
+        received: receivedResult.connections
+      };
+    } catch (error) {
+      console.error('Error getting pending requests from sheets, falling back to JSON:', error);
+      // Fallback to JSON for backward compatibility
+      const connectionsFile = await this.getConnectionsFile(accessToken, metadataFolderId);
+      if (!connectionsFile) {
+        return { sent: [], received: [] };
+      }
+      const sent = connectionsFile.connections.filter(c => c.status === 'pending_sent');
+      const received = connectionsFile.connections.filter(c => c.status === 'pending_received');
+      return { sent, received };
     }
-
-    const sent = connectionsFile.connections.filter(c => c.status === 'pending_sent');
-    const received = connectionsFile.connections.filter(c => c.status === 'pending_received');
-
-    return { sent, received };
   }
 
   /**

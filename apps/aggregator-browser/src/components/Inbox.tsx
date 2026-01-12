@@ -4,11 +4,16 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { MessageCircle, Bell } from 'lucide-react';
+import { MessageCircle, Bell, List, Users } from 'lucide-react';
 import { MessageList } from './MessageList';
 import { MessageThread } from './MessageThread';
 import { NotificationBell } from './NotificationBell';
 import { Notification } from '../services/notificationService';
+import { ActivityLedgerPanel } from './ActivityLedgerPanel';
+import { NotificationPreferences } from './NotificationPreferences';
+import { NotificationList } from './NotificationList';
+import { ConnectionsPanel } from './ConnectionsPanel';
+import { useUserState } from '../contexts/UserStateContext';
 
 interface InboxProps {
   onNotificationClick?: (notification: Notification) => void;
@@ -16,14 +21,19 @@ interface InboxProps {
     participantDid: string;
     participantName?: string;
   } | null;
+  onCreatorClick?: (creatorId: string) => void;
 }
 
-export function Inbox({ onNotificationClick, initialThread = null }: InboxProps) {
+export function Inbox({ onNotificationClick, initialThread = null, onCreatorClick }: InboxProps) {
+  const { userState } = useUserState();
   const [activeTab, setActiveTab] = useState<'messages' | 'notifications'>('messages');
   const [selectedThread, setSelectedThread] = useState<{
     participantDid: string;
     participantName?: string;
   } | null>(initialThread);
+  const [showActivityLedger, setShowActivityLedger] = useState(false);
+  const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
+  const [showConnectionsPanel, setShowConnectionsPanel] = useState(false);
   
   // Update selectedThread if initialThread changes
   React.useEffect(() => {
@@ -46,9 +56,55 @@ export function Inbox({ onNotificationClick, initialThread = null }: InboxProps)
   return (
     <div className="h-full flex flex-col bg-neutral-900" style={{ paddingBottom: '64px' }}>
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-neutral-700">
-        <h2 className="text-white text-lg font-semibold">Inbox</h2>
+      <div className="flex items-center justify-between p-4 border-b border-neutral-700 relative">
+        <div className="flex items-center space-x-2">
+          <button 
+            onClick={() => setShowActivityLedger(true)} 
+            className="p-2 hover:bg-neutral-800 rounded transition-colors"
+            aria-label="Open activity ledger"
+          >
+            <List className="h-5 w-5 text-white" />
+          </button>
+          {userState.isUnlocked && userState.pnIdentifier && (
+            <button 
+              onClick={() => setShowConnectionsPanel(true)} 
+              className="p-2 hover:bg-neutral-800 rounded transition-colors relative"
+              aria-label="Open connections"
+            >
+              <Users className="h-5 w-5 text-white" />
+            </button>
+          )}
+        </div>
+        <h2 className="text-white text-lg font-semibold absolute left-1/2 transform -translate-x-1/2">Inbox</h2>
+        <div className="w-9" /> {/* Spacer for centering */}
       </div>
+
+      {/* Activity Ledger Panel */}
+      {userState.isUnlocked && userState.pnIdentifier && (
+        <ActivityLedgerPanel
+          isOpen={showActivityLedger}
+          onClose={() => setShowActivityLedger(false)}
+          userDid={userState.pnIdentifier}
+        />
+      )}
+
+      {/* Notification Preferences */}
+      {userState.isUnlocked && userState.pnIdentifier && (
+        <NotificationPreferences
+          isOpen={showNotificationPreferences}
+          onClose={() => setShowNotificationPreferences(false)}
+        />
+      )}
+
+      {/* Connections Panel */}
+      {userState.isUnlocked && userState.pnIdentifier && (
+        <ConnectionsPanel
+          isOpen={showConnectionsPanel}
+          onClose={() => setShowConnectionsPanel(false)}
+          userDid={userState.pnIdentifier}
+          onCreatorClick={onCreatorClick}
+        />
+      )}
 
       {/* Tabs */}
       <div className="flex border-b border-neutral-700">
@@ -86,17 +142,18 @@ export function Inbox({ onNotificationClick, initialThread = null }: InboxProps)
           />
         ) : (
           <div className="h-full overflow-y-auto">
-            {/* Notifications will be handled by NotificationBell component logic */}
-            <div className="p-4">
-              <p className="text-neutral-400 text-sm mb-4">
-                Notifications are also available via the notification bell in the top navigation.
-              </p>
-              {/* TODO: Full notifications list view */}
-              <div className="text-center py-12">
-                <Bell className="h-12 w-12 text-neutral-400 mx-auto mb-3 opacity-50" />
-                <p className="text-neutral-400">Full notifications view coming soon</p>
+            {userState.isUnlocked && userState.pnIdentifier ? (
+              <NotificationList
+                userDid={userState.pnIdentifier}
+                onPreferencesClick={() => setShowNotificationPreferences(true)}
+              />
+            ) : (
+              <div className="p-4">
+                <p className="text-neutral-400 text-sm mb-4">
+                  Unlock your identity to view notifications.
+                </p>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

@@ -135,9 +135,9 @@ export async function getMessageThreads(userDid: string): Promise<MessageThread[
     }
   }
   
-  // Fallback to centralized API
+  // Fallback to centralized API (Google Sheets)
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/messages/threads?userDid=${userDid}`, {
+    const response = await fetch(`${API_ENDPOINT}/api/messages/conversations?userDid=${userDid}`, {
       headers: getAuthHeaders()
     });
 
@@ -146,7 +146,17 @@ export async function getMessageThreads(userDid: string): Promise<MessageThread[
     }
 
     const result = await response.json();
-    return result.threads || [];
+    // Handle both conversations and threads response format
+    const conversations = result.conversations || result.threads || [];
+    
+    // Convert to MessageThread format
+    return conversations.map((conv: any) => ({
+      participantDid: conv.participantDid || conv.otherUserDid,
+      participantName: conv.participantName,
+      lastMessage: conv.lastMessage,
+      unreadCount: conv.unreadCount || 0,
+      messages: []
+    }));
   } catch (error) {
     console.error('Failed to get message threads:', error);
     return [];
@@ -324,7 +334,7 @@ export async function respondToRequest(
 /**
  * Mark message as read - uses decentralized when available
  */
-export async function markAsRead(messageId: string, userDid: string): Promise<void> {
+export async function markAsRead(messageId: string, userDid: string, participantDid?: string): Promise<void> {
   // Try decentralized first
   if (USE_DECENTRALIZED) {
     try {
@@ -335,13 +345,14 @@ export async function markAsRead(messageId: string, userDid: string): Promise<vo
     }
   }
   
-  // Fallback to centralized API
+  // Fallback to centralized API (Google Sheets)
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/${messageId}/read`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        userDid
+        userDid,
+        participantDid // Required for Google Sheets to find the right conversation sheet
       })
     });
 

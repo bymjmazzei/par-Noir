@@ -9760,14 +9760,153 @@ class ProductionServer {
   private setupNotificationEndpoints(): void {
     // GET /api/notifications - Get user's notifications
     // Message endpoints (placeholder - returns empty arrays for now)
+    // GET /api/messages/conversations - Get all conversation threads
+    this.app.get('/api/messages/conversations', async (req, res) => {
+      try {
+        const userDid = req.query.userDid as string;
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.json({ conversations: [] });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ conversations: [] });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+
+        // Find user's pN folder
+        const pnFolderName = `par Noir - ${pnIdentifier}`;
+        const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const foldersResponse = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
+          { headers: { 'Authorization': `Bearer ${userAccessToken}` } }
+        );
+
+        if (!foldersResponse.ok) {
+          return res.json({ conversations: [] });
+        }
+
+        const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
+        const pnFolder = foldersData.files?.[0];
+        if (!pnFolder) {
+          return res.json({ conversations: [] });
+        }
+
+        // Get or create messages folder
+        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+          userAccessToken,
+          pnFolder.id
+        );
+
+        // Get all conversations
+        const conversations = await MessageSheetsService.getConversations(
+          userAccessToken,
+          messagesFolderId
+        );
+
+        // Format conversations for response (backward compatibility with threads)
+        const threads = conversations.map(conv => ({
+          participantDid: conv.otherUserDid,
+          lastMessageAt: conv.lastMessageAt
+        }));
+
+        return res.json({ conversations, threads }); // Return both for compatibility
+      } catch (error: any) {
+        console.error('Error getting message conversations:', error);
+        return res.status(500).json({
+          error: 'Failed to get message conversations',
+          error_description: error.message || 'Failed to get message conversations'
+        });
+      }
+    });
+
+    // GET /api/messages/threads - Alias for conversations (backward compatibility)
     this.app.get('/api/messages/threads', async (req, res) => {
       try {
         const userDid = req.query.userDid as string;
         if (!userDid) {
           return res.status(400).json({ error: 'userDid is required' });
         }
-        // TODO: Implement message threads retrieval from Google Drive
-        return res.json({ threads: [] });
+
+        const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.json({ threads: [] });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ threads: [] });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+
+        // Find user's pN folder
+        const pnFolderName = `par Noir - ${pnIdentifier}`;
+        const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const foldersResponse = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
+          { headers: { 'Authorization': `Bearer ${userAccessToken}` } }
+        );
+
+        if (!foldersResponse.ok) {
+          return res.json({ threads: [] });
+        }
+
+        const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
+        const pnFolder = foldersData.files?.[0];
+        if (!pnFolder) {
+          return res.json({ threads: [] });
+        }
+
+        // Get or create messages folder
+        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+          userAccessToken,
+          pnFolder.id
+        );
+
+        // Get all conversations
+        const conversations = await MessageSheetsService.getConversations(
+          userAccessToken,
+          messagesFolderId
+        );
+
+        // Format conversations for response (backward compatibility with threads)
+        const threads = conversations.map(conv => ({
+          participantDid: conv.otherUserDid,
+          lastMessageAt: conv.lastMessageAt
+        }));
+
+        return res.json({ threads });
       } catch (error: any) {
         console.error('Error getting message threads:', error);
         return res.status(500).json({
@@ -9800,8 +9939,89 @@ class ProductionServer {
         if (!userDid) {
           return res.status(400).json({ error: 'userDid is required' });
         }
-        // TODO: Implement inbox messages retrieval from Google Drive
-        return res.json({ messages: [] });
+
+        const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.json({ messages: [] });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ messages: [] });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+
+        // Find user's pN folder
+        const pnFolderName = `par Noir - ${pnIdentifier}`;
+        const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const foldersResponse = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
+          { headers: { 'Authorization': `Bearer ${userAccessToken}` } }
+        );
+
+        if (!foldersResponse.ok) {
+          return res.json({ messages: [] });
+        }
+
+        const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
+        const pnFolder = foldersData.files?.[0];
+        if (!pnFolder) {
+          return res.json({ messages: [] });
+        }
+
+        // Get or create messages folder
+        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+          userAccessToken,
+          pnFolder.id
+        );
+
+        // Get all conversations
+        const conversations = await MessageSheetsService.getConversations(
+          userAccessToken,
+          messagesFolderId
+        );
+
+        // Get latest message from each conversation
+        const allMessages: any[] = [];
+        for (const conversation of conversations) {
+          try {
+            const conversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+              userAccessToken,
+              messagesFolderId,
+              conversation.otherUserDid
+            );
+            const result = await MessageSheetsService.getMessages(
+              userAccessToken,
+              conversationSheetId,
+              { limit: 1, offset: 0 }
+            );
+            if (result.messages.length > 0) {
+              const msg = result.messages[0];
+              msg.toDid = conversation.otherUserDid;
+              allMessages.push(msg);
+            }
+          } catch (error) {
+            console.error(`Failed to get messages for conversation ${conversation.otherUserDid}:`, error);
+          }
+        }
+
+        // Sort by timestamp descending
+        allMessages.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        return res.json({ messages: allMessages });
       } catch (error: any) {
         console.error('Error getting inbox messages:', error);
         return res.status(500).json({
@@ -9815,11 +10035,81 @@ class ProductionServer {
       try {
         const userDid = req.query.userDid as string;
         const participantDid = req.query.participantDid as string;
+        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+        const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+
         if (!userDid || !participantDid) {
           return res.status(400).json({ error: 'userDid and participantDid are required' });
         }
-        // TODO: Implement thread messages retrieval from Google Drive
-        return res.json({ messages: [] });
+
+        const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.json({ messages: [] });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ messages: [] });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+
+        // Find user's pN folder
+        const pnFolderName = `par Noir - ${pnIdentifier}`;
+        const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const foldersResponse = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
+          { headers: { 'Authorization': `Bearer ${userAccessToken}` } }
+        );
+
+        if (!foldersResponse.ok) {
+          return res.json({ messages: [] });
+        }
+
+        const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
+        const pnFolder = foldersData.files?.[0];
+        if (!pnFolder) {
+          return res.json({ messages: [] });
+        }
+
+        // Get or create messages folder
+        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+          userAccessToken,
+          pnFolder.id
+        );
+
+        // Get or create conversation sheet
+        const conversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+          userAccessToken,
+          messagesFolderId,
+          participantDid
+        );
+
+        // Get messages from conversation sheet
+        const result = await MessageSheetsService.getMessages(
+          userAccessToken,
+          conversationSheetId,
+          { limit, offset }
+        );
+
+        // Set toDid for all messages
+        result.messages.forEach(msg => {
+          msg.toDid = participantDid;
+        });
+
+        return res.json({ messages: result.messages, total: result.total });
       } catch (error: any) {
         console.error('Error getting thread messages:', error);
         return res.status(500).json({
@@ -9896,91 +10186,212 @@ class ProductionServer {
           }
         }
 
-        // TODO: Implement message sending to Google Drive
-        const messageId = `msg_${Date.now()}`;
-        const timestamp = new Date().toISOString();
+        // Record activity FIRST (source of truth)
+        const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
+        const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+        const { MessagingLedgerService } = await import('./server/modules/messagingLedgerService');
+        const { NotificationService } = await import('./server/modules/notificationService');
         
-        // Record messaging activity and send notification
+        const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const timestamp = new Date().toISOString();
+        const threadId = [fromDid, toDid].sort().join('_');
+
+        // Get sender's credentials
+        const senderPnIdentifier = fromDid.startsWith('pn-') ? fromDid : `pn-${fromDid}`;
+        const senderCredentials = await storageCredentialsService.getCredentials(senderPnIdentifier);
+        if (!senderCredentials?.credentials) {
+          return res.status(404).json({ error: 'Sender credentials not found' });
+        }
+
+        const senderGoogleDriveAccounts = senderCredentials.credentials.googleDriveAccounts || 
+          (senderCredentials.credentials.googleDrive ? [senderCredentials.credentials.googleDrive] : []);
+        
+        if (senderGoogleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'Sender has no Google Drive connected' });
+        }
+
+        const senderAccount = senderGoogleDriveAccounts[0];
+        const senderAccountId = (senderAccount as any).backendId || (senderAccount as any).keyPrefix || (senderAccount as any).accountId || (senderAccount as any).id || undefined;
+        const senderAccessToken = await googleDriveProxyService.getAccessToken(senderCredentials.identityId, senderAccountId, [senderCredentials.identityId]);
+        const senderMetadataFolderId = await this.getOrCreateMetadataFolder(senderAccessToken, senderCredentials.identityId);
+
+        // Find sender's pN folder
+        const pnFolderName = `par Noir - ${senderPnIdentifier}`;
+        const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const foldersResponse = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
+          { headers: { 'Authorization': `Bearer ${senderAccessToken}` } }
+        );
+
+        if (!foldersResponse.ok) {
+          return res.status(500).json({ error: 'Failed to find sender folder' });
+        }
+
+        const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
+        const senderPnFolder = foldersData.files?.[0];
+        if (!senderPnFolder) {
+          return res.status(500).json({ error: 'Sender folder not found' });
+        }
+
+        // Get or create messages folder for sender
+        const senderMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+          senderAccessToken,
+          senderPnFolder.id
+        );
+
+        // Get or create conversation sheet for sender
+        const senderConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+          senderAccessToken,
+          senderMessagesFolderId,
+          toDid
+        );
+
+        // Create message object
+        const message: any = {
+          messageId,
+          fromDid,
+          toDid,
+          content,
+          timestamp,
+          read: false,
+          mediaFileId
+        };
+
+        // Append message to sender's conversation sheet
+        await MessageSheetsService.appendMessage(
+          senderAccessToken,
+          senderConversationSheetId,
+          message
+        );
+
+        // Record activity for sender FIRST
+        await ActivityLedgerService.recordActivity(
+          senderAccessToken,
+          senderMetadataFolderId,
+          senderCredentials.identityId,
+          'message_sent',
+          {
+            targetType: 'message',
+            targetId: messageId,
+            actorDid: fromDid,
+            metadata: { toDid, threadId, content: content.substring(0, 100) }
+          }
+        );
+
+        // Record messaging activity for sender
+        await MessagingLedgerService.recordMessagingActivity(
+          senderAccessToken,
+          senderMetadataFolderId,
+          senderCredentials.identityId,
+          'message_sent',
+          {
+            fromDid,
+            toDid,
+            messageId,
+            threadId,
+            metadata: { content: content.substring(0, 100), mediaFileId }
+          }
+        );
+
+        // Get recipient's credentials
+        const recipientPnIdentifier = toDid.startsWith('pn-') ? toDid : `pn-${toDid}`;
+        const recipientCredentials = await storageCredentialsService.getCredentials(recipientPnIdentifier);
+        if (!recipientCredentials?.credentials) {
+          return res.status(404).json({ error: 'Recipient credentials not found' });
+        }
+
+        const recipientGoogleDriveAccounts = recipientCredentials.credentials.googleDriveAccounts || 
+          (recipientCredentials.credentials.googleDrive ? [recipientCredentials.credentials.googleDrive] : []);
+        
+        if (recipientGoogleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'Recipient has no Google Drive connected' });
+        }
+
+        const recipientAccount = recipientGoogleDriveAccounts[0];
+        const recipientAccountId = (recipientAccount as any).backendId || (recipientAccount as any).keyPrefix || (recipientAccount as any).accountId || (recipientAccount as any).id || undefined;
+        const recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientCredentials.identityId, recipientAccountId, [recipientCredentials.identityId]);
+        const recipientMetadataFolderId = await this.getOrCreateMetadataFolder(recipientAccessToken, recipientCredentials.identityId);
+
+        // Find recipient's pN folder
+        const recipientPnFolderName = `par Noir - ${recipientPnIdentifier}`;
+        const recipientFolderQuery = `name='${recipientPnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const recipientFoldersResponse = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(recipientFolderQuery)}&fields=files(id,name)`,
+          { headers: { 'Authorization': `Bearer ${recipientAccessToken}` } }
+        );
+
+        if (!recipientFoldersResponse.ok) {
+          return res.status(500).json({ error: 'Failed to find recipient folder' });
+        }
+
+        const recipientFoldersData = await recipientFoldersResponse.json() as { files?: Array<{ id: string }> };
+        const recipientPnFolder = recipientFoldersData.files?.[0];
+        if (!recipientPnFolder) {
+          return res.status(500).json({ error: 'Recipient folder not found' });
+        }
+
+        // Get or create messages folder for recipient
+        const recipientMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+          recipientAccessToken,
+          recipientPnFolder.id
+        );
+
+        // Get or create conversation sheet for recipient
+        const recipientConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+          recipientAccessToken,
+          recipientMessagesFolderId,
+          fromDid
+        );
+
+        // Append message to recipient's conversation sheet
+        await MessageSheetsService.appendMessage(
+          recipientAccessToken,
+          recipientConversationSheetId,
+          message
+        );
+
+        // Record activity for recipient FIRST
+        await ActivityLedgerService.recordActivity(
+          recipientAccessToken,
+          recipientMetadataFolderId,
+          recipientCredentials.identityId,
+          'message_received',
+          {
+            targetType: 'message',
+            targetId: messageId,
+            actorDid: fromDid,
+            metadata: { fromDid, threadId, content: content.substring(0, 100) }
+          }
+        );
+
+        // Record messaging activity for recipient
+        await MessagingLedgerService.recordMessagingActivity(
+          recipientAccessToken,
+          recipientMetadataFolderId,
+          recipientCredentials.identityId,
+          'message_received',
+          {
+            fromDid,
+            toDid,
+            messageId,
+            threadId,
+            metadata: { content: content.substring(0, 100), mediaFileId }
+          }
+        );
+
+        // Send notification to recipient (check preferences)
         try {
-          const { MessagingLedgerService } = await import('./server/modules/messagingLedgerService');
-          const { NotificationService } = await import('./server/modules/notificationService');
-          const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-          
-          // Generate thread ID from user DIDs (sorted for consistency)
-          const threadId = [fromDid, toDid].sort().join('_');
-          
-          // Get sender's credentials and metadata folder
-          const senderPnIdentifier = fromDid.startsWith('pn-') ? fromDid : `pn-${fromDid}`;
-          const senderCredentials = await storageCredentialsService.getCredentials(senderPnIdentifier);
-          if (senderCredentials?.credentials) {
-            const senderGoogleDriveAccounts = senderCredentials.credentials.googleDriveAccounts || 
-              (senderCredentials.credentials.googleDrive ? [senderCredentials.credentials.googleDrive] : []);
-            
-            if (senderGoogleDriveAccounts.length > 0) {
-              const senderAccount = senderGoogleDriveAccounts[0];
-              const senderAccountId = (senderAccount as any).backendId || (senderAccount as any).keyPrefix || (senderAccount as any).accountId || (senderAccount as any).id || undefined;
-              const senderAccessToken = await googleDriveProxyService.getAccessToken(senderCredentials.identityId, senderAccountId, [senderCredentials.identityId]);
-              const senderMetadataFolderId = await this.getOrCreateMetadataFolder(senderAccessToken, senderCredentials.identityId);
-
-              // Record activity for sender
-              await MessagingLedgerService.recordMessagingActivity(
-                senderAccessToken,
-                senderMetadataFolderId,
-                senderCredentials.identityId,
-                'message_sent',
-                {
-                  fromDid,
-                  toDid,
-                  messageId,
-                  threadId,
-                  metadata: { content: content.substring(0, 100), mediaFileId }
-                }
-              );
-            }
-          }
-
-          // Get recipient's credentials and metadata folder
-          const recipientPnIdentifier = toDid.startsWith('pn-') ? toDid : `pn-${toDid}`;
-          const recipientCredentials = await storageCredentialsService.getCredentials(recipientPnIdentifier);
-          if (recipientCredentials?.credentials) {
-            const recipientGoogleDriveAccounts = recipientCredentials.credentials.googleDriveAccounts || 
-              (recipientCredentials.credentials.googleDrive ? [recipientCredentials.credentials.googleDrive] : []);
-            
-            if (recipientGoogleDriveAccounts.length > 0) {
-              const recipientAccount = recipientGoogleDriveAccounts[0];
-              const recipientAccountId = (recipientAccount as any).backendId || (recipientAccount as any).keyPrefix || (recipientAccount as any).accountId || (recipientAccount as any).id || undefined;
-              const recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientCredentials.identityId, recipientAccountId, [recipientCredentials.identityId]);
-              const recipientMetadataFolderId = await this.getOrCreateMetadataFolder(recipientAccessToken, recipientCredentials.identityId);
-
-              // Record activity for recipient
-              await MessagingLedgerService.recordMessagingActivity(
-                recipientAccessToken,
-                recipientMetadataFolderId,
-                recipientCredentials.identityId,
-                'message_received',
-                {
-                  fromDid,
-                  toDid,
-                  messageId,
-                  threadId,
-                  metadata: { content: content.substring(0, 100), mediaFileId }
-                }
-              );
-
-              // Send notification to recipient
-              await NotificationService.notifyNewMessage(
-                recipientAccessToken,
-                recipientMetadataFolderId,
-                messageId,
-                fromDid,
-                recipientCredentials.identityId,
-                threadId
-              );
-            }
-          }
-        } catch (activityError: any) {
-          console.warn('Failed to record messaging activity/notification:', activityError);
-          // Don't fail the request if activity logging fails
+          await NotificationService.notifyNewMessage(
+            recipientAccessToken,
+            recipientMetadataFolderId,
+            messageId,
+            fromDid,
+            recipientCredentials.identityId,
+            threadId
+          );
+        } catch (notificationError: any) {
+          console.warn('Failed to send notification:', notificationError);
+          // Don't fail the request if notification fails
         }
 
         return res.json({
@@ -10053,11 +10464,77 @@ class ProductionServer {
     this.app.post('/api/messages/:messageId/read', async (req, res) => {
       try {
         const { messageId } = req.params;
-        const { userDid } = req.body;
+        const { userDid, participantDid } = req.body;
         if (!messageId || !userDid) {
           return res.status(400).json({ error: 'messageId and userDid are required' });
         }
-        // TODO: Implement marking message as read in Google Drive
+
+        const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+
+        // Find user's pN folder
+        const pnFolderName = `par Noir - ${pnIdentifier}`;
+        const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const foldersResponse = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
+          { headers: { 'Authorization': `Bearer ${userAccessToken}` } }
+        );
+
+        if (!foldersResponse.ok) {
+          return res.status(500).json({ error: 'Failed to find user folder' });
+        }
+
+        const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
+        const pnFolder = foldersData.files?.[0];
+        if (!pnFolder) {
+          return res.status(500).json({ error: 'User folder not found' });
+        }
+
+        // Get or create messages folder
+        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+          userAccessToken,
+          pnFolder.id
+        );
+
+        // Get conversation sheet (need participantDid to find the right sheet)
+        if (!participantDid) {
+          return res.status(400).json({ error: 'participantDid is required to mark message as read' });
+        }
+
+        const conversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+          userAccessToken,
+          messagesFolderId,
+          participantDid
+        );
+
+        // Mark message as read
+        await MessageSheetsService.markAsRead(
+          userAccessToken,
+          conversationSheetId,
+          messageId
+        );
+
         return res.json({ success: true });
       } catch (error: any) {
         console.error('Error marking message as read:', error);
@@ -10735,7 +11212,22 @@ class ProductionServer {
 
         const otherUserDid = connection.userDid;
 
-        // Accept connection (updates acceptor's file)
+        // Record activity FIRST
+        const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
+        
+        await ActivityLedgerService.recordActivity(
+          userAccessToken,
+          metadataFolderId,
+          userCredentials.identityId,
+          'connection_accepted',
+          {
+            targetType: 'user',
+            targetId: otherUserDid,
+            metadata: { connectionId }
+          }
+        );
+
+        // Accept connection (updates acceptor's sheet)
         await ConnectionsService.acceptConnectionRequest(
           userAccessToken,
           metadataFolderId,
@@ -10810,23 +11302,9 @@ class ProductionServer {
           // Continue even if other user update fails
         }
 
-        // Record activity and send notification
+        // Send notification (activity already recorded above)
         try {
-          const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
           const { NotificationService } = await import('./server/modules/notificationService');
-          
-          // Record activity for acceptor
-          await ActivityLedgerService.recordActivity(
-            userAccessToken,
-            metadataFolderId,
-            userCredentials.identityId,
-            'connection_accepted',
-            {
-              targetType: 'user',
-              targetId: otherUserDid,
-              metadata: { connectionId }
-            }
-          );
 
           // Record activity for requester (need to get their credentials)
           try {
@@ -11007,6 +11485,438 @@ class ProductionServer {
         return res.status(500).json({
           error: 'Failed to get connections',
           error_description: error.message || 'Failed to get connections'
+        });
+      }
+    });
+
+    // POST /api/connections/follow - Follow a user or feed
+    this.app.post('/api/connections/follow', async (req, res) => {
+      try {
+        const { userDid, targetType, targetId } = req.body;
+        if (!userDid || !targetType || !targetId) {
+          return res.status(400).json({ error: 'userDid, targetType, and targetId are required' });
+        }
+
+        if (targetType !== 'user' && targetType !== 'feed') {
+          return res.status(400).json({ error: 'targetType must be "user" or "feed"' });
+        }
+
+        // Record activity FIRST
+        const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
+        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+        const { NotificationService } = await import('./server/modules/notificationService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+        // Record activity FIRST
+        await ActivityLedgerService.recordActivity(
+          userAccessToken,
+          metadataFolderId,
+          userCredentials.identityId,
+          'follow',
+          {
+            targetType,
+            targetId,
+            metadata: { targetType, targetId }
+          }
+        );
+
+        // Get or create following sheet
+        const followingSheetId = await ConnectionsSheetsService.getOrCreateFollowingSheet(
+          userAccessToken,
+          metadataFolderId
+        );
+
+        // Add to following sheet
+        await ConnectionsSheetsService.addFollowing(
+          userAccessToken,
+          followingSheetId,
+          {
+            targetType: targetType as 'user' | 'feed',
+            targetId,
+            followedAt: new Date().toISOString()
+          }
+        );
+
+        // If following a user with paid feed, add to their followers sheet
+        if (targetType === 'user') {
+          try {
+            const targetPnIdentifier = targetId.startsWith('pn-') ? targetId : `pn-${targetId}`;
+            const targetCredentials = await storageCredentialsService.getCredentials(targetPnIdentifier);
+            
+            if (targetCredentials?.credentials) {
+              // Check if target has paid feed (this would need feed service check)
+              // For now, we'll add to followers if they have credentials
+              const targetGoogleDriveAccounts = targetCredentials.credentials.googleDriveAccounts || 
+                (targetCredentials.credentials.googleDrive ? [targetCredentials.credentials.googleDrive] : []);
+              
+              if (targetGoogleDriveAccounts.length > 0) {
+                const targetAccount = targetGoogleDriveAccounts[0];
+                const targetAccountId = (targetAccount as any).backendId || (targetAccount as any).keyPrefix || (targetAccount as any).accountId || (targetAccount as any).id || undefined;
+                const targetAccessToken = await googleDriveProxyService.getAccessToken(targetCredentials.identityId, targetAccountId, [targetCredentials.identityId]);
+                const targetMetadataFolderId = await this.getOrCreateMetadataFolder(targetAccessToken, targetCredentials.identityId);
+
+                // Get or create followers sheet (paid feeds only)
+                const followersSheetId = await ConnectionsSheetsService.getOrCreateFollowersSheet(
+                  targetAccessToken,
+                  targetMetadataFolderId
+                );
+
+                // Add follower
+                await ConnectionsSheetsService.addFollower(
+                  targetAccessToken,
+                  followersSheetId,
+                  {
+                    followerDid: userDid,
+                    followedAt: new Date().toISOString()
+                  }
+                );
+
+                // Send notification to target user
+                try {
+                  await NotificationService.notifyFollow(
+                    targetAccessToken,
+                    targetMetadataFolderId,
+                    userDid,
+                    targetCredentials.identityId
+                  );
+                } catch (notificationError) {
+                  console.warn('Failed to send follow notification:', notificationError);
+                }
+              }
+            }
+          } catch (targetError) {
+            console.warn('Failed to update target user followers:', targetError);
+            // Continue even if this fails
+          }
+        }
+
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error following:', error);
+        return res.status(500).json({
+          error: 'Failed to follow',
+          error_description: error.message || 'Failed to follow'
+        });
+      }
+    });
+
+    // POST /api/connections/unfollow - Unfollow a user or feed
+    this.app.post('/api/connections/unfollow', async (req, res) => {
+      try {
+        const { userDid, targetType, targetId } = req.body;
+        if (!userDid || !targetType || !targetId) {
+          return res.status(400).json({ error: 'userDid, targetType, and targetId are required' });
+        }
+
+        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+        // Get following sheet
+        const followingSheetId = await ConnectionsSheetsService.getOrCreateFollowingSheet(
+          userAccessToken,
+          metadataFolderId
+        );
+
+        // Remove from following sheet
+        await ConnectionsSheetsService.removeFollowing(
+          userAccessToken,
+          followingSheetId,
+          targetType as 'user' | 'feed',
+          targetId
+        );
+
+        // If unfollowing a user, remove from their followers sheet
+        if (targetType === 'user') {
+          try {
+            const targetPnIdentifier = targetId.startsWith('pn-') ? targetId : `pn-${targetId}`;
+            const targetCredentials = await storageCredentialsService.getCredentials(targetPnIdentifier);
+            
+            if (targetCredentials?.credentials) {
+              const targetGoogleDriveAccounts = targetCredentials.credentials.googleDriveAccounts || 
+                (targetCredentials.credentials.googleDrive ? [targetCredentials.credentials.googleDrive] : []);
+              
+              if (targetGoogleDriveAccounts.length > 0) {
+                const targetAccount = targetGoogleDriveAccounts[0];
+                const targetAccountId = (targetAccount as any).backendId || (targetAccount as any).keyPrefix || (targetAccount as any).accountId || (targetAccount as any).id || undefined;
+                const targetAccessToken = await googleDriveProxyService.getAccessToken(targetCredentials.identityId, targetAccountId, [targetCredentials.identityId]);
+                const targetMetadataFolderId = await this.getOrCreateMetadataFolder(targetAccessToken, targetCredentials.identityId);
+
+                // Get followers sheet
+                const followersSheetId = await ConnectionsSheetsService.getOrCreateFollowersSheet(
+                  targetAccessToken,
+                  targetMetadataFolderId
+                );
+
+                // Remove follower
+                await ConnectionsSheetsService.removeFollower(
+                  targetAccessToken,
+                  followersSheetId,
+                  userDid
+                );
+              }
+            }
+          } catch (targetError) {
+            console.warn('Failed to remove from target user followers:', targetError);
+            // Continue even if this fails
+          }
+        }
+
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error unfollowing:', error);
+        return res.status(500).json({
+          error: 'Failed to unfollow',
+          error_description: error.message || 'Failed to unfollow'
+        });
+      }
+    });
+
+    // GET /api/connections/followers - Get user's followers (paid feeds only)
+    this.app.get('/api/connections/followers', async (req, res) => {
+      try {
+        const { userDid } = req.query;
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.json({ followers: [] });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ followers: [] });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+        // Check if followers sheet exists (only for paid feeds)
+        try {
+          const followersSheetId = await ConnectionsSheetsService.getOrCreateFollowersSheet(
+            userAccessToken,
+            metadataFolderId
+          );
+
+          const result = await ConnectionsSheetsService.getFollowers(
+            userAccessToken,
+            followersSheetId
+          );
+
+          return res.json({ followers: result.followers, total: result.total });
+        } catch (error) {
+          // Followers sheet doesn't exist (user doesn't have paid feed)
+          return res.json({ followers: [], total: 0 });
+        }
+      } catch (error: any) {
+        console.error('Error getting followers:', error);
+        return res.status(500).json({
+          error: 'Failed to get followers',
+          error_description: error.message || 'Failed to get followers'
+        });
+      }
+    });
+
+    // GET /api/connections/following - Get users/feeds user is following
+    this.app.get('/api/connections/following', async (req, res) => {
+      try {
+        const { userDid, targetType } = req.query;
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.json({ following: [] });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ following: [] });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+        // Get following sheet
+        const followingSheetId = await ConnectionsSheetsService.getOrCreateFollowingSheet(
+          userAccessToken,
+          metadataFolderId
+        );
+
+        const result = await ConnectionsSheetsService.getFollowing(
+          userAccessToken,
+          followingSheetId,
+          {
+            targetType: targetType as 'user' | 'feed' | undefined
+          }
+        );
+
+        return res.json({ following: result.following, total: result.total });
+      } catch (error: any) {
+        console.error('Error getting following:', error);
+        return res.status(500).json({
+          error: 'Failed to get following',
+          error_description: error.message || 'Failed to get following'
+        });
+      }
+    });
+
+    // GET /api/connections/following/feeds - Get followed feeds
+    this.app.get('/api/connections/following/feeds', async (req, res) => {
+      try {
+        const { userDid } = req.query;
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.json({ feeds: [] });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ feeds: [] });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+        const followingSheetId = await ConnectionsSheetsService.getOrCreateFollowingSheet(
+          userAccessToken,
+          metadataFolderId
+        );
+
+        const result = await ConnectionsSheetsService.getFollowing(
+          userAccessToken,
+          followingSheetId,
+          { targetType: 'feed' }
+        );
+
+        return res.json({ feeds: result.following.map(f => f.targetId), total: result.total });
+      } catch (error: any) {
+        console.error('Error getting followed feeds:', error);
+        return res.status(500).json({
+          error: 'Failed to get followed feeds',
+          error_description: error.message || 'Failed to get followed feeds'
+        });
+      }
+    });
+
+    // GET /api/connections/following/users - Get followed users
+    this.app.get('/api/connections/following/users', async (req, res) => {
+      try {
+        const { userDid } = req.query;
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.json({ users: [] });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ users: [] });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+        const followingSheetId = await ConnectionsSheetsService.getOrCreateFollowingSheet(
+          userAccessToken,
+          metadataFolderId
+        );
+
+        const result = await ConnectionsSheetsService.getFollowing(
+          userAccessToken,
+          followingSheetId,
+          { targetType: 'user' }
+        );
+
+        return res.json({ users: result.following.map(f => f.targetId), total: result.total });
+      } catch (error: any) {
+        console.error('Error getting followed users:', error);
+        return res.status(500).json({
+          error: 'Failed to get followed users',
+          error_description: error.message || 'Failed to get followed users'
         });
       }
     });
@@ -12618,6 +13528,78 @@ class ProductionServer {
         return res.status(500).json({
           error: 'Failed to remove tag preference',
           error_description: error.message || 'Failed to remove tag preference'
+        });
+      }
+    });
+
+    // GET /api/activity-ledger - Get user's activity ledger
+    this.app.get('/api/activity-ledger', async (req, res) => {
+      try {
+        const userDid = req.headers['x-user-did'] as string || req.query.userDid as string;
+
+        if (!userDid) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'User DID required'
+          });
+        }
+
+        const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.json({ activities: [], total: 0 });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ activities: [], total: 0 });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(
+          userCredentials.identityId,
+          accountId,
+          [userCredentials.identityId]
+        );
+
+        // Get metadata folder using helper method
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, userCredentials.identityId);
+
+        // Get query parameters
+        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+        const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+        const activityType = req.query.activityType as string | undefined;
+
+        // Get activities
+        const result = await ActivityLedgerService.getUserActivities(
+          userAccessToken,
+          metadataFolderId,
+          {
+            limit,
+            offset,
+            activityType: activityType as any
+          }
+        );
+
+        return res.json({
+          activities: result.activities,
+          total: result.total
+        });
+      } catch (error: any) {
+        console.error('Error getting activity ledger:', error);
+        return res.status(500).json({
+          error: 'Failed to get activity ledger',
+          error_description: error.message || 'Failed to get activity ledger'
         });
       }
     });
