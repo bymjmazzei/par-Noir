@@ -445,28 +445,25 @@ export class NotificationService {
   ): Promise<void> {
     for (const subscriber of subscriberAccessTokens) {
       try {
-        const prefs = await this.getPreferences(subscriber.accessToken, subscriber.metadataFolderId, subscriber.userDid);
-        
-        if (prefs.feed_new_post) {
-          await this.createNotification(
-            subscriber.accessToken,
-            subscriber.metadataFolderId,
-            subscriber.userDid,
-            {
-              user_did: subscriber.userDid,
-              type: 'feed_new_post',
-              title: `New post in ${feedName}`,
-              message: `A new post has been added to ${feedName}`,
-              data: {
-                feed_id: feedId,
-                file_id: fileId,
-                creator_did: creatorDid
-              }
+        // Always create notification - preferences only control alerting/display, not storage
+        await this.createNotification(
+          subscriber.accessToken,
+          subscriber.metadataFolderId,
+          subscriber.userDid,
+          {
+            user_did: subscriber.userDid,
+            type: 'feed_new_post',
+            title: `New post in ${feedName}`,
+            message: `A new post has been added to ${feedName}`,
+            data: {
+              feed_id: feedId,
+              file_id: fileId,
+              creator_did: creatorDid
             }
-          );
-        }
+          }
+        );
       } catch (error) {
-        console.warn('Failed to send feed post notification:', error);
+        console.error('Failed to send feed post notification:', error);
         // Continue with other subscribers
       }
     }
@@ -488,26 +485,23 @@ export class NotificationService {
       return;
     }
 
-    const prefs = await this.getPreferences(accessToken, metadataFolderId, fileOwnerDid);
-    
-    if (prefs.feed_new_comment) {
-      await this.createNotification(
-        accessToken,
-        metadataFolderId,
-        fileOwnerDid,
-        {
-          user_did: fileOwnerDid,
-          type: 'feed_new_comment',
-          title: 'New comment on your post',
-          message: `Someone commented on your post`,
-          data: {
-            file_id: fileId,
-            comment_id: commentId,
-            user_did: commenterDid
-          }
+    // Always create notification - preferences only control alerting/display, not storage
+    await this.createNotification(
+      accessToken,
+      metadataFolderId,
+      fileOwnerDid,
+      {
+        user_did: fileOwnerDid,
+        type: 'feed_new_comment',
+        title: 'New comment on your post',
+        message: `Someone commented on your post`,
+        data: {
+          file_id: fileId,
+          comment_id: commentId,
+          user_did: commenterDid
         }
-      );
-    }
+      }
+    );
   }
 
   /**
@@ -525,25 +519,22 @@ export class NotificationService {
       return;
     }
 
-    const prefs = await this.getPreferences(accessToken, metadataFolderId, fileOwnerDid);
-    
-    if (prefs.feed_new_like) {
-      await this.createNotification(
-        accessToken,
-        metadataFolderId,
-        fileOwnerDid,
-        {
-          user_did: fileOwnerDid,
-          type: 'feed_new_like',
-          title: 'New like on your post',
-          message: `Someone liked your post`,
-          data: {
-            file_id: fileId,
-            user_did: likerDid
-          }
+    // Always create notification - preferences only control alerting/display, not storage
+    await this.createNotification(
+      accessToken,
+      metadataFolderId,
+      fileOwnerDid,
+      {
+        user_did: fileOwnerDid,
+        type: 'feed_new_like',
+        title: 'New like on your post',
+        message: `Someone liked your post`,
+        data: {
+          file_id: fileId,
+          user_did: likerDid
         }
-      );
-    }
+      }
+    );
   }
 
   /**
@@ -557,25 +548,22 @@ export class NotificationService {
     creatorDid: string,
     feedName: string
   ): Promise<void> {
-    const prefs = await this.getPreferences(accessToken, metadataFolderId, creatorDid);
-    
-    if (prefs.feed_new_subscriber) {
-      await this.createNotification(
-        accessToken,
-        metadataFolderId,
-        creatorDid,
-        {
-          user_did: creatorDid,
-          type: 'feed_new_subscriber',
-          title: 'New subscriber',
-          message: `Someone subscribed to ${feedName}`,
-          data: {
-            feed_id: feedId,
-            user_did: subscriberDid
-          }
+    // Always create notification - preferences only control alerting/display, not storage
+    await this.createNotification(
+      accessToken,
+      metadataFolderId,
+      creatorDid,
+      {
+        user_did: creatorDid,
+        type: 'feed_new_subscriber',
+        title: 'New subscriber',
+        message: `Someone subscribed to ${feedName}`,
+        data: {
+          feed_id: feedId,
+          user_did: subscriberDid
         }
-      );
-    }
+      }
+    );
   }
 
   /**
@@ -588,25 +576,22 @@ export class NotificationService {
     requesterDid: string,
     recipientDid: string
   ): Promise<void> {
-    const prefs = await this.getPreferences(accessToken, metadataFolderId, recipientDid);
-    
-    if (prefs.connection_request) {
-      await this.createNotification(
-        accessToken,
-        metadataFolderId,
-        recipientDid,
-        {
-          user_did: recipientDid,
-          type: 'connection_request',
-          title: 'New connection request',
-          message: 'Someone wants to connect with you',
-          data: {
-            connection_id: connectionId,
-            user_did: requesterDid
-          }
+    // Always create notification - preferences only control alerting/display, not storage
+    await this.createNotification(
+      accessToken,
+      metadataFolderId,
+      recipientDid,
+      {
+        user_did: recipientDid,
+        type: 'connection_request',
+        title: 'New connection request',
+        message: 'Someone wants to connect with you',
+        data: {
+          connection_id: connectionId,
+          user_did: requesterDid
         }
-      );
-    }
+      }
+    );
   }
 
   /**
@@ -619,25 +604,22 @@ export class NotificationService {
     acceptorDid: string,
     requesterDid: string
   ): Promise<void> {
-    const prefs = await this.getPreferences(accessToken, metadataFolderId, requesterDid);
-    
-    if (prefs.connection_accepted) {
-      await this.createNotification(
-        accessToken,
-        metadataFolderId,
-        requesterDid,
-        {
-          user_did: requesterDid,
-          type: 'connection_accepted',
-          title: 'Connection accepted',
-          message: 'Your connection request was accepted',
-          data: {
-            connection_id: connectionId,
-            user_did: acceptorDid
-          }
+    // Always create notification - preferences only control alerting/display, not storage
+    await this.createNotification(
+      accessToken,
+      metadataFolderId,
+      requesterDid,
+      {
+        user_did: requesterDid,
+        type: 'connection_accepted',
+        title: 'Connection accepted',
+        message: 'Your connection request was accepted',
+        data: {
+          connection_id: connectionId,
+          user_did: acceptorDid
         }
-      );
-    }
+      }
+    );
   }
 
   /**
@@ -655,25 +637,22 @@ export class NotificationService {
       return;
     }
 
-    const prefs = await this.getPreferences(accessToken, metadataFolderId, originalOwnerDid);
-    
-    if (prefs.repost) {
-      await this.createNotification(
-        accessToken,
-        metadataFolderId,
-        originalOwnerDid,
-        {
-          user_did: originalOwnerDid,
-          type: 'repost',
-          title: 'Your post was reposted',
-          message: 'Someone reposted your content',
-          data: {
-            file_id: fileId,
-            user_did: reposterDid
-          }
+    // Always create notification - preferences only control alerting/display, not storage
+    await this.createNotification(
+      accessToken,
+      metadataFolderId,
+      originalOwnerDid,
+      {
+        user_did: originalOwnerDid,
+        type: 'repost',
+        title: 'Your post was reposted',
+        message: 'Someone reposted your content',
+        data: {
+          file_id: fileId,
+          user_did: reposterDid
         }
-      );
-    }
+      }
+    );
   }
 
   /**

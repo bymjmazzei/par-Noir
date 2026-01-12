@@ -624,7 +624,11 @@ class ProductionServer {
         (req.method === 'GET' && (
           req.path.startsWith('/api/profile/') ||
           req.path.startsWith('/api/feeds') ||
-          req.path.startsWith('/api/engagement/')
+          req.path.startsWith('/api/engagement/') ||
+          req.path.startsWith('/api/notifications') ||
+          req.path.startsWith('/api/activity-ledger') ||
+          req.path.startsWith('/api/connections') ||
+          req.path.startsWith('/api/messages')
         )) ||
         (req.method === 'POST' && (
           req.path === '/api/engagement/bulk-stats'
@@ -10929,14 +10933,15 @@ class ProductionServer {
         console.log('[ConnectionRequest] About to get/create requester metadata folder');
         let requesterMetadataFolderId: string;
         try {
-          requesterMetadataFolderId = await this.getOrCreateMetadataFolder(requesterAccessToken, requesterDid);
+          // Use pnIdentifier from credentials.identityId (not requesterDid which might be a DID)
+          requesterMetadataFolderId = await this.getOrCreateMetadataFolder(requesterAccessToken, requesterCredentials.identityId);
           console.log('[ConnectionRequest] Successfully got/created requester metadata folder:', requesterMetadataFolderId);
         } catch (error: any) {
           console.error('[ConnectionRequest] Error getting/creating requester metadata folder:', error);
           console.error('[ConnectionRequest] Error stack:', error.stack);
           const errorDetails = error.message || 'Unknown error';
           const errorResponse = error.response ? await error.response.text().catch(() => '') : '';
-          console.error('[ConnectionRequest] Error details:', { errorDetails, errorResponse, requesterDid });
+          console.error('[ConnectionRequest] Error details:', { errorDetails, errorResponse, requesterDid, pnIdentifier: requesterCredentials.identityId });
           return res.status(500).json({ 
             error: 'Failed to get or create requester metadata folder', 
             error_description: errorDetails,
@@ -10983,12 +10988,14 @@ class ProductionServer {
         // Get or create recipient's metadata folder
         let recipientMetadataFolderId: string;
         try {
-          recipientMetadataFolderId = await this.getOrCreateMetadataFolder(recipientAccessToken, recipientDid);
+          // Use pnIdentifier from credentials.identityId (not recipientDid which might be a DID)
+          recipientMetadataFolderId = await this.getOrCreateMetadataFolder(recipientAccessToken, recipientCredentials.identityId);
         } catch (error: any) {
-          console.error('Error getting/creating recipient metadata folder:', error);
+          console.error('[ConnectionRequest] Error getting/creating recipient metadata folder:', error);
+          console.error('[ConnectionRequest] Error stack:', error.stack);
           const errorDetails = error.message || 'Unknown error';
           const errorResponse = error.response ? await error.response.text().catch(() => '') : '';
-          console.error('Error details:', { errorDetails, errorResponse, recipientDid });
+          console.error('[ConnectionRequest] Error details:', { errorDetails, errorResponse, recipientDid, pnIdentifier: recipientCredentials.identityId });
           return res.status(500).json({ 
             error: 'Failed to get or create recipient metadata folder', 
             error_description: errorDetails,
@@ -11008,23 +11015,32 @@ class ProductionServer {
             recipientDid
           );
         } catch (connectionError: any) {
-          console.error('Error in ConnectionsService.sendConnectionRequest:', connectionError);
+          console.error('[ConnectionRequest] Error in ConnectionsService.sendConnectionRequest:', connectionError);
           return res.status(500).json({
             error: 'Failed to send connection request',
             error_description: connectionError.message || 'Failed to create connection in Google Drive'
           });
         }
 
-        // Record activity and send notification
+        // Validate connection was created
+        if (!connection || !connection.connectionId) {
+          console.error('[ConnectionRequest] Connection created but missing connectionId:', connection);
+          return res.status(500).json({
+            error: 'Connection request created but missing connectionId',
+            error_description: 'Failed to get connection ID from created connection'
+          });
+        }
+
+        // Record activity and send notification with separate error handling for each operation
+        const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
+        const { NotificationService } = await import('./server/modules/notificationService');
+        
+        // Record activity for requester (using pnIdentifier from credentials)
         try {
-          const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
-          const { NotificationService } = await import('./server/modules/notificationService');
-          
-          // Record activity for requester
           await ActivityLedgerService.recordActivity(
             requesterAccessToken,
             requesterMetadataFolderId,
-            requesterDid,
+            requesterCredentials.identityId,
             'connection_request',
             {
               targetType: 'user',
@@ -11032,12 +11048,26 @@ class ProductionServer {
               metadata: { connectionId: connection.connectionId }
             }
           );
+          console.log(`[ConnectionRequest] Activity recorded for requester: ${requesterCredentials.identityId}`);
+        } catch (error: any) {
+          console.error(`[ConnectionRequest] Failed to record activity for requester ${requesterCredentials.identityId}:`, error);
+          console.error(`[ConnectionRequest] Error details:`, { 
+            connectionId: connection.connectionId, 
+            requesterDid, 
+            recipientDid, 
+            requesterPnIdentifier: requesterCredentials.identityId,
+            error: error.message, 
+            stack: error.stack 
+          });
+          // Continue - don't fail the request
+        }
 
-          // Record activity for recipient
+        // Record activity for recipient (using pnIdentifier from credentials)
+        try {
           await ActivityLedgerService.recordActivity(
             recipientAccessToken,
             recipientMetadataFolderId,
-            recipientDid,
+            recipientCredentials.identityId,
             'connection_request',
             {
               targetType: 'user',
@@ -11046,8 +11076,22 @@ class ProductionServer {
               metadata: { connectionId: connection.connectionId }
             }
           );
+          console.log(`[ConnectionRequest] Activity recorded for recipient: ${recipientCredentials.identityId}`);
+        } catch (error: any) {
+          console.error(`[ConnectionRequest] Failed to record activity for recipient ${recipientCredentials.identityId}:`, error);
+          console.error(`[ConnectionRequest] Error details:`, { 
+            connectionId: connection.connectionId, 
+            requesterDid, 
+            recipientDid, 
+            recipientPnIdentifier: recipientCredentials.identityId,
+            error: error.message, 
+            stack: error.stack 
+          });
+          // Continue - don't fail the request
+        }
 
-          // Send notification to recipient
+        // Send notification to recipient
+        try {
           await NotificationService.notifyConnectionRequest(
             recipientAccessToken,
             recipientMetadataFolderId,
@@ -11055,9 +11099,18 @@ class ProductionServer {
             requesterDid,
             recipientDid
           );
-        } catch (activityError: any) {
-          console.warn('Failed to record connection request activity/notification:', activityError);
-          // Don't fail the request if activity logging fails
+          console.log(`[ConnectionRequest] Notification sent to recipient: ${recipientCredentials.identityId}`);
+        } catch (error: any) {
+          console.error(`[ConnectionRequest] Failed to send notification to recipient ${recipientCredentials.identityId}:`, error);
+          console.error(`[ConnectionRequest] Error details:`, { 
+            connectionId: connection.connectionId, 
+            requesterDid, 
+            recipientDid, 
+            recipientPnIdentifier: recipientCredentials.identityId,
+            error: error.message, 
+            stack: error.stack 
+          });
+          // Continue - don't fail the request
         }
 
         // Send connection request as message (optional - don't fail if this fails)
