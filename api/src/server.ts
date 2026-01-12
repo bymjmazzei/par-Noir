@@ -4236,9 +4236,11 @@ class ProductionServer {
         // Track if we successfully deleted the file (so we can return success even if file no longer exists)
         let fileWasDeleted = false;
 
-        // If isPublic === false, DELETE from public tables AFTER updating metadata
-        // This ensures the file is completely removed from feeds
-        if (isPublic === false) {
+        // If isPublic === false AND file existed before (was public), DELETE from public tables AFTER updating metadata
+        // This ensures the file is completely removed from feeds when changing from public to private
+        // BUT: Don't delete new files that are created as private - they should stay in the database
+        // (only not appear in public feeds/indexes)
+        if (isPublic === false && fileExistedBefore) {
           try {
             const removed = await service.removeMetadata(actualFileId);
             if (removed) {
