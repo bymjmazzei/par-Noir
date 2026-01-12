@@ -2,25 +2,12 @@
  * Engagement Drive Service
  * Manages user's own engagement data stored in Google Drive
  * Uses engagement.xlsx (Google Sheets) for better scalability
- * Migrates from engagement.json automatically on first access
  */
 
 import { EngagementSheetsService, UserComment } from './engagementSheetsService';
 
-export interface UserComment {
-  fileId: string;
-  commentId: string;
-  content: string;
-  authorName: string;
-  timestamp: string;
-  parentCommentId?: string;
-  likes: string[]; // User DIDs who liked
-  postReply?: {
-    fileId: string;
-    thumbnail?: string;
-    title?: string;
-  };
-}
+// Re-export UserComment for backward compatibility
+export type { UserComment };
 
 export interface UserEngagement {
   userDid: string;

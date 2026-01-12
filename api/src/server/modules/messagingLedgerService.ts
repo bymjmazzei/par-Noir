@@ -2,22 +2,12 @@
  * Messaging Ledger Service
  * Records messaging activities separately from general activity ledger
  * Uses messaging_ledger.xlsx (Google Sheets) for better scalability
- * Migrates from messaging_ledger.json automatically on first access
  */
 
 import { MessagingLedgerSheetsService, MessagingActivityEntry } from './messagingLedgerSheetsService';
 
-export interface MessagingActivityEntry {
-  message_activity_id: string;
-  user_did: string;
-  activity_type: 'message_sent' | 'message_received' | 'message_read' | 'thread_created';
-  from_did?: string;
-  to_did?: string;
-  message_id?: string;
-  thread_id?: string;
-  metadata?: any;
-  created_at: string;
-}
+// Re-export MessagingActivityEntry for backward compatibility
+export type { MessagingActivityEntry };
 
 export interface MessagingLedgerFile {
   identifier: string;
