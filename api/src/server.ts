@@ -4922,23 +4922,16 @@ class ProductionServer {
                 console.warn(`[StorageCredentials PUT] Failed to initialize messaging_ledger.xlsx:`, msgError?.message || msgError);
               }
               
-              // Initialize public-file-index.xlsx
+              // Initialize preferences.xlsx (for logging preference interactions)
               try {
-                const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-                await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'public');
-                console.log(`[StorageCredentials PUT] Initialized public-file-index.xlsx for identityId: ${sanitizedIdentityId}`);
-              } catch (pubIndexError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize public-file-index.xlsx:`, pubIndexError?.message || pubIndexError);
+                const { PreferencesSheetsService } = await import('./server/modules/preferencesSheetsService');
+                await PreferencesSheetsService.getOrCreatePreferencesSheet(accessToken, metadataFolderId);
+                console.log(`[StorageCredentials PUT] Initialized preferences.xlsx for identityId: ${sanitizedIdentityId}`);
+              } catch (prefSheetError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize preferences.xlsx:`, prefSheetError?.message || prefSheetError);
               }
               
-              // Initialize owner-file-index.xlsx
-              try {
-                const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-                await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'owner');
-                console.log(`[StorageCredentials PUT] Initialized owner-file-index.xlsx for identityId: ${sanitizedIdentityId}`);
-              } catch (ownerIndexError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize owner-file-index.xlsx:`, ownerIndexError?.message || ownerIndexError);
-              }
+              // Note: public-file-index.xlsx and owner-file-index.xlsx are initialized in initializeIndexFiles() above (line 4846)
               
               // Initialize profile.json
               try {
@@ -4958,59 +4951,22 @@ class ProductionServer {
               
               // Note: messaging_ledger.json is no longer initialized - we use messaging_ledger.xlsx (Sheets) instead
               
-              // Initialize zkp-data-points.json (special case - direct multipart upload)
+              // Initialize zkp-data-points.xlsx
               try {
-                const existingZKP = await ZKPDataPointsService.getZKPDataPointsFile(accessToken, metadataFolderId);
-                if (!existingZKP) {
-                  const zkpContent = JSON.stringify({
-                    identifier: identityId,
-                    updatedAt: now,
-                    dataPoints: {}
-                  }, null, 2);
-                  
-                  const boundary = `----WebKitFormBoundary${Date.now()}`;
-                  const metadataPart = JSON.stringify({
-                    name: 'zkp-data-points.json',
-                    parents: [metadataFolderId]
-                  });
-                  
-                  const multipartBody = [
-                    `--${boundary}`,
-                    'Content-Disposition: form-data; name="metadata"',
-                    'Content-Type: application/json',
-                    '',
-                    metadataPart,
-                    `--${boundary}`,
-                    'Content-Disposition: form-data; name="file"; filename="zkp-data-points.json"',
-                    'Content-Type: application/json',
-                    '',
-                    zkpContent,
-                    `--${boundary}--`
-                  ].join('\r\n');
-                  
-                  await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-                    method: 'POST',
-                    headers: {
-                      'Authorization': `Bearer ${accessToken}`,
-                      'Content-Type': `multipart/form-data; boundary=${boundary}`
-                    },
-                    body: multipartBody
-                  });
-                  console.log(`[StorageCredentials PUT] Initialized zkp-data-points.json for identityId: ${sanitizedIdentityId}`);
-                }
+                const { ZKPDataPointsSheetsService } = await import('./server/modules/zkpDataPointsSheetsService');
+                await ZKPDataPointsSheetsService.getOrCreateZKPDataPointsSheet(accessToken, metadataFolderId);
+                console.log(`[StorageCredentials PUT] Initialized zkp-data-points.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (zkpError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize zkp-data-points.json:`, zkpError?.message || zkpError);
+                console.warn(`[StorageCredentials PUT] Failed to initialize zkp-data-points.xlsx:`, zkpError?.message || zkpError);
               }
               
-              // Initialize third-party-permissions.json
+              // Initialize third-party-permissions.xlsx
               try {
-                const existingPermissions = await ThirdPartyPermissionsService.getPermissionsFile(accessToken, metadataFolderId);
-                if (!existingPermissions) {
-                  await ThirdPartyPermissionsService.storePermissions(accessToken, metadataFolderId, identityId, {});
-                  console.log(`[StorageCredentials PUT] Initialized third-party-permissions.json for identityId: ${sanitizedIdentityId}`);
-                }
+                const { ThirdPartyPermissionsSheetsService } = await import('./server/modules/thirdPartyPermissionsSheetsService');
+                await ThirdPartyPermissionsSheetsService.getOrCreateThirdPartyPermissionsSheet(accessToken, metadataFolderId);
+                console.log(`[StorageCredentials PUT] Initialized third-party-permissions.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (permError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize third-party-permissions.json:`, permError?.message || permError);
+                console.warn(`[StorageCredentials PUT] Failed to initialize third-party-permissions.xlsx:`, permError?.message || permError);
               }
               
               console.log(`[StorageCredentials PUT] Successfully initialized all metadata files for identityId: ${sanitizedIdentityId}`);

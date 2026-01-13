@@ -2,7 +2,10 @@
  * Preferences Service
  * Manages user preferences stored on Google Drive
  * Each user stores their preferences in preferences.json in their _metadata folder
+ * Also logs all preference interactions to preferences.xlsx sheet for history
  */
+
+import crypto from 'crypto';
 
 export interface UserTagPreference {
   tagId: string;
@@ -94,6 +97,7 @@ export class PreferencesService {
 
   /**
    * Create or update preferences file
+   * Also logs preference interactions to preferences.xlsx sheet
    */
   static async updatePreferencesFile(
     accessToken: string,
@@ -137,6 +141,17 @@ export class PreferencesService {
             },
             body: preferencesContent
           });
+          
+          // Log preference interactions to sheet
+          await this.logPreferenceInteractions(
+            accessToken,
+            metadataFolderId,
+            identifier,
+            existingPreferences,
+            updatedPreferences,
+            preferences
+          );
+          
           return updatedPreferences;
         }
       }
@@ -171,6 +186,16 @@ export class PreferencesService {
         body: multipartBody
       });
       
+      // Log preference interactions to sheet (for new file)
+      await this.logPreferenceInteractions(
+        accessToken,
+        metadataFolderId,
+        identifier,
+        existingPreferences,
+        updatedPreferences,
+        preferences
+      );
+      
       return updatedPreferences;
     } catch (error) {
       console.error('Error updating preferences file:', error);
@@ -179,7 +204,104 @@ export class PreferencesService {
   }
 
   /**
+   * Helper method to log preference interactions to preferences sheet
+   */
+  private static async logPreferenceInteractions(
+    accessToken: string,
+    metadataFolderId: string,
+    userDid: string,
+    existingPreferences: UserPreferences | null,
+    updatedPreferences: UserPreferences,
+    changedPreferences: Partial<UserPreferences>
+  ): Promise<void> {
+    try {
+      const { PreferencesSheetsService } = await import('./preferencesSheetsService');
+      const spreadsheetId = await PreferencesSheetsService.getOrCreatePreferencesSheet(
+        accessToken,
+        metadataFolderId
+      );
+
+      const now = new Date().toISOString();
+
+      // Log each changed field as a separate interaction
+      if (changedPreferences.displayName !== undefined) {
+        const interactionId = crypto.randomUUID();
+        await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
+          interaction_id: interactionId,
+          user_did: userDid,
+          preference_type: 'display_name',
+          action_type: existingPreferences?.displayName ? 'update' : 'add',
+          previous_value: existingPreferences?.displayName ? JSON.stringify(existingPreferences.displayName) : undefined,
+          new_value: JSON.stringify(updatedPreferences.displayName),
+          created_at: now
+        });
+      }
+
+      if (changedPreferences.profileImageFileId !== undefined) {
+        const interactionId = crypto.randomUUID();
+        await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
+          interaction_id: interactionId,
+          user_did: userDid,
+          preference_type: 'profile_image',
+          action_type: existingPreferences?.profileImageFileId ? 'update' : 'add',
+          previous_value: existingPreferences?.profileImageFileId ? JSON.stringify(existingPreferences.profileImageFileId) : undefined,
+          new_value: JSON.stringify(updatedPreferences.profileImageFileId),
+          created_at: now
+        });
+      }
+
+      if (changedPreferences.curatedFeedPreferences !== undefined) {
+        const interactionId = crypto.randomUUID();
+        await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
+          interaction_id: interactionId,
+          user_did: userDid,
+          preference_type: 'curated_feed_preferences',
+          action_type: existingPreferences?.curatedFeedPreferences ? 'update' : 'add',
+          previous_value: existingPreferences?.curatedFeedPreferences ? JSON.stringify(existingPreferences.curatedFeedPreferences) : undefined,
+          new_value: JSON.stringify(updatedPreferences.curatedFeedPreferences),
+          created_at: now
+        });
+      }
+
+      if (changedPreferences.subscribedFeedIds !== undefined) {
+        const interactionId = crypto.randomUUID();
+        await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
+          interaction_id: interactionId,
+          user_did: userDid,
+          preference_type: 'subscribed_feed_ids',
+          action_type: 'update',
+          previous_value: existingPreferences?.subscribedFeedIds ? JSON.stringify(existingPreferences.subscribedFeedIds) : undefined,
+          new_value: JSON.stringify(updatedPreferences.subscribedFeedIds),
+          created_at: now
+        });
+      }
+
+      // Note: blockedCategories, subscribedSubjects, blockedSubjects are not in UserPreferences interface
+      // They may be added in the future - these checks are included for forward compatibility
+
+      if (changedPreferences.mePageSortOrder !== undefined) {
+        const interactionId = crypto.randomUUID();
+        await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
+          interaction_id: interactionId,
+          user_did: userDid,
+          preference_type: 'me_page_sort_order',
+          action_type: existingPreferences?.mePageSortOrder ? 'update' : 'add',
+          previous_value: existingPreferences?.mePageSortOrder ? JSON.stringify(existingPreferences.mePageSortOrder) : undefined,
+          new_value: JSON.stringify(updatedPreferences.mePageSortOrder),
+          created_at: now
+        });
+      }
+
+      // Note: tagPreferences are logged separately in addTagPreference and removeTagPreference
+    } catch (error) {
+      // Log error but don't fail the preference update
+      console.warn('[PreferencesService] Failed to log preference interaction:', error);
+    }
+  }
+
+  /**
    * Add or update a tag preference
+   * Also logs tag preference interaction to preferences.xlsx sheet
    */
   static async addTagPreference(
     accessToken: string,
@@ -202,6 +324,7 @@ export class PreferencesService {
     
     // Find existing preference for this tag
     const existingIndex = tagPreferences.findIndex(tp => tp.tagId === normalizedTagId);
+    const existingTagPreference = existingIndex >= 0 ? tagPreferences[existingIndex] : null;
     
     const newPreference: UserTagPreference = {
       tagId: normalizedTagId,
@@ -210,7 +333,7 @@ export class PreferencesService {
       confidence: options?.confidence ?? 0.8,
       sourceFileId: options?.sourceFileId,
       metadata: options?.metadata,
-      createdAt: existingIndex >= 0 ? tagPreferences[existingIndex].createdAt : now,
+      createdAt: existingTagPreference?.createdAt || now,
       updatedAt: now
     };
 
@@ -222,6 +345,33 @@ export class PreferencesService {
       tagPreferences.push(newPreference);
     }
 
+    // Log tag preference interaction to sheet
+    try {
+      const { PreferencesSheetsService } = await import('./preferencesSheetsService');
+      const spreadsheetId = await PreferencesSheetsService.getOrCreatePreferencesSheet(
+        accessToken,
+        metadataFolderId
+      );
+
+      const interactionId = crypto.randomUUID();
+      await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
+        interaction_id: interactionId,
+        user_did: userDid,
+        preference_type: 'tag_preference',
+        action_type: action, // Use the action directly (swipe_like, swipe_dislike, etc.)
+        previous_value: existingTagPreference ? JSON.stringify(existingTagPreference) : undefined,
+        new_value: JSON.stringify(newPreference),
+        tag_id: normalizedTagId,
+        source_file_id: options?.sourceFileId,
+        question_id: options?.metadata?.questionId, // For curation cards
+        metadata: options?.metadata ? JSON.stringify(options.metadata) : undefined,
+        created_at: now
+      });
+    } catch (error) {
+      // Log error but don't fail the preference update
+      console.warn('[PreferencesService] Failed to log tag preference interaction:', error);
+    }
+
     await this.updatePreferencesFile(accessToken, metadataFolderId, userDid, {
       tagPreferences
     });
@@ -229,6 +379,7 @@ export class PreferencesService {
 
   /**
    * Remove a tag preference
+   * Also logs tag preference removal to preferences.xlsx sheet
    */
   static async removeTagPreference(
     accessToken: string,
@@ -242,9 +393,43 @@ export class PreferencesService {
     }
 
     const normalizedTagId = tagId.toLowerCase();
+    const existingTagPreference = existingPreferences.tagPreferences.find(
+      tp => tp.tagId === normalizedTagId
+    );
+    
     const tagPreferences = existingPreferences.tagPreferences.filter(
       tp => tp.tagId !== normalizedTagId
     );
+
+    // Log tag preference removal to sheet
+    if (existingTagPreference) {
+      try {
+        const { PreferencesSheetsService } = await import('./preferencesSheetsService');
+        const spreadsheetId = await PreferencesSheetsService.getOrCreatePreferencesSheet(
+          accessToken,
+          metadataFolderId
+        );
+
+        const interactionId = crypto.randomUUID();
+        const now = new Date().toISOString();
+        await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
+          interaction_id: interactionId,
+          user_did: userDid,
+          preference_type: 'tag_preference',
+          action_type: 'remove',
+          previous_value: JSON.stringify(existingTagPreference),
+          new_value: undefined,
+          tag_id: normalizedTagId,
+          source_file_id: existingTagPreference.sourceFileId,
+          question_id: existingTagPreference.metadata?.questionId,
+          metadata: existingTagPreference.metadata ? JSON.stringify(existingTagPreference.metadata) : undefined,
+          created_at: now
+        });
+      } catch (error) {
+        // Log error but don't fail the preference update
+        console.warn('[PreferencesService] Failed to log tag preference removal:', error);
+      }
+    }
 
     await this.updatePreferencesFile(accessToken, metadataFolderId, userDid, {
       tagPreferences

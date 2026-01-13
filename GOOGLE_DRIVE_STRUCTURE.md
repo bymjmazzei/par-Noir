@@ -37,9 +37,7 @@ Google Drive Root
 
 #### JSON Files (Small, Fixed Structure):
 1. **`profile.json`** - User profile information
-2. **`preferences.json`** - User preferences and tag preferences
-3. **`zkp-data-points.json`** - Zero-knowledge proof data points
-4. **`third-party-permissions.json`** - Third-party app permissions
+2. **`preferences.json`** - Current user preferences and tag preferences (used for filtering)
 
 #### Google Sheets Files (.xlsx) - For Scalable, Growing Datasets:
 1. **`connections.xlsx`** - Connections table (replaces old connections.json)
@@ -49,10 +47,17 @@ Google Drive Root
    - Contains 5 sheets: Likes, Dislikes, Comments, Shares, Saves
 5. **`messaging_ledger.xlsx`** - Messaging activity ledger (replaces old messaging_ledger.json)
    - Contains 1 sheet: Activities
-6. **`public-file-index.xlsx`** - Public file index (replaces old public-file-index.json)
+6. **`preferences.xlsx`** - Preference interaction log (hybrid: preferences.json maintains current state, preferences.xlsx logs all interactions)
+   - Contains 1 sheet: Interactions
+   - Logs: tag preferences, curated feed preferences, display name changes, profile image changes, feed subscriptions, category/subject preferences, curation card interactions
+7. **`zkp-data-points.xlsx`** - Zero-knowledge proof data points (replaces old zkp-data-points.json)
+   - Contains 1 sheet: Data Points
+8. **`third-party-permissions.xlsx`** - Third-party app permissions (replaces old third-party-permissions.json)
+   - Contains 1 sheet: Permissions
+9. **`public-file-index.xlsx`** - Public file index (replaces old public-file-index.json)
    - Contains 1 sheet: Files (publicly readable)
-7. **`owner-file-index.xlsx`** - Owner file index (replaces old owner-file-index.json)
-   - Contains 1 sheet: Files (private)
+10. **`owner-file-index.xlsx`** - Owner file index (replaces old owner-file-index.json)
+    - Contains 1 sheet: Files (private)
 
 ### Content Class Folders (in `_metadata/`)
 
@@ -92,6 +97,8 @@ The following files are **deprecated** and should **NOT** be initialized:
 - ❌ `activity_ledger.json` (replaced by `activity_ledger.xlsx`)
 - ❌ `engagement.json` (replaced by `engagement.xlsx`)
 - ❌ `messaging_ledger.json` (replaced by `messaging_ledger.xlsx`)
+- ❌ `zkp-data-points.json` (replaced by `zkp-data-points.xlsx`)
+- ❌ `third-party-permissions.json` (replaced by `third-party-permissions.xlsx`)
 - ❌ `public-file-index.json` (replaced by `public-file-index.xlsx`)
 - ❌ `owner-file-index.json` (replaced by `owner-file-index.xlsx`)
 
@@ -107,8 +114,8 @@ When a user authenticates with Google Drive, the following happens:
 4. **Create root index files**: `public-file-index.json` and `owner-file-index.json` in `_metadata/`
 5. **Create content class index files**: `public-file-index.json` and `owner-file-index.json` in each content class folder
 6. **Initialize metadata files**:
-   - JSON files: `profile.json`, `preferences.json`, `zkp-data-points.json`, `third-party-permissions.json`
-   - Sheets files: `connections.xlsx`, `notifications.xlsx`, `activity_ledger.xlsx`, `engagement.xlsx`, `messaging_ledger.xlsx`, `public-file-index.xlsx`, `owner-file-index.xlsx`
+   - JSON files: `profile.json`, `preferences.json` (current state)
+   - Sheets files: `connections.xlsx`, `notifications.xlsx`, `activity_ledger.xlsx`, `engagement.xlsx`, `messaging_ledger.xlsx`, `preferences.xlsx` (interaction log), `zkp-data-points.xlsx`, `third-party-permissions.xlsx`, `public-file-index.xlsx`, `owner-file-index.xlsx`
 
 ## Notes
 
@@ -118,4 +125,5 @@ When a user authenticates with Google Drive, the following happens:
 - All index files are created with empty arrays initially
 - Public index files have public read permissions set
 - **Migration**: If old JSON files exist (engagement.json, messaging_ledger.json, etc.), they are automatically migrated to Sheets on first access
-- **Scalability**: Sheets files can handle millions of rows, making them suitable for growing datasets like engagement, messaging ledger, and file indexes
+- **Scalability**: Sheets files can handle millions of rows, making them suitable for growing datasets like engagement, messaging ledger, file indexes, preference interactions, ZKP data points, and third-party permissions
+- **Preferences Hybrid Approach**: `preferences.json` stores current state (used for filtering), while `preferences.xlsx` logs all preference interactions (tag preferences, curated feed preferences, display name changes, curation card interactions, etc.)
