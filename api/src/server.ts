@@ -4860,9 +4860,10 @@ class ProductionServer {
               
               const now = new Date().toISOString();
               
-              // Initialize preferences.json
+              // Initialize preferences.json (for fast filtering) and preferences.xlsx (for history)
               try {
-                const existingPreferences = await PreferencesService.getPreferencesFile(accessToken, metadataFolderId);
+                // Initialize preferences.json (pass identityId for caching)
+                const existingPreferences = await PreferencesService.getPreferencesFile(accessToken, metadataFolderId, identityId);
                 if (!existingPreferences) {
                   await PreferencesService.updatePreferencesFile(accessToken, metadataFolderId, identityId, {
                     identifier: identityId,
@@ -4871,8 +4872,13 @@ class ProductionServer {
                   });
                   console.log(`[StorageCredentials PUT] Initialized preferences.json for identityId: ${sanitizedIdentityId}`);
                 }
+                
+                // Initialize preferences.xlsx (for interaction history logging)
+                const { PreferencesSheetsService } = await import('./server/modules/preferencesSheetsService');
+                await PreferencesSheetsService.getOrCreatePreferencesSheet(accessToken, metadataFolderId);
+                console.log(`[StorageCredentials PUT] Initialized preferences.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (prefError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize preferences.json:`, prefError?.message || prefError);
+                console.warn(`[StorageCredentials PUT] Failed to initialize preferences:`, prefError?.message || prefError);
               }
               
               // Note: engagement.json is no longer initialized - we use engagement.xlsx (Sheets) instead
@@ -13672,7 +13678,8 @@ class ProductionServer {
         // Get preferences file
         const preferences = await PreferencesService.getPreferencesFile(
           userAccessToken,
-          metadataFolderId
+          metadataFolderId,
+          normalizedPnIdentifier
         );
 
         if (!preferences) {
@@ -13872,7 +13879,7 @@ class ProductionServer {
         }
 
         // Get tag preferences from Google Drive
-        const preferences = await PreferencesService.getTagPreferences(userAccessToken, metadataFolderId);
+        const preferences = await PreferencesService.getTagPreferences(userAccessToken, metadataFolderId, normalizedPnIdentifier);
 
         return res.json({ preferences });
       } catch (error: any) {

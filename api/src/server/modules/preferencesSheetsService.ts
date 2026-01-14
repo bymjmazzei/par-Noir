@@ -67,7 +67,56 @@ export class PreferencesSheetsService {
     });
 
     if (searchResponse.data.files && searchResponse.data.files.length > 0) {
-      return searchResponse.data.files[0].id!;
+      const spreadsheetId = searchResponse.data.files[0].id!;
+      
+      // Ensure "Current" sheet exists (for existing spreadsheets created before migration)
+      try {
+        const spreadsheet = await sheets.spreadsheets.get({
+          spreadsheetId,
+          fields: 'sheets.properties.title'
+        });
+        
+        const hasCurrentSheet = spreadsheet.data.sheets?.some(
+          sheet => sheet.properties?.title === 'Current'
+        );
+        
+        if (!hasCurrentSheet) {
+          // Add "Current" sheet to existing spreadsheet
+          await sheets.spreadsheets.batchUpdate({
+            spreadsheetId,
+            requestBody: {
+              requests: [
+                {
+                  addSheet: {
+                    properties: {
+                      title: 'Current',
+                      gridProperties: {
+                        rowCount: 1000,
+                        columnCount: 2
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          });
+          
+          // Set up headers for Current sheet
+          await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: 'Current!A1:B1',
+            valueInputOption: 'RAW',
+            requestBody: {
+              values: [['Key', 'Value (JSON)']]
+            }
+          });
+        }
+      } catch (error) {
+        // If we can't check/add the sheet, continue anyway (it might already exist)
+        console.warn('Could not ensure Current sheet exists:', error);
+      }
+      
+      return spreadsheetId;
     }
 
     // Also check if file exists elsewhere (might have been created in wrong location)
@@ -92,10 +141,57 @@ export class PreferencesSheetsService {
         fields: 'id, parents'
       });
       
+      // Ensure "Current" sheet exists (for existing spreadsheets created before migration)
+      try {
+        const spreadsheet = await sheets.spreadsheets.get({
+          spreadsheetId: existingFileId,
+          fields: 'sheets.properties.title'
+        });
+        
+        const hasCurrentSheet = spreadsheet.data.sheets?.some(
+          sheet => sheet.properties?.title === 'Current'
+        );
+        
+        if (!hasCurrentSheet) {
+          // Add "Current" sheet to existing spreadsheet
+          await sheets.spreadsheets.batchUpdate({
+            spreadsheetId: existingFileId,
+            requestBody: {
+              requests: [
+                {
+                  addSheet: {
+                    properties: {
+                      title: 'Current',
+                      gridProperties: {
+                        rowCount: 1000,
+                        columnCount: 2
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          });
+          
+          // Set up headers for Current sheet
+          await sheets.spreadsheets.values.update({
+            spreadsheetId: existingFileId,
+            range: 'Current!A1:B1',
+            valueInputOption: 'RAW',
+            requestBody: {
+              values: [['Key', 'Value (JSON)']]
+            }
+          });
+        }
+      } catch (error) {
+        // If we can't check/add the sheet, continue anyway (it might already exist)
+        console.warn('Could not ensure Current sheet exists:', error);
+      }
+      
       return existingFileId;
     }
 
-    // Create new preferences sheet
+    // Create new preferences sheet with both "Interactions" and "Current" sheets
     const spreadsheet = await sheets.spreadsheets.create({
       requestBody: {
         properties: {
@@ -108,6 +204,15 @@ export class PreferencesSheetsService {
               gridProperties: {
                 rowCount: 100000,
                 columnCount: 11
+              }
+            }
+          },
+          {
+            properties: {
+              title: 'Current',
+              gridProperties: {
+                rowCount: 1000,
+                columnCount: 2
               }
             }
           }
@@ -135,13 +240,33 @@ export class PreferencesSheetsService {
       fields: 'id, parents'
     });
 
-    // Set up headers
+    // Set up headers for Interactions sheet
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: 'Interactions!A1:K1',
       valueInputOption: 'RAW',
       requestBody: {
         values: [['Interaction ID', 'User DID', 'Preference Type', 'Action Type', 'Previous Value (JSON)', 'New Value (JSON)', 'Tag ID', 'Source File ID', 'Question ID', 'Metadata (JSON)', 'Created At']]
+      }
+    });
+
+    // Set up headers for Current sheet (key-value pairs)
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Current!A1:B1',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [['Key', 'Value (JSON)']]
+      }
+    });
+
+    // Initialize Current sheet with empty preferences
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Current!A2:B2',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [['preferences', JSON.stringify({ identifier: '', updatedAt: new Date().toISOString(), tagPreferences: [] })]]
       }
     });
 
@@ -255,5 +380,96 @@ export class PreferencesSheetsService {
       interactions: paginatedInteractions,
       total
     };
+  }
+
+  /**
+   * Get current preferences from "Current" sheet
+   */
+  static async getCurrentPreferences(
+    accessToken: string,
+    spreadsheetId: string
+  ): Promise<any | null> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    try {
+      // Read the Current sheet
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'Current!A2:B' // Skip header row
+      });
+
+      const rows = response.data.values || [];
+      
+      // Find the "preferences" row
+      const preferencesRow = rows.find(row => row[0] === 'preferences');
+      if (!preferencesRow || !preferencesRow[1]) {
+        return null;
+      }
+
+      // Parse JSON value
+      try {
+        return JSON.parse(preferencesRow[1]);
+      } catch (e) {
+        console.error('Failed to parse current preferences JSON:', e);
+        return null;
+      }
+    } catch (error) {
+      console.error('Error reading current preferences from sheet:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Update current preferences in "Current" sheet
+   */
+  static async updateCurrentPreferences(
+    accessToken: string,
+    spreadsheetId: string,
+    preferences: any
+  ): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    try {
+      // First, check if "preferences" row exists
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'Current!A2:B'
+      });
+
+      const rows = response.data.values || [];
+      const preferencesRowIndex = rows.findIndex(row => row[0] === 'preferences');
+      
+      const preferencesJson = JSON.stringify(preferences);
+      
+      if (preferencesRowIndex >= 0) {
+        // Update existing row (row index is 0-based, but we skip header, so add 2)
+        const rowNumber = preferencesRowIndex + 2;
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `Current!B${rowNumber}`,
+          valueInputOption: 'RAW',
+          requestBody: {
+            values: [[preferencesJson]]
+          }
+        });
+      } else {
+        // Append new row
+        await sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: 'Current!A:B',
+          valueInputOption: 'RAW',
+          requestBody: {
+            values: [['preferences', preferencesJson]]
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error updating current preferences in sheet:', error);
+      throw error;
+    }
   }
 }

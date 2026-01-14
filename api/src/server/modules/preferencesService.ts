@@ -1,8 +1,8 @@
 /**
  * Preferences Service
  * Manages user preferences stored on Google Drive
- * Each user stores their preferences in preferences.json in their _metadata folder
- * Also logs all preference interactions to preferences.xlsx sheet for history
+ * Current preferences are stored in preferences.json (for fast filtering)
+ * All preference interactions are logged to preferences.xlsx "Interactions" sheet for history
  */
 
 import crypto from 'crypto';
@@ -46,14 +46,27 @@ export interface UserPreferences {
 
 export class PreferencesService {
   private static readonly PREFERENCES_FILE_NAME = 'preferences.json';
+  
+  // In-memory cache: Map<pnIdentifier, { preferences: UserPreferences, lastUpdated: string }>
+  private static preferencesCache = new Map<string, { preferences: UserPreferences; lastUpdated: string }>();
 
   /**
-   * Get preferences file from user's Google Drive
+   * Get preferences file from user's Google Drive (JSON file for fast reads)
+   * Uses in-memory cache - loads once per session, refreshes only on updates
    */
   static async getPreferencesFile(
     accessToken: string,
-    metadataFolderId: string
+    metadataFolderId: string,
+    pnIdentifier?: string
   ): Promise<UserPreferences | null> {
+    // If we have a cached version, return it immediately (fast path)
+    if (pnIdentifier) {
+      const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+      const cached = this.preferencesCache.get(normalizedPnIdentifier);
+      if (cached) {
+        return cached.preferences;
+      }
+    }
     try {
       // Search for preferences.json in metadata folder
       const searchQuery = `name='${this.PREFERENCES_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false`;
@@ -85,7 +98,18 @@ export class PreferencesService {
       }
 
       try {
-        return await getResponse.json() as UserPreferences;
+        const preferences = await getResponse.json() as UserPreferences;
+        
+        // Cache the preferences if we have a pnIdentifier
+        if (pnIdentifier) {
+          const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+          this.preferencesCache.set(normalizedPnIdentifier, {
+            preferences,
+            lastUpdated: new Date().toISOString()
+          });
+        }
+        
+        return preferences;
       } catch {
         return null;
       }
@@ -96,8 +120,29 @@ export class PreferencesService {
   }
 
   /**
-   * Create or update preferences file
-   * Also logs preference interactions to preferences.xlsx sheet
+   * Invalidate cache for a specific user (called when preferences are updated)
+   */
+  private static invalidateCache(pnIdentifier: string): void {
+    const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+    this.preferencesCache.delete(normalizedPnIdentifier);
+  }
+
+  /**
+   * Refresh cache for a specific user (loads fresh from Google Drive)
+   */
+  private static async refreshCache(
+    accessToken: string,
+    metadataFolderId: string,
+    pnIdentifier: string
+  ): Promise<UserPreferences | null> {
+    this.invalidateCache(pnIdentifier);
+    return await this.getPreferencesFile(accessToken, metadataFolderId, pnIdentifier);
+  }
+
+  /**
+   * Create or update preferences file (JSON for fast reads)
+   * Also logs preference interactions to preferences.xlsx "Interactions" sheet
+   * Refreshes cache after update so new preferences apply to future content
    */
   static async updatePreferencesFile(
     accessToken: string,
@@ -105,8 +150,8 @@ export class PreferencesService {
     identifier: string,
     preferences: Partial<UserPreferences>
   ): Promise<UserPreferences> {
-    // Get existing preferences or create new
-    let existingPreferences = await this.getPreferencesFile(accessToken, metadataFolderId);
+    // Get existing preferences or create new (may use cache)
+    let existingPreferences = await this.getPreferencesFile(accessToken, metadataFolderId, identifier);
     
     const now = new Date().toISOString();
     const updatedPreferences: UserPreferences = {
@@ -152,6 +197,13 @@ export class PreferencesService {
             preferences
           );
           
+          // Refresh cache with updated preferences (so future requests use new preferences)
+          const normalizedPnIdentifier = identifier.startsWith('pn-') ? identifier : `pn-${identifier}`;
+          this.preferencesCache.set(normalizedPnIdentifier, {
+            preferences: updatedPreferences,
+            lastUpdated: now
+          });
+          
           return updatedPreferences;
         }
       }
@@ -195,6 +247,13 @@ export class PreferencesService {
         updatedPreferences,
         preferences
       );
+      
+      // Cache the new preferences
+      const normalizedPnIdentifier = identifier.startsWith('pn-') ? identifier : `pn-${identifier}`;
+      this.preferencesCache.set(normalizedPnIdentifier, {
+        preferences: updatedPreferences,
+        lastUpdated: now
+      });
       
       return updatedPreferences;
     } catch (error) {
@@ -306,7 +365,7 @@ export class PreferencesService {
   static async addTagPreference(
     accessToken: string,
     metadataFolderId: string,
-    userDid: string,
+    userDid: string, // Actually the pnIdentifier
     tagId: string,
     preference: 'like' | 'dislike' | 'block' | 'subscribe',
     action: UserTagPreference['action'],
@@ -316,7 +375,8 @@ export class PreferencesService {
       metadata?: UserTagPreference['metadata'];
     }
   ): Promise<void> {
-    const existingPreferences = await this.getPreferencesFile(accessToken, metadataFolderId);
+    // Use userDid (which is actually pnIdentifier) for cache lookup
+    const existingPreferences = await this.getPreferencesFile(accessToken, metadataFolderId, userDid);
     const tagPreferences = existingPreferences?.tagPreferences || [];
     
     const now = new Date().toISOString();
@@ -384,10 +444,11 @@ export class PreferencesService {
   static async removeTagPreference(
     accessToken: string,
     metadataFolderId: string,
-    userDid: string,
+    userDid: string, // Actually the pnIdentifier
     tagId: string
   ): Promise<void> {
-    const existingPreferences = await this.getPreferencesFile(accessToken, metadataFolderId);
+    // Use userDid (which is actually pnIdentifier) for cache lookup
+    const existingPreferences = await this.getPreferencesFile(accessToken, metadataFolderId, userDid);
     if (!existingPreferences?.tagPreferences) {
       return;
     }
@@ -441,9 +502,10 @@ export class PreferencesService {
    */
   static async getTagPreferences(
     accessToken: string,
-    metadataFolderId: string
+    metadataFolderId: string,
+    pnIdentifier?: string
   ): Promise<UserTagPreference[]> {
-    const preferences = await this.getPreferencesFile(accessToken, metadataFolderId);
+    const preferences = await this.getPreferencesFile(accessToken, metadataFolderId, pnIdentifier);
     return preferences?.tagPreferences || [];
   }
 }
