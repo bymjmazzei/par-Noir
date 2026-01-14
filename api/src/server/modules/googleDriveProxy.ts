@@ -166,6 +166,9 @@ export class GoogleDriveProxyService {
         console.log(`[GoogleDriveProxy] Token refreshed successfully`);
         
         // Update stored credentials for the specific account
+        // CRITICAL: Preserve refresh_token - Google often doesn't return a new one, so keep the existing one
+        const preservedRefreshToken = refreshedToken.refresh_token || token.refresh_token || (account as any).refresh_token || (account as any).refreshToken;
+        
         if (accountId && credentials.googleDriveAccounts) {
           const accountIndex = credentials.googleDriveAccounts.findIndex(
             (acc: any) => 
@@ -184,8 +187,8 @@ export class GoogleDriveProxyService {
                 ? Date.now() + (refreshedToken.expires_in * 1000)
                 : undefined,
               expires_in: refreshedToken.expires_in,
-              refresh_token: refreshedToken.refresh_token || token.refresh_token,
-              refreshToken: refreshedToken.refresh_token || token.refresh_token
+              refresh_token: preservedRefreshToken,
+              refreshToken: preservedRefreshToken
             };
           }
         } else if (credentials.googleDrive) {
@@ -196,7 +199,7 @@ export class GoogleDriveProxyService {
               ? Date.now() + (refreshedToken.expires_in * 1000)
               : undefined,
             expires_in: refreshedToken.expires_in,
-            refresh_token: refreshedToken.refresh_token || token.refresh_token
+            refresh_token: preservedRefreshToken
           };
         }
         
