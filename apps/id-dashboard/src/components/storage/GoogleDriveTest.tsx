@@ -60,7 +60,7 @@ export const GoogleDriveTest: React.FC = () => {
             apiKey: process.env.REACT_APP_GOOGLE_API_KEY || 'AIzaSyBOKyclyG0Uobs0wNCQLSK89XCN2x6NNdk',
             clientId: process.env.REACT_APP_GOOGLE_DRIVE_CLIENT_ID || '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com',
             discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
-            scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets'
+            scope: 'https://www.googleapis.com/auth/drive.file'
           });
 
           const authInstance = window.gapi.auth2.getAuthInstance();
