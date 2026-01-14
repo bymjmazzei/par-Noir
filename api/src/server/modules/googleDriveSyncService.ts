@@ -482,11 +482,11 @@ export class GoogleDriveSyncService {
       // CRITICAL: Use successfullyReadIndexUsers, not successfullyScannedUsers
       // This ensures users with empty indexes are handled correctly (no files = empty set, not all files orphaned)
       for (const pnIdentifier of successfullyReadIndexUsers) {
-        // Get all files currently in database for this user
+        // Get all files currently in database for this user (including metadata to extract backendFileId)
         const dbFiles = await db.query(
-          `SELECT file_id FROM aggregator_media WHERE pn_identifier = $1
-           UNION SELECT file_id FROM aggregator_thoughts WHERE pn_identifier = $1
-           UNION SELECT file_id FROM aggregator_collections WHERE pn_identifier = $1`,
+          `SELECT file_id, metadata FROM aggregator_media WHERE pn_identifier = $1
+           UNION SELECT file_id, metadata FROM aggregator_thoughts WHERE pn_identifier = $1
+           UNION SELECT file_id, metadata FROM aggregator_collections WHERE pn_identifier = $1`,
           [pnIdentifier]
         );
         
@@ -496,8 +496,8 @@ export class GoogleDriveSyncService {
         console.log(`🔍 [Cleanup] User ${pnIdentifier}: ${dbFiles.rows.length} files in DB, ${userMetadata.length} files in Google Drive index`);
         
         // Verify each file in the public index exists in Google Drive
-        // Build a set of verified fileIds (from public index) that have verified googleDriveFileIds
-        const verifiedFileIds = new Set<string>();
+        // Build a set of verified backendFileIds (Google Drive file IDs) from public index
+        const verifiedBackendFileIds = new Set<string>();
         
         if (userMetadata.length > 0) {
           console.log(`🔍 [Cleanup] Verifying ${userMetadata.length} file(s) from public index for ${pnIdentifier}...`);
@@ -507,40 +507,52 @@ export class GoogleDriveSyncService {
           for (let i = 0; i < userMetadata.length; i += batchSize) {
             const batch = userMetadata.slice(i, i + batchSize);
             const verificationPromises = batch.map(async (entry) => {
-              // Extract googleDriveFileId from metadata
+              // Extract backendFileId (Google Drive file ID) from metadata
               // Try backendFileId first (set during sync), then googleDriveFileId, then fallback to fileId
-              const googleDriveFileId = (entry.metadata as any).backendFileId || 
-                                       (entry.metadata as any).googleDriveFileId || 
-                                       entry.metadata.fileId;
+              const backendFileId = entry.metadata.backendFileId || 
+                                   (entry.metadata as any).googleDriveFileId || 
+                                   entry.metadata.fileId;
               
               // Verify the file exists in Google Drive
-              const exists = await this.verifyFileExists(accessToken, googleDriveFileId);
+              const exists = await this.verifyFileExists(accessToken, backendFileId);
               
               if (exists) {
-                // File exists - add its fileId to verified set
-                return entry.metadata.fileId;
+                // File exists - add its backendFileId to verified set (not fileId!)
+                return backendFileId;
               } else {
                 // File doesn't exist - don't add to verified set
-                console.log(`🗑️ [Cleanup] File ${entry.metadata.fileId} (googleDriveFileId: ${googleDriveFileId}) not found in Google Drive - will be removed from database`);
+                console.log(`🗑️ [Cleanup] File with backendFileId ${backendFileId} (fileId: ${entry.metadata.fileId}) not found in Google Drive - will be removed from database`);
                 return null;
               }
             });
             
             const verifiedBatch = await Promise.all(verificationPromises);
-            verifiedBatch.forEach(fileId => {
-              if (fileId) {
-                verifiedFileIds.add(fileId);
+            verifiedBatch.forEach(backendFileId => {
+              if (backendFileId) {
+                verifiedBackendFileIds.add(backendFileId);
               }
             });
           }
           
-          console.log(`✅ [Cleanup] Verified ${verifiedFileIds.size} of ${userMetadata.length} file(s) exist in Google Drive for ${pnIdentifier}`);
+          console.log(`✅ [Cleanup] Verified ${verifiedBackendFileIds.size} of ${userMetadata.length} file(s) exist in Google Drive for ${pnIdentifier} (by backendFileId)`);
         }
         
         // Find orphaned files: in database but NOT in verified set
+        // Compare by backendFileId (Google Drive file ID), not fileId (internal ID)
         const orphanedFiles = dbFiles.rows
-          .map((r: any) => r.file_id)
-          .filter((fileId: string) => !verifiedFileIds.has(fileId));
+          .filter((row: any) => {
+            const metadata = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+            // Extract backendFileId from database metadata
+            const dbBackendFileId = metadata.backendFileId || 
+                                   metadata.googleDriveFileId || 
+                                   row.file_id; // Fallback to file_id if no backendFileId
+            const isOrphaned = !verifiedBackendFileIds.has(dbBackendFileId);
+            if (isOrphaned) {
+              console.log(`🔍 [Cleanup] File ${row.file_id} (backendFileId: ${dbBackendFileId}) not in verified set - marking as orphaned`);
+            }
+            return isOrphaned;
+          })
+          .map((row: any) => row.file_id);
         
         // Remove orphaned files from database
         if (orphanedFiles.length > 0) {
@@ -550,7 +562,7 @@ export class GoogleDriveSyncService {
           }
           console.log(`✅ [Cleanup] Cleaned up ${orphanedFiles.length} orphaned file(s) for ${pnIdentifier}`);
         } else {
-          console.log(`✅ [Cleanup] No orphaned files for ${pnIdentifier} (${dbFiles.rows.length} files in DB match verified Google Drive files)`);
+          console.log(`✅ [Cleanup] No orphaned files for ${pnIdentifier} (${dbFiles.rows.length} files in DB match verified Google Drive files by backendFileId)`);
         }
       }
 
