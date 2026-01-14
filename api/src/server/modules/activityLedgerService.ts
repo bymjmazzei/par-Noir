@@ -5,6 +5,7 @@
  * Uses Google Sheets for better performance and querying
  */
 
+import crypto from 'crypto';
 import { ActivityLedgerSheetsService, ActivityEntry as SheetsActivityEntry } from './activityLedgerSheetsService';
 
 export interface ActivityEntry {

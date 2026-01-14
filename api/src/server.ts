@@ -11384,27 +11384,6 @@ class ProductionServer {
           // Continue - don't fail the request
         }
 
-        // Send connection request as message (optional - don't fail if this fails)
-        try {
-          await fetch(`${req.protocol}://${req.get('host')}/api/messages/send`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': req.headers.authorization || ''
-            },
-            body: JSON.stringify({
-              fromDid: requesterDid,
-              toDid: recipientDid,
-              content: `${requesterDid.substring(0, 8)} wants to connect with you`,
-              isConnectionRequest: true,
-              connectionId: connection.connectionId
-            })
-          });
-        } catch (messageError: any) {
-          console.warn('Failed to send connection request as message:', messageError?.message || messageError);
-          // Continue even if message fails
-        }
-
         return res.json({
           success: true,
           connection

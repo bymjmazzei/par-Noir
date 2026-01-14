@@ -6,6 +6,7 @@
  * Uses Google Sheets for better performance and querying
  */
 
+import crypto from 'crypto';
 import { NotificationsSheetsService, Notification as SheetsNotification } from './notificationsSheetsService';
 
 export interface Notification {
