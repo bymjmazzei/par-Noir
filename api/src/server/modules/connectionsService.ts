@@ -399,8 +399,81 @@ export class ConnectionsService {
   /**
    * Accept connection request
    * Allows accepting both pending_received (normal case) and pending_sent (mutual request scenario)
+   * Uses Google Sheets instead of JSON file
    */
   static async acceptConnectionRequest(
+    acceptorAccessToken: string,
+    acceptorMetadataFolder: string,
+    acceptorDid: string,
+    connectionId: string
+  ): Promise<void> {
+    try {
+      const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
+      
+      // Get or create connections sheet
+      const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+        acceptorAccessToken,
+        acceptorMetadataFolder
+      );
+
+      // Get all connections
+      const allConnections = await ConnectionsSheetsService.getConnections(
+        acceptorAccessToken,
+        spreadsheetId
+      );
+
+      // Find all connections with this ID (in case of mutual requests)
+      const allMatchingConnections = allConnections.connections.filter(c => c.connectionId === connectionId);
+      
+      // Prioritize pending_received, but also allow pending_sent (mutual request)
+      let connection = allMatchingConnections.find(c => c.status === 'pending_received');
+      if (!connection && allMatchingConnections.length > 0) {
+        connection = allMatchingConnections.find(c => c.status === 'pending_sent');
+      }
+
+      if (!connection) {
+        const statuses = allMatchingConnections.map(c => c.status).join(', ');
+        throw new Error(`Connection request not found or not in acceptable status. Found connections with statuses: ${statuses || 'none'}`);
+      }
+
+      // Allow accepting if it's pending_received or pending_sent (mutual request)
+      if (connection.status !== 'pending_received' && connection.status !== 'pending_sent') {
+        if (connection.status === 'accepted') {
+          // Already accepted, this is fine (idempotent)
+          return;
+        }
+        throw new Error(`Connection request is not in acceptable status. Current status: ${connection.status}. Only pending_received or pending_sent connections can be accepted.`);
+      }
+
+      const now = new Date().toISOString();
+
+      // Update connection status in Sheets
+      await ConnectionsSheetsService.updateConnectionStatus(
+        acceptorAccessToken,
+        spreadsheetId,
+        connectionId,
+        'accepted',
+        now
+      );
+
+      // Note: The other user's file should also be updated, but that requires their access token
+      // This will be handled by the API endpoint that has access to both users' tokens
+    } catch (error) {
+      console.error('Error accepting connection request via sheets, falling back to JSON:', error);
+      // Fallback to JSON for backward compatibility
+      await this.acceptConnectionRequestJSON(
+        acceptorAccessToken,
+        acceptorMetadataFolder,
+        acceptorDid,
+        connectionId
+      );
+    }
+  }
+
+  /**
+   * Fallback method using JSON (for backward compatibility)
+   */
+  private static async acceptConnectionRequestJSON(
     acceptorAccessToken: string,
     acceptorMetadataFolder: string,
     acceptorDid: string,
