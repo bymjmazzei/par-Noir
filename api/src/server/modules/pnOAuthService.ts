@@ -42,6 +42,8 @@ export interface TokenPayload {
 // In-memory storage for authorization codes and access tokens (short-lived)
 const authorizationCodes = new Map<string, AuthorizationCode>();
 const accessTokens = new Map<string, TokenPayload>();
+// Map of recently exchanged codes to their tokens (for idempotency - prevents duplicate exchange errors)
+const codeToTokenMap = new Map<string, { token: AccessToken; expiresAt: number }>();
 // Note: refreshTokens are now stored in PostgreSQL database for persistence
 
 // Cleanup expired codes/tokens every 5 minutes
@@ -59,6 +61,13 @@ setInterval(() => {
   for (const [token, payload] of accessTokens.entries()) {
     if (payload.expiresAt < now) {
       accessTokens.delete(token);
+    }
+  }
+  
+  // Clean expired code-to-token mappings (for idempotency)
+  for (const [code, exchange] of codeToTokenMap.entries()) {
+    if (exchange.expiresAt < now) {
+      codeToTokenMap.delete(code);
     }
   }
   
@@ -121,15 +130,29 @@ export class PNOAuthService {
 
   /**
    * Exchange authorization code for access token
+   * Idempotent: if code was already exchanged, returns the same token
    */
   static async exchangeCodeForToken(params: {
     code: string;
     clientId: string;
     redirectUri: string;
   }): Promise<AccessToken | null> {
+    // Check if this code was already exchanged (idempotency)
+    const existingExchange = codeToTokenMap.get(params.code);
+    if (existingExchange && existingExchange.expiresAt > Date.now()) {
+      console.log('[OAuth] Code already exchanged, returning cached token (idempotent)');
+      return existingExchange.token;
+    }
+    
     const authCode = authorizationCodes.get(params.code);
     
     if (!authCode) {
+      // Code not found - might have been already used
+      // Check if it was recently exchanged (within last 30 seconds)
+      if (existingExchange) {
+        console.log('[OAuth] Code was already exchanged, returning cached token');
+        return existingExchange.token;
+      }
       console.error('[OAuth] Code not found:', params.code.substring(0, 20) + '...');
       return null;
     }
@@ -179,13 +202,28 @@ export class PNOAuthService {
       scope: authCode.scope
     });
 
-    return {
+    const tokenResponse: AccessToken = {
       access_token: accessToken,
       token_type: 'Bearer',
       expires_in: Math.floor(this.ACCESS_TOKEN_EXPIRY / 1000),
       refresh_token: refreshToken,
       scope: authCode.scope.join(' ')
     };
+
+    // Store the exchange result for idempotency (keep for 30 seconds)
+    codeToTokenMap.set(params.code, {
+      token: tokenResponse,
+      expiresAt: Date.now() + 30 * 1000 // 30 seconds
+    });
+
+    // Clean up old entries from codeToTokenMap
+    for (const [code, exchange] of codeToTokenMap.entries()) {
+      if (exchange.expiresAt < Date.now()) {
+        codeToTokenMap.delete(code);
+      }
+    }
+
+    return tokenResponse;
   }
 
   /**
