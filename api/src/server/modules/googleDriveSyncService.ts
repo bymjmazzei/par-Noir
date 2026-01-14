@@ -495,64 +495,45 @@ export class GoogleDriveSyncService {
         
         console.log(`🔍 [Cleanup] User ${pnIdentifier}: ${dbFiles.rows.length} files in DB, ${userMetadata.length} files in Google Drive index`);
         
-        // Verify each file in the public index exists in Google Drive
-        // Build a set of verified backendFileIds (Google Drive file IDs) from public index
-        const verifiedBackendFileIds = new Set<string>();
-        
+        // Build set of publicTokens from public index (files that should exist)
+        // publicToken is static and stored in both public index and database - simple field match
+        const verifiedPublicTokens = new Set<string>();
         if (userMetadata.length > 0) {
-          console.log(`🔍 [Cleanup] Verifying ${userMetadata.length} file(s) from public index for ${pnIdentifier}...`);
-          
-          // Process files in batches to avoid rate limiting
-          const batchSize = 10;
-          for (let i = 0; i < userMetadata.length; i += batchSize) {
-            const batch = userMetadata.slice(i, i + batchSize);
-            const verificationPromises = batch.map(async (entry) => {
-              // Extract backendFileId (Google Drive file ID) from metadata
-              // Try backendFileId first (set during sync), then googleDriveFileId, then fallback to fileId
-              const backendFileId = entry.metadata.backendFileId || 
-                                   (entry.metadata as any).googleDriveFileId || 
-                                   entry.metadata.fileId;
-              
-              // Verify the file exists in Google Drive
-              const exists = await this.verifyFileExists(accessToken, backendFileId);
-              
-              if (exists) {
-                // File exists - add its backendFileId to verified set (not fileId!)
-                return backendFileId;
-              } else {
-                // File doesn't exist - don't add to verified set
-                console.log(`🗑️ [Cleanup] File with backendFileId ${backendFileId} (fileId: ${entry.metadata.fileId}) not found in Google Drive - will be removed from database`);
-                return null;
-              }
-            });
-            
-            const verifiedBatch = await Promise.all(verificationPromises);
-            verifiedBatch.forEach(backendFileId => {
-              if (backendFileId) {
-                verifiedBackendFileIds.add(backendFileId);
-              }
-            });
+          for (const entry of userMetadata) {
+            const publicToken = entry.metadata.publicToken;
+            if (publicToken) {
+              // publicToken is a string (might be JSON stringified, but we compare as-is)
+              // Add to verified set - this is the source of truth from public index
+              verifiedPublicTokens.add(publicToken);
+            }
           }
-          
-          console.log(`✅ [Cleanup] Verified ${verifiedBackendFileIds.size} of ${userMetadata.length} file(s) exist in Google Drive for ${pnIdentifier} (by backendFileId)`);
+          console.log(`✅ [Cleanup] Built verified set with ${verifiedPublicTokens.size} publicToken(s) from public index for ${pnIdentifier}`);
         }
         
-        // Find orphaned files: in database but NOT in verified set
-        // Compare by backendFileId (Google Drive file ID), not fileId (internal ID)
-        const orphanedFiles = dbFiles.rows
-          .filter((row: any) => {
-            const metadata = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
-            // Extract backendFileId from database metadata
-            const dbBackendFileId = metadata.backendFileId || 
-                                   metadata.googleDriveFileId || 
-                                   row.file_id; // Fallback to file_id if no backendFileId
-            const isOrphaned = !verifiedBackendFileIds.has(dbBackendFileId);
-            if (isOrphaned) {
-              console.log(`🔍 [Cleanup] File ${row.file_id} (backendFileId: ${dbBackendFileId}) not in verified set - marking as orphaned`);
-            }
-            return isOrphaned;
-          })
-          .map((row: any) => row.file_id);
+        // Compare database files by publicToken (simple field match)
+        // If publicToken is NOT in verified set, file was deleted from Google Drive - remove it
+        const orphanedFiles: string[] = [];
+        for (const row of dbFiles.rows) {
+          const metadata = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+          const dbPublicToken = metadata.publicToken;
+          
+          if (!dbPublicToken) {
+            // File has no publicToken - skip cleanup for this file (might be private or old format)
+            console.log(`⚠️ [Cleanup] File ${row.file_id} has no publicToken - skipping (keep file)`);
+            continue;
+          }
+          
+          // Simple field match: if publicToken is in verified set, keep file
+          if (verifiedPublicTokens.has(dbPublicToken)) {
+            // File's publicToken exists in public index - keep it
+            continue;
+          } else {
+            // File's publicToken NOT in public index - file was deleted from Google Drive, remove it
+            orphanedFiles.push(row.file_id);
+            const tokenPreview = typeof dbPublicToken === 'string' ? dbPublicToken.substring(0, 20) : String(dbPublicToken).substring(0, 20);
+            console.log(`🗑️ [Cleanup] File ${row.file_id} (publicToken: ${tokenPreview}...) not in public index - will remove`);
+          }
+        }
         
         // Remove orphaned files from database
         if (orphanedFiles.length > 0) {
@@ -562,7 +543,7 @@ export class GoogleDriveSyncService {
           }
           console.log(`✅ [Cleanup] Cleaned up ${orphanedFiles.length} orphaned file(s) for ${pnIdentifier}`);
         } else {
-          console.log(`✅ [Cleanup] No orphaned files for ${pnIdentifier} (${dbFiles.rows.length} files in DB match verified Google Drive files by backendFileId)`);
+          console.log(`✅ [Cleanup] No orphaned files for ${pnIdentifier} (${dbFiles.rows.length} files in DB match public index by publicToken)`);
         }
       }
 
