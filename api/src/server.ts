@@ -100,9 +100,10 @@ const authLimiter = rateLimit({
 });
 
 // OAuth token exchange rate limiting (more lenient - users may need multiple attempts during setup)
+// Users may unlock multiple pN accounts, so we need a higher limit
 const oauthTokenLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 30, // Allow more OAuth token exchanges (users may connect multiple accounts)
+  max: 50, // Increased from 30 to 50 - users may unlock multiple pN accounts
   message: 'Too many OAuth token requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -9118,7 +9119,8 @@ class ProductionServer {
 
     // POST /oauth/token - Token endpoint
     // Exchange authorization code for access token
-    this.app.post('/oauth/token', async (req, res) => {
+    // Use lenient rate limiter for OAuth token exchange (users may unlock multiple times during setup)
+    this.app.post('/oauth/token', oauthTokenLimiter, async (req, res) => {
       try {
         const { code, client_id, redirect_uri, grant_type, age_shared } = req.body;
 

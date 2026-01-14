@@ -91,6 +91,58 @@ export class GoogleDriveSyncService {
   }
 
   /**
+   * Verify if a file exists in Google Drive
+   * @param accessToken Service account access token
+   * @param googleDriveFileId Google Drive file ID to verify
+   * @returns true if file exists and is not trashed, false if not found, true if permission denied (assume exists)
+   */
+  private async verifyFileExists(accessToken: string, googleDriveFileId: string): Promise<boolean> {
+    try {
+      const response = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${googleDriveFileId}?fields=id,trashed`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (response.status === 404) {
+        // File doesn't exist
+        console.log(`🗑️ [verifyFileExists] File ${googleDriveFileId} not found (404)`);
+        return false;
+      }
+
+      if (response.status === 403 || response.status === 401) {
+        // Permission denied - file might be private or service account doesn't have access
+        // For now, assume it exists (service account should have access to pN folders)
+        console.warn(`⚠️ [verifyFileExists] Permission denied for ${googleDriveFileId} (${response.status}) - assuming exists`);
+        return true;
+      }
+
+      if (!response.ok) {
+        // Other error - assume file exists to avoid false positives
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.warn(`⚠️ [verifyFileExists] Error ${response.status} for ${googleDriveFileId}: ${errorText.substring(0, 100)} - assuming exists`);
+        return true;
+      }
+
+      const fileData = await response.json() as { id?: string; trashed?: boolean };
+      // File exists and is not trashed
+      const exists = !fileData.trashed;
+      if (!exists) {
+        console.log(`🗑️ [verifyFileExists] File ${googleDriveFileId} is trashed`);
+      }
+      return exists;
+    } catch (error) {
+      // On error (network, etc.), assume file exists to avoid false positives
+      console.warn(`⚠️ [verifyFileExists] Error verifying ${googleDriveFileId}:`, error instanceof Error ? error.message : error, '- assuming exists');
+      return true;
+    }
+  }
+
+  /**
    * Scan Google Drive for all pN folders and aggregate public metadata
    */
   async syncFromGoogleDrive(): Promise<void> {
@@ -438,20 +490,57 @@ export class GoogleDriveSyncService {
           [pnIdentifier]
         );
         
-        // Get files that exist in Google Drive (what we just synced)
-        // If user has empty index, this will be an empty set (correct - no public files)
-        const googleDriveFileIds = new Set(
-          allMetadata
-            .filter(m => m.pnIdentifier === pnIdentifier)
-            .map(m => m.metadata.fileId)
-        );
+        // Get files from public index for this user
+        const userMetadata = allMetadata.filter(m => m.pnIdentifier === pnIdentifier);
         
-        console.log(`🔍 [Cleanup] User ${pnIdentifier}: ${dbFiles.rows.length} files in DB, ${googleDriveFileIds.size} files in Google Drive index`);
+        console.log(`🔍 [Cleanup] User ${pnIdentifier}: ${dbFiles.rows.length} files in DB, ${userMetadata.length} files in Google Drive index`);
         
-        // Find orphaned files: in database but NOT in Google Drive
+        // Verify each file in the public index exists in Google Drive
+        // Build a set of verified fileIds (from public index) that have verified googleDriveFileIds
+        const verifiedFileIds = new Set<string>();
+        
+        if (userMetadata.length > 0) {
+          console.log(`🔍 [Cleanup] Verifying ${userMetadata.length} file(s) from public index for ${pnIdentifier}...`);
+          
+          // Process files in batches to avoid rate limiting
+          const batchSize = 10;
+          for (let i = 0; i < userMetadata.length; i += batchSize) {
+            const batch = userMetadata.slice(i, i + batchSize);
+            const verificationPromises = batch.map(async (entry) => {
+              // Extract googleDriveFileId from metadata
+              // Try backendFileId first (set during sync), then googleDriveFileId, then fallback to fileId
+              const googleDriveFileId = (entry.metadata as any).backendFileId || 
+                                       (entry.metadata as any).googleDriveFileId || 
+                                       entry.metadata.fileId;
+              
+              // Verify the file exists in Google Drive
+              const exists = await this.verifyFileExists(accessToken, googleDriveFileId);
+              
+              if (exists) {
+                // File exists - add its fileId to verified set
+                return entry.metadata.fileId;
+              } else {
+                // File doesn't exist - don't add to verified set
+                console.log(`🗑️ [Cleanup] File ${entry.metadata.fileId} (googleDriveFileId: ${googleDriveFileId}) not found in Google Drive - will be removed from database`);
+                return null;
+              }
+            });
+            
+            const verifiedBatch = await Promise.all(verificationPromises);
+            verifiedBatch.forEach(fileId => {
+              if (fileId) {
+                verifiedFileIds.add(fileId);
+              }
+            });
+          }
+          
+          console.log(`✅ [Cleanup] Verified ${verifiedFileIds.size} of ${userMetadata.length} file(s) exist in Google Drive for ${pnIdentifier}`);
+        }
+        
+        // Find orphaned files: in database but NOT in verified set
         const orphanedFiles = dbFiles.rows
           .map((r: any) => r.file_id)
-          .filter((fileId: string) => !googleDriveFileIds.has(fileId));
+          .filter((fileId: string) => !verifiedFileIds.has(fileId));
         
         // Remove orphaned files from database
         if (orphanedFiles.length > 0) {
@@ -461,7 +550,7 @@ export class GoogleDriveSyncService {
           }
           console.log(`✅ [Cleanup] Cleaned up ${orphanedFiles.length} orphaned file(s) for ${pnIdentifier}`);
         } else {
-          console.log(`✅ [Cleanup] No orphaned files for ${pnIdentifier} (${dbFiles.rows.length} files in DB match Google Drive)`);
+          console.log(`✅ [Cleanup] No orphaned files for ${pnIdentifier} (${dbFiles.rows.length} files in DB match verified Google Drive files)`);
         }
       }
 
