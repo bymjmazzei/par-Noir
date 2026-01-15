@@ -148,14 +148,13 @@ export class GoogleDriveProxyService {
     const now = Date.now();
     const expiresAt = token.expires_at || (token.expires_in ? now + (token.expires_in * 1000) : now + 3600000);
     
-    // Always try to refresh if token is expired or close to expiring
-    // Also refresh if token is older than 30 minutes (tokens typically expire after 1 hour)
-    // OR if expires_at is in the past (force refresh)
-    const tokenAge = expiresAt - now;
+    // Only refresh if token is expired or expires within 5 minutes
+    // Don't refresh unnecessarily - tokens are valid for 1 hour, so only refresh when needed
     const isExpired = expiresAt < now;
-    const shouldRefresh = isExpired || expiresAt < now + 60000 || tokenAge < 1800000; // Refresh if expired, expires in < 1 min, or age < 30 min
+    const expiresSoon = expiresAt < now + 300000; // 5 minutes
+    const shouldRefresh = isExpired || expiresSoon;
     
-    console.log(`[GoogleDriveProxy] Token check for accountId: ${accountId || 'default'}, expiresAt: ${expiresAt}, now: ${now}, age: ${tokenAge}ms, shouldRefresh: ${shouldRefresh}`);
+    console.log(`[GoogleDriveProxy] Token check for accountId: ${accountId || 'default'}, expiresAt: ${new Date(expiresAt).toISOString()}, now: ${new Date(now).toISOString()}, isExpired: ${isExpired}, expiresSoon: ${expiresSoon}, shouldRefresh: ${shouldRefresh}`);
     
     // Only refresh if token is expired or about to expire
     // Don't refresh unnecessarily - the stored token is valid if it's not expired
@@ -209,15 +208,27 @@ export class GoogleDriveProxyService {
         return refreshedToken.access_token;
       } catch (error: any) {
         console.error(`[GoogleDriveProxy] Failed to refresh Google Drive token:`, error.message || error);
-        // If refresh fails, try using the existing token anyway (it might still be valid)
-        // But log a warning
-        console.warn(`[GoogleDriveProxy] Token refresh failed, attempting to use existing token`);
-        // Don't throw - try the existing token first
+        
+        // If refresh fails and token is expired, throw error immediately
+        // Don't try to use expired token - user needs to reconnect
+        if (isExpired) {
+          throw new Error(`Google Drive authentication failed. Your Google Drive connection has expired. Please reconnect your Google Drive account in the dashboard. Error: ${error.message || 'Token refresh failed'}`);
+        }
+        
+        // If token is still valid but refresh failed, try using existing token
+        // This handles temporary network issues
+        console.warn(`[GoogleDriveProxy] Token refresh failed but token is still valid, using existing token`);
       }
     }
 
     // Return the access token (either refreshed or original)
     const finalToken = token.access_token;
+    
+    // If token is expired and we didn't refresh, throw error
+    if (isExpired && !shouldRefresh) {
+      throw new Error('Google Drive access token has expired. Please reconnect your Google Drive account in the dashboard.');
+    }
+    
     console.log(`[GoogleDriveProxy] Returning access token. Length: ${finalToken?.length || 0}, Prefix: ${finalToken?.substring(0, 20) || 'N/A'}`);
     return finalToken;
   }
