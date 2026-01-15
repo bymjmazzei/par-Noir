@@ -2343,21 +2343,26 @@ export class AggregatorMetadataServiceDB {
               await db.query(`DELETE FROM ${existingTable} WHERE file_id = $1`, [metadata.fileId]);
             }
           } else {
-          // UPDATE: Use jsonb_set to update only non-isPublic fields, preserving isPublic
+          // UPDATE: Use jsonb_set to update only non-isPublic fields, explicitly preserving isPublic
           await db.query(
               `UPDATE ${targetTable} 
              SET metadata = jsonb_set(
                jsonb_set(
                  jsonb_set(
                    jsonb_set(
-                     COALESCE(metadata, '{}'::jsonb),
-                     '{name}', $1::jsonb, true
+                     jsonb_set(
+                       COALESCE(metadata, '{}'::jsonb),
+                       '{name}', $1::jsonb, true
+                     ),
+                     '{description}', $2::jsonb, true
                    ),
-                   '{description}', $2::jsonb, true
+                   '{backendFileId}', $3::jsonb, true
                  ),
-                 '{backendFileId}', $3::jsonb, true
+                 '{fileType}', $4::jsonb, true
                ),
-               '{fileType}', $4::jsonb, true
+               '{isPublic}',
+               COALESCE((metadata->>'isPublic')::jsonb, 'true'::jsonb),
+               false
              ),
              pn_identifier = COALESCE($5, pn_identifier),
              updated_at = NOW()

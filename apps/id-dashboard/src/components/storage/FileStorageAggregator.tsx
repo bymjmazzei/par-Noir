@@ -1173,6 +1173,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         (file.backendFileId ? fileMetadataMap.get(file.backendFileId) : undefined);
 
       if (metadata) {
+        // File in database - use database state
         if (metadata.isPublic === true) {
           return 'public';
         }
@@ -1187,19 +1188,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
       }
 
+      // File not in database - check companion metadata or file properties
+      // Check if file has visibility property (from companion metadata)
+      if ((file as any).visibility === 'public') {
+        return 'public';
+      }
+      
+      // Check if file has publicToken (indicates it was public)
+      if ((file as any).publicToken) {
+        return 'public';
+      }
+
+      // Check share token cache
       const cacheKeyPrimary = makeShareTokenCacheKey(file.backend || activeBackendId || 'google_drive', file.backendFileId);
       const cacheKeyFallback = makeShareTokenCacheKey(file.backend || activeBackendId || 'google_drive', file.id);
       if (shareTokenCache.current.has(cacheKeyPrimary) || shareTokenCache.current.has(cacheKeyFallback)) {
         return 'public';
       }
 
-      if ((file as any).visibility === 'public') {
-        return 'public';
-      }
-
+      // Default to private only if truly unknown
       return 'private';
     },
-    [fileMetadataMap]
+    [fileMetadataMap, activeBackendId]
   );
 
   const deriveIndexingPermissions = React.useCallback(
@@ -5352,6 +5362,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             // Preserve existing schema metadata (static/auto-extracted fields)
             const existingSchema = (currentMetadata as any)?.schema || {};
             
+            // CRITICAL: Preserve existing companion metadata visibility when database state unavailable
+            // If file not in database (currentMetadata.isPublic undefined), read from companion metadata
+            const existingVisibility = (editingFile as any).metadata?.visibility || 
+              (editingFile as any)?.companionMetadata?.visibility ||
+              ((editingFile as any).visibility);
+            
+            // Determine visibility: use existing if available, otherwise use database state, default to private
+            let visibility: 'public' | 'private' = 'private';
+            if (existingVisibility === 'public' || existingVisibility === 'private') {
+              visibility = existingVisibility;
+            } else if (currentMetadata.isPublic !== undefined) {
+              visibility = currentMetadata.isPublic ? 'public' : 'private';
+            } else if ((editingFile as any).publicToken || currentMetadata.publicToken) {
+              // File has publicToken - it was public
+              visibility = 'public';
+            }
+            
             // Update companion metadata file
             const companionMetadata: CompanionMetadata = {
               fileId: editingFile.id,
@@ -5360,7 +5387,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               originalName: editForm.name,
               mimeType: editingFile.mimeType || 'application/octet-stream',
               size: parseInt(editingFile.size?.toString() || '0', 10),
-              visibility: currentMetadata.isPublic ? 'public' : 'private',
+              visibility: visibility,
               uploadedAt: currentMetadata.uploadDate || new Date().toISOString(),
               owner: {
                 did: resolvedAuth.publicKey.startsWith('did:') ? resolvedAuth.publicKey : `did:key:${resolvedAuth.publicKey}`,

@@ -478,101 +478,42 @@ export class GoogleDriveSyncService {
       console.log(`🔍 [Cleanup] Total folders found: ${foldersFound.size}`);
       console.log(`🔍 [Cleanup] Total users in database: ${dbUsers.size}`);
 
-      // Case 1: Users whose index was successfully read (even if empty) - remove individual orphaned files
-      // CRITICAL: Use successfullyReadIndexUsers, not successfullyScannedUsers
-      // This ensures users with empty indexes are handled correctly (no files = empty set, not all files orphaned)
+      // Case 1: Users whose index exists - keep ALL files
+      // SIMPLE: If index exists, all files are valid (no individual file checking needed)
+      let case1Users = 0;
       for (const pnIdentifier of successfullyReadIndexUsers) {
-        // Get all files currently in database for this user (including metadata to extract backendFileId)
+        case1Users++;
+        // Get count of files for logging
         const dbFiles = await db.query(
-          `SELECT file_id, metadata FROM aggregator_media WHERE pn_identifier = $1
-           UNION SELECT file_id, metadata FROM aggregator_thoughts WHERE pn_identifier = $1
-           UNION SELECT file_id, metadata FROM aggregator_collections WHERE pn_identifier = $1`,
+          `SELECT COUNT(*) as count FROM aggregator_media WHERE pn_identifier = $1
+           UNION ALL SELECT COUNT(*) FROM aggregator_thoughts WHERE pn_identifier = $1
+           UNION ALL SELECT COUNT(*) FROM aggregator_collections WHERE pn_identifier = $1`,
           [pnIdentifier]
         );
-        
-        // Get files from public index for this user
-        const userMetadata = allMetadata.filter(m => m.pnIdentifier === pnIdentifier);
-        
-        console.log(`🔍 [Cleanup] User ${pnIdentifier}: ${dbFiles.rows.length} files in DB, ${userMetadata.length} files in Google Drive index`);
-        
-        // Build set of publicTokens from public index (files that should exist)
-        // publicToken is static and stored in both public index and database - simple field match
-        const verifiedPublicTokens = new Set<string>();
-        if (userMetadata.length > 0) {
-          for (const entry of userMetadata) {
-            const publicToken = entry.metadata.publicToken;
-            if (publicToken) {
-              // publicToken is a string (might be JSON stringified, but we compare as-is)
-              // Add to verified set - this is the source of truth from public index
-              verifiedPublicTokens.add(publicToken);
-            }
-          }
-          console.log(`✅ [Cleanup] Built verified set with ${verifiedPublicTokens.size} publicToken(s) from public index for ${pnIdentifier}`);
-        }
-        
-        // Compare database files by publicToken (simple field match)
-        // If publicToken is NOT in verified set, file was deleted from Google Drive - remove it
-        const orphanedFiles: string[] = [];
-        for (const row of dbFiles.rows) {
-          const metadata = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
-          const dbPublicToken = metadata.publicToken;
-          
-          if (!dbPublicToken) {
-            // File has no publicToken - skip cleanup for this file (might be private or old format)
-            console.log(`⚠️ [Cleanup] File ${row.file_id} has no publicToken - skipping (keep file)`);
-            continue;
-          }
-          
-          // Simple field match: if publicToken is in verified set, keep file
-          if (verifiedPublicTokens.has(dbPublicToken)) {
-            // File's publicToken exists in public index - keep it
-            continue;
-          } else {
-            // File's publicToken NOT in public index - file was deleted from Google Drive, remove it
-            orphanedFiles.push(row.file_id);
-            const tokenPreview = typeof dbPublicToken === 'string' ? dbPublicToken.substring(0, 20) : String(dbPublicToken).substring(0, 20);
-            console.log(`🗑️ [Cleanup] File ${row.file_id} (publicToken: ${tokenPreview}...) not in public index - will remove`);
-          }
-        }
-        
-        // Remove orphaned files from database
-        if (orphanedFiles.length > 0) {
-          console.log(`🧹 [Cleanup] Removing ${orphanedFiles.length} orphaned file(s) for ${pnIdentifier}:`, orphanedFiles.slice(0, 5));
-          for (const fileId of orphanedFiles) {
-            await metadataService.removeMetadata(fileId);
-          }
-          console.log(`✅ [Cleanup] Cleaned up ${orphanedFiles.length} orphaned file(s) for ${pnIdentifier}`);
-        } else {
-          console.log(`✅ [Cleanup] No orphaned files for ${pnIdentifier} (${dbFiles.rows.length} files in DB match public index by publicToken)`);
-        }
+        const totalFiles = dbFiles.rows.reduce((sum: number, row: any) => sum + parseInt(row.count || '0', 10), 0);
+        console.log(`✅ [Cleanup] User ${pnIdentifier}: Index exists - keeping all ${totalFiles} file(s)`);
       }
 
-      // Case 2: Users whose folders don't exist - all files are orphaned
-      // (pnIdentifier in database but folder not found in Google Drive)
+      // Case 2: Users whose index doesn't exist - remove ALL files
+      // SIMPLE: If index doesn't exist, user deleted their folder - remove all files
       let case2Processed = 0;
       let case2Removed = 0;
       for (const pnIdentifier of dbUsers) {
         if (successfullyReadIndexUsers.has(pnIdentifier)) {
-          continue; // Already handled in Case 1
+          continue; // Already handled in Case 1 (index exists)
         }
         
-        if (!foldersFound.has(pnIdentifier)) {
-          // Folder doesn't exist - all files for this user are orphaned
-          case2Processed++;
-          console.log(`🔍 [Cleanup Case 2] User ${pnIdentifier}: folder not found, removing all files`);
-          // Use existing removeAllMetadataForUser method
-          const removed = await metadataService.removeAllMetadataForUser(pnIdentifier);
-          if (removed > 0) {
-            case2Removed += removed;
-            console.log(`🧹 [Cleanup Case 2] Cleaned up all ${removed} file(s) for ${pnIdentifier} (folder deleted)`);
-          }
-        } else {
-          // Folder exists but we couldn't scan it (error reading index), skip cleanup for safety
-          console.log(`ℹ️ [Cleanup] User ${pnIdentifier}: folder exists but index couldn't be read - skipping cleanup (safe default)`);
+        // Index doesn't exist - user's folder was deleted - remove all files
+        case2Processed++;
+        console.log(`🗑️ [Cleanup] User ${pnIdentifier}: Index not found - removing all files (folder deleted)`);
+        const removed = await metadataService.removeAllMetadataForUser(pnIdentifier);
+        if (removed > 0) {
+          case2Removed += removed;
+          console.log(`✅ [Cleanup] Removed ${removed} file(s) for ${pnIdentifier} (index/folder deleted)`);
         }
       }
       
-      console.log(`✅ [Cleanup] Complete - Case 1: ${successfullyReadIndexUsers.size} users processed, Case 2: ${case2Processed} users processed (${case2Removed} files removed)`);
+      console.log(`✅ [Cleanup] Complete - Case 1: ${case1Users} users (indexes exist, kept all files), Case 2: ${case2Processed} users processed (${case2Removed} files removed)`);
 
     } catch (error) {
       console.error('❌ Google Drive sync failed:', error);
