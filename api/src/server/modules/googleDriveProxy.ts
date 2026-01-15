@@ -189,6 +189,23 @@ export class GoogleDriveProxyService {
               refresh_token: preservedRefreshToken,
               refreshToken: preservedRefreshToken
             };
+          } else {
+            // Account not found in array - this shouldn't happen, but log and try to use first account
+            console.warn(`[GoogleDriveProxy] Account ${accountId} not found in googleDriveAccounts array. Available accounts:`, credentials.googleDriveAccounts.map((acc: any) => ({ backendId: acc.backendId, keyPrefix: acc.keyPrefix })));
+            // Try to update first account as fallback
+            if (credentials.googleDriveAccounts.length > 0) {
+              credentials.googleDriveAccounts[0] = {
+                ...credentials.googleDriveAccounts[0],
+                access_token: refreshedToken.access_token,
+                accessToken: refreshedToken.access_token,
+                expires_at: refreshedToken.expires_in 
+                  ? Date.now() + (refreshedToken.expires_in * 1000)
+                  : undefined,
+                expires_in: refreshedToken.expires_in,
+                refresh_token: preservedRefreshToken,
+                refreshToken: preservedRefreshToken
+              };
+            }
           }
         } else if (credentials.googleDrive) {
           credentials.googleDrive = {
@@ -200,10 +217,25 @@ export class GoogleDriveProxyService {
             expires_in: refreshedToken.expires_in,
             refresh_token: preservedRefreshToken
           };
+        } else if (credentials.googleDriveAccounts && credentials.googleDriveAccounts.length > 0) {
+          // Fallback: if no accountId but we have accounts, update the first one
+          credentials.googleDriveAccounts[0] = {
+            ...credentials.googleDriveAccounts[0],
+            access_token: refreshedToken.access_token,
+            accessToken: refreshedToken.access_token,
+            expires_at: refreshedToken.expires_in 
+              ? Date.now() + (refreshedToken.expires_in * 1000)
+              : undefined,
+            expires_in: refreshedToken.expires_in,
+            refresh_token: preservedRefreshToken,
+            refreshToken: preservedRefreshToken
+          };
         }
         
+        // CRITICAL: Always save credentials after refresh to persist the refresh token
         // CRITICAL: Use the pn identifier from the credentials record, not userDid
         await storageCredentialsService.upsertCredentials(credentialsRecord.identityId, credentials);
+        console.log(`[GoogleDriveProxy] Credentials saved after token refresh for accountId: ${accountId || 'default'}`);
         
         return refreshedToken.access_token;
       } catch (error: any) {
