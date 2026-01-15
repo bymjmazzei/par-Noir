@@ -197,6 +197,23 @@ export class PreferencesService {
             preferences
           );
           
+          // Update "Current" sheet in preferences.xlsx with current preferences state
+          try {
+            const { PreferencesSheetsService } = await import('./preferencesSheetsService');
+            const spreadsheetId = await PreferencesSheetsService.getOrCreatePreferencesSheet(
+              accessToken,
+              metadataFolderId
+            );
+            await PreferencesSheetsService.updateCurrentPreferences(
+              accessToken,
+              spreadsheetId,
+              updatedPreferences
+            );
+          } catch (sheetError) {
+            // Log error but don't fail the preference update
+            console.warn('[PreferencesService] Failed to update Current sheet in preferences.xlsx:', sheetError);
+          }
+          
           // Refresh cache with updated preferences (so future requests use new preferences)
           const normalizedPnIdentifier = identifier.startsWith('pn-') ? identifier : `pn-${identifier}`;
           this.preferencesCache.set(normalizedPnIdentifier, {
@@ -247,6 +264,23 @@ export class PreferencesService {
         updatedPreferences,
         preferences
       );
+      
+      // Update "Current" sheet in preferences.xlsx with current preferences state
+      try {
+        const { PreferencesSheetsService } = await import('./preferencesSheetsService');
+        const spreadsheetId = await PreferencesSheetsService.getOrCreatePreferencesSheet(
+          accessToken,
+          metadataFolderId
+        );
+        await PreferencesSheetsService.updateCurrentPreferences(
+          accessToken,
+          spreadsheetId,
+          updatedPreferences
+        );
+      } catch (sheetError) {
+        // Log error but don't fail the preference update
+        console.warn('[PreferencesService] Failed to update Current sheet in preferences.xlsx:', sheetError);
+      }
       
       // Cache the new preferences
       const normalizedPnIdentifier = identifier.startsWith('pn-') ? identifier : `pn-${identifier}`;
