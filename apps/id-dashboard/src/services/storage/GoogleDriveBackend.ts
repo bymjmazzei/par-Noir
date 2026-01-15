@@ -655,9 +655,41 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         console.error(`   All results:`, searchData.files.map((f: any) => ({ id: f.id.substring(0, 12) + '...', name: f.name })));
         // Continue to create new folder below
       } else {
-        // Use the first valid folder
-        let folderId = validFolders[0].id;
-        const folderInfo = validFolders[0];
+        // If multiple valid folders found, use the most recently modified one to avoid duplicates
+        // This handles cases where folders were created concurrently
+        let folderToUse = validFolders[0];
+        if (validFolders.length > 1) {
+          console.warn(`⚠️ [getOrCreateFolder] Found ${validFolders.length} folders with same name - using most recently modified`);
+          // Fetch modifiedTime for all folders to pick the newest
+          try {
+            const folderDetails = await Promise.all(
+              validFolders.map(async (f: any) => {
+                const detailResponse = await this.makeRequest(
+                  `https://www.googleapis.com/drive/v3/files/${f.id}?fields=id,name,modifiedTime`
+                );
+                if (detailResponse.ok) {
+                  const detail = await detailResponse.json();
+                  return { ...f, modifiedTime: detail.modifiedTime };
+                }
+                return { ...f, modifiedTime: null };
+              })
+            );
+            // Sort by modifiedTime (newest first) and use the first one
+            folderDetails.sort((a, b) => {
+              if (!a.modifiedTime) return 1;
+              if (!b.modifiedTime) return -1;
+              return new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime();
+            });
+            folderToUse = folderDetails[0];
+            console.log(`✅ [getOrCreateFolder] Selected folder: "${folderToUse.name}" (most recently modified)`);
+          } catch (error) {
+            console.warn(`⚠️ [getOrCreateFolder] Could not fetch folder details, using first result:`, error);
+          }
+        }
+        
+        // Use the selected folder
+        let folderId = folderToUse.id;
+        const folderInfo = folderToUse;
         
         // FINAL VALIDATION: Check name matches (allow _metadata if we're looking for it)
         const isMetadataFolder = folderInfo.name === '_metadata';
@@ -719,8 +751,49 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       }
     }
 
+    // CRITICAL: Final check before creating - another process might have created the folder
+    // This prevents duplicate folder creation in race conditions
+    console.log(`🔍 [getOrCreateFolder] Final check before creating folder: ${folderName}`);
+    try {
+      const finalCheckQuery = pnIdentifier
+        ? `name='${sanitizedFolderName}' and name!='_metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`
+        : parentFolderId
+        ? `name='${sanitizedFolderName}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
+        : `name='${sanitizedFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      
+      const finalCheckResponse = await this.makeRequest(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(finalCheckQuery)}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc&pageSize=1`
+      );
+      
+      if (finalCheckResponse.ok) {
+        const finalCheckData = await finalCheckResponse.json();
+        if (finalCheckData.files && finalCheckData.files.length > 0) {
+          const foundFolder = finalCheckData.files[0];
+          // Validate it's the correct folder
+          const isCorrectFolder = pnIdentifier
+            ? foundFolder.name === `par Noir - ${pnIdentifier}`
+            : folderName === '_metadata'
+            ? foundFolder.name === '_metadata'
+            : foundFolder.name === folderName;
+          
+          if (isCorrectFolder) {
+            console.log(`✅ [getOrCreateFolder] Found existing folder in final check: "${foundFolder.name}" (ID: ${foundFolder.id.substring(0, 12)}...)`);
+            // Cache it if it's a pN folder
+            if (pnIdentifier && !parentFolderId) {
+              this.pnFolderCache.set(pnIdentifier, foundFolder.id);
+              this.parNoirFolderId = foundFolder.id;
+              this.saveFolderCache();
+            }
+            return foundFolder.id;
+          }
+        }
+      }
+    } catch (finalCheckError) {
+      console.warn(`⚠️ [getOrCreateFolder] Final check failed, proceeding with creation:`, finalCheckError);
+    }
+
     // Create folder if it doesn't exist
-    console.log(`📁 Creating new folder: ${folderName}${parentFolderId ? ' inside parent folder' : ''}`);
+    console.log(`📁 [getOrCreateFolder] Creating new folder: ${folderName}${parentFolderId ? ' inside parent folder' : ''}`);
     const createBody: any = {
       name: folderName,
       mimeType: 'application/vnd.google-apps.folder'

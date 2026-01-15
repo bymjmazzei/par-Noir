@@ -4929,16 +4929,8 @@ class ProductionServer {
                 console.warn(`[StorageCredentials PUT] Failed to initialize messaging_ledger.xlsx:`, msgError?.message || msgError);
               }
               
-              // Initialize preferences.xlsx (for logging preference interactions)
-              try {
-                const { PreferencesSheetsService } = await import('./server/modules/preferencesSheetsService');
-                await PreferencesSheetsService.getOrCreatePreferencesSheet(accessToken, metadataFolderId);
-                console.log(`[StorageCredentials PUT] Initialized preferences.xlsx for identityId: ${sanitizedIdentityId}`);
-              } catch (prefSheetError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize preferences.xlsx:`, prefSheetError?.message || prefSheetError);
-              }
-              
               // Note: public-file-index.xlsx and owner-file-index.xlsx are initialized in initializeIndexFiles() above (line 4846)
+              // Note: preferences.xlsx is already initialized above (line 4879) - no need to initialize again
               
               // Initialize profile.json
               try {
