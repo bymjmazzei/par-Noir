@@ -124,8 +124,26 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
 
   async connect(credentials: { token: string; email?: string; refreshToken?: string; sessionId?: string }): Promise<void> {
     this.token = credentials.token;
-    this.refreshToken = credentials.refreshToken || null;
     this.userEmail = credentials.email || null;
+    
+    // CRITICAL: Preserve existing refresh token if not provided in new credentials
+    // This prevents losing refresh tokens during token refresh operations
+    let refreshTokenToUse = credentials.refreshToken;
+    if (!refreshTokenToUse && credentials.sessionId) {
+      try {
+        const existing = await IntegrationCredentialManager.getCredentials(
+          this.backendId,
+          credentials.sessionId
+        );
+        if (existing?.refreshToken) {
+          refreshTokenToUse = existing.refreshToken;
+          console.debug('[GoogleDriveBackend] Preserved existing refresh token from storage');
+        }
+      } catch (error) {
+        console.warn('[GoogleDriveBackend] Failed to retrieve existing refresh token:', error);
+      }
+    }
+    this.refreshToken = refreshTokenToUse || null;
     
     // SECURITY: Store credentials encrypted, not in plaintext localStorage
     if (credentials.sessionId) {
@@ -134,7 +152,8 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           this.backendId,
           {
             accessToken: credentials.token,
-            refreshToken: credentials.refreshToken || undefined,
+            // Preserve refresh token - don't set to undefined if we have one
+            refreshToken: refreshTokenToUse || undefined,
             email: credentials.email,
             expiresAt: Date.now() + (3600 * 1000) // Default 1 hour expiry
           },

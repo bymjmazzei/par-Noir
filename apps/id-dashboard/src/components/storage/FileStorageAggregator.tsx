@@ -1050,6 +1050,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       const connectedAt = existingCredential?.connectedAt || new Date().toISOString();
       const nowIso = new Date().toISOString();
       const nextAccessToken = detail?.accessToken ?? existingCredential?.accessToken ?? null;
+      // CRITICAL: Preserve existing refresh token if new one isn't provided
+      // Google doesn't return a new refresh token on refresh, so we must preserve the existing one
       const nextRefreshToken = detail?.refreshToken ?? existingCredential?.refreshToken ?? null;
 
       if (nextAccessToken) {
@@ -1064,13 +1066,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         });
 
         // SECURITY: Store credentials in encrypted storage (if session available)
+        // CRITICAL: Preserve existing refresh token - don't set to undefined if null
+        // IntegrationCredentialManager.storeCredentials() will merge with existing, but
+        // we should still pass the existing token explicitly to be safe
         if (authenticatedUser?.id) {
           try {
             await IntegrationCredentialManager.storeCredentials(
               backendId,
               {
                 accessToken: nextAccessToken,
-                refreshToken: nextRefreshToken || undefined,
+                // Preserve existing refresh token if new one isn't provided
+                // Pass undefined only if we explicitly want to clear it, otherwise preserve existing
+                refreshToken: nextRefreshToken ?? existingCredential?.refreshToken ?? undefined,
                 email: resolvedEmail || undefined,
                 expiresAt: Date.now() + (3600 * 1000) // 1 hour default
               },

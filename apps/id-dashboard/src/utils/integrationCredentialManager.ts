@@ -162,9 +162,20 @@ export class IntegrationCredentialManager {
       throw new Error('User credentials not available - cannot encrypt integration credentials');
     }
 
+    // CRITICAL: Merge with existing credentials to preserve fields not provided
+    // This prevents overwriting refresh tokens during token refresh operations
+    const existing = await this.getCredentials(integrationId, sessionId);
+    const merged: IntegrationCredentials = {
+      ...existing,  // Preserve existing fields
+      ...credentials,  // Override with new fields
+      // CRITICAL: Preserve refreshToken if not provided in new credentials
+      // This is essential because Google doesn't return a new refresh token on refresh
+      refreshToken: credentials.refreshToken ?? existing?.refreshToken ?? credentials.refreshToken
+    };
+
     // Encrypt credentials
     const encrypted = await this.encryptCredentials(
-      credentials,
+      merged,
       sessionId,
       userCredentials.pnName,
       userCredentials.passcode
