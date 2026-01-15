@@ -7370,31 +7370,14 @@ class ProductionServer {
       }
     });
 
-    // POST /api/aggregator/metadata-index/sync - Manually trigger Google Drive sync
+    // POST /api/aggregator/metadata-index/sync - DISABLED (Google Drive sync service removed)
+    // Files are added/updated/removed via API calls only - no background sync needed
     this.app.post('/api/aggregator/metadata-index/sync', async (req, res) => {
-      try {
-        const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
-        const syncService = GoogleDriveSyncService.getInstance();
-
-        console.log('🔄 Manual sync triggered via API');
-        
-        // Trigger sync (non-blocking)
-        syncService.syncFromGoogleDrive().catch(error => {
-          console.error('❌ Manual sync failed:', error);
-        });
-
-        res.json({
-          success: true,
-          message: 'Sync started',
-          note: 'Sync runs in background. Check logs for progress.'
-        });
-      } catch (error: any) {
-        console.error('Error triggering sync:', error);
-        res.status(500).json({ 
-          error: 'Failed to trigger sync',
-          message: error.message 
-        });
-      }
+      return res.status(410).json({
+        error: 'Gone',
+        message: 'Google Drive sync service has been removed. Files are managed via API calls only.',
+        note: 'Use PUT /api/aggregator/metadata-index/:fileId to add/update files, or make files private to remove them.'
+      });
     });
 
     // POST /api/aggregator/metadata-index/cleanup - Cleanup disabled (was removing all posts from feeds)
@@ -7500,43 +7483,14 @@ class ProductionServer {
       }
     });
 
-    // POST /api/aggregator/metadata-index/refresh - Clear and rebuild index from Google Drive
+    // POST /api/aggregator/metadata-index/refresh - DISABLED (Google Drive sync service removed)
+    // Files are added/updated/removed via API calls only - no background sync needed
     this.app.post('/api/aggregator/metadata-index/refresh', async (req, res) => {
-      try {
-        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
-        const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
-        const metadataService = AggregatorMetadataServiceDB.getInstance();
-        const syncService = GoogleDriveSyncService.getInstance();
-
-        console.log('🔄 Index refresh triggered via API');
-        
-        // Clear all Google Drive files from database
-        const db = (await import('./server/utils/database')).getDatabasePool();
-        const deleteResult = await db.query(
-          `DELETE FROM aggregator_metadata WHERE metadata->>'backend' LIKE 'google_drive%'`
-        );
-        
-        const deletedCount = deleteResult.rowCount || 0;
-        console.log(`🗑️ Cleared ${deletedCount} files from database`);
-
-        // Trigger fresh sync from Google Drive
-        syncService.syncFromGoogleDrive().catch(error => {
-          console.error('❌ Sync failed during refresh:', error);
-        });
-
-        return res.json({
-          success: true,
-          message: 'Index refresh started',
-          cleared: deletedCount,
-          note: 'Sync runs in background. Check logs for progress.'
-        });
-      } catch (error: any) {
-        console.error('Error refreshing index:', error);
-        return res.status(500).json({ 
-          error: 'Failed to refresh index',
-          message: error.message 
-        });
-      }
+      return res.status(410).json({
+        error: 'Gone',
+        message: 'Google Drive sync service has been removed. Files are managed via API calls only.',
+        note: 'Use PUT /api/aggregator/metadata-index/:fileId to add/update files, or make files private to remove them.'
+      });
     });
 
     // POST /api/auth/google-oauth/token - Exchange authorization code for tokens
@@ -14468,24 +14422,24 @@ class ProductionServer {
     // Start Google Drive sync service (if configured)
     // try {
     //   const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
-    // Start periodic sync for cache cleanup (every 10 minutes)
-    // This ensures orphaned files (deleted from Google Drive) are removed from database cache
-    try {
-      const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
-      const syncService = GoogleDriveSyncService.getInstance();
-      
-      // Start periodic sync (every 10 minutes)
-      // Only if service account is configured
-      if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-        syncService.startPeriodicSync(10);
-        console.log('✅ Google Drive sync enabled - will run cleanup every 10 minutes');
-      } else {
-        console.log('ℹ️ Google Drive sync disabled - GOOGLE_SERVICE_ACCOUNT_KEY not set');
-      }
-    } catch (error) {
-      console.warn('⚠️ Failed to start Google Drive sync service:', error);
-      // Continue anyway - sync is optional
-    }
+    // Google Drive sync service disabled - files are added/updated/removed via API calls only
+    // No background sync needed - aggregate index built from explicit user actions
+    // try {
+    //   const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
+    //   const syncService = GoogleDriveSyncService.getInstance();
+    //   
+    //   // Start periodic sync (every 10 minutes)
+    //   // Only if service account is configured
+    //   if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+    //     syncService.startPeriodicSync(10);
+    //     console.log('✅ Google Drive sync enabled - will run cleanup every 10 minutes');
+    //   } else {
+    //     console.log('ℹ️ Google Drive sync disabled - GOOGLE_SERVICE_ACCOUNT_KEY not set');
+    //   }
+    // } catch (error) {
+    //   console.warn('⚠️ Failed to start Google Drive sync service:', error);
+    //   // Continue anyway - sync is optional
+    // }
 
     // Warm third-party catalog
     try {
