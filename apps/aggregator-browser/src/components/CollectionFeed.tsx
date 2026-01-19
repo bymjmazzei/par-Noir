@@ -11,8 +11,7 @@ import { EncryptionManager } from '../utils/encryptionManager';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 import { useViewportHeightCSS } from '../hooks/useViewportHeight';
 import { calculateMediaScaling, getContainerDimensions, type MediaDimensions } from '../utils/mediaScaling';
-
-const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+import { API_ENDPOINT } from '../config/api';
 
 interface CollectionFeedProps {
   collectionFileIds: string[];
@@ -59,7 +58,7 @@ export function CollectionFeed({
         if (fileMetadata.has(fileId)) continue;
         
         try {
-          const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+          const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
             headers: { 'Authorization': `Bearer ${accessToken}` }
           });
           
@@ -93,7 +92,7 @@ export function CollectionFeed({
         const accessToken = await PNOAuthService.getValidAccessToken();
         if (!accessToken) return null;
         
-        const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
+        const accountsResponse = await fetch(`${API_ENDPOINT}/api/storage/accounts/${userId}`, {
           headers: { 'Authorization': `Bearer ${accessToken}` }
         });
         
@@ -147,7 +146,7 @@ export function CollectionFeed({
         const thumbnailFileId = metadata.thumbnailFileId;
         if (thumbnailFileId) {
           // Load thought thumbnail as image
-          let thumbnailUrl = `${apiEndpoint}/api/drive/files/${thumbnailFileId}?thumbnail=true`;
+          let thumbnailUrl = `${API_ENDPOINT}/api/drive/files/${thumbnailFileId}?thumbnail=true`;
           if (accountIdToUse) {
             thumbnailUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
           }
@@ -237,7 +236,7 @@ export function CollectionFeed({
         // For thought-collection-thumbnails, they ARE the image files, so use download=true
         // For regular images, thumbnail=true might generate a thumbnail, but for collection thumbnails we want the full file
         const useDownload = isThoughtCollectionThumbnail;
-        let imageUrl = `${apiEndpoint}/api/drive/files/${fileId}?${useDownload ? 'download' : 'thumbnail'}=true`;
+        let imageUrl = `${API_ENDPOINT}/api/drive/files/${fileId}?${useDownload ? 'download' : 'thumbnail'}=true`;
         if (accountIdToUse) {
           imageUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
         }
@@ -292,7 +291,7 @@ export function CollectionFeed({
         }
       } else if (isVideo) {
         // Load video
-        let videoUrl = `${apiEndpoint}/api/drive/files/${fileId}?download=true`;
+        let videoUrl = `${API_ENDPOINT}/api/drive/files/${fileId}?download=true`;
         if (accountIdToUse) {
           videoUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
         }

@@ -10,6 +10,7 @@ import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { accountsCacheService } from '../services/accountsCacheService';
+import { API_ENDPOINT } from '../config/api';
 
 interface CloudFile {
   id: string;
@@ -54,7 +55,6 @@ export function BrowseCloud({ onClose, onUploadClick }: { onClose: () => void; o
       try {
         // Get valid access token (will refresh if expired)
         const accessToken = await PNOAuthService.getValidAccessToken();
-        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
         
         if (!accessToken) {
           console.error('[BrowseCloud] No valid access token available');
@@ -62,7 +62,7 @@ export function BrowseCloud({ onClose, onUploadClick }: { onClose: () => void; o
           return;
         }
         
-        const response = await fetch(`${apiEndpoint}/api/storage/accounts/${userState.pnIdentifier}`, {
+        const response = await fetch(`${API_ENDPOINT}/api/storage/accounts/${userState.pnIdentifier}`, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }
@@ -91,7 +91,6 @@ export function BrowseCloud({ onClose, onUploadClick }: { onClose: () => void; o
 
     setIsLoading(true);
     try {
-      const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const allFiles: CloudFile[] = [];
 
       // Load files from all accounts (API currently returns all files)
@@ -106,7 +105,7 @@ export function BrowseCloud({ onClose, onUploadClick }: { onClose: () => void; o
           return;
         }
         
-        const response = await fetch(`${apiEndpoint}/api/drive/files`, {
+        const response = await fetch(`${API_ENDPOINT}/api/drive/files`, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }
@@ -118,7 +117,7 @@ export function BrowseCloud({ onClose, onUploadClick }: { onClose: () => void; o
             // Get all public file IDs from aggregator index for quick lookup
             const publicFileIds = new Set<string>();
             try {
-              const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index`, {
+              const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index`, {
                 headers: {
                   'Authorization': `Bearer ${accessToken}`
                 }

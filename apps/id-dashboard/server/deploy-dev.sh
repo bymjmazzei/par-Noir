@@ -39,9 +39,9 @@ if [ ! -f .env ]; then
 NODE_ENV=development
 PORT=$PORT
 
-# Google OAuth Configuration
-GOOGLE_CLIENT_ID=43740774041-mtanrvoco9osnvuj40tg46e7lt32cvks.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=your-client-secret-here
+# Google OAuth Configuration - set these to your values
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=https://pn.parnoir.com/auth/google/callback
 
 # Frontend URL

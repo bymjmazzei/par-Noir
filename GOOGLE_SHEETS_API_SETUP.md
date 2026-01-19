@@ -9,7 +9,7 @@ The companion metadata system uses **Google Sheets** to store file metadata, eng
 ### Step 1: Enable Google Sheets API
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Select your project (Project ID: `43740774041` or your project)
+2. Select your project (use your Google Cloud project ID)
 3. Navigate to **"APIs & Services"** → **"Library"**
 4. Search for **"Google Sheets API"**
 5. Click on the **"Google Sheets API"** result
@@ -30,7 +30,7 @@ After enabling the API, try uploading a file again. The companion metadata sheet
 ## Direct Link
 
 You can use this direct link to enable the API for your project:
-- **Project 43740774041**: https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=43740774041
+- Open: https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=YOUR_PROJECT_ID
 
 ## What Gets Created
 

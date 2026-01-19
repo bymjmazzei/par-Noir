@@ -5,6 +5,7 @@
 
 import { CoinbaseProxy } from '../../utils/coinbaseProxy';
 import { FeedService, Feed } from './FeedService';
+import { API_ENDPOINT } from '../../config/api';
 
 export interface Subscription {
   id: string;
@@ -26,7 +27,6 @@ export interface SubscriptionResult {
 }
 
 export class FeedSubscriptionService {
-  private static readonly API_BASE = import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com';
   private static readonly MONTHLY_PRICE = 5.00;
   private static readonly ANNUAL_PRICE = 50.00;
 
@@ -79,7 +79,7 @@ export class FeedSubscriptionService {
       const checkout = await CoinbaseProxy.createCheckout(checkoutData);
 
       // Store subscription request (pending payment)
-      const response = await fetch(`${this.API_BASE}/api/feeds/${feedId}/subscriptions`, {
+      const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/subscriptions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -121,7 +121,7 @@ export class FeedSubscriptionService {
       }
 
       const authenticatedUser = JSON.parse(authenticatedUserStr);
-      const response = await fetch(`${this.API_BASE}/api/feeds/${feedId}/subscriptions`, {
+      const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/subscriptions`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${authenticatedUser.accessToken || ''}`
@@ -146,7 +146,7 @@ export class FeedSubscriptionService {
       }
 
       const authenticatedUser = JSON.parse(authenticatedUserStr);
-      const response = await fetch(`${this.API_BASE}/api/subscriptions`, {
+      const response = await fetch(`${API_ENDPOINT}/api/subscriptions`, {
         headers: {
           'Authorization': `Bearer ${authenticatedUser.accessToken || ''}`
         }
@@ -185,7 +185,7 @@ export class FeedSubscriptionService {
       }
 
       const authenticatedUser = JSON.parse(authenticatedUserStr);
-      const response = await fetch(`${this.API_BASE}/api/subscriptions/confirm`, {
+      const response = await fetch(`${API_ENDPOINT}/api/subscriptions/confirm`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

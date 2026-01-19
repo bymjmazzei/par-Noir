@@ -30,12 +30,12 @@ export const GoogleDriveTest: React.FC = () => {
     };
 
     // Test API Key
-    if (process.env.REACT_APP_GOOGLE_API_KEY || 'AIzaSyBOKyclyG0Uobs0wNCQLSK89XCN2x6NNdk') {
+    if (import.meta.env.VITE_GOOGLE_API_KEY) {
       results.apiKey = true;
     }
 
     // Test Client ID
-    if (process.env.REACT_APP_GOOGLE_DRIVE_CLIENT_ID || '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com') {
+    if (import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID) {
       results.clientId = true;
     }
 
@@ -57,8 +57,8 @@ export const GoogleDriveTest: React.FC = () => {
       await window.gapi.load('client:auth2', async () => {
         try {
           await window.gapi.client.init({
-            apiKey: process.env.REACT_APP_GOOGLE_API_KEY || 'AIzaSyBOKyclyG0Uobs0wNCQLSK89XCN2x6NNdk',
-            clientId: process.env.REACT_APP_GOOGLE_DRIVE_CLIENT_ID || '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com',
+            apiKey: import.meta.env.VITE_GOOGLE_API_KEY,
+            clientId: import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID,
             discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
             scope: 'https://www.googleapis.com/auth/drive.file'
           });
@@ -148,8 +148,8 @@ export const GoogleDriveTest: React.FC = () => {
           <div className="text-blue-400 text-sm">
             <p className="font-medium mb-2">Configuration Details:</p>
             <ul className="space-y-1 text-xs">
-              <li>• API Key: {process.env.REACT_APP_GOOGLE_API_KEY ? 'Set' : 'Not Set'}</li>
-              <li>• Client ID: {process.env.REACT_APP_GOOGLE_DRIVE_CLIENT_ID ? 'Set' : 'Not Set'}</li>
+              <li>• API Key: {import.meta.env.VITE_GOOGLE_API_KEY ? 'Set' : 'Not Set'}</li>
+              <li>• Client ID: {import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID ? 'Set' : 'Not Set'}</li>
               <li>• Current Domain: {window.location.origin}</li>
               <li>• Expected Domains: pn.parnoir.com, par-noir-dashboard.web.app</li>
             </ul>

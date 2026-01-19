@@ -2,7 +2,7 @@ import { PNOAuthService } from './pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
 
-const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+import { API_ENDPOINT } from '../config/api';
 
 interface CollectionData {
   collectionFileIds: string[];
@@ -108,7 +108,7 @@ export async function createCollection(
     });
 
     const encryptedFileName = `${fileName}.encrypted`;
-    const uploadResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+    const uploadResponse = await fetch(`${API_ENDPOINT}/api/drive/files`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -135,7 +135,7 @@ export async function createCollection(
     }
 
     // Create metadata entry
-    const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+    const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',

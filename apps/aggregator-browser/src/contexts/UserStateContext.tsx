@@ -7,6 +7,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Feed } from '../types/aggregator';
 import { accountsCacheService } from '../services/accountsCacheService';
 import { TagNormalizationService } from '../services/tagNormalizationService';
+import { API_ENDPOINT } from '../config/api';
 
 export interface CuratedFeedPreferences {
   sortOrder: 'time' | 'recommended'; // Default: 'recommended'
@@ -203,8 +204,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/preferences`, {
           headers: {
             'Authorization': `Bearer ${session.accessToken}`
           }
@@ -270,8 +270,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/tag-preferences`, {
+        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/tag-preferences`, {
           headers: {
             'Authorization': `Bearer ${session.accessToken}`
           }
@@ -339,12 +338,10 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-        
         // Check if user has granted access to age_attestation ZKP via OAuth endpoint
         // OAuth endpoint only returns ZKP if user has granted access in dashboard
         const zkpResponse = await fetch(
-          `${apiEndpoint}/oauth/zkp-data-points?data_points=age_attestation`,
+          `${API_ENDPOINT}/oauth/zkp-data-points?data_points=age_attestation`,
           {
             headers: {
               'Authorization': `Bearer ${session.accessToken}`
@@ -366,7 +363,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           if (ageZKP) {
             // User has granted access to age ZKP - verify the proof for "age >= 18"
           const verifyResponse = await fetch(
-            `${apiEndpoint}/api/users/${userState.pnIdentifier}/zkp-data-points/verify`,
+            `${API_ENDPOINT}/api/users/${userState.pnIdentifier}/zkp-data-points/verify`,
             {
               method: 'POST',
               headers: {
@@ -553,8 +550,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/preferences`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -605,8 +601,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/preferences`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -762,8 +757,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/tag-preferences`, {
+        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/tag-preferences`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -842,8 +836,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/tag-preferences`, {
+        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/tag-preferences`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -953,8 +946,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/preferences`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -998,8 +990,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/preferences`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',

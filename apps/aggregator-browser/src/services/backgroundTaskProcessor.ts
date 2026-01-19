@@ -10,7 +10,7 @@ import { createCollection } from './collectionService';
 import { FeedService } from './feedService';
 import { saveToFeed, removeFromSavedFeed } from './savedFeedService';
 
-const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+import { API_ENDPOINT } from '../config/api';
 
 interface EncryptedFilePackage {
   encrypted: string;
@@ -101,7 +101,7 @@ export async function processBackgroundTask(task: UploadTask): Promise<void> {
 async function resolveToThumbnailFileId(fileId: string, accessToken: string): Promise<string> {
   try {
     // Try to get metadata for fileId
-    const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+    const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -193,7 +193,7 @@ async function processShareSettingsUpdate(
     // Generate share token
     try {
       const downloadResponse = await fetch(
-        `${apiEndpoint}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(accountId)}&download=true`,
+        `${API_ENDPOINT}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(accountId)}&download=true`,
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`
@@ -261,7 +261,7 @@ async function processShareSettingsUpdate(
     updateBody.isNSFW = shareNSFW;
   }
   
-  const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${targetFileId}${accountIdParam}`, {
+  const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${targetFileId}${accountIdParam}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -287,7 +287,7 @@ async function processShareSettingsUpdate(
   // Update index visibility if public and permissions changed
   if (makePublic && nextPermissions) {
     const response = await fetch(
-      `${apiEndpoint}/api/third-party/files/${encodeURIComponent(targetFileId)}/index-visibility`,
+      `${API_ENDPOINT}/api/third-party/files/${encodeURIComponent(targetFileId)}/index-visibility`,
       {
         method: 'PUT',
         headers: {
@@ -403,7 +403,7 @@ async function processMetadataUpdate(
   if ('title' in formData) updateBody.title = formData.title;
 
   // Update via API endpoint
-  const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+  const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -539,7 +539,7 @@ async function processFileDeletion(
   // Load metadata if isCollection wasn't determined upfront (non-blocking in UI)
   if (isCollection === undefined) {
     try {
-      const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+      const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }
@@ -567,7 +567,7 @@ async function processFileDeletion(
     // For thought collections, get main file ID from first thumbnail
     if (isThoughtCollection && collectionFileIds.length > 0) {
       try {
-        const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${collectionFileIds[0]}`, {
+        const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${collectionFileIds[0]}`, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }
@@ -589,7 +589,7 @@ async function processFileDeletion(
     
     for (const thumbnailId of collectionFileIds) {
       try {
-        const deleteResponse = await fetch(`${apiEndpoint}/api/drive/files/${thumbnailId}?accountId=${accountId}`, {
+        const deleteResponse = await fetch(`${API_ENDPOINT}/api/drive/files/${thumbnailId}?accountId=${accountId}`, {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${accessToken}`
@@ -609,7 +609,7 @@ async function processFileDeletion(
     // Delete main thought-collection file if exists
     if (isThoughtCollection && thoughtCollectionFileId) {
       try {
-        const deleteResponse = await fetch(`${apiEndpoint}/api/drive/files/${thoughtCollectionFileId}?accountId=${accountId}`, {
+        const deleteResponse = await fetch(`${API_ENDPOINT}/api/drive/files/${thoughtCollectionFileId}?accountId=${accountId}`, {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${accessToken}`
@@ -630,7 +630,7 @@ async function processFileDeletion(
   }
 
   // Delete main file
-  const response = await fetch(`${apiEndpoint}/api/drive/files/${fileId}?accountId=${accountId}`, {
+  const response = await fetch(`${API_ENDPOINT}/api/drive/files/${fileId}?accountId=${accountId}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${accessToken}`
@@ -675,7 +675,7 @@ async function processBulkDeletion(
   for (let i = 0; i < fileIds.length; i++) {
     const fileId = fileIds[i];
     try {
-      const response = await fetch(`${apiEndpoint}/api/drive/files/${fileId}?accountId=${accountId}`, {
+      const response = await fetch(`${API_ENDPOINT}/api/drive/files/${fileId}?accountId=${accountId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${accessToken}`
@@ -799,8 +799,6 @@ async function processSaveToFeed(
   }
 
   uploadQueueService.updateTaskProgress(task.id, 10);
-
-  const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
   // Save or remove from saved feed
   if (isSaved) {

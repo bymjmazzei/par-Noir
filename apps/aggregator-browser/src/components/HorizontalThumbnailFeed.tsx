@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type React from 'react';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
+import { API_ENDPOINT } from '../config/api';
 
 interface HorizontalThumbnailFeedProps {
   thumbnailIds: string[]; // Array of thumbnail file IDs
@@ -43,7 +44,6 @@ export function HorizontalThumbnailFeed({
     }
 
     try {
-      const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const { PNOAuthService } = await import('../services/pnOAuthService');
       const accessToken = await PNOAuthService.getValidAccessToken();
       if (!accessToken) return null;
@@ -51,7 +51,7 @@ export function HorizontalThumbnailFeed({
       const session = PNOAuthService.loadSession();
       if (session?.did || session?.pnIdentifier) {
         const userId = session.pnIdentifier || session.did;
-        const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
+        const accountsResponse = await fetch(`${API_ENDPOINT}/api/storage/accounts/${userId}`, {
           headers: { 'Authorization': `Bearer ${accessToken}` }
         });
         
@@ -88,7 +88,6 @@ export function HorizontalThumbnailFeed({
     loadingThumbnailsRef.current.add(index);
 
     try {
-      const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const { PNOAuthService } = await import('../services/pnOAuthService');
 
       // Get access token FIRST (like FullScreenFeed)
@@ -101,7 +100,7 @@ export function HorizontalThumbnailFeed({
           const session = PNOAuthService.loadSession();
           if (session?.did || session?.pnIdentifier) {
             const userId = session.pnIdentifier || session.did;
-            const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
+            const accountsResponse = await fetch(`${API_ENDPOINT}/api/storage/accounts/${userId}`, {
               headers: { 'Authorization': `Bearer ${accessToken}` }
             });
             if (accountsResponse.ok) {
@@ -118,7 +117,7 @@ export function HorizontalThumbnailFeed({
       }
 
       // Build URL with accountId
-      let thumbnailUrl = `${apiEndpoint}/api/drive/files/${thumbnailId}?thumbnail=true`;
+      let thumbnailUrl = `${API_ENDPOINT}/api/drive/files/${thumbnailId}?thumbnail=true`;
       if (accountIdToUse && accountIdToUse.includes('::')) {
         thumbnailUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
       }

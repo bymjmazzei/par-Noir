@@ -5,6 +5,7 @@
  */
 
 import { PublicMetadata } from '../../types/aggregator';
+import { API_ENDPOINT } from '../../config/api';
 
 export interface CentralIndexEntry {
   fileId: string;
@@ -20,7 +21,6 @@ export interface CentralIndexResponse {
 }
 
 export class CentralMetadataAggregator {
-  private static readonly API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
   private static readonly CENTRAL_INDEX_PATH = '/api/aggregator/metadata-index';
   private static readonly CACHE_KEY = 'pn_central_metadata_index';
   private static readonly CACHE_VERSION_KEY = 'pn_central_metadata_index_version';
@@ -130,7 +130,7 @@ export class CentralMetadataAggregator {
       // Removed verbose logging - only log errors
 
       const response = await fetch(
-        `${this.API_ENDPOINT}${this.CENTRAL_INDEX_PATH}?${params.toString()}`,
+        `${API_ENDPOINT}${this.CENTRAL_INDEX_PATH}?${params.toString()}`,
         {
           method: 'GET',
           headers: {
@@ -289,7 +289,7 @@ export class CentralMetadataAggregator {
       // Removed verbose logging - only log errors
 
       const response = await fetch(
-        `${this.API_ENDPOINT}${nsfwIndexPath}?${params.toString()}`,
+        `${API_ENDPOINT}${nsfwIndexPath}?${params.toString()}`,
         {
           method: 'GET',
           headers: {

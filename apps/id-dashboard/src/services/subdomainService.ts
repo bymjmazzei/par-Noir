@@ -3,6 +3,8 @@
  * Handles subdomain detection and routing for feeds
  */
 
+import { API_ENDPOINT } from '../config/api';
+
 export class SubdomainService {
   /**
    * Get current subdomain
@@ -38,8 +40,7 @@ export class SubdomainService {
    */
   static async getFeedIdFromSubdomain(subdomain: string): Promise<string | null> {
     try {
-      const apiBase = import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com';
-      const response = await fetch(`${apiBase}/api/feeds/by-subdomain/${subdomain}`);
+      const response = await fetch(`${API_ENDPOINT}/api/feeds/by-subdomain/${subdomain}`);
       
       if (response.ok) {
         const feed = await response.json();

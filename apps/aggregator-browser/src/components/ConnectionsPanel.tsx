@@ -38,7 +38,7 @@ interface ConnectionsPanelProps {
   onCreatorClick?: (creatorId: string) => void;
 }
 
-const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+import { API_ENDPOINT } from '../config/api';
 
 function getAuthHeaders(): HeadersInit {
   const session = PNOAuthService.loadSession();

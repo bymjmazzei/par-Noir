@@ -8,9 +8,14 @@
  */
 
 import { VolumeIdGenerator } from '../utils/volumeIdGenerator';
+import { API_ENDPOINT } from '../config/api';
 
-const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-const CLIENT_ID = process.env.REACT_APP_PN_CLIENT_ID || 'browser-app';
+/** Must be set in .env as VITE_PN_CLIENT_ID; no fallback. */
+function getClientId(): string {
+  const id = import.meta.env.VITE_PN_CLIENT_ID;
+  if (!id) throw new Error('VITE_PN_CLIENT_ID must be set in .env');
+  return id;
+}
 // For popup flow, redirect_uri should be oauth-callback.html (matches oauth-authorize.html)
 const REDIRECT_URI = typeof window !== 'undefined' 
   ? `${window.location.origin}/oauth-callback.html`
@@ -74,7 +79,7 @@ export class PNOAuthService {
       : REDIRECT_URI;
 
     const paramsStr = new URLSearchParams({
-      client_id: CLIENT_ID,
+      client_id: getClientId(),
       redirect_uri: redirectUri,
       response_type: 'code',
       scope: scope.join(' '),
@@ -135,7 +140,7 @@ export class PNOAuthService {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        client_id: CLIENT_ID,
+        client_id: getClientId(),
         redirect_uri: REDIRECT_URI,
         scope: scope.join(' '),
         state,
@@ -178,7 +183,7 @@ export class PNOAuthService {
       },
       body: JSON.stringify({
         code,
-        client_id: CLIENT_ID,
+        client_id: getClientId(),
         redirect_uri: finalRedirectUri,
         grant_type: 'authorization_code',
         age_shared: ageShared // Include age sharing preference
@@ -212,7 +217,7 @@ export class PNOAuthService {
       },
       body: JSON.stringify({
         refresh_token: refreshToken,
-        client_id: CLIENT_ID
+        client_id: getClientId()
       })
     });
 

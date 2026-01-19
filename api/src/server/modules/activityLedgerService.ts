@@ -123,7 +123,6 @@ export class ActivityLedgerService {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined
       });
-      // Return empty for now - can add JSON fallback later if needed
       return { activities: [], total: 0 };
     }
   }

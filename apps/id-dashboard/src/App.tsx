@@ -36,6 +36,7 @@ let DistributedIdentityManager: any;
 import { LicenseVerification } from './utils/licenseVerification';
 
 import { InputValidator } from './utils/validation';
+import { API_ENDPOINT } from './config/api';
 
 import SimpleStorage, { SimpleIdentity } from './utils/simpleStorage';
 import IdentitySelector from './components/IdentitySelector';
@@ -747,13 +748,9 @@ function App() {
           publicKey: authenticatedUser.publicKey || ''
         });
 
-        const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || 
-                           process.env.REACT_APP_API_ENDPOINT || 
-                           'https://api.parnoir.com';
-
         // Load permissions from API (Google Drive)
         const response = await fetch(
-          `${apiEndpoint}/api/users/${pnIdentifier}/third-party-permissions`,
+          `${API_ENDPOINT}/api/users/${pnIdentifier}/third-party-permissions`,
           {
             headers: {
               'Authorization': `Bearer ${authToken}`
@@ -3404,13 +3401,9 @@ This invitation expires in 24 hours.`;
         publicKey: authenticatedUser.publicKey || ''
       });
 
-      const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || 
-                         process.env.REACT_APP_API_ENDPOINT || 
-                         'https://api.parnoir.com';
-
       // Store permissions via API (will be saved to Google Drive)
       const response = await fetch(
-        `${apiEndpoint}/api/users/${pnIdentifier}/third-party-permissions`,
+        `${API_ENDPOINT}/api/users/${pnIdentifier}/third-party-permissions`,
         {
           method: 'PUT',
           headers: {
@@ -6673,8 +6666,6 @@ This invitation expires in 24 hours.`;
                 ? authenticatedUser.id 
                 : `pn-${authenticatedUser.id.replace(/^pn-/, '')}`;
 
-              const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-              
               // Get access token - the dashboard might need to use OAuth service
               // For now, try to get from authenticatedUser, but this might need OAuth integration
               const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
@@ -6703,7 +6694,7 @@ This invitation expires in 24 hours.`;
                   };
 
                   const response = await fetch(
-                    `${apiEndpoint}/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`,
+                    `${API_ENDPOINT}/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`,
                     {
                       method: 'PUT',
                       headers: {

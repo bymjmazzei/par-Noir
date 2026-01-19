@@ -10,9 +10,9 @@ const { GoogleDriveMetadataService } = require('./GoogleDriveMetadataService');
 const app = express();
 const PORT = process.env.PORT || 3002;
 
-// Google OAuth configuration
-const GOOGLE_CLIENT_ID = '43740774041-pcets3qets323k8p1e3aavbdphqpub06.apps.googleusercontent.com';
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || 'your-client-secret-here';
+// Google OAuth configuration - set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in environment
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'https://pn.parnoir.com/auth/google/callback';
 
 // Configure multer for file uploads

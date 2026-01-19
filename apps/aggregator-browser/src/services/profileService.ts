@@ -5,7 +5,7 @@
 
 import { PNOAuthService } from './pnOAuthService';
 
-const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+import { API_ENDPOINT } from '../config/api';
 
 // Helper function to get auth headers
 function getAuthHeaders(): HeadersInit {

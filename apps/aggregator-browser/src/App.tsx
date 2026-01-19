@@ -5,34 +5,21 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Search, Filter, User, RefreshCw, Image as ImageIcon } from 'lucide-react';
-import { LockButtonWithContext } from './components/LockButtonWithContext';
 import { getMetadataIndexService } from './services/metadata/MetadataIndexService';
 import { ContentTypeIndexService } from './services/contentTypeIndexService';
 import { MetadataFilters, IndexedFile, Feed } from './types/aggregator';
 import { decryptWithToken, ShareToken } from './utils/tokenDecryption';
 import { useUserState } from './contexts/UserStateContext';
-import { FeedRail, buildFeedRailItems } from './components/FeedRail';
+import { buildFeedRailItems } from './components/FeedRail';
 import { FeedBrowser } from './components/FeedBrowser';
-import { FeedEngagementSidebar } from './components/FeedEngagementSidebar';
-import { SettingsPanel } from './components/SettingsPanel';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
-import { LoadingSkeleton } from './components/LoadingSkeleton';
-import { ContentRatingBadge } from './components/ContentRatingBadge';
-import { EmptyState } from './components/EmptyState';
 import { CommentModal } from './components/CommentModal';
+import { WelcomeModal } from './components/WelcomeModal';
 import { BrandedFeedPage } from './components/BrandedFeedPage';
 import { MediaViewer } from './components/MediaViewer';
-import { UploadModal } from './components/UploadModal';
 import { CreateFeedModal } from './components/CreateFeedModal';
 import { AddToFeedModal } from './components/AddToFeedModal';
-import { NotificationBell } from './components/NotificationBell';
-import { ToastContainer } from './components/Toast';
 import { EditFileModal } from './components/EditFileModal';
-import { MePageTabsRail } from './components/MePageTabsRail';
-import { UploadStatusCircle } from './components/UploadStatusCircle';
-import { UploadQueueOverlay } from './components/UploadQueueOverlay';
-import { Settings, Upload, Plus } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useHorizontalSwipe } from './hooks/useHorizontalSwipe';
 import { useViewportHeightCSS } from './hooks/useViewportHeight';
@@ -40,22 +27,30 @@ import { useFeedNavigation } from './hooks/useFeedNavigation';
 import { useEngagement } from './hooks/useEngagement';
 import { useToast } from './hooks/useToast';
 import { useURLParams } from './hooks/useURLParams';
-import { loadFeedViewedTimestamps, markFeedAsViewed } from './utils/feedUtils';
+import { markFeedAsViewed } from './utils/feedUtils';
 import { FeedService } from './services/feedService';
 import { PNOAuthService } from './services/pnOAuthService';
-import { FullScreenFeed } from './components/FullScreenFeed';
-import { BottomNav } from './components/BottomNav';
+import { AppLayout } from './components/AppLayout';
 import { useAppContext } from './hooks/useAppContext';
+import { useViewingFile } from './hooks/useViewingFile';
+import { useModals } from './hooks/useModals';
+import { useFeedState } from './hooks/useFeedState';
+import { useDiscoverFiles } from './hooks/useDiscoverFiles';
+import { API_ENDPOINT } from './config/api';
 import './services/uploadProcessor'; // Initialize upload processor event listeners
 import './services/backgroundTaskProcessor'; // Initialize background task processor event listeners
-import { DiscoveryPage } from './components/DiscoveryPage';
-import { SearchResults } from './components/SearchResults';
-import { Inbox } from './components/Inbox';
-import { saveToFeed, getSavedFeed } from './services/savedFeedService';
+import { SearchPage } from './pages/SearchPage';
+import { MessagesPage } from './pages/MessagesPage';
+import { UploadPage } from './pages/UploadPage';
+import { SettingsPage } from './pages/SettingsPage';
+import { MePage, type MePageTab } from './pages/MePage';
+import { HomePage } from './pages/HomePage';
+import { HomePageContext, type HomePageContextValue } from './contexts/HomePageContext';
+import { getSavedFeed } from './services/savedFeedService';
 import { uploadQueueService } from './services/uploadQueueService';
 import { getUserProfile } from './services/profileService';
 import { isNSFWContent } from './constants/contentRatings';
-import { calculateMediaScaling, type MediaDimensions } from './utils/mediaScaling';
+import type { MediaDimensions } from './utils/mediaScaling';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -65,28 +60,34 @@ const EMPTY_ARRAY: IndexedFile[] = [];
 
 function App() {
   const { userState, setLocked, setUnlocked, updateDisplayName, getDisplayName } = useUserState();
-  const { activeContext, setActiveContext, availableContexts, loadContexts, isLoading: isLoadingContexts } = useAppContext(userState.pnIdentifier);
-  // Content-type indices (replaces single indexedFiles state)
-  const [mediaFiles, setMediaFiles] = useState<IndexedFile[]>([]);
-  const [thoughtsFiles, setThoughtsFiles] = useState<IndexedFile[]>([]);
-  const [collectionsFiles, setCollectionsFiles] = useState<IndexedFile[]>([]);
-  
-  // Keep indexedFiles for backward compatibility during migration
-  // This will be computed from the content-type indices
-  const indexedFiles = useMemo(() => {
-    return [...mediaFiles, ...thoughtsFiles, ...collectionsFiles];
-  }, [mediaFiles, thoughtsFiles, collectionsFiles]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // SCALABILITY: Pagination state for infinite scroll
-  const [currentPage, setCurrentPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
+  const { activeContext, setActiveContext, availableContexts } = useAppContext(userState.pnIdentifier);
+  const {
+    mediaFiles,
+    setMediaFiles,
+    thoughtsFiles,
+    setThoughtsFiles,
+    collectionsFiles,
+    setCollectionsFiles,
+    indexedFiles,
+    isLoading,
+    error,
+    setError,
+    currentPage,
+    setCurrentPage,
+    hasMore,
+    setHasMore,
+    isLoadingMore,
+    setIsLoadingMore,
+    filters,
+    setFilters,
+  } = useDiscoverFiles();
   const hasMoreRef = useRef(true); // Ref to track hasMore for infinite scroll observer
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  useEffect(() => {
+    hasMoreRef.current = hasMore;
+  }, [hasMore]);
   const PAGE_SIZE = 50;
   const [searchQuery, setSearchQuery] = useState('');
-  const [filters, setFilters] = useState<MetadataFilters>({});
-  const [viewingFile, setViewingFile] = useState<{ file: IndexedFile; blob: Blob; url: string } | null>(null);
+  const { viewingFile, setViewingFile } = useViewingFile();
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(new Map()); // fileId -> thumbnail URL
   const [generatingThumbnails, setGeneratingThumbnails] = useState<Set<string>>(new Set()); // Track which thumbnails are being generated
   const [videoPlaying, setVideoPlaying] = useState<Map<string, boolean>>(new Map()); // Track which videos are playing
@@ -102,33 +103,51 @@ function App() {
   useEffect(() => {
     thumbnailsRef.current = thumbnails;
   }, [thumbnails]);
-  const [viewMode, setViewMode] = useState<'grid' | 'feed'>('feed'); // Default to feed mode
-  const [activeFeedId, setActiveFeedId] = useState<string>('public');
-  const [currentFeedIndex, setCurrentFeedIndex] = useState(0); // Current file index in feed
-  const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'search' | 'upload' | 'index' | 'messages'>('home');
+  const {
+    viewMode,
+    setViewMode,
+    activeFeedId,
+    setActiveFeedId,
+    currentFeedIndex,
+    setCurrentFeedIndex,
+    activeBottomTab,
+    setActiveBottomTab,
+    feeds,
+    setFeeds,
+    visibleFileId,
+    setVisibleFileId,
+    feedViewedTimestamps,
+    setFeedViewedTimestamps,
+  } = useFeedState();
   // Connections list for filtering public feeds (must be declared before filteredFilesByFeed useMemo)
   const [connectionsList, setConnectionsList] = useState<Array<{ connectionId: string; userDid: string; status: string; createdAt: string; acceptedAt?: string }>>([]);
-  const [showSearch, setShowSearch] = useState(false);
-  const [showInbox, setShowInbox] = useState(false);
-  const [initialThread, setInitialThread] = useState<{
-    participantDid: string;
-    participantName?: string;
-  } | null>(null);
-  const [feeds, setFeeds] = useState<Feed[]>([]); // Available feeds
-  const [visibleFileId, setVisibleFileId] = useState<string | null>(null); // Currently visible file in feed mode
-  const [showFeedBrowser, setShowFeedBrowser] = useState(false); // Show feed browser modal
-  const [showSettings, setShowSettings] = useState(false); // Show settings panel
-  const [showShortcuts, setShowShortcuts] = useState(false); // Show keyboard shortcuts
-  const [commentingFile, setCommentingFile] = useState<IndexedFile | null>(null); // File being commented on
-  const [viewingBrandedFeed, setViewingBrandedFeed] = useState<Feed | null>(null); // Branded feed being viewed
-  const [showUploadModal, setShowUploadModal] = useState(false); // Show upload modal
-  const [showCreateFeedModal, setShowCreateFeedModal] = useState(false); // Show create feed modal
-  const [addingToFeedFile, setAddingToFeedFile] = useState<IndexedFile | null>(null); // File being added to feed
-  const [showUploadQueueOverlay, setShowUploadQueueOverlay] = useState(false); // Show upload queue overlay
+  const {
+    showSearch,
+    setShowSearch,
+    showInbox,
+    setShowInbox,
+    initialThread,
+    setInitialThread,
+    showFeedBrowser,
+    setShowFeedBrowser,
+    showSettings,
+    setShowSettings,
+    showShortcuts,
+    setShowShortcuts,
+    commentingFile,
+    setCommentingFile,
+    viewingBrandedFeed,
+    setViewingBrandedFeed,
+    showUploadModal,
+    setShowUploadModal,
+    showCreateFeedModal,
+    setShowCreateFeedModal,
+    addingToFeedFile,
+    setAddingToFeedFile,
+    showUploadQueueOverlay,
+    setShowUploadQueueOverlay,
+  } = useModals();
   const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null); // Creator ID for index view
-  const [feedViewedTimestamps, setFeedViewedTimestamps] = useState<Map<string, string>>(
-    () => loadFeedViewedTimestamps()
-  ); // Track when feeds were last viewed
   const feedScrollRef = React.useRef<HTMLDivElement>(null); // Ref for feed scroll container
   const videoRefs = React.useRef<Map<string, HTMLVideoElement>>(new Map()); // Store video element refs
   const discoverFilesRef = useRef<((filters?: MetadataFilters, forceRefresh?: boolean, page?: number, append?: boolean) => Promise<void>) | null>(null); // Ref for discoverFiles function
@@ -253,7 +272,7 @@ function App() {
 
 
   // Feed navigation hook
-  const { feedHierarchy, getNextFeed, getPreviousFeed, getFeedIndex } = useFeedNavigation(
+  const { getNextFeed, getPreviousFeed } = useFeedNavigation(
     feeds,
     userState.preferences.subscribedFeedIds
   );
@@ -321,10 +340,8 @@ function App() {
   const prevUnlockedRef = useRef<boolean>(userState.isUnlocked);
   const isManualFeedChangeRef = useRef<boolean>(false); // Track manual feed changes
   useEffect(() => {
-    // Only switch feeds if unlock state actually changed (not just activeFeedId)
-    const unlockStateChanged = prevUnlockedRef.current !== userState.isUnlocked;
     prevUnlockedRef.current = userState.isUnlocked;
-    
+
     // Don't auto-switch if user manually changed the feed
     if (isManualFeedChangeRef.current) {
       isManualFeedChangeRef.current = false;
@@ -619,10 +636,16 @@ function App() {
     );
   }, [feeds, userState.isUnlocked, userState.preferences.subscribedFeedIds, activeFeedId, hasNewThirdPartyContent]);
 
-  // Auth modal state - MUST be before early returns to satisfy Rules of Hooks
+  // Auth / welcome modal state
   const [showAuthModal, setShowAuthModal] = useState(false);
-  
-  
+
+  // Show welcome/onboarding on first visit
+  useEffect(() => {
+    if (!localStorage.getItem('parnoir_welcome_seen')) {
+      setShowAuthModal(true);
+    }
+  }, []);
+
   // Create a stable key for indexedFilesMap based on fileIds (not array reference)
   // MUST be declared before any useEffect that uses it
   const indexedFilesKey = useMemo(() => {
@@ -1186,9 +1209,26 @@ function App() {
     };
   }, []);
 
+  // Cleanup thumbnails for deleted files (revoke blob URLs when files are removed from indices)
+  const cleanupThumbnailsForFiles = useCallback((fileIds: string[]) => {
+    setThumbnails(prev => {
+      const newMap = new Map(prev);
+      fileIds.forEach(fileId => {
+        const thumbnailUrl = newMap.get(fileId);
+        if (thumbnailUrl) {
+          if (thumbnailUrl.startsWith('blob:')) {
+            try { URL.revokeObjectURL(thumbnailUrl); } catch (err) { console.warn(`Failed to revoke thumbnail URL for ${fileId}:`, err); }
+          }
+          newMap.delete(fileId);
+        }
+      });
+      return newMap;
+    });
+  }, []);
+
   // Load content-type indices (new architecture)
   const loadContentTypeIndices = useCallback(async (
-    searchFilters?: MetadataFilters,
+    _searchFilters?: MetadataFilters,
     forceRefresh: boolean = false,
     page: number = 0
   ) => {
@@ -1208,6 +1248,19 @@ function App() {
       
       // For pagination: append or replace based on page
       if (page === 0) {
+        // Revoke blob URLs for files no longer in the new set to avoid memory leaks
+        const oldIds = new Set([
+          ...mediaFiles.map(f => f.metadata.fileId),
+          ...thoughtsFiles.map(f => f.metadata.fileId),
+          ...collectionsFiles.map(f => f.metadata.fileId),
+        ]);
+        const newIds = new Set([
+          ...media.map(f => f.metadata.fileId),
+          ...thoughts.map(f => f.metadata.fileId),
+          ...collections.map(f => f.metadata.fileId),
+        ]);
+        const removed = [...oldIds].filter(id => !newIds.has(id));
+        if (removed.length > 0) cleanupThumbnailsForFiles(removed);
         setMediaFiles(media);
         setThoughtsFiles(thoughts);
         setCollectionsFiles(collections);
@@ -1309,7 +1362,7 @@ function App() {
       setError(error.message || 'Failed to load files');
       throw error; // Re-throw so discoverFiles can handle it
     }
-  }, [activeFeedId, filters, searchQuery, userState.preferences, metadataIndexService]);
+  }, [activeFeedId, filters, searchQuery, userState.preferences, metadataIndexService, mediaFiles, thoughtsFiles, collectionsFiles, cleanupThumbnailsForFiles]);
 
   const discoverFiles = useCallback(async (
     searchFilters?: MetadataFilters, 
@@ -1542,28 +1595,6 @@ function App() {
       }
     }
   };
-  
-  // Cleanup thumbnails for deleted files
-  const cleanupThumbnailsForFiles = useCallback((fileIds: string[]) => {
-    setThumbnails(prev => {
-      const newMap = new Map(prev);
-      fileIds.forEach(fileId => {
-        const thumbnailUrl = newMap.get(fileId);
-        if (thumbnailUrl) {
-          // Only revoke blob URLs (start with "blob:"), not data URLs
-          if (thumbnailUrl.startsWith('blob:')) {
-            try {
-              URL.revokeObjectURL(thumbnailUrl);
-            } catch (err) {
-              console.warn(`Failed to revoke thumbnail URL for ${fileId}:`, err);
-            }
-          }
-          newMap.delete(fileId);
-        }
-      });
-      return newMap;
-    });
-  }, []);
 
   // Store generateThumbnailsForImages in ref so it can be called from discoverFiles
   useEffect(() => {
@@ -1691,7 +1722,7 @@ function App() {
   const [userCommentedFiles, setUserCommentedFiles] = useState<IndexedFile[]>([]);
   const [userSharedFiles, setUserSharedFiles] = useState<IndexedFile[]>([]);
   const [connectionsFiles, setConnectionsFiles] = useState<IndexedFile[]>([]);
-  const [isLoadingUserEngagement, setIsLoadingUserEngagement] = useState(false);
+  const [_isLoadingUserEngagement, setIsLoadingUserEngagement] = useState(false);
   
   // Load other user's liked and commented files when viewing their profile
   const [viewedUserLikedFiles, setViewedUserLikedFiles] = useState<IndexedFile[]>([]);
@@ -1830,7 +1861,6 @@ function App() {
       setIsLoadingUserEngagement(true);
       (async () => {
         try {
-          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
           // Normalize the creator ID - API might expect "pn-" prefix
           const normalizedCreatorId = viewingCreatorId.startsWith('pn-') 
             ? viewingCreatorId 
@@ -1838,7 +1868,7 @@ function App() {
           
           // Get user's engagement (likes, comments, and shares) from API - same as viewing other users
           const engagementResponse = await fetch(
-            `${apiEndpoint}/api/engagement/user/${encodeURIComponent(normalizedCreatorId)}`,
+            `${API_ENDPOINT}/api/engagement/user/${encodeURIComponent(normalizedCreatorId)}`,
             {
               method: 'GET',
               headers: { 'Content-Type': 'application/json' }
@@ -1939,7 +1969,6 @@ function App() {
     if (viewingCreatorId && viewingCreatorId !== userState.pnIdentifier) {
       (async () => {
         try {
-          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
           // Normalize the creator ID - API might expect "pn-" prefix
           const normalizedCreatorId = viewingCreatorId.startsWith('pn-') 
             ? viewingCreatorId 
@@ -1947,7 +1976,7 @@ function App() {
           
           // Get user's engagement (likes and comments)
           const engagementResponse = await fetch(
-            `${apiEndpoint}/api/engagement/user/${encodeURIComponent(normalizedCreatorId)}`,
+            `${API_ENDPOINT}/api/engagement/user/${encodeURIComponent(normalizedCreatorId)}`,
             {
               method: 'GET',
               headers: { 'Content-Type': 'application/json' }
@@ -1966,7 +1995,7 @@ function App() {
             // Get file metadata for liked files
             if (likedFileIds.length > 0) {
               const apiFilesResponse = await fetch(
-                `${apiEndpoint}/api/aggregator/metadata-index`,
+                `${API_ENDPOINT}/api/aggregator/metadata-index`,
                 {
                   method: 'GET',
                   headers: { 'Content-Type': 'application/json' }
@@ -2002,7 +2031,7 @@ function App() {
             // Get file metadata for commented files
             if (commentedFileIds.length > 0) {
               const apiFilesResponse = await fetch(
-                `${apiEndpoint}/api/aggregator/metadata-index`,
+                `${API_ENDPOINT}/api/aggregator/metadata-index`,
                 {
                   method: 'GET',
                   headers: { 'Content-Type': 'application/json' }
@@ -2160,7 +2189,7 @@ function App() {
   // State for Me page tabs
   const [mePageTab, setMePageTab] = useState<'all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections'>('all');
   const [savedFiles, setSavedFiles] = useState<IndexedFile[]>([]);
-  const [isLoadingSavedFiles, setIsLoadingSavedFiles] = useState(false);
+  const [, setIsLoadingSavedFiles] = useState(false);
 
   // Find file index when navigating to a specific file in creator's profile
   useEffect(() => {
@@ -2866,10 +2895,6 @@ function App() {
   // Only recreate when indexedFilesKey changes (actual fileIds change)
   const stableIndexedFiles = useMemo(() => indexedFiles, [indexedFilesKey]);
   
-  const creatorFeeds = viewingCreatorId ? feeds.filter(feed => feed.creatorId === viewingCreatorId) : [];
-  const uniqueFiles = viewingCreatorId ? Array.from(new Map(creatorFiles.map(f => [f.metadata.fileId, f])).values()) : [];
-
-
   const handleLockUnlock = async () => {
     if (userState.isUnlocked) {
       // Lock the user
@@ -2952,7 +2977,7 @@ function App() {
                 let feedTokens: any[] = [];
                 try {
                   if (userInfo.pn_identifier) {
-                    const feedTokensResponse = await fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/feeds/tokens`, {
+                    const feedTokensResponse = await fetch(`${API_ENDPOINT}/api/feeds/tokens`, {
                       headers: {
                         'Authorization': `Bearer ${tokenResponse.access_token}`
                       }
@@ -3228,6 +3253,86 @@ function App() {
     }
   };
 
+  const homeContextValue = {
+    viewMode,
+    setViewMode,
+    viewportHeightCSS,
+    activeFeedId,
+    setActiveFeedId,
+    feedRailItems,
+    currentFeedIndex,
+    setCurrentFeedIndex,
+    filteredFilesByFeed,
+    searchQuery,
+    setSearchQuery,
+    filters,
+    setFilters,
+    setCurrentPage,
+    setHasMore,
+    hasMoreRef,
+    discoverFiles,
+    error,
+    isLoading,
+    hasMore,
+    indexedFiles,
+    thumbnails,
+    setThumbnails,
+    videoBlobs,
+    setVideoBlobs,
+    mediaDimensions,
+    setMediaDimensions,
+    videoPlaying,
+    setVideoPlaying,
+    generatingThumbnails,
+    setGeneratingThumbnails,
+    userState,
+    feeds,
+    stableIndexedFiles,
+    feedScrollRef,
+    horizontalSwipeRef,
+    isManualFeedChangeRef,
+    discoverFilesRef,
+    handleSearch,
+    handleFilterChange,
+    isLiked,
+    toggleLike,
+    isDisliked,
+    toggleDislike,
+    getLikeCount,
+    getComments,
+    loadComments,
+    getShareCount,
+    share,
+    getFileProps,
+    isThought,
+    getCreatorIdentifier,
+    handleComment,
+    handleLike,
+    handleShare,
+    handleCreatorClick,
+    handleNextFeed,
+    handlePreviousFeed,
+    handleFeedCreated,
+    setViewingCreatorId,
+    setViewingBrandedFeed,
+    setMePageTab: (t: string) => setMePageTab(t as MePageTab),
+    setVisibleFileId,
+    setShowCreateFeedModal,
+    setShowUploadModal,
+    setShowSettings,
+    setAddingToFeedFile,
+    setShowFeedBrowser,
+    setViewingFile,
+    setCommentingFile,
+    setEditingFile,
+    setInitialThread,
+    setShowInbox,
+    setActiveBottomTab,
+    isLoadingMore,
+    success,
+    showErrorToast: (msg: string) => { showErrorToast(msg); },
+  };
+
   return (
     <>
       {/* Comment Modal - Render OUTSIDE all conditional views to ensure it works on all pages */}
@@ -3240,29 +3345,37 @@ function App() {
           }}
         />
       )}
-      
-      <div className={`min-h-screen ${viewMode === 'feed' ? 'h-screen overflow-hidden bg-black' : 'bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900'}`}>
-        {/* Upload Status Circle - Top left corner, always visible when uploads are active */}
-        <UploadStatusCircle onClick={() => setShowUploadQueueOverlay(true)} />
-        
-        {/* Upload Queue Overlay */}
-        <UploadQueueOverlay
-          isOpen={showUploadQueueOverlay}
-          onClose={() => setShowUploadQueueOverlay(false)}
-        />
-        
-        {/* Lock/Unlock Button with Context Switcher - Top right corner, always visible on ALL screens */}
-        <LockButtonWithContext
-          onLockUnlock={handleLockUnlock}
-          currentContext={userState.isUnlocked ? activeContext : null}
-          availableContexts={userState.isUnlocked ? availableContexts : []}
-          onContextChange={(context) => {
-            setActiveContext(context);
-            // TODO: Load context-specific content
-            // loadContextContent(context);
+      {showAuthModal && (
+        <WelcomeModal
+          onClose={() => {
+            localStorage.setItem('parnoir_welcome_seen', '1');
+            setShowAuthModal(false);
           }}
+          onComplete={() => setShowAuthModal(false)}
         />
-
+      )}
+      <HomePageContext.Provider value={homeContextValue as HomePageContextValue}>
+      <AppLayout
+        viewMode={viewMode}
+        activeBottomTab={activeBottomTab}
+        setActiveBottomTab={setActiveBottomTab}
+        showUploadQueueOverlay={showUploadQueueOverlay}
+        setShowUploadQueueOverlay={setShowUploadQueueOverlay}
+        onLockUnlock={handleLockUnlock}
+        userState={userState}
+        activeContext={activeContext}
+        availableContexts={availableContexts}
+        setActiveContext={setActiveContext}
+        toasts={toasts}
+        removeToast={removeToast}
+        setViewMode={setViewMode}
+        setShowInbox={setShowInbox}
+        setShowSearch={setShowSearch}
+        setShowUploadModal={setShowUploadModal}
+        setViewingCreatorId={setViewingCreatorId}
+        setViewingBrandedFeed={setViewingBrandedFeed}
+        onMeClick={handleMeClick}
+      >
       {/* Conditional rendering for different views */}
       {viewingBrandedFeed ? (
         <BrandedFeedPage
@@ -3284,1178 +3397,146 @@ function App() {
           }}
         />
       ) : showInbox ? (
-        <div className="h-screen w-full bg-neutral-900">
-          <Inbox
-            initialThread={initialThread}
-            onCreatorClick={handleCreatorClick}
-            onNotificationClick={(notification) => {
-              setShowInbox(false);
-              setActiveBottomTab('home');
-              // Navigate to relevant content based on notification type
-              if (notification.data?.file_id) {
-                setViewMode('feed');
-                setTimeout(() => {
-                  const fileId = notification.data?.file_id;
-                  if (fileId) {
-                    const element = document.querySelector(`[data-file-id="${fileId}"]`);
-                    if (element && feedScrollRef.current) {
-                      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
-                  }
-                }, 100);
-              } else if (notification.data?.feed_id) {
-                const feedId = notification.data.feed_id;
-                if (feedId) {
-                  const feed = feeds.find(f => f.feedId === feedId);
-                  if (feed) {
-                    setViewingBrandedFeed(feed);
-                  }
+        <MessagesPage
+          initialThread={initialThread}
+          onCreatorClick={handleCreatorClick}
+          onNotificationClick={(notification) => {
+            setShowInbox(false);
+            setActiveBottomTab('home');
+            if (notification.data?.file_id) {
+              setViewMode('feed');
+              setTimeout(() => {
+                const fileId = notification.data?.file_id;
+                if (fileId) {
+                  const el = document.querySelector(`[data-file-id="${fileId}"]`);
+                  if (el && feedScrollRef.current) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
-              }
-            }}
-          />
-        </div>
+              }, 100);
+            } else if (notification.data?.feed_id) {
+              const feedId = notification.data.feed_id;
+              if (feedId) { const f = feeds.find(x => x.feedId === feedId); if (f) setViewingBrandedFeed(f); }
+            }
+          }}
+        />
       ) : showSearch ? (
-        <SearchResults
+        <SearchPage
           initialQuery={searchQuery}
           indexedFiles={stableIndexedFiles}
           thumbnails={thumbnails}
           onFileClick={(file) => {
             setShowSearch(false);
-            
-            // Extract creator ID from the file
-            const normalizeIdentifier = (id: string | undefined | null): string => {
-              if (!id) return '';
-              // Remove "pn-" prefix if present, then normalize
-              const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
-              return cleaned.trim().toLowerCase();
-            };
-            
             const creatorIdRaw = getCreatorIdentifier(file);
-            
-            if (!creatorIdRaw) {
-              console.error('No creator ID found for file:', file.metadata.fileId);
-              return;
-            }
-            
+            if (!creatorIdRaw) { console.error('No creator ID found for file:', file.metadata.fileId); return; }
             const creatorId = creatorIdRaw.trim();
-            
-            // Set navigation flag BEFORE changing viewingCreatorId to prevent reset effect
             isNavigatingToFileRef.current = true;
             setVisibleFileId(file.metadata.fileId);
-            
-            // Navigate to creator's profile
-            // The useEffect will handle finding the file index in filteredMeFiles
             setViewingCreatorId(creatorId);
             setViewMode('feed');
-            setMePageTab('all'); // Default to all tab - useEffect will adjust if needed
+            setMePageTab('all');
           }}
         />
       ) : viewingCreatorId ? (
-        <div 
-          className="h-screen flex flex-col bg-black"
-          style={{ 
-            pointerEvents: commentingFile ? 'none' : 'auto',
-            zIndex: commentingFile ? 0 : 'auto'
-          }}
-        >
-          {/* Header Railway with Tabs - Show saved tab only if owner */}
-          <MePageTabsRail
-            activeTab={mePageTab}
-            onTabSelect={(tab) => {
-              // If not owner, don't allow saved, connections, or shares tabs
-              if (!isOwnIndex && (tab === 'saved' || tab === 'connections' || tab === 'shares')) return;
-              setMePageTab(tab);
-              setCurrentFeedIndex(0);
-            }}
-            availableTabs={isOwnIndex ? ['connections', 'all', 'media', 'thoughts', 'collections', 'likes', 'comments', 'shares', 'saved'] : ['all', 'media', 'thoughts', 'collections', 'likes', 'comments']}
-          />
-          
-          {filteredMeFiles.length > 0 && filteredMeFiles[currentFeedIndex] ? (
-            <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
-              <FullScreenFeed
-                files={filteredMeFiles}
-                currentIndex={currentFeedIndex}
-                thumbnails={thumbnails}
-                videoBlobs={videoBlobs}
-                onIndexChange={(newIndex) => {
-                  // Only update if index is within valid range and actually changed
-                  // Remove stabilization check to allow smooth scrolling
-                  if (newIndex >= 0 && newIndex < filteredMeFiles.length && newIndex !== currentFeedIndex) {
-                    setCurrentFeedIndex(newIndex);
-                  }
-                }}
-                onLike={(fileId) => {
-                  const wasLiked = isLiked(fileId);
-                  toggleLike(fileId);
-                  if (!wasLiked) {
-                    success('Liked!');
-                  }
-                }}
-                onComment={handleComment}
-                onShare={async (fileId) => {
-                  share(fileId);
-                }}
-                isLiked={isLiked}
-                getLikeCount={getLikeCount}
-                getComments={getComments}
-                loadComments={loadComments}
-                getShareCount={getShareCount}
-                userState={userState}
-                mePageTab={mePageTab}
-                onCreatorClick={(creatorId) => {
-                  if (creatorId !== viewingCreatorId) {
-                    setViewingCreatorId(creatorId);
-                    setMePageTab('all');
-                    setCurrentFeedIndex(0);
-                  }
-                }}
-                onMessage={(creatorId) => {
-                  setInitialThread({ participantDid: creatorId });
-                  setShowInbox(true);
-                  setActiveBottomTab('messages');
-                }}
-                onEdit={isOwnIndex ? (file) => setEditingFile(file) : undefined}
-                onSave={userState.isUnlocked && userState.pnIdentifier ? (file) => {
-                  const fileId = file.metadata.fileId;
-                  // Optimistically update the saved feed fileIds
-                  setSavedFeedFileIds(prev => {
-                    if (!prev.includes(fileId)) {
-                      return [...prev, fileId];
-                    }
-                    return prev;
-                  });
-                  success('Saved to your private collection!');
-
-                  // Queue background task
-                  uploadQueueService.addTask({
-                    type: 'saveToFeed',
-                    accountId: '', // Not used for saved feed operations
-                    metadata: {
-                      fileId,
-                      userDid: userState.pnIdentifier!,
-                      isSaved: false // Always saving (not removing) from this handler
-                    },
-                    onComplete: (result) => {
-                      console.log('✅ [SaveToFeed] Save operation completed:', result);
-                      // Refresh saved feed if not in backoff period
-                      if (!savedFeedErrorRef.current || 
-                          (Date.now() - savedFeedErrorRef.current.timestamp) >= 
-                          Math.min(30000 * Math.pow(2, savedFeedErrorRef.current.count), 300000)) {
-                        try {
-                          if (!userState.pnIdentifier) return;
-                          getSavedFeed(userState.pnIdentifier).then(savedFeed => {
-                            if (savedFeed && savedFeed.fileIds.length > 0) {
-                              setSavedFeedFileIds(savedFeed.fileIds);
-                              savedFeedErrorRef.current = null;
-                              lastSavedFeedFetchRef.current = {
-                                userDid: userState.pnIdentifier!,
-                                timestamp: Date.now()
-                              };
-                            }
-                          }).catch(() => {
-                            // Silently fail - we've already optimistically updated
-                          });
-                        } catch (refreshError) {
-                          // Silently fail
-                        }
-                      }
-                    },
-                    onError: (error) => {
-                      console.error('❌ [SaveToFeed] Failed to save:', error);
-                      showErrorToast('Failed to save. Please try again.');
-                      // Rollback optimistic update
-                      setSavedFeedFileIds(prev => prev.filter(id => id !== fileId));
-                    }
-                  });
-                } : undefined}
-              />
-            </div>
-          ) : (
-            // Empty state for all tabs: background + engagement bar + title
-            // ALWAYS show when filteredMeFiles is empty - no conditions, no fallbacks
-            (() => {
-              const emptyStateCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null);
-              const emptyStateName = emptyStateCreatorId ? (getDisplayName(emptyStateCreatorId) || emptyStateCreatorId) : 'User';
-              
-              return (
-                <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
-                  <div className="relative w-full h-full flex">
-                    {/* Background Image */}
-                    <div 
-                      className="flex-1 relative overflow-hidden"
-                      style={{
-                        backgroundImage: 'url(/branding/Par-Noir-Background-Dark.png)',
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                        backgroundRepeat: 'no-repeat'
-                      }}
-                    >
-                      {/* User's Public Name */}
-                      <div 
-                        className="absolute left-0 right-20 p-4 md:p-6 z-10"
-                        style={{ 
-                          bottom: '10px',
-                          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-                        }}
-                      >
-                        <h3 className="text-white text-base md:text-lg font-semibold line-clamp-1">
-                          {emptyStateName}
-                        </h3>
-                      </div>
-                    </div>
-                    
-                    {/* Engagement Sidebar */}
-                    {emptyStateCreatorId && (
-                      <FeedEngagementSidebar
-                        file={{
-                          metadata: {
-                            fileId: `me-page-empty-${emptyStateCreatorId}`,
-                            backend: 'empty-state',
-                            backendFileId: `me-page-empty-${emptyStateCreatorId}`,
-                            uploadDate: new Date().toISOString(),
-                            fileType: 'other',
-                            isPublic: false,
-                            name: emptyStateName,
-                            creatorId: emptyStateCreatorId,
-                            creator: {
-                              "@type": "Person",
-                              "@id": emptyStateCreatorId,
-                              identifier: {
-                                "@type": "PropertyValue",
-                                name: "DID",
-                                value: emptyStateCreatorId
-                              }
-                            },
-                            engagement: {
-                              views: 0,
-                              likes: 0,
-                              comments: 0,
-                              shares: 0,
-                              saves: 0,
-                              lastUpdated: new Date().toISOString()
-                            }
-                          }
-                        } as IndexedFile}
-                        isLiked={false}
-                        onLike={() => {}}
-                        onComment={() => {}}
-                        onShare={async () => {}}
-                        onAddToFeed={undefined}
-                        onEdit={undefined}
-                        isOwner={isOwnIndex && emptyStateCreatorId === userState.pnIdentifier}
-                        onCreatorClick={(creatorId) => {
-                          if (creatorId !== viewingCreatorId) {
-                            setViewingCreatorId(creatorId);
-                            setMePageTab('all');
-                            setCurrentFeedIndex(0);
-                          }
-                        }}
-                        onMessage={(creatorId) => {
-                          setInitialThread({ participantDid: creatorId });
-                          setShowInbox(true);
-                          setActiveBottomTab('messages');
-                        }}
-                      />
-                    )}
-                  </div>
-                </div>
-              );
-            })()
-          )}
-        </div>
-      ) : showUploadModal ? (
-        <div className="h-screen w-full bg-neutral-900" style={{ paddingBottom: '64px' }}>
-          <UploadModal
-            feeds={feeds}
-            onClose={() => {
-              setShowUploadModal(false);
-            }}
-            onUploadComplete={() => {
-              // Refresh files after upload - reset to page 0
-              setCurrentPage(0);
-              setHasMore(true);
-    hasMoreRef.current = true;
-              discoverFiles(undefined, true, 0, false);
-            }}
-          />
-        </div>
-      ) : (
-      <div className={`${viewMode === 'feed' ? 'h-full flex flex-col' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}`}>
-        {/* Header */}
-        {viewMode !== 'feed' && (
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-white mb-2">par Noir Content Browser</h1>
-            <p className="text-text-secondary">
-              Discover public encrypted content from the par Noir network
-            </p>
-          </div>
-        )}
-
-
-        {/* Top Navigation Bar - TikTok Style: Text-only overlay, ONLY on home/feed screen */}
-        {viewMode === 'feed' && (
-          <div 
-            className="fixed top-0 left-0 h-12 flex items-center z-[100] bg-transparent"
-            style={{ 
-              right: '56px', // Space for lock button with context switcher (40px button + 12px right-3 + 4px gap)
-              background: 'transparent'
-            }}
-          >
-            {/* Feed Rail - Scrollable horizontally, centers active feed (TikTok style) */}
-            <FeedRail
-              feeds={feedRailItems}
-              activeFeedId={activeFeedId}
-              onFeedSelect={(feedId) => {
-                isManualFeedChangeRef.current = true;
-                setActiveFeedId(feedId);
-              }}
-              onBrowseFeeds={undefined}
-            />
-          </div>
-        )}
-
-        {/* Search and Filters */}
-        {viewMode !== 'feed' && (
-          <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6 mb-6">
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-text-secondary" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by tags (comma-separated)..."
-                  className="w-full pl-10 pr-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleSearch();
-                    }
-                  }}
-                />
-              </div>
-              <button
-                onClick={handleSearch}
-                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Search
-              </button>
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setFilters({});
-                  setCurrentPage(0); // SCALABILITY: Reset pagination
-                  setHasMore(true);
-    hasMoreRef.current = true;
-                  discoverFiles({}, false, 0, false);
-                }}
-                className="px-4 py-2 bg-neutral-700 text-white text-sm font-medium rounded-lg hover:bg-neutral-600 transition-colors"
-              >
-                Reset
-              </button>
-            </div>
-
-            <div className="flex items-center space-x-4 text-sm">
-              <div className="flex items-center space-x-2">
-                <Filter className="h-4 w-4 text-text-secondary" />
-                <span className="text-text-secondary">Filters:</span>
-              </div>
-              <select
-                value={filters.fileType || ''}
-                onChange={(e) => handleFilterChange('fileType', e.target.value || undefined)}
-                className="px-3 py-1.5 bg-neutral-800 border border-neutral-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Types</option>
-                <option value="image">Images</option>
-                <option value="video">Videos</option>
-                <option value="audio">Audio</option>
-                <option value="document">Documents</option>
-                <option value="file">Other</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        )}
-
-        {/* Error Display */}
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-6">
-            <p className="text-red-400 text-sm">{error}</p>
-          </div>
-        )}
-
-        {/* Stats and View Mode Toggle - ONLY show when NOT in feed mode */}
-            {viewMode !== 'feed' && (
-          <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-4 mb-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-text-secondary text-sm">Public Files Discovered</p>
-                <p className="text-white text-2xl font-bold">{indexedFiles.length}</p>
-              </div>
-              <div className="flex items-center space-x-4">
-                  <button
-                    onClick={() => {
-                      setCurrentPage(0); // SCALABILITY: Reset pagination
-                      setHasMore(true);
-    hasMoreRef.current = true;
-                      discoverFiles(undefined, true, 0, false);
-                    }}
-                    disabled={isLoading}
-                    className="px-4 py-2 bg-neutral-700 text-white text-sm font-medium rounded-lg hover:bg-neutral-600 transition-colors disabled:opacity-50 flex items-center space-x-2"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                    <span>Refresh</span>
-                  </button>
-                  {userState.isUnlocked && userState.pnIdentifier && (
-                    <>
-                      <NotificationBell
-                        onNotificationClick={(notification) => {
-                          if (notification.data?.file_id) {
-                            setViewMode('feed');
-                            setTimeout(() => {
-                              const fileId = notification.data?.file_id;
-                              if (fileId) {
-                                const element = document.querySelector(`[data-file-id="${fileId}"]`);
-                                if (element && feedScrollRef.current) {
-                                  element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                }
-                              }
-                            }, 100);
-                          } else if (notification.data?.feed_id) {
-                            const feedId = notification.data.feed_id;
-                            if (feedId) {
-                              const feed = feeds.find(f => f.feedId === feedId);
-                              if (feed) {
-                                setViewingBrandedFeed(feed);
-                              }
-                            }
-                          }
-                        }}
-                      />
-                      <button
-                        onClick={() => setShowCreateFeedModal(true)}
-                        className="p-2 text-text-secondary hover:text-white transition-colors"
-                        title="Create Feed"
-                      >
-                        <Plus className="h-5 w-5" />
-                      </button>
-                      <button
-                        onClick={() => setShowUploadModal(true)}
-                        className="p-2 text-text-secondary hover:text-white transition-colors"
-                        title="Upload File"
-                      >
-                        <Upload className="h-5 w-5" />
-                      </button>
-                    </>
-                  )}
-                  <button
-                    onClick={() => setShowSettings(true)}
-                    className="p-2 text-text-secondary hover:text-white transition-colors"
-                    title="Settings"
-                  >
-                    <Settings className="h-5 w-5" />
-                  </button>
-            </div>
-          </div>
-        </div>
-        )}
-
-        {/* Files Grid */}
-        {error && !isLoading && (
-          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 mb-4">
-            <p className="text-yellow-400 text-sm">{error}</p>
-            <p className="text-yellow-400/80 text-xs mt-2">
-              Note: Connect Google Drive at <a href="https://pn.parnoir.com" target="_blank" rel="noopener noreferrer" className="underline">pn.parnoir.com</a> first to scan for public files
-            </p>
-          </div>
-        )}
-        
-        {isLoading ? (
-          viewMode === 'feed' ? (
-            <LoadingSkeleton type="feed" count={3} />
-          ) : (
-            <LoadingSkeleton type="grid" count={6} />
-          )
-        ) : indexedFiles.length === 0 ? (
-          (() => {
-            return (
-              <EmptyState
-                type="no-content"
-                message={
-                  typeof window !== 'undefined' && localStorage.getItem('google_drive_token')
-                    ? 'No files have been marked as public yet. Mark files as public in the dashboard to see them here.'
-                    : 'Connect Google Drive in the dashboard to scan for public files'
-                }
-              />
-            );
-          })()
-        ) : viewMode === 'feed' && activeFeedId === 'discovery' ? (
-          (() => {
-            return (
-              // Discovery Page - uses all indexedFiles (virtual feed)
-              <div className="flex-1 h-full pt-20 pb-20">
-                <DiscoveryPage
-                  files={indexedFiles}
-                  feeds={feeds}
-                  thumbnails={thumbnails}
-              onFileClick={(file) => {
-                const index = indexedFiles.findIndex(f => f.metadata.fileId === file.metadata.fileId);
-                if (index !== -1) {
-                  setActiveFeedId('public');
-                  setCurrentFeedIndex(index);
-                }
-              }}
-              onFeedClick={(feed) => {
-                setViewingBrandedFeed(feed);
-              }}
-              onCreatorClick={(creatorId) => {
-                console.log('🔍 onCreatorClick called with:', creatorId);
-                setViewingCreatorId(creatorId);
-                setViewMode('feed');
-                setMePageTab('all');
-              }}
-                />
-              </div>
-            );
-          })()
-        ) : viewMode === 'feed' ? (
-          // TikTok-style feed view using FullScreenFeed component
-          <div 
-            ref={(el) => {
-              if (horizontalSwipeRef.current !== el) {
-                (horizontalSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-              }
-            }}
-            className="flex-1 relative"
-            style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}
-          >
-            {filteredFilesByFeed.length > 0 ? (
-              <>
-              <FullScreenFeed
-                files={filteredFilesByFeed}
-                key={`feed-${activeFeedId}-${filteredFilesByFeed.length}`}
-                currentIndex={currentFeedIndex}
-                thumbnails={thumbnails}
-                videoBlobs={videoBlobs}
-                onIndexChange={setCurrentFeedIndex}
-                onSwipeLeft={handleNextFeed}
-                onSwipeRight={handlePreviousFeed}
-                onLike={(fileId) => {
-                  const wasLiked = isLiked(fileId);
-                  toggleLike(fileId);
-                      if (!wasLiked) {
-                        success('Liked!');
-                      }
-                    }}
-                onDislike={(fileId) => {
-                  const wasDisliked = isDisliked(fileId);
-                  toggleDislike(fileId);
-                  if (!wasDisliked) {
-                    success('Disliked');
-                  }
-                }}
-                isDisliked={isDisliked}
-                onComment={(file) => {
-                  setCommentingFile(file);
-                }}
-                onShare={async (fileId) => {
-                  share(fileId);
-                    }}
-                onAddToFeed={(file) => {
-                  const creatorId = file.metadata.creator?.identifier?.value || file.metadata.creator?.["@id"] || file.metadata.author?.did;
-                      if (userState.isUnlocked && userState.pnIdentifier === creatorId) {
-                    setAddingToFeedFile(file);
-                      }
-                    }}
-                onSave={userState.isUnlocked && userState.pnIdentifier ? async (file) => {
+        <MePage
+          commentingFile={commentingFile}
+          viewingCreatorId={viewingCreatorId}
+          mePageTab={mePageTab}
+          onTabSelect={(tab) => { setMePageTab(tab); setCurrentFeedIndex(0); }}
+          isOwnIndex={isOwnIndex}
+          filteredMeFiles={filteredMeFiles}
+          currentFeedIndex={currentFeedIndex}
+          setCurrentFeedIndex={setCurrentFeedIndex}
+          viewportHeightCSS={viewportHeightCSS}
+          thumbnails={thumbnails}
+          videoBlobs={videoBlobs}
+          userState={userState}
+          isLiked={isLiked}
+          toggleLike={toggleLike}
+          getLikeCount={getLikeCount}
+          getComments={getComments}
+          loadComments={loadComments}
+          getShareCount={getShareCount}
+          getDisplayName={getDisplayName}
+          onComment={handleComment}
+          onShare={share}
+          setViewingCreatorId={setViewingCreatorId}
+          setInitialThread={setInitialThread}
+          setShowInbox={setShowInbox}
+          setActiveBottomTab={setActiveBottomTab}
+          setEditingFile={setEditingFile}
+          onSave={userState.isUnlocked && userState.pnIdentifier ? (file) => {
+            const fileId = file.metadata.fileId;
+            setSavedFeedFileIds(prev => (prev.includes(fileId) ? prev : [...prev, fileId]));
+            success('Saved to your private collection!');
+            uploadQueueService.addTask({
+              type: 'saveToFeed',
+              accountId: '',
+              metadata: { fileId, userDid: userState.pnIdentifier!, isSaved: false },
+              onComplete: () => {
+                if (!savedFeedErrorRef.current || (Date.now() - savedFeedErrorRef.current.timestamp) >= Math.min(30000 * Math.pow(2, savedFeedErrorRef.current.count), 300000)) {
                   try {
-                    await saveToFeed(userState.pnIdentifier!, file.metadata.fileId);
-                    success('Saved to your private collection!');
-                  } catch (error) {
-                    showErrorToast('Failed to save. Please try again.');
-                  }
-                } : undefined}
-                isLiked={isLiked}
-                getLikeCount={getLikeCount}
-                getComments={getComments}
-                loadComments={loadComments}
-                getShareCount={getShareCount}
-                userState={userState}
-                onCreatorClick={(creatorId) => setViewingCreatorId(creatorId)}
-                onMessage={(creatorId) => {
-                  setInitialThread({ participantDid: creatorId });
-                  setShowInbox(true);
-                  setActiveBottomTab('messages');
-                }}
-              />
-              {/* SCALABILITY: Infinite scroll sentinel - Intersection Observer watches this */}
-              {viewMode === 'feed' && hasMore && (
-                <div 
-                  id="feed-infinite-scroll-sentinel" 
-                  data-feed-container="true"
-                  style={{ height: '1px', width: '100%' }}
-                />
-              )}
-              {viewMode === 'feed' && isLoadingMore && (
-                <div className="flex items-center justify-center py-4">
-                  <p className="text-text-secondary text-sm">Loading more...</p>
-                </div>
-              )}
-            </>
-            ) : (
-              <div className="h-full flex items-center justify-center text-white">
-                <EmptyState
-                  type="no-content"
-                  message={
-                    activeFeedId === 'discovery'
-                      ? 'Discovery page coming soon'
-                      : 'No content available in this feed'
-                  }
-                />
-                        </div>
-            )}
-          </div>
-        ) : (
-          // Grid view
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {indexedFiles.map((indexedFile) => {
-              const file = indexedFile.metadata;
-              // Detect if file is an image or video from fileType or filename
-              const isImage = file.fileType === 'image' || 
-                             !!(file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
-              const isVideo = file.fileType === 'video' || 
-                             !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
-              const fileName = file.name || file.title || 'Untitled';
-              
-              // Detect if file is a collection
-              const collectionData = indexedFile.metadata?.collection;
-              const isCollectionFile = file.fileType === 'collection' && 
-                                     collectionData && 
-                                     typeof collectionData === 'object' &&
-                                     collectionData.collectionFileIds && 
-                                     Array.isArray(collectionData.collectionFileIds) &&
-                                     collectionData.collectionFileIds.length > 0;
-              
-              // Detect if file is a thought
-              const isThoughtFile = isThought(indexedFile);
-              
-              // Helper to get text post data
-              const getTextPostData = (file: IndexedFile) => {
-                return (file.metadata as any).textPost || (file.metadata as any).thought || null;
-              };
-              
-              return (
-                <div
-                  key={file.fileId}
-                  className="bg-neutral-900/60 border border-neutral-700 rounded-xl overflow-hidden hover:bg-neutral-800 transition-colors cursor-pointer group"
-                  onClick={() => {
-                    // Switch to feed mode and scroll to this post
-                    setViewMode('feed');
-                    setTimeout(() => {
-                      const element = document.querySelector(`[data-file-id="${file.fileId}"]`);
-                      if (element && feedScrollRef.current) {
-                        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                      }
-                    }, 100);
-                  }}
-                >
-                  {/* Collection Preview Section */}
-                  {isCollectionFile && collectionData.collectionFileIds && (
-                    <div className="w-full h-48 bg-neutral-800 flex items-center justify-center relative overflow-hidden">
-                      {(() => {
-                        const collectionThumbnails = collectionData.collectionFileIds
-                          .map((fileId: string) => thumbnails.get(fileId))
-                          .filter((url): url is string => url !== undefined);
-                        
-                        if (collectionThumbnails.length > 0) {
-                          return (
-                            <div className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide">
-                              {collectionThumbnails.map((thumbnailUrl, idx) => (
-                                <div
-                                  key={`${file.fileId}-${idx}`}
-                                  className="flex-shrink-0 w-full h-full snap-start"
-                                >
-                                  <img
-                                    src={thumbnailUrl}
-                                    alt={`${fileName} - ${idx + 1}`}
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                      e.currentTarget.src = '/placeholder-thumbnail.png';
-                                    }}
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        } else {
-                          return (
-                            <div className="flex flex-col items-center justify-center text-neutral-400">
-                              <div className="text-4xl mb-2">📚</div>
-                              <div className="text-sm">Collection</div>
-                              <div className="text-xs mt-1">{collectionData.collectionFileIds.length} files</div>
-                            </div>
-                          );
-                        }
-                      })()}
-                    </div>
-                  )}
-                  
-                  {/* Thought Preview Section */}
-                  {!isCollectionFile && isThoughtFile && (
-                    <div className="w-full h-48 bg-neutral-800 flex items-center justify-center relative overflow-hidden">
-                      {(() => {
-                        const textPostData = getTextPostData(indexedFile);
-                        // Use thumbnail if available, otherwise render thought content directly
-                        const thoughtThumbnail = thumbnails.get(file.fileId);
-                        
-                        if (thoughtThumbnail) {
-                          // Thought thumbnails are 1080x1080 (square)
-                          const containerDims = { width: 192, height: 192 }; // h-48 = 192px
-                          const dims = mediaDimensions.get(file.fileId) || { width: 1080, height: 1080 }; // Default to 1080x1080 for thoughts
-                          const scalingStyles = calculateMediaScaling(dims, containerDims);
-                          
-                          return (
-                            <>
-                              {/* Blurred background */}
-                              <img
-                                src={thoughtThumbnail}
-                                alt=""
-                                className="absolute"
-                                style={scalingStyles.background}
-                                loading="lazy"
-                                decoding="async"
-                                onError={(e) => {
-                                  console.error(`[App] Thought background thumbnail failed to load for ${file.fileId}:`, e);
-                                }}
-                              />
-                              {/* Main image */}
-                              <div className="w-full h-full flex items-center justify-center relative z-10">
-                                <img
-                                  src={thoughtThumbnail}
-                                  alt={fileName}
-                                  style={scalingStyles.mainMedia}
-                                  onLoad={(e) => {
-                                    const img = e.currentTarget;
-                                    // Track dimensions - thoughts are 1080x1080
-                                    setMediaDimensions(prev => {
-                                      const newMap = new Map(prev);
-                                      newMap.set(file.fileId, { width: img.naturalWidth || 1080, height: img.naturalHeight || 1080 });
-                                      return newMap;
-                                    });
-                                  }}
-                                  onError={(e) => {
-                                    console.error(`[App] Thought thumbnail failed to load for ${file.fileId}:`, e);
-                                    // Fallback to rendering thought content if thumbnail fails
-                                    e.currentTarget.style.display = 'none';
-                                  }}
-                                  loading="lazy"
-                                  decoding="sync"
-                                />
-                              </div>
-                            </>
-                          );
-                        } else if (textPostData) {
-                          return (
-                            <div
-                              className="w-full h-full flex items-center justify-center"
-                              style={{
-                                backgroundColor: textPostData?.style?.backgroundColor || '#000000',
-                                backgroundImage: textPostData?.style?.backgroundImage 
-                                  ? `url(${textPostData.style.backgroundImage})` 
-                                  : 'none',
-                                backgroundSize: 'cover',
-                                backgroundPosition: 'center',
-                              }}
-                            >
-                              <div
-                                className="w-full px-4 text-center"
-                                style={{
-                                  fontFamily: textPostData?.style?.fontFamily || 'Arial',
-                                  fontSize: textPostData?.style?.fontSize 
-                                    ? `${Math.min(textPostData.style.fontSize, 24)}px` 
-                                    : '16px',
-                                  color: textPostData?.style?.textColor || '#FFFFFF',
-                                  fontWeight: textPostData?.style?.textStyle === 'bold' ? 'bold' : 'normal',
-                                  fontStyle: textPostData?.style?.textStyle === 'italic' ? 'italic' : 'normal',
-                                  textDecoration: textPostData?.style?.textStyle === 'strikethrough' ? 'line-through' : 'none',
-                                  textAlign: (textPostData?.style?.textAlign || 'center') as 'left' | 'center' | 'right' | 'justify',
-                                  textShadow: textPostData?.style?.dropShadowOffsetX || textPostData?.style?.dropShadowOffsetY || textPostData?.style?.dropShadowBlur
-                                    ? `${textPostData.style.dropShadowOffsetX || 2}px ${textPostData.style.dropShadowOffsetY || 2}px ${textPostData.style.dropShadowBlur || 10}px ${textPostData.style.dropShadowColor || '#000000'}`
-                                    : 'none',
-                                  padding: `${Math.min(textPostData?.style?.padding || 20, 20)}px`,
-                                  lineHeight: 1.2,
-                                  wordWrap: 'break-word',
-                                  overflowWrap: 'break-word',
-                                  whiteSpace: 'pre-wrap',
-                                  maxHeight: '100%',
-                                  overflow: 'hidden',
-                                }}
-                              >
-                                {textPostData?.content || file.description || fileName || 'Thought'}
-                              </div>
-                            </div>
-                          );
-                        } else {
-                          return (
-                            <div className="flex flex-col items-center justify-center text-neutral-500">
-                              <div className="text-2xl mb-2">💭</div>
-                              <span className="text-xs">Thought</span>
-                            </div>
-                          );
-                        }
-                      })()}
-                    </div>
-                  )}
-                  
-                  {/* Image/Video Preview Section */}
-                  {!isCollectionFile && !isThoughtFile && (isImage || isVideo) && (
-                    <div 
-                      className="w-full h-48 bg-neutral-800 flex items-center justify-center relative overflow-hidden group"
-                      onMouseEnter={async () => {
-                        // For videos, start loading the video blob on hover for smooth playback
-                        if (isVideo && file.publicToken && !videoBlobs.has(file.fileId)) {
-                          try {
-                            let token: ShareToken;
-                            try {
-                              token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
-                            } catch (e) {
-                              return;
-                            }
-                            const decryptedBlob = await decryptWithToken(token);
-                            const videoUrl = URL.createObjectURL(decryptedBlob);
-                            setVideoBlobs(prev => {
-                              const newMap = new Map(prev);
-                              newMap.set(file.fileId, videoUrl);
-                              return newMap;
-                            });
-                          } catch (err) {
-                            console.warn('Failed to load video for preview:', err);
-                          }
-                        }
-                      }}
-                    >
-                      {isVideo && videoBlobs.get(file.fileId) && videoPlaying.get(file.fileId) ? (
-                        <video 
-                          src={videoBlobs.get(file.fileId)!}
-                          className="w-full h-full object-cover"
-                          controls
-                          autoPlay
-                          muted
-                          loop
-                          onMouseLeave={() => {
-                            setVideoPlaying(prev => {
-                              const newMap = new Map(prev);
-                              newMap.set(file.fileId, false);
-                              return newMap;
-                            });
-                          }}
-                        />
-                      ) : thumbnails.get(file.fileId) ? (
-                        <div 
-                          className="relative w-full h-full cursor-pointer"
-                          onClick={() => {
-                            if (isVideo) {
-                              setVideoPlaying(prev => {
-                                const newMap = new Map(prev);
-                                newMap.set(file.fileId, true);
-                                return newMap;
-                              });
-                            }
-                          }}
-                        >
-                          <img 
-                            src={thumbnails.get(file.fileId)!} 
-                            alt={fileName}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              // Fallback to icon if thumbnail fails to load
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
-                          {isVideo && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <div className="bg-black/50 rounded-full p-4">
-                                <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                  <path d="M8 5v14l11-7z"/>
-                                </svg>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ) : generatingThumbnails.has(file.fileId) ? (
-                        <div className="flex flex-col items-center justify-center text-neutral-500">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
-                          <span className="text-xs">Generating thumbnail...</span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center text-neutral-500">
-                          <ImageIcon className="h-12 w-12 mb-2" />
-                          <span className="text-xs">Encrypted {isVideo ? 'Video' : 'Image'}</span>
-                          <span className="text-xs text-neutral-600 mt-1">Decryption required</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  
-                  <div className="p-4">
-                    {/* Header with rating */}
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-white font-medium truncate group-hover:text-blue-400 transition-colors">
-                          {fileName}
-                        </h3>
-                        <p className="text-text-secondary text-xs mt-1">
-                          {isThoughtFile ? 'Thought' : isVideo ? 'Video' : file.fileType === 'image' ? 'Image' : file.fileType || 'File'} • {new Date(file.uploadDate).toLocaleDateString()}
-                        </p>
-                      </div>
-                      {file.metadata?.isNSFW && (
-                        <ContentRatingBadge isNSFW={true} size="sm" className="ml-2 flex-shrink-0" />
-                      )}
-                    </div>
-
-                    {file.description && (
-                      <p className="text-text-secondary text-sm mb-3 line-clamp-2">{file.description}</p>
-                    )}
-
-                    {/* Creator */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const creatorId = file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did;
-                        if (creatorId) {
-                          setViewingCreatorId(creatorId);
-                        }
-                      }}
-                      className="flex items-center space-x-2 text-xs text-text-secondary mb-3 hover:text-blue-400 transition-colors w-full text-left"
-                    >
-                      <User className="h-3 w-3" />
-                      <span className="truncate">
-                        {file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did || 'Unknown'}
-                      </span>
-                    </button>
-
-                    {/* Tags */}
-                    {(file.keywords || file.tags) && (file.keywords || file.tags || []).length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-3">
-                        {(file.keywords || file.tags || []).slice(0, 3).map((tag, idx) => (
-                          <span
-                            key={idx}
-                            className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full"
-                          >
-                            #{tag}
-                          </span>
-                        ))}
-                        {(file.keywords || file.tags || []).length > 3 && (
-                          <span className="px-2 py-0.5 text-text-secondary text-xs">
-                            +{(file.keywords || file.tags || []).length - 3}
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Engagement Actions - Use FeedEngagementSidebar for consistency */}
-                    <div 
-                      className="pt-3 border-t border-neutral-700 relative"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex justify-end">
-                        {(() => {
-                          const fileProps = getFileProps(indexedFile);
-                          return (
-                            <FeedEngagementSidebar
-                              file={fileProps.file}
-                              isLiked={fileProps.isLiked}
-                              onLike={() => handleLike(file.fileId)}
-                              onComment={() => handleComment(indexedFile)}
-                              onShare={() => handleShare(file.fileId)}
-                              isOwner={fileProps.isOwner}
-                              onCreatorClick={handleCreatorClick}
-                              indexedFiles={stableIndexedFiles}
-                            />
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Media Viewer */}
-        {viewingFile && (
-          <MediaViewer
-            file={viewingFile.file}
-            blob={viewingFile.blob}
-            url={viewingFile.url}
-            onClose={() => {
-              if (viewingFile.url) URL.revokeObjectURL(viewingFile.url);
-              setViewingFile(null);
-            }}
-          />
-        )}
-
-        {/* Feed Browser Modal */}
-        {showFeedBrowser && (
-          <FeedBrowser
-            feeds={feeds}
-            onClose={() => setShowFeedBrowser(false)}
-            onFeedClick={(feed) => {
-              setShowFeedBrowser(false);
-              setViewingBrandedFeed(feed);
-            }}
-            onCreateFeed={() => {
-              setShowFeedBrowser(false);
-              setShowCreateFeedModal(true);
-            }}
-          />
-        )}
-
-        {/* Create Feed Modal */}
-        {showCreateFeedModal && (
-          <CreateFeedModal
-            onClose={() => setShowCreateFeedModal(false)}
-            onFeedCreated={(feed) => {
-              handleFeedCreated(feed);
-              setShowCreateFeedModal(false);
-            }}
-          />
-        )}
-
-        {/* Add to Feed Modal */}
-        {addingToFeedFile && (
-          <AddToFeedModal
-            file={addingToFeedFile}
-            feeds={feeds}
-            onClose={() => setAddingToFeedFile(null)}
-            onAdded={(feedId) => {
-              // Refresh files to show updated feed membership - reset to page 0
-              setCurrentPage(0);
-              setHasMore(true);
-    hasMoreRef.current = true;
-              discoverFiles(undefined, true, 0, false);
-              setAddingToFeedFile(null);
-            }}
-          />
-        )}
-
-        {/* Settings Panel */}
-        {showSettings && (
-          <SettingsPanel
-            onClose={() => setShowSettings(false)}
-          />
-        )}
-
-        {/* Keyboard Shortcuts Panel */}
-        {showShortcuts && (
-          <KeyboardShortcuts
-            onClose={() => setShowShortcuts(false)}
-          />
-        )}
-
-        {/* Edit File Modal */}
-        {editingFile && (
-          <EditFileModal
-            file={editingFile}
-            onClose={() => setEditingFile(null)}
-            onSave={async (updatedFile) => {
-              // Update in appropriate content-type indices (creatorFiles will update automatically since it filters from these)
-              setMediaFiles(prev =>
-                prev.map(f =>
-                  f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f
-                )
-              );
-              setThoughtsFiles(prev =>
-                prev.map(f =>
-                  f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f
-                )
-              );
-              setCollectionsFiles(prev =>
-                prev.map(f =>
-                  f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f
-                )
-              );
-              setEditingFile(null);
-              success('File updated successfully!');
-              
-              // Clear cache and force refresh to ensure updated files appear
-              try {
-                const { CentralMetadataAggregator } = await import('./services/storage/CentralMetadataAggregator');
-                CentralMetadataAggregator.clearCache();
-              } catch (err) {
-                console.warn('Failed to clear cache:', err);
-              }
-              
-              // Force refresh files from API (forceRefresh=true ensures fresh data)
-              if (discoverFilesRef.current) {
-                await discoverFilesRef.current(undefined, true, 0, false);
-              }
-            }}
-          />
-        )}
-
-        {/* Upload Modal */}
-        {showUploadModal && (
-          <UploadModal
-            feeds={feeds}
-            onClose={() => setShowUploadModal(false)}
-            onUploadComplete={() => {
-              // Refresh files after upload - reset to page 0
-              setCurrentPage(0);
-              setHasMore(true);
-    hasMoreRef.current = true;
-              discoverFiles(undefined, true, 0, false);
-            }}
-          />
-        )}
-
-        {/* Toast Notifications */}
-        <ToastContainer toasts={toasts} onClose={removeToast} />
-      </div>
+                    if (!userState.pnIdentifier) return;
+                    getSavedFeed(userState.pnIdentifier).then(savedFeed => {
+                      if (savedFeed?.fileIds?.length) { setSavedFeedFileIds(savedFeed.fileIds); savedFeedErrorRef.current = null; lastSavedFeedFetchRef.current = { userDid: userState.pnIdentifier!, timestamp: Date.now() }; }
+                    }).catch(() => {});
+                  } catch {}
+                }
+              },
+              onError: () => { showErrorToast('Failed to save. Please try again.'); setSavedFeedFileIds(prev => prev.filter(id => id !== fileId)); },
+            });
+          } : undefined}
+          success={success}
+        />
+      ) : showUploadModal ? (
+        <UploadPage
+          feeds={feeds}
+          onClose={() => setShowUploadModal(false)}
+          onUploadComplete={() => { setCurrentPage(0); setHasMore(true); hasMoreRef.current = true; discoverFiles(undefined, true, 0, false); }}
+        />
+      ) : showSettings ? (
+        <SettingsPage onClose={() => setShowSettings(false)} />
+      ) : (
+      <HomePage />
       )}
-
-      {/* Bottom Navigation Bar - Single instance, always visible on ALL screens */}
-      <BottomNav
-        activeTab={activeBottomTab}
-        onTabChange={setActiveBottomTab}
-        onHomeClick={() => {
-              setActiveBottomTab('home');
-          setViewMode('feed');
-              setShowInbox(false);
-              setShowSearch(false);
-          setShowUploadModal(false);
-          setViewingCreatorId(null);
-          setViewingBrandedFeed(null);
-        }}
-        onSearchClick={() => {
-              setShowSearch(true);
-          setShowInbox(false);
-          setShowUploadModal(false);
-              setActiveBottomTab('search');
-          setViewingCreatorId(null);
-          setViewingBrandedFeed(null);
-        }}
-        onUploadClick={() => {
-              setShowUploadModal(true);
-          setShowInbox(false);
-          setShowSearch(false);
-          setViewingCreatorId(null);
-          setViewingBrandedFeed(null);
-              setActiveBottomTab('upload');
-            }}
-        onIndexClick={handleMeClick}
-        onInboxClick={() => {
-              setShowInbox(true);
-          setShowSearch(false);
-          setShowUploadModal(false);
-              setActiveBottomTab('messages');
-          setViewingCreatorId(null);
-          setViewingBrandedFeed(null);
-        }}
-      />
-    </div>
+      {viewingFile && (
+        <MediaViewer
+          file={viewingFile.file}
+          blob={viewingFile.blob}
+          url={viewingFile.url}
+          onClose={() => { if (viewingFile.url) URL.revokeObjectURL(viewingFile.url); setViewingFile(null); }}
+        />
+      )}
+      {showFeedBrowser && (
+        <FeedBrowser
+          feeds={feeds}
+          onClose={() => setShowFeedBrowser(false)}
+          onFeedClick={(feed) => { setShowFeedBrowser(false); setViewingBrandedFeed(feed); }}
+          onCreateFeed={() => { setShowFeedBrowser(false); setShowCreateFeedModal(true); }}
+        />
+      )}
+      {showCreateFeedModal && (
+        <CreateFeedModal onClose={() => setShowCreateFeedModal(false)} onFeedCreated={(feed) => { handleFeedCreated(feed); setShowCreateFeedModal(false); }} />
+      )}
+      {addingToFeedFile && (
+        <AddToFeedModal file={addingToFeedFile} feeds={feeds} onClose={() => setAddingToFeedFile(null)} onAdded={() => { setCurrentPage(0); setHasMore(true); hasMoreRef.current = true; discoverFiles(undefined, true, 0, false); setAddingToFeedFile(null); }} />
+      )}
+      {showShortcuts && <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />}
+      {editingFile && (
+        <EditFileModal
+          file={editingFile}
+          onClose={() => setEditingFile(null)}
+          onSave={async (updatedFile) => {
+            setMediaFiles(prev => prev.map(f => f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f));
+            setThoughtsFiles(prev => prev.map(f => f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f));
+            setCollectionsFiles(prev => prev.map(f => f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f));
+            setEditingFile(null);
+            success('File updated successfully!');
+            try { const { CentralMetadataAggregator } = await import('./services/storage/CentralMetadataAggregator'); CentralMetadataAggregator.clearCache(); } catch (_) {}
+            if (discoverFilesRef.current) await discoverFilesRef.current(undefined, true, 0, false);
+          }}
+        />
+      )}
+      </AppLayout>
+      </HomePageContext.Provider>
     </>
   );
 }

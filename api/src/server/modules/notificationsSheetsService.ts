@@ -327,4 +327,104 @@ export class NotificationsSheetsService {
 
     return markedCount;
   }
+
+  /**
+   * Get metadata (updatedAt, preferences) from Metadata sheet. Returns null if sheet does not exist.
+   */
+  static async getMetadata(
+    accessToken: string,
+    spreadsheetId: string
+  ): Promise<{ updatedAt: string; preferences: Record<string, unknown> | null; identifier: string } | null> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+    try {
+      const res = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'Metadata!A1:C1'
+      });
+      const row = res.data.values?.[0] || [];
+      const updatedAt = typeof row[0] === 'string' ? row[0] : new Date().toISOString();
+      let preferences: Record<string, unknown> | null = null;
+      if (row[1]) {
+        try {
+          preferences = JSON.parse(String(row[1])) as Record<string, unknown>;
+        } catch {
+          // ignore
+        }
+      }
+      const identifier = typeof row[2] === 'string' ? row[2] : '';
+      return { updatedAt, preferences, identifier };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Set metadata (updatedAt, preferences, identifier) in Metadata sheet. Creates sheet if it does not exist.
+   */
+  static async setMetadata(
+    accessToken: string,
+    spreadsheetId: string,
+    updatedAt: string,
+    preferences: Record<string, unknown> | null,
+    identifier: string
+  ): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+    try {
+      await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Metadata!A1' });
+    } catch {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [{ addSheet: { properties: { title: 'Metadata' } } }]
+        }
+      });
+    }
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Metadata!A1:C1',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[updatedAt, preferences ? JSON.stringify(preferences) : '', identifier]]
+      }
+    });
+  }
+
+  /**
+   * Replace all notification rows in the Notifications sheet (keeps header).
+   */
+  static async setAllNotifications(
+    accessToken: string,
+    spreadsheetId: string,
+    notifications: Notification[]
+  ): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range: 'Notifications!A2:H'
+    });
+    if (notifications.length > 0) {
+      const rows = notifications.map(n => [
+        n.notification_id,
+        n.user_did,
+        n.type,
+        n.title,
+        n.message,
+        JSON.stringify(n.data || {}),
+        n.read ? 'TRUE' : 'FALSE',
+        n.created_at
+      ]);
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Notifications!A2:H',
+        valueInputOption: 'RAW',
+        requestBody: { values: rows }
+      });
+    }
+  }
 }

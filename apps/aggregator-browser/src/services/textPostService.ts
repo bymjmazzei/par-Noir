@@ -9,7 +9,7 @@ import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from './encryptionService';
 import { uploadQueueService } from './uploadQueueService';
 
-const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+import { API_ENDPOINT } from '../config/api';
 
 interface EncryptedFilePackage {
   encrypted: string;
@@ -394,7 +394,7 @@ async function createTextPostSync(
 
     // Upload encrypted file
     const encryptedFileName = `${fileName}.encrypted`;
-    const uploadResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+    const uploadResponse = await fetch(`${API_ENDPOINT}/api/drive/files`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -486,7 +486,7 @@ async function createTextPostSync(
       
       // Upload encrypted thumbnail
       const thumbnailFileName = `thumb_${fileName.replace('.thought', '.png')}.encrypted`;
-      const thumbnailUploadResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+      const thumbnailUploadResponse = await fetch(`${API_ENDPOINT}/api/drive/files`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -547,7 +547,7 @@ async function createTextPostSync(
     // NOTE: Original thought file is PRIVATE (isPublic: false) - only the thumbnail appears in feeds
     // The original file is kept for editing purposes only
     console.log('📝 [TextPost] Creating metadata entry with text post data (private, for editing only)...');
-    const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+    const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -593,7 +593,7 @@ async function createTextPostSync(
         
         // Submit thumbnail to metadata index
         // If part of collection, thumbnail is private (only collection shows in feeds)
-        const thumbnailMetadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}`, {
+        const thumbnailMetadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${thumbnailFileId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',

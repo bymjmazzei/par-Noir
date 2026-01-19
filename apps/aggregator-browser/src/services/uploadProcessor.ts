@@ -8,8 +8,7 @@ import { workerManager } from './workerManager';
 import { PNOAuthService } from './pnOAuthService';
 import { getEncryptionService } from './encryptionService';
 import { renderTextPostToBlob } from './textPostService';
-
-const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+import { API_ENDPOINT } from '../config/api';
 
 interface EncryptedFilePackage {
   encrypted: string;
@@ -655,17 +654,16 @@ async function processPDFUpload(
   const pdfFile = task.file;
   
   // Import PDF processing utilities dynamically
-  const { processPDFPagesParallel } = await import('../components/FileStorageAggregator');
-  
+  const { processPDFPagesParallel } = await import('./pdfUploadService');
+
   // Process PDF pages with parallel thumbnail generation
-  // This function will generate all thumbnails in parallel and upload them in parallel
-  const pdfResult = await processPDFPagesParallel(
+  const pdfResult = await processPDFPagesParallel({
     pdfFile,
-    task.accountId,
+    accountId: task.accountId,
     session,
     publicKey,
-    accessToken
-  );
+    accessToken,
+  });
 
   uploadQueueService.updateTaskProgress(task.id, 70);
 
@@ -758,7 +756,7 @@ async function generateThumbnailForFile(file: File, isImage: boolean): Promise<B
  * Helper: Upload file to API
  */
 async function uploadFile(base64Data: string, fileName: string, accessToken: string, accountId: string): Promise<{ id: string }> {
-  const response = await fetch(`${apiEndpoint}/api/drive/files`, {
+  const response = await fetch(`${API_ENDPOINT}/api/drive/files`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -791,7 +789,7 @@ async function uploadFile(base64Data: string, fileName: string, accessToken: str
  * Helper: Create metadata entry
  */
 async function createMetadata(fileId: string, metadata: any, accessToken: string): Promise<void> {
-  const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+  const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',

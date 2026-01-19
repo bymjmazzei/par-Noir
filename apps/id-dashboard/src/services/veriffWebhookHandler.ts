@@ -67,7 +67,7 @@ export class VeriffWebhookHandler {
   private webhookSecret: string;
 
   constructor() {
-    this.webhookSecret = process.env.REACT_APP_VERIFF_WEBHOOK_SECRET || 'your-veriff-webhook-secret-here';
+    this.webhookSecret = process.env.REACT_APP_VERIFF_WEBHOOK_SECRET || process.env.VERIFF_WEBHOOK_SECRET || '';
   }
 
   static getInstance(): VeriffWebhookHandler {

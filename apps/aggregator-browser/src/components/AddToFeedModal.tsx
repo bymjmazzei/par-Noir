@@ -39,7 +39,7 @@ export function AddToFeedModal({ file, feeds, onClose, onAdded }: AddToFeedModal
       try {
         // Get feeds owned by the user
         const ownedFeeds = feeds.filter(
-          feed => feed.creatorDid === userState.pnIdentifier
+          feed => feed.creatorId === userState.pnIdentifier
         );
         setUserFeeds(ownedFeeds);
 

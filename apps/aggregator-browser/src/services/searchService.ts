@@ -3,7 +3,7 @@
  * Handles semantic metadata search with filters
  */
 
-const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+import { API_ENDPOINT } from '../config/api';
 import { IndexedFile, MetadataFilters } from '../types/aggregator';
 import { PNOAuthService } from './pnOAuthService';
 

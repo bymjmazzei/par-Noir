@@ -4,8 +4,7 @@
  */
 
 import { PNOAuthService } from './pnOAuthService';
-
-const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+import { API_ENDPOINT } from '../config/api';
 
 export interface ActivityEntry {
   activity_id: string;

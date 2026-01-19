@@ -9,6 +9,7 @@ import { Lock, Heart, MessageCircle, Share2 } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { useToast } from '../hooks/useToast';
+import { API_ENDPOINT } from '../config/api';
 
 interface PNConnectProps {
   onConnect?: () => void;
@@ -50,7 +51,7 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
           let feedTokens: any[] = [];
           try {
             if (userInfo.pn_identifier) {
-              const feedTokensResponse = await fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/feeds/tokens`, {
+              const feedTokensResponse = await fetch(`${API_ENDPOINT}/api/feeds/tokens`, {
                 headers: {
                   'Authorization': `Bearer ${tokenResponse.access_token}`
                 }

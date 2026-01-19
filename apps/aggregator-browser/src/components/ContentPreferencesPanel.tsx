@@ -10,7 +10,7 @@ import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../constants/feedCategories
 import { FeedCategory } from '../types/aggregator';
 import { PNOAuthService } from '../services/pnOAuthService';
 
-const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+import { API_ENDPOINT } from '../config/api';
 
 interface ContentPreferencesPanelProps {
   onClose: () => void;
@@ -39,7 +39,7 @@ export function ContentPreferencesPanel({ onClose }: ContentPreferencesPanelProp
         return;
       }
 
-      const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+      const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/preferences`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

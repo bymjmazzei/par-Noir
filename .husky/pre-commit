@@ -1,5 +1,10 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
+# Block commits that add known secret patterns (API keys, client IDs, etc.)
+if [ -f scripts/check-secrets.sh ]; then
+  bash scripts/check-secrets.sh || { echo "❌ check-secrets.sh: possible secret in staged changes. Do not commit .env, API keys, or secrets."; exit 1; }
+fi
+
 
 echo "🔒 Running security audit before commit..."
 

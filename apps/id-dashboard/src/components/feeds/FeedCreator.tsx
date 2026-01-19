@@ -8,6 +8,7 @@ import { X, Loader, CheckCircle, DollarSign } from 'lucide-react';
 import { FeedService, Feed } from '../../services/feeds/FeedService';
 import { IdentityVerificationModal } from '../IdentityVerificationModal';
 import { CoinbaseProxy, CheckoutRequest } from '../../utils/coinbaseProxy';
+import { API_ENDPOINT } from '../../config/api';
 
 interface FeedCreatorProps {
   isOpen: boolean;
@@ -40,7 +41,7 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
     const pollInterval = setInterval(async () => {
       try {
         // Check payment status via API
-        const response = await fetch(`${import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com'}/api/feeds/payment-status/${pendingCheckoutId}`, {
+        const response = await fetch(`${API_ENDPOINT}/api/feeds/payment-status/${pendingCheckoutId}`, {
           headers: {
             'Authorization': `Bearer ${JSON.parse(localStorage.getItem('authenticated_user') || '{}').accessToken || ''}`
           }

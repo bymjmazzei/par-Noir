@@ -6,9 +6,9 @@
 
 import { PNOAuthService } from './pnOAuthService';
 import * as decentralizedMessaging from './decentralizedMessaging';
+import { API_ENDPOINT } from '../config/api';
 
-const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-const USE_DECENTRALIZED = process.env.REACT_APP_USE_DECENTRALIZED !== 'false'; // Default true
+const USE_DECENTRALIZED = import.meta.env.VITE_USE_DECENTRALIZED !== 'false'; // Default true when unset
 
 // Helper function to get auth headers
 function getAuthHeaders(): HeadersInit {

@@ -269,7 +269,7 @@ export class GoogleDriveProxyService {
    * Refresh Google Drive access token
    */
   private async refreshAccessToken(refreshToken: string): Promise<GoogleDriveToken> {
-    const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID || '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
+    const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
 
     if (!clientSecret) {

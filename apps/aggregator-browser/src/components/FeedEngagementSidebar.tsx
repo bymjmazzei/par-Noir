@@ -12,6 +12,7 @@ import { ProfileActionMenu } from './ProfileActionMenu';
 import { useToast } from '../hooks/useToast';
 import { isFileSaved, saveToFeed, removeFromSavedFeed } from '../services/savedFeedService';
 import { uploadQueueService } from '../services/uploadQueueService';
+import { API_ENDPOINT } from '../config/api';
 
 interface FeedEngagementSidebarProps {
   file: IndexedFile;
@@ -153,7 +154,6 @@ export function FeedEngagementSidebar({
     
     const fileId = file.metadata.fileId;
     const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
-    const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
     
     try {
       await navigator.clipboard.writeText(shareUrl);

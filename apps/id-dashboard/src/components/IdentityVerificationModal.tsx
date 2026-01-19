@@ -4,6 +4,7 @@ import { ZKPGenerator } from '../utils/ZKPGenerator';
 import { STANDARD_DATA_POINTS } from '../types/StandardDataPointsRegistry';
 import { CoinbaseProxy, CoinbaseCheckout, CheckoutRequest } from '../utils/coinbaseProxy';
 import { verificationPaymentHandler } from '../services/verificationPaymentHandler';
+import { API_ENDPOINT } from '../config/api';
 
 interface IdentityVerificationModalProps {
   isOpen: boolean;
@@ -270,8 +271,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
 
       // Sync verification status to engagement system
       try {
-        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-        await fetch(`${apiEndpoint}/api/verification/sync`, {
+        await fetch(`${API_ENDPOINT}/api/verification/sync`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -300,7 +300,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
       const response = await fetch('https://stationapi.veriff.com/v1/sessions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.REACT_APP_VERIFF_API_KEY || '9b59a1b5-97e5-4180-9595-fa9f613eb1f5'}`,
+          'Authorization': `Bearer ${import.meta.env.VITE_VERIFF_API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({

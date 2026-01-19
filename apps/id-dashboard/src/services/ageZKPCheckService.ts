@@ -5,6 +5,7 @@
 
 import { SecureMetadataStorage } from '../utils/secureMetadataStorage';
 import { AttestedDataPoint } from '../utils/secureMetadata';
+import { API_ENDPOINT } from '../config/api';
 
 export class AgeZKPCheckService {
   /**
@@ -54,11 +55,9 @@ export class AgeZKPCheckService {
     accessToken: string
   ): Promise<boolean> {
     try {
-      const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-      
       // Check if age_attestation ZKP exists via OAuth endpoint
       const response = await fetch(
-        `${apiEndpoint}/oauth/zkp-data-points?dataPointId=age_attestation`,
+        `${API_ENDPOINT}/oauth/zkp-data-points?dataPointId=age_attestation`,
         {
           method: 'GET',
           headers: {

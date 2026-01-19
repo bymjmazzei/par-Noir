@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Copy, Check, ExternalLink, Code } from 'lucide-react';
 import { FeedService, Feed } from '../../services/feeds/FeedService';
+import { API_ENDPOINT } from '../../config/api';
 
 interface FeedWidgetGeneratorProps {
   feed: Feed;
@@ -25,8 +26,7 @@ export const FeedWidgetGenerator: React.FC<FeedWidgetGeneratorProps> = ({
 
   const loadWidgetCode = async () => {
     try {
-      const apiBase = import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com';
-      const response = await fetch(`${apiBase}/api/widgets/feed/${feed.feedId}`);
+      const response = await fetch(`${API_ENDPOINT}/api/widgets/feed/${feed.feedId}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -49,7 +49,7 @@ export const FeedWidgetGenerator: React.FC<FeedWidgetGeneratorProps> = ({
 
   const widgetUrl = feed.subdomain 
     ? `https://${feed.subdomain}.parnoir.com`
-    : `${import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com'}/api/widgets/feed/${feed.feedId}/embed`;
+    : `${API_ENDPOINT}/api/widgets/feed/${feed.feedId}/embed`;
 
   return (
     <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-6">

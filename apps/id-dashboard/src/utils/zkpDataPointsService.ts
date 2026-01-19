@@ -3,6 +3,8 @@
  * All data points are stored in Google Drive via API server
  */
 
+import { API_ENDPOINT } from '../config/api';
+
 export interface ZKPDataPoint {
   dataPointId: string;
   proofType: string;
@@ -37,15 +39,6 @@ export class ZKPDataPointsService {
   }
 
   /**
-   * Get API endpoint
-   */
-  private static getApiEndpoint(): string {
-    return import.meta.env.VITE_API_ENDPOINT || 
-           process.env.REACT_APP_API_ENDPOINT || 
-           'https://api.parnoir.com';
-  }
-
-  /**
    * Get all attested data points from API server (Google Drive)
    */
   static async getAllDataPoints(
@@ -56,10 +49,9 @@ export class ZKPDataPointsService {
   ): Promise<string[]> {
     try {
       const pnIdentifier = await this.getPnIdentifier(identityId, credentials, publicKey);
-      const apiEndpoint = this.getApiEndpoint();
 
       const response = await fetch(
-        `${apiEndpoint}/api/users/${pnIdentifier}/zkp-data-points`,
+        `${API_ENDPOINT}/api/users/${pnIdentifier}/zkp-data-points`,
         {
           method: 'GET',
           headers: {
@@ -109,10 +101,9 @@ export class ZKPDataPointsService {
   ): Promise<ZKPDataPoint | null> {
     try {
       const pnIdentifier = await this.getPnIdentifier(identityId, credentials, publicKey);
-      const apiEndpoint = this.getApiEndpoint();
 
       const response = await fetch(
-        `${apiEndpoint}/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`,
+        `${API_ENDPOINT}/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`,
         {
           method: 'GET',
           headers: {
@@ -150,10 +141,9 @@ export class ZKPDataPointsService {
   ): Promise<void> {
     try {
       const pnIdentifier = await this.getPnIdentifier(identityId, credentials, publicKey);
-      const apiEndpoint = this.getApiEndpoint();
 
       const response = await fetch(
-        `${apiEndpoint}/api/users/${pnIdentifier}/zkp-data-points/${dataPoint.dataPointId}`,
+        `${API_ENDPOINT}/api/users/${pnIdentifier}/zkp-data-points/${dataPoint.dataPointId}`,
         {
           method: 'PUT',
           headers: {

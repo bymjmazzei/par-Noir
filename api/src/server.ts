@@ -669,7 +669,7 @@ class ProductionServer {
       await IndexSheetsService.addFile(accessToken, spreadsheetId, indexEntry);
     }
 
-    // Also update content class-specific owner index (still using JSON for now - can be migrated later)
+    // Also update content class-specific owner index
     const contentTypeFolderName = indexEntry.contentClass === 'thought' ? 'thoughts' : indexEntry.contentClass;
     const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     const contentTypeFolderResponse = await fetch(
@@ -1461,7 +1461,7 @@ class ProductionServer {
 
     // Debug endpoint to check OAuth configuration (without exposing secrets)
     this.app.get('/api/debug/oauth-config', (req, res) => {
-      const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID || '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
+      const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
       const hasClientSecret = !!process.env.GOOGLE_DRIVE_CLIENT_SECRET;
       const clientSecretLength = process.env.GOOGLE_DRIVE_CLIENT_SECRET?.length || 0;
       
@@ -4627,6 +4627,9 @@ class ProductionServer {
         // SECURITY: Use sanitized identityId in logs
         console.log(`[StorageCredentials PUT] Successfully saved credentials for identityId: ${sanitizedIdentityId}`);
 
+        let directoryBuilt = true;
+        let folderInitError: string | null = null;
+
         // Initialize Google Drive folder structure if this is a new Google Drive connection
         const hasGoogleDrive = credentials?.googleDriveAccounts?.length > 0 || credentials?.googleDrive;
         if (hasGoogleDrive) {
@@ -4808,10 +4811,12 @@ class ProductionServer {
               
               console.log(`[StorageCredentials PUT] Successfully initialized all metadata files for identityId: ${sanitizedIdentityId}`);
             }
-          } catch (folderInitError: any) {
+          } catch (err: any) {
             // Don't fail the credential save if folder initialization fails
             // This is non-critical - folders will be created on-demand if needed
-            console.warn(`[StorageCredentials PUT] Failed to initialize folder structure for identityId: ${sanitizedIdentityId}`, folderInitError?.message || folderInitError);
+            directoryBuilt = false;
+            folderInitError = err?.message || String(err);
+            console.warn(`[StorageCredentials PUT] Failed to initialize folder structure for identityId: ${sanitizedIdentityId}`, folderInitError);
           }
         }
 
@@ -4819,7 +4824,9 @@ class ProductionServer {
           success: true,
           identityId: record.identityId,
           cid: record.cid ?? null,
-          updatedAt: record.updatedAt
+          updatedAt: record.updatedAt,
+          directoryBuilt,
+          ...(folderInitError != null && { folderInitError })
         });
       } catch (error: any) {
         console.error('Error saving storage credentials:', error);
@@ -4883,6 +4890,43 @@ class ProductionServer {
         return res.status(500).json({
           error: 'Failed to retrieve storage credentials',
           message: error.message
+        });
+      }
+    });
+
+    // GET /api/storage/owner-index/:identityId - Read owner file index from Sheets (replaces JSON)
+    this.app.get('/api/storage/owner-index/:identityId', async (req, res) => {
+      try {
+        const { identityId } = req.params;
+        if (!identityId) {
+          return res.status(400).json({ error: 'Missing identityId parameter' });
+        }
+
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+
+        let accessToken: string;
+        try {
+          accessToken = await googleDriveProxyService.getAccessToken(identityId, undefined, [identityId]);
+        } catch {
+          return res.status(404).json({ error: 'Google Drive not connected for this identity' });
+        }
+
+        const out = await this.getMetadataFolder(accessToken, identityId);
+        if (!out) {
+          return res.json({ identifier: identityId, files: [], updatedAt: new Date().toISOString() });
+        }
+
+        const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, out.metadataFolderId, 'owner');
+        const { files } = await IndexSheetsService.getFiles(accessToken, spreadsheetId);
+        const updatedAt = await IndexSheetsService.getUpdatedAt(accessToken, spreadsheetId) ?? new Date().toISOString();
+
+        return res.json({ identifier: identityId, files, updatedAt });
+      } catch (error: any) {
+        console.error('[OwnerIndex] Error:', error?.message || error);
+        return res.status(500).json({
+          error: 'Failed to read owner index',
+          message: error?.message || String(error)
         });
       }
     });
@@ -5156,7 +5200,7 @@ class ProductionServer {
         const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
         const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
-        // 1. Update user's Google Drive engagement.json
+        // 1. Update user's Google Drive engagement.xlsx (Sheets)
         const driveResult = await EngagementDriveService.toggleLike(
           pnIdentifier,
           fileId,
@@ -5428,7 +5472,7 @@ class ProductionServer {
         const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
         const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
-        // Read from user's Google Drive engagement.json
+        // Read from user's Google Drive engagement.xlsx (Sheets)
         const liked = await EngagementDriveService.isLiked(fileId, userAccessToken, metadataFolderId);
 
         return res.json({ liked });
@@ -5476,7 +5520,7 @@ class ProductionServer {
         const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
         const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
-        // 1. Update user's Google Drive engagement.json
+        // 1. Update user's Google Drive engagement.xlsx (Sheets)
         const driveResult = await EngagementDriveService.toggleDislike(
           pnIdentifier,
           fileId,
@@ -5671,7 +5715,7 @@ class ProductionServer {
           postReply
         );
 
-        // 2. Store comment in user's Google Drive engagement.json (with same ID from database)
+        // 2. Store comment in user's Google Drive engagement.xlsx (Sheets) (with same ID from database)
         await EngagementDriveService.addComment(
           pnIdentifier,
           fileId,
@@ -7281,7 +7325,7 @@ class ProductionServer {
           });
         }
 
-        const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID || '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
+        const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
         const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
         
         console.log('[Google OAuth Token Exchange] Client ID:', clientId);
@@ -7398,8 +7442,7 @@ class ProductionServer {
         }
 
         const clientId =
-          process.env.GOOGLE_DRIVE_CLIENT_ID ||
-          '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
+          process.env.GOOGLE_DRIVE_CLIENT_ID;
         const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
 
         if (!clientSecret || clientSecret.trim() === '') {

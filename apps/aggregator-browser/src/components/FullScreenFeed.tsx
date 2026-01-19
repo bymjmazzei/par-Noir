@@ -21,8 +21,7 @@ import { calculateMediaScaling, getContainerDimensions } from '../utils/mediaSca
 import { PreferenceTile, PreferenceQuestion } from './PreferenceTile';
 import { PreferenceQuestionService, PreferenceState } from '../services/preferenceQuestionService';
 import { useUserState } from '../contexts/UserStateContext';
-
-const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+import { API_ENDPOINT } from '../config/api';
 
 interface FullScreenFeedProps {
   files: IndexedFile[];
@@ -88,7 +87,6 @@ export function FullScreenFeed({
     console.log(`[DEBUG] Testing thumbnail load for: ${fileId}`);
     try {
       const { PNOAuthService } = await import('../services/pnOAuthService');
-      const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const accessToken = await PNOAuthService.getValidAccessToken();
       
       if (!accessToken) {
@@ -96,7 +94,7 @@ export function FullScreenFeed({
         return;
       }
       
-      const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+      const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
       
@@ -607,7 +605,7 @@ export function FullScreenFeed({
       // Only send if view duration is meaningful (> 0.5 seconds)
       if (viewDuration > 0.5) {
         // Send viewing data to backend (fire and forget)
-        fetch(`${apiEndpoint}/api/file-views`, {
+        fetch(`${API_ENDPOINT}/api/file-views`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -913,7 +911,6 @@ export function FullScreenFeed({
           if (thumbnailsWithoutTokens.length > 0) {
             console.log(`[FullScreenFeed] Loading ${thumbnailsWithoutTokens.length} thumbnails via metadata fetch (fallback)`);
             const { PNOAuthService } = await import('../services/pnOAuthService');
-            const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
             const accessToken = await PNOAuthService.getValidAccessToken().catch(() => null);
             
             await Promise.all(thumbnailsWithoutTokens.map(async (cfId: string) => {
@@ -924,7 +921,7 @@ export function FullScreenFeed({
                   headers['Authorization'] = `Bearer ${accessToken}`;
                 }
                 
-                const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`, { headers });
+                const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${cfId}`, { headers });
                 if (!metadataResponse.ok) {
                   clearLoadingState(cfId);
                   return;
@@ -1200,7 +1197,6 @@ export function FullScreenFeed({
                   if (thumbnailsWithoutTokens.length > 0) {
                     console.log(`[FullScreenFeed] Loading ${thumbnailsWithoutTokens.length} thumbnails via metadata fetch (fallback)`);
                     const { PNOAuthService } = await import('../services/pnOAuthService');
-                    const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
                     const accessToken = await PNOAuthService.getValidAccessToken().catch(() => null);
                     
                     await Promise.all(thumbnailsWithoutTokens.map(async (cfId: string) => {
@@ -1211,7 +1207,7 @@ export function FullScreenFeed({
                           headers['Authorization'] = `Bearer ${accessToken}`;
                         }
                         
-                        const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`, { headers });
+                        const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${cfId}`, { headers });
                         if (!metadataResponse.ok) {
                           clearLoadingState(cfId);
                           return;
@@ -1321,7 +1317,6 @@ export function FullScreenFeed({
       await Promise.all(missingThumbnailIds.map(async (fileId: string) => {
         try {
           const { PNOAuthService } = await import('../services/pnOAuthService');
-          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
           const accessToken = await PNOAuthService.getValidAccessToken();
           
           if (!accessToken) {
@@ -1331,7 +1326,7 @@ export function FullScreenFeed({
           }
           
           // Fetch metadata for this collection file to get publicToken/thumbnailFileId
-          const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+          const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
             headers: { 'Authorization': `Bearer ${accessToken}` }
           });
           
@@ -1353,7 +1348,7 @@ export function FullScreenFeed({
                                  collectionFileMetadata.creator?.["@id"] || collectionFileMetadata.author?.did;
             if (pnIdentifier && !accountIdCacheRef.current) {
               try {
-                const accountResponse = await fetch(`${apiEndpoint}/api/users/${encodeURIComponent(pnIdentifier)}/accounts`, {
+                const accountResponse = await fetch(`${API_ENDPOINT}/api/users/${encodeURIComponent(pnIdentifier)}/accounts`, {
                   headers: { 'Authorization': `Bearer ${accessToken}` }
                 });
                 
@@ -1410,7 +1405,7 @@ export function FullScreenFeed({
           // PRIORITY 2: Check for thumbnailFileId
           const thumbnailFileId = collectionFileMetadata.thumbnailFileId;
           if (thumbnailFileId) {
-            let thumbnailUrl = `${apiEndpoint}/api/drive/files/${thumbnailFileId}?thumbnail=true`;
+            let thumbnailUrl = `${API_ENDPOINT}/api/drive/files/${thumbnailFileId}?thumbnail=true`;
             if (accountId && accountId.includes('::')) {
               thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
             }
@@ -1483,7 +1478,7 @@ export function FullScreenFeed({
           // For thought-collection-thumbnails, they ARE the image files, so use download=true
           // For regular images, thumbnail=true might generate a thumbnail, but for collection thumbnails we want the full file
           const useDownload = isThoughtCollectionThumbnail;
-          let thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?${useDownload ? 'download' : 'thumbnail'}=true`;
+          let thumbnailUrl = `${API_ENDPOINT}/api/drive/files/${fileId}?${useDownload ? 'download' : 'thumbnail'}=true`;
           if (accountId && accountId.includes('::')) {
             thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
           }
@@ -1770,7 +1765,6 @@ export function FullScreenFeed({
             (async () => {
               try {
                 const { PNOAuthService } = await import('../services/pnOAuthService');
-                const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
                 
                 // Try to get access token (optional - may not be available for public files)
                 const accessToken = await PNOAuthService.getValidAccessToken().catch(() => null);
@@ -1788,7 +1782,7 @@ export function FullScreenFeed({
                       headers['Authorization'] = `Bearer ${accessToken}`;
                     }
                     
-                    const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`, {
+                    const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${cfId}`, {
                       headers
                     });
                     
@@ -1823,7 +1817,7 @@ export function FullScreenFeed({
                                            collectionFileMetadata.creator?.["@id"] || collectionFileMetadata.author?.did;
                       if (pnIdentifier && !accountIdCacheRef.current) {
                         try {
-                          const accountResponse = await fetch(`${apiEndpoint}/api/users/${encodeURIComponent(pnIdentifier)}/accounts`, {
+                          const accountResponse = await fetch(`${API_ENDPOINT}/api/users/${encodeURIComponent(pnIdentifier)}/accounts`, {
                             headers: { 'Authorization': `Bearer ${accessToken}` }
                           });
                           if (accountResponse.ok) {
@@ -1888,7 +1882,7 @@ export function FullScreenFeed({
                     // PRIORITY 2: Check for thumbnailFileId
                     const thumbnailFileId = collectionFileMetadata.thumbnailFileId;
                     if (thumbnailFileId) {
-                      let thumbnailUrl = `${apiEndpoint}/api/drive/files/${thumbnailFileId}?thumbnail=true`;
+                      let thumbnailUrl = `${API_ENDPOINT}/api/drive/files/${thumbnailFileId}?thumbnail=true`;
                       if (accountId && accountId.includes('::')) {
                         thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
                       }
@@ -1961,7 +1955,7 @@ export function FullScreenFeed({
                     }
                     
                     // PRIORITY 3: Try API endpoint with ?thumbnail=true
-                    let thumbnailUrl = `${apiEndpoint}/api/drive/files/${cfId}?thumbnail=true`;
+                    let thumbnailUrl = `${API_ENDPOINT}/api/drive/files/${cfId}?thumbnail=true`;
                     if (accountId && accountId.includes('::')) {
                       thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
                     }
@@ -2053,7 +2047,7 @@ export function FullScreenFeed({
                       
                       if (isImageOrVideo) {
                         console.log(`[FullScreenFeed] IMMEDIATE LOAD: Trying final fallback - load file directly for ${cfId}`);
-                        let fileUrl = `${apiEndpoint}/api/drive/files/${cfId}?thumbnail=true`;
+                        let fileUrl = `${API_ENDPOINT}/api/drive/files/${cfId}?thumbnail=true`;
                         if (accountId.includes('::')) {
                           fileUrl += `&accountId=${encodeURIComponent(accountId)}`;
                         }
@@ -2122,7 +2116,7 @@ export function FullScreenFeed({
               }
               
               console.log(`[FullScreenFeed] Fetching collection data for ${fileId}`);
-              const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+              const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
                 headers: { 'Authorization': `Bearer ${accessToken}` }
               });
               

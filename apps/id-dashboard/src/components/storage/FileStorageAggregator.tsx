@@ -19,6 +19,7 @@ import { IntegrationCredentialManager } from '../../utils/integrationCredentialM
 import { LICENSE_TYPES } from '../../constants/licenses';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../../constants/feedCategories';
 import { ReportContentModal } from './ReportContentModal';
+import { API_ENDPOINT } from '../../config/api';
 
 const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
 const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
@@ -94,8 +95,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const loadFilesRef = React.useRef<(() => Promise<void>) | null>(null);
   const loadStorageQuotaRef = React.useRef<(() => Promise<void>) | null>(null);
   const makeShareTokenCacheKey = React.useCallback((backendId: string, backendFileId: string) => `${backendId}|${backendFileId}`, []);
-  const apiEndpoint = React.useMemo(() => import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com', []);
-
   const [isLoading, setIsLoading] = useState(false);
   const [files, setFiles] = useState<AggregatedFile[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -852,25 +851,29 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   // CRITICAL: Global lock to prevent multiple persistence calls
   const globalPersistenceLockRef = React.useRef(false);
 
-  const persistStorageCredentialsToAPI = React.useCallback(async (credentialsPayload?: any, cid?: string | null) => {
+  const persistStorageCredentialsToAPI = React.useCallback(async (
+    credentialsPayload?: any,
+    cid?: string | null,
+    options?: { bypassDebounce?: boolean }
+  ): Promise<void | 'blocked'> => {
     // CRITICAL: Global lock to prevent multiple simultaneous persistence calls
     if (globalPersistenceLockRef.current) {
       console.warn('🚫 [StorageCredentials] BLOCKED: Global persistence lock active, skipping...');
-      return;
+      return 'blocked';
     }
     
     // Prevent multiple simultaneous calls
     if (persistenceInProgressRef.current) {
       console.warn('🚫 [StorageCredentials] BLOCKED: Persistence already in progress, skipping...');
-      return;
+      return 'blocked';
     }
 
-    // Debounce rapid calls
+    // Debounce rapid calls (skip when bypassDebounce for connect-flow)
     const now = Date.now();
     const timeSinceLastCall = now - lastPersistenceTimeRef.current;
-    if (timeSinceLastCall < PERSISTENCE_DEBOUNCE_MS) {
+    if (!options?.bypassDebounce && timeSinceLastCall < PERSISTENCE_DEBOUNCE_MS) {
       console.warn(`🚫 [StorageCredentials] BLOCKED: Persistence debounced (${timeSinceLastCall}ms < ${PERSISTENCE_DEBOUNCE_MS}ms since last call)`);
-      return;
+      return 'blocked';
     }
 
     console.log(`🔒 [StorageCredentials] ACQUIRING lock - setting globalPersistenceLockRef and persistenceInProgressRef to true`);
@@ -960,7 +963,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           accountsCount: payload.googleDriveAccounts.length
         });
 
-        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`, {
+        const response = await fetch(`${API_ENDPOINT}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -978,9 +981,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             error: errorText,
           });
         } else {
+          const data = await response.json().catch(() => ({})) as { directoryBuilt?: boolean; folderInitError?: string };
           console.log('✅ [StorageCredentials] Credentials persisted to API', {
             accountsCount: payload.googleDriveAccounts.length
           });
+          return data;
         }
       } catch (error) {
         console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
@@ -992,7 +997,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       globalPersistenceLockRef.current = false;
       persistenceInProgressRef.current = false;
     }
-  }, [buildStorageCredentialPayload, persistCredentialsToSecureMetadata, apiEndpoint, driveAccounts.length]);
+  }, [buildStorageCredentialPayload, persistCredentialsToSecureMetadata, API_ENDPOINT, driveAccounts.length]);
 
   // Token refresh handler - moved here after persistStorageCredentialsToAPI is declared
   // CRITICAL: Use refs for driveAccounts and userEmails to avoid re-registering event listener
@@ -1353,7 +1358,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setIndexerError(null);
 
       try {
-        const endpoint = new URL(`${apiEndpoint}/api/third-party/indexers`);
+        const endpoint = new URL(`${API_ENDPOINT}/api/third-party/indexers`);
         if (identity) {
           endpoint.searchParams.set('identity', identity);
         }
@@ -1387,7 +1392,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         setIsLoadingIndexers(false);
       }
     },
-    [apiEndpoint, applyIndexersState, resolvedAuth?.publicKey, authenticatedUser?.id, authenticatedUser?.publicKey]
+    [API_ENDPOINT, applyIndexersState, resolvedAuth?.publicKey, authenticatedUser?.id, authenticatedUser?.publicKey]
     // SECURITY: Removed resolvedAuth?.pnName, authenticatedUser?.pnName - these are secrets
   );
 
@@ -1592,7 +1597,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               id: params.backendId,
               name: params.email || 'Google Drive',
               storageKeyPrefix: params.keyPrefix,
-              apiEndpoint
+              apiEndpoint: API_ENDPOINT
             });
             aggregatorService.registerBackend(params.backendId, backend);
           }
@@ -1699,7 +1704,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
 
     return upsertPromise;
-  }, [aggregatorService, activeBackendId, apiEndpoint, driveAccounts, userEmails, authenticatedUser]);
+  }, [aggregatorService, activeBackendId, API_ENDPOINT, driveAccounts, userEmails, authenticatedUser]);
 
   const removeDriveAccount = React.useCallback((backendId: string) => {
     let nextActiveId: string | null = null;
@@ -1836,7 +1841,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       try {
         // candidateId (identityId) is secret - not logged
         console.debug('📥 [StorageCredentials] Fetching credentials from API...', {
-          endpoint: apiEndpoint,
+          endpoint: API_ENDPOINT,
         });
 
         // CRITICAL: Use ONLY pn identifier - candidateId should already be pn identifier from getStorageIdentityCandidates
@@ -1847,7 +1852,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           hydrationMissingCandidatesRef.current.add(candidateId);
           continue;
         }
-        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnId)}`);
+        const response = await fetch(`${API_ENDPOINT}/api/storage/credentials/${encodeURIComponent(pnId)}`);
         if (response.status === 404) {
           hydrationMissingCandidatesRef.current.add(candidateId);
           // candidateId (identityId) is secret - not logged
@@ -1894,7 +1899,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         if (!payload) {
           // candidateId (identityId) is secret - not logged
           console.warn('⚠️ [StorageCredentials] API returned no credentials payload', {
-            endpoint: `${apiEndpoint}/api/storage/credentials/[REDACTED]`,
+            endpoint: `${API_ENDPOINT}/api/storage/credentials/[REDACTED]`,
           });
           continue;
         }
@@ -1935,7 +1940,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             const identityCandidates = getStorageIdentityCandidates();
             const pnId = identityCandidates.length > 0 && identityCandidates[0]?.startsWith('pn-') ? identityCandidates[0] : null;
             if (pnId) {
-              await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnId)}`, {
+              await fetch(`${API_ENDPOINT}/api/storage/credentials/${encodeURIComponent(pnId)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -2149,7 +2154,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         // Accounts are loaded from cache, no need to persist
       }
     }
-  }, [apiEndpoint, resolvedAuth?.publicKey, authenticatedUser?.id, authenticatedUser?.publicKey, upsertDriveAccount, persistStorageCredentialsToAPI]);
+  }, [API_ENDPOINT, resolvedAuth?.publicKey, authenticatedUser?.id, authenticatedUser?.publicKey, upsertDriveAccount, persistStorageCredentialsToAPI]);
   // SECURITY: Removed resolvedAuth?.pnName, authenticatedUser?.pnName - these are secrets
 
   const fetchDriveUserInfo = React.useCallback(async (accessToken: string) => {
@@ -3071,7 +3076,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
         let ownerIndex: any = null;
 
-        if (accessToken && currentPnIdentifier) {
+        if (currentPnIdentifier) {
+          try {
+            const res = await fetch(`${API_ENDPOINT}/api/storage/owner-index/${encodeURIComponent(currentPnIdentifier)}`);
+            if (res.ok) {
+              ownerIndex = await res.json();
+              console.debug('📋 [loadFiles] Owner index from API', { backendId, hasIndex: !!ownerIndex, fileCount: ownerIndex?.files?.length || 0 });
+            }
+          } catch (apiErr) {
+            console.debug('⏳ [loadFiles] Owner index API failed, trying legacy', { backendId, error: (apiErr as Error)?.message });
+          }
+        }
+        if (!ownerIndex && accessToken && currentPnIdentifier) {
           const fetchOwnerIndex = async (tok: string) => {
             const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
             const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(tok, currentPnIdentifier);
@@ -3080,7 +3096,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           };
           try {
             ownerIndex = await fetchOwnerIndex(accessToken);
-            console.debug('📋 [loadFiles] Owner index response', {
+            console.debug('📋 [loadFiles] Owner index response (legacy)', {
               backendId,
               hasIndex: !!ownerIndex,
               fileCount: ownerIndex?.files?.length || 0,
@@ -3474,7 +3490,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setIsLoading(false);
       isLoadingFilesRef.current = false;
     }
-  }, [aggregatorService, authenticatedUser, resolvedAuth, driveAccounts, loadFileMetadata, scheduleTokenRetry]);
+  }, [aggregatorService, authenticatedUser, resolvedAuth, driveAccounts, loadFileMetadata, scheduleTokenRetry, API_ENDPOINT]);
 
   const handleTogglePublic = async (file: AggregatedFile) => {
     try {
@@ -3814,7 +3830,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           retryHelper(
             async () => {
               const res = await fetch(
-                `${apiEndpoint}/api/aggregator/metadata-index/${encodeURIComponent(targetFileId)}${authenticatedUser?.accessToken ? `?accountId=${encodeURIComponent(file.backend || '')}` : ''}`,
+                `${API_ENDPOINT}/api/aggregator/metadata-index/${encodeURIComponent(targetFileId)}${authenticatedUser?.accessToken ? `?accountId=${encodeURIComponent(file.backend || '')}` : ''}`,
                 {
                   method: 'PUT',
                   headers: {
@@ -3916,8 +3932,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
                 
                 // SIMPLIFIED: The API endpoint already creates Google Sheets companion metadata
-                // We only need to update the public-file-index.json as a backup/cache
-                // The database (updated via API) is the source of truth
+                // public-file-index is in Sheets; the database (updated via API) is the source of truth
                 // CRITICAL: Ensure we use the actual Google Drive file ID for googleDriveFileId
                 // file.backendFileId is the Google Drive file ID, file.id might be a composite ID
                 const companionMetadata: CompanionMetadata = {
@@ -4076,7 +4091,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         if (shareNSFW !== currentNSFW) {
           try {
             const response = await fetch(
-              `${apiEndpoint}/api/aggregator/metadata-index`,
+              `${API_ENDPOINT}/api/aggregator/metadata-index`,
               {
                 method: 'PUT',
                 headers: {
@@ -4138,7 +4153,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           const response = await retryHelper(
             async () => {
               const res = await fetch(
-                `${apiEndpoint}/api/third-party/files/${encodeURIComponent(targetFileId)}/index-visibility`,
+                `${API_ENDPOINT}/api/third-party/files/${encodeURIComponent(targetFileId)}/index-visibility`,
                 {
                   method: 'PUT',
                   headers: {
@@ -4229,7 +4244,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     indexingPermissionsState,
     handleTogglePublic,
     loadFileMetadata,
-    apiEndpoint,
+    API_ENDPOINT,
     authenticatedUser,
     closeShareSettings,
     refreshMetadataInBackground
@@ -4472,8 +4487,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   // Helper function to exchange authorization code for tokens
   // Uses Google OAuth endpoint directly (client-side exchange)
   const exchangeCodeForTokens = async (code: string, redirectUri: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> => {
-    const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || 
-      '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
+    const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID;
     const clientSecret = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_SECRET;
     
     // If we have client secret, use it (should be in backend, but allowing frontend for now)
@@ -4507,7 +4521,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       };
     } else {
       // Fallback to API endpoint
-      const response = await fetch(`${apiEndpoint}/api/auth/google-oauth/token`, {
+      const response = await fetch(`${API_ENDPOINT}/api/auth/google-oauth/token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -4544,8 +4558,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setError(null);
 
       // OAuth flow - authorization code flow for refresh tokens
-      const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || 
-        '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
+      const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID;
       // Use oauth-callback.html as redirect URI (must match Google Cloud Console settings)
       const redirectUri = `${window.location.origin}/oauth-callback.html`;
       const scope = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
@@ -4721,12 +4734,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
 
     // CRITICAL: Persist immediately after connect - auto-persist is disabled
-    // This ensures credentials are saved to API when user explicitly connects
+    // This ensures credentials are saved to API when user explicitly connects.
+    // bypassDebounce so connect is never skipped; retry once if BLOCKED (lock or in-progress).
     try {
       const payload = buildStorageCredentialPayload();
       if (payload && payload.googleDriveAccounts && payload.googleDriveAccounts.length > 0) {
-        await persistStorageCredentialsToAPI(payload);
+        let result = await persistStorageCredentialsToAPI(payload, null, { bypassDebounce: true });
+        if (result === 'blocked') {
+          await new Promise(r => setTimeout(r, 1500));
+          result = await persistStorageCredentialsToAPI(payload, null, { bypassDebounce: true });
+        }
         console.log('✅ [handleConnectGoogleDrive] Credentials persisted to API after connection');
+        if (result && typeof result === 'object' && (result.directoryBuilt === false || result.folderInitError)) {
+          setError('Google Drive folder setup did not complete. You can retry by disconnecting and reconnecting.');
+          setTimeout(() => setError(null), 8000);
+        }
       }
     } catch (persistError) {
       console.warn('⚠️ [handleConnectGoogleDrive] Failed to persist credentials to API (non-critical):', persistError);
@@ -4882,7 +4904,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           try {
             // Send current payload (may be empty if all accounts disconnected)
             // CRITICAL: Always send the deduplicated payload, even if it's empty
-            const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnId)}`, {
+            const response = await fetch(`${API_ENDPOINT}/api/storage/credentials/${encodeURIComponent(pnId)}`, {
                 method: 'PUT',
                 headers: {
                   'Content-Type': 'application/json',
@@ -4925,7 +4947,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const pnId = identityCandidates.length > 0 && identityCandidates[0]?.startsWith('pn-') ? identityCandidates[0] : null;
         
         if (pnId) {
-          await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnId)}`, {
+          await fetch(`${API_ENDPOINT}/api/storage/credentials/${encodeURIComponent(pnId)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -5312,7 +5334,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
 
       // Update via API endpoint
-      const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${editingFile.id}`, {
+      const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${editingFile.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -6044,7 +6066,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         throw new Error('No access token available');
       }
 
-      const response = await fetch(`${apiEndpoint}/api/profile/image`, {
+      const response = await fetch(`${API_ENDPOINT}/api/profile/image`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -6192,7 +6214,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       try {
         // Call API endpoint which handles: file deletion, thumbnail deletion, metadata deletion, and index cleanup
-        const response = await fetch(`${apiEndpoint}/api/drive/files/${file.backendFileId}${accountIdParam}`, {
+        const response = await fetch(`${API_ENDPOINT}/api/drive/files/${file.backendFileId}${accountIdParam}`, {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${accessToken}`
@@ -6211,7 +6233,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             
             // Try to remove from database via metadata-index endpoint
             try {
-              const dbResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${file.backendFileId}`, {
+              const dbResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${file.backendFileId}`, {
                 method: 'DELETE',
                 headers: {
                   'Authorization': `Bearer ${accessToken}` // Still try with expired token

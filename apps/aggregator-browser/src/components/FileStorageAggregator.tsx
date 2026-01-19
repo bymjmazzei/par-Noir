@@ -18,8 +18,10 @@ import { useUserState } from '../contexts/UserStateContext';
 import { cleanTitle } from '../utils/cleanTitle';
 import { EditMetadataModal, MetadataFormData } from './EditMetadataModal';
 import { accountsCacheService } from '../services/accountsCacheService';
-
-const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+import { ThumbnailImage } from './file/ThumbnailImage';
+import { useDriveAccounts } from '../hooks/useDriveAccounts';
+import type { DriveAccount, DriveFile } from './storage/storageTypes';
+import { API_ENDPOINT } from '../config/api';
 
 interface EncryptedFilePackage {
   encrypted: string;
@@ -30,462 +32,6 @@ interface EncryptedFilePackage {
     originalSize: number;
     originalMimeType: string;
   };
-}
-
-// Thumbnail component that handles authenticated loading
-const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: string; alt: string; className?: string; mimeType?: string; mainFileId?: string; isThumbnail?: boolean }> = ({ fileId, accountId, fileName, alt, className = 'w-full h-full object-cover', mimeType, mainFileId, isThumbnail }) => {
-  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
-  const [error, setError] = useState(false);
-
-  // Check if file is encrypted
-  // Note: Files uploaded through the dashboard are stored with .encrypted extension
-  // But they're actually JSON packages, so we check the extension
-  const isEncrypted = fileName.toLowerCase().endsWith('.encrypted');
-  
-  useEffect(() => {
-    let blobUrl: string | null = null;
-    
-    const loadThumbnail = async () => {
-      try {
-        // Skip loading thumbnail for files that are still uploading
-        // Files with "uploading_" prefix are placeholders that don't exist on the server yet
-        if (fileId.startsWith('uploading_')) {
-          console.log('[ThumbnailImage] Skipping thumbnail load for uploading file:', fileId);
-          setError(false); // Don't show error, just skip loading
-          return;
-        }
-
-        const accessToken = await PNOAuthService.getValidAccessToken();
-        if (!accessToken) {
-          console.warn('[ThumbnailImage] No access token available');
-          setError(true);
-          return;
-        }
-
-
-        // Check if this is a thought file or thought thumbnail - if so, render directly from HTML/CSS content
-        const fileNameWithoutEncrypted = fileName.replace(/\.encrypted$/i, '');
-        const isThoughtFile = fileNameWithoutEncrypted.toLowerCase().startsWith('thought-') && 
-                              (fileNameWithoutEncrypted.toLowerCase().endsWith('.thought') || fileNameWithoutEncrypted.toLowerCase().endsWith('.png'));
-        const isThoughtThumbnail = fileNameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-') && 
-                                   (fileNameWithoutEncrypted.toLowerCase().endsWith('.thought') || fileNameWithoutEncrypted.toLowerCase().endsWith('.png'));
-        const isThought = isThoughtFile || isThoughtThumbnail;
-        
-        // If this is a thought thumbnail entry, try to render from the main thought file
-        // Check if fileName is a thought thumbnail (starts with thumb_thought-)
-        // IMPORTANT: This must come BEFORE the regular encrypted file handling to prevent fallthrough
-        if (isThoughtFile || isThoughtThumbnail) {
-          // For thought thumbnails, use mainFileId to get the actual thought file
-          // For thought files, use fileId directly
-          const thoughtFileId = isThoughtThumbnail ? mainFileId : fileId;
-          
-          if (!thoughtFileId) {
-            console.warn('[ThumbnailImage] Thought missing fileId/mainFileId, cannot render', { isThoughtThumbnail, mainFileId, fileId, fileName });
-            setError(true);
-            return;
-          }
-          
-          try {
-            console.log('[ThumbnailImage] Rendering thought from fileId:', thoughtFileId, 'isThumbnail:', isThoughtThumbnail, 'fileName:', fileName);
-            // Load and decrypt the actual thought file (not the thumbnail file)
-            const session = PNOAuthService.loadSession();
-            if (!session?.did) {
-              console.warn('[ThumbnailImage] No session available for thought thumbnail');
-              setError(true);
-              return;
-            }
-            
-            const pnId = session.did;
-            let publicKey = session?.publicKey;
-            if (!publicKey && session.did.startsWith('did:key:')) {
-              publicKey = session.did.substring(8);
-            }
-            if (!publicKey) {
-              console.warn('[ThumbnailImage] No publicKey available for thought thumbnail');
-              setError(true);
-              return;
-            }
-            
-            // Download the thought file
-            const thoughtFileUrl = `${apiEndpoint}/api/drive/files/${thoughtFileId}?accountId=${accountId}&download=true`;
-            console.log('[ThumbnailImage] Downloading thought file from:', thoughtFileUrl);
-            const thoughtResponse = await fetch(thoughtFileUrl, {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`
-              }
-            });
-
-            if (!thoughtResponse.ok) {
-              console.warn('[ThumbnailImage] Failed to download thought file:', thoughtResponse.status, thoughtResponse.statusText);
-              setError(true);
-              return;
-            }
-
-            const { EncryptionManager } = await import('../utils/encryptionManager');
-            const encryptedText = await thoughtResponse.text();
-            const encryptedPackage = JSON.parse(encryptedText);
-            const encryptionManager = new EncryptionManager();
-            const decryptedData = await encryptionManager.decrypt(
-              encryptedPackage.encrypted,
-              encryptedPackage.iv,
-              encryptedPackage.salt,
-              pnId,
-              publicKey
-            );
-
-            // Parse the thought data
-            const decryptedText = new TextDecoder().decode(decryptedData);
-            const thoughtData = JSON.parse(decryptedText);
-            const textPost = thoughtData.textPost;
-
-            if (!textPost) {
-              console.warn('[ThumbnailImage] Thought file missing textPost data:', thoughtData);
-              setError(true);
-              return;
-            }
-
-            console.log('[ThumbnailImage] Rendering thought at thumbnail size...');
-            // Render thought at thumbnail size (scale factor ~0.3 for ~300px thumbnails)
-            const { renderTextPostToBlob } = await import('../services/textPostService');
-            const THUMBNAIL_SIZE = 300;
-            const scaleFactor = THUMBNAIL_SIZE / 1080; // Scale relative to original 1080px width
-            const thumbnailBlob = await renderTextPostToBlob(textPost, scaleFactor);
-            const url = URL.createObjectURL(thumbnailBlob);
-            console.log('[ThumbnailImage] Thought thumbnail rendered successfully');
-            setThumbnailUrl(url);
-            setError(false);
-            return;
-          } catch (thoughtError: any) {
-            // For thoughts, if rendering fails, show error (don't try to load as image)
-            console.error('[ThumbnailImage] Thought rendering error:', thoughtError?.message || thoughtError, thoughtError);
-            setError(true);
-            return;
-          }
-        }
-        
-        // Note: Skip this for thought thumbnails (isThoughtThumbnail) as they should render from thought content
-        if ((isThought && !isThoughtThumbnail) && isEncrypted && !isThumbnail) {
-          try {
-            // Try to get thumbnailFileId from metadata
-            const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`
-              }
-            });
-            
-            if (metadataResponse.ok) {
-              const metadata = await metadataResponse.json();
-              const thumbnailFileId = metadata.metadata?.thumbnailFileId || metadata.thumbnailFileId;
-              
-              if (thumbnailFileId) {
-                // Use the thumbnail file directly
-                const thumbnailUrl = `${apiEndpoint}/api/drive/files/${thumbnailFileId}?thumbnail=true${accountId ? `&accountId=${encodeURIComponent(accountId)}` : ''}`;
-                const thumbResponse = await fetch(thumbnailUrl, {
-                  headers: {
-                    'Authorization': `Bearer ${accessToken}`
-                  }
-                });
-                
-                if (thumbResponse.ok) {
-                  const contentType = thumbResponse.headers.get('content-type') || '';
-                  const blob = await thumbResponse.blob();
-                  
-                  // Decrypt if encrypted
-                  if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
-                    const session = PNOAuthService.loadSession();
-                    if (session?.did) {
-                      const pnId = session.did;
-                      let publicKey = session?.publicKey;
-                      if (!publicKey && session.did.startsWith('did:key:')) {
-                        publicKey = session.did.substring(8);
-                      }
-                      if (publicKey) {
-                        const { EncryptionManager } = await import('../utils/encryptionManager');
-                        const encryptedText = await blob.text();
-                        const encryptedPackage = JSON.parse(encryptedText);
-                        const encryptionManager = new EncryptionManager();
-                        const decryptedData = await encryptionManager.decrypt(
-                          encryptedPackage.encrypted,
-                          encryptedPackage.iv,
-                          encryptedPackage.salt,
-                          pnId,
-                          publicKey
-                        );
-                        const decryptedBlob = new Blob([decryptedData as BlobPart], {
-                          type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
-                        });
-                        const url = URL.createObjectURL(decryptedBlob);
-                        setThumbnailUrl(url);
-                        setError(false);
-                        return;
-                      }
-                    }
-                  } else {
-                    const url = URL.createObjectURL(blob);
-                    setThumbnailUrl(url);
-                    setError(false);
-                    return;
-                  }
-                }
-              }
-            }
-          } catch (metadataError) {
-            // Fall through to regular handling
-          }
-        }
-
-        // Skip regular encrypted file handling for thought files and thought thumbnails - they should render from thought content
-        if (isEncrypted && !isThoughtFile && !isThoughtThumbnail) {
-          // For encrypted files: download, decrypt, and generate thumbnail
-          const session = PNOAuthService.loadSession();
-          if (!session?.did) {
-            setError(true);
-            return;
-          }
-
-          const pnId = session.did;
-          let publicKey = session?.publicKey;
-          
-          // If publicKey is missing, try to refresh it from userinfo
-          if (!publicKey && session.accessToken) {
-            try {
-              const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
-              if (userInfo.public_key) {
-                publicKey = userInfo.public_key;
-                const updatedSession = { ...session, publicKey };
-                PNOAuthService.saveSession(updatedSession);
-              }
-            } catch (err) {
-              // Silent fail
-            }
-          }
-          
-          // Fallback: extract from DID if it's in did:key format
-          if (!publicKey && session.did.startsWith('did:key:')) {
-            publicKey = session.did.substring(8);
-          }
-          
-          if (!publicKey) {
-            setError(true);
-            return;
-          }
-
-          // Download encrypted file (it's stored as JSON string)
-          const fileUrl = `${apiEndpoint}/api/drive/files/${fileId}?accountId=${accountId}&download=true`;
-          
-          const response = await fetch(fileUrl, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          });
-
-          if (!response.ok) {
-            throw new Error(`Failed to download file: ${response.status}`);
-          }
-
-          // Encrypted files are stored as JSON strings, so read as text first
-          const encryptedText = await response.text();
-          
-          let encryptedPackage: EncryptedFilePackage;
-          
-          try {
-            encryptedPackage = JSON.parse(encryptedText);
-          } catch (parseError) {
-            throw new Error('File is not a valid encrypted package');
-          }
-          
-          // Decrypt file
-          const encryptionManager = new EncryptionManager();
-          let decryptedData: Uint8Array;
-          
-          try {
-            decryptedData = await encryptionManager.decrypt(
-              encryptedPackage.encrypted,
-              encryptedPackage.iv,
-              encryptedPackage.salt,
-              pnId,
-              publicKey
-            );
-          } catch (decryptError: any) {
-            throw decryptError;
-          }
-
-          // Create thumbnail from decrypted blob
-          const decryptedBlob = new Blob([decryptedData as BlobPart], {
-            type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
-          });
-          
-          {
-            // Double-check: Don't try to create thumbnail from blob if this is a thought file
-            // Thought files contain JSON text, not image data
-            // Only check originalName - don't check mimeType because encrypted files are always JSON packages
-            const originalName = encryptedPackage.metadata.originalName?.toLowerCase() || '';
-            const isThoughtFileCheck = originalName.startsWith('thought-') && 
-                                     (originalName.endsWith('.thought') || originalName.endsWith('.png')) ||
-                                     fileNameWithoutEncrypted.toLowerCase().startsWith('thought-') ||
-                                     fileNameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-');
-            
-            if (isThoughtFileCheck) {
-              console.warn('[ThumbnailImage] Skipping thumbnail creation for thought file - should use renderTextPostToBlob');
-              setError(true);
-              return;
-            }
-            
-            try {
-              const thumbnailBlob = await createThumbnailFromBlob(decryptedBlob, 300, 300);
-              blobUrl = URL.createObjectURL(thumbnailBlob);
-              setThumbnailUrl(blobUrl);
-              setError(false);
-            } catch (thumbnailError: any) {
-              console.error('[ThumbnailImage] Failed to create thumbnail from blob:', thumbnailError?.message || thumbnailError);
-              // Try to use the decrypted blob directly as a fallback
-              try {
-                blobUrl = URL.createObjectURL(decryptedBlob);
-                setThumbnailUrl(blobUrl);
-                setError(false);
-              } catch (fallbackError: any) {
-                console.error('[ThumbnailImage] Fallback also failed:', fallbackError?.message || fallbackError);
-                setError(true);
-              }
-            }
-          }
-        } else {
-          // Non-encrypted files: try to load thumbnail from Google Drive, fallback to downloading full file
-          const thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true&accountId=${accountId}`;
-          
-          let response = await fetch(thumbnailUrl, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          });
-
-          if (response.ok) {
-            const blob = await response.blob();
-            blobUrl = URL.createObjectURL(blob);
-            setThumbnailUrl(blobUrl);
-            setError(false);
-          } else {
-            // Fallback: download full file and generate thumbnail client-side
-            const downloadUrl = `${apiEndpoint}/api/drive/files/${fileId}?accountId=${accountId}&download=true`;
-            
-            response = await fetch(downloadUrl, {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`
-              }
-            });
-
-            if (response.ok) {
-              const fileBlob = await response.blob();
-              
-              // Check if it's an image or video
-              const mimeType = fileBlob.type || '';
-              const isImage = mimeType.startsWith('image/');
-              const isVideo = mimeType.startsWith('video/');
-              
-              if (isImage || isVideo) {
-                // Generate thumbnail from the full file
-                try {
-                  const thumbnailBlob = await createThumbnailFromBlob(fileBlob, 300, 300);
-                  blobUrl = URL.createObjectURL(thumbnailBlob);
-                  setThumbnailUrl(blobUrl);
-                  setError(false);
-                } catch (thumbnailError: any) {
-                  console.error('[ThumbnailImage] Failed to create thumbnail from file blob:', thumbnailError?.message || thumbnailError);
-                  // Try to use the file blob directly as a fallback
-                  try {
-                    blobUrl = URL.createObjectURL(fileBlob);
-                    setThumbnailUrl(blobUrl);
-                    setError(false);
-                  } catch (fallbackError: any) {
-                    console.error('[ThumbnailImage] Fallback also failed:', fallbackError?.message || fallbackError);
-                    setError(true);
-                  }
-                }
-              } else {
-                setError(true);
-              }
-            } else {
-              setError(true);
-            }
-          }
-        }
-      } catch (err) {
-        console.error('[ThumbnailImage] Failed to load thumbnail:', err);
-        setError(true);
-      }
-    };
-
-    loadThumbnail();
-
-    // Cleanup blob URL on unmount or when fileId/accountId changes
-    return () => {
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
-      }
-      // Also cleanup thumbnailUrl from state if it's a blob URL
-      setThumbnailUrl(prev => {
-        if (prev && prev.startsWith('blob:')) {
-          URL.revokeObjectURL(prev);
-        }
-        return null;
-      });
-    };
-  }, [fileId, accountId, isEncrypted, fileName, mainFileId, isThumbnail]);
-
-
-// Helper function to create thumbnail from blob
-async function createThumbnailFromBlob(blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(blob);
-    
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      
-      const canvas = document.createElement('canvas');
-      let width = img.width;
-      let height = img.height;
-      
-      // Calculate dimensions maintaining aspect ratio
-      if (width > height) {
-        if (width > maxWidth) {
-          height = (height * maxWidth) / width;
-          width = maxWidth;
-        }
-      } else {
-        if (height > maxHeight) {
-          width = (width * maxHeight) / height;
-          height = maxHeight;
-        }
-      }
-      
-      canvas.width = width;
-      canvas.height = height;
-      
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('Failed to get canvas context'));
-        return;
-      }
-      
-      ctx.drawImage(img, 0, 0, width, height);
-      
-      canvas.toBlob((thumbnailBlob) => {
-        if (thumbnailBlob) {
-          resolve(thumbnailBlob);
-        } else {
-          reject(new Error('Failed to create thumbnail blob'));
-        }
-      }, 'image/jpeg', 0.8);
-    };
-    
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('Failed to load image for thumbnail'));
-    };
-    
-    img.src = url;
-  });
 }
 
 /**
@@ -606,7 +152,7 @@ async function uploadThumbnail(
     
     // Upload encrypted thumbnail
     const thumbnailFileName = `thumb_${originalFileName}.encrypted`;
-    const thumbnailResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+    const thumbnailResponse = await fetch(`${API_ENDPOINT}/api/drive/files`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -636,24 +182,6 @@ async function uploadThumbnail(
     return undefined;
   }
 }
-
-  if (error || !thumbnailUrl) {
-    return (
-      <div className="w-full h-full flex items-center justify-center">
-        <Lock className="h-8 w-8 text-blue-400" />
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={thumbnailUrl}
-      alt={alt}
-      className={className}
-      onError={() => setError(true)}
-    />
-  );
-};
 
 // File viewer modal wrapper that handles thought title display
 const FileViewerModal: React.FC<{ file: DriveFile; fileMetadataMap: Map<string, any>; onClose: () => void; onDownload: () => void }> = ({ file, fileMetadataMap, onClose, onDownload }) => {
@@ -698,7 +226,7 @@ const FileViewerModal: React.FC<{ file: DriveFile; fileMetadataMap: Map<string, 
         // If this is a main file, the API GET endpoint will resolve it to thumbnail
         const fileIdToCheck = file.id;
         
-        const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileIdToCheck}`, {
+        const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileIdToCheck}`, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }
@@ -810,7 +338,7 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
           return;
         }
 
-        const fileUrl = `${apiEndpoint}/api/drive/files/${file.id}?accountId=${accountId}&download=true`;
+        const fileUrl = `${API_ENDPOINT}/api/drive/files/${file.id}?accountId=${accountId}&download=true`;
         const response = await fetch(fileUrl, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
@@ -992,30 +520,6 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
   );
 };
 
-interface DriveAccount {
-  provider: string;
-  accountId: string;
-  email?: string;
-  displayName?: string;
-}
-
-interface DriveFile {
-  id: string;
-  name: string;
-  mimeType: string;
-  size: string;
-  thumbnailLink?: string;
-  webViewLink?: string;
-  modifiedTime?: string;
-  isPublic?: boolean;
-  accountId?: string; // Track which account this file belongs to
-  mainFileId?: string; // ID of the main file (if this is a thumbnail)
-  isThumbnail?: boolean; // Whether this file is a thumbnail
-  isUploading?: boolean; // Whether this is a placeholder for an uploading file
-  uploadProgress?: number; // Upload progress (0-100)
-  uploadTaskId?: string; // ID of the upload task
-}
-
 interface FileStorageAggregatorProps {
   authenticatedUser?: {
     id: string;
@@ -1028,208 +532,6 @@ interface FileStorageAggregatorProps {
   onOpenTextEditor?: (accountId: string) => void;
 }
 
-// Parallelized PDF processing for background upload queue
-// This function processes all PDF pages in parallel for faster uploads
-export const processPDFPagesParallel = async (
-  pdfFile: File,
-  accountId: string,
-  session: any,
-  publicKey: string,
-  accessToken: string
-): Promise<{ thumbnailFileIds: string[]; thumbnailTokens: Record<string, string> }> => {
-  const { workerManager } = await import('../services/workerManager');
-  const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-  
-  const pdfjsLib = await import('pdfjs-dist');
-  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-  
-  const arrayBuffer = await pdfFile.arrayBuffer();
-  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
-  const pdf = await loadingTask.promise;
-  const numPages = pdf.numPages;
-  
-  const baseFileName = pdfFile.name.replace(/\.pdf$/i, '');
-  
-  console.log(`[PDF Upload] Processing ${numPages} pages in parallel...`);
-  
-  // Helper: Convert blob to base64
-  const blobToBase64 = (blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        resolve(result.includes(',') ? result.split(',')[1] : result);
-      };
-      reader.onerror = () => reject(new Error('Failed to read blob'));
-      reader.readAsDataURL(blob);
-    });
-  };
-  
-  // Helper: Upload file
-  const uploadFile = async (base64Data: string, fileName: string): Promise<{ id: string }> => {
-    const response = await fetch(`${apiEndpoint}/api/drive/files`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
-      },
-      body: JSON.stringify({
-        fileData: base64Data,
-        fileName,
-        mimeType: 'application/json',
-        accountId
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error');
-      throw new Error(`Upload failed: ${errorText}`);
-    }
-
-    const result = await response.json();
-    const uploadedFile = result.file;
-
-    if (!uploadedFile || !uploadedFile.id) {
-      throw new Error('Upload succeeded but no file ID returned');
-    }
-
-    return { id: uploadedFile.id };
-  };
-  
-  // Helper: Create metadata
-  const createMetadataForThumbnail = async (fileId: string, fileName: string, shareToken: any): Promise<void> => {
-    await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}?accountId=${accountId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
-      },
-      body: JSON.stringify({
-        name: `thumb_${fileName}`,
-        fileType: 'image',
-        isPublic: false,
-        publicToken: shareToken ? JSON.stringify(shareToken) : undefined
-      })
-    });
-  };
-  
-  // Step 1: Load all pages in parallel
-  const pagePromises = Array.from({ length: numPages }, (_, i) => 
-    pdf.getPage(i + 1)
-  );
-  const pages = await Promise.all(pagePromises);
-  
-  // Step 2: Generate all thumbnails in parallel (canvas rendering)
-  const thumbnailBlobPromises = pages.map(async (page, index) => {
-    const pageNum = index + 1;
-    const viewport = page.getViewport({ scale: 1.0 });
-    const scale = Math.min(800 / viewport.width, 800 / viewport.height, 1.0);
-    const scaledViewport = page.getViewport({ scale });
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = scaledViewport.width;
-    canvas.height = scaledViewport.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      throw new Error(`Failed to get canvas context for page ${pageNum}`);
-    }
-    
-    await page.render({ canvasContext: ctx, viewport: scaledViewport } as any).promise;
-    
-    const thumbnailBlob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Failed to create blob')), 'image/jpeg', 0.85);
-    });
-    
-    return { pageNum, thumbnailBlob, fileName: `${baseFileName}-page-${pageNum}.png` };
-  });
-  
-  const thumbnailData = await Promise.all(thumbnailBlobPromises);
-  
-  // Step 3: Encrypt all thumbnails in parallel using workers
-  const encryptedThumbnailPromises = thumbnailData.map(async ({ thumbnailBlob, fileName }) => {
-    const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
-    const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
-    const encrypted = await workerManager.encrypt(thumbnailData, session.did, publicKey);
-    
-    return {
-      fileName,
-      encrypted,
-      thumbnailBlob,
-    };
-  });
-  
-  const encryptedThumbnails = await Promise.all(encryptedThumbnailPromises);
-  
-  // Step 4: Create share tokens for all thumbnails in parallel
-  const encryptionService = getEncryptionService();
-  const thumbnailPackagePromises = encryptedThumbnails.map(async ({ fileName, encrypted, thumbnailBlob }) => {
-    const thumbnailPackage: EncryptedFilePackage = {
-      encrypted: encrypted.encrypted,
-      iv: encrypted.iv,
-      salt: encrypted.salt,
-      metadata: {
-        originalName: `thumb_${fileName}`,
-        originalSize: thumbnailBlob.size,
-        originalMimeType: 'image/jpeg',
-      },
-    };
-    
-    let shareToken: any = undefined;
-    try {
-      shareToken = await encryptionService.generateShareToken(thumbnailPackage, {
-        id: session.did,
-        publicKey: publicKey
-      });
-    } catch (err) {
-      console.warn(`[PDF Upload] Failed to generate share token for ${fileName}:`, err);
-    }
-    
-    return { fileName, thumbnailPackage, shareToken };
-  });
-  
-  const thumbnailPackages = await Promise.all(thumbnailPackagePromises);
-  
-  // Step 5: Upload all thumbnails in parallel
-  const thumbnailUploadPromises = thumbnailPackages.map(async ({ fileName, thumbnailPackage, shareToken }) => {
-    const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
-    const thumbnailFileName = `thumb_${fileName}.encrypted`;
-    const result = await uploadFile(thumbnailBase64, thumbnailFileName);
-    return { fileName, fileId: result?.id, shareToken };
-  });
-  
-  const thumbnailUploadResults = await Promise.all(thumbnailUploadPromises);
-  
-  // Step 6: Create metadata for all thumbnails in parallel
-  const metadataPromises = thumbnailUploadResults
-    .filter(result => result.fileId)
-    .map(async ({ fileName, fileId, shareToken }) => {
-      try {
-        await createMetadataForThumbnail(fileId, fileName, shareToken);
-      } catch (err) {
-        console.warn(`[PDF Upload] Failed to create metadata for ${fileName}:`, err);
-      }
-      return { fileName, fileId, shareToken };
-    });
-  
-  await Promise.all(metadataPromises);
-  
-  // Build results
-  const thumbnailFileIds: string[] = [];
-  const thumbnailTokens: Record<string, string> = {};
-  
-  thumbnailUploadResults.forEach(({ fileId, shareToken }) => {
-    if (fileId) {
-      thumbnailFileIds.push(fileId);
-      if (shareToken) {
-        thumbnailTokens[fileId] = JSON.stringify(shareToken);
-      }
-    }
-  });
-  
-  console.log(`[PDF Upload] Completed processing ${numPages} pages in parallel`);
-  return { thumbnailFileIds, thumbnailTokens };
-};
-
 export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ 
   authenticatedUser, 
   hideSecureFolderSection = false,
@@ -1239,8 +541,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [filesByAccount, setFilesByAccount] = useState<Map<string, DriveFile[]>>(new Map());
   const [error, setError] = useState<string | null>(null);
-  const [driveAccounts, setDriveAccounts] = useState<DriveAccount[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const { accounts: driveAccounts, selectedId: selectedAccountId, setSelectedId: setSelectedAccountId, setAccounts: setDriveAccounts } = useDriveAccounts({
+    authenticatedUserId: authenticatedUser?.id,
+    userState: { isUnlocked: userState.isUnlocked, pnIdentifier: userState.pnIdentifier },
+  });
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [viewingFile, setViewingFile] = useState<DriveFile | null>(null);
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
@@ -1257,73 +561,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
   const addButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
-
-  // Load cloud accounts
-  useEffect(() => {
-    const loadAccounts = async () => {
-      console.log('[FileStorageAggregator] loadAccounts called', { 
-        hasAuthenticatedUser: !!authenticatedUser,
-        authenticatedUserId: authenticatedUser?.id,
-        userStateUnlocked: userState.isUnlocked,
-        userStatePnIdentifier: userState.pnIdentifier
-      });
-      
-      if (!authenticatedUser?.id) {
-        console.log('[FileStorageAggregator] No authenticatedUser.id, clearing accounts');
-        setDriveAccounts([]);
-        accountsCacheService.clearAll(); // Clear cache on logout
-        return;
-      }
-
-      // Check cache first
-      const cached = accountsCacheService.get(authenticatedUser.id);
-      if (cached) {
-        console.log('[FileStorageAggregator] Using cached accounts:', cached.length);
-        setDriveAccounts(cached);
-        if (cached.length > 0 && !selectedAccountId) {
-          setSelectedAccountId(cached[0].accountId);
-        }
-        return;
-      }
-
-      // Cache miss - fetch from API
-      try {
-        const accessToken = await PNOAuthService.getValidAccessToken();
-        if (!accessToken) {
-          console.error('[FileStorageAggregator] No valid access token');
-          return;
-        }
-
-        console.log('[FileStorageAggregator] Fetching accounts from:', `${apiEndpoint}/api/storage/accounts/${authenticatedUser.id}`);
-        const response = await fetch(`${apiEndpoint}/api/storage/accounts/${authenticatedUser.id}`, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        });
-
-        console.log('[FileStorageAggregator] Accounts response:', { status: response.status, ok: response.ok });
-        
-        if (response.ok) {
-          const data = await response.json();
-          const accounts = data.accounts || [];
-          console.log('[FileStorageAggregator] Loaded accounts:', accounts.length);
-          // Cache the result
-          accountsCacheService.set(authenticatedUser.id, accounts);
-          setDriveAccounts(accounts);
-          if (accounts.length > 0 && !selectedAccountId) {
-            setSelectedAccountId(accounts[0].accountId);
-          }
-        } else {
-          const errorText = await response.text().catch(() => 'Unknown error');
-          console.error('[FileStorageAggregator] Failed to load accounts:', response.status, errorText);
-        }
-      } catch (err) {
-        console.error('[FileStorageAggregator] Failed to load accounts:', err);
-      }
-    };
-
-    loadAccounts();
-  }, [authenticatedUser?.id, selectedAccountId, userState.isUnlocked, userState.pnIdentifier]);
 
   // Subscribe to upload queue for optimistic UI updates
   useEffect(() => {
@@ -1464,7 +701,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
 
       // Server will automatically filter to files in the pN folder if no query is provided
-      const response = await fetch(`${apiEndpoint}/api/drive/files?accountId=${accountId}`, {
+      const response = await fetch(`${API_ENDPOINT}/api/drive/files?accountId=${accountId}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }
@@ -1480,7 +717,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
         
         // Retry with refreshed token
-        const retryResponse = await fetch(`${apiEndpoint}/api/drive/files?accountId=${accountId}`, {
+        const retryResponse = await fetch(`${API_ENDPOINT}/api/drive/files?accountId=${accountId}`, {
           headers: {
             'Authorization': `Bearer ${refreshedToken}`
           }
@@ -2239,7 +1476,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       if (file.isThumbnail) {
         // For thumbnails, try to get the original filename from metadata
         try {
-          const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileIdToDownload}`, {
+          const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileIdToDownload}`, {
             headers: {
               'Authorization': `Bearer ${accessToken}`
             }
@@ -2263,7 +1500,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
       }
 
-      const response = await fetch(`${apiEndpoint}/api/drive/files/${fileIdToDownload}?accountId=${accountId}`, {
+      const response = await fetch(`${API_ENDPOINT}/api/drive/files/${fileIdToDownload}?accountId=${accountId}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }
@@ -2331,7 +1568,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       const accessToken = await PNOAuthService.getValidAccessToken();
       if (!accessToken) return null;
 
-      const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+      const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${accessToken}`
@@ -2382,7 +1619,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
 
       // Get current index visibility
-      const visibilityResponse = await fetch(`${apiEndpoint}/api/third-party/files/${encodeURIComponent(fileId)}/index-visibility`, {
+      const visibilityResponse = await fetch(`${API_ENDPOINT}/api/third-party/files/${encodeURIComponent(fileId)}/index-visibility`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }
@@ -3053,7 +2290,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       const currentIsTopPost = metadata?.isTopPost || false;
       const newIsTopPost = !currentIsTopPost;
 
-      const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${file.id}`, {
+      const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${file.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -3326,7 +2563,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       
       // Upload encrypted thumbnail
       const thumbnailFileName = `thumb_${originalFileName}.encrypted`;
-      const thumbnailResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+      const thumbnailResponse = await fetch(`${API_ENDPOINT}/api/drive/files`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3435,7 +2672,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           console.log(`[PDF Upload] Stored token for thumbnail ${thumbnailFileId} (page ${pageNum}/${numPages})`);
           
           // Create metadata for thumbnail
-          await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}?accountId=${accountId}`, {
+          await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${thumbnailFileId}?accountId=${accountId}`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',

@@ -19,7 +19,7 @@ import { getEncryptionService } from '../services/encryptionService';
 import { accountsCacheService } from '../services/accountsCacheService';
 import { uploadQueueService } from '../services/uploadQueueService';
 
-const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+import { API_ENDPOINT } from '../config/api';
 
 interface EncryptedFilePackage {
   encrypted: string;
@@ -76,7 +76,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
           return;
         }
 
-        const response = await fetch(`${apiEndpoint}/api/storage/accounts/${authenticatedUser.id}`, {
+        const response = await fetch(`${API_ENDPOINT}/api/storage/accounts/${authenticatedUser.id}`, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }

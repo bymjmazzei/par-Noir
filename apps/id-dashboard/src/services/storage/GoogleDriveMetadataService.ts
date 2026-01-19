@@ -967,112 +967,16 @@ export class GoogleDriveMetadataService {
   }
 
   /**
-   * Initialize root index files (public-file-index.json and owner-file-index.json)
-   * These are read by the browser to discover files, so they should exist even if empty
+   * Initialize root index files - NO-OP.
+   * Root public-file-index and owner-file-index are created as Sheets by the API on StorageCredentials PUT.
+   * The frontend reads owner index via GET /api/storage/owner-index. JSON creation has been removed.
    */
   static async initializeIndexFiles(
-    accessToken: string,
-    metadataFolderId: string,
-    pnIdentifier: string
+    _accessToken: string,
+    _metadataFolderId: string,
+    _pnIdentifier: string
   ): Promise<void> {
-    const indexFiles = [
-      { name: this.PUBLIC_INDEX_FILE_NAME, isPublic: true },
-      { name: this.OWNER_INDEX_FILE_NAME, isPublic: false }
-    ];
-
-    for (const indexFile of indexFiles) {
-      try {
-        // Check if index file already exists
-        const searchUrl = `https://www.googleapis.com/drive/v3/files?q=name='${indexFile.name}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)&pageSize=1`;
-        const searchResponse = await fetch(searchUrl, {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        });
-
-        if (searchResponse.ok) {
-          const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-          if (searchData.files && searchData.files.length > 0) {
-            console.log(`[GoogleDriveMetadataService] Index file '${indexFile.name}' already exists`);
-            continue;
-          }
-        }
-
-        // Create empty index file
-        const emptyIndex = {
-          identifier: pnIdentifier,
-          files: [],
-          updatedAt: new Date().toISOString()
-        };
-        const indexContent = JSON.stringify(emptyIndex, null, 2);
-
-        // Create using FormData (multipart upload)
-        const formData = new FormData();
-        formData.append('metadata', new Blob([JSON.stringify({
-          name: indexFile.name,
-          parents: [metadataFolderId]
-        })], { type: 'application/json' }));
-        formData.append('file', new Blob([indexContent], { type: 'application/json' }));
-
-        const createResponse = await fetch(
-          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            },
-            body: formData
-          }
-        );
-
-        if (createResponse.ok) {
-          const fileData = await createResponse.json() as { id: string };
-          console.log(`[GoogleDriveMetadataService] Created index file '${indexFile.name}' (ID: ${fileData.id})`);
-
-          // Make public index file publicly readable
-          if (indexFile.isPublic) {
-            try {
-              const searchResponse = await fetch(
-                `https://www.googleapis.com/drive/v3/files?q=name='${indexFile.name}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
-                {
-                  headers: {
-                    'Authorization': `Bearer ${accessToken}`
-                  }
-                }
-              );
-              
-              if (searchResponse.ok) {
-                const searchData = await searchResponse.json();
-                if (searchData.files && searchData.files.length > 0) {
-                  const fileId = searchData.files[0].id;
-                  await fetch(
-                    `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
-                    {
-                      method: 'POST',
-                      headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Content-Type': 'application/json'
-                      },
-                      body: JSON.stringify({
-                        role: 'reader',
-                        type: 'anyone'
-                      })
-                    }
-                  );
-                  console.log(`[GoogleDriveMetadataService] Set public permissions on '${indexFile.name}'`);
-                }
-              }
-            } catch (permError) {
-              console.warn(`[GoogleDriveMetadataService] Failed to set public permissions on '${indexFile.name}':`, permError);
-            }
-          }
-        } else {
-          const errorText = await createResponse.text();
-          console.warn(`[GoogleDriveMetadataService] Failed to create '${indexFile.name}': ${createResponse.status} ${errorText}`);
-        }
-      } catch (error: any) {
-        console.error(`[GoogleDriveMetadataService] Error creating '${indexFile.name}':`, error);
-        // Don't throw - continue with other files
-      }
-    }
+    // No-op: API creates owner-file-index.xlsx and public-file-index.xlsx (Sheets) on connect.
   }
 
   /**

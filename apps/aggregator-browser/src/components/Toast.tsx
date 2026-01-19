@@ -11,7 +11,7 @@ export type ToastType = 'success' | 'error' | 'info' | 'warning';
 export interface Toast {
   id: string;
   message: string;
-  type: ToastType;
+  type?: ToastType;
   duration?: number;
 }
 
@@ -44,7 +44,7 @@ export function ToastComponent({ toast, onClose }: ToastProps) {
   };
 
   const getBgColor = () => {
-    switch (toast.type) {
+    switch (toast.type || 'info') {
       case 'success':
         return 'bg-green-500/10 border-green-500/20';
       case 'error':

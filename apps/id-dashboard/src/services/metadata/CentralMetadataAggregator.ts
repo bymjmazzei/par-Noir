@@ -5,8 +5,8 @@
 
 import { PublicMetadata } from '../../types/aggregator';
 import { retry } from '../../utils/helpers';
+import { API_ENDPOINT } from '../../config/api';
 
-const CENTRAL_API_URL = 'https://api.parnoir.com';
 const CENTRAL_INDEX_PATH = '/api/aggregator/metadata-index';
 
 export interface PublicMetadataSubmission {
@@ -102,7 +102,7 @@ export class CentralMetadataAggregator {
       // Retry on 429 (rate limit) errors with exponential backoff
       const response = await retry(
         async () => {
-          const res = await fetch(`${CENTRAL_API_URL}${CENTRAL_INDEX_PATH}`, {
+          const res = await fetch(`${API_ENDPOINT}${CENTRAL_INDEX_PATH}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -169,7 +169,7 @@ export class CentralMetadataAggregator {
    */
   async removePublicMetadata(fileId: string): Promise<void> {
     try {
-      const response = await fetch(`${CENTRAL_API_URL}${CENTRAL_INDEX_PATH}/${fileId}`, {
+      const response = await fetch(`${API_ENDPOINT}${CENTRAL_INDEX_PATH}/${fileId}`, {
         method: 'DELETE',
       });
 
@@ -210,7 +210,7 @@ export class CentralMetadataAggregator {
       }
 
       const response = await fetch(
-        `${CENTRAL_API_URL}${CENTRAL_INDEX_PATH}${params.toString() ? `?${params.toString()}` : ''}`,
+        `${API_ENDPOINT}${CENTRAL_INDEX_PATH}${params.toString() ? `?${params.toString()}` : ''}`,
         {
           method: 'GET',
           headers: {

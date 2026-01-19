@@ -1,0 +1,42 @@
+---
+description: How to build in this codebase — structure, boundaries, and what to check before writing.
+alwaysApply: true
+---
+
+# How to build in par Noir
+
+**What we're building:** Identity (L1) → dashboard (L2) → API (L3) → browser (L4) → third parties (L5). Crypto without blockchain; user-owned; browser as aggregator. Full: `guiding-principles.mdc`, SHARED_CODE_RULES.md.
+
+- **Before adding code:** Search `packages/`, `core/`, and the other app for existing types, utils, or services. Reuse; do not duplicate.
+- **New shared behavior:** Implement in `packages/` first, then add thin app-specific UI or wiring in each app.
+- **Pure logic:** Keep in `packages/` or `services/`. Do not put pure logic (e.g. PDF processing, token generation) inside React components; components import from packages or services.
+- **Large components:** Prefer splitting. Avoid multi-thousand-line components; extract subcomponents and hooks.
+- **aggregator-browser:** Only talks to par Noir API for storage. No direct Google or OAuth URLs.
+- **id-dashboard:** May use API and/or direct Google; do not replicate that pattern in aggregator-browser.
+- **We are in development.** Do not prioritize backwards compatibility. Prefer correct, simple behavior over preserving legacy or broken behavior.
+- **Do not patch symptoms.** Find the root cause and fix it. Avoid workarounds, compatibility shims, or "quick fixes" that hide the real bug.
+- **API base URL:** One config module (e.g. config/api.ts), one env var (VITE_API_ENDPOINT), one default in that module only. Do not scatter process.env.REACT_APP_* or inline API URLs.
+- **Secrets:** Do not commit .env, API keys, or secrets to git. Do not add hardcoded API keys or client IDs as fallbacks; use VITE_* only; fail when unset. Pre-commit runs scripts/check-secrets.sh; do not bypass it.
+- **Sensitive data:** Never expose in plain text pn name, passcode, Google Drive account, age, email, or anything the identity protocol and ZKPs protect—not in code, logs, or console. Encrypt or ZKP; never raw.
+- **Feature hierarchy:** Identity-direct → dashboard + API; browser-only → browser only.
+- **When the API provides an endpoint** (e.g. token refresh, drive), use it; do not add a direct-Google fallback.
+- **Indices:** Prefer Sheets/API; do not add JSON format fallbacks when the primary path exists. Remove dead comments that reference removed or deprecated behavior.
+
+---
+
+## After completing an update — push and deploy
+
+**Do not consider the task done until changes are committed, pushed, and deployed.** Work left only in the working tree is not shipped.
+
+1. **Commit**
+   - `git add` the changed files (no .env or secrets; pre-commit runs `scripts/check-secrets.sh`).
+   - `git commit -m "<clear message>"`.
+
+2. **Push**
+   - `git push` to `main` (or the project’s deploy branch). If the remote rejects, fix and push again.
+
+3. **Deploy to Firebase**
+   - Build what you changed: e.g. `npm run build` in the app(s) you edited, or root `npm run build`.
+   - Deploy to Firebase: `./deploy.sh` or `firebase deploy --only hosting`. `deploy.sh` builds id-dashboard and runs `firebase deploy --only hosting`; if you changed aggregator-browser, build it (`cd apps/aggregator-browser && npm run build`) then run `firebase deploy --only hosting` so both targets (id-dashboard, aggregator-browser) are included.
+
+**If you cannot push** (e.g. no write access, or deploy requires secrets only the user has): before finishing, tell the user explicitly: “Changes are ready but not pushed or deployed. You need to: 1) `git add` / `git commit` / `git push`, 2) run `./deploy.sh` or `firebase deploy --only hosting` to deploy to Firebase.”

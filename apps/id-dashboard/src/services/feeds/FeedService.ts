@@ -4,6 +4,7 @@
  */
 
 import type { FeedCategory } from '../../types/aggregator';
+import { API_ENDPOINT } from '../../config/api';
 
 export interface Feed {
   feedId: string;
@@ -65,8 +66,6 @@ export interface FeedPost {
 }
 
 export class FeedService {
-  private static readonly API_BASE = import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com';
-
   /**
    * Create a new feed
    */
@@ -86,7 +85,7 @@ export class FeedService {
     }
 
     const authenticatedUser = JSON.parse(authenticatedUserStr);
-    const response = await fetch(`${this.API_BASE}/api/feeds`, {
+    const response = await fetch(`${API_ENDPOINT}/api/feeds`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -111,7 +110,7 @@ export class FeedService {
    */
   static async getFeed(feedId: string): Promise<Feed | null> {
     try {
-      const response = await fetch(`${this.API_BASE}/api/feeds/${feedId}`);
+      const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}`);
       
       if (!response.ok) {
         if (response.status === 404) {
@@ -144,7 +143,7 @@ export class FeedService {
     if (filters?.limit) params.set('limit', filters.limit.toString());
     if (filters?.offset) params.set('offset', filters.offset.toString());
 
-    const response = await fetch(`${this.API_BASE}/api/feeds?${params.toString()}`);
+    const response = await fetch(`${API_ENDPOINT}/api/feeds?${params.toString()}`);
     
     if (!response.ok) {
       throw new Error('Failed to list feeds');
@@ -163,7 +162,7 @@ export class FeedService {
     }
 
     const authenticatedUser = JSON.parse(authenticatedUserStr);
-    const response = await fetch(`${this.API_BASE}/api/feeds/${feedId}`, {
+    const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -197,7 +196,7 @@ export class FeedService {
     }
 
     const authenticatedUser = JSON.parse(authenticatedUserStr);
-    const response = await fetch(`${this.API_BASE}/api/feeds/activate-after-verification`, {
+    const response = await fetch(`${API_ENDPOINT}/api/feeds/activate-after-verification`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -228,7 +227,7 @@ export class FeedService {
     }
 
     const authenticatedUser = JSON.parse(authenticatedUserStr);
-    const response = await fetch(`${this.API_BASE}/api/feeds/${feedId}`, {
+    const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${authenticatedUser.accessToken || ''}`
@@ -249,7 +248,7 @@ export class FeedService {
     if (limit) params.set('limit', limit.toString());
     if (offset) params.set('offset', offset.toString());
 
-    const response = await fetch(`${this.API_BASE}/api/feeds/${feedId}/posts?${params.toString()}`);
+    const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/posts?${params.toString()}`);
     
     if (!response.ok) {
       throw new Error('Failed to fetch feed posts');
@@ -269,7 +268,7 @@ export class FeedService {
     }
 
     const authenticatedUser = JSON.parse(authenticatedUserStr);
-    const response = await fetch(`${this.API_BASE}/api/feeds/${feedId}/posts`, {
+    const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/posts`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -296,7 +295,7 @@ export class FeedService {
     }
 
     const authenticatedUser = JSON.parse(authenticatedUserStr);
-    const response = await fetch(`${this.API_BASE}/api/feeds/${feedId}/top-post`, {
+    const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/top-post`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -333,7 +332,7 @@ export class FeedService {
         return [];
       }
 
-      const response = await fetch(`${this.API_BASE}/api/users/${userDid}/delegated-feeds`, {
+      const response = await fetch(`${API_ENDPOINT}/api/users/${userDid}/delegated-feeds`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }

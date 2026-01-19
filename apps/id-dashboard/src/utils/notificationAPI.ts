@@ -2,6 +2,7 @@
 // Allows external services to send notifications to pNs
 
 import { NotificationEvent } from './secureMetadata';
+import { API_ENDPOINT } from '../config/api';
 
 export interface ThirdPartyNotificationRequest {
   targetIdentityId: string; // The pN ID to send notification to
@@ -27,8 +28,7 @@ export class NotificationAPI {
   private apiEndpoint: string;
 
   constructor() {
-    // Use the same endpoint as other pN services
-    this.apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+    this.apiEndpoint = API_ENDPOINT;
   }
 
   static getInstance(): NotificationAPI {

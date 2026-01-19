@@ -3,7 +3,7 @@
  * Handles notifications for feed subscriptions, comments, likes, etc.
  */
 
-const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+import { API_ENDPOINT } from '../config/api';
 
 export interface Notification {
   notification_id: string;

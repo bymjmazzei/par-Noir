@@ -50,50 +50,32 @@ export interface NotificationsFile {
 }
 
 export class NotificationService {
-  private static readonly NOTIFICATIONS_FILE_NAME = 'notifications.json';
-
   /**
-   * Get notifications file from user's Google Drive
+   * Get notifications file from user's Google Drive (Sheets).
    */
   static async getNotificationsFile(
     accessToken: string,
     metadataFolderId: string
   ): Promise<NotificationsFile | null> {
     try {
-      // Search for notifications.json in metadata folder
-      const searchQuery = `name='${this.NOTIFICATIONS_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false`;
-      const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id)&pageSize=1`;
-      
-      const searchResponse = await fetch(searchUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-
-      if (!searchResponse.ok || searchResponse.status === 404) {
-        return null;
-      }
-
-      const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-      
-      if (!searchData.files || searchData.files.length === 0) {
-        return null;
-      }
-
-      // Download notifications file
-      const fileId = searchData.files[0].id;
-      const getResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-        { headers: { 'Authorization': `Bearer ${accessToken}` } }
+      const spreadsheetId = await NotificationsSheetsService.getOrCreateNotificationsSheet(
+        accessToken,
+        metadataFolderId
       );
-
-      if (!getResponse.ok) {
-        return null;
-      }
-
-      try {
-        return await getResponse.json() as NotificationsFile;
-      } catch {
-        return null;
-      }
+      const { notifications } = await NotificationsSheetsService.getNotifications(
+        accessToken,
+        spreadsheetId,
+        { limit: 999999, offset: 0 }
+      );
+      const metadata = await NotificationsSheetsService.getMetadata(accessToken, spreadsheetId);
+      const updatedAt = metadata?.updatedAt ?? (notifications[0]?.created_at ?? new Date().toISOString());
+      const preferences = metadata?.preferences as NotificationPreferences | undefined;
+      return {
+        identifier: metadata?.identifier ?? '',
+        updatedAt,
+        notifications,
+        ...(preferences && { preferences })
+      };
     } catch (error) {
       console.error('Error getting notifications file:', error);
       return null;
@@ -101,7 +83,7 @@ export class NotificationService {
   }
 
   /**
-   * Create or update notifications file
+   * Create or update notifications file (Sheets).
    */
   static async updateNotificationsFile(
     accessToken: string,
@@ -109,68 +91,22 @@ export class NotificationService {
     identifier: string,
     notificationsData: NotificationsFile
   ): Promise<void> {
-    const notificationsContent = JSON.stringify(notificationsData, null, 2);
-
-    try {
-      // Search for existing notifications.json
-      const searchQuery = `name='${this.NOTIFICATIONS_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false`;
-      const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id)&pageSize=1`;
-      
-      const searchResponse = await fetch(searchUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-
-      if (searchResponse.ok) {
-        const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-        
-        if (searchData.files && searchData.files.length > 0) {
-          // Update existing file
-          const fileId = searchData.files[0].id;
-          await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-            method: 'PATCH',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json; charset=UTF-8'
-            },
-            body: notificationsContent
-          });
-          return;
-        }
-      }
-
-      // Create new file
-      const boundary = `----WebKitFormBoundary${Date.now()}`;
-      const metadataPart = JSON.stringify({
-        name: this.NOTIFICATIONS_FILE_NAME,
-        parents: [metadataFolderId]
-      });
-
-      const multipartBody = [
-        `--${boundary}`,
-        'Content-Disposition: form-data; name="metadata"',
-        'Content-Type: application/json',
-        '',
-        metadataPart,
-        `--${boundary}`,
-        'Content-Disposition: form-data; name="file"; filename="notifications.json"',
-        'Content-Type: application/json',
-        '',
-        notificationsContent,
-        `--${boundary}--`
-      ].join('\r\n');
-
-      await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': `multipart/form-data; boundary=${boundary}`
-        },
-        body: multipartBody
-      });
-    } catch (error) {
-      console.error('Error updating notifications file:', error);
-      throw error;
-    }
+    const spreadsheetId = await NotificationsSheetsService.getOrCreateNotificationsSheet(
+      accessToken,
+      metadataFolderId
+    );
+    await NotificationsSheetsService.setAllNotifications(
+      accessToken,
+      spreadsheetId,
+      notificationsData.notifications
+    );
+    await NotificationsSheetsService.setMetadata(
+      accessToken,
+      spreadsheetId,
+      notificationsData.updatedAt,
+      (notificationsData.preferences ?? null) as Record<string, unknown> | null,
+      identifier
+    );
   }
 
   /**
@@ -258,7 +194,6 @@ export class NotificationService {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined
       });
-      // Return empty for now - can add JSON fallback later if needed
       return { notifications: [], total: 0 };
     }
   }
