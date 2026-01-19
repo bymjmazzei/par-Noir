@@ -8785,82 +8785,79 @@ class ProductionServer {
           // pnName and passcode are NOT stored - they're secrets
         });
 
-        // Perform permission checks asynchronously (fire-and-forget)
-        // These checks are optional and don't block authentication
-        // Start async operations before sending response
+        // Check third-party-permissions so we can skip consent when user already granted browser-app
+        let existingPermissions: { ageShared: boolean } | null = null;
         if (pnIdentifier && client_id === 'browser-app') {
-          // Check for existing permissions asynchronously
-          (async () => {
-            try {
-              const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-              const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-              
-              const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-              const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-              
-              if (userCredentials?.credentials) {
-                const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-                  (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-                
-                if (googleDriveAccounts.length > 0) {
-                  const account = googleDriveAccounts[0];
-                  const accountId = (account as any).accountId || (account as any).id;
-                  const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
-                  
-                  // Find pN folder and _metadata folder
-                  const pnFolderName = `par Noir - ${pnIdentifier}`;
-                  const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                  const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-                  
-                  const pnFolderResponse = await fetch(pnFolderSearchUrl, {
-                    headers: { 'Authorization': `Bearer ${userAccessToken}` }
-                  });
-                  
-                  if (pnFolderResponse.ok) {
-                    const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                    if (pnFolderData.files && pnFolderData.files.length > 0) {
-                      const pnFolderId = pnFolderData.files[0].id;
-                      
-                      // Find _metadata folder
-                      const metadataFolderName = '_metadata';
-                      const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                      const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
-                      
-                      const metadataFolderResponse = await fetch(metadataSearchUrl, {
-                        headers: { 'Authorization': `Bearer ${userAccessToken}` }
-                      });
-                      
-                      if (metadataFolderResponse.ok) {
-                        const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-                        if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-                          const metadataFolderId = metadataFolderData.files[0].id;
-                          
-                          // Get existing permissions
-                          const { ThirdPartyPermissionsService } = await import('./server/modules/thirdPartyPermissionsService');
-                          const permissions = await ThirdPartyPermissionsService.getPermissions(
-                            userAccessToken,
-                            metadataFolderId
-                          );
-                          
-                          if (permissions['browser-app']) {
-                            const existingPermissions = {
-                              ageShared: permissions['browser-app'].dataPoints.includes('age_attestation')
-                            };
-                            console.log('[OAuth Auth] Found existing permissions for browser-app (async):', existingPermissions);
-                          }
+          try {
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+            const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+            const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+
+            if (userCredentials?.credentials) {
+              const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts ||
+                (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+
+              if (googleDriveAccounts.length > 0) {
+                const account = googleDriveAccounts[0];
+                const accountId = (account as any).accountId || (account as any).id;
+                const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+
+                // Find pN folder and _metadata folder
+                const pnFolderName = `par Noir - ${pnIdentifier}`;
+                const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+
+                const pnFolderResponse = await fetch(pnFolderSearchUrl, {
+                  headers: { 'Authorization': `Bearer ${userAccessToken}` }
+                });
+
+                if (pnFolderResponse.ok) {
+                  const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                  if (pnFolderData.files && pnFolderData.files.length > 0) {
+                    const pnFolderId = pnFolderData.files[0].id;
+
+                    // Find _metadata folder (where third-party-permissions.xlsx lives)
+                    const metadataFolderName = '_metadata';
+                    const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                    const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
+
+                    const metadataFolderResponse = await fetch(metadataSearchUrl, {
+                      headers: { 'Authorization': `Bearer ${userAccessToken}` }
+                    });
+
+                    if (metadataFolderResponse.ok) {
+                      const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
+                      if (metadataFolderData.files && metadataFolderData.files.length > 0) {
+                        const metadataFolderId = metadataFolderData.files[0].id;
+
+                        const { ThirdPartyPermissionsService } = await import('./server/modules/thirdPartyPermissionsService');
+                        const permissions = await ThirdPartyPermissionsService.getPermissions(
+                          userAccessToken,
+                          metadataFolderId
+                        );
+
+                        const browserApp = permissions['browser-app'];
+                        if (browserApp && browserApp.status === 'active') {
+                          existingPermissions = {
+                            ageShared: browserApp.dataPoints.includes('age_attestation')
+                          };
+                          console.log('[OAuth Auth] Found existing permissions in third-party-permissions, skipping consent:', existingPermissions);
+                        } else if (browserApp) {
+                          existingPermissions = { ageShared: false };
                         }
                       }
                     }
                   }
                 }
               }
-            } catch (permError) {
-              // Log but don't fail - permissions check is optional
-              console.log('[OAuth Auth] Could not check existing permissions (async):', permError);
             }
-          })().catch(err => console.error('[OAuth Auth] Permission check failed (async):', err));
+          } catch (permError) {
+            console.log('[OAuth Auth] Could not check third-party-permissions (Drive not connected or sheet missing):', permError);
+          }
 
-          // Check if user has age_attestation ZKP available asynchronously
+          // Fire-and-forget: check if user has age_attestation ZKP (for logging only)
           (async () => {
             try {
               const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
@@ -8930,13 +8927,11 @@ class ProductionServer {
           })().catch(err => console.error('[OAuth Auth] Age ZKP check failed (async):', err));
         }
 
-        // Return authorization code immediately (non-blocking)
-        // Permission checks are running asynchronously in the background
         return res.json({
           code,
           state: state || undefined,
-          existingPermissions: null, // Will be null initially, checks happen async
-          availableOptionalDataPoints: undefined // Will be undefined initially, checks happen async
+          existingPermissions,
+          availableOptionalDataPoints: undefined
         });
       } catch (error: any) {
         console.error('OAuth authentication error:', error);

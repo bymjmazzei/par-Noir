@@ -3,6 +3,12 @@
  * Manages third-party tool permissions for users
  * Stores permissions in Google Sheets (replaces third-party-permissions.json for better scalability)
  * Stored in Google Drive (decentralized) - users own their data
+ *
+ * Connection to zkp-data-points (Master):
+ * - dataPoints are data point IDs that REFERENCE zkp-data-points by ID. For ZKP types (e.g. age_attestation),
+ *   "user has generated" is determined by ZKPDataPointsService / the Data Points sheet. For OAuth scopes
+ *   (openid, profile, cloud:read) there is no zkp row; access is determined only by dataPoints/permissions.
+ * - To serve a ZKP proof for X: (X in tool's dataPoints) AND (zkp-data-points has a row for X via ZKPDataPointsService).
  */
 
 export interface ThirdPartyPermission {
@@ -10,7 +16,8 @@ export interface ThirdPartyPermission {
   toolName: string;
   toolDescription: string;
   permissions: string[];
-  dataPoints: string[]; // Which data points this tool can access (user granted)
+  /** Data point IDs the user has granted to this tool. For ZKP types these reference zkp-data-points by ID; for OAuth scopes (openid, profile, cloud:read) they are not in zkp-data-points. */
+  dataPoints: string[];
   requiredDataPoints: string[]; // Data points marked as required by the tool
   optionalDataPoints: string[]; // Data points marked as optional by the tool
   grantedAt: string;
