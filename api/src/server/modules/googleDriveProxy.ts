@@ -275,6 +275,9 @@ export class GoogleDriveProxyService {
     if (!clientSecret) {
       throw new Error('Google Drive client secret not configured');
     }
+    if (!clientId || typeof clientId !== 'string' || clientId.trim() === '') {
+      throw new Error('Google Drive client ID not configured');
+    }
 
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',

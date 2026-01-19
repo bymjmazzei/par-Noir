@@ -7344,12 +7344,19 @@ class ProductionServer {
             }
           });
         }
+        if (!clientId || typeof clientId !== 'string' || clientId.trim() === '') {
+          console.error('⚠️ GOOGLE_DRIVE_CLIENT_ID not configured or empty');
+          return res.status(500).json({
+            error: 'OAuth configuration error',
+            message: 'Google OAuth client ID not configured on server. Please set GOOGLE_DRIVE_CLIENT_ID in Railway.',
+          });
+        }
 
         const tokenRequestBody = new URLSearchParams({
-          code,
+          code: String(code),
           client_id: clientId,
           client_secret: clientSecret,
-          redirect_uri: redirectUri,
+          redirect_uri: String(redirectUri),
           grant_type: 'authorization_code',
         });
 
@@ -7458,9 +7465,16 @@ class ProductionServer {
             },
           });
         }
+        if (!clientId || typeof clientId !== 'string' || clientId.trim() === '') {
+          console.error('⚠️ GOOGLE_DRIVE_CLIENT_ID not configured or empty for refresh flow');
+          return res.status(500).json({
+            error: 'OAuth configuration error',
+            message: 'Google OAuth client ID not configured on server. Please set GOOGLE_DRIVE_CLIENT_ID in Railway.',
+          });
+        }
 
         const refreshRequestBody = new URLSearchParams({
-          refresh_token: refreshToken,
+          refresh_token: String(refreshToken),
           client_id: clientId,
           grant_type: 'refresh_token',
         });
