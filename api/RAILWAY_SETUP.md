@@ -123,7 +123,7 @@ You should see:
 ## How It Works
 
 1. **Database**: All metadata is stored in PostgreSQL (persistent, survives restarts)
-2. **Sync Service**: Every 10 minutes, the API scans Google Drive for `public-file-index.json` files
+2. **Sync Service**: Every 10 minutes, the API scans Google Drive for `public-file-index.xlsx` files
 3. **Browser Queries**: The aggregator browser queries the API, which returns data from PostgreSQL
 4. **Manual Submissions**: The dashboard can still submit metadata directly to the API (which stores it in PostgreSQL)
 

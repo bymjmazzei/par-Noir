@@ -239,7 +239,7 @@ export class GoogleDriveSyncService {
       // If no folders found, we still need to run cleanup to remove orphaned files
       // (in case folders were deleted from Google Drive)
 
-      // Step 2: For each pN folder, look for _metadata folder and public-file-index.json
+      // Step 2: For each pN folder, look for _metadata folder and public-file-index.xlsx
       const allMetadata: { metadata: PublicMetadata; pnIdentifier?: string }[] = [];
       let hasErrors = false;
       let successfullyScannedFolders = 0;

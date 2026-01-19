@@ -80,7 +80,7 @@ export class ConnectionsSheetsService {
       return existingFileId;
     }
 
-    // Create new connections sheet
+    // Create new connections spreadsheet with Connections, Blocked, and Metadata sheets
     const spreadsheet = await sheets.spreadsheets.create({
       requestBody: {
         properties: {
@@ -90,10 +90,19 @@ export class ConnectionsSheetsService {
           {
             properties: {
               title: 'Connections',
-              gridProperties: {
-                rowCount: 100000,
-                columnCount: 5
-              }
+              gridProperties: { rowCount: 100000, columnCount: 5 }
+            }
+          },
+          {
+            properties: {
+              title: 'Blocked',
+              gridProperties: { rowCount: 10000, columnCount: 1 }
+            }
+          },
+          {
+            properties: {
+              title: 'Metadata',
+              gridProperties: { rowCount: 10, columnCount: 2 }
             }
           }
         ]
@@ -110,9 +119,7 @@ export class ConnectionsSheetsService {
       fileId: spreadsheetId,
       fields: 'parents'
     });
-    
     const currentParents = fileInfo.data.parents || [];
-    // Remove all current parents and set only metadata folder as parent
     await drive.files.update({
       fileId: spreadsheetId,
       removeParents: currentParents.join(','),
@@ -120,17 +127,154 @@ export class ConnectionsSheetsService {
       fields: 'id, parents'
     });
 
-    // Set up headers
-    await sheets.spreadsheets.values.update({
+    // Set up headers for all sheets
+    await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId,
-      range: 'Connections!A1:E1',
-      valueInputOption: 'RAW',
       requestBody: {
-        values: [['Connection ID', 'User DID', 'Status', 'Created At', 'Accepted At']]
+        valueInputOption: 'RAW',
+        data: [
+          { range: 'Connections!A1:E1', values: [['Connection ID', 'User DID', 'Status', 'Created At', 'Accepted At']] },
+          { range: 'Blocked!A1:A1', values: [['Blocked DID']] },
+          { range: 'Metadata!A1:B2', values: [['Identifier', ''], ['UpdatedAt', '']] }
+        ]
       }
     });
 
     return spreadsheetId;
+  }
+
+  /**
+   * Get blocked DIDs from Blocked sheet
+   */
+  static async getBlocked(accessToken: string, spreadsheetId: string): Promise<string[]> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+    try {
+      const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Blocked!A2:A' });
+      const rows = res.data.values || [];
+      return rows.map(r => (r[0] || '').trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Set blocked DIDs in Blocked sheet
+   */
+  static async setBlocked(accessToken: string, spreadsheetId: string, blocked: string[]): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Blocked!A2:A' });
+    if (blocked.length) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Blocked!A2',
+        valueInputOption: 'RAW',
+        requestBody: { values: blocked.map(d => [d]) }
+      });
+    }
+  }
+
+  /**
+   * Get Metadata (identifier, updatedAt) from Metadata sheet
+   */
+  static async getMetadata(accessToken: string, spreadsheetId: string): Promise<{ identifier: string; updatedAt: string }> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+    try {
+      const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Metadata!B1:B2' });
+      const rows = res.data.values || [];
+      return { identifier: rows[0]?.[0] || '', updatedAt: rows[1]?.[0] || new Date().toISOString() };
+    } catch {
+      return { identifier: '', updatedAt: new Date().toISOString() };
+    }
+  }
+
+  /**
+   * Set Metadata (identifier, updatedAt) in Metadata sheet
+   */
+  static async setMetadata(accessToken: string, spreadsheetId: string, identifier: string, updatedAt: string): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Metadata!B1:B2',
+      valueInputOption: 'RAW',
+      requestBody: { values: [[identifier], [updatedAt]] }
+    });
+  }
+
+  /**
+   * Overwrite all connections in the Connections sheet
+   */
+  static async setAllConnections(accessToken: string, spreadsheetId: string, connections: Connection[]): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Connections!A2:E' });
+    if (connections.length) {
+      const rows = connections.map(c => [c.connectionId, c.userDid, c.status, c.createdAt, c.acceptedAt || '']);
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Connections!A2:E',
+        valueInputOption: 'RAW',
+        requestBody: { values: rows }
+      });
+    }
+  }
+
+  /**
+   * Get connections file (identifier, updatedAt, connections, blocked) from Sheets.
+   */
+  static async getConnectionsFile(
+    accessToken: string,
+    metadataFolderId: string
+  ): Promise<{ identifier: string; updatedAt: string; connections: Connection[]; blocked: string[] } | null> {
+    try {
+      const spreadsheetId = await this.getOrCreateConnectionsSheet(accessToken, metadataFolderId);
+      const [connRes, blocked, meta] = await Promise.all([
+        this.getConnections(accessToken, spreadsheetId, { limit: 999999, offset: 0 }),
+        this.getBlocked(accessToken, spreadsheetId),
+        this.getMetadata(accessToken, spreadsheetId)
+      ]);
+      return {
+        identifier: meta.identifier,
+        updatedAt: meta.updatedAt,
+        connections: connRes.connections,
+        blocked
+      };
+    } catch (e) {
+      console.error('ConnectionsSheetsService.getConnectionsFile:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Update connections file (full replace for connections and blocked).
+   * setBlocked/setMetadata are best-effort on legacy spreadsheets that lack those sheets.
+   */
+  static async updateConnectionsFile(
+    accessToken: string,
+    metadataFolderId: string,
+    identifier: string,
+    data: { identifier: string; updatedAt: string; connections: Connection[]; blocked: string[] }
+  ): Promise<void> {
+    const spreadsheetId = await this.getOrCreateConnectionsSheet(accessToken, metadataFolderId);
+    await this.setAllConnections(accessToken, spreadsheetId, data.connections);
+    try {
+      await this.setBlocked(accessToken, spreadsheetId, data.blocked);
+    } catch (e) {
+      console.warn('ConnectionsSheetsService.updateConnectionsFile setBlocked (legacy sheet?):', e);
+    }
+    try {
+      await this.setMetadata(accessToken, spreadsheetId, identifier, data.updatedAt);
+    } catch (e) {
+      console.warn('ConnectionsSheetsService.updateConnectionsFile setMetadata (legacy sheet?):', e);
+    }
   }
 
   /**

@@ -632,7 +632,7 @@ export class AggregatorMetadataServiceDB {
    * 
    * IMPORTANT: This is the SOURCE OF TRUTH for the public feed.
    * The public feed reads directly from the database - NOT from Google Drive files.
-   * Google Drive `public-file-index.json` files are NOT used by the API.
+   * Google Drive `public-file-index.xlsx` files are NOT used by the API for the public feed.
    * 
    * Only files with `isPublic = 'true'` in the database will appear in the public feed.
    */

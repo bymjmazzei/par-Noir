@@ -1,8 +1,10 @@
 /**
  * Connections Service
  * Manages user connections stored on Google Drive
- * Each user stores their connections in connections.json in their _metadata folder
+ * Each user stores their connections in connections.xlsx (Sheets) in their _metadata folder
  */
+
+import { ConnectionsSheetsService } from './connectionsSheetsService';
 
 export interface Connection {
   connectionId: string;
@@ -20,58 +22,18 @@ export interface ConnectionsFile {
 }
 
 export class ConnectionsService {
-  private static readonly CONNECTIONS_FILE_NAME = 'connections.json';
-
   /**
-   * Get connections file from user's Google Drive
+   * Get connections file from user's Google Drive (connections.xlsx / Sheets)
    */
   static async getConnectionsFile(
     accessToken: string,
     metadataFolderId: string
   ): Promise<ConnectionsFile | null> {
-    try {
-      // Search for connections.json in metadata folder
-      const searchQuery = `name='${this.CONNECTIONS_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false`;
-      const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id)&pageSize=1`;
-      
-      const searchResponse = await fetch(searchUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-
-      if (!searchResponse.ok || searchResponse.status === 404) {
-        return null;
-      }
-
-      const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-      
-      if (!searchData.files || searchData.files.length === 0) {
-        return null;
-      }
-
-      // Download connections file
-      const fileId = searchData.files[0].id;
-      const getResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-        { headers: { 'Authorization': `Bearer ${accessToken}` } }
-      );
-
-      if (!getResponse.ok) {
-        return null;
-      }
-
-      try {
-        return await getResponse.json() as ConnectionsFile;
-      } catch {
-        return null;
-      }
-    } catch (error) {
-      console.error('Error getting connections file:', error);
-      return null;
-    }
+    return ConnectionsSheetsService.getConnectionsFile(accessToken, metadataFolderId);
   }
 
   /**
-   * Create or update connections file
+   * Create or update connections file (connections.xlsx / Sheets)
    */
   static async updateConnectionsFile(
     accessToken: string,
@@ -79,68 +41,7 @@ export class ConnectionsService {
     identifier: string,
     connectionsData: ConnectionsFile
   ): Promise<void> {
-    const connectionsContent = JSON.stringify(connectionsData, null, 2);
-
-    try {
-      // Search for existing connections.json
-      const searchQuery = `name='${this.CONNECTIONS_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false`;
-      const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id)&pageSize=1`;
-      
-      const searchResponse = await fetch(searchUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-
-      if (searchResponse.ok) {
-        const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-        
-        if (searchData.files && searchData.files.length > 0) {
-          // Update existing file
-          const fileId = searchData.files[0].id;
-          await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-            method: 'PATCH',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json; charset=UTF-8'
-            },
-            body: connectionsContent
-          });
-          return;
-        }
-      }
-
-      // Create new file
-      const boundary = `----WebKitFormBoundary${Date.now()}`;
-      const metadataPart = JSON.stringify({
-        name: this.CONNECTIONS_FILE_NAME,
-        parents: [metadataFolderId]
-      });
-
-      const multipartBody = [
-        `--${boundary}`,
-        'Content-Disposition: form-data; name="metadata"',
-        'Content-Type: application/json',
-        '',
-        metadataPart,
-        `--${boundary}`,
-        'Content-Disposition: form-data; name="file"; filename="connections.json"',
-        'Content-Type: application/json',
-        '',
-        connectionsContent,
-        `--${boundary}--`
-      ].join('\r\n');
-
-      await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': `multipart/form-data; boundary=${boundary}`
-        },
-        body: multipartBody
-      });
-    } catch (error) {
-      console.error('Error updating connections file:', error);
-      throw error;
-    }
+    await ConnectionsSheetsService.updateConnectionsFile(accessToken, metadataFolderId, identifier, connectionsData);
   }
 
   /**
@@ -165,8 +66,6 @@ export class ConnectionsService {
     user2Did: string
   ): Promise<{ status: 'not_connected' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked'; connectionId?: string }> {
     try {
-      const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
-      
       // Get or create connections sheet
       const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
         user1AccessToken,
@@ -196,8 +95,7 @@ export class ConnectionsService {
         connectionId: connection.connectionId
       };
     } catch (error) {
-      console.error('Error getting connection status from sheets, falling back to JSON:', error);
-      // Fallback to JSON for backward compatibility
+      console.error('Error getting connection status from sheets:', error);
       const connectionsFile = await this.getConnectionsFile(user1AccessToken, user1MetadataFolder);
       if (!connectionsFile) {
         return { status: 'not_connected' };
@@ -232,8 +130,6 @@ export class ConnectionsService {
     recipientDid: string
   ): Promise<Connection> {
     try {
-      const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
-      
       const connectionId = this.generateConnectionId(requesterDid, recipientDid);
       const now = new Date().toISOString();
 
@@ -408,8 +304,6 @@ export class ConnectionsService {
     connectionId: string
   ): Promise<void> {
     try {
-      const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
-      
       // Get or create connections sheet
       const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
         acceptorAccessToken,
@@ -534,8 +428,6 @@ export class ConnectionsService {
     acceptorDid?: string // The DID of the user who accepted (to create connection if missing)
   ): Promise<void> {
     try {
-      const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
-      
       // Get or create connections sheet
       const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
         otherUserAccessToken,
@@ -713,8 +605,6 @@ export class ConnectionsService {
     metadataFolderId: string
   ): Promise<Connection[]> {
     try {
-      const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
-      
       // Get or create connections sheet
       const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
         accessToken,
@@ -750,8 +640,6 @@ export class ConnectionsService {
     metadataFolderId: string
   ): Promise<{ sent: Connection[]; received: Connection[] }> {
     try {
-      const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
-      
       // Get or create connections sheet
       const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
         accessToken,

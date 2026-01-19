@@ -167,8 +167,8 @@ export class CompanionMetadataSheets {
         });
       }
 
-      // Get or create content type subfolder
-      const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass; // Map 'thought' to 'thoughts' folder
+      // Lookup content type subfolder only (created at connect via initializeContentClassFolders)
+      const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass;
       const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
       const contentTypeFolderResponse = await drive.files.list({
         q: contentTypeFolderQuery,
@@ -176,21 +176,10 @@ export class CompanionMetadataSheets {
         pageSize: 1
       });
 
-      let contentTypeFolderId: string;
-      if (contentTypeFolderResponse.data.files && contentTypeFolderResponse.data.files.length > 0) {
-        contentTypeFolderId = contentTypeFolderResponse.data.files[0].id!;
-      } else {
-        // Create subfolder
-        const createFolderResponse = await drive.files.create({
-          requestBody: {
-            name: contentTypeFolderName,
-            mimeType: 'application/vnd.google-apps.folder',
-            parents: [folderId]
-          },
-          fields: 'id'
-        });
-        contentTypeFolderId = createFolderResponse.data.id!;
+      if (!contentTypeFolderResponse.data.files || contentTypeFolderResponse.data.files.length === 0) {
+        throw new Error('DRIVE_NOT_INITIALIZED: Content folder not found. Please connect and initialize Google Drive in your dashboard first.');
       }
+      const contentTypeFolderId = contentTypeFolderResponse.data.files[0].id!;
 
       // 3. Move to content type subfolder
       await drive.files.update({
