@@ -9,15 +9,15 @@ Google Drive Root
 └── par Noir - {pnIdentifier}/
     ├── _metadata/
     │   ├── [Metadata Files - see below]
-    │   ├── media/
-    │   │   ├── public-file-index.json
-    │   │   └── owner-file-index.json
+    │       ├── media/
+    │   │   ├── public-file-index.xlsx
+    │   │   └── owner-file-index.xlsx
     │   ├── thoughts/
-    │   │   ├── public-file-index.json
-    │   │   └── owner-file-index.json
+    │   │   ├── public-file-index.xlsx
+    │   │   └── owner-file-index.xlsx
     │   └── collections/
-    │       ├── public-file-index.json
-    │       └── owner-file-index.json
+    │       ├── public-file-index.xlsx
+    │       └── owner-file-index.xlsx
     └── par-noir-messages/ (created on-demand when first message is sent)
         └── conversation-{otherUserDid}.xlsx (created when connection is accepted)
 ```
@@ -62,20 +62,22 @@ Google Drive Root
 ### Content Class Folders (in `_metadata/`)
 
 Each content class folder contains:
-- **`public-file-index.json`** - Public index for that content class (publicly readable)
-- **`owner-file-index.json`** - Owner index for that content class (private)
+- **`public-file-index.xlsx`** - Public index for that content class (publicly readable). Same structure as root `public-file-index.xlsx` (Files sheet).
+- **`owner-file-index.xlsx`** - Owner index for that content class (private). Same structure as root `owner-file-index.xlsx` (Files sheet).
+
+**Note**: `public-file-index.json` and `owner-file-index.json` in these folders are deprecated; the app uses and creates only the `.xlsx` (Sheets) versions.
 
 #### 1. `media/`
 - Contains media files (images, videos, etc.)
-- Has its own public and owner index files
+- Has its own public and owner index Sheets
 
 #### 2. `thoughts/`
 - Contains thought files
-- Has its own public and owner index files
+- Has its own public and owner index Sheets
 
 #### 3. `collections/`
 - Contains collection files
-- Has its own public and owner index files
+- Has its own public and owner index Sheets
 
 ## Messages Folder: `par-noir-messages`
 
@@ -101,8 +103,9 @@ The following files are **deprecated** and should **NOT** be initialized:
 - ❌ `third-party-permissions.json` (replaced by `third-party-permissions.xlsx`)
 - ❌ `public-file-index.json` (replaced by `public-file-index.xlsx`)
 - ❌ `owner-file-index.json` (replaced by `owner-file-index.xlsx`)
+- ❌ `public-file-index.json` / `owner-file-index.json` in content-class folders (`media/`, `thoughts/`, `collections/`) (replaced by `public-file-index.xlsx` / `owner-file-index.xlsx` in those folders)
 
-**Note**: Migration from JSON to Sheets happens automatically on first access if JSON files exist.
+**Note**: Migration from JSON to Sheets happens automatically on first access for some metadata files. Content-class index files are created only as `.xlsx`; legacy JSON in those folders is not used.
 
 ## Initialization Order
 
@@ -111,8 +114,8 @@ When a user authenticates with Google Drive, the following happens:
 1. **Create main folder**: `par Noir - {pnIdentifier}`
 2. **Create metadata folder**: `_metadata` inside main folder
 3. **Create content class folders**: `media/`, `thoughts/`, `collections/` inside `_metadata/`
-4. **Create root index files**: `public-file-index.json` and `owner-file-index.json` in `_metadata/`
-5. **Create content class index files**: `public-file-index.json` and `owner-file-index.json` in each content class folder
+4. **Create root index files**: `public-file-index.xlsx` and `owner-file-index.xlsx` in `_metadata/`
+5. **Create content class index files**: `public-file-index.xlsx` and `owner-file-index.xlsx` in each content class folder (`media/`, `thoughts/`, `collections/`)
 6. **Initialize metadata files**:
    - JSON files: `profile.json`, `preferences.json` (current state)
    - Sheets files: `connections.xlsx`, `notifications.xlsx`, `activity_ledger.xlsx`, `engagement.xlsx`, `messaging_ledger.xlsx`, `preferences.xlsx` (interaction log), `zkp-data-points.xlsx`, `third-party-permissions.xlsx`, `public-file-index.xlsx`, `owner-file-index.xlsx`

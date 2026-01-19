@@ -59,7 +59,8 @@ export class PreferencesSheetsService {
     const drive = google.drive({ version: 'v3', auth });
 
     // Search for existing preferences sheet in metadata folder
-    const fileQuery = `name='${this.PREFERENCES_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    // Use name='preferences' to match the created sheet title (PREFERENCES_FILE_NAME.replace('.xlsx','') = "preferences")
+    const fileQuery = `name='preferences' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
     const searchResponse = await drive.files.list({
       q: fileQuery,
       fields: 'files(id,name)',
@@ -120,7 +121,7 @@ export class PreferencesSheetsService {
     }
 
     // Also check if file exists elsewhere (might have been created in wrong location)
-    const broadQuery = `name='${this.PREFERENCES_FILE_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    const broadQuery = `name='preferences' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
     const broadSearchResponse = await drive.files.list({
       q: broadQuery,
       fields: 'files(id,name,parents)',

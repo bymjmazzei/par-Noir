@@ -298,109 +298,26 @@ class ProductionServer {
   }
 
   /**
-   * Initialize content class-specific index files in a content class folder
+   * Initialize content class-specific index Sheets (public-file-index.xlsx, owner-file-index.xlsx) in a content class folder
    */
   private async initializeContentClassIndexFiles(
     accessToken: string,
     folderId: string,
     folderName: string
   ): Promise<void> {
-    const indexFiles = [
-      { name: 'public-file-index.json', isPublic: true },
-      { name: 'owner-file-index.json', isPublic: false }
-    ];
-
-    for (const indexFile of indexFiles) {
-      try {
-        // Check if index file already exists
-        const searchUrl = `https://www.googleapis.com/drive/v3/files?q=name='${indexFile.name}' and '${folderId}' in parents and trashed=false&fields=files(id)&pageSize=1`;
-        const searchResponse = await fetch(searchUrl, {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        });
-
-        if (searchResponse.ok) {
-          const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-          if (searchData.files && searchData.files.length > 0) {
-            console.log(`[initializeContentClassIndexFiles] Index file '${indexFile.name}' already exists in '${folderName}'`);
-            continue;
-          }
-        }
-
-        // Create empty index file (identifier will be set when first file is added)
-        const emptyIndex = {
-          identifier: '',
-          files: [],
-          updatedAt: new Date().toISOString()
-        };
-        const indexContent = JSON.stringify(emptyIndex, null, 2);
-
-        // Create using multipart upload
-        const boundary = `----WebKitFormBoundary${Date.now()}`;
-        const metadataPart = JSON.stringify({
-          name: indexFile.name,
-          parents: [folderId]
-        });
-        
-        const multipartBody = [
-          `--${boundary}`,
-          'Content-Disposition: form-data; name="metadata"',
-          'Content-Type: application/json',
-          '',
-          metadataPart,
-          `--${boundary}`,
-          'Content-Disposition: form-data; name="file"; filename="index.json"',
-          'Content-Type: application/json',
-          '',
-          indexContent,
-          `--${boundary}--`
-        ].join('\r\n');
-
-        const createResponse = await fetch(
-          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': `multipart/form-data; boundary=${boundary}`
-            },
-            body: multipartBody
-          }
-        );
-
-        if (createResponse.ok) {
-          const fileData = await createResponse.json() as { id: string };
-          console.log(`[initializeContentClassIndexFiles] Created index file '${indexFile.name}' in '${folderName}' (ID: ${fileData.id})`);
-
-          // Make public index file publicly readable
-          if (indexFile.isPublic) {
-            try {
-              await fetch(
-                `https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`,
-                {
-                  method: 'POST',
-                  headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify({
-                    role: 'reader',
-                    type: 'anyone'
-                  })
-                }
-              );
-              console.log(`[initializeContentClassIndexFiles] Set public permissions on '${indexFile.name}' in '${folderName}'`);
-            } catch (permError: any) {
-              console.warn(`[initializeContentClassIndexFiles] Failed to set public permissions on '${indexFile.name}' in '${folderName}':`, permError);
-            }
-          }
-        } else {
-          const errorText = await createResponse.text();
-          console.warn(`[initializeContentClassIndexFiles] Failed to create '${indexFile.name}' in '${folderName}': ${createResponse.status} ${errorText}`);
-        }
-      } catch (error: any) {
-        console.error(`[initializeContentClassIndexFiles] Error creating '${indexFile.name}' in '${folderName}':`, error);
-        // Don't throw - continue with other files
-      }
+    const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+    try {
+      await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'owner');
+      console.log(`[initializeContentClassIndexFiles] Initialized owner-file-index.xlsx in '${folderName}'`);
+    } catch (e: any) {
+      console.warn(`[initializeContentClassIndexFiles] Failed to init owner index in '${folderName}':`, e?.message || e);
+    }
+    try {
+      const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'public');
+      await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
+      console.log(`[initializeContentClassIndexFiles] Initialized public-file-index.xlsx in '${folderName}'`);
+    } catch (e: any) {
+      console.warn(`[initializeContentClassIndexFiles] Failed to init public index in '${folderName}':`, e?.message || e);
     }
   }
 
@@ -747,7 +664,8 @@ class ProductionServer {
         }
 
         contentClassIndex.updatedAt = new Date().toISOString();
-        await this.saveIndexFileToFolder(accessToken, contentTypeFolderId, 'owner-file-index.json', contentClassIndex, false);
+        const ownerSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'owner');
+        await IndexSheetsService.setAllFiles(accessToken, ownerSheetId, contentClassIndex.files, contentClassIndex.updatedAt);
       }
     }
   }
@@ -929,7 +847,9 @@ class ProductionServer {
             
             if (contentClassIndex.files.length !== contentClassInitialLength) {
               contentClassIndex.updatedAt = new Date().toISOString();
-              await this.saveIndexFileToFolder(accessToken, contentTypeFolderId, OWNER_INDEX_FILE_NAME, contentClassIndex, false);
+              const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+              const ownerSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'owner');
+              await IndexSheetsService.setAllFiles(accessToken, ownerSheetId, contentClassIndex.files, contentClassIndex.updatedAt);
             }
           }
         }
@@ -1013,7 +933,10 @@ class ProductionServer {
             
             if (contentClassIndex.files.length !== contentClassInitialLength) {
               contentClassIndex.updatedAt = new Date().toISOString();
-              await this.saveIndexFileToFolder(accessToken, contentTypeFolderId, PUBLIC_INDEX_FILE_NAME, contentClassIndex, true);
+              const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+              const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'public');
+              await IndexSheetsService.setAllFiles(accessToken, publicSheetId, contentClassIndex.files, contentClassIndex.updatedAt);
+              await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
             }
           }
         }
@@ -1263,13 +1186,32 @@ class ProductionServer {
         }
 
         contentClassIndex.updatedAt = new Date().toISOString();
-        await this.saveIndexFileToFolder(accessToken, contentTypeFolderId, PUBLIC_INDEX_FILE_NAME, contentClassIndex, true);
+        const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+        const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'public');
+        await IndexSheetsService.setAllFiles(accessToken, publicSheetId, contentClassIndex.files, contentClassIndex.updatedAt);
+        await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
       }
     }
   }
 
   /**
+   * Set public (anyone reader) permission on a Drive file (e.g. public index Sheet).
+   */
+  private async setPublicPermissionOnDriveFile(accessToken: string, fileId: string): Promise<void> {
+    try {
+      await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'reader', type: 'anyone' })
+      });
+    } catch (e: any) {
+      console.warn('[setPublicPermissionOnDriveFile]', e?.message || e);
+    }
+  }
+
+  /**
    * Save index file to a specific folder in Google Drive (helper method)
+   * Used only for root-level indexes; content-class indexes use IndexSheetsService.
    */
   private async saveIndexFileToFolder(
     accessToken: string,
@@ -1405,108 +1347,50 @@ class ProductionServer {
   }
 
   /**
-   * Get content class-specific public index
+   * Get content class-specific public index (Sheets)
    */
   private async getContentClassPublicIndex(
     accessToken: string,
     folderId: string,
     pnIdentifier: string
   ): Promise<any | null> {
-    const PUBLIC_INDEX_FILE_NAME = 'public-file-index.json';
-    const searchResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${PUBLIC_INDEX_FILE_NAME}' and '${folderId}' in parents and trashed=false&fields=files(id)`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!searchResponse.ok) {
-      return null;
-    }
-
-    const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-    
-    if (!searchData.files || searchData.files.length === 0) {
-      return null;
-    }
-
-    const fileId = searchData.files[0].id;
-    const getResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!getResponse.ok) {
-      return null;
-    }
-
     try {
-      return await getResponse.json();
-    } catch {
+      const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'public');
+      const { files } = await IndexSheetsService.getFiles(accessToken, spreadsheetId);
+      const updatedAt = await IndexSheetsService.getUpdatedAt(accessToken, spreadsheetId);
       return {
         identifier: pnIdentifier,
-        files: [],
-        updatedAt: new Date().toISOString()
+        files,
+        updatedAt: updatedAt || new Date().toISOString()
       };
+    } catch (e) {
+      console.warn('[getContentClassPublicIndex]', e);
+      return { identifier: pnIdentifier, files: [], updatedAt: new Date().toISOString() };
     }
   }
 
   /**
-   * Get content class-specific owner index
+   * Get content class-specific owner index (Sheets)
    */
   private async getContentClassOwnerIndex(
     accessToken: string,
     folderId: string,
     pnIdentifier: string
   ): Promise<any | null> {
-    const OWNER_INDEX_FILE_NAME = 'owner-file-index.json';
-    const searchResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${OWNER_INDEX_FILE_NAME}' and '${folderId}' in parents and trashed=false&fields=files(id)`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!searchResponse.ok) {
-      return null;
-    }
-
-    const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-    
-    if (!searchData.files || searchData.files.length === 0) {
-      return null;
-    }
-
-    const fileId = searchData.files[0].id;
-    const getResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!getResponse.ok) {
-      return null;
-    }
-
     try {
-      return await getResponse.json();
-    } catch {
+      const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'owner');
+      const { files } = await IndexSheetsService.getFiles(accessToken, spreadsheetId);
+      const updatedAt = await IndexSheetsService.getUpdatedAt(accessToken, spreadsheetId);
       return {
         identifier: pnIdentifier,
-        files: [],
-        updatedAt: new Date().toISOString()
+        files,
+        updatedAt: updatedAt || new Date().toISOString()
       };
+    } catch (e) {
+      console.warn('[getContentClassOwnerIndex]', e);
+      return { identifier: pnIdentifier, files: [], updatedAt: new Date().toISOString() };
     }
   }
 

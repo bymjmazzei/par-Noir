@@ -385,6 +385,73 @@ export class IndexSheetsService {
   }
 
   /**
+   * Replace all files in the index (full replace). Used by content-class indexes.
+   * Optionally stores updatedAt in Files!F1 for parity with JSON index structure.
+   */
+  static async setAllFiles(
+    accessToken: string,
+    spreadsheetId: string,
+    entries: IndexFileEntry[],
+    updatedAt?: string
+  ): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range: 'Files!A2:E'
+    });
+
+    if (entries.length > 0) {
+      const rows = entries.map(e => [
+        e.fileId,
+        e.googleDriveFileId || '',
+        e.visibility,
+        e.uploadedAt,
+        JSON.stringify(e)
+      ]);
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Files!A2:E',
+        valueInputOption: 'RAW',
+        requestBody: { values: rows }
+      });
+    }
+
+    if (updatedAt != null) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Files!F1',
+        valueInputOption: 'RAW',
+        requestBody: { values: [[updatedAt]] }
+      });
+    }
+  }
+
+  /**
+   * Get updatedAt from index metadata (Files!F1), if stored by setAllFiles.
+   */
+  static async getUpdatedAt(
+    accessToken: string,
+    spreadsheetId: string
+  ): Promise<string | null> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+    try {
+      const res = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'Files!F1'
+      });
+      const v = res.data.values?.[0]?.[0];
+      return typeof v === 'string' ? v : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Get all files
    */
   static async getFiles(
