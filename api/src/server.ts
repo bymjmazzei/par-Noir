@@ -4840,7 +4840,31 @@ class ProductionServer {
         }
 
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-        const record = await storageCredentialsService.getCredentials(identityId);
+        let record = await storageCredentialsService.getCredentials(identityId);
+
+        if (!record) {
+          return res.status(404).json({ error: 'No storage credentials found for identity' });
+        }
+
+        // Proactively refresh expired access tokens so the client receives valid tokens.
+        // getAccessToken() will refresh when expired and persist; we re-fetch to return the updated credentials.
+        const credentials = record.credentials;
+        const accounts = credentials?.googleDriveAccounts || (credentials?.googleDrive ? [credentials.googleDrive] : []);
+        if (Array.isArray(accounts) && accounts.length > 0) {
+          const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+          for (const account of accounts) {
+            const accountId = (account as any)?.backendId || (account as any)?.keyPrefix || undefined;
+            const hasRefresh = !!((account as any)?.refresh_token || (account as any)?.refreshToken);
+            if (hasRefresh) {
+              try {
+                await googleDriveProxyService.getAccessToken(identityId, accountId, [identityId]);
+              } catch {
+                // Leave token as-is on refresh failure (e.g. revoked). Client will get 401 and may reconnect.
+              }
+            }
+          }
+          record = await storageCredentialsService.getCredentials(identityId);
+        }
 
         if (!record) {
           return res.status(404).json({ error: 'No storage credentials found for identity' });

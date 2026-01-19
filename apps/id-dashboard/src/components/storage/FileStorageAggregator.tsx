@@ -1601,7 +1601,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         await backend.connect({
           token: params.token,
           refreshToken: params.refreshToken || undefined,
-          email: params.email || undefined
+          email: params.email || undefined,
+          sessionId: authenticatedUser?.id || (authenticatedUser as any)?.publicKey || undefined
         });
 
         const resolvedEmail = params.email || backend.getEmail() || null;
@@ -1698,7 +1699,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
 
     return upsertPromise;
-  }, [aggregatorService, activeBackendId, apiEndpoint, driveAccounts, userEmails]);
+  }, [aggregatorService, activeBackendId, apiEndpoint, driveAccounts, userEmails, authenticatedUser]);
 
   const removeDriveAccount = React.useCallback((backendId: string) => {
     let nextActiveId: string | null = null;
@@ -2057,12 +2058,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
 
         for (const account of accountsToActuallyHydrate) {
-          const token = account?.accessToken;
+          // Support both camelCase and snake_case (API/proxy may store either)
+          const token = account?.accessToken || account?.access_token;
           if (!token) {
             continue;
           }
           const email = account?.email || null;
-          const refreshToken = account?.refreshToken || null;
+          const refreshToken = account?.refreshToken || account?.refresh_token || null;
           const storedBackendId = typeof account?.backendId === 'string' ? account.backendId : null;
           const storedKeyPrefix = typeof account?.keyPrefix === 'string' ? account.keyPrefix : null;
           const identifiers = storedBackendId && storedKeyPrefix
@@ -2333,13 +2335,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
 
         for (const creds of deduplicatedCreds) {
-          const token = creds?.accessToken;
+          // Support both camelCase and snake_case (secure metadata may store either)
+          const token = creds?.accessToken || creds?.access_token;
           if (!token) {
             continue;
           }
 
           const email = creds.email || null;
-          const refreshToken = creds.refreshToken || null;
+          const refreshToken = creds?.refreshToken || creds?.refresh_token || null;
           const identifiers = resolveIdentifiersForEmail(email);
 
           const backend = await upsertDriveAccount({
@@ -2626,22 +2629,41 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               return;
             }
 
-            const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, pnIdentifier);
-            const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(token, pnFolderId);
-            
-            // AUTOMATIC CLEANUP: Verify files exist in Google Drive and remove orphaned entries
-            // Google Drive is the source of truth - if file doesn't exist there, remove from all indexes
-            try {
-              const cleanupResult = await GoogleDriveMetadataService.cleanupOrphanedIndexEntries(token, pnIdentifier);
-              if (cleanupResult.ownerIndexRemoved > 0 || cleanupResult.publicIndexRemoved > 0) {
-                console.log(`✅ [Metadata] Cleaned up indexes: removed ${cleanupResult.ownerIndexRemoved} from owner index, ${cleanupResult.publicIndexRemoved} from public index`);
+            let ownerIndex: any = null;
+            const runMetadataBlock = async (t: string) => {
+              const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(t, pnIdentifier);
+              const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(t, pnFolderId);
+              try {
+                const cleanupResult = await GoogleDriveMetadataService.cleanupOrphanedIndexEntries(t, pnIdentifier);
+                if (cleanupResult.ownerIndexRemoved > 0 || cleanupResult.publicIndexRemoved > 0) {
+                  console.log(`✅ [Metadata] Cleaned up indexes: removed ${cleanupResult.ownerIndexRemoved} from owner index, ${cleanupResult.publicIndexRemoved} from public index`);
+                }
+              } catch (cleanupError) {
+                console.warn('⚠️ [Metadata] Failed to cleanup orphaned index entries (non-critical):', cleanupError);
               }
-            } catch (cleanupError) {
-              console.warn('⚠️ [Metadata] Failed to cleanup orphaned index entries (non-critical):', cleanupError);
+              return GoogleDriveMetadataService.getOwnerFileIndexFromContentClasses(t, metadataFolderId, pnIdentifier);
+            };
+            try {
+              ownerIndex = await runMetadataBlock(token);
+            } catch (metaErr) {
+              const msg = (metaErr instanceof Error ? metaErr.message : String(metaErr)) ?? '';
+              const isTokenError = typeof msg === 'string' && (msg.includes('401') || msg.includes('Token expired') || msg.includes('Token expired or invalid'));
+              if (isTokenError && backend instanceof GoogleDriveBackend && typeof backend.ensureValidToken === 'function') {
+                const refreshed = await backend.ensureValidToken();
+                if (refreshed) {
+                  const newToken = backend.getAccessToken();
+                  if (newToken) {
+                    ownerIndex = await runMetadataBlock(newToken);
+                  } else {
+                    throw metaErr;
+                  }
+                } else {
+                  throw metaErr;
+                }
+              } else {
+                throw metaErr;
+              }
             }
-            
-            // Try loading from content class-specific indices first, fallback to root index
-            const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndexFromContentClasses(token, metadataFolderId, pnIdentifier);
 
             if (ownerIndex && ownerIndex.files) {
               const metadataMap = new Map<string, PublicMetadata>();
@@ -3050,12 +3072,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         let ownerIndex: any = null;
 
         if (accessToken && currentPnIdentifier) {
-          try {
+          const fetchOwnerIndex = async (tok: string) => {
             const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
-            const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(accessToken, currentPnIdentifier);
-            const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(accessToken, pnFolderId);
-            // Try loading from content class-specific indices first, fallback to root index
-            ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndexFromContentClasses(accessToken, metadataFolderId, currentPnIdentifier);
+            const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(tok, currentPnIdentifier);
+            const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(tok, pnFolderId);
+            return GoogleDriveMetadataService.getOwnerFileIndexFromContentClasses(tok, metadataFolderId, currentPnIdentifier);
+          };
+          try {
+            ownerIndex = await fetchOwnerIndex(accessToken);
             console.debug('📋 [loadFiles] Owner index response', {
               backendId,
               hasIndex: !!ownerIndex,
@@ -3069,7 +3093,46 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               (errorMessage.includes('Failed to search for pN folder') ||
                errorMessage.includes('Failed to search for metadata folder') ||
                errorMessage.includes('Google Drive authentication expired') ||
-               errorMessage.includes('token refresh is temporarily rate limited'));
+               errorMessage.includes('token refresh is temporarily rate limited') ||
+               errorMessage.includes('401') ||
+               errorMessage.includes('Token expired') ||
+               errorMessage.includes('Token expired or invalid'));
+
+            // On token/401 error, try ensureValidToken and retry once before falling back to retryBackends
+            if (isAuthRelated && backend instanceof GoogleDriveBackend && typeof backend.ensureValidToken === 'function') {
+              const refreshed = await backend.ensureValidToken();
+              if (refreshed) {
+                const newToken = backend.getAccessToken();
+                if (newToken) {
+                  try {
+                    ownerIndex = await fetchOwnerIndex(newToken);
+                    console.debug('📋 [loadFiles] Owner index response after token refresh', {
+                      backendId,
+                      hasIndex: !!ownerIndex,
+                      fileCount: ownerIndex?.files?.length || 0,
+                    });
+                  } catch (retryErr) {
+                    retryBackends.add(backendId);
+                    rateLimitedBackendsRef.current.add(backendId);
+                    console.debug('⏳ [loadFiles] Owner index retry after ensureValidToken failed', { backendId, error: retryErr });
+                    continue;
+                  }
+                } else {
+                  retryBackends.add(backendId);
+                  rateLimitedBackendsRef.current.add(backendId);
+                  console.debug('⏳ [loadFiles] Owner index request will retry after token refresh', { backendId, error: errorMessage });
+                  continue;
+                }
+              } else {
+                retryBackends.add(backendId);
+                rateLimitedBackendsRef.current.add(backendId);
+                console.debug('⏳ [loadFiles] Owner index request will retry after token refresh', {
+                  backendId,
+                  error: errorMessage,
+                });
+                continue;
+              }
+            }
 
             if (isAuthRelated) {
               retryBackends.add(backendId);

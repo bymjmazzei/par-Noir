@@ -246,6 +246,26 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
   }
 
   /**
+   * Attempt to refresh the access token using the stored refresh token.
+   * Call when a 401 suggests the token may be expired (e.g. from GoogleDriveMetadataService).
+   * @returns true if a new access token was obtained, false otherwise.
+   */
+  async ensureValidToken(): Promise<boolean> {
+    const refreshToken = this.getRefreshToken();
+    if (!refreshToken) return false;
+    try {
+      const newToken = await this.refreshAccessToken(refreshToken);
+      if (newToken) {
+        this.token = newToken;
+        return true;
+      }
+    } catch {
+      // refreshAccessToken already logs
+    }
+    return false;
+  }
+
+  /**
    * Check if response indicates token is expired/invalid
    */
   private async handleTokenError(response: Response): Promise<boolean> {
