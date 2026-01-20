@@ -10,14 +10,14 @@ Google Drive Root
     ├── _metadata/
     │   ├── [Metadata Files - see below]
     │       ├── media/
-    │   │   ├── public-file-index.xlsx
-    │   │   └── owner-file-index.xlsx
+    │   │   ├── media-public-index.xlsx
+    │   │   └── media-owner-index.xlsx
     │   ├── thoughts/
-    │   │   ├── public-file-index.xlsx
-    │   │   └── owner-file-index.xlsx
+    │   │   ├── thoughts-public-index.xlsx
+    │   │   └── thoughts-owner-index.xlsx
     │   └── collections/
-    │       ├── public-file-index.xlsx
-    │       └── owner-file-index.xlsx
+    │       ├── collections-public-index.xlsx
+    │       └── collections-owner-index.xlsx
     └── par-noir-messages/ (created on-demand when first message is sent)
         └── conversation-{otherUserDid}.xlsx (created when connection is accepted)
 ```
@@ -62,10 +62,10 @@ Google Drive Root
 ### Content Class Folders (in `_metadata/`)
 
 Each content class folder contains:
-- **`public-file-index.xlsx`** - Public index for that content class (publicly readable). Same structure as root `public-file-index.xlsx` (Files sheet).
-- **`owner-file-index.xlsx`** - Owner index for that content class (private). Same structure as root `owner-file-index.xlsx` (Files sheet).
+- **`{folder}-public-index.xlsx`** (e.g. `thoughts-public-index.xlsx`, `media-public-index.xlsx`, `collections-public-index.xlsx`) - Public index for that content class (publicly readable). Same structure as root `public-file-index.xlsx` (Files sheet).
+- **`{folder}-owner-index.xlsx`** (e.g. `thoughts-owner-index.xlsx`, `media-owner-index.xlsx`, `collections-owner-index.xlsx`) - Owner index for that content class (private). Same structure as root `owner-file-index.xlsx` (Files sheet).
 
-**Note**: `public-file-index.json` and `owner-file-index.json` in these folders are deprecated; the app uses and creates only the `.xlsx` (Sheets) versions.
+**Indexes are Sheets only.** Owner and public indexes (root and content-class) are only `.xlsx` (Sheets). JSON index files (`public-file-index.json`, `owner-file-index.json`) are deprecated and no longer created or read.
 
 #### 1. `media/`
 - Contains media files (images, videos, etc.)
@@ -103,9 +103,9 @@ The following files are **deprecated** and should **NOT** be initialized:
 - ❌ `third-party-permissions.json` (replaced by `third-party-permissions.xlsx`)
 - ❌ `public-file-index.json` (replaced by `public-file-index.xlsx`)
 - ❌ `owner-file-index.json` (replaced by `owner-file-index.xlsx`)
-- ❌ `public-file-index.json` / `owner-file-index.json` in content-class folders (`media/`, `thoughts/`, `collections/`) (replaced by `public-file-index.xlsx` / `owner-file-index.xlsx` in those folders)
+- ❌ `public-file-index.json` / `owner-file-index.json` in content-class folders (replaced by `{folder}-public-index.xlsx` / `{folder}-owner-index.xlsx`, e.g. `thoughts-owner-index.xlsx`)
 
-**Note**: Migration from JSON to Sheets happens automatically on first access for some metadata files. Content-class index files are created only as `.xlsx`; legacy JSON in those folders is not used.
+**Note**: Indexes are Sheets only. Content-class index files use distinct names (`{folder}-owner-index.xlsx`, `{folder}-public-index.xlsx`) to avoid collision with root. JSON index files are deprecated and no longer created or read.
 
 ## Initialization Order
 
@@ -115,7 +115,7 @@ When a user authenticates with Google Drive, the following happens:
 2. **Create metadata folder**: `_metadata` inside main folder
 3. **Create content class folders**: `media/`, `thoughts/`, `collections/` inside `_metadata/`
 4. **Create root index files**: `public-file-index.xlsx` and `owner-file-index.xlsx` in `_metadata/`
-5. **Create content class index files**: `public-file-index.xlsx` and `owner-file-index.xlsx` in each content class folder (`media/`, `thoughts/`, `collections/`)
+5. **Create content class index files**: `{folder}-owner-index.xlsx` and `{folder}-public-index.xlsx` in each content class folder (e.g. `thoughts-owner-index.xlsx`, `thoughts-public-index.xlsx` in `thoughts/`)
 6. **Initialize metadata files**:
    - JSON files: `profile.json`, `preferences.json` (current state)
    - Sheets files: `connections.xlsx`, `notifications.xlsx`, `activity_ledger.xlsx`, `engagement.xlsx`, `messaging_ledger.xlsx`, `preferences.xlsx` (interaction log), `zkp-data-points.xlsx`, `third-party-permissions.xlsx`, `public-file-index.xlsx`, `owner-file-index.xlsx`

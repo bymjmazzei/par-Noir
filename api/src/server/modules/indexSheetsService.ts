@@ -47,19 +47,26 @@ export class IndexSheetsService {
   private static readonly OWNER_INDEX_FILE_NAME = 'owner-file-index.xlsx';
 
   /**
-   * Get or create index sheet
+   * Get or create index sheet.
+   * @param contentClass - When set (e.g. 'media'|'thoughts'|'collections'), uses {contentClass}-{owner|public}-index.xlsx to avoid name collision with root. Omit for root indexes.
    */
   static async getOrCreateIndexSheet(
     accessToken: string,
     metadataFolderId: string,
-    indexType: 'public' | 'owner'
+    indexType: 'public' | 'owner',
+    contentClass?: 'media' | 'thoughts' | 'collections'
   ): Promise<string> {
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
-    const fileName = indexType === 'public' ? this.PUBLIC_INDEX_FILE_NAME : this.OWNER_INDEX_FILE_NAME;
+    const fileName =
+      contentClass != null
+        ? `${contentClass}-${indexType}-index.xlsx`
+        : indexType === 'public'
+          ? this.PUBLIC_INDEX_FILE_NAME
+          : this.OWNER_INDEX_FILE_NAME;
 
     // Search for existing index sheet in metadata folder
     const fileQuery = `name='${fileName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;

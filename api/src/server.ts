@@ -351,13 +351,13 @@ class ProductionServer {
   ): Promise<void> {
     const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
     try {
-      await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'owner');
+      await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'owner', folderName as 'media' | 'thoughts' | 'collections');
       console.log(`[initializeContentClassIndexFiles] Initialized owner-file-index.xlsx in '${folderName}'`);
     } catch (e: any) {
       console.warn(`[initializeContentClassIndexFiles] Failed to init owner index in '${folderName}':`, e?.message || e);
     }
     try {
-      const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'public');
+      const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'public', folderName as 'media' | 'thoughts' | 'collections');
       await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
       console.log(`[initializeContentClassIndexFiles] Initialized public-file-index.xlsx in '${folderName}'`);
     } catch (e: any) {
@@ -689,7 +689,7 @@ class ProductionServer {
         const contentTypeFolderId = contentTypeFolderData.files[0].id;
         
         // Get or create content class-specific owner index
-        const contentClassOwnerIndex = await this.getContentClassOwnerIndex(accessToken, contentTypeFolderId, pnIdentifier);
+        const contentClassOwnerIndex = await this.getContentClassOwnerIndex(accessToken, contentTypeFolderId, pnIdentifier, contentTypeFolderName as 'media' | 'thoughts' | 'collections');
         const contentClassIndex = contentClassOwnerIndex || {
           identifier: pnIdentifier,
           files: [],
@@ -708,7 +708,7 @@ class ProductionServer {
         }
 
         contentClassIndex.updatedAt = new Date().toISOString();
-        const ownerSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'owner');
+        const ownerSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'owner', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
         await IndexSheetsService.setAllFiles(accessToken, ownerSheetId, contentClassIndex.files, contentClassIndex.updatedAt);
       }
     }
@@ -882,7 +882,7 @@ class ProductionServer {
           const contentTypeFolderId = contentTypeFolderData.files[0].id;
           
           // Get content class-specific owner index
-          const contentClassIndex = await this.getContentClassOwnerIndex(accessToken, contentTypeFolderId, pnIdentifier);
+          const contentClassIndex = await this.getContentClassOwnerIndex(accessToken, contentTypeFolderId, pnIdentifier, contentTypeFolderName as 'media' | 'thoughts' | 'collections');
           if (contentClassIndex && contentClassIndex.files) {
             const contentClassInitialLength = contentClassIndex.files.length;
             contentClassIndex.files = contentClassIndex.files.filter(
@@ -892,7 +892,7 @@ class ProductionServer {
             if (contentClassIndex.files.length !== contentClassInitialLength) {
               contentClassIndex.updatedAt = new Date().toISOString();
               const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-              const ownerSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'owner');
+              const ownerSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'owner', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
               await IndexSheetsService.setAllFiles(accessToken, ownerSheetId, contentClassIndex.files, contentClassIndex.updatedAt);
             }
           }
@@ -969,7 +969,7 @@ class ProductionServer {
           const contentTypeFolderId = contentTypeFolderData.files[0].id;
           
           // Get content class-specific public index
-          const contentClassIndex = await this.getContentClassPublicIndex(accessToken, contentTypeFolderId, pnIdentifier);
+          const contentClassIndex = await this.getContentClassPublicIndex(accessToken, contentTypeFolderId, pnIdentifier, contentTypeFolderName as 'media' | 'thoughts' | 'collections');
           if (contentClassIndex && contentClassIndex.files) {
             const contentClassInitialLength = contentClassIndex.files.length;
             contentClassIndex.files = contentClassIndex.files.filter(
@@ -979,7 +979,7 @@ class ProductionServer {
             if (contentClassIndex.files.length !== contentClassInitialLength) {
               contentClassIndex.updatedAt = new Date().toISOString();
               const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-              const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'public');
+              const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'public', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
               await IndexSheetsService.setAllFiles(accessToken, publicSheetId, contentClassIndex.files, contentClassIndex.updatedAt);
               await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
             }
@@ -1163,7 +1163,7 @@ class ProductionServer {
         const contentTypeFolderId = contentTypeFolderData.files[0].id;
         
         // Get or create content class-specific public index
-        const contentClassPublicIndex = await this.getContentClassPublicIndex(accessToken, contentTypeFolderId, pnIdentifier);
+        const contentClassPublicIndex = await this.getContentClassPublicIndex(accessToken, contentTypeFolderId, pnIdentifier, contentTypeFolderName as 'media' | 'thoughts' | 'collections');
         const contentClassIndex = contentClassPublicIndex || {
           identifier: pnIdentifier,
           files: [],
@@ -1233,7 +1233,7 @@ class ProductionServer {
 
         contentClassIndex.updatedAt = new Date().toISOString();
         const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-        const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'public');
+        const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'public', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
         await IndexSheetsService.setAllFiles(accessToken, publicSheetId, contentClassIndex.files, contentClassIndex.updatedAt);
         await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
       }
@@ -1398,11 +1398,12 @@ class ProductionServer {
   private async getContentClassPublicIndex(
     accessToken: string,
     folderId: string,
-    pnIdentifier: string
+    pnIdentifier: string,
+    contentClass: 'media' | 'thoughts' | 'collections'
   ): Promise<any | null> {
     try {
       const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'public');
+      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'public', contentClass);
       const { files } = await IndexSheetsService.getFiles(accessToken, spreadsheetId);
       const updatedAt = await IndexSheetsService.getUpdatedAt(accessToken, spreadsheetId);
       return {
@@ -1422,11 +1423,12 @@ class ProductionServer {
   private async getContentClassOwnerIndex(
     accessToken: string,
     folderId: string,
-    pnIdentifier: string
+    pnIdentifier: string,
+    contentClass: 'media' | 'thoughts' | 'collections'
   ): Promise<any | null> {
     try {
       const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'owner');
+      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'owner', contentClass);
       const { files } = await IndexSheetsService.getFiles(accessToken, spreadsheetId);
       const updatedAt = await IndexSheetsService.getUpdatedAt(accessToken, spreadsheetId);
       return {
@@ -4766,7 +4768,7 @@ class ProductionServer {
       }
     });
 
-    // GET /api/storage/owner-index/:identityId - Read owner file index from Sheets (replaces JSON)
+    // GET /api/storage/owner-index/:identityId - Read owner file index from Sheets (merged: content-class + root)
     this.app.get('/api/storage/owner-index/:identityId', async (req, res) => {
       try {
         const { identityId } = req.params;
@@ -4775,7 +4777,6 @@ class ProductionServer {
         }
 
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-        const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
 
         let accessToken: string;
         try {
@@ -4789,17 +4790,151 @@ class ProductionServer {
           return res.json({ identifier: identityId, files: [], updatedAt: new Date().toISOString() });
         }
 
-        const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, out.metadataFolderId, 'owner');
-        const { files } = await IndexSheetsService.getFiles(accessToken, spreadsheetId);
-        const updatedAt = await IndexSheetsService.getUpdatedAt(accessToken, spreadsheetId) ?? new Date().toISOString();
+        // Merged view: aggregate from content-class indices, fallback to root
+        const contentTypes: Array<'media' | 'thoughts' | 'collections'> = ['media', 'thoughts', 'collections'];
+        const allFiles: any[] = [];
+        for (const contentType of contentTypes) {
+          const folderQuery = `name='${contentType}' and '${out.metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+          const folderRes = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`,
+            { headers: { 'Authorization': `Bearer ${accessToken}` } }
+          );
+          if (!folderRes.ok) continue;
+          const folderData = await folderRes.json() as { files?: Array<{ id: string }> };
+          if (!folderData.files?.length) continue;
+          const idx = await this.getContentClassOwnerIndex(accessToken, folderData.files[0].id, identityId, contentType);
+          if (idx?.files?.length) allFiles.push(...idx.files);
+        }
+        if (allFiles.length > 0) {
+          return res.json({ identifier: identityId, files: allFiles, updatedAt: new Date().toISOString() });
+        }
 
-        return res.json({ identifier: identityId, files, updatedAt });
+        // Fallback to root owner index
+        const rootIndex = await this.getOwnerFileIndex(accessToken, out.metadataFolderId, identityId);
+        if (!rootIndex) {
+          return res.json({ identifier: identityId, files: [], updatedAt: new Date().toISOString() });
+        }
+        return res.json({ identifier: identityId, files: rootIndex.files, updatedAt: rootIndex.updatedAt });
       } catch (error: any) {
         console.error('[OwnerIndex] Error:', error?.message || error);
         return res.status(500).json({
           error: 'Failed to read owner index',
           message: error?.message || String(error)
         });
+      }
+    });
+
+    // POST /api/storage/owner-index/:identityId/entries - Add/update entry in owner index (for dashboard)
+    this.app.post('/api/storage/owner-index/:identityId/entries', async (req, res) => {
+      try {
+        const { identityId } = req.params;
+        const entry = req.body?.entry;
+        if (!identityId || !entry) {
+          return res.status(400).json({ error: 'Missing identityId or body.entry' });
+        }
+
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        let accessToken: string;
+        try {
+          accessToken = await googleDriveProxyService.getAccessToken(identityId, undefined, [identityId]);
+        } catch {
+          return res.status(404).json({ error: 'Google Drive not connected for this identity' });
+        }
+
+        const out = await this.getMetadataFolder(accessToken, identityId);
+        if (!out) {
+          return res.status(409).json({ error: 'DRIVE_NOT_INITIALIZED', message: 'Connect and initialize Google Drive first.' });
+        }
+
+        await this.updateOwnerFileIndex(accessToken, identityId, out.metadataFolderId, entry);
+        return res.json({ ok: true });
+      } catch (error: any) {
+        console.error('[OwnerIndex POST] Error:', error?.message || error);
+        return res.status(500).json({ error: 'Failed to update owner index', message: error?.message || String(error) });
+      }
+    });
+
+    // GET /api/storage/public-index/:identityId - Read public file index from Sheets (merged: content-class + root)
+    this.app.get('/api/storage/public-index/:identityId', async (req, res) => {
+      try {
+        const { identityId } = req.params;
+        if (!identityId) {
+          return res.status(400).json({ error: 'Missing identityId parameter' });
+        }
+
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        let accessToken: string;
+        try {
+          accessToken = await googleDriveProxyService.getAccessToken(identityId, undefined, [identityId]);
+        } catch {
+          return res.status(404).json({ error: 'Google Drive not connected for this identity' });
+        }
+
+        const out = await this.getMetadataFolder(accessToken, identityId);
+        if (!out) {
+          return res.json({ identifier: identityId, files: [], updatedAt: new Date().toISOString() });
+        }
+
+        // Merged view: aggregate from content-class public indices, fallback to root
+        const contentTypes: Array<'media' | 'thoughts' | 'collections'> = ['media', 'thoughts', 'collections'];
+        const allFiles: any[] = [];
+        for (const contentType of contentTypes) {
+          const folderQuery = `name='${contentType}' and '${out.metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+          const folderRes = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`,
+            { headers: { 'Authorization': `Bearer ${accessToken}` } }
+          );
+          if (!folderRes.ok) continue;
+          const folderData = await folderRes.json() as { files?: Array<{ id: string }> };
+          if (!folderData.files?.length) continue;
+          const idx = await this.getContentClassPublicIndex(accessToken, folderData.files[0].id, identityId, contentType);
+          if (idx?.files?.length) allFiles.push(...idx.files);
+        }
+        if (allFiles.length > 0) {
+          return res.json({ identifier: identityId, files: allFiles, updatedAt: new Date().toISOString() });
+        }
+
+        const rootIndex = await this.getPublicFileIndex(accessToken, out.metadataFolderId, identityId);
+        if (!rootIndex) {
+          return res.json({ identifier: identityId, files: [], updatedAt: new Date().toISOString() });
+        }
+        return res.json({ identifier: identityId, files: rootIndex.files, updatedAt: rootIndex.updatedAt });
+      } catch (error: any) {
+        console.error('[PublicIndex] Error:', error?.message || error);
+        return res.status(500).json({
+          error: 'Failed to read public index',
+          message: error?.message || String(error)
+        });
+      }
+    });
+
+    // POST /api/storage/public-index/:identityId/entries - Add/update entry in public index (for dashboard)
+    this.app.post('/api/storage/public-index/:identityId/entries', async (req, res) => {
+      try {
+        const { identityId } = req.params;
+        const entry = req.body?.entry;
+        if (!identityId || !entry) {
+          return res.status(400).json({ error: 'Missing identityId or body.entry' });
+        }
+
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        let accessToken: string;
+        try {
+          accessToken = await googleDriveProxyService.getAccessToken(identityId, undefined, [identityId]);
+        } catch {
+          return res.status(404).json({ error: 'Google Drive not connected for this identity' });
+        }
+
+        const out = await this.getMetadataFolder(accessToken, identityId);
+        if (!out) {
+          return res.status(409).json({ error: 'DRIVE_NOT_INITIALIZED', message: 'Connect and initialize Google Drive first.' });
+        }
+
+        await this.updatePublicFileIndex(accessToken, identityId, out.metadataFolderId, out.pnFolderId, entry);
+        return res.json({ ok: true });
+      } catch (error: any) {
+        console.error('[PublicIndex POST] Error:', error?.message || error);
+        return res.status(500).json({ error: 'Failed to update public index', message: error?.message || String(error) });
       }
     });
 
