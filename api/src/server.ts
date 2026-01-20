@@ -673,6 +673,7 @@ class ProductionServer {
 
     // Also update content class-specific owner index (map thought→thoughts, collection→collections)
     const contentTypeFolderName = indexEntry.contentClass === 'thought' ? 'thoughts' : indexEntry.contentClass === 'collection' ? 'collections' : indexEntry.contentClass;
+    let contentTypeFolderId: string | null = null;
     const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     const contentTypeFolderResponse = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
@@ -686,8 +687,22 @@ class ProductionServer {
     if (contentTypeFolderResponse.ok) {
       const contentTypeFolderData = await contentTypeFolderResponse.json() as { files?: Array<{ id: string }> };
       if (contentTypeFolderData.files && contentTypeFolderData.files.length > 0) {
-        const contentTypeFolderId = contentTypeFolderData.files[0].id;
-        
+        contentTypeFolderId = contentTypeFolderData.files[0].id;
+      } else {
+        const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: contentTypeFolderName, mimeType: 'application/vnd.google-apps.folder', parents: [metadataFolderId] })
+        });
+        if (createRes.ok) {
+          const createData = await createRes.json() as { id: string };
+          contentTypeFolderId = createData.id;
+          console.log(`[updateOwnerFileIndex] Created content-class folder '${contentTypeFolderName}'`);
+        }
+      }
+    }
+
+    if (contentTypeFolderId) {
         // Get or create content class-specific owner index
         const contentClassOwnerIndex = await this.getContentClassOwnerIndex(accessToken, contentTypeFolderId, pnIdentifier, contentTypeFolderName as 'media' | 'thoughts' | 'collections');
         const contentClassIndex = contentClassOwnerIndex || {
@@ -710,7 +725,6 @@ class ProductionServer {
         contentClassIndex.updatedAt = new Date().toISOString();
         const ownerSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'owner', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
         await IndexSheetsService.setAllFiles(accessToken, ownerSheetId, contentClassIndex.files, contentClassIndex.updatedAt);
-      }
     }
   }
 
@@ -1145,8 +1159,10 @@ class ProductionServer {
       isPartOfCollection: metadataAny.isPartOfCollection
     });
 
-    // Get content class folder ID (map contentClass to folder name: thought→thoughts, collection→collections)
+    // Get or create content class folder (map contentClass to folder name: thought→thoughts, collection→collections)
     const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass === 'collection' ? 'collections' : contentClass;
+    let contentTypeFolderId: string | null = null;
+
     const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     const contentTypeFolderResponse = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
@@ -1160,8 +1176,27 @@ class ProductionServer {
     if (contentTypeFolderResponse.ok) {
       const contentTypeFolderData = await contentTypeFolderResponse.json() as { files?: Array<{ id: string }> };
       if (contentTypeFolderData.files && contentTypeFolderData.files.length > 0) {
-        const contentTypeFolderId = contentTypeFolderData.files[0].id;
-        
+        contentTypeFolderId = contentTypeFolderData.files[0].id;
+      } else {
+        // Folder missing (e.g. connected before content-class folders existed): create it
+        const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: contentTypeFolderName,
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [metadataFolderId]
+          })
+        });
+        if (createRes.ok) {
+          const createData = await createRes.json() as { id: string };
+          contentTypeFolderId = createData.id;
+          console.log(`[updatePublicFileIndex] Created content-class folder '${contentTypeFolderName}'`);
+        }
+      }
+    }
+
+    if (contentTypeFolderId) {
         // Get or create content class-specific public index
         const contentClassPublicIndex = await this.getContentClassPublicIndex(accessToken, contentTypeFolderId, pnIdentifier, contentTypeFolderName as 'media' | 'thoughts' | 'collections');
         const contentClassIndex = contentClassPublicIndex || {
@@ -1243,7 +1278,6 @@ class ProductionServer {
           console.error(`[updatePublicFileIndex] Content-class public index (${contentTypeFolderName}) failed:`, contentClassErr?.message || contentClassErr);
           throw contentClassErr;
         }
-      }
     }
   }
 
@@ -3114,6 +3148,7 @@ class ProductionServer {
                         collection: initialMetadata.collection,
                         isPartOfCollection: (initialMetadata as any).isPartOfCollection
                       };
+                      await this.updateOwnerFileIndex(credentialsRecord.credentials.access_token, pnIdentifier, out.metadataFolderId, fileMetadataForIndex);
                       await this.updatePublicFileIndex(
                         credentialsRecord.credentials.access_token,
                         pnIdentifier,
@@ -3222,6 +3257,7 @@ class ProductionServer {
                         collection: minimalMetadata.collection,
                         isPartOfCollection: (minimalMetadata as any).isPartOfCollection
                       };
+                      await this.updateOwnerFileIndex(credentialsRecord.credentials.access_token, pnIdentifier, out.metadataFolderId, fileMetadataForIndex);
                       await this.updatePublicFileIndex(
                         credentialsRecord.credentials.access_token,
                         pnIdentifier,
