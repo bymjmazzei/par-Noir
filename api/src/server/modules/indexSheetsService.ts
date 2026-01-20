@@ -207,7 +207,7 @@ export class IndexSheetsService {
               title: 'Files',
               gridProperties: {
                 rowCount: 100000,
-                columnCount: 5
+                columnCount: 6
               }
             }
           }
@@ -449,12 +449,20 @@ export class IndexSheetsService {
     }
 
     if (updatedAt != null) {
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: 'Files!F1',
-        valueInputOption: 'RAW',
-        requestBody: { values: [[updatedAt]] }
-      });
+      try {
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: 'Files!F1',
+          valueInputOption: 'RAW',
+          requestBody: { values: [[updatedAt]] }
+        });
+      } catch (e: any) {
+        if (/exceeds grid limits|Max columns/.test(e?.message || '')) {
+          console.warn('[IndexSheetsService] Sheets has only 5 columns, cannot write updatedAt to F1 (use columnCount: 6 for new sheets).', e?.message);
+        } else {
+          throw e;
+        }
+      }
     }
   }
 
