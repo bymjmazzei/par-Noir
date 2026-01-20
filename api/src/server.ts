@@ -671,8 +671,8 @@ class ProductionServer {
       await IndexSheetsService.addFile(accessToken, spreadsheetId, indexEntry);
     }
 
-    // Also update content class-specific owner index
-    const contentTypeFolderName = indexEntry.contentClass === 'thought' ? 'thoughts' : indexEntry.contentClass;
+    // Also update content class-specific owner index (map thought→thoughts, collection→collections)
+    const contentTypeFolderName = indexEntry.contentClass === 'thought' ? 'thoughts' : indexEntry.contentClass === 'collection' ? 'collections' : indexEntry.contentClass;
     const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     const contentTypeFolderResponse = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
@@ -863,9 +863,9 @@ class ProductionServer {
     const ownerSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'owner');
     await IndexSheetsService.setAllFiles(accessToken, ownerSheetId, index.files, index.updatedAt);
     
-    // Also remove from content class-specific index if we know the contentClass
+    // Also remove from content class-specific index if we know the contentClass (thought→thoughts, collection→collections)
     if (contentClass) {
-      const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass;
+      const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass === 'collection' ? 'collections' : contentClass;
       const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
       const contentTypeFolderResponse = await fetch(
         `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
@@ -950,9 +950,9 @@ class ProductionServer {
     await IndexSheetsService.setAllFiles(accessToken, publicSheetId, index.files, index.updatedAt);
     await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
     
-    // Also remove from content class-specific index if we know the contentClass
+    // Also remove from content class-specific index if we know the contentClass (thought→thoughts, collection→collections)
     if (contentClass) {
-      const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass;
+      const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass === 'collection' ? 'collections' : contentClass;
       const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
       const contentTypeFolderResponse = await fetch(
         `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
@@ -1145,8 +1145,8 @@ class ProductionServer {
       isPartOfCollection: metadataAny.isPartOfCollection
     });
 
-    // Get content class folder ID
-    const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass;
+    // Get content class folder ID (map contentClass to folder name: thought→thoughts, collection→collections)
+    const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass === 'collection' ? 'collections' : contentClass;
     const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     const contentTypeFolderResponse = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
@@ -1169,10 +1169,12 @@ class ProductionServer {
           files: [],
           updatedAt: new Date().toISOString()
         };
+        // Ensure files is a mutable array (getFiles can return sparse or odd shapes)
+        if (!Array.isArray(contentClassIndex.files)) contentClassIndex.files = [];
 
         // Update content class-specific index with same logic
         const contentClassFileIndex = contentClassIndex.files.findIndex(
-          (f: any) => f.googleDriveFileId === fileMetadata.googleDriveFileId
+          (f: any) => f && (f.googleDriveFileId === fileMetadata.googleDriveFileId)
         );
 
         if (fileMetadata.visibility === 'public') {
@@ -1232,10 +1234,15 @@ class ProductionServer {
         }
 
         contentClassIndex.updatedAt = new Date().toISOString();
-        const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-        const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'public', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
-        await IndexSheetsService.setAllFiles(accessToken, publicSheetId, contentClassIndex.files, contentClassIndex.updatedAt);
-        await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
+        try {
+          const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+          const contentClassPublicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'public', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
+          await IndexSheetsService.setAllFiles(accessToken, contentClassPublicSheetId, contentClassIndex.files, contentClassIndex.updatedAt);
+          await this.setPublicPermissionOnDriveFile(accessToken, contentClassPublicSheetId);
+        } catch (contentClassErr: any) {
+          console.error(`[updatePublicFileIndex] Content-class public index (${contentTypeFolderName}) failed:`, contentClassErr?.message || contentClassErr);
+          throw contentClassErr;
+        }
       }
     }
   }
@@ -3076,11 +3083,9 @@ class ProductionServer {
                 await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
                 console.log(`[MetadataIndex] Created metadata entry for ${fileId}`);
                 
-                // Also add to Google Drive index if file is public (source of truth)
+                // Also add to Google Drive index (root + content-class e.g. thoughts-public) if file is public
                 try {
-                  const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
                   const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-                  
                   const pnIdentifier = tokenPayload.pnIdentifier;
                   if (pnIdentifier) {
                     const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -3089,51 +3094,34 @@ class ProductionServer {
                       if (!out) {
                         return this.driveNotInitialized(res);
                       }
-                      const metadataFolder = out.metadataFolderId;
-                      
-                      // Get or create public-file-index.xlsx
-                      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
-                        credentialsRecord.credentials.access_token,
-                        metadataFolder,
-                        'public'
-                      );
-                      
-                      // Convert metadata to IndexFileEntry format
-                      const indexEntry: any = {
-                        fileId: fileId,
+                      const fileMetadataForIndex = {
+                        fileId: initialMetadata.fileId,
                         googleDriveFileId: initialMetadata.backendFileId || fileId,
-                        fileName: initialMetadata.name || initialMetadata.title,
-                        originalName: initialMetadata.name || initialMetadata.title,
-                        mimeType: driveFile.mimeType,
-                        visibility: 'public',
+                        fileName: (driveFile as any).name || initialMetadata.name || initialMetadata.title || fileId,
+                        originalName: initialMetadata.name || initialMetadata.title || (driveFile as any).name,
+                        mimeType: (driveFile as any).mimeType || 'application/octet-stream',
+                        size: parseInt((driveFile as any).size || '0', 10),
+                        visibility: 'public' as const,
                         uploadedAt: initialMetadata.uploadDate || new Date().toISOString(),
-                        owner: tokenPayload.did ? {
-                          did: tokenPayload.did,
-                          identifier: tokenPayload.did
-                        } : (tokenPayload.pnIdentifier ? {
-                          did: tokenPayload.pnIdentifier,
-                          identifier: tokenPayload.pnIdentifier
-                        } : undefined),
+                        owner: { did: tokenPayload.did || tokenPayload.pnIdentifier, identifier: pnIdentifier },
                         tags: initialMetadata.tags || initialMetadata.keywords || [],
                         description: initialMetadata.description,
-                        thumbnail: (initialMetadata as any).thumbnail,
                         publicToken: initialMetadata.publicToken,
                         engagement: initialMetadata.engagement,
-                        contentClass: (initialMetadata as any).contentClass,
-                        isThoughtThumbnail: (initialMetadata as any).isThoughtThumbnail,
                         thought: initialMetadata.thought,
                         textPost: initialMetadata.textPost,
+                        isThoughtThumbnail: (initialMetadata as any).isThoughtThumbnail,
                         collection: initialMetadata.collection,
-                        mainFileId: initialMetadata.mainFileId
+                        isPartOfCollection: (initialMetadata as any).isPartOfCollection
                       };
-                      
-                      // Add to Google Drive index
-                      await IndexSheetsService.addFile(
+                      await this.updatePublicFileIndex(
                         credentialsRecord.credentials.access_token,
-                        spreadsheetId,
-                        indexEntry
+                        pnIdentifier,
+                        out.metadataFolderId,
+                        out.pnFolderId,
+                        fileMetadataForIndex
                       );
-                      console.log(`✅ [MetadataIndex] Added new file to Google Drive public-file-index.xlsx: ${fileId}`);
+                      console.log(`✅ [MetadataIndex] Added new file to Google Drive public index (root + content-class): ${fileId}`);
                     }
                   }
                 } catch (driveError: any) {
@@ -3203,11 +3191,9 @@ class ProductionServer {
                 await service.submitMetadata(minimalMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
                 console.log(`[MetadataIndex] Created minimal metadata entry for ${fileId}`);
                 
-                // Also add to Google Drive index if file is public (source of truth)
+                // Also add to Google Drive index (root + content-class e.g. thoughts-public) if file is public
                 try {
-                  const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
                   const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-                  
                   const pnIdentifier = tokenPayload.pnIdentifier;
                   if (pnIdentifier) {
                     const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -3216,49 +3202,34 @@ class ProductionServer {
                       if (!out) {
                         return this.driveNotInitialized(res);
                       }
-                      const metadataFolder = out.metadataFolderId;
-                      
-                      // Get or create public-file-index.xlsx
-                      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
-                        credentialsRecord.credentials.access_token,
-                        metadataFolder,
-                        'public'
-                      );
-                      
-                      // Convert metadata to IndexFileEntry format
-                      const indexEntry: any = {
-                        fileId: fileId,
+                      const fileMetadataForIndex = {
+                        fileId: minimalMetadata.fileId,
                         googleDriveFileId: minimalMetadata.backendFileId || fileId,
-                        fileName: minimalMetadata.name || minimalMetadata.title,
-                        originalName: minimalMetadata.name || minimalMetadata.title,
-                        visibility: 'public',
+                        fileName: minimalMetadata.name || minimalMetadata.title || fileId,
+                        originalName: minimalMetadata.name || minimalMetadata.title || fileId,
+                        mimeType: 'application/octet-stream',
+                        size: 0,
+                        visibility: 'public' as const,
                         uploadedAt: minimalMetadata.uploadDate || new Date().toISOString(),
-                        owner: tokenPayload.did ? {
-                          did: tokenPayload.did,
-                          identifier: tokenPayload.did
-                        } : (tokenPayload.pnIdentifier ? {
-                          did: tokenPayload.pnIdentifier,
-                          identifier: tokenPayload.pnIdentifier
-                        } : undefined),
+                        owner: { did: tokenPayload.did || tokenPayload.pnIdentifier, identifier: pnIdentifier },
                         tags: minimalMetadata.tags || minimalMetadata.keywords || [],
                         description: minimalMetadata.description,
                         publicToken: minimalMetadata.publicToken,
                         engagement: minimalMetadata.engagement,
-                        contentClass: (minimalMetadata as any).contentClass,
-                        isThoughtThumbnail: (minimalMetadata as any).isThoughtThumbnail,
                         thought: minimalMetadata.thought,
                         textPost: minimalMetadata.textPost,
+                        isThoughtThumbnail: (minimalMetadata as any).isThoughtThumbnail,
                         collection: minimalMetadata.collection,
-                        mainFileId: minimalMetadata.mainFileId
+                        isPartOfCollection: (minimalMetadata as any).isPartOfCollection
                       };
-                      
-                      // Add to Google Drive index
-                      await IndexSheetsService.addFile(
+                      await this.updatePublicFileIndex(
                         credentialsRecord.credentials.access_token,
-                        spreadsheetId,
-                        indexEntry
+                        pnIdentifier,
+                        out.metadataFolderId,
+                        out.pnFolderId,
+                        fileMetadataForIndex
                       );
-                      console.log(`✅ [MetadataIndex] Added new file (minimal) to Google Drive public-file-index.xlsx: ${fileId}`);
+                      console.log(`✅ [MetadataIndex] Added new file (minimal) to Google Drive public index (root + content-class): ${fileId}`);
                     }
                   }
                 } catch (driveError: any) {
