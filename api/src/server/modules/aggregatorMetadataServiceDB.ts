@@ -14,6 +14,7 @@
  */
 
 import { getDatabasePool } from '../utils/database';
+import { isDriveFileUrlDead } from '../utils/driveUrlCheck';
 import { PublicMetadata, CentralIndexEntry, CentralIndexResponse, EngagementMetrics } from './aggregatorMetadataService';
 
 export class AggregatorMetadataServiceDB {
@@ -1426,110 +1427,42 @@ export class AggregatorMetadataServiceDB {
    * service account access limitations.
    */
   private async filterActiveFiles(result: { files: CentralIndexEntry[]; total: number; hasMore: boolean }): Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }> {
-    // Get service account token for verification
-    let accessToken: string | null = null;
-    try {
-      const { GoogleDriveSyncService } = await import('./googleDriveSyncService');
-      const syncService = GoogleDriveSyncService.getInstance();
-      accessToken = await syncService.getAccessToken();
-    } catch (error) {
-      // If we can't get token, return all files (graceful degradation)
-      console.warn('⚠️ [filterActiveFiles] Cannot get access token - returning all files (cannot verify)');
-      return result;
-    }
-    
-    if (!accessToken) {
-      console.warn('⚠️ [filterActiveFiles] No access token available - returning all files (cannot verify)');
-      return result; // Can't verify without token
-    }
-    
     const activeFiles: CentralIndexEntry[] = [];
     const batchSize = 10; // Process in batches to avoid rate limits
     
-    // Process files in batches
     for (let i = 0; i < result.files.length; i += batchSize) {
       const batch = result.files.slice(i, i + batchSize);
       const batchPromises = batch.map(async (file) => {
         const backend = file.metadata.backend || 'google_drive';
         
-        // Skip non-Google Drive files (no way to verify them)
         if (!backend || !backend.startsWith('google_drive')) {
-          return file; // Keep non-Google Drive files
+          return file;
         }
         
-        // If file is marked as public, trust that it's accessible and keep it
-        // This prevents filtering out valid public files that the service account can't access
         const isPublic = file.metadata.isPublic === true;
         if (isPublic) {
-          // File is marked public - trust the database and keep it
-          // Even if service account can't verify, if it's in the database as public, it's accessible
           return file;
         }
         
-        // For non-public files, check if they have publicToken (accessible through token system)
         const publicToken = file.metadata.publicToken;
         if (publicToken) {
-          // File has publicToken, so it's accessible through token system - keep it
           return file;
         }
         
-        // Get Google Drive file ID
         const backendFileId = (file.metadata as any).googleDriveFileId || file.metadata.backendFileId;
-        
-        // If no backendFileId, we can't verify but keep it (might be from other backends or valid)
         if (!backendFileId) {
           console.log(`⚠️ [filterActiveFiles] No backendFileId for file ${file.fileId} - keeping (cannot verify)`);
-          return file; // Keep files we can't verify
+          return file;
         }
         
-        // Verify file exists in Google Drive (only for files that aren't clearly public)
         try {
-          const verifyResponse = await fetch(
-            `https://www.googleapis.com/drive/v3/files/${backendFileId}?fields=id,trashed`,
-            {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`
-              }
-            }
-          );
-          
-          if (verifyResponse.status === 404) {
-            // File doesn't exist - filter it out (confirmed deletion)
-            console.log(`🗑️ [filterActiveFiles] File ${backendFileId} not found (404) - filtering out: ${file.metadata.name || file.fileId}`);
+          const dead = await isDriveFileUrlDead(backendFileId);
+          if (dead) {
+            console.log(`🗑️ [filterActiveFiles] File ${backendFileId} is dead (deleted/not found) - filtering out: ${file.metadata.name || file.fileId}`);
             return null;
           }
-          
-          if (verifyResponse.ok) {
-            const fileData = await verifyResponse.json() as { trashed?: boolean };
-            if (fileData.trashed) {
-              // File is trashed - filter it out (confirmed deletion)
-              console.log(`🗑️ [filterActiveFiles] File ${backendFileId} is trashed - filtering out: ${file.metadata.name || file.fileId}`);
-              return null;
-            }
-            
-            // File exists and is not trashed - include it
-            return file;
-          } else if (verifyResponse.status === 403 || verifyResponse.status === 401) {
-            // Permission error - service account doesn't have access
-            // BUT: If file is marked public (isPublic = true), trust that it's accessible and keep it
-            // The file might be shared publicly even if service account can't see it
-            const isPublic = file.metadata.isPublic === true;
-            if (isPublic) {
-              console.log(`✅ [filterActiveFiles] File ${backendFileId} is public but service account can't verify (${verifyResponse.status}) - keeping: ${file.metadata.name || file.fileId}`);
-              return file; // Trust that public files are accessible
-            } else {
-              // Not public and can't verify - keep it anyway (better to show than hide)
-              console.log(`⚠️ [filterActiveFiles] File ${backendFileId} can't be verified (${verifyResponse.status}) - keeping: ${file.metadata.name || file.fileId}`);
-              return file;
-            }
-          } else {
-            // Other error (network, etc.) - include file (don't filter on error)
-            console.log(`⚠️ [filterActiveFiles] Could not verify file ${backendFileId} (status: ${verifyResponse.status}) - keeping: ${file.metadata.name || file.fileId}`);
-            return file;
-          }
+          return file;
         } catch (error) {
-          // Network error or other exception - include file (don't filter on error)
-          // This prevents removing valid files due to temporary network issues
           console.warn(`⚠️ [filterActiveFiles] Error verifying file ${backendFileId} - keeping: ${file.metadata.name || file.fileId}`, error);
           return file;
         }
@@ -1675,86 +1608,31 @@ export class AggregatorMetadataServiceDB {
   private async verifyGoogleDriveFilesExist(files: CentralIndexEntry[]): Promise<CentralIndexEntry[]> {
     console.log(`🔍 [verifyGoogleDriveFilesExist] Verifying ${files.length} files from Google Drive...`);
     
-    // Get service account access token for authenticated requests
-    let accessToken: string | null = null;
-    try {
-      const { GoogleDriveSyncService } = await import('./googleDriveSyncService');
-      const syncService = GoogleDriveSyncService.getInstance();
-      accessToken = await syncService.getAccessToken();
-      console.log(`✅ [verifyGoogleDriveFilesExist] Got service account access token`);
-    } catch (error) {
-      console.warn(`⚠️ [verifyGoogleDriveFilesExist] Failed to get service account token, using unauthenticated requests:`, error);
-      // Continue without auth - will only work for public files
-    }
-    
     const verifiedFiles: CentralIndexEntry[] = [];
     const filesToRemove: string[] = [];
-    
-    // Verify files in batches (rate limiting)
     const batchSize = 10;
+    
     for (let i = 0; i < files.length; i += batchSize) {
       const batch = files.slice(i, i + batchSize);
       const batchPromises = batch.map(async (file) => {
-        // Only verify Google Drive files
         if (file.metadata.backend !== 'google_drive') {
-          return file; // Keep non-Google Drive files
+          return file;
         }
         
         const googleDriveFileId = (file.metadata as any).googleDriveFileId || file.metadata.backendFileId || file.fileId;
         if (!googleDriveFileId) {
-          return file; // Keep if no ID to verify
+          return file;
         }
         
         try {
-          // Verify file exists using Google Drive API with service account auth
-          const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-          };
-          
-          if (accessToken) {
-            headers['Authorization'] = `Bearer ${accessToken}`;
-          }
-          
-          const response = await fetch(
-            `https://www.googleapis.com/drive/v3/files/${googleDriveFileId}?fields=id,trashed`,
-            {
-              method: 'GET',
-              headers,
-            }
-          );
-
-          if (response.status === 404) {
-            // File doesn't exist - mark for removal
-            console.log(`🗑️ [verifyGoogleDriveFilesExist] File ${googleDriveFileId} not found (404): ${file.metadata.name || 'unknown'}`);
+          const dead = await isDriveFileUrlDead(googleDriveFileId);
+          if (dead) {
+            console.log(`🗑️ [verifyGoogleDriveFilesExist] File ${googleDriveFileId} is dead (deleted/not found): ${file.metadata.name || 'unknown'}`);
             filesToRemove.push(file.fileId);
             return null;
           }
-
-          if (response.status === 403 || response.status === 401) {
-            // Permission denied - file might be private or service account doesn't have access
-            // For now, assume it exists (service account should have access to pN folders)
-            console.warn(`⚠️ [verifyGoogleDriveFilesExist] Permission denied for ${googleDriveFileId} (${response.status}): ${file.metadata.name || 'unknown'}`);
-            return file;
-          }
-
-          if (!response.ok) {
-            // Other error - log and assume file exists to avoid false positives
-            const errorText = await response.text().catch(() => 'Unknown error');
-            console.warn(`⚠️ [verifyGoogleDriveFilesExist] Error ${response.status} for ${googleDriveFileId}: ${errorText.substring(0, 100)}`);
-            return file;
-          }
-
-          const fileData = await response.json() as { id?: string; trashed?: boolean };
-          // File exists and is not trashed
-          if (fileData.trashed) {
-            console.log(`🗑️ [verifyGoogleDriveFilesExist] File ${googleDriveFileId} is trashed: ${file.metadata.name || 'unknown'}`);
-            filesToRemove.push(file.fileId);
-            return null;
-          }
-          
-          return file; // File exists
+          return file;
         } catch (error) {
-          // On error (network, etc.), log and assume file exists to avoid false positives
           console.warn(`⚠️ [verifyGoogleDriveFilesExist] Error verifying ${googleDriveFileId}:`, error);
           return file;
         }

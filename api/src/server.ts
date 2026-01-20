@@ -2054,23 +2054,9 @@ class ProductionServer {
     this.app.post('/api/aggregator/metadata-index/cleanup-orphaned', async (req, res) => {
       try {
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const { isDriveFileUrlDead } = await import('./server/utils/driveUrlCheck');
         const service = AggregatorMetadataServiceDB.getInstance();
         const db = (await import('./server/utils/database')).getDatabasePool();
-        
-        // Get service account access token for authenticated requests
-        let accessToken: string | null = null;
-        try {
-          const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
-          const syncService = GoogleDriveSyncService.getInstance();
-          accessToken = await syncService.getAccessToken();
-          console.log('[CleanupOrphaned] Got service account access token');
-        } catch (error) {
-          console.error('[CleanupOrphaned] Failed to get service account token:', error);
-          return res.status(500).json({
-            error: 'Failed to get Google Drive access token',
-            message: 'Service account not configured or authentication failed'
-          });
-        }
         
         // Query all three tables to get all metadata entries
         const allTables = ['aggregator_media', 'aggregator_thoughts', 'aggregator_collections'];
@@ -2137,46 +2123,13 @@ class ProductionServer {
           const batch = allEntries.slice(i, i + batchSize);
           const batchPromises = batch.map(async (entry) => {
             try {
-              const response = await fetch(
-                `https://www.googleapis.com/drive/v3/files/${entry.googleDriveFileId}?fields=id,trashed`,
-                {
-                  method: 'GET',
-                  headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                  }
-                }
-              );
-              
-              if (response.status === 404) {
-                // File doesn't exist - mark for removal
-                console.log(`[CleanupOrphaned] File ${entry.googleDriveFileId} not found (404): ${entry.metadata.name || 'unknown'}`);
+              const dead = await isDriveFileUrlDead(entry.googleDriveFileId);
+              if (dead) {
+                console.log(`[CleanupOrphaned] File ${entry.googleDriveFileId} is dead (deleted/not found): ${entry.metadata?.name || 'unknown'}`);
                 return entry.fileId;
               }
-              
-              if (response.status === 403 || response.status === 401) {
-                // Permission denied - assume it exists (might be private)
-                console.warn(`[CleanupOrphaned] Permission denied for ${entry.googleDriveFileId} (${response.status}): ${entry.metadata.name || 'unknown'}`);
-                return null;
-              }
-              
-              if (!response.ok) {
-                // Other error - log and assume file exists to avoid false positives
-                const errorText = await response.text().catch(() => 'Unknown error');
-                console.warn(`[CleanupOrphaned] Error ${response.status} for ${entry.googleDriveFileId}: ${errorText.substring(0, 100)}`);
-                return null;
-              }
-              
-              const fileData = await response.json() as { id?: string; trashed?: boolean };
-              if (fileData.trashed) {
-                // File is trashed - mark for removal
-                console.log(`[CleanupOrphaned] File ${entry.googleDriveFileId} is trashed: ${entry.metadata.name || 'unknown'}`);
-                return entry.fileId;
-              }
-              
-              return null; // File exists
+              return null;
             } catch (error) {
-              // On error (network, etc.), log and assume file exists to avoid false positives
               console.warn(`[CleanupOrphaned] Error verifying ${entry.googleDriveFileId}:`, error);
               return null;
             }
