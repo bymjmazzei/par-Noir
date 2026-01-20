@@ -4479,9 +4479,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         `client_id=${encodeURIComponent(clientId)}&` +
         `redirect_uri=${encodeURIComponent(redirectUri)}&` +
         `response_type=code&` +
-        `scope=${encodeURIComponent(scope)}` +
-        `&include_granted_scopes=true` +
-        `&prompt=consent` +
+        `scope=${encodeURIComponent(scope)}&` +
+        `prompt=consent` +
         `&access_type=offline`; // Required for refresh token
       
       console.log('[Google OAuth] Full auth URL:', authUrl);
