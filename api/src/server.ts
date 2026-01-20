@@ -1158,9 +1158,10 @@ class ProductionServer {
       isThoughtThumbnail: metadataAny.isThoughtThumbnail,
       isPartOfCollection: metadataAny.isPartOfCollection
     });
+    const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass === 'collection' ? 'collections' : contentClass;
+    console.log(`[updatePublicFileIndex] determineContentClass: contentClass=${contentClass} folder=${contentTypeFolderName} isThoughtThumbnail=${!!metadataAny.isThoughtThumbnail} thought=${!!metadataAny.thought} textPost=${!!metadataAny.textPost}`);
 
     // Get or create content class folder (map contentClass to folder name: thought→thoughts, collection→collections)
-    const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass === 'collection' ? 'collections' : contentClass;
     let contentTypeFolderId: string | null = null;
 
     const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -1195,25 +1196,24 @@ class ProductionServer {
         }
       }
     }
+    console.log(`[updatePublicFileIndex] Content-class folder: ${contentTypeFolderId ?? 'content-class folder missing'}`);
 
     if (contentTypeFolderId) {
-        // Get or create content class-specific public index
-        const contentClassPublicIndex = await this.getContentClassPublicIndex(accessToken, contentTypeFolderId, pnIdentifier, contentTypeFolderName as 'media' | 'thoughts' | 'collections');
-        const contentClassIndex = contentClassPublicIndex || {
+        const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+        const contentClassPublicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'public', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
+        const { files } = await IndexSheetsService.getFiles(accessToken, contentClassPublicSheetId);
+        const contentClassIndex = {
           identifier: pnIdentifier,
-          files: [],
+          files: Array.isArray(files) ? [...files] : [],
           updatedAt: new Date().toISOString()
         };
-        // Ensure files is a mutable array (getFiles can return sparse or odd shapes)
         if (!Array.isArray(contentClassIndex.files)) contentClassIndex.files = [];
 
-        // Update content class-specific index with same logic
         const contentClassFileIndex = contentClassIndex.files.findIndex(
           (f: any) => f && (f.googleDriveFileId === fileMetadata.googleDriveFileId)
         );
 
         if (fileMetadata.visibility === 'public') {
-          // Create index entry for content class-specific index (same as root index)
           const publicMetadata = this.companionToPublicMetadata(fileMetadata, fileMetadata.owner.did);
           const contentClassIndexEntry: any = {
             ...publicMetadata,
@@ -1232,17 +1232,12 @@ class ProductionServer {
             publicToken: fileMetadata.publicToken,
             indexingPermissions: fileMetadata.indexingPermissions
           };
-          
+
           if (contentClassFileIndex >= 0) {
-            // Update existing entry
             const existingEntry = contentClassIndex.files[contentClassFileIndex] as any;
-            
-            // Preserve publicToken if new one not provided
             if (!contentClassIndexEntry.publicToken && existingEntry.publicToken) {
               contentClassIndexEntry.publicToken = existingEntry.publicToken;
             }
-            
-            // Merge engagement metrics
             if (existingEntry.engagement) {
               contentClassIndexEntry.engagement = {
                 views: contentClassIndexEntry.engagement?.views ?? existingEntry.engagement.views ?? 0,
@@ -1256,13 +1251,11 @@ class ProductionServer {
                 ]
               };
             }
-            
             contentClassIndex.files[contentClassFileIndex] = contentClassIndexEntry;
           } else {
             contentClassIndex.files.push(contentClassIndexEntry);
           }
         } else {
-          // Remove from content class index if not public
           if (contentClassFileIndex >= 0) {
             contentClassIndex.files.splice(contentClassFileIndex, 1);
           }
@@ -1270,12 +1263,11 @@ class ProductionServer {
 
         contentClassIndex.updatedAt = new Date().toISOString();
         try {
-          const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-          const contentClassPublicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'public', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
+          console.log(`[updatePublicFileIndex] Content-class before setAllFiles: ${contentTypeFolderName} sheetId=${contentClassPublicSheetId} files.length=${contentClassIndex.files.length}`);
           await IndexSheetsService.setAllFiles(accessToken, contentClassPublicSheetId, contentClassIndex.files, contentClassIndex.updatedAt);
           await this.setPublicPermissionOnDriveFile(accessToken, contentClassPublicSheetId);
         } catch (contentClassErr: any) {
-          console.error(`[updatePublicFileIndex] Content-class public index (${contentTypeFolderName}) failed:`, contentClassErr?.message || contentClassErr);
+          console.error(`[updatePublicFileIndex] Content-class public index (${contentTypeFolderName}) failed sheetId=${contentClassPublicSheetId}:`, contentClassErr?.message || contentClassErr, contentClassErr?.stack);
           throw contentClassErr;
         }
     }
