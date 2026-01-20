@@ -4426,35 +4426,55 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         expiresIn: data.expires_in || 3600,
       };
     } else {
-      // Fallback to API endpoint
-      const response = await fetch(`${apiEndpoint}/api/auth/google-oauth/token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ code, redirectUri }),
-      });
+      // Fallback to API endpoint with retry for transient network errors (e.g. ERR_SOCKET_NOT_CONNECTED)
+      const maxAttempts = 3;
+      const delays = [0, 1000, 2000];
+      let lastError: Error | null = null;
 
-      if (!response.ok) {
-        let errorMessage = 'Failed to exchange authorization code';
-        try {
-          const error = await response.json();
-          errorMessage = error.message || error.error || JSON.stringify(error);
-          console.error('[Google OAuth] API Error:', error);
-        } catch (e) {
-          const errorText = await response.text().catch(() => 'Unknown error');
-          errorMessage = errorText || 'Failed to exchange authorization code';
-          console.error('[Google OAuth] API Error (text):', errorText);
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        if (delays[attempt] > 0) {
+          await new Promise((r) => setTimeout(r, delays[attempt]));
         }
-        throw new Error(errorMessage);
-      }
+        try {
+          const response = await fetch(`${apiEndpoint}/api/auth/google-oauth/token`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ code, redirectUri }),
+          });
 
-      const data = await response.json();
-      return {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        expiresIn: data.expires_in || 3600,
-      };
+          if (!response.ok) {
+            let errorMessage = 'Failed to exchange authorization code';
+            try {
+              const error = await response.json();
+              errorMessage = error.message || error.error || JSON.stringify(error);
+              console.error('[Google OAuth] API Error:', error);
+            } catch (e) {
+              const errorText = await response.text().catch(() => 'Unknown error');
+              errorMessage = errorText || 'Failed to exchange authorization code';
+              console.error('[Google OAuth] API Error (text):', errorText);
+            }
+            throw new Error(errorMessage);
+          }
+
+          const data = await response.json();
+          return {
+            accessToken: data.access_token,
+            refreshToken: data.refresh_token,
+            expiresIn: data.expires_in || 3600,
+          };
+        } catch (e) {
+          lastError = e instanceof Error ? e : new Error(String(e));
+          const isNetwork = lastError?.message === 'Failed to fetch' || lastError?.name === 'TypeError';
+          if (isNetwork && attempt < maxAttempts - 1) {
+            console.warn(`[Google OAuth] Token exchange attempt ${attempt + 1} failed (network), retrying...`, lastError?.message);
+          } else {
+            throw lastError;
+          }
+        }
+      }
+      throw lastError || new Error('Failed to exchange authorization code');
     }
   };
 
@@ -4522,12 +4542,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           if (event.data.type === 'GOOGLE_OAUTH_CODE') {
             clearTimeout(timeout);
             window.removeEventListener('message', messageHandler);
-            // Don't try to close popup - COOP blocks it, let it close itself
-            try {
-              popup.close();
-            } catch (e) {
-              // Ignore COOP errors
-            }
+            // Avoid popup.close() from opener: COOP can block it and trigger console errors.
+            // oauth-callback.html will try to close itself; user can close manually if it stays open.
 
             if (event.data.error) {
               reject(new Error(event.data.error));
