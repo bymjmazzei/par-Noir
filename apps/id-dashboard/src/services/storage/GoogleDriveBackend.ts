@@ -1,7 +1,6 @@
 /**
  * Google Drive Storage Backend Implementation
  * Extracts Google Drive logic from the UI component into a reusable backend
- * All Google operations go via API (apiEndpoint); no direct Google API calls.
  */
 import { AbstractStorageBackend } from './StorageBackend';
 import {
@@ -11,7 +10,6 @@ import {
   StorageBackendConfig
 } from '../../types/aggregator';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
-import { API_ENDPOINT } from '../../config/api';
 
 export class GoogleDriveBackend extends AbstractStorageBackend {
   private token: string | null = null;
@@ -95,7 +93,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       ...config
     });
     this.keyPrefix = prefix;
-    this.apiEndpoint = config?.apiEndpoint ?? API_ENDPOINT;
+    this.apiEndpoint = config?.apiEndpoint || null;
     this.backendId = config?.id || prefix;
     
     // SECURITY: Do not load tokens from plaintext localStorage
@@ -126,26 +124,8 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
 
   async connect(credentials: { token: string; email?: string; refreshToken?: string; sessionId?: string }): Promise<void> {
     this.token = credentials.token;
+    this.refreshToken = credentials.refreshToken || null;
     this.userEmail = credentials.email || null;
-    
-    // CRITICAL: Preserve existing refresh token if not provided in new credentials
-    // This prevents losing refresh tokens during token refresh operations
-    let refreshTokenToUse = credentials.refreshToken;
-    if (!refreshTokenToUse && credentials.sessionId) {
-      try {
-        const existing = await IntegrationCredentialManager.getCredentials(
-          this.backendId,
-          credentials.sessionId
-        );
-        if (existing?.refreshToken) {
-          refreshTokenToUse = existing.refreshToken;
-          console.debug('[GoogleDriveBackend] Preserved existing refresh token from storage');
-        }
-      } catch (error) {
-        console.warn('[GoogleDriveBackend] Failed to retrieve existing refresh token:', error);
-      }
-    }
-    this.refreshToken = refreshTokenToUse || null;
     
     // SECURITY: Store credentials encrypted, not in plaintext localStorage
     if (credentials.sessionId) {
@@ -154,8 +134,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           this.backendId,
           {
             accessToken: credentials.token,
-            // Preserve refresh token - don't set to undefined if we have one
-            refreshToken: refreshTokenToUse || undefined,
+            refreshToken: credentials.refreshToken || undefined,
             email: credentials.email,
             expiresAt: Date.now() + (3600 * 1000) // Default 1 hour expiry
           },
@@ -245,26 +224,6 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
 
   getEmail(): string | null {
     return this.userEmail;
-  }
-
-  /**
-   * Attempt to refresh the access token using the stored refresh token.
-   * Call when a 401 suggests the token may be expired (e.g. from GoogleDriveMetadataService).
-   * @returns true if a new access token was obtained, false otherwise.
-   */
-  async ensureValidToken(): Promise<boolean> {
-    const refreshToken = this.getRefreshToken();
-    if (!refreshToken) return false;
-    try {
-      const newToken = await this.refreshAccessToken(refreshToken);
-      if (newToken) {
-        this.token = newToken;
-        return true;
-      }
-    } catch {
-      // refreshAccessToken already logs
-    }
-    return false;
   }
 
   /**
@@ -378,11 +337,72 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           return tokenData.access_token || null;
         } catch (apiError) {
           console.error('⚠️ [GoogleDriveBackend] Failed to refresh token via API endpoint:', apiError);
-          throw apiError;
         }
       }
 
-      throw new Error('Google Drive token refresh requires API endpoint');
+      try {
+        const clientId =
+          import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID ||
+          '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
+        const clientSecret = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_SECRET;
+
+        const params = new URLSearchParams({
+          client_id: clientId,
+          refresh_token: refreshToken,
+          grant_type: 'refresh_token',
+        });
+
+        if (clientSecret) {
+          params.set('client_secret', clientSecret);
+        }
+
+        const response = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: params,
+        });
+
+        if (!response.ok) {
+          let errorBody = '';
+          try {
+            errorBody = await response.text();
+          } catch (e) {
+            errorBody = 'Unable to read error body';
+          }
+          throw new Error(`Token refresh failed: ${response.status} ${response.statusText} - ${errorBody}`);
+        }
+
+        const data = await response.json();
+
+        if (data.refresh_token) {
+          this.refreshToken = data.refresh_token;
+          try {
+            localStorage.setItem(`${this.keyPrefix}_refresh_token`, data.refresh_token);
+          } catch (storageError) {
+            console.warn('⚠️ [GoogleDriveBackend] Unable to persist refreshed refresh token locally:', storageError);
+          }
+        }
+
+        if (data.access_token) {
+          window.dispatchEvent(
+            new CustomEvent('google-drive-token-refreshed', {
+              detail: {
+                backendId: this.backendId,
+                accessToken: data.access_token,
+                refreshToken: this.refreshToken ?? refreshToken,
+                email: this.userEmail,
+              },
+            })
+          );
+        }
+
+        return data.access_token || null;
+      } catch (error) {
+        console.error('Failed to refresh token:', error);
+        return null;
+      }
     })();
 
     try {
@@ -616,41 +636,9 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         console.error(`   All results:`, searchData.files.map((f: any) => ({ id: f.id.substring(0, 12) + '...', name: f.name })));
         // Continue to create new folder below
       } else {
-        // If multiple valid folders found, use the most recently modified one to avoid duplicates
-        // This handles cases where folders were created concurrently
-        let folderToUse = validFolders[0];
-        if (validFolders.length > 1) {
-          console.warn(`⚠️ [getOrCreateFolder] Found ${validFolders.length} folders with same name - using most recently modified`);
-          // Fetch modifiedTime for all folders to pick the newest
-          try {
-            const folderDetails = await Promise.all(
-              validFolders.map(async (f: any) => {
-                const detailResponse = await this.makeRequest(
-                  `https://www.googleapis.com/drive/v3/files/${f.id}?fields=id,name,modifiedTime`
-                );
-                if (detailResponse.ok) {
-                  const detail = await detailResponse.json();
-                  return { ...f, modifiedTime: detail.modifiedTime };
-                }
-                return { ...f, modifiedTime: null };
-              })
-            );
-            // Sort by modifiedTime (newest first) and use the first one
-            folderDetails.sort((a, b) => {
-              if (!a.modifiedTime) return 1;
-              if (!b.modifiedTime) return -1;
-              return new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime();
-            });
-            folderToUse = folderDetails[0];
-            console.log(`✅ [getOrCreateFolder] Selected folder: "${folderToUse.name}" (most recently modified)`);
-          } catch (error) {
-            console.warn(`⚠️ [getOrCreateFolder] Could not fetch folder details, using first result:`, error);
-          }
-        }
-        
-        // Use the selected folder
-        let folderId = folderToUse.id;
-        const folderInfo = folderToUse;
+        // Use the first valid folder
+        let folderId = validFolders[0].id;
+        const folderInfo = validFolders[0];
         
         // FINAL VALIDATION: Check name matches (allow _metadata if we're looking for it)
         const isMetadataFolder = folderInfo.name === '_metadata';
@@ -712,49 +700,8 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       }
     }
 
-    // CRITICAL: Final check before creating - another process might have created the folder
-    // This prevents duplicate folder creation in race conditions
-    console.log(`🔍 [getOrCreateFolder] Final check before creating folder: ${folderName}`);
-    try {
-      const finalCheckQuery = pnIdentifier
-        ? `name='${sanitizedFolderName}' and name!='_metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`
-        : parentFolderId
-        ? `name='${sanitizedFolderName}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
-        : `name='${sanitizedFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-      
-      const finalCheckResponse = await this.makeRequest(
-        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(finalCheckQuery)}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc&pageSize=1`
-      );
-      
-      if (finalCheckResponse.ok) {
-        const finalCheckData = await finalCheckResponse.json();
-        if (finalCheckData.files && finalCheckData.files.length > 0) {
-          const foundFolder = finalCheckData.files[0];
-          // Validate it's the correct folder
-          const isCorrectFolder = pnIdentifier
-            ? foundFolder.name === `par Noir - ${pnIdentifier}`
-            : folderName === '_metadata'
-            ? foundFolder.name === '_metadata'
-            : foundFolder.name === folderName;
-          
-          if (isCorrectFolder) {
-            console.log(`✅ [getOrCreateFolder] Found existing folder in final check: "${foundFolder.name}" (ID: ${foundFolder.id.substring(0, 12)}...)`);
-            // Cache it if it's a pN folder
-            if (pnIdentifier && !parentFolderId) {
-              this.pnFolderCache.set(pnIdentifier, foundFolder.id);
-              this.parNoirFolderId = foundFolder.id;
-              this.saveFolderCache();
-            }
-            return foundFolder.id;
-          }
-        }
-      }
-    } catch (finalCheckError) {
-      console.warn(`⚠️ [getOrCreateFolder] Final check failed, proceeding with creation:`, finalCheckError);
-    }
-
     // Create folder if it doesn't exist
-    console.log(`📁 [getOrCreateFolder] Creating new folder: ${folderName}${parentFolderId ? ' inside parent folder' : ''}`);
+    console.log(`📁 Creating new folder: ${folderName}${parentFolderId ? ' inside parent folder' : ''}`);
     const createBody: any = {
       name: folderName,
       mimeType: 'application/vnd.google-apps.folder'
@@ -900,10 +847,10 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     const fileList = data.files || [];
     console.log(`📋 [listFiles] Google Drive returned ${fileList.length} item(s) from folder ${folderId.substring(0, 12)}...`);
 
-    // Filter out metadata index files (JSON or Sheets) and any remaining folders (safety check)
+    // Filter out metadata files and any remaining folders (safety check)
     const filteredFileList = fileList.filter((f: any) => {
-      if (f.name === 'public-file-index.json' || f.name === 'owner-file-index.json' ||
-          (f.name && (f.name.includes('public-file-index') || f.name.includes('owner-file-index')))) {
+      // Exclude metadata index file
+      if (f.name === 'public-file-index.json') {
         return false;
       }
       // Exclude folders (shouldn't happen due to query, but safety check)

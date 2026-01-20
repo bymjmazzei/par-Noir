@@ -577,7 +577,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
           </div>
         );
 
-      case 1:
+      case 4:
         return (
           <div className="text-center space-y-6">
             <div className="mx-auto w-24 h-24 bg-green-100 rounded-full flex items-center justify-center">

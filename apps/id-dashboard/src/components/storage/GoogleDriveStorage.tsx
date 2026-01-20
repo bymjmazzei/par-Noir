@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { HardDrive, Upload, Download, Trash2, File, Folder, RefreshCw, AlertCircle, Image, Video, Music, FileText, Archive, Code, Lock, Type } from 'lucide-react';
-import { API_ENDPOINT } from '../../config/api';
-import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 
 interface GoogleDriveFile {
   id: string;
@@ -16,6 +14,8 @@ interface GoogleDriveFile {
 const ThumbnailLoader: React.FC<{ fileId: string; fileName: string; mimeType: string; isPDF: boolean; isThought: boolean }> = ({ fileId, fileName, mimeType, isPDF, isThought }) => {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+
   useEffect(() => {
     const loadThumbnail = async () => {
       try {
@@ -49,7 +49,7 @@ const ThumbnailLoader: React.FC<{ fileId: string; fileName: string; mimeType: st
                 publicKey
               });
               
-              const credResponse = await fetch(`${API_ENDPOINT}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`);
+              const credResponse = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`);
               if (credResponse.ok) {
                 const credData = await credResponse.json();
                 if (credData.credentials?.googleDriveAccounts) {
@@ -71,7 +71,7 @@ const ThumbnailLoader: React.FC<{ fileId: string; fileName: string; mimeType: st
         }
 
         // Try to load thumbnail from API
-        const thumbnailUrl = `${API_ENDPOINT}/api/drive/files/${fileId}?thumbnail=true&accountId=${accountId}`;
+        const thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true&accountId=${accountId}`;
         const response = await fetch(thumbnailUrl, {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -192,7 +192,7 @@ export const GoogleDriveStorage: React.FC = () => {
               
               // Check if credentials already exist server-side
               try {
-                const response = await fetch(`${API_ENDPOINT}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`);
+                const response = await fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`);
                 if (response.status === 404) {
                   // No credentials stored yet - this is expected for new users
                   // Proceed with migration attempt
@@ -219,7 +219,7 @@ export const GoogleDriveStorage: React.FC = () => {
                 }
               };
               
-              await fetch(`${API_ENDPOINT}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`, {
+              await fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`, {
                 method: 'PUT',
                 headers: {
                   'Content-Type': 'application/json',
@@ -270,14 +270,9 @@ export const GoogleDriveStorage: React.FC = () => {
         setIsLoading(true);
         setError(null);
         
-        const clientId = await getGoogleDriveClientId();
-        if (!clientId) {
-          setError('Google Drive is not configured. Please contact support.');
-          setIsLoading(false);
-          return;
-        }
+        const clientId = '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
         const redirectUri = window.location.origin;
-        const scope = 'https://www.googleapis.com/auth/drive.file';
+        const scope = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets';
         
         const authUrl = `https://accounts.google.com/oauth/authorize?` +
           `client_id=${clientId}&` +
@@ -327,6 +322,7 @@ export const GoogleDriveStorage: React.FC = () => {
       {
         // Try to use pN API endpoint first (filters to pN folder, includes thoughts)
         const authenticatedUserStr = localStorage.getItem('authenticated_user');
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
         
         // Try to get pN identifier and accountId
         let pnIdentifier: string | null = null;
@@ -352,7 +348,7 @@ export const GoogleDriveStorage: React.FC = () => {
               
               // Try to get accountId from storage credentials
               try {
-                const credResponse = await fetch(`${API_ENDPOINT}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`);
+                const credResponse = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`);
                 if (credResponse.ok) {
                   const credData = await credResponse.json();
                   console.log('[GoogleDriveStorage] Credentials data:', credData);
@@ -407,7 +403,7 @@ export const GoogleDriveStorage: React.FC = () => {
             
             if (token) {
               console.log('[GoogleDriveStorage] Calling pN API endpoint...');
-              const response = await fetch(`${API_ENDPOINT}/api/drive/files?accountId=${encodeURIComponent(accountId)}`, {
+              const response = await fetch(`${apiEndpoint}/api/drive/files?accountId=${encodeURIComponent(accountId)}`, {
                 headers: {
                   'Authorization': `Bearer ${token}`,
                   'Content-Type': 'application/json'
@@ -727,6 +723,7 @@ export const GoogleDriveStorage: React.FC = () => {
     }
 
     try {
+      const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       
       // Get access token from authenticated_user (preferred) or fallback to google_drive_token
       const authenticatedUserStr = localStorage.getItem('authenticated_user');
@@ -755,7 +752,7 @@ export const GoogleDriveStorage: React.FC = () => {
                 publicKey
               });
               
-              const credResponse = await fetch(`${API_ENDPOINT}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`);
+              const credResponse = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`);
               if (credResponse.ok) {
                 const credData = await credResponse.json();
                 if (credData.credentials?.googleDriveAccounts) {
@@ -785,7 +782,7 @@ export const GoogleDriveStorage: React.FC = () => {
       
       // Use unified API endpoint which handles: file deletion, thumbnail deletion, metadata deletion, and index cleanup
       const accountIdParam = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
-      const response = await fetch(`${API_ENDPOINT}/api/drive/files/${fileId}${accountIdParam}`, {
+      const response = await fetch(`${apiEndpoint}/api/drive/files/${fileId}${accountIdParam}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${accessToken}`
@@ -814,7 +811,7 @@ export const GoogleDriveStorage: React.FC = () => {
             
             // Try to remove from metadata index as fallback
             try {
-              await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
+              await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
                 method: 'DELETE',
                 headers: {
                   'Authorization': `Bearer ${accessToken}`

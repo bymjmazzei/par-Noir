@@ -408,8 +408,8 @@ export const googleDriveService = new GoogleDriveService();
 
 // Default configuration
 export const defaultGoogleDriveConfig: GoogleDriveConfig = {
-  clientId: import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID,
-  apiKey: import.meta.env.VITE_GOOGLE_API_KEY,
+  clientId: process.env.REACT_APP_GOOGLE_DRIVE_CLIENT_ID || '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com',
+  apiKey: process.env.REACT_APP_GOOGLE_API_KEY || 'AIzaSyBOKyclyG0Uobs0wNCQLSK89XCN2x6NNdk',
   discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
-  scopes: 'https://www.googleapis.com/auth/drive.file' // Limited scope - only files created by app
+  scopes: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets' // Limited scope for better security
 };
