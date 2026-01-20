@@ -64,11 +64,32 @@ export class ThirdPartyPermissionsSheetsService {
       return existingFileId;
     }
 
-    // Create new third-party permissions sheet
+    // Legacy fallback: search for short name (older creates used title without .xlsx)
+    const legacyQuery = `name='third-party-permissions' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    const legacyResponse = await drive.files.list({
+      q: legacyQuery,
+      fields: 'files(id,name)',
+      pageSize: 1
+    });
+    if (legacyResponse.data.files && legacyResponse.data.files.length > 0) {
+      return legacyResponse.data.files[0].id!;
+    }
+
+    // Final check before create: another request may have created it
+    const finalCheckResponse = await drive.files.list({
+      q: fileQuery,
+      fields: 'files(id,name)',
+      pageSize: 1
+    });
+    if (finalCheckResponse.data.files && finalCheckResponse.data.files.length > 0) {
+      return finalCheckResponse.data.files[0].id!;
+    }
+
+    // Create new third-party permissions sheet (use full constant so search finds it)
     const spreadsheet = await sheets.spreadsheets.create({
       requestBody: {
         properties: {
-          title: this.THIRD_PARTY_PERMISSIONS_FILE_NAME.replace('.xlsx', '')
+          title: this.THIRD_PARTY_PERMISSIONS_FILE_NAME
         },
         sheets: [
           {

@@ -69,11 +69,32 @@ export class ActivityLedgerSheetsService {
       return existingFileId;
     }
 
-    // Create new activity ledger sheet
+    // Legacy fallback: search for short name (older creates used title without .xlsx)
+    const legacyQuery = `name='activity_ledger' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    const legacyResponse = await drive.files.list({
+      q: legacyQuery,
+      fields: 'files(id,name)',
+      pageSize: 1
+    });
+    if (legacyResponse.data.files && legacyResponse.data.files.length > 0) {
+      return legacyResponse.data.files[0].id!;
+    }
+
+    // Final check before create: another request may have created it
+    const finalCheckResponse = await drive.files.list({
+      q: fileQuery,
+      fields: 'files(id,name)',
+      pageSize: 1
+    });
+    if (finalCheckResponse.data.files && finalCheckResponse.data.files.length > 0) {
+      return finalCheckResponse.data.files[0].id!;
+    }
+
+    // Create new activity ledger sheet (use full constant so search finds it)
     const spreadsheet = await sheets.spreadsheets.create({
       requestBody: {
         properties: {
-          title: this.ACTIVITY_LEDGER_FILE_NAME.replace('.xlsx', '')
+          title: this.ACTIVITY_LEDGER_FILE_NAME
         },
         sheets: [
           {

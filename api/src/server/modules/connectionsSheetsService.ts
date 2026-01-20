@@ -80,11 +80,32 @@ export class ConnectionsSheetsService {
       return existingFileId;
     }
 
-    // Create new connections spreadsheet with Connections, Blocked, and Metadata sheets
+    // Legacy fallback: search for short name (older creates used title without .xlsx)
+    const legacyQuery = `name='connections' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    const legacyResponse = await drive.files.list({
+      q: legacyQuery,
+      fields: 'files(id,name)',
+      pageSize: 1
+    });
+    if (legacyResponse.data.files && legacyResponse.data.files.length > 0) {
+      return legacyResponse.data.files[0].id!;
+    }
+
+    // Final check before create: another request may have created it
+    const finalCheckResponse = await drive.files.list({
+      q: fileQuery,
+      fields: 'files(id,name)',
+      pageSize: 1
+    });
+    if (finalCheckResponse.data.files && finalCheckResponse.data.files.length > 0) {
+      return finalCheckResponse.data.files[0].id!;
+    }
+
+    // Create new connections spreadsheet (use full constant so search finds it)
     const spreadsheet = await sheets.spreadsheets.create({
       requestBody: {
         properties: {
-          title: this.CONNECTIONS_FILE_NAME.replace('.xlsx', '')
+          title: this.CONNECTIONS_FILE_NAME
         },
         sheets: [
           {
@@ -301,11 +322,32 @@ export class ConnectionsSheetsService {
       return searchResponse.data.files[0].id!;
     }
 
-    // Create new followers sheet
+    // Legacy fallback: search for short name (older creates used title without .xlsx)
+    const legacyQuery = `name='followers' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    const legacyResponse = await drive.files.list({
+      q: legacyQuery,
+      fields: 'files(id,name)',
+      pageSize: 1
+    });
+    if (legacyResponse.data.files && legacyResponse.data.files.length > 0) {
+      return legacyResponse.data.files[0].id!;
+    }
+
+    // Final check before create: another request may have created it
+    const finalCheckResponse = await drive.files.list({
+      q: fileQuery,
+      fields: 'files(id,name)',
+      pageSize: 1
+    });
+    if (finalCheckResponse.data.files && finalCheckResponse.data.files.length > 0) {
+      return finalCheckResponse.data.files[0].id!;
+    }
+
+    // Create new followers sheet (use full constant so search finds it)
     const spreadsheet = await sheets.spreadsheets.create({
       requestBody: {
         properties: {
-          title: this.FOLLOWERS_FILE_NAME.replace('.xlsx', '')
+          title: this.FOLLOWERS_FILE_NAME
         },
         sheets: [
           {
@@ -370,11 +412,32 @@ export class ConnectionsSheetsService {
       return searchResponse.data.files[0].id!;
     }
 
-    // Create new following sheet
+    // Legacy fallback: search for short name (older creates used title without .xlsx)
+    const legacyQuery = `name='following' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    const legacyResponse = await drive.files.list({
+      q: legacyQuery,
+      fields: 'files(id,name)',
+      pageSize: 1
+    });
+    if (legacyResponse.data.files && legacyResponse.data.files.length > 0) {
+      return legacyResponse.data.files[0].id!;
+    }
+
+    // Final check before create: another request may have created it
+    const finalCheckResponse = await drive.files.list({
+      q: fileQuery,
+      fields: 'files(id,name)',
+      pageSize: 1
+    });
+    if (finalCheckResponse.data.files && finalCheckResponse.data.files.length > 0) {
+      return finalCheckResponse.data.files[0].id!;
+    }
+
+    // Create new following sheet (use full constant so search finds it)
     const spreadsheet = await sheets.spreadsheets.create({
       requestBody: {
         properties: {
-          title: this.FOLLOWING_FILE_NAME.replace('.xlsx', '')
+          title: this.FOLLOWING_FILE_NAME
         },
         sheets: [
           {
