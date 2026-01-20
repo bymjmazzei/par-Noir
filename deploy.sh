@@ -13,6 +13,8 @@ if [ $? -ne 0 ]; then
 fi
 
 # Build aggregator-browser (browse target)
+# VITE_PN_CLIENT_ID is required for pN OAuth; default to browser-app when unset (e.g. no .env).
+export VITE_PN_CLIENT_ID="${VITE_PN_CLIENT_ID:-browser-app}"
 echo "📦 Building aggregator-browser..."
 cd ../aggregator-browser
 npm run build
