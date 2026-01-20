@@ -20,6 +20,7 @@ import { LICENSE_TYPES } from '../../constants/licenses';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../../constants/feedCategories';
 import { ReportContentModal } from './ReportContentModal';
 import { API_ENDPOINT } from '../../config/api';
+import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 
 const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
 const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
@@ -4487,12 +4488,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   // Helper function to exchange authorization code for tokens
   // Uses Google OAuth endpoint directly (client-side exchange)
   const exchangeCodeForTokens = async (code: string, redirectUri: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> => {
-    const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID;
+    const clientId = await getGoogleDriveClientId();
     const clientSecret = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_SECRET;
     
     // If we have client secret, use it (should be in backend, but allowing frontend for now)
     // Otherwise, try the API endpoint as fallback
     if (clientSecret) {
+      if (!clientId) throw new Error('Google Drive is not configured. Please contact support.');
       // Direct exchange with Google (not recommended for production, but works)
       const response = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
@@ -4558,7 +4560,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setError(null);
 
       // OAuth flow - authorization code flow for refresh tokens
-      const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID;
+      const clientId = await getGoogleDriveClientId();
+      if (!clientId) {
+        setError('Google Drive is not configured. Please contact support.');
+        setIsLoading(false);
+        return;
+      }
       // Use oauth-callback.html as redirect URI (must match Google Cloud Console settings)
       const redirectUri = `${window.location.origin}/oauth-callback.html`;
       const scope = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';

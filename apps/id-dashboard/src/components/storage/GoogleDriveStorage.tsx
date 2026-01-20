@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HardDrive, Upload, Download, Trash2, File, Folder, RefreshCw, AlertCircle, Image, Video, Music, FileText, Archive, Code, Lock, Type } from 'lucide-react';
 import { API_ENDPOINT } from '../../config/api';
+import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 
 interface GoogleDriveFile {
   id: string;
@@ -269,7 +270,12 @@ export const GoogleDriveStorage: React.FC = () => {
         setIsLoading(true);
         setError(null);
         
-        const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID;
+        const clientId = await getGoogleDriveClientId();
+        if (!clientId) {
+          setError('Google Drive is not configured. Please contact support.');
+          setIsLoading(false);
+          return;
+        }
         const redirectUri = window.location.origin;
         const scope = 'https://www.googleapis.com/auth/drive.file';
         

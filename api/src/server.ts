@@ -1461,6 +1461,13 @@ class ProductionServer {
       });
     });
 
+    // Public config: client ID for dashboard Google Drive OAuth (no auth; client ID is not secret)
+    this.app.get('/api/public-config', (_req, res) => {
+      res.json({
+        googleDriveClientId: process.env.GOOGLE_DRIVE_CLIENT_ID || ''
+      });
+    });
+
     // Debug endpoint to check OAuth configuration (without exposing secrets)
     this.app.get('/api/debug/oauth-config', (req, res) => {
       const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
