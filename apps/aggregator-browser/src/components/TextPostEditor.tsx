@@ -812,6 +812,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           textStyle: page.textStyle,
           padding: page.padding,
         },
+        isNSFW: metadata.isNSFW === true,
         metadata: {
           name: metadata.name,
           title: metadata.name,

@@ -23,6 +23,7 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
   const [name, setName] = useState(file.metadata.name || file.metadata.title || '');
   const [description, setDescription] = useState(file.metadata.description || '');
   const [tags, setTags] = useState((file.metadata.keywords || file.metadata.tags || []).join(', '));
+  const [isNSFW, setIsNSFW] = useState(file.metadata?.isNSFW === true || file.metadata?.isNSFW === 'true');
   const [isTopPost, setIsTopPost] = useState(file.metadata.isTopPost || false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +49,7 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
         description: description.trim() || undefined,
         keywords: tags.split(',').map(t => t.trim()).filter(Boolean),
         tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+        isNSFW,
         isTopPost: isTopPost
       }
     };
@@ -74,6 +76,7 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
           // Additional fields for EditFileModal
           isPublic: visibility === 'public',
           visibility: visibility,
+          isNSFW,
           isTopPost: isTopPost
         }
       },
@@ -199,6 +202,22 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
               placeholder="tag1, tag2, tag3"
             />
             <p className="text-xs text-neutral-400 mt-1">Separate tags with commas</p>
+          </div>
+
+          {/* NSFW Content */}
+          <div>
+            <p className="text-sm font-semibold text-white uppercase tracking-wide mb-1">NSFW Content</p>
+            <p className="text-xs text-neutral-400 mb-2">Mark this content as Not Safe For Work (18+)</p>
+            <button
+              onClick={() => setIsNSFW(!isNSFW)}
+              className={`px-4 py-2 text-xs font-semibold uppercase tracking-widest rounded-md border transition-colors ${
+                isNSFW
+                  ? 'bg-red-600 border-red-500 text-white'
+                  : 'bg-neutral-800 border-neutral-600 text-neutral-400 hover:text-white'
+              }`}
+            >
+              {isNSFW ? 'NSFW' : 'PUBLIC'}
+            </button>
           </div>
 
           {/* Top Post */}

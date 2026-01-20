@@ -1534,6 +1534,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     genre: string;
     category: FeedCategory | ''; // Keep for backward compatibility
     categories: FeedCategory[]; // New array format
+    isNSFW: boolean;
     locationName: string;
     locationAddress: string;
     license: string;
@@ -1544,6 +1545,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     genre: '',
     category: '',
     categories: [],
+    isNSFW: false,
     locationName: '',
     locationAddress: '',
     license: 'all-rights-reserved'
@@ -1690,6 +1692,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       genre: genreString,
       category: categories.length > 0 ? categories[0] as FeedCategory : '' as FeedCategory | '', // Keep for backward compatibility
       categories: categories, // New array format
+      isNSFW: metadata?.isNSFW === true || metadata?.isNSFW === 'true',
       locationName: locationName,
       locationAddress: locationAddress,
       license: licenseString
@@ -1708,6 +1711,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       tags: editForm.tags,
       genre: editForm.genre,
       categories: editForm.categories || (editForm.category ? [editForm.category as FeedCategory] : []),
+      isNSFW: editForm.isNSFW,
       locationName: editForm.locationName,
       locationAddress: editForm.locationAddress,
       license: editForm.license
@@ -1736,7 +1740,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       keywords: formData.tags.split(',').map(t => t.trim()).filter(t => t.length > 0),
       tags: formData.tags.split(',').map(t => t.trim()).filter(t => t.length > 0),
       feedCategories: categories,
-      category: categories[0]
+      category: categories[0],
+      isNSFW: formData.isNSFW
     };
     setFileMetadataMap(prev => {
       const next = new Map(prev);
@@ -1772,6 +1777,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       genre: '',
       category: '',
       categories: [],
+      isNSFW: false,
       locationName: '',
       locationAddress: '',
       license: 'all-rights-reserved'
@@ -3456,6 +3462,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             genre: '',
             category: '',
             categories: [],
+            isNSFW: false,
             locationName: '',
             locationAddress: '',
             license: 'all-rights-reserved'
@@ -3471,6 +3478,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           tags: editForm.tags,
           genre: editForm.genre,
           categories: editForm.categories,
+          isNSFW: editForm.isNSFW,
           locationName: editForm.locationName,
           locationAddress: editForm.locationAddress,
           license: editForm.license

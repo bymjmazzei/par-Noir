@@ -14,7 +14,6 @@ import { buildFeedRailItems } from './components/FeedRail';
 import { FeedBrowser } from './components/FeedBrowser';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { CommentModal } from './components/CommentModal';
-import { WelcomeModal } from './components/WelcomeModal';
 import { BrandedFeedPage } from './components/BrandedFeedPage';
 import { MediaViewer } from './components/MediaViewer';
 import { CreateFeedModal } from './components/CreateFeedModal';
@@ -539,7 +538,7 @@ function App() {
     setParam('view', viewMode);
   }, [viewMode, setParam]);
 
-  // Re-discover files when active feed or rating preferences change
+  // Re-discover files when active feed or NSFW preference (showNSFW) changes
   // Debounce to prevent rapid-fire calls when switching feeds quickly
   // NOTE: Don't call discoverFiles for virtual feeds (discovery, curated) - they use all files
   useEffect(() => {
@@ -635,16 +634,6 @@ function App() {
       hasNewThirdPartyContent
     );
   }, [feeds, userState.isUnlocked, userState.preferences.subscribedFeedIds, activeFeedId, hasNewThirdPartyContent]);
-
-  // Auth / welcome modal state
-  const [showAuthModal, setShowAuthModal] = useState(false);
-
-  // Show welcome/onboarding on first visit
-  useEffect(() => {
-    if (!localStorage.getItem('parnoir_welcome_seen')) {
-      setShowAuthModal(true);
-    }
-  }, []);
 
   // Create a stable key for indexedFilesMap based on fileIds (not array reference)
   // MUST be declared before any useEffect that uses it
@@ -3343,15 +3332,6 @@ function App() {
           onClose={() => {
             setCommentingFile(null);
           }}
-        />
-      )}
-      {showAuthModal && (
-        <WelcomeModal
-          onClose={() => {
-            localStorage.setItem('parnoir_welcome_seen', '1');
-            setShowAuthModal(false);
-          }}
-          onComplete={() => setShowAuthModal(false)}
         />
       )}
       <HomePageContext.Provider value={homeContextValue as HomePageContextValue}>

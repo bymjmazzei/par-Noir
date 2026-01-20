@@ -162,7 +162,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
             keywords: metadata.keywords || metadata.tags || [],
             tags: metadata.tags || metadata.keywords || [],
             isPublic: metadata.isPublic !== undefined ? metadata.isPublic : true,
-            isNSFW: metadata.isNSFW || false,
+            isNSFW: textPost.isNSFW || metadata.isNSFW || false,
           },
           onComplete: (result) => {
             console.log('[UploadModal] Multi-page thought upload completed:', result);

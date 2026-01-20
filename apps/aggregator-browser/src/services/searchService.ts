@@ -76,9 +76,6 @@ export async function searchFiles(
       if (options.filters.authorDid) {
         params.append('authorDid', options.filters.authorDid);
       }
-      if (options.filters.maxRating) {
-        params.append('maxRating', options.filters.maxRating);
-      }
       if (options.filters.feedId) {
         params.append('feedId', options.filters.feedId);
       }

@@ -399,6 +399,7 @@ async function processMetadataUpdate(
   // Handle EditFileModal-specific fields
   if ('isPublic' in formData) updateBody.isPublic = formData.isPublic;
   if ('visibility' in formData) updateBody.visibility = formData.visibility;
+  if ('isNSFW' in formData) updateBody.isNSFW = formData.isNSFW;
   if ('isTopPost' in formData) updateBody.isTopPost = formData.isTopPost;
   if ('title' in formData) updateBody.title = formData.title;
 

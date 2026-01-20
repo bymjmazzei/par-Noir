@@ -574,13 +574,13 @@ If issues are discovered after deployment:
 
 ## Current Status
 
-- [🟡] Phase 1: Clean Up Content Rating System (IN PROGRESS)
+- [✅] Phase 1: Clean Up Content Rating System (COMPLETE)
   - [✅] Phase 1.1: Update type definitions - remove ContentRating, add isNSFW boolean
   - [✅] Phase 1.2: Simplify contentRatings.ts constants file
-  - [ ] Phase 1.3: Update upload/edit UI to use Public/NSFW toggle
-  - [ ] Phase 1.4: Remove rating filtering logic from App.tsx
-  - [ ] Phase 1.5: Remove ContentPreferences rating logic
-  - [ ] Phase 1.6: Update UserStateContext to remove maxRating and ageVerified
+  - [✅] Phase 1.3: Update upload/edit UI to use Public/NSFW toggle (FileStorageAggregator share panel, EditFileModal, EditMetadataModal, TextPostEditor)
+  - [✅] Phase 1.4: App.tsx uses isNSFW filtering (isNSFWContent, showNSFW, hasAgeZKP, isOver18)
+  - [✅] Phase 1.5: ContentPreferences rating logic (N/A — ContentPreferencesPanel had none)
+  - [✅] Phase 1.6: UserStateContext uses setAgeZKPStatus, toggleShowNSFW; migration removes maxRating/ageVerified
 - [ ] Phase 2: Dashboard - Age ZKP Availability Check
 - [ ] Phase 3: Dashboard - Third-Party Permissions UI Enhancement
 - [ ] Phase 4: OAuth Flow - Conditional Age ZKP Request
@@ -590,27 +590,13 @@ If issues are discovered after deployment:
 - [ ] Phase 8: Clean Up Old Preferences System
 
 **Last Updated**: 2025-01-27
-**Current Phase**: Phase 1 - Clean Up Content Rating System (Partially Complete)
+**Current Phase**: Phase 1 complete. Next: Phase 2.
 
-### Phase 1 Progress Notes:
-- ✅ Updated type definitions in `aggregator.ts` - removed ContentRating type, ContentRatingInfo interface, WarningTag type
-- ✅ Added `isNSFW: boolean` to PublicMetadata and TextPostData interfaces
-- ✅ Updated MetadataFilters to use `includeNSFW: boolean` instead of rating filters
-- ✅ Simplified `contentRatings.ts` to basic helper functions
-- ✅ Updated UserStateContext interfaces (removed maxRating, added hasAgeZKP, isOver18, showNSFW)
-- ✅ Removed RatingPreferences from SettingsPanel (will be replaced with NSFW toggle in Phase 7)
-- ✅ Updated MetadataIndexService to use isNSFW filtering instead of rating filtering
-- ✅ Updated ContentRatingBadge to simple NSFW badge component
-
-### Remaining Work for Phase 1:
-- ⚠️ FileStorageAggregator.tsx - needs to replace rating dropdown with Public/NSFW toggle (Phase 1.3)
-- ⚠️ EditFileModal.tsx - needs to replace rating dropdown with Public/NSFW toggle (Phase 1.3)
-- ⚠️ TextPostEditor.tsx - needs to replace rating dropdown with Public/NSFW toggle (Phase 1.3)
-- ⚠️ App.tsx - needs to remove rating filtering logic, replace with isNSFW filtering (Phase 1.4)
-- ⚠️ UserStateContext.tsx - needs to remove old methods (updateMaxRating, setAgeVerified) and replace with new methods (Phase 1.6)
-- ⚠️ ContentPreferences.tsx - needs to remove rating logic (Phase 1.5)
-- ⚠️ Other files that import ContentRating or rating constants
-
-**Current Status**: Foundation work complete. Compilation errors remain until all files are updated. Working systematically through remaining files.
-
-**Last Commit**: f35c26f - Phase 1: Continue removing rating system - update components
+### Phase 1 Completion Notes:
+- ✅ Type definitions, contentRatings.ts, UserStateContext, MetadataIndexService, ContentRatingBadge (existing)
+- ✅ FileStorageAggregator: Public/NSFW toggle in share panel (existing); editForm and EditMetadataModal path now include isNSFW
+- ✅ EditFileModal: isNSFW state and Public/NSFW toggle; backgroundTaskProcessor passes isNSFW to metadata-index PUT
+- ✅ EditMetadataModal: isNSFW in MetadataFormData and form UI (Content Classification, Show More)
+- ✅ TextPostEditor: isNSFW from metadata form into TextPostData; UploadModal passes textPost.isNSFW for single- and multi-page
+- ✅ App.tsx: isNSFW filtering in place; comment updated from "rating preferences" to "NSFW preference (showNSFW)"
+- ✅ WelcomeModal removed (referenced maxRating). searchService: maxRating block removed.

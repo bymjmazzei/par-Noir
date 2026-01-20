@@ -16,6 +16,7 @@ export interface MetadataFormData {
   tags: string;
   genre: string;
   categories: FeedCategory[]; // Changed to array for multiple selection
+  isNSFW: boolean;
   locationName: string;
   locationAddress: string;
   license: string;
@@ -51,6 +52,7 @@ export function EditMetadataModal({
     tags: initialData?.tags || '',
     genre: initialData?.genre || '',
     categories: initialCategories,
+    isNSFW: initialData?.isNSFW === true || initialData?.isNSFW === 'true',
     locationName: initialData?.locationName || '',
     locationAddress: initialData?.locationAddress || '',
     license: initialData?.license || 'all-rights-reserved'
@@ -101,6 +103,7 @@ export function EditMetadataModal({
       tags: '',
       genre: '',
       categories: [],
+      isNSFW: false,
       locationName: '',
       locationAddress: '',
       license: 'all-rights-reserved'
@@ -216,6 +219,21 @@ export function EditMetadataModal({
                 <h4 className="text-sm font-semibold text-text-primary mb-3">Content Classification</h4>
                 
                 <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-text-secondary mb-1">NSFW Content</p>
+                    <p className="text-xs text-text-secondary mb-2">Mark as Not Safe For Work (18+)</p>
+                    <button
+                      type="button"
+                      onClick={() => setEditForm({ ...editForm, isNSFW: !editForm.isNSFW })}
+                      className={`px-4 py-2 text-xs font-semibold uppercase tracking-widest rounded-md border transition-colors ${
+                        editForm.isNSFW
+                          ? 'bg-red-600 border-red-500 text-white'
+                          : 'bg-neutral-700 border-neutral-600 text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      {editForm.isNSFW ? 'NSFW' : 'PUBLIC'}
+                    </button>
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-text-secondary mb-1">
                       Genre (comma-separated)
