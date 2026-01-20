@@ -3,18 +3,27 @@
 
 echo "🚀 Starting deployment..."
 
-# Build frontend
-echo "📦 Building frontend..."
+# Build id-dashboard
+echo "📦 Building id-dashboard..."
 cd apps/id-dashboard
 npm run build
-
 if [ $? -ne 0 ]; then
-    echo "❌ Build failed"
+    echo "❌ id-dashboard build failed"
     exit 1
 fi
 
-# Deploy to Firebase (hosting only, functions not configured)
+# Build aggregator-browser (browse target)
+echo "📦 Building aggregator-browser..."
+cd ../aggregator-browser
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ aggregator-browser build failed"
+    exit 1
+fi
+
+# Deploy to Firebase (hosting only: id-dashboard + browse)
 echo "🔥 Deploying to Firebase..."
+cd ../..
 firebase deploy --only hosting
 
 if [ $? -eq 0 ]; then
