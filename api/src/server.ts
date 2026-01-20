@@ -113,6 +113,8 @@ class ProductionServer {
   private app: express.Application;
   private server: any;
   private io: SocketIOServer;
+  private _cleanupOrphanedTimer: ReturnType<typeof setTimeout> | null = null;
+  private _cleanupOrphanedInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.app = express();
@@ -2050,126 +2052,21 @@ class ProductionServer {
     });
 
     // POST /api/aggregator/metadata-index/cleanup-orphaned - Remove orphaned metadata entries (metadata without corresponding Google Drive files)
+    // Also run automatically every 5 minutes via runCleanupOrphaned.
     // MUST be before /:fileId route to avoid route conflict
     this.app.post('/api/aggregator/metadata-index/cleanup-orphaned', async (req, res) => {
       try {
-        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
-        const { isDriveFileUrlDead } = await import('./server/utils/driveUrlCheck');
-        const service = AggregatorMetadataServiceDB.getInstance();
-        const db = (await import('./server/utils/database')).getDatabasePool();
-        
-        // Query all three tables to get all metadata entries
-        const allTables = ['aggregator_media', 'aggregator_thoughts', 'aggregator_collections'];
-        const allEntries: Array<{ fileId: string; metadata: any; googleDriveFileId: string }> = [];
-        
-        for (const table of allTables) {
-          try {
-            const result = await db.query(
-              `SELECT file_id, metadata FROM ${table}`
-            );
-            
-            for (const row of result.rows) {
-              try {
-                if (!row.metadata) {
-                  console.warn(`[CleanupOrphaned] Skipping row with null metadata in ${table}: ${row.file_id}`);
-                  continue;
-                }
-                
-                let metadata: any;
-                if (typeof row.metadata === 'string') {
-                  try {
-                    metadata = JSON.parse(row.metadata);
-                  } catch (parseError) {
-                    console.warn(`[CleanupOrphaned] Failed to parse metadata JSON for ${row.file_id} in ${table}:`, parseError);
-                    continue;
-                  }
-                } else {
-                  metadata = row.metadata;
-                }
-                
-                // Only check Google Drive files
-                if (!metadata || metadata.backend !== 'google_drive') {
-                  continue;
-                }
-                
-                const googleDriveFileId = (metadata as any).googleDriveFileId || metadata.backendFileId || row.file_id;
-                if (!googleDriveFileId) {
-                  continue;
-                }
-                
-                allEntries.push({
-                  fileId: row.file_id,
-                  metadata: metadata,
-                  googleDriveFileId: googleDriveFileId
-                });
-              } catch (rowError) {
-                console.error(`[CleanupOrphaned] Error processing row ${row.file_id} in ${table}:`, rowError);
-                // Continue with next row
-              }
-            }
-          } catch (tableError) {
-            console.error(`[CleanupOrphaned] Error querying table ${table}:`, tableError);
-            // Continue with next table
-          }
-        }
-        
-        console.log(`[CleanupOrphaned] Found ${allEntries.length} Google Drive file(s) to verify`);
-        
-        const filesToRemove: string[] = [];
-        
-        // Verify files in batches (rate limiting)
-        const batchSize = 10;
-        for (let i = 0; i < allEntries.length; i += batchSize) {
-          const batch = allEntries.slice(i, i + batchSize);
-          const batchPromises = batch.map(async (entry) => {
-            try {
-              const dead = await isDriveFileUrlDead(entry.googleDriveFileId);
-              if (dead) {
-                console.log(`[CleanupOrphaned] File ${entry.googleDriveFileId} is dead (deleted/not found): ${entry.metadata?.name || 'unknown'}`);
-                return entry.fileId;
-              }
-              return null;
-            } catch (error) {
-              console.warn(`[CleanupOrphaned] Error verifying ${entry.googleDriveFileId}:`, error);
-              return null;
-            }
-          });
-          
-          const batchResults = await Promise.all(batchPromises);
-          const orphanedFileIds = batchResults.filter((fileId): fileId is string => fileId !== null);
-          filesToRemove.push(...orphanedFileIds);
-          
-          // Small delay between batches to avoid rate limiting
-          if (i + batchSize < allEntries.length) {
-            await new Promise(resolve => setTimeout(resolve, 200));
-          }
-        }
-        
-        // Remove orphaned entries using removeMetadata method
-        let removedCount = 0;
-        for (const fileId of filesToRemove) {
-          try {
-            const removed = await service.removeMetadata(fileId);
-            if (removed) {
-              removedCount++;
-            }
-          } catch (error) {
-            console.error(`[CleanupOrphaned] Failed to remove metadata for ${fileId}:`, error);
-          }
-        }
-        
-        console.log(`[CleanupOrphaned] Removed ${removedCount} orphaned metadata entry/entries`);
-        
+        const { runCleanupOrphaned } = await import('./server/jobs/cleanupOrphanedJob');
+        const { checked, removed } = await runCleanupOrphaned();
         return res.json({
           success: true,
-          checked: allEntries.length,
-          removed: removedCount,
-          message: `Checked ${allEntries.length} file(s), removed ${removedCount} orphaned metadata entry/entries`
+          checked,
+          removed,
+          message: `Checked ${checked} file(s), removed ${removed} orphaned metadata entry/entries`
         });
       } catch (error: any) {
         console.error('[CleanupOrphaned] Error:', error);
         console.error('[CleanupOrphaned] Error stack:', error?.stack);
-        // Return error details in response so we can debug
         return res.status(500).json({
           error: 'Failed to cleanup orphaned metadata',
           message: error?.message || String(error),
@@ -13804,6 +13701,19 @@ class ProductionServer {
         console.log(`🚀 Identity Protocol API Server running on port ${PORT}`);
         console.log(`📊 Environment: ${NODE_ENV}`);
         console.log(`🔒 CORS Origins: ${ALLOWED_ORIGINS.join(', ')}`);
+        // Orphan cleanup: first run after 30s, then every 5 minutes (for testing; can be increased later)
+        (async () => {
+          try {
+            const { runCleanupOrphaned } = await import('./server/jobs/cleanupOrphanedJob');
+            const run = () => runCleanupOrphaned().catch((e: any) => console.error('[CleanupOrphaned] Scheduled run failed:', e));
+            this._cleanupOrphanedTimer = setTimeout(() => {
+              run();
+              this._cleanupOrphanedInterval = setInterval(run, 5 * 60 * 1000);
+            }, 30_000);
+          } catch (e) {
+            console.warn('[CleanupOrphaned] Could not schedule cleanup job:', e);
+          }
+        })();
         resolve();
       });
 
@@ -13815,6 +13725,14 @@ class ProductionServer {
   }
 
   public async stop(): Promise<void> {
+    if (this._cleanupOrphanedTimer) {
+      clearTimeout(this._cleanupOrphanedTimer);
+      this._cleanupOrphanedTimer = null;
+    }
+    if (this._cleanupOrphanedInterval) {
+      clearInterval(this._cleanupOrphanedInterval);
+      this._cleanupOrphanedInterval = null;
+    }
     // Stop Google Drive sync
     try {
       const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
