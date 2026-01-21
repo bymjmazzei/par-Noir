@@ -27,8 +27,12 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
 
-    const loadData = async () => {
-      setLoading(true);
+    const loadData = async (isInitial = false) => {
+      // Only show loading spinner on initial load
+      if (isInitial) {
+        setLoading(true);
+      }
+      
       try {
         const [threadsData, requestsData, connectionRequests] = await Promise.all([
           getMessageThreads(userState.pnIdentifier!),
@@ -54,14 +58,22 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
       } catch (error) {
         console.error('Failed to load messages:', error);
       } finally {
-        setLoading(false);
+        if (isInitial) {
+          setLoading(false);
+        }
       }
     };
 
-    loadData();
+    // Initial load
+    loadData(true);
 
-    // Poll for updates
-    const interval = setInterval(loadData, 10000);
+    // Poll for updates - only when tab is visible
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadData(false);
+      }
+    }, 10000);
+    
     return () => clearInterval(interval);
   }, [userState.isUnlocked, userState.pnIdentifier]);
 

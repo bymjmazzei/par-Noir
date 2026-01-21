@@ -28,8 +28,12 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
 
-    const loadMessages = async () => {
-      setLoading(true);
+    const loadMessages = async (isInitial = false) => {
+      // Only show loading spinner on initial load
+      if (isInitial) {
+        setLoading(true);
+      }
+      
       try {
         const threadMessages = await getThreadMessages(userState.pnIdentifier!, participantDid);
         setMessages(threadMessages);
@@ -46,14 +50,22 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
       } catch (error) {
         console.error('Failed to load messages:', error);
       } finally {
-        setLoading(false);
+        if (isInitial) {
+          setLoading(false);
+        }
       }
     };
 
-    loadMessages();
+    // Initial load
+    loadMessages(true);
 
-    // Poll for new messages
-    const interval = setInterval(loadMessages, 5000);
+    // Poll for new messages - only when tab is visible
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadMessages(false);
+      }
+    }, 5000);
+    
     return () => clearInterval(interval);
   }, [userState.isUnlocked, userState.pnIdentifier, participantDid]);
 
@@ -157,7 +169,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
       </div>
 
       {/* Input */}
-      <div className="p-4 border-t border-neutral-700">
+      <div className="p-4 border-t border-neutral-700" style={{ paddingBottom: '64px' }}>
         <div className="flex items-end space-x-2">
           <button
             className="p-2 text-neutral-400 hover:text-white transition-colors"
