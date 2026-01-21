@@ -72,6 +72,23 @@ const aggregatorLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Very lenient limiter for public discovery: GET metadata-index and nsfw-index.
+// These are required before unlock; shared IPs (NAT, mobile) can exhaust aggregatorLimiter.
+const metadataIndexReadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: (req) => {
+    const authHeader = req.headers.authorization;
+    const hasValidTokenFormat = authHeader &&
+                                authHeader.startsWith('Bearer ') &&
+                                authHeader.substring(7).trim().length > 0;
+    if (hasValidTokenFormat) return 10000;
+    return 5000; // 5000 per 15 min unauthenticated (discovery before unlock)
+  },
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Lenient rate limiter for read-heavy endpoints (profile, feeds, engagement GET requests)
 const readOnlyLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -1736,8 +1753,15 @@ class ProductionServer {
     });
 
     // Aggregator metadata index endpoints
-    // Aggregator endpoints with lenient rate limiting (applied before routes)
-    this.app.use('/api/aggregator', aggregatorLimiter);
+    // Use very lenient metadataIndexReadLimiter for public discovery (GET metadata-index, nsfw-index)
+    // so shared IPs and pre-unlock loads don't hit 429. Other /api/aggregator use aggregatorLimiter.
+    this.app.use('/api/aggregator', (req, res, next) => {
+      const p = (req.path || req.url?.split('?')[0] || '');
+      if (req.method === 'GET' && (p === '/api/aggregator/metadata-index' || p === '/api/aggregator/nsfw-index')) {
+        return metadataIndexReadLimiter(req, res, next);
+      }
+      return aggregatorLimiter(req, res, next);
+    });
 
     // GET /api/aggregator/metadata-index - Query public metadata
     this.app.get('/api/aggregator/metadata-index', async (req, res) => {
