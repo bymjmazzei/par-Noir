@@ -52,11 +52,18 @@ export function useDiscovery({
         setError(null);
         await metadataIndexService.initialize();
         const contentTypeService = new ContentTypeIndexService();
-        const [media, thoughts, collections] = await Promise.all([
-          contentTypeService.loadContentTypeIndex('media', { contentClass: 'media' }, forceRefresh),
-          contentTypeService.loadContentTypeIndex('thoughts', { contentClass: 'thought' }, forceRefresh),
-          contentTypeService.loadContentTypeIndex('collections', { contentClass: 'collection' }, forceRefresh),
+        const limit = PAGE_SIZE;
+        const offset = page * PAGE_SIZE;
+        const [mediaRes, thoughtsRes, collectionsRes] = await Promise.all([
+          contentTypeService.loadContentTypeIndex('media', { contentClass: 'media', limit, offset }, forceRefresh),
+          contentTypeService.loadContentTypeIndex('thoughts', { contentClass: 'thought', limit, offset }, forceRefresh),
+          contentTypeService.loadContentTypeIndex('collections', { contentClass: 'collection', limit, offset }, forceRefresh),
         ]);
+        const media = mediaRes.files;
+        const thoughts = thoughtsRes.files;
+        const collections = collectionsRes.files;
+        const hasMore = mediaRes.hasMore || thoughtsRes.hasMore || collectionsRes.hasMore;
+        setHasMore(hasMore);
 
         if (page === 0) {
           const oldIds = new Set([
@@ -153,13 +160,18 @@ export function useDiscovery({
         throw err;
       }
     },
-    [activeFeedId, filters, userState.preferences, metadataIndexService, mediaFiles, thoughtsFiles, collectionsFiles, cleanupThumbnailsForFiles, setError, setMediaFiles, setThoughtsFiles, setCollectionsFiles]
+    [activeFeedId, filters, userState.preferences, metadataIndexService, mediaFiles, thoughtsFiles, collectionsFiles, cleanupThumbnailsForFiles, setError, setMediaFiles, setThoughtsFiles, setCollectionsFiles, setHasMore]
   );
 
   const discoverFiles = useCallback(
     async (searchFilters?: MetadataFilters, forceRefresh: boolean = false, page: number = 0, append?: boolean) => {
       if (isDiscoveringRef.current && !forceRefresh && !append) return;
-      await loadContentTypeIndices(searchFilters, forceRefresh, page);
+      isDiscoveringRef.current = true;
+      try {
+        await loadContentTypeIndices(searchFilters, forceRefresh, page);
+      } finally {
+        isDiscoveringRef.current = false;
+      }
     },
     [loadContentTypeIndices]
   );
@@ -193,13 +205,8 @@ export function useDiscovery({
   }, []);
 
   useEffect(() => {
-    const checkToken = () => {
-      const token = localStorage.getItem('google_drive_token');
-      if (token && discoverFilesRef.current) {
-        discoverFilesRef.current(undefined, false, 0, false);
-      }
-    };
-    checkToken();
+    // Only run discoverFiles when token changes in another tab (storage event).
+    // Skip initial checkToken on mount to avoid overlapping with hasInitializedRef.
     const storageHandler = (e: StorageEvent) => {
       if (e.key === 'google_drive_token' && e.newValue && discoverFilesRef.current) {
         discoverFilesRef.current(undefined, false, 0, false);

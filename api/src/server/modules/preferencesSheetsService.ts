@@ -120,7 +120,14 @@ export class PreferencesSheetsService {
       return spreadsheetId;
     }
 
-    // Also check if file exists elsewhere (might have been created in wrong location)
+    // Broad search: only move a file if it is provably in this pN (metadataFolderId or pnFolderId in direct parents). Else create new.
+    let pnFolderId: string | null = null;
+    try {
+      const metadataFolderInfo = await drive.files.get({ fileId: metadataFolderId, fields: 'parents' });
+      const mp = metadataFolderInfo.data.parents || [];
+      if (mp.length > 0) pnFolderId = mp[0];
+    } catch { /* ignore */ }
+
     const broadQuery = `name='preferences' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
     const broadSearchResponse = await drive.files.list({
       q: broadQuery,
@@ -128,68 +135,62 @@ export class PreferencesSheetsService {
       pageSize: 5
     });
 
-    // If found elsewhere, move it to metadata folder
     if (broadSearchResponse.data.files && broadSearchResponse.data.files.length > 0) {
-      const existingFile = broadSearchResponse.data.files[0];
-      const existingFileId = existingFile.id!;
-      const existingParents = existingFile.parents || [];
-      
-      // Move to metadata folder
-      await drive.files.update({
-        fileId: existingFileId,
-        removeParents: existingParents.join(','),
-        addParents: metadataFolderId,
-        fields: 'id, parents'
-      });
-      
-      // Ensure "Current" sheet exists (for existing spreadsheets created before migration)
-      try {
-        const spreadsheet = await sheets.spreadsheets.get({
-          spreadsheetId: existingFileId,
-          fields: 'sheets.properties.title'
-        });
-        
-        const hasCurrentSheet = spreadsheet.data.sheets?.some(
-          sheet => sheet.properties?.title === 'Current'
-        );
-        
-        if (!hasCurrentSheet) {
-          // Add "Current" sheet to existing spreadsheet
-          await sheets.spreadsheets.batchUpdate({
+      const foundFiles = broadSearchResponse.data.files;
+      const candidates = foundFiles.filter(
+        (f) =>
+          f.parents &&
+          (f.parents.includes(metadataFolderId) || (pnFolderId != null && f.parents.includes(pnFolderId)))
+      );
+      if (candidates.length > 0) {
+        const existingFile = candidates[0];
+        const existingFileId = existingFile.id!;
+        const existingParents = existingFile.parents || [];
+        if (!existingParents.includes(metadataFolderId)) {
+          await drive.files.update({
+            fileId: existingFileId,
+            removeParents: existingParents.join(','),
+            addParents: metadataFolderId,
+            fields: 'id, parents'
+          });
+        }
+        // Ensure "Current" sheet exists (for existing spreadsheets created before migration)
+        try {
+          const spreadsheet = await sheets.spreadsheets.get({
             spreadsheetId: existingFileId,
-            requestBody: {
-              requests: [
-                {
-                  addSheet: {
-                    properties: {
-                      title: 'Current',
-                      gridProperties: {
-                        rowCount: 1000,
-                        columnCount: 2
+            fields: 'sheets.properties.title'
+          });
+          const hasCurrentSheet = spreadsheet.data.sheets?.some(
+            (sheet) => sheet.properties?.title === 'Current'
+          );
+          if (!hasCurrentSheet) {
+            await sheets.spreadsheets.batchUpdate({
+              spreadsheetId: existingFileId,
+              requestBody: {
+                requests: [
+                  {
+                    addSheet: {
+                      properties: {
+                        title: 'Current',
+                        gridProperties: { rowCount: 1000, columnCount: 2 }
                       }
                     }
                   }
-                }
-              ]
-            }
-          });
-          
-          // Set up headers for Current sheet
-          await sheets.spreadsheets.values.update({
-            spreadsheetId: existingFileId,
-            range: 'Current!A1:B1',
-            valueInputOption: 'RAW',
-            requestBody: {
-              values: [['Key', 'Value (JSON)']]
-            }
-          });
+                ]
+              }
+            });
+            await sheets.spreadsheets.values.update({
+              spreadsheetId: existingFileId,
+              range: 'Current!A1:B1',
+              valueInputOption: 'RAW',
+              requestBody: { values: [['Key', 'Value (JSON)']] }
+            });
+          }
+        } catch (error) {
+          console.warn('Could not ensure Current sheet exists:', error);
         }
-      } catch (error) {
-        // If we can't check/add the sheet, continue anyway (it might already exist)
-        console.warn('Could not ensure Current sheet exists:', error);
+        return existingFileId;
       }
-      
-      return existingFileId;
     }
 
     // Create new preferences sheet with both "Interactions" and "Current" sheets

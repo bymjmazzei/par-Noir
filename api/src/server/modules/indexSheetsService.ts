@@ -96,81 +96,43 @@ export class IndexSheetsService {
       // Can't determine pN folder, will use broad search
     }
 
-    // Build query - prefer files in the same pN folder if we can determine it
-    let broadQuery = `name='${fileName}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    if (pnFolderId) {
-      // Scope to files that are descendants of the pN folder (more likely to be the right one)
-      // Note: Google Drive API doesn't support recursive parent queries, so we'll search broadly but filter
-      broadQuery = `name='${fileName}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    }
-    
+    // Broad search for the file name (Drive API has no recursive "in folder tree").
+    // We only use a found file if it is provably in this pN (metadataFolderId or pnFolderId in direct parents).
+    // We never delete files—deleting "duplicates" has caused data loss when the wrong file was chosen.
+    const broadQuery = `name='${fileName}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
     const broadSearchResponse = await drive.files.list({
       q: broadQuery,
       fields: 'files(id,name,parents)',
-      pageSize: 10 // Increased to catch more duplicates
+      pageSize: 10
     });
 
     if (broadSearchResponse.data.files && broadSearchResponse.data.files.length > 0) {
       const foundFiles = broadSearchResponse.data.files;
-      
-      // If multiple files found, deduplicate:
-      // 1. Prefer file already in metadata folder
-      // 2. If pN folder known, prefer file in that folder structure
-      // 3. Delete all others
-      let fileToUse = foundFiles[0];
-      
-      // Check if any file is already in metadata folder
-      const inMetadataFolder = foundFiles.find(f => f.parents?.includes(metadataFolderId));
-      if (inMetadataFolder) {
-        fileToUse = inMetadataFolder;
-      } else if (pnFolderId) {
-        // Check if any file is in the pN folder structure
-        // Get all parent folders for each file to check hierarchy
-        for (const file of foundFiles) {
-          try {
-            const fileInfo = await drive.files.get({
-              fileId: file.id!,
-              fields: 'parents'
-            });
-            const fileParents = fileInfo.data.parents || [];
-            // Check if metadata folder or pN folder is in parent chain
-            if (fileParents.includes(metadataFolderId) || fileParents.includes(pnFolderId)) {
-              fileToUse = file;
-              break;
-            }
-          } catch (e) {
-            // Skip this file if we can't check its parents
-          }
+      // Only consider files provably in this pN: direct parent is metadataFolderId or pnFolderId.
+      const candidates = foundFiles.filter(
+        (f) =>
+          f.parents &&
+          (f.parents.includes(metadataFolderId) || (pnFolderId != null && f.parents.includes(pnFolderId)))
+      );
+
+      if (candidates.length > 0) {
+        let fileToUse = candidates[0];
+        const inMetadataFolder = candidates.find((f) => f.parents?.includes(metadataFolderId));
+        if (inMetadataFolder) fileToUse = inMetadataFolder;
+
+        const existingFileId = fileToUse.id!;
+        const existingParents = fileToUse.parents || [];
+        if (!existingParents.includes(metadataFolderId)) {
+          await drive.files.update({
+            fileId: existingFileId,
+            removeParents: existingParents.join(','),
+            addParents: metadataFolderId,
+            fields: 'id, parents'
+          });
         }
+        return existingFileId;
       }
-      
-      // Delete duplicate files (all except the one we're using)
-      for (const file of foundFiles) {
-        if (file.id !== fileToUse.id) {
-          try {
-            await drive.files.delete({ fileId: file.id! });
-            console.log(`🗑️ [IndexSheetsService] Deleted duplicate ${fileName}: ${file.id}`);
-          } catch (deleteError: any) {
-            console.warn(`⚠️ [IndexSheetsService] Failed to delete duplicate ${fileName} (${file.id}):`, deleteError?.message || deleteError);
-            // Continue - non-critical
-          }
-        }
-      }
-      
-      // Move the file we're using to metadata folder if not already there
-      const existingFileId = fileToUse.id!;
-      const existingParents = fileToUse.parents || [];
-      
-      if (!existingParents.includes(metadataFolderId)) {
-        await drive.files.update({
-          fileId: existingFileId,
-          removeParents: existingParents.join(','),
-          addParents: metadataFolderId,
-          fields: 'id, parents'
-        });
-      }
-      
-      return existingFileId;
+      // None of the found files belong to this pN; fall through to create new.
     }
 
     // Legacy fallback: search for short name (older creates used title without .xlsx)

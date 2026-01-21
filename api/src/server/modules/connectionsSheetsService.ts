@@ -55,7 +55,14 @@ export class ConnectionsSheetsService {
       return searchResponse.data.files[0].id!;
     }
 
-    // Also check if file exists elsewhere (might have been created in wrong location)
+    // Broad search: only move a file if it is provably in this pN (metadataFolderId or pnFolderId in direct parents). Else create new.
+    let pnFolderId: string | null = null;
+    try {
+      const metadataFolderInfo = await drive.files.get({ fileId: metadataFolderId, fields: 'parents' });
+      const mp = metadataFolderInfo.data.parents || [];
+      if (mp.length > 0) pnFolderId = mp[0];
+    } catch { /* ignore */ }
+
     const broadQuery = `name='${this.CONNECTIONS_FILE_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
     const broadSearchResponse = await drive.files.list({
       q: broadQuery,
@@ -63,21 +70,27 @@ export class ConnectionsSheetsService {
       pageSize: 5
     });
 
-    // If found elsewhere, move it to metadata folder
     if (broadSearchResponse.data.files && broadSearchResponse.data.files.length > 0) {
-      const existingFile = broadSearchResponse.data.files[0];
-      const existingFileId = existingFile.id!;
-      const existingParents = existingFile.parents || [];
-      
-      // Move to metadata folder
-      await drive.files.update({
-        fileId: existingFileId,
-        removeParents: existingParents.join(','),
-        addParents: metadataFolderId,
-        fields: 'id, parents'
-      });
-      
-      return existingFileId;
+      const foundFiles = broadSearchResponse.data.files;
+      const candidates = foundFiles.filter(
+        (f) =>
+          f.parents &&
+          (f.parents.includes(metadataFolderId) || (pnFolderId != null && f.parents.includes(pnFolderId)))
+      );
+      if (candidates.length > 0) {
+        const existingFile = candidates[0];
+        const existingFileId = existingFile.id!;
+        const existingParents = existingFile.parents || [];
+        if (!existingParents.includes(metadataFolderId)) {
+          await drive.files.update({
+            fileId: existingFileId,
+            removeParents: existingParents.join(','),
+            addParents: metadataFolderId,
+            fields: 'id, parents'
+          });
+        }
+        return existingFileId;
+      }
     }
 
     // Legacy fallback: search for short name (older creates used title without .xlsx)

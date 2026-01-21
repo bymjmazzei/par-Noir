@@ -7,7 +7,7 @@
 
 import { IndexedFile, MetadataFilters } from '../types/aggregator';
 import { getMetadataIndexService } from './metadata/MetadataIndexService';
-import { ContentType, CONTENT_TYPE_MAP, ContentTypeConfig } from '../types/contentTypes';
+import { ContentType, ContentTypeConfig } from '../types/contentTypes';
 
 export class ContentTypeIndexService {
   private mediaIndex: IndexedFile[] = [];
@@ -17,16 +17,16 @@ export class ContentTypeIndexService {
   
   /**
    * Load a content-type index from the API
-   * Uses contentClass parameter to query and filter files
+   * Uses contentClass parameter to query and filter files.
+   * When limit/offset are passed, returns { files, hasMore } for pagination.
    */
   async loadContentTypeIndex(
     contentType: ContentType,
     filters?: MetadataFilters & { limit?: number; offset?: number },
     forceRefresh: boolean = false
-  ): Promise<IndexedFile[]> {
-    const config = CONTENT_TYPE_MAP[contentType];
+  ): Promise<{ files: IndexedFile[]; hasMore: boolean }> {
     const metadataService = getMetadataIndexService();
-    
+
     // Map ContentType to contentClass for API query
     const contentClassMap: Record<ContentType, 'media' | 'thought' | 'collection'> = {
       'media': 'media',
@@ -34,22 +34,21 @@ export class ContentTypeIndexService {
       'collections': 'collection'
     };
     const contentClass = contentClassMap[contentType];
-    
-    // Query API using contentClass - ONLY contentClass, nothing else
-    const result = await metadataService.discoverFiles({
-      contentClass,
-    }, forceRefresh);
-    
-    const allFiles = Array.isArray(result) ? result : result.files;
-    
-    // No client-side filtering needed - API returns correct content type
-    // API now queries the appropriate table directly
-    
-    // Update index
-    this[`${contentType}Index`] = allFiles;
+
+    // Query API with contentClass and optional limit/offset
+    const result = await metadataService.discoverFiles(
+      { contentClass, limit: filters?.limit, offset: filters?.offset },
+      forceRefresh
+    );
+
+    const files = Array.isArray(result) ? result : result.files;
+    const hasMore = Array.isArray(result) ? true : (result.hasMore ?? false);
+
+    // Update in-memory index with the fetched slice
+    this[`${contentType}Index`] = files;
     this.lastUpdated.set(contentType, Date.now());
-    
-    return allFiles;
+
+    return { files, hasMore };
   }
   
   /**

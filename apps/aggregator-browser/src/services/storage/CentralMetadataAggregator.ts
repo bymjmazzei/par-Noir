@@ -20,12 +20,15 @@ export interface CentralIndexResponse {
   totalFiles: number;
 }
 
+const TTL_MS = 60_000; // 60 seconds
+
 export class CentralMetadataAggregator {
   private static readonly CENTRAL_INDEX_PATH = '/api/aggregator/metadata-index';
   private static readonly CACHE_KEY = 'pn_central_metadata_index';
   private static readonly CACHE_VERSION_KEY = 'pn_central_metadata_index_version';
   private static readonly CACHE_VERSION = '1.0'; // Increment when cache format changes
-  private static pendingRequests = new Map<string, Promise<CentralIndexEntry[]>>(); // Request deduplication
+  private static pendingRequests = new Map<string, Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }>>();
+  private static ttlCache = new Map<string, { files: CentralIndexEntry[]; total: number; hasMore: boolean; ts: number }>();
 
   /**
    * Clear the localStorage cache
@@ -76,25 +79,33 @@ export class CentralMetadataAggregator {
     },
     forceRefresh: boolean = false
   ): Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }> {
-    // Create a unique key for this request to deduplicate (include pagination params)
     const requestKey = JSON.stringify({ ...filters, limit: filters?.limit, offset: filters?.offset });
-    
-    // If there's already a pending request with the same filters and pagination, return it
+
+    // TTL cache: return recent result without hitting the network
+    if (!forceRefresh) {
+      const cached = this.ttlCache.get(requestKey);
+      if (cached && Date.now() - cached.ts < TTL_MS) {
+        return { files: cached.files, total: cached.total, hasMore: cached.hasMore };
+      }
+    }
+
+    // Deduplicate in-flight requests
     if (!forceRefresh && this.pendingRequests.has(requestKey)) {
       return this.pendingRequests.get(requestKey)!;
     }
-    
-    // Create the request promise
-    const requestPromise = this._fetchWithRetry(filters);
-    
-    // Store it for deduplication
+
+    const requestPromise = this._fetchWithRetry(filters).then((res) => {
+      if (!forceRefresh) {
+        this.ttlCache.set(requestKey, { ...res, ts: Date.now() });
+      }
+      return res;
+    });
+
     this.pendingRequests.set(requestKey, requestPromise);
-    
-    // Clean up after request completes
     requestPromise.finally(() => {
       this.pendingRequests.delete(requestKey);
     });
-    
+
     return requestPromise;
   }
   
