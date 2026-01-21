@@ -448,7 +448,8 @@ export class ConnectionsSheetsService {
     spreadsheetId: string,
     connectionId: string,
     status: Connection['status'],
-    acceptedAt?: string
+    acceptedAt?: string,
+    sharedSecret?: string
   ): Promise<void> {
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });

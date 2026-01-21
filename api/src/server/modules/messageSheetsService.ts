@@ -256,12 +256,19 @@ export class MessageSheetsService {
       }
 
       // Encrypt message content using connection's shared secret
-      const { MessageEncryption } = await import('../utils/messageEncryption');
-      const encryptedContent = MessageEncryption.encryptMessage(
-        message.content,
-        connectionId,
-        sharedSecret
-      );
+      // For system messages or if shared secret is empty, store as plain text (backward compatibility)
+      let encryptedContent: string;
+      if (message.fromDid === 'system' || !sharedSecret || sharedSecret === '') {
+        // System messages or messages without shared secret are stored as plain text
+        encryptedContent = message.content;
+      } else {
+        const { MessageEncryption } = await import('../utils/messageEncryption');
+        encryptedContent = MessageEncryption.encryptMessage(
+          message.content,
+          connectionId,
+          sharedSecret
+        );
+      }
 
       const auth = new google.auth.OAuth2();
       auth.setCredentials({ access_token: accessToken });
@@ -343,16 +350,25 @@ export class MessageSheetsService {
       const encryptedContent = row[1] || '';
       let decryptedContent = '';
       
-      try {
-        // Decrypt message content
-        decryptedContent = MessageEncryption.decryptMessage(
-          encryptedContent,
-          connectionId,
-          sharedSecret
-        );
-      } catch (decryptError: any) {
-        console.error(`[MessageSheetsService] Failed to decrypt message ${row[3] || index}:`, decryptError);
-        throw new Error(`Failed to decrypt message: ${decryptError?.message || 'Unknown error'}`);
+      // Check if content is encrypted or plain text
+      const isEncrypted = MessageEncryption.isEncrypted(encryptedContent);
+      const fromDid = row[0] || '';
+      
+      if (isEncrypted && sharedSecret && sharedSecret !== '') {
+        try {
+          // Decrypt message content
+          decryptedContent = MessageEncryption.decryptMessage(
+            encryptedContent,
+            connectionId,
+            sharedSecret
+          );
+        } catch (decryptError: any) {
+          console.error(`[MessageSheetsService] Failed to decrypt message ${row[3] || index}:`, decryptError);
+          throw new Error(`Failed to decrypt message: ${decryptError?.message || 'Unknown error'}`);
+        }
+      } else {
+        // Plain text message (system messages or old messages without encryption)
+        decryptedContent = encryptedContent;
       }
       
       return {

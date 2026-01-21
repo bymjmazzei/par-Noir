@@ -10556,7 +10556,6 @@ class ProductionServer {
         );
 
         // Look up connection to get shared secret
-        const { ConnectionsService } = await import('./server/modules/connectionsService');
         const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
         
         const connectionStatus = await ConnectionsService.getConnectionStatus(
@@ -11846,6 +11845,7 @@ class ProductionServer {
         }
 
         // Create conversation sheets for both users when connection is accepted
+        // Note: connectionId and sharedSecret are available from the outer scope
         try {
           const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
           const { ProfileService } = await import('./server/modules/profileService');
@@ -11854,6 +11854,12 @@ class ProductionServer {
           // Acceptor is the user accepting (user B), Requester is the user who sent the request (user A)
           let acceptorDisplayName = userCredentials.identityId.substring(0, 8);
           let requesterDisplayName = otherUserDid.substring(0, 8);
+          
+          // Ensure connectionId and sharedSecret are available for system messages
+          if (!connectionId) {
+            console.warn('[AcceptConnection] No connectionId available for system messages');
+            return res.json({ success: true });
+          }
           
           try {
             const acceptorProfile = await ProfileService.getProfileFile(userAccessToken, metadataFolderId);
@@ -11929,6 +11935,7 @@ class ProductionServer {
               );
 
               // Add initial system message to acceptor's conversation
+              // System messages don't need encryption - use empty connectionId and sharedSecret
               const systemMessageId = crypto.randomUUID();
               const now = new Date().toISOString();
               await MessageSheetsService.appendMessage(
@@ -11941,7 +11948,9 @@ class ProductionServer {
                   content: `${acceptorDisplayName} accepted ${requesterDisplayName}'s connection request`,
                   timestamp: now,
                   read: false
-                }
+                },
+                connectionId, // Use the connection ID
+                sharedSecret || '' // Use the shared secret if available
               );
             }
           }
@@ -11987,7 +11996,9 @@ class ProductionServer {
                     content: `${acceptorDisplayName} accepted ${requesterDisplayName}'s connection request`,
                     timestamp: now2,
                     read: false
-                  }
+                  },
+                  connectionId, // Use the connection ID
+                  sharedSecret || '' // Use the shared secret if available
                 );
               }
             }
