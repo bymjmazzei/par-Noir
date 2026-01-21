@@ -241,7 +241,19 @@ export async function sendMessage(
     });
 
     if (!response.ok) {
-      throw new Error('Failed to send message');
+      let errorMessage = 'Failed to send message';
+      try {
+        const error = await response.json();
+        errorMessage = error.error_description || error.error || errorMessage;
+        if (error.details) {
+          errorMessage += ` - ${error.details}`;
+        }
+      } catch (e) {
+        // If response is not JSON, use status text
+        const statusText = response.statusText || `HTTP ${response.status}`;
+        errorMessage = `Failed to send message: ${statusText}`;
+      }
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();

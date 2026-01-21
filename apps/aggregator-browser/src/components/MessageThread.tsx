@@ -8,6 +8,8 @@ import { ArrowLeft, Send, Image as ImageIcon, Paperclip } from 'lucide-react';
 import { Message } from '../services/messageService';
 import { useUserState } from '../contexts/UserStateContext';
 import { getThreadMessages, sendMessage, markAsRead } from '../services/messageService';
+import { useToast } from '../hooks/useToast';
+import { ToastContainer } from './Toast';
 
 interface MessageThreadProps {
   participantDid: string;
@@ -17,6 +19,7 @@ interface MessageThreadProps {
 
 export function MessageThread({ participantDid, participantName, onBack }: MessageThreadProps) {
   const { userState } = useUserState();
+  const { error: showError, toasts, removeToast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -90,8 +93,18 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
         content
       );
       setMessages(prev => [...prev, sentMessage]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to send message:', error);
+      // Extract error message from API response if available
+      let errorMessage = 'Failed to send message';
+      if (error?.message) {
+        errorMessage = error.message;
+      } else if (error?.error_description) {
+        errorMessage = error.error_description;
+      } else if (error?.error) {
+        errorMessage = error.error;
+      }
+      showError(errorMessage);
       setNewMessage(content); // Restore message on error
     } finally {
       setSending(false);
@@ -103,6 +116,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
 
   return (
     <div className="h-full flex flex-col bg-neutral-900">
+      <ToastContainer toasts={toasts} onClose={removeToast} />
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-neutral-700">
         <div className="flex items-center space-x-3">
