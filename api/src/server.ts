@@ -10557,10 +10557,12 @@ class ProductionServer {
         console.log('[SendMessage] Recipient folder found', { recipientPnFolderId: recipientPnFolder.id });
 
         // Get or create messages folder for recipient
+        console.log('[SendMessage] Getting or creating recipient messages folder', { recipientPnFolderId: recipientPnFolder.id });
         const recipientMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
           recipientAccessToken,
           recipientPnFolder.id
         );
+        console.log('[SendMessage] Recipient messages folder ready', { recipientMessagesFolderId });
 
         // Get or create conversation sheet for recipient
         console.log('[SendMessage] Getting or creating recipient conversation sheet', { fromDid, recipientMessagesFolderId });
