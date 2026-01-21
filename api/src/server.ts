@@ -268,9 +268,21 @@ class ProductionServer {
     const pnFolderResponse = await fetch(pnFolderUrl, {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
-    if (!pnFolderResponse.ok) return null;
+    
+    // Throw error if API call failed (token issue, permissions, etc.)
+    if (!pnFolderResponse.ok) {
+      const errorText = await pnFolderResponse.text().catch(() => 'Unknown error');
+      if (pnFolderResponse.status === 401 || pnFolderResponse.status === 403) {
+        throw new Error(`Google Drive authentication failed (${pnFolderResponse.status}): ${errorText.substring(0, 200)}`);
+      }
+      throw new Error(`Drive API error searching for pN folder (${pnFolderResponse.status}): ${errorText.substring(0, 200)}`);
+    }
+    
     const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string }> };
-    if (!pnFolderData.files || pnFolderData.files.length === 0) return null;
+    if (!pnFolderData.files || pnFolderData.files.length === 0) {
+      // Folders not found - return null (this is the only case where null is appropriate)
+      return null;
+    }
     const pnFolderId = pnFolderData.files[0].id;
 
     const metadataFolderQuery = `name='_metadata' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -278,9 +290,21 @@ class ProductionServer {
     const metadataFolderResponse = await fetch(metadataFolderUrl, {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
-    if (!metadataFolderResponse.ok) return null;
+    
+    // Throw error if API call failed
+    if (!metadataFolderResponse.ok) {
+      const errorText = await metadataFolderResponse.text().catch(() => 'Unknown error');
+      if (metadataFolderResponse.status === 401 || metadataFolderResponse.status === 403) {
+        throw new Error(`Google Drive authentication failed (${metadataFolderResponse.status}): ${errorText.substring(0, 200)}`);
+      }
+      throw new Error(`Drive API error searching for _metadata folder (${metadataFolderResponse.status}): ${errorText.substring(0, 200)}`);
+    }
+    
     const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-    if (!metadataFolderData.files || metadataFolderData.files.length === 0) return null;
+    if (!metadataFolderData.files || metadataFolderData.files.length === 0) {
+      // _metadata folder not found - return null
+      return null;
+    }
     return { metadataFolderId: metadataFolderData.files[0].id, pnFolderId };
   }
 
@@ -11073,22 +11097,30 @@ class ProductionServer {
         const requesterAccessToken = await googleDriveProxyService.getAccessToken(requesterCredentials.identityId, requesterAccountId, [requesterCredentials.identityId]);
 
         // Get or create requester's metadata folder
-        console.log('[ConnectionRequest] About to get/create requester metadata folder');
+        console.log('[ConnectionRequest] About to get requester metadata folder');
         let requesterMetadataFolderId: string;
         try {
           // Use pnIdentifier from credentials.identityId (not requesterDid which might be a DID)
-          const _g = await this.getMetadataFolder(requesterAccessToken, requesterCredentials.identityId); if (!_g) return this.driveNotInitialized(res); requesterMetadataFolderId = _g.metadataFolderId;
-          console.log('[ConnectionRequest] Successfully got/created requester metadata folder:', requesterMetadataFolderId);
+          const _g = await this.getMetadataFolder(requesterAccessToken, requesterCredentials.identityId);
+          if (!_g) {
+            // Folders actually missing - this is the only case for DRIVE_NOT_INITIALIZED
+            return this.driveNotInitialized(res);
+          }
+          requesterMetadataFolderId = _g.metadataFolderId;
+          console.log('[ConnectionRequest] Successfully got requester metadata folder:', requesterMetadataFolderId);
         } catch (error: any) {
-          console.error('[ConnectionRequest] Error getting/creating requester metadata folder:', error);
-          console.error('[ConnectionRequest] Error stack:', error.stack);
-          const errorDetails = error.message || 'Unknown error';
-          const errorResponse = error.response ? await error.response.text().catch(() => '') : '';
-          console.error('[ConnectionRequest] Error details:', { errorDetails, errorResponse, requesterDid, pnIdentifier: requesterCredentials.identityId });
+          // Drive API error (token, permissions, etc.) - return appropriate error
+          if (error.message?.includes('authentication failed')) {
+            return res.status(401).json({
+              error: 'Google Drive authentication failed',
+              code: 'DRIVE_AUTH_FAILED',
+              message: error.message
+            });
+          }
+          console.error('[ConnectionRequest] Drive API error getting requester metadata folder:', error);
           return res.status(500).json({ 
-            error: 'Failed to get or create requester metadata folder', 
-            error_description: errorDetails,
-            details: errorResponse || undefined
+            error: 'Failed to access Google Drive', 
+            error_description: error.message || 'Drive API error'
           });
         }
 
@@ -11128,21 +11160,29 @@ class ProductionServer {
         // Use the identityId from credentials (the actual stored identifier)
         const recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientCredentials.identityId, recipientAccountId, [recipientCredentials.identityId]);
 
-        // Get or create recipient's metadata folder
+        // Get recipient's metadata folder
         let recipientMetadataFolderId: string;
         try {
           // Use pnIdentifier from credentials.identityId (not recipientDid which might be a DID)
-          const _g = await this.getMetadataFolder(recipientAccessToken, recipientCredentials.identityId); if (!_g) return this.driveNotInitialized(res); recipientMetadataFolderId = _g.metadataFolderId;
+          const _g = await this.getMetadataFolder(recipientAccessToken, recipientCredentials.identityId);
+          if (!_g) {
+            // Folders actually missing - this is the only case for DRIVE_NOT_INITIALIZED
+            return this.driveNotInitialized(res);
+          }
+          recipientMetadataFolderId = _g.metadataFolderId;
         } catch (error: any) {
-          console.error('[ConnectionRequest] Error getting/creating recipient metadata folder:', error);
-          console.error('[ConnectionRequest] Error stack:', error.stack);
-          const errorDetails = error.message || 'Unknown error';
-          const errorResponse = error.response ? await error.response.text().catch(() => '') : '';
-          console.error('[ConnectionRequest] Error details:', { errorDetails, errorResponse, recipientDid, pnIdentifier: recipientCredentials.identityId });
+          // Drive API error (token, permissions, etc.) - return appropriate error
+          if (error.message?.includes('authentication failed')) {
+            return res.status(401).json({
+              error: 'Google Drive authentication failed',
+              code: 'DRIVE_AUTH_FAILED',
+              message: error.message
+            });
+          }
+          console.error('[ConnectionRequest] Drive API error getting recipient metadata folder:', error);
           return res.status(500).json({ 
-            error: 'Failed to get or create recipient metadata folder', 
-            error_description: errorDetails,
-            details: errorResponse || undefined
+            error: 'Failed to access Google Drive', 
+            error_description: error.message || 'Drive API error'
           });
         }
 
@@ -11305,13 +11345,29 @@ class ProductionServer {
         // Use normalized pn identifier for access token retrieval
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
 
-        // Get or create metadata folder
+        // Get metadata folder
         let metadataFolderId: string;
         try {
-          const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); metadataFolderId = _g.metadataFolderId;
+          const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId);
+          if (!_g) {
+            // Folders actually missing - this is the only case for DRIVE_NOT_INITIALIZED
+            return this.driveNotInitialized(res);
+          }
+          metadataFolderId = _g.metadataFolderId;
         } catch (error: any) {
-          console.error('Error getting/creating metadata folder:', error);
-          return res.status(500).json({ error: 'Failed to get or create metadata folder', error_description: error.message });
+          // Drive API error (token, permissions, etc.) - return appropriate error
+          if (error.message?.includes('authentication failed')) {
+            return res.status(401).json({
+              error: 'Google Drive authentication failed',
+              code: 'DRIVE_AUTH_FAILED',
+              message: error.message
+            });
+          }
+          console.error('Error getting metadata folder:', error);
+          return res.status(500).json({ 
+            error: 'Failed to access Google Drive', 
+            error_description: error.message || 'Drive API error'
+          });
         }
 
         // Get connection to find other user
@@ -11441,10 +11497,22 @@ class ProductionServer {
             const otherAccount = otherGoogleDriveAccounts[0];
             const otherAccountId = (otherAccount as any).backendId || (otherAccount as any).keyPrefix || (otherAccount as any).accountId || (otherAccount as any).id || undefined;
             otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherAccountId, [otherUserCredentials.identityId]);
-            const _g = await this.getMetadataFolder(otherAccessToken, otherUserCredentials.identityId); if (!_g) return this.driveNotInitialized(res); otherMetadataFolderId = _g.metadataFolderId;
-
+            
             try {
-              await ConnectionsService.updateOtherUserConnectionStatus(
+              const _g = await this.getMetadataFolder(otherAccessToken, otherUserCredentials.identityId);
+              if (_g) {
+                otherMetadataFolderId = _g.metadataFolderId;
+              } else {
+                console.warn(`[AcceptConnection] Other user's metadata folder not found, continuing anyway`);
+              }
+            } catch (error: any) {
+              console.warn(`[AcceptConnection] Failed to get other user's metadata folder, continuing anyway:`, error.message);
+              // Continue even if we can't access other user's folder
+            }
+
+            if (otherMetadataFolderId) {
+              try {
+                await ConnectionsService.updateOtherUserConnectionStatus(
                 otherAccessToken,
                 otherMetadataFolderId,
                 otherUserCredentials.identityId,
@@ -11530,10 +11598,22 @@ class ProductionServer {
               const otherAccount = otherGoogleDriveAccounts[0];
               const otherAccountId = (otherAccount as any).backendId || (otherAccount as any).keyPrefix || (otherAccount as any).accountId || (otherAccount as any).id || undefined;
               otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherAccountId, [otherUserCredentials.identityId]);
-              const _g = await this.getMetadataFolder(otherAccessToken, otherUserCredentials.identityId); if (!_g) return this.driveNotInitialized(res); otherMetadataFolderId = _g.metadataFolderId;
               
               try {
-                const requesterProfile = await ProfileService.getProfileFile(otherAccessToken, otherMetadataFolderId);
+                const _g = await this.getMetadataFolder(otherAccessToken, otherUserCredentials.identityId);
+                if (_g) {
+                  otherMetadataFolderId = _g.metadataFolderId;
+                } else {
+                  console.warn(`[AcceptConnection] Other user's metadata folder not found, continuing anyway`);
+                }
+              } catch (error: any) {
+                console.warn(`[AcceptConnection] Failed to get other user's metadata folder, continuing anyway:`, error.message);
+                // Continue even if we can't access other user's folder
+              }
+              
+              if (otherMetadataFolderId) {
+                try {
+                  const requesterProfile = await ProfileService.getProfileFile(otherAccessToken, otherMetadataFolderId);
                 if (requesterProfile?.displayName) {
                   requesterDisplayName = requesterProfile.displayName;
                 }
@@ -11689,13 +11769,29 @@ class ProductionServer {
         // Use normalized pn identifier for access token retrieval
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
 
-        // Get or create metadata folder
+        // Get metadata folder
         let metadataFolderId: string;
         try {
-          const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); metadataFolderId = _g.metadataFolderId;
+          const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId);
+          if (!_g) {
+            // Folders actually missing - this is the only case for DRIVE_NOT_INITIALIZED
+            return this.driveNotInitialized(res);
+          }
+          metadataFolderId = _g.metadataFolderId;
         } catch (error: any) {
-          console.error('Error getting/creating metadata folder:', error);
-          return res.status(500).json({ error: 'Failed to get or create metadata folder', error_description: error.message });
+          // Drive API error (token, permissions, etc.) - return appropriate error
+          if (error.message?.includes('authentication failed')) {
+            return res.status(401).json({
+              error: 'Google Drive authentication failed',
+              code: 'DRIVE_AUTH_FAILED',
+              message: error.message
+            });
+          }
+          console.error('Error getting metadata folder:', error);
+          return res.status(500).json({ 
+            error: 'Failed to access Google Drive', 
+            error_description: error.message || 'Drive API error'
+          });
         }
 
         // Remove connection from user's file
@@ -11756,14 +11852,30 @@ class ProductionServer {
         const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
 
-        // Get or create metadata folder - use identityId from credentials
+        // Get metadata folder - use identityId from credentials
         let metadataFolderId: string;
         try {
-          const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); metadataFolderId = _g.metadataFolderId;
+          const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId);
+          if (!_g) {
+            // Folders actually missing - this is the only case for DRIVE_NOT_INITIALIZED
+            return this.driveNotInitialized(res);
+          }
+          metadataFolderId = _g.metadataFolderId;
         } catch (error: any) {
-          console.error('[GetConnections] Error getting/creating metadata folder:', error);
-          // Return empty connections array if folder creation fails
-          return res.json({ connections: [] });
+          // Drive API error (token, permissions, etc.) - return appropriate error
+          if (error.message?.includes('authentication failed')) {
+            return res.status(401).json({
+              error: 'Google Drive authentication failed',
+              code: 'DRIVE_AUTH_FAILED',
+              message: error.message
+            });
+          }
+          // Other Drive API errors
+          console.error('[GetConnections] Drive API error:', error);
+          return res.status(500).json({
+            error: 'Failed to access Google Drive',
+            error_description: error.message || 'Drive API error'
+          });
         }
 
         const connections = await ConnectionsService.getConnections(userAccessToken, metadataFolderId);
@@ -12267,14 +12379,29 @@ class ProductionServer {
         // Use the identityId from credentials (the actual stored identifier)
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
 
-        // Get or create metadata folder
+        // Get metadata folder
         let metadataFolderId: string;
         try {
-          const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); metadataFolderId = _g.metadataFolderId;
+          const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId);
+          if (!_g) {
+            // Folders actually missing - this is the only case for DRIVE_NOT_INITIALIZED
+            return this.driveNotInitialized(res);
+          }
+          metadataFolderId = _g.metadataFolderId;
         } catch (error: any) {
-          console.error('Error getting/creating metadata folder:', error);
-          // Return empty arrays if folder creation fails
-          return res.json({ sent: [], received: [] });
+          // Drive API error (token, permissions, etc.) - return appropriate error
+          if (error.message?.includes('authentication failed')) {
+            return res.status(401).json({
+              error: 'Google Drive authentication failed',
+              code: 'DRIVE_AUTH_FAILED',
+              message: error.message
+            });
+          }
+          console.error('Error getting metadata folder:', error);
+          return res.status(500).json({
+            error: 'Failed to access Google Drive',
+            error_description: error.message || 'Drive API error'
+          });
         }
 
         const pending = await ConnectionsService.getPendingRequests(userAccessToken, metadataFolderId);
@@ -12319,14 +12446,29 @@ class ProductionServer {
         const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
 
-        // Get or create metadata folder
+        // Get metadata folder
         let metadataFolderId: string;
         try {
-          const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); metadataFolderId = _g.metadataFolderId;
+          const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId);
+          if (!_g) {
+            // Folders actually missing - this is the only case for DRIVE_NOT_INITIALIZED
+            return this.driveNotInitialized(res);
+          }
+          metadataFolderId = _g.metadataFolderId;
         } catch (error: any) {
-          console.error('Error getting/creating metadata folder:', error);
-          // Return not_connected if folder creation fails
-          return res.json({ status: 'not_connected' });
+          // Drive API error (token, permissions, etc.) - return appropriate error
+          if (error.message?.includes('authentication failed')) {
+            return res.status(401).json({
+              error: 'Google Drive authentication failed',
+              code: 'DRIVE_AUTH_FAILED',
+              message: error.message
+            });
+          }
+          console.error('Error getting metadata folder:', error);
+          return res.status(500).json({
+            error: 'Failed to access Google Drive',
+            error_description: error.message || 'Drive API error'
+          });
         }
 
         const status = await ConnectionsService.getConnectionStatus(
