@@ -24,10 +24,21 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v4
+      - name: Prepare site
+        run: |
+          mkdir -p site
+          cp index.html styles.css script.js CNAME .nojekyll site/
+          cp manifest.json browserconfig.xml sitemap.xml site/ 2>/dev/null || true
+          cp robots.txt developer-portal.html whitepaper.html privacy.html terms.html payment-gateway.html test.html offline.html site/ 2>/dev/null || true
+          cp "par Noir Launch Promo.mp4" site/ 2>/dev/null || true
+          cp -r branding icons site/
+          cp -r screenshots site/ 2>/dev/null || true
+          mkdir -p site/licensing
+          cp licensing/*.html site/licensing/ 2>/dev/null || true
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: 'site'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
