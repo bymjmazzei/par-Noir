@@ -801,8 +801,9 @@ function App() {
     return cached;
   }, [isLiked, getLikeCount, getComments, getShareCount, userState.isUnlocked, userState.pnIdentifier]);
 
+  // Stable key for indexedFiles (fileIds) to avoid unnecessary stableIndexedFiles updates
+  const indexedFilesKey = useMemo(() => indexedFiles.map(f => f.metadata.fileId).sort().join(','), [indexedFiles]);
   // Memoize indexedFiles array reference to prevent FeedEngagementSidebar re-renders
-  // Only recreate when indexedFilesKey changes (actual fileIds change)
   const stableIndexedFiles = useMemo(() => indexedFiles, [indexedFilesKey]);
 
   // (handleLockUnlock lives in useAuthAndSession)
