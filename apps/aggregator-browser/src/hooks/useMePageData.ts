@@ -7,6 +7,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import type { IndexedFile } from '../types/aggregator';
 import { getCreatorIdentifier, normalizeId, isThought, isCollection, isMedia } from '../utils/contentClass';
 import { getSavedFeed } from '../services/savedFeedService';
+import { getMetadataIndexService } from '../services/metadata/MetadataIndexService';
 import { API_ENDPOINT } from '../config/api';
 
 const EMPTY_ARRAY: IndexedFile[] = [];
@@ -66,6 +67,7 @@ export function useMePageData({
   const [mePageTab, setMePageTab] = useState<MePageTab>('all');
   const [, setIsLoadingSavedFiles] = useState(false);
   const [, setIsLoadingUserEngagement] = useState(false);
+  const [creatorOverrideFiles, setCreatorOverrideFiles] = useState<IndexedFile[]>([]);
 
   // --- refs ---
   const savedFeedLoadingRef = useRef(false);
@@ -108,11 +110,16 @@ export function useMePageData({
     if (!viewingCreatorId) return EMPTY_ARRAY;
     const n = normalizeId(viewingCreatorId);
     const all = [...mediaFiles, ...thoughtsFiles, ...collectionsFiles];
-    return all.filter((f) => {
+    const fromDiscovery = all.filter((f) => {
       const id = getCreatorIdentifier(f);
       return id != null && normalizeId(id) === n;
     });
-  }, [viewingCreatorId, mediaFiles, thoughtsFiles, collectionsFiles]);
+    const byId = new Map(fromDiscovery.map((f) => [f.metadata.fileId, f]));
+    creatorOverrideFiles.forEach((f) => {
+      if (!byId.has(f.metadata.fileId)) byId.set(f.metadata.fileId, f);
+    });
+    return Array.from(byId.values());
+  }, [viewingCreatorId, mediaFiles, thoughtsFiles, collectionsFiles, creatorOverrideFiles]);
 
   const isOwnIndex = !!(viewingCreatorId === userState.pnIdentifier && userState.isUnlocked);
 
@@ -185,6 +192,27 @@ export function useMePageData({
       });
     } else if (savedFeedFileIds.length === 0) setSavedFiles((p) => (p.length === 0 ? p : EMPTY_ARRAY));
   }, [savedFeedFileIdsKey, indexedFilesKey, savedFeedFileIds, indexedFilesMap]);
+
+  // --- fetch creator's files by authorDid when on Me page (covers discovery pagination / timing) ---
+  useEffect(() => {
+    if (!viewingCreatorId) {
+      setCreatorOverrideFiles([]);
+      return;
+    }
+    const authorDid = viewingCreatorId.startsWith('pn-') ? viewingCreatorId : `pn-${viewingCreatorId}`;
+    let cancelled = false;
+    (async () => {
+      try {
+        const svc = getMetadataIndexService();
+        const res = await svc.discoverFiles({ authorDid, limit: 150 }, false);
+        const list = Array.isArray(res) ? res : (res as { files: IndexedFile[] }).files || [];
+        if (!cancelled) setCreatorOverrideFiles(list);
+      } catch {
+        if (!cancelled) setCreatorOverrideFiles([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [viewingCreatorId]);
 
   // --- user engagement fileIds ---
   useEffect(() => {

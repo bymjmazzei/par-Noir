@@ -986,7 +986,7 @@ function App() {
           commentingFile={commentingFile}
           viewingCreatorId={viewingCreatorId}
           mePageTab={mePageData.mePageTab}
-          onTabSelect={(tab) => { setMePageTab(tab); setCurrentFeedIndex(0); }}
+          onTabSelect={(tab) => { mePageData.setMePageTab(tab); setCurrentFeedIndex(0); }}
           isOwnIndex={mePageData.isOwnIndex}
           filteredMeFiles={mePageData.filteredMeFiles}
           currentFeedIndex={currentFeedIndex}
