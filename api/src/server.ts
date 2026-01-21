@@ -11531,8 +11531,9 @@ class ProductionServer {
                   console.error(`[AcceptConnection] WARNING: Connection ${connectionId} not found or not accepted in other user's file after update`);
                 }
               }
-            } catch (otherUserFolderError: any) {
-              console.warn('Failed to update other user connection status:', otherUserFolderError?.message || otherUserFolderError);
+              } catch (otherUserFolderError: any) {
+                console.warn('Failed to update other user connection status:', otherUserFolderError?.message || otherUserFolderError);
+              }
             }
           }
         }
@@ -11614,11 +11615,12 @@ class ProductionServer {
               if (otherMetadataFolderId) {
                 try {
                   const requesterProfile = await ProfileService.getProfileFile(otherAccessToken, otherMetadataFolderId);
-                if (requesterProfile?.displayName) {
-                  requesterDisplayName = requesterProfile.displayName;
+                  if (requesterProfile?.displayName) {
+                    requesterDisplayName = requesterProfile.displayName;
+                  }
+                } catch (e) {
+                  // Use short identifier if profile not found
                 }
-              } catch (e) {
-                // Use short identifier if profile not found
               }
             }
           }
