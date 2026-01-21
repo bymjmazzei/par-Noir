@@ -10624,11 +10624,12 @@ class ProductionServer {
           }
         });
       } catch (error: any) {
+        const { fromDid: reqFromDid, toDid: reqToDid } = req.body || {};
         console.error('[SendMessage] Error sending message:', error);
         console.error('[SendMessage] Error stack:', error?.stack);
         console.error('[SendMessage] Error details:', {
-          fromDid,
-          toDid,
+          fromDid: reqFromDid,
+          toDid: reqToDid,
           message: error?.message,
           name: error?.name,
           code: error?.code
