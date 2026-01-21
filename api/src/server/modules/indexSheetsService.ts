@@ -47,12 +47,12 @@ export class IndexSheetsService {
   private static readonly OWNER_INDEX_FILE_NAME = 'owner-file-index.xlsx';
 
   /**
-   * Get or create index sheet.
-   * @param contentClass - When set (e.g. 'media'|'thoughts'|'collections'), uses {contentClass}-{owner|public}-index.xlsx to avoid name collision with root. Omit for root indexes.
+   * Create an index sheet in the given folder. Used only at Drive connection init.
+   * @param folderId - _metadata or a content-class folder (e.g. media, thoughts, collections)
    */
-  static async getOrCreateIndexSheet(
+  static async createIndexSheet(
     accessToken: string,
-    metadataFolderId: string,
+    folderId: string,
     indexType: 'public' | 'owner',
     contentClass?: 'media' | 'thoughts' | 'collections'
   ): Promise<string> {
@@ -68,109 +68,14 @@ export class IndexSheetsService {
           ? this.PUBLIC_INDEX_FILE_NAME
           : this.OWNER_INDEX_FILE_NAME;
 
-    // Search for existing index sheet in metadata folder
-    const fileQuery = `name='${fileName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    const searchResponse = await drive.files.list({
-      q: fileQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
-
-    if (searchResponse.data.files && searchResponse.data.files.length > 0) {
-      return searchResponse.data.files[0].id!;
-    }
-
-    // Also check if file exists elsewhere (but scope to user's folder structure if possible)
-    // First, try to get the pN folder that contains this metadata folder
-    let pnFolderId: string | null = null;
-    try {
-      const metadataFolderInfo = await drive.files.get({
-        fileId: metadataFolderId,
-        fields: 'parents'
-      });
-      const metadataParents = metadataFolderInfo.data.parents || [];
-      if (metadataParents.length > 0) {
-        pnFolderId = metadataParents[0];
-      }
-    } catch (e) {
-      // Can't determine pN folder, will use broad search
-    }
-
-    // Broad search for the file name (Drive API has no recursive "in folder tree").
-    // We only use a found file if it is provably in this pN (metadataFolderId or pnFolderId in direct parents).
-    // We never delete files—deleting "duplicates" has caused data loss when the wrong file was chosen.
-    const broadQuery = `name='${fileName}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    const broadSearchResponse = await drive.files.list({
-      q: broadQuery,
-      fields: 'files(id,name,parents)',
-      pageSize: 10
-    });
-
-    if (broadSearchResponse.data.files && broadSearchResponse.data.files.length > 0) {
-      const foundFiles = broadSearchResponse.data.files;
-      // Only consider files provably in this pN: direct parent is metadataFolderId or pnFolderId.
-      const candidates = foundFiles.filter(
-        (f) =>
-          f.parents &&
-          (f.parents.includes(metadataFolderId) || (pnFolderId != null && f.parents.includes(pnFolderId)))
-      );
-
-      if (candidates.length > 0) {
-        let fileToUse = candidates[0];
-        const inMetadataFolder = candidates.find((f) => f.parents?.includes(metadataFolderId));
-        if (inMetadataFolder) fileToUse = inMetadataFolder;
-
-        const existingFileId = fileToUse.id!;
-        const existingParents = fileToUse.parents || [];
-        if (!existingParents.includes(metadataFolderId)) {
-          await drive.files.update({
-            fileId: existingFileId,
-            removeParents: existingParents.join(','),
-            addParents: metadataFolderId,
-            fields: 'id, parents'
-          });
-        }
-        return existingFileId;
-      }
-      // None of the found files belong to this pN; fall through to create new.
-    }
-
-    // Legacy fallback: search for short name (older creates used title without .xlsx)
-    const shortName = fileName.replace(/\.xlsx$/i, '');
-    const legacyQuery = `name='${shortName.replace(/'/g, "\\'")}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    const legacyResponse = await drive.files.list({
-      q: legacyQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
-    if (legacyResponse.data.files && legacyResponse.data.files.length > 0) {
-      return legacyResponse.data.files[0].id!;
-    }
-
-    // Final check before create: another request may have created it
-    const finalCheckResponse = await drive.files.list({
-      q: fileQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
-    if (finalCheckResponse.data.files && finalCheckResponse.data.files.length > 0) {
-      return finalCheckResponse.data.files[0].id!;
-    }
-
-    // Create new index sheet (use full fileName so search finds it)
     const spreadsheet = await sheets.spreadsheets.create({
       requestBody: {
-        properties: {
-          title: fileName
-        },
+        properties: { title: fileName },
         sheets: [
           {
             properties: {
               title: 'Files',
-              gridProperties: {
-                rowCount: 100000,
-                columnCount: 6
-              }
+              gridProperties: { rowCount: 100000, columnCount: 6 }
             }
           }
         ]
@@ -182,21 +87,15 @@ export class IndexSheetsService {
       throw new Error(`Failed to create ${indexType} index sheet: no ID returned`);
     }
 
-    // Move to metadata folder
-    const fileInfo = await drive.files.get({
-      fileId: spreadsheetId,
-      fields: 'parents'
-    });
-    
+    const fileInfo = await drive.files.get({ fileId: spreadsheetId, fields: 'parents' });
     const currentParents = fileInfo.data.parents || [];
     await drive.files.update({
       fileId: spreadsheetId,
       removeParents: currentParents.join(','),
-      addParents: metadataFolderId,
+      addParents: folderId,
       fields: 'id, parents'
     });
 
-    // Set up headers
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: 'Files!A1:E1',
@@ -207,6 +106,42 @@ export class IndexSheetsService {
     });
 
     return spreadsheetId;
+  }
+
+  /**
+   * Get index sheet. Scoped search only; throws if not found.
+   * Sheets are created at Drive connection init; this does not create, move, or delete.
+   * @param contentClass - When set (e.g. 'media'|'thoughts'|'collections'), uses {contentClass}-{owner|public}-index.xlsx. Omit for root indexes.
+   */
+  static async getOrCreateIndexSheet(
+    accessToken: string,
+    metadataFolderId: string,
+    indexType: 'public' | 'owner',
+    contentClass?: 'media' | 'thoughts' | 'collections'
+  ): Promise<string> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const drive = google.drive({ version: 'v3', auth });
+
+    const fileName =
+      contentClass != null
+        ? `${contentClass}-${indexType}-index.xlsx`
+        : indexType === 'public'
+          ? this.PUBLIC_INDEX_FILE_NAME
+          : this.OWNER_INDEX_FILE_NAME;
+
+    const fileQuery = `name='${fileName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    const searchResponse = await drive.files.list({
+      q: fileQuery,
+      fields: 'files(id,name)',
+      pageSize: 1
+    });
+
+    if (searchResponse.data.files && searchResponse.data.files.length > 0) {
+      return searchResponse.data.files[0].id!;
+    }
+
+    throw new Error(`Index sheet ${fileName} not found in folder. Ensure Drive is initialized (connect and initialize in dashboard).`);
   }
 
   /**

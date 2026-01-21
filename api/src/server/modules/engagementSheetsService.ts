@@ -25,7 +25,59 @@ export class EngagementSheetsService {
   private static readonly ENGAGEMENT_FILE_NAME = 'engagement.xlsx';
 
   /**
-   * Get or create engagement sheet
+   * Create engagement sheet in _metadata. Used only at Drive connection init.
+   */
+  static async createEngagementSheet(accessToken: string, metadataFolderId: string): Promise<string> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+    const drive = google.drive({ version: 'v3', auth });
+
+    const spreadsheet = await sheets.spreadsheets.create({
+      requestBody: {
+        properties: { title: this.ENGAGEMENT_FILE_NAME },
+        sheets: [
+          { properties: { title: 'Likes', gridProperties: { rowCount: 100000, columnCount: 2 } } },
+          { properties: { title: 'Dislikes', gridProperties: { rowCount: 100000, columnCount: 2 } } },
+          { properties: { title: 'Comments', gridProperties: { rowCount: 100000, columnCount: 8 } } },
+          { properties: { title: 'Shares', gridProperties: { rowCount: 100000, columnCount: 2 } } },
+          { properties: { title: 'Saves', gridProperties: { rowCount: 100000, columnCount: 2 } } }
+        ]
+      }
+    });
+
+    const spreadsheetId = spreadsheet.data.spreadsheetId;
+    if (!spreadsheetId) throw new Error('Failed to create engagement sheet: no ID returned');
+
+    const fileInfo = await drive.files.get({ fileId: spreadsheetId, fields: 'parents' });
+    const currentParents = fileInfo.data.parents || [];
+    await drive.files.update({
+      fileId: spreadsheetId,
+      removeParents: currentParents.join(','),
+      addParents: metadataFolderId,
+      fields: 'id, parents'
+    });
+
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: 'RAW',
+        data: [
+          { range: 'Likes!A1:B1', values: [['File ID', 'Timestamp']] },
+          { range: 'Dislikes!A1:B1', values: [['File ID', 'Timestamp']] },
+          { range: 'Comments!A1:H1', values: [['Comment ID', 'File ID', 'Content', 'Author Name', 'Timestamp', 'Parent Comment ID', 'Likes (JSON)', 'Post Reply (JSON)']] },
+          { range: 'Shares!A1:B1', values: [['File ID', 'Timestamp']] },
+          { range: 'Saves!A1:B1', values: [['File ID', 'Timestamp']] }
+        ]
+      }
+    });
+
+    return spreadsheetId;
+  }
+
+  /**
+   * Get engagement sheet. Scoped search only; throws if not found.
+   * Created at Drive connection init; this does not create, move, or delete.
    */
   static async getOrCreateEngagementSheet(
     accessToken: string,
@@ -33,10 +85,8 @@ export class EngagementSheetsService {
   ): Promise<string> {
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
-    const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
-    // Search for existing engagement sheet in metadata folder
     const fileQuery = `name='${this.ENGAGEMENT_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
     const searchResponse = await drive.files.list({
       q: fileQuery,
@@ -48,171 +98,7 @@ export class EngagementSheetsService {
       return searchResponse.data.files[0].id!;
     }
 
-    // Broad search: only move a file if it is provably in this pN (metadataFolderId or pnFolderId in direct parents). Else create new.
-    let pnFolderId: string | null = null;
-    try {
-      const metadataFolderInfo = await drive.files.get({ fileId: metadataFolderId, fields: 'parents' });
-      const mp = metadataFolderInfo.data.parents || [];
-      if (mp.length > 0) pnFolderId = mp[0];
-    } catch { /* ignore */ }
-
-    const broadQuery = `name='${this.ENGAGEMENT_FILE_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    const broadSearchResponse = await drive.files.list({
-      q: broadQuery,
-      fields: 'files(id,name,parents)',
-      pageSize: 5
-    });
-
-    if (broadSearchResponse.data.files && broadSearchResponse.data.files.length > 0) {
-      const foundFiles = broadSearchResponse.data.files;
-      const candidates = foundFiles.filter(
-        (f) =>
-          f.parents &&
-          (f.parents.includes(metadataFolderId) || (pnFolderId != null && f.parents.includes(pnFolderId)))
-      );
-      if (candidates.length > 0) {
-        const existingFile = candidates[0];
-        const existingFileId = existingFile.id!;
-        const existingParents = existingFile.parents || [];
-        if (!existingParents.includes(metadataFolderId)) {
-          await drive.files.update({
-            fileId: existingFileId,
-            removeParents: existingParents.join(','),
-            addParents: metadataFolderId,
-            fields: 'id, parents'
-          });
-        }
-        return existingFileId;
-      }
-    }
-
-    // Legacy fallback: search for short name (older creates used title without .xlsx)
-    const legacyQuery = `name='engagement' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    const legacyResponse = await drive.files.list({
-      q: legacyQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
-    if (legacyResponse.data.files && legacyResponse.data.files.length > 0) {
-      return legacyResponse.data.files[0].id!;
-    }
-
-    // Final check before create: another request may have created it
-    const finalCheckResponse = await drive.files.list({
-      q: fileQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
-    if (finalCheckResponse.data.files && finalCheckResponse.data.files.length > 0) {
-      return finalCheckResponse.data.files[0].id!;
-    }
-
-    // Create new engagement sheet (use full constant so search finds it)
-    const spreadsheet = await sheets.spreadsheets.create({
-      requestBody: {
-        properties: {
-          title: this.ENGAGEMENT_FILE_NAME
-        },
-        sheets: [
-          {
-            properties: {
-              title: 'Likes',
-              gridProperties: {
-                rowCount: 100000,
-                columnCount: 2
-              }
-            }
-          },
-          {
-            properties: {
-              title: 'Dislikes',
-              gridProperties: {
-                rowCount: 100000,
-                columnCount: 2
-              }
-            }
-          },
-          {
-            properties: {
-              title: 'Comments',
-              gridProperties: {
-                rowCount: 100000,
-                columnCount: 8
-              }
-            }
-          },
-          {
-            properties: {
-              title: 'Shares',
-              gridProperties: {
-                rowCount: 100000,
-                columnCount: 2
-              }
-            }
-          },
-          {
-            properties: {
-              title: 'Saves',
-              gridProperties: {
-                rowCount: 100000,
-                columnCount: 2
-              }
-            }
-          }
-        ]
-      }
-    });
-
-    const spreadsheetId = spreadsheet.data.spreadsheetId;
-    if (!spreadsheetId) {
-      throw new Error('Failed to create engagement sheet: no ID returned');
-    }
-
-    // Move to metadata folder
-    const fileInfo = await drive.files.get({
-      fileId: spreadsheetId,
-      fields: 'parents'
-    });
-    
-    const currentParents = fileInfo.data.parents || [];
-    await drive.files.update({
-      fileId: spreadsheetId,
-      removeParents: currentParents.join(','),
-      addParents: metadataFolderId,
-      fields: 'id, parents'
-    });
-
-    // Set up headers for each sheet
-    await sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        valueInputOption: 'RAW',
-        data: [
-          {
-            range: 'Likes!A1:B1',
-            values: [['File ID', 'Timestamp']]
-          },
-          {
-            range: 'Dislikes!A1:B1',
-            values: [['File ID', 'Timestamp']]
-          },
-          {
-            range: 'Comments!A1:H1',
-            values: [['Comment ID', 'File ID', 'Content', 'Author Name', 'Timestamp', 'Parent Comment ID', 'Likes (JSON)', 'Post Reply (JSON)']]
-          },
-          {
-            range: 'Shares!A1:B1',
-            values: [['File ID', 'Timestamp']]
-          },
-          {
-            range: 'Saves!A1:B1',
-            values: [['File ID', 'Timestamp']]
-          }
-        ]
-      }
-    });
-
-    return spreadsheetId;
+    throw new Error(`${this.ENGAGEMENT_FILE_NAME} not found in _metadata. Ensure Drive is initialized (connect and initialize in dashboard).`);
   }
 
   /**

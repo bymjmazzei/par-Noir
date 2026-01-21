@@ -12,7 +12,48 @@ export class ZKPDataPointsSheetsService {
   private static readonly ZKP_DATA_POINTS_FILE_NAME = 'zkp-data-points.xlsx';
 
   /**
-   * Get or create ZKP data points sheet
+   * Create ZKP data points sheet in _metadata. Used only at Drive connection init.
+   */
+  static async createZKPDataPointsSheet(accessToken: string, metadataFolderId: string): Promise<string> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+    const drive = google.drive({ version: 'v3', auth });
+
+    const spreadsheet = await sheets.spreadsheets.create({
+      requestBody: {
+        properties: { title: this.ZKP_DATA_POINTS_FILE_NAME },
+        sheets: [{ properties: { title: 'Data Points', gridProperties: { rowCount: 10000, columnCount: 12 } } }]
+      }
+    });
+
+    const spreadsheetId = spreadsheet.data.spreadsheetId;
+    if (!spreadsheetId) throw new Error('Failed to create ZKP data points sheet: no ID returned');
+
+    const fileInfo = await drive.files.get({ fileId: spreadsheetId, fields: 'parents' });
+    const currentParents = fileInfo.data.parents || [];
+    await drive.files.update({
+      fileId: spreadsheetId,
+      removeParents: currentParents.join(','),
+      addParents: metadataFolderId,
+      fields: 'id, parents'
+    });
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Data Points!A1:L1',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [['Data Point ID', 'Proof Type', 'ZKP Proof', 'Signature', 'Verified At', 'Expires At', 'Verification Level', 'Provider', 'Fraud Prevention Score', 'Encrypted User Data', 'Created At', 'Updated At']]
+      }
+    });
+
+    return spreadsheetId;
+  }
+
+  /**
+   * Get ZKP data points sheet. Scoped search only; throws if not found.
+   * Created at Drive connection init; this does not create, move, or delete.
    */
   static async getOrCreateZKPDataPointsSheet(
     accessToken: string,
@@ -20,10 +61,8 @@ export class ZKPDataPointsSheetsService {
   ): Promise<string> {
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
-    const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
-    // Search for existing ZKP data points sheet in metadata folder
     const fileQuery = `name='${this.ZKP_DATA_POINTS_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
     const searchResponse = await drive.files.list({
       q: fileQuery,
@@ -35,116 +74,7 @@ export class ZKPDataPointsSheetsService {
       return searchResponse.data.files[0].id!;
     }
 
-    // Broad search: only move a file if it is provably in this pN (metadataFolderId or pnFolderId in direct parents). Else create new.
-    let pnFolderId: string | null = null;
-    try {
-      const metadataFolderInfo = await drive.files.get({ fileId: metadataFolderId, fields: 'parents' });
-      const mp = metadataFolderInfo.data.parents || [];
-      if (mp.length > 0) pnFolderId = mp[0];
-    } catch { /* ignore */ }
-
-    const broadQuery = `name='${this.ZKP_DATA_POINTS_FILE_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    const broadSearchResponse = await drive.files.list({
-      q: broadQuery,
-      fields: 'files(id,name,parents)',
-      pageSize: 5
-    });
-
-    if (broadSearchResponse.data.files && broadSearchResponse.data.files.length > 0) {
-      const foundFiles = broadSearchResponse.data.files;
-      const candidates = foundFiles.filter(
-        (f) =>
-          f.parents &&
-          (f.parents.includes(metadataFolderId) || (pnFolderId != null && f.parents.includes(pnFolderId)))
-      );
-      if (candidates.length > 0) {
-        const existingFile = candidates[0];
-        const existingFileId = existingFile.id!;
-        const existingParents = existingFile.parents || [];
-        if (!existingParents.includes(metadataFolderId)) {
-          await drive.files.update({
-            fileId: existingFileId,
-            removeParents: existingParents.join(','),
-            addParents: metadataFolderId,
-            fields: 'id, parents'
-          });
-        }
-        return existingFileId;
-      }
-    }
-
-    // Legacy fallback: search for short name (older creates used title without .xlsx)
-    const legacyQuery = `name='zkp-data-points' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    const legacyResponse = await drive.files.list({
-      q: legacyQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
-    if (legacyResponse.data.files && legacyResponse.data.files.length > 0) {
-      return legacyResponse.data.files[0].id!;
-    }
-
-    // Final check before create: another request may have created it
-    const finalCheckResponse = await drive.files.list({
-      q: fileQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
-    if (finalCheckResponse.data.files && finalCheckResponse.data.files.length > 0) {
-      return finalCheckResponse.data.files[0].id!;
-    }
-
-    // Create new ZKP data points sheet (use full constant so search finds it)
-    const spreadsheet = await sheets.spreadsheets.create({
-      requestBody: {
-        properties: {
-          title: this.ZKP_DATA_POINTS_FILE_NAME
-        },
-        sheets: [
-          {
-            properties: {
-              title: 'Data Points',
-              gridProperties: {
-                rowCount: 10000,
-                columnCount: 12
-              }
-            }
-          }
-        ]
-      }
-    });
-
-    const spreadsheetId = spreadsheet.data.spreadsheetId;
-    if (!spreadsheetId) {
-      throw new Error('Failed to create ZKP data points sheet: no ID returned');
-    }
-
-    // Get current parents and move to metadata folder (removing root folder)
-    const fileInfo = await drive.files.get({
-      fileId: spreadsheetId,
-      fields: 'parents'
-    });
-    
-    const currentParents = fileInfo.data.parents || [];
-    // Remove all current parents and set only metadata folder as parent
-    await drive.files.update({
-      fileId: spreadsheetId,
-      removeParents: currentParents.join(','),
-      addParents: metadataFolderId,
-      fields: 'id, parents'
-    });
-
-    // Set up headers
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: 'Data Points!A1:L1',
-      valueInputOption: 'RAW',
-      requestBody: {
-        values: [['Data Point ID', 'Proof Type', 'ZKP Proof', 'Signature', 'Verified At', 'Expires At', 'Verification Level', 'Provider', 'Fraud Prevention Score', 'Encrypted User Data', 'Created At', 'Updated At']]
-      }
-    });
-
-    return spreadsheetId;
+    throw new Error(`${this.ZKP_DATA_POINTS_FILE_NAME} not found in _metadata. Ensure Drive is initialized (connect and initialize in dashboard).`);
   }
 
   /**

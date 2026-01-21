@@ -47,194 +47,29 @@ export class PreferencesSheetsService {
   private static readonly PREFERENCES_FILE_NAME = 'preferences.xlsx';
 
   /**
-   * Get or create preferences sheet
+   * Create preferences sheet in _metadata with both Interactions and Current. Used only at Drive connection init.
    */
-  static async getOrCreatePreferencesSheet(
-    accessToken: string,
-    metadataFolderId: string
-  ): Promise<string> {
+  static async createPreferencesSheet(accessToken: string, metadataFolderId: string): Promise<string> {
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
-    // Search for existing preferences sheet in metadata folder
-    // Use name='preferences' to match the created sheet title (PREFERENCES_FILE_NAME.replace('.xlsx','') = "preferences")
-    const fileQuery = `name='preferences' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    const searchResponse = await drive.files.list({
-      q: fileQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
-
-    if (searchResponse.data.files && searchResponse.data.files.length > 0) {
-      const spreadsheetId = searchResponse.data.files[0].id!;
-      
-      // Ensure "Current" sheet exists (for existing spreadsheets created before migration)
-      try {
-        const spreadsheet = await sheets.spreadsheets.get({
-          spreadsheetId,
-          fields: 'sheets.properties.title'
-        });
-        
-        const hasCurrentSheet = spreadsheet.data.sheets?.some(
-          sheet => sheet.properties?.title === 'Current'
-        );
-        
-        if (!hasCurrentSheet) {
-          // Add "Current" sheet to existing spreadsheet
-          await sheets.spreadsheets.batchUpdate({
-            spreadsheetId,
-            requestBody: {
-              requests: [
-                {
-                  addSheet: {
-                    properties: {
-                      title: 'Current',
-                      gridProperties: {
-                        rowCount: 1000,
-                        columnCount: 2
-                      }
-                    }
-                  }
-                }
-              ]
-            }
-          });
-          
-          // Set up headers for Current sheet
-          await sheets.spreadsheets.values.update({
-            spreadsheetId,
-            range: 'Current!A1:B1',
-            valueInputOption: 'RAW',
-            requestBody: {
-              values: [['Key', 'Value (JSON)']]
-            }
-          });
-        }
-      } catch (error) {
-        // If we can't check/add the sheet, continue anyway (it might already exist)
-        console.warn('Could not ensure Current sheet exists:', error);
-      }
-      
-      return spreadsheetId;
-    }
-
-    // Broad search: only move a file if it is provably in this pN (metadataFolderId or pnFolderId in direct parents). Else create new.
-    let pnFolderId: string | null = null;
-    try {
-      const metadataFolderInfo = await drive.files.get({ fileId: metadataFolderId, fields: 'parents' });
-      const mp = metadataFolderInfo.data.parents || [];
-      if (mp.length > 0) pnFolderId = mp[0];
-    } catch { /* ignore */ }
-
-    const broadQuery = `name='preferences' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    const broadSearchResponse = await drive.files.list({
-      q: broadQuery,
-      fields: 'files(id,name,parents)',
-      pageSize: 5
-    });
-
-    if (broadSearchResponse.data.files && broadSearchResponse.data.files.length > 0) {
-      const foundFiles = broadSearchResponse.data.files;
-      const candidates = foundFiles.filter(
-        (f) =>
-          f.parents &&
-          (f.parents.includes(metadataFolderId) || (pnFolderId != null && f.parents.includes(pnFolderId)))
-      );
-      if (candidates.length > 0) {
-        const existingFile = candidates[0];
-        const existingFileId = existingFile.id!;
-        const existingParents = existingFile.parents || [];
-        if (!existingParents.includes(metadataFolderId)) {
-          await drive.files.update({
-            fileId: existingFileId,
-            removeParents: existingParents.join(','),
-            addParents: metadataFolderId,
-            fields: 'id, parents'
-          });
-        }
-        // Ensure "Current" sheet exists (for existing spreadsheets created before migration)
-        try {
-          const spreadsheet = await sheets.spreadsheets.get({
-            spreadsheetId: existingFileId,
-            fields: 'sheets.properties.title'
-          });
-          const hasCurrentSheet = spreadsheet.data.sheets?.some(
-            (sheet) => sheet.properties?.title === 'Current'
-          );
-          if (!hasCurrentSheet) {
-            await sheets.spreadsheets.batchUpdate({
-              spreadsheetId: existingFileId,
-              requestBody: {
-                requests: [
-                  {
-                    addSheet: {
-                      properties: {
-                        title: 'Current',
-                        gridProperties: { rowCount: 1000, columnCount: 2 }
-                      }
-                    }
-                  }
-                ]
-              }
-            });
-            await sheets.spreadsheets.values.update({
-              spreadsheetId: existingFileId,
-              range: 'Current!A1:B1',
-              valueInputOption: 'RAW',
-              requestBody: { values: [['Key', 'Value (JSON)']] }
-            });
-          }
-        } catch (error) {
-          console.warn('Could not ensure Current sheet exists:', error);
-        }
-        return existingFileId;
-      }
-    }
-
-    // Create new preferences sheet with both "Interactions" and "Current" sheets
     const spreadsheet = await sheets.spreadsheets.create({
       requestBody: {
-        properties: {
-          title: this.PREFERENCES_FILE_NAME.replace('.xlsx', '')
-        },
+        properties: { title: this.PREFERENCES_FILE_NAME.replace('.xlsx', '') },
         sheets: [
-          {
-            properties: {
-              title: 'Interactions',
-              gridProperties: {
-                rowCount: 100000,
-                columnCount: 11
-              }
-            }
-          },
-          {
-            properties: {
-              title: 'Current',
-              gridProperties: {
-                rowCount: 1000,
-                columnCount: 2
-              }
-            }
-          }
+          { properties: { title: 'Interactions', gridProperties: { rowCount: 100000, columnCount: 11 } } },
+          { properties: { title: 'Current', gridProperties: { rowCount: 1000, columnCount: 2 } } }
         ]
       }
     });
 
     const spreadsheetId = spreadsheet.data.spreadsheetId;
-    if (!spreadsheetId) {
-      throw new Error('Failed to create preferences sheet: no ID returned');
-    }
+    if (!spreadsheetId) throw new Error('Failed to create preferences sheet: no ID returned');
 
-    // Get current parents and move to metadata folder (removing root folder)
-    const fileInfo = await drive.files.get({
-      fileId: spreadsheetId,
-      fields: 'parents'
-    });
-    
+    const fileInfo = await drive.files.get({ fileId: spreadsheetId, fields: 'parents' });
     const currentParents = fileInfo.data.parents || [];
-    // Remove all current parents and set only metadata folder as parent
     await drive.files.update({
       fileId: spreadsheetId,
       removeParents: currentParents.join(','),
@@ -242,7 +77,6 @@ export class PreferencesSheetsService {
       fields: 'id, parents'
     });
 
-    // Set up headers for Interactions sheet
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: 'Interactions!A1:K1',
@@ -252,17 +86,13 @@ export class PreferencesSheetsService {
       }
     });
 
-    // Set up headers for Current sheet (key-value pairs)
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: 'Current!A1:B1',
       valueInputOption: 'RAW',
-      requestBody: {
-        values: [['Key', 'Value (JSON)']]
-      }
+      requestBody: { values: [['Key', 'Value (JSON)']] }
     });
 
-    // Initialize Current sheet with empty preferences
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: 'Current!A2:B2',
@@ -273,6 +103,32 @@ export class PreferencesSheetsService {
     });
 
     return spreadsheetId;
+  }
+
+  /**
+   * Get preferences sheet. Scoped search only; throws if not found.
+   * Created at Drive connection init; this does not create, move, or delete.
+   */
+  static async getOrCreatePreferencesSheet(
+    accessToken: string,
+    metadataFolderId: string
+  ): Promise<string> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const drive = google.drive({ version: 'v3', auth });
+
+    const fileQuery = `name='preferences' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    const searchResponse = await drive.files.list({
+      q: fileQuery,
+      fields: 'files(id,name)',
+      pageSize: 1
+    });
+
+    if (searchResponse.data.files && searchResponse.data.files.length > 0) {
+      return searchResponse.data.files[0].id!;
+    }
+
+    throw new Error(`${this.PREFERENCES_FILE_NAME} not found in _metadata. Ensure Drive is initialized (connect and initialize in dashboard).`);
   }
 
   /**

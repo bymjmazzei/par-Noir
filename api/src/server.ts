@@ -342,7 +342,8 @@ class ProductionServer {
   }
 
   /**
-   * Initialize content class-specific index Sheets (public-file-index.xlsx, owner-file-index.xlsx) in a content class folder
+   * Initialize content class-specific index Sheets (public-file-index.xlsx, owner-file-index.xlsx) in a content class folder.
+   * Get-only; on not-found create via createIndexSheet (sheets are created at connection only).
    */
   private async initializeContentClassIndexFiles(
     accessToken: string,
@@ -350,14 +351,26 @@ class ProductionServer {
     folderName: string
   ): Promise<void> {
     const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+    const cc = folderName as 'media' | 'thoughts' | 'collections';
     try {
-      await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'owner', folderName as 'media' | 'thoughts' | 'collections');
+      try {
+        await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'owner', cc);
+      } catch {
+        await IndexSheetsService.createIndexSheet(accessToken, folderId, 'owner', cc);
+        await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'owner', cc);
+      }
       console.log(`[initializeContentClassIndexFiles] Initialized owner-file-index.xlsx in '${folderName}'`);
     } catch (e: any) {
       console.warn(`[initializeContentClassIndexFiles] Failed to init owner index in '${folderName}':`, e?.message || e);
     }
     try {
-      const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'public', folderName as 'media' | 'thoughts' | 'collections');
+      let publicSheetId: string;
+      try {
+        publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'public', cc);
+      } catch {
+        await IndexSheetsService.createIndexSheet(accessToken, folderId, 'public', cc);
+        publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'public', cc);
+      }
       await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
       console.log(`[initializeContentClassIndexFiles] Initialized public-file-index.xlsx in '${folderName}'`);
     } catch (e: any) {
@@ -366,48 +379,49 @@ class ProductionServer {
   }
 
   /**
-   * Initialize root index files (public-file-index.xlsx and owner-file-index.xlsx)
-   * These are read by the browser to discover files, so they should exist even if empty
+   * Initialize root index files (public-file-index.xlsx and owner-file-index.xlsx).
+   * Get-only; on not-found create via createIndexSheet (sheets are created at connection only).
    */
   private async initializeIndexFiles(
     accessToken: string,
     metadataFolderId: string,
-    pnIdentifier: string
+    _pnIdentifier: string
   ): Promise<void> {
-    // Initialize index files using Sheets (replaces JSON files)
     const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-    
+
     try {
-      // Initialize public-file-index.xlsx
-      const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'public');
-      
-      // Set public permissions on the sheet
+      let publicSheetId: string;
+      try {
+        publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'public');
+      } catch {
+        await IndexSheetsService.createIndexSheet(accessToken, metadataFolderId, 'public');
+        publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'public');
+      }
       try {
         const { google } = await import('googleapis');
         const auth = new google.auth.OAuth2();
         auth.setCredentials({ access_token: accessToken });
         const drive = google.drive({ version: 'v3', auth });
-        
         await drive.permissions.create({
           fileId: publicSheetId,
-          requestBody: {
-            role: 'reader',
-            type: 'anyone'
-          }
+          requestBody: { role: 'reader', type: 'anyone' }
         });
         console.log(`[initializeIndexFiles] Set public permissions on public-file-index.xlsx`);
       } catch (permError: any) {
         console.warn(`[initializeIndexFiles] Failed to set public permissions on public-file-index.xlsx:`, permError);
       }
-      
       console.log(`[initializeIndexFiles] Initialized public-file-index.xlsx`);
     } catch (error: any) {
       console.error(`[initializeIndexFiles] Error creating public-file-index.xlsx:`, error);
     }
 
     try {
-      // Initialize owner-file-index.xlsx
-      await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'owner');
+      try {
+        await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'owner');
+      } catch {
+        await IndexSheetsService.createIndexSheet(accessToken, metadataFolderId, 'owner');
+        await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'owner');
+      }
       console.log(`[initializeIndexFiles] Initialized owner-file-index.xlsx`);
     } catch (error: any) {
       console.error(`[initializeIndexFiles] Error creating owner-file-index.xlsx:`, error);
@@ -4590,7 +4604,11 @@ class ProductionServer {
                 
                 // Initialize preferences.xlsx (for interaction history logging)
                 const { PreferencesSheetsService } = await import('./server/modules/preferencesSheetsService');
-                await PreferencesSheetsService.getOrCreatePreferencesSheet(accessToken, metadataFolderId);
+                try {
+                  await PreferencesSheetsService.getOrCreatePreferencesSheet(accessToken, metadataFolderId);
+                } catch {
+                  await PreferencesSheetsService.createPreferencesSheet(accessToken, metadataFolderId);
+                }
                 console.log(`[StorageCredentials PUT] Initialized preferences.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (prefError: any) {
                 console.warn(`[StorageCredentials PUT] Failed to initialize preferences:`, prefError?.message || prefError);
@@ -4601,7 +4619,11 @@ class ProductionServer {
               // Initialize notifications.xlsx
               try {
                 const { NotificationsSheetsService } = await import('./server/modules/notificationsSheetsService');
-                await NotificationsSheetsService.getOrCreateNotificationsSheet(accessToken, metadataFolderId);
+                try {
+                  await NotificationsSheetsService.getOrCreateNotificationsSheet(accessToken, metadataFolderId);
+                } catch {
+                  await NotificationsSheetsService.createNotificationsSheet(accessToken, metadataFolderId);
+                }
                 console.log(`[StorageCredentials PUT] Initialized notifications.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (notifError: any) {
                 console.warn(`[StorageCredentials PUT] Failed to initialize notifications.xlsx:`, notifError?.message || notifError);
@@ -4610,7 +4632,11 @@ class ProductionServer {
               // Initialize activity_ledger.xlsx
               try {
                 const { ActivityLedgerSheetsService } = await import('./server/modules/activityLedgerSheetsService');
-                await ActivityLedgerSheetsService.getOrCreateActivityLedgerSheet(accessToken, metadataFolderId);
+                try {
+                  await ActivityLedgerSheetsService.getOrCreateActivityLedgerSheet(accessToken, metadataFolderId);
+                } catch {
+                  await ActivityLedgerSheetsService.createActivityLedgerSheet(accessToken, metadataFolderId);
+                }
                 console.log(`[StorageCredentials PUT] Initialized activity_ledger.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (activityError: any) {
                 console.warn(`[StorageCredentials PUT] Failed to initialize activity_ledger.xlsx:`, activityError?.message || activityError);
@@ -4619,7 +4645,11 @@ class ProductionServer {
               // Initialize connections.xlsx
               try {
                 const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-                await ConnectionsSheetsService.getOrCreateConnectionsSheet(accessToken, metadataFolderId);
+                try {
+                  await ConnectionsSheetsService.getOrCreateConnectionsSheet(accessToken, metadataFolderId);
+                } catch {
+                  await ConnectionsSheetsService.createConnectionsSheet(accessToken, metadataFolderId);
+                }
                 console.log(`[StorageCredentials PUT] Initialized connections.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (connError: any) {
                 console.warn(`[StorageCredentials PUT] Failed to initialize connections.xlsx:`, connError?.message || connError);
@@ -4628,7 +4658,11 @@ class ProductionServer {
               // Initialize engagement.xlsx
               try {
                 const { EngagementSheetsService } = await import('./server/modules/engagementSheetsService');
-                await EngagementSheetsService.getOrCreateEngagementSheet(accessToken, metadataFolderId);
+                try {
+                  await EngagementSheetsService.getOrCreateEngagementSheet(accessToken, metadataFolderId);
+                } catch {
+                  await EngagementSheetsService.createEngagementSheet(accessToken, metadataFolderId);
+                }
                 console.log(`[StorageCredentials PUT] Initialized engagement.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (engError: any) {
                 console.warn(`[StorageCredentials PUT] Failed to initialize engagement.xlsx:`, engError?.message || engError);
@@ -4637,7 +4671,11 @@ class ProductionServer {
               // Initialize messaging_ledger.xlsx
               try {
                 const { MessagingLedgerSheetsService } = await import('./server/modules/messagingLedgerSheetsService');
-                await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(accessToken, metadataFolderId);
+                try {
+                  await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(accessToken, metadataFolderId);
+                } catch {
+                  await MessagingLedgerSheetsService.createMessagingLedgerSheet(accessToken, metadataFolderId);
+                }
                 console.log(`[StorageCredentials PUT] Initialized messaging_ledger.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (msgError: any) {
                 console.warn(`[StorageCredentials PUT] Failed to initialize messaging_ledger.xlsx:`, msgError?.message || msgError);
@@ -4667,21 +4705,47 @@ class ProductionServer {
               // Initialize zkp-data-points.xlsx
               try {
                 const { ZKPDataPointsSheetsService } = await import('./server/modules/zkpDataPointsSheetsService');
-                await ZKPDataPointsSheetsService.getOrCreateZKPDataPointsSheet(accessToken, metadataFolderId);
+                try {
+                  await ZKPDataPointsSheetsService.getOrCreateZKPDataPointsSheet(accessToken, metadataFolderId);
+                } catch {
+                  await ZKPDataPointsSheetsService.createZKPDataPointsSheet(accessToken, metadataFolderId);
+                }
                 console.log(`[StorageCredentials PUT] Initialized zkp-data-points.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (zkpError: any) {
                 console.warn(`[StorageCredentials PUT] Failed to initialize zkp-data-points.xlsx:`, zkpError?.message || zkpError);
               }
-              
+
               // Initialize third-party-permissions.xlsx
               try {
                 const { ThirdPartyPermissionsSheetsService } = await import('./server/modules/thirdPartyPermissionsSheetsService');
-                await ThirdPartyPermissionsSheetsService.getOrCreateThirdPartyPermissionsSheet(accessToken, metadataFolderId);
+                try {
+                  await ThirdPartyPermissionsSheetsService.getOrCreateThirdPartyPermissionsSheet(accessToken, metadataFolderId);
+                } catch {
+                  await ThirdPartyPermissionsSheetsService.createThirdPartyPermissionsSheet(accessToken, metadataFolderId);
+                }
                 console.log(`[StorageCredentials PUT] Initialized third-party-permissions.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (permError: any) {
                 console.warn(`[StorageCredentials PUT] Failed to initialize third-party-permissions.xlsx:`, permError?.message || permError);
               }
-              
+
+              // Initialize followers.xlsx and following.xlsx
+              try {
+                const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+                try {
+                  await ConnectionsSheetsService.getOrCreateFollowersSheet(accessToken, metadataFolderId);
+                } catch {
+                  await ConnectionsSheetsService.createFollowersSheet(accessToken, metadataFolderId);
+                }
+                try {
+                  await ConnectionsSheetsService.getOrCreateFollowingSheet(accessToken, metadataFolderId);
+                } catch {
+                  await ConnectionsSheetsService.createFollowingSheet(accessToken, metadataFolderId);
+                }
+                console.log(`[StorageCredentials PUT] Initialized followers.xlsx and following.xlsx for identityId: ${sanitizedIdentityId}`);
+              } catch (ffError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize followers/following:`, ffError?.message || ffError);
+              }
+
               console.log(`[StorageCredentials PUT] Successfully initialized all metadata files for identityId: ${sanitizedIdentityId}`);
             }
           } catch (err: any) {

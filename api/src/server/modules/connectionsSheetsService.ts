@@ -32,127 +32,29 @@ export class ConnectionsSheetsService {
   private static readonly FOLLOWING_FILE_NAME = 'following.xlsx';
 
   /**
-   * Get or create connections sheet
+   * Create connections sheet in _metadata. Used only at Drive connection init.
    */
-  static async getOrCreateConnectionsSheet(
-    accessToken: string,
-    metadataFolderId: string
-  ): Promise<string> {
+  static async createConnectionsSheet(accessToken: string, metadataFolderId: string): Promise<string> {
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
-    // Search for existing connections sheet in metadata folder
-    const fileQuery = `name='${this.CONNECTIONS_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    const searchResponse = await drive.files.list({
-      q: fileQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
-
-    if (searchResponse.data.files && searchResponse.data.files.length > 0) {
-      return searchResponse.data.files[0].id!;
-    }
-
-    // Broad search: only move a file if it is provably in this pN (metadataFolderId or pnFolderId in direct parents). Else create new.
-    let pnFolderId: string | null = null;
-    try {
-      const metadataFolderInfo = await drive.files.get({ fileId: metadataFolderId, fields: 'parents' });
-      const mp = metadataFolderInfo.data.parents || [];
-      if (mp.length > 0) pnFolderId = mp[0];
-    } catch { /* ignore */ }
-
-    const broadQuery = `name='${this.CONNECTIONS_FILE_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    const broadSearchResponse = await drive.files.list({
-      q: broadQuery,
-      fields: 'files(id,name,parents)',
-      pageSize: 5
-    });
-
-    if (broadSearchResponse.data.files && broadSearchResponse.data.files.length > 0) {
-      const foundFiles = broadSearchResponse.data.files;
-      const candidates = foundFiles.filter(
-        (f) =>
-          f.parents &&
-          (f.parents.includes(metadataFolderId) || (pnFolderId != null && f.parents.includes(pnFolderId)))
-      );
-      if (candidates.length > 0) {
-        const existingFile = candidates[0];
-        const existingFileId = existingFile.id!;
-        const existingParents = existingFile.parents || [];
-        if (!existingParents.includes(metadataFolderId)) {
-          await drive.files.update({
-            fileId: existingFileId,
-            removeParents: existingParents.join(','),
-            addParents: metadataFolderId,
-            fields: 'id, parents'
-          });
-        }
-        return existingFileId;
-      }
-    }
-
-    // Legacy fallback: search for short name (older creates used title without .xlsx)
-    const legacyQuery = `name='connections' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    const legacyResponse = await drive.files.list({
-      q: legacyQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
-    if (legacyResponse.data.files && legacyResponse.data.files.length > 0) {
-      return legacyResponse.data.files[0].id!;
-    }
-
-    // Final check before create: another request may have created it
-    const finalCheckResponse = await drive.files.list({
-      q: fileQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
-    if (finalCheckResponse.data.files && finalCheckResponse.data.files.length > 0) {
-      return finalCheckResponse.data.files[0].id!;
-    }
-
-    // Create new connections spreadsheet (use full constant so search finds it)
     const spreadsheet = await sheets.spreadsheets.create({
       requestBody: {
-        properties: {
-          title: this.CONNECTIONS_FILE_NAME
-        },
+        properties: { title: this.CONNECTIONS_FILE_NAME },
         sheets: [
-          {
-            properties: {
-              title: 'Connections',
-              gridProperties: { rowCount: 100000, columnCount: 5 }
-            }
-          },
-          {
-            properties: {
-              title: 'Blocked',
-              gridProperties: { rowCount: 10000, columnCount: 1 }
-            }
-          },
-          {
-            properties: {
-              title: 'Metadata',
-              gridProperties: { rowCount: 10, columnCount: 2 }
-            }
-          }
+          { properties: { title: 'Connections', gridProperties: { rowCount: 100000, columnCount: 5 } } },
+          { properties: { title: 'Blocked', gridProperties: { rowCount: 10000, columnCount: 1 } } },
+          { properties: { title: 'Metadata', gridProperties: { rowCount: 10, columnCount: 2 } } }
         ]
       }
     });
 
     const spreadsheetId = spreadsheet.data.spreadsheetId;
-    if (!spreadsheetId) {
-      throw new Error('Failed to create connections sheet: no ID returned');
-    }
+    if (!spreadsheetId) throw new Error('Failed to create connections sheet: no ID returned');
 
-    // Get current parents and move to metadata folder (removing root folder)
-    const fileInfo = await drive.files.get({
-      fileId: spreadsheetId,
-      fields: 'parents'
-    });
+    const fileInfo = await drive.files.get({ fileId: spreadsheetId, fields: 'parents' });
     const currentParents = fileInfo.data.parents || [];
     await drive.files.update({
       fileId: spreadsheetId,
@@ -161,7 +63,6 @@ export class ConnectionsSheetsService {
       fields: 'id, parents'
     });
 
-    // Set up headers for all sheets
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId,
       requestBody: {
@@ -175,6 +76,32 @@ export class ConnectionsSheetsService {
     });
 
     return spreadsheetId;
+  }
+
+  /**
+   * Get connections sheet. Scoped search only; throws if not found.
+   * Created at Drive connection init; this does not create, move, or delete.
+   */
+  static async getOrCreateConnectionsSheet(
+    accessToken: string,
+    metadataFolderId: string
+  ): Promise<string> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const drive = google.drive({ version: 'v3', auth });
+
+    const fileQuery = `name='${this.CONNECTIONS_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    const searchResponse = await drive.files.list({
+      q: fileQuery,
+      fields: 'files(id,name)',
+      pageSize: 1
+    });
+
+    if (searchResponse.data.files && searchResponse.data.files.length > 0) {
+      return searchResponse.data.files[0].id!;
+    }
+
+    throw new Error(`${this.CONNECTIONS_FILE_NAME} not found in _metadata. Ensure Drive is initialized (connect and initialize in dashboard).`);
   }
 
   /**
@@ -312,7 +239,43 @@ export class ConnectionsSheetsService {
   }
 
   /**
-   * Get or create followers sheet (paid feeds only)
+   * Create followers sheet in _metadata. Used only at Drive connection init.
+   */
+  static async createFollowersSheet(accessToken: string, metadataFolderId: string): Promise<string> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+    const drive = google.drive({ version: 'v3', auth });
+
+    const spreadsheet = await sheets.spreadsheets.create({
+      requestBody: {
+        properties: { title: this.FOLLOWERS_FILE_NAME },
+        sheets: [{ properties: { title: 'Followers', gridProperties: { rowCount: 100000, columnCount: 3 } } }]
+      }
+    });
+
+    const spreadsheetId = spreadsheet.data.spreadsheetId;
+    if (!spreadsheetId) throw new Error('Failed to create followers sheet: no ID returned');
+
+    await drive.files.update({
+      fileId: spreadsheetId,
+      addParents: metadataFolderId,
+      fields: 'id, parents'
+    });
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Followers!A1:C1',
+      valueInputOption: 'RAW',
+      requestBody: { values: [['Follower DID', 'Followed At', 'Feed ID']] }
+    });
+
+    return spreadsheetId;
+  }
+
+  /**
+   * Get followers sheet. Scoped search only; throws if not found.
+   * Created at Drive connection init; this does not create, move, or delete.
    */
   static async getOrCreateFollowersSheet(
     accessToken: string,
@@ -320,10 +283,8 @@ export class ConnectionsSheetsService {
   ): Promise<string> {
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
-    const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
-    // Search for existing followers sheet
     const fileQuery = `name='${this.FOLLOWERS_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
     const searchResponse = await drive.files.list({
       q: fileQuery,
@@ -335,74 +296,47 @@ export class ConnectionsSheetsService {
       return searchResponse.data.files[0].id!;
     }
 
-    // Legacy fallback: search for short name (older creates used title without .xlsx)
-    const legacyQuery = `name='followers' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    const legacyResponse = await drive.files.list({
-      q: legacyQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
-    if (legacyResponse.data.files && legacyResponse.data.files.length > 0) {
-      return legacyResponse.data.files[0].id!;
-    }
+    throw new Error(`${this.FOLLOWERS_FILE_NAME} not found in _metadata. Ensure Drive is initialized (connect and initialize in dashboard).`);
+  }
 
-    // Final check before create: another request may have created it
-    const finalCheckResponse = await drive.files.list({
-      q: fileQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
-    if (finalCheckResponse.data.files && finalCheckResponse.data.files.length > 0) {
-      return finalCheckResponse.data.files[0].id!;
-    }
+  /**
+   * Create following sheet in _metadata. Used only at Drive connection init.
+   */
+  static async createFollowingSheet(accessToken: string, metadataFolderId: string): Promise<string> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+    const drive = google.drive({ version: 'v3', auth });
 
-    // Create new followers sheet (use full constant so search finds it)
     const spreadsheet = await sheets.spreadsheets.create({
       requestBody: {
-        properties: {
-          title: this.FOLLOWERS_FILE_NAME
-        },
-        sheets: [
-          {
-            properties: {
-              title: 'Followers',
-              gridProperties: {
-                rowCount: 100000,
-                columnCount: 3
-              }
-            }
-          }
-        ]
+        properties: { title: this.FOLLOWING_FILE_NAME },
+        sheets: [{ properties: { title: 'Following', gridProperties: { rowCount: 100000, columnCount: 3 } } }]
       }
     });
 
     const spreadsheetId = spreadsheet.data.spreadsheetId;
-    if (!spreadsheetId) {
-      throw new Error('Failed to create followers sheet: no ID returned');
-    }
+    if (!spreadsheetId) throw new Error('Failed to create following sheet: no ID returned');
 
-    // Move to metadata folder
     await drive.files.update({
       fileId: spreadsheetId,
       addParents: metadataFolderId,
       fields: 'id, parents'
     });
 
-    // Set up headers
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'Followers!A1:C1',
+      range: 'Following!A1:C1',
       valueInputOption: 'RAW',
-      requestBody: {
-        values: [['Follower DID', 'Followed At', 'Feed ID']]
-      }
+      requestBody: { values: [['Target Type', 'Target ID', 'Followed At']] }
     });
 
     return spreadsheetId;
   }
 
   /**
-   * Get or create following sheet (all users)
+   * Get following sheet. Scoped search only; throws if not found.
+   * Created at Drive connection init; this does not create, move, or delete.
    */
   static async getOrCreateFollowingSheet(
     accessToken: string,
@@ -410,10 +344,8 @@ export class ConnectionsSheetsService {
   ): Promise<string> {
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
-    const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
-    // Search for existing following sheet
     const fileQuery = `name='${this.FOLLOWING_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
     const searchResponse = await drive.files.list({
       q: fileQuery,
@@ -425,70 +357,7 @@ export class ConnectionsSheetsService {
       return searchResponse.data.files[0].id!;
     }
 
-    // Legacy fallback: search for short name (older creates used title without .xlsx)
-    const legacyQuery = `name='following' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    const legacyResponse = await drive.files.list({
-      q: legacyQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
-    if (legacyResponse.data.files && legacyResponse.data.files.length > 0) {
-      return legacyResponse.data.files[0].id!;
-    }
-
-    // Final check before create: another request may have created it
-    const finalCheckResponse = await drive.files.list({
-      q: fileQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
-    if (finalCheckResponse.data.files && finalCheckResponse.data.files.length > 0) {
-      return finalCheckResponse.data.files[0].id!;
-    }
-
-    // Create new following sheet (use full constant so search finds it)
-    const spreadsheet = await sheets.spreadsheets.create({
-      requestBody: {
-        properties: {
-          title: this.FOLLOWING_FILE_NAME
-        },
-        sheets: [
-          {
-            properties: {
-              title: 'Following',
-              gridProperties: {
-                rowCount: 100000,
-                columnCount: 3
-              }
-            }
-          }
-        ]
-      }
-    });
-
-    const spreadsheetId = spreadsheet.data.spreadsheetId;
-    if (!spreadsheetId) {
-      throw new Error('Failed to create following sheet: no ID returned');
-    }
-
-    // Move to metadata folder
-    await drive.files.update({
-      fileId: spreadsheetId,
-      addParents: metadataFolderId,
-      fields: 'id, parents'
-    });
-
-    // Set up headers
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: 'Following!A1:C1',
-      valueInputOption: 'RAW',
-      requestBody: {
-        values: [['Target Type', 'Target ID', 'Followed At']]
-      }
-    });
-
-    return spreadsheetId;
+    throw new Error(`${this.FOLLOWING_FILE_NAME} not found in _metadata. Ensure Drive is initialized (connect and initialize in dashboard).`);
   }
 
   /**
