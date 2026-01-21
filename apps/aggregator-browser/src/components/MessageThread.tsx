@@ -39,8 +39,10 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
       
       try {
         const threadMessages = await getThreadMessages(userState.pnIdentifier!, participantDid);
+        // Reverse messages to show oldest first (chat order) - API returns newest first
+        const reversedMessages = [...threadMessages].reverse();
         // Only update messages if fetch was successful
-        setMessages(threadMessages);
+        setMessages(reversedMessages);
 
         // Mark unread messages as read
         const unreadMessages = threadMessages.filter(m => !m.read && m.toDid === userState.pnIdentifier);
@@ -102,6 +104,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
         participantDid,
         content
       );
+      // Add new message to the end (newest messages go to bottom)
       setMessages(prev => [...prev, sentMessage]);
     } catch (error: any) {
       console.error('Failed to send message:', error);
