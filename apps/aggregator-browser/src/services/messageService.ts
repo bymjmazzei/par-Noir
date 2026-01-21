@@ -1,13 +1,10 @@
 /**
  * Message Service
- * Decentralized peer-to-peer messaging via IPFS + Google Drive fallback
- * Uses P2P/IPFS when available, falls back to API/Google Drive
+ * Messaging via Google Drive/API only
  */
 
 import { PNOAuthService } from './pnOAuthService';
 import { API_ENDPOINT } from '../config/api';
-
-const USE_DECENTRALIZED = import.meta.env.VITE_USE_DECENTRALIZED === 'true'; // Default false, only enable if explicitly set
 
 // Helper function to get auth headers
 function getAuthHeaders(): HeadersInit {
@@ -53,32 +50,9 @@ export interface MessageThread {
 }
 
 /**
- * Get messages from user's inbox - uses decentralized/IPFS when available
+ * Get messages from user's inbox
  */
 export async function getMessages(userDid: string): Promise<Message[]> {
-  // Try decentralized first (only if enabled)
-  if (USE_DECENTRALIZED) {
-    try {
-      // Dynamic import to avoid loading IPFS/crypto code when disabled
-      const decentralizedMessaging = await import('./decentralizedMessaging');
-      const decentralizedMsgs = await decentralizedMessaging.getMessages(userDid);
-      return decentralizedMsgs.map(msg => ({
-        messageId: msg.messageId,
-        fromDid: msg.fromDid,
-        toDid: msg.toDid,
-        content: msg.content,
-        mediaFileId: msg.mediaFileId,
-        timestamp: msg.timestamp,
-        read: msg.read,
-        readAt: msg.readAt,
-        encrypted: msg.encrypted
-      }));
-    } catch (error) {
-      console.warn('Decentralized get messages failed, falling back to API:', error);
-    }
-  }
-  
-  // Fallback to centralized API (Google Drive)
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/inbox?userDid=${userDid}`, {
       headers: getAuthHeaders()
@@ -97,48 +71,9 @@ export async function getMessages(userDid: string): Promise<Message[]> {
 }
 
 /**
- * Get message threads (conversations) - uses decentralized when available
+ * Get message threads (conversations)
  */
 export async function getMessageThreads(userDid: string): Promise<MessageThread[]> {
-  // Try decentralized first (only if enabled)
-  if (USE_DECENTRALIZED) {
-    try {
-      // Dynamic import to avoid loading IPFS/crypto code when disabled
-      const decentralizedMessaging = await import('./decentralizedMessaging');
-      const decentralizedThreads = await decentralizedMessaging.getMessageThreads(userDid);
-      return decentralizedThreads.map(thread => ({
-        participantDid: thread.participantDid,
-        participantName: thread.participantName,
-        lastMessage: thread.lastMessage ? {
-          messageId: thread.lastMessage.messageId,
-          fromDid: thread.lastMessage.fromDid,
-          toDid: thread.lastMessage.toDid,
-          content: thread.lastMessage.content,
-          mediaFileId: thread.lastMessage.mediaFileId,
-          timestamp: thread.lastMessage.timestamp,
-          read: thread.lastMessage.read,
-          readAt: thread.lastMessage.readAt,
-          encrypted: thread.lastMessage.encrypted
-        } : undefined,
-        unreadCount: thread.unreadCount,
-        messages: thread.messages.map(msg => ({
-          messageId: msg.messageId,
-          fromDid: msg.fromDid,
-          toDid: msg.toDid,
-          content: msg.content,
-          mediaFileId: msg.mediaFileId,
-          timestamp: msg.timestamp,
-          read: msg.read,
-          readAt: msg.readAt,
-          encrypted: msg.encrypted
-        }))
-      }));
-    } catch (error) {
-      console.warn('Decentralized get message threads failed, falling back to API:', error);
-    }
-  }
-  
-  // Fallback to centralized API (Google Sheets)
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/conversations?userDid=${userDid}`, {
       headers: getAuthHeaders()
@@ -194,7 +129,7 @@ export async function getThreadMessages(
 }
 
 /**
- * Send message - uses decentralized P2P/IPFS when available
+ * Send message via Google Drive/API
  */
 export async function sendMessage(
   fromDid: string,
@@ -202,37 +137,6 @@ export async function sendMessage(
   content: string,
   mediaFileId?: string
 ): Promise<Message> {
-  // Try decentralized first (only if enabled)
-  if (USE_DECENTRALIZED) {
-    try {
-      // Dynamic import to avoid loading IPFS/crypto code when disabled
-      const decentralizedMessaging = await import('./decentralizedMessaging');
-      const decentralizedMsg = await decentralizedMessaging.sendMessage(
-        fromDid,
-        toDid,
-        content,
-        mediaFileId,
-        true // encrypted
-      );
-      
-      // Convert to Message format
-      return {
-        messageId: decentralizedMsg.messageId,
-        fromDid: decentralizedMsg.fromDid,
-        toDid: decentralizedMsg.toDid,
-        content: decentralizedMsg.content,
-        mediaFileId: decentralizedMsg.mediaFileId,
-        timestamp: decentralizedMsg.timestamp,
-        read: decentralizedMsg.read,
-        readAt: decentralizedMsg.readAt,
-        encrypted: decentralizedMsg.encrypted
-      };
-    } catch (error) {
-      console.warn('Decentralized send message failed, falling back to API:', error);
-    }
-  }
-  
-  // Fallback to centralized API (Google Drive)
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/send`, {
       method: 'POST',
@@ -349,22 +253,9 @@ export async function respondToRequest(
 }
 
 /**
- * Mark message as read - uses decentralized when available
+ * Mark message as read
  */
 export async function markAsRead(messageId: string, userDid: string, participantDid?: string): Promise<void> {
-  // Try decentralized first (only if enabled)
-  if (USE_DECENTRALIZED) {
-    try {
-      // Dynamic import to avoid loading IPFS/crypto code when disabled
-      const decentralizedMessaging = await import('./decentralizedMessaging');
-      await decentralizedMessaging.markAsRead(messageId, userDid);
-      return;
-    } catch (error) {
-      console.warn('Decentralized mark as read failed, falling back to API:', error);
-    }
-  }
-  
-  // Fallback to centralized API (Google Sheets)
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/${messageId}/read`, {
       method: 'POST',
@@ -385,22 +276,9 @@ export async function markAsRead(messageId: string, userDid: string, participant
 }
 
 /**
- * Delete message - uses decentralized when available
+ * Delete message
  */
 export async function deleteMessage(messageId: string, userDid: string): Promise<void> {
-  // Try decentralized first (only if enabled)
-  if (USE_DECENTRALIZED) {
-    try {
-      // Dynamic import to avoid loading IPFS/crypto code when disabled
-      const decentralizedMessaging = await import('./decentralizedMessaging');
-      await decentralizedMessaging.deleteMessage(messageId, userDid);
-      return;
-    } catch (error) {
-      console.warn('Decentralized delete message failed, falling back to API:', error);
-    }
-  }
-  
-  // Fallback to centralized API
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/${messageId}`, {
       method: 'DELETE',
