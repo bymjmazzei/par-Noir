@@ -6626,8 +6626,9 @@ class ProductionServer {
         
         return res.json({ success: true });
       } catch (error: any) {
-        console.error('Error recording file view:', error);
-        return res.status(500).json({ error: 'Failed to record file view', message: error.message });
+        console.error('Error recording file view (non-fatal):', error);
+        // Return 200 so clients do not see 500 - viewing is best-effort; table may be missing or DB error
+        return res.status(200).json({ success: false });
       }
     });
 
