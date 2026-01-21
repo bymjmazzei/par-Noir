@@ -10384,7 +10384,29 @@ class ProductionServer {
         const senderAccount = senderGoogleDriveAccounts[0];
         const senderAccountId = (senderAccount as any).backendId || (senderAccount as any).keyPrefix || (senderAccount as any).accountId || (senderAccount as any).id || undefined;
         const senderAccessToken = await googleDriveProxyService.getAccessToken(senderCredentials.identityId, senderAccountId, [senderCredentials.identityId]);
-        const _gS = await this.getMetadataFolder(senderAccessToken, senderCredentials.identityId); if (!_gS) return this.driveNotInitialized(res); const senderMetadataFolderId = _gS.metadataFolderId;
+        
+        // Get sender's metadata folder with proper error handling
+        let senderMetadataFolderId: string;
+        try {
+          const senderMetadataFolder = await this.getMetadataFolder(senderAccessToken, senderCredentials.identityId);
+          if (!senderMetadataFolder) {
+            return this.driveNotInitialized(res);
+          }
+          senderMetadataFolderId = senderMetadataFolder.metadataFolderId;
+        } catch (error: any) {
+          const errorMessage = error?.message || 'Unknown error';
+          if (errorMessage.includes('authentication failed (401)') || errorMessage.includes('authentication failed (403)')) {
+            return res.status(401).json({ 
+              error: 'Google Drive authentication failed',
+              error_description: errorMessage
+            });
+          }
+          console.error('[SendMessage] Failed to get sender metadata folder:', error);
+          return res.status(500).json({ 
+            error: 'Failed to access sender\'s Google Drive',
+            error_description: errorMessage
+          });
+        }
 
         // Find sender's pN folder
         const pnFolderName = `par Noir - ${senderPnIdentifier}`;
@@ -10481,7 +10503,29 @@ class ProductionServer {
         const recipientAccount = recipientGoogleDriveAccounts[0];
         const recipientAccountId = (recipientAccount as any).backendId || (recipientAccount as any).keyPrefix || (recipientAccount as any).accountId || (recipientAccount as any).id || undefined;
         const recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientCredentials.identityId, recipientAccountId, [recipientCredentials.identityId]);
-        const _gR = await this.getMetadataFolder(recipientAccessToken, recipientCredentials.identityId); if (!_gR) return this.driveNotInitialized(res); const recipientMetadataFolderId = _gR.metadataFolderId;
+        
+        // Get recipient's metadata folder with proper error handling
+        let recipientMetadataFolderId: string;
+        try {
+          const recipientMetadataFolder = await this.getMetadataFolder(recipientAccessToken, recipientCredentials.identityId);
+          if (!recipientMetadataFolder) {
+            return this.driveNotInitialized(res);
+          }
+          recipientMetadataFolderId = recipientMetadataFolder.metadataFolderId;
+        } catch (error: any) {
+          const errorMessage = error?.message || 'Unknown error';
+          if (errorMessage.includes('authentication failed (401)') || errorMessage.includes('authentication failed (403)')) {
+            return res.status(401).json({ 
+              error: 'Google Drive authentication failed',
+              error_description: errorMessage
+            });
+          }
+          console.error('[SendMessage] Failed to get recipient metadata folder:', error);
+          return res.status(500).json({ 
+            error: 'Failed to access recipient\'s Google Drive',
+            error_description: errorMessage
+          });
+        }
 
         // Find recipient's pN folder
         const recipientPnFolderName = `par Noir - ${recipientPnIdentifier}`;

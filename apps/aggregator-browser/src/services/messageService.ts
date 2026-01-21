@@ -8,7 +8,7 @@ import { PNOAuthService } from './pnOAuthService';
 import * as decentralizedMessaging from './decentralizedMessaging';
 import { API_ENDPOINT } from '../config/api';
 
-const USE_DECENTRALIZED = import.meta.env.VITE_USE_DECENTRALIZED !== 'false'; // Default true when unset
+const USE_DECENTRALIZED = import.meta.env.VITE_USE_DECENTRALIZED === 'true'; // Default false, only enable if explicitly set
 
 // Helper function to get auth headers
 function getAuthHeaders(): HeadersInit {

@@ -235,12 +235,17 @@ export async function getConnectionStatus(
     );
 
     if (!response.ok) {
+      // Log error for debugging, but still return not_connected
+      if (response.status === 401 || response.status === 500) {
+        console.warn(`[getConnectionStatus] API returned ${response.status} for ${otherUserDid}`);
+      }
       return { status: 'not_connected' };
     }
 
     return await response.json();
   } catch (error) {
-    // Silently return not_connected - connection status may not be available
+    // Log error for debugging, but still return not_connected
+    console.warn('[getConnectionStatus] Failed to check connection status:', error);
     return { status: 'not_connected' };
   }
 }
