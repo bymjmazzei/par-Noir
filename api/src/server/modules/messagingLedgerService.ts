@@ -4,6 +4,7 @@
  * Uses messaging_ledger.xlsx (Google Sheets) for better scalability
  */
 
+import * as crypto from 'crypto';
 import { MessagingLedgerSheetsService, MessagingActivityEntry } from './messagingLedgerSheetsService';
 
 // Re-export MessagingActivityEntry for backward compatibility
