@@ -12270,7 +12270,7 @@ class ProductionServer {
         // Get or create metadata folder
         let metadataFolderId: string;
         try {
-          const _g = await this.getMetadataFolder(userAccessToken, userDid as string); if (!_g) return this.driveNotInitialized(res); metadataFolderId = _g.metadataFolderId;
+          const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); metadataFolderId = _g.metadataFolderId;
         } catch (error: any) {
           console.error('Error getting/creating metadata folder:', error);
           // Return empty arrays if folder creation fails
@@ -12322,7 +12322,7 @@ class ProductionServer {
         // Get or create metadata folder
         let metadataFolderId: string;
         try {
-          const _g = await this.getMetadataFolder(userAccessToken, userDid as string); if (!_g) return this.driveNotInitialized(res); metadataFolderId = _g.metadataFolderId;
+          const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); metadataFolderId = _g.metadataFolderId;
         } catch (error: any) {
           console.error('Error getting/creating metadata folder:', error);
           // Return not_connected if folder creation fails

@@ -169,7 +169,6 @@ export async function rejectConnectionRequest(
 export async function getConnections(userDid: string): Promise<Connection[]> {
   // Use Google Drive API directly
   try {
-    console.log(`[getConnections] Fetching connections for userDid: ${userDid}`);
     const response = await fetch(`${API_ENDPOINT}/api/connections?userDid=${userDid}`, {
       headers: getAuthHeaders()
     });
@@ -182,11 +181,6 @@ export async function getConnections(userDid: string): Promise<Connection[]> {
 
     const result = await response.json();
     const connections = result.connections || [];
-    console.log(`[getConnections] Received ${connections.length} connections:`, connections.map(c => ({
-      connectionId: c.connectionId,
-      userDid: c.userDid,
-      status: c.status
-    })));
     return connections;
   } catch (error) {
     console.error('[getConnections] Failed to get connections:', error);
@@ -206,6 +200,9 @@ export async function getPendingRequests(userDid: string): Promise<PendingReques
     });
 
     if (!response.ok) {
+      if (response.status === 409 || response.status === 401) {
+        return { sent: [], received: [] };
+      }
       throw new Error('Failed to load pending requests');
     }
 
