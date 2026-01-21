@@ -10,6 +10,7 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
+import crypto from 'crypto';
 import { determineFileType, getFileTypeFromMime, determineContentClass } from './server/utils/fileTypeUtils';
 
 // Environment configuration
@@ -8626,21 +8627,21 @@ class ProductionServer {
 
   private generateChallenge(): string {
     const timestamp = Date.now();
-    const randomBytes = crypto.getRandomValues(new Uint8Array(16));
+    const randomBytes = crypto.randomBytes(16);
     const random = Array.from(randomBytes).map(b => b.toString(36)).join('');
     return `challenge_${timestamp}_${random}`;
   }
 
   private generateToken(): string {
     const timestamp = Date.now();
-    const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+    const randomBytes = crypto.randomBytes(32);
     const random = Array.from(randomBytes).map(b => b.toString(36)).join('');
     return `token_${timestamp}_${random}`;
   }
 
   private generateDID(username: string, publicKey: string): string {
     const timestamp = Date.now();
-    const randomBytes = crypto.getRandomValues(new Uint8Array(16));
+    const randomBytes = crypto.randomBytes(16);
     const random = Array.from(randomBytes).map(b => b.toString(36)).join('');
     return `${username}_${timestamp}_${random}`;
   }
