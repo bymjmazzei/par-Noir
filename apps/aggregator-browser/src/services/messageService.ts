@@ -5,7 +5,6 @@
  */
 
 import { PNOAuthService } from './pnOAuthService';
-import * as decentralizedMessaging from './decentralizedMessaging';
 import { API_ENDPOINT } from '../config/api';
 
 const USE_DECENTRALIZED = import.meta.env.VITE_USE_DECENTRALIZED === 'true'; // Default false, only enable if explicitly set
@@ -57,9 +56,11 @@ export interface MessageThread {
  * Get messages from user's inbox - uses decentralized/IPFS when available
  */
 export async function getMessages(userDid: string): Promise<Message[]> {
-  // Try decentralized first
+  // Try decentralized first (only if enabled)
   if (USE_DECENTRALIZED) {
     try {
+      // Dynamic import to avoid loading IPFS/crypto code when disabled
+      const decentralizedMessaging = await import('./decentralizedMessaging');
       const decentralizedMsgs = await decentralizedMessaging.getMessages(userDid);
       return decentralizedMsgs.map(msg => ({
         messageId: msg.messageId,
@@ -99,9 +100,11 @@ export async function getMessages(userDid: string): Promise<Message[]> {
  * Get message threads (conversations) - uses decentralized when available
  */
 export async function getMessageThreads(userDid: string): Promise<MessageThread[]> {
-  // Try decentralized first
+  // Try decentralized first (only if enabled)
   if (USE_DECENTRALIZED) {
     try {
+      // Dynamic import to avoid loading IPFS/crypto code when disabled
+      const decentralizedMessaging = await import('./decentralizedMessaging');
       const decentralizedThreads = await decentralizedMessaging.getMessageThreads(userDid);
       return decentralizedThreads.map(thread => ({
         participantDid: thread.participantDid,
@@ -199,9 +202,11 @@ export async function sendMessage(
   content: string,
   mediaFileId?: string
 ): Promise<Message> {
-  // Try decentralized first
+  // Try decentralized first (only if enabled)
   if (USE_DECENTRALIZED) {
     try {
+      // Dynamic import to avoid loading IPFS/crypto code when disabled
+      const decentralizedMessaging = await import('./decentralizedMessaging');
       const decentralizedMsg = await decentralizedMessaging.sendMessage(
         fromDid,
         toDid,
@@ -347,9 +352,11 @@ export async function respondToRequest(
  * Mark message as read - uses decentralized when available
  */
 export async function markAsRead(messageId: string, userDid: string, participantDid?: string): Promise<void> {
-  // Try decentralized first
+  // Try decentralized first (only if enabled)
   if (USE_DECENTRALIZED) {
     try {
+      // Dynamic import to avoid loading IPFS/crypto code when disabled
+      const decentralizedMessaging = await import('./decentralizedMessaging');
       await decentralizedMessaging.markAsRead(messageId, userDid);
       return;
     } catch (error) {
@@ -381,9 +388,11 @@ export async function markAsRead(messageId: string, userDid: string, participant
  * Delete message - uses decentralized when available
  */
 export async function deleteMessage(messageId: string, userDid: string): Promise<void> {
-  // Try decentralized first
+  // Try decentralized first (only if enabled)
   if (USE_DECENTRALIZED) {
     try {
+      // Dynamic import to avoid loading IPFS/crypto code when disabled
+      const decentralizedMessaging = await import('./decentralizedMessaging');
       await decentralizedMessaging.deleteMessage(messageId, userDid);
       return;
     } catch (error) {
