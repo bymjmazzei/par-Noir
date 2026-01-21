@@ -230,11 +230,14 @@ export class MessageSheetsService {
 
   /**
    * Append message to conversation sheet
+   * Encrypts message content using connection's shared secret
    */
   static async appendMessage(
     accessToken: string,
     spreadsheetId: string,
-    message: Message
+    message: Message,
+    connectionId: string,
+    sharedSecret: string // Decrypted shared secret
   ): Promise<void> {
     try {
       // Validation checks
@@ -252,6 +255,14 @@ export class MessageSheetsService {
         throw new Error(`Invalid spreadsheet ID format: ${spreadsheetId} (too short)`);
       }
 
+      // Encrypt message content using connection's shared secret
+      const { MessageEncryption } = await import('../utils/messageEncryption');
+      const encryptedContent = MessageEncryption.encryptMessage(
+        message.content,
+        connectionId,
+        sharedSecret
+      );
+
       const auth = new google.auth.OAuth2();
       auth.setCredentials({ access_token: accessToken });
       const sheets = google.sheets({ version: 'v4', auth });
@@ -263,7 +274,7 @@ export class MessageSheetsService {
         requestBody: {
           values: [[
             message.fromDid,
-            message.content,
+            encryptedContent, // Store encrypted content
             message.timestamp,
             message.messageId,
             message.read ? 'true' : 'false',
@@ -301,10 +312,13 @@ export class MessageSheetsService {
 
   /**
    * Get messages from conversation sheet
+   * Decrypts message content using connection's shared secret
    */
   static async getMessages(
     accessToken: string,
     spreadsheetId: string,
+    connectionId: string,
+    sharedSecret: string, // Decrypted shared secret
     options?: {
       limit?: number;
       offset?: number;
@@ -323,16 +337,34 @@ export class MessageSheetsService {
     const rows = response.data.values || [];
     const total = rows.length;
 
-    // Parse messages
-    const messages: Message[] = rows.map((row, index) => ({
-      messageId: row[3] || `msg-${index}`,
-      fromDid: row[0] || '',
-      toDid: '', // Will be set by caller based on conversation
-      content: row[1] || '',
-      timestamp: row[2] || new Date().toISOString(),
-      read: row[4] === 'true',
-      readAt: row[5] || undefined
-    }));
+    // Parse and decrypt messages
+    const { MessageEncryption } = await import('../utils/messageEncryption');
+    const messages: Message[] = rows.map((row, index) => {
+      const encryptedContent = row[1] || '';
+      let decryptedContent = '';
+      
+      try {
+        // Decrypt message content
+        decryptedContent = MessageEncryption.decryptMessage(
+          encryptedContent,
+          connectionId,
+          sharedSecret
+        );
+      } catch (decryptError: any) {
+        console.error(`[MessageSheetsService] Failed to decrypt message ${row[3] || index}:`, decryptError);
+        throw new Error(`Failed to decrypt message: ${decryptError?.message || 'Unknown error'}`);
+      }
+      
+      return {
+        messageId: row[3] || `msg-${index}`,
+        fromDid: row[0] || '',
+        toDid: '', // Will be set by caller based on conversation
+        content: decryptedContent,
+        timestamp: row[2] || new Date().toISOString(),
+        read: row[4] === 'true',
+        readAt: row[5] || undefined
+      };
+    });
 
     // Sort by timestamp descending (most recent first)
     messages.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -395,7 +427,6 @@ export class MessageSheetsService {
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const drive = google.drive({ version: 'v3', auth });
-    const sheets = google.sheets({ version: 'v4', auth });
 
     // List all conversation sheets
     const fileQuery = `'${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and name contains 'conversation-'`;
@@ -413,31 +444,15 @@ export class MessageSheetsService {
         const otherUserDid = fileName.replace('conversation-', '');
         const spreadsheetId = file.id!;
 
-        // Get last message timestamp
-        try {
-          const messagesResponse = await sheets.spreadsheets.values.get({
-            spreadsheetId,
-            range: 'Messages!C2:C'
-          });
+        // Use modifiedTime from Drive API as lastMessageAt (much faster than reading Sheets)
+        // modifiedTime is updated whenever the sheet is modified (new message added)
+        const lastMessageAt = file.modifiedTime || new Date().toISOString();
 
-          const timestamps = messagesResponse.data.values || [];
-          const lastMessageAt = timestamps.length > 0 
-            ? timestamps[timestamps.length - 1][0] || file.modifiedTime || ''
-            : file.modifiedTime || '';
-
-          conversations.push({
-            otherUserDid,
-            spreadsheetId,
-            lastMessageAt
-          });
-        } catch (error) {
-          console.error(`Failed to get last message for conversation ${otherUserDid}:`, error);
-          conversations.push({
-            otherUserDid,
-            spreadsheetId,
-            lastMessageAt: file.modifiedTime || ''
-          });
-        }
+        conversations.push({
+          otherUserDid,
+          spreadsheetId,
+          lastMessageAt
+        });
       }
     }
 

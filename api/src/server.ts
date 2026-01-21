@@ -10167,9 +10167,57 @@ class ProductionServer {
         );
 
         // Get latest message from each conversation
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
+        const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
+        
+        // Get user's metadata folder for connection lookup
+        const metadataFolder = await this.getMetadataFolder(userAccessToken, userCredentials.identityId);
+        if (!metadataFolder) {
+          return res.json({ messages: [] });
+        }
+        const metadataFolderId = metadataFolder.metadataFolderId;
+
         const allMessages: any[] = [];
         for (const conversation of conversations) {
           try {
+            // Look up connection to get shared secret
+            const connectionStatus = await ConnectionsService.getConnectionStatus(
+              userAccessToken,
+              metadataFolderId,
+              userCredentials.identityId,
+              conversation.otherUserDid
+            );
+
+            if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
+              console.warn(`[Inbox] Connection not found for ${conversation.otherUserDid}, skipping`);
+              continue;
+            }
+
+            // Get connection to retrieve shared secret
+            const connectionsFile = await ConnectionsService.getConnectionsFile(
+              userAccessToken,
+              metadataFolderId
+            );
+            if (!connectionsFile) {
+              console.warn(`[Inbox] Connections file not found, skipping ${conversation.otherUserDid}`);
+              continue;
+            }
+
+            const connection = connectionsFile.connections.find(
+              c => c.connectionId === connectionStatus.connectionId
+            );
+            if (!connection || !connection.sharedSecret) {
+              console.warn(`[Inbox] Connection missing shared secret for ${conversation.otherUserDid}, skipping`);
+              continue;
+            }
+
+            // Decrypt shared secret
+            const decryptedSharedSecret = MetadataEncryption.decryptField(connection.sharedSecret);
+            if (!decryptedSharedSecret) {
+              console.warn(`[Inbox] Failed to decrypt shared secret for ${conversation.otherUserDid}, skipping`);
+              continue;
+            }
+
             const conversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
               userAccessToken,
               messagesFolderId,
@@ -10178,6 +10226,8 @@ class ProductionServer {
             const result = await MessageSheetsService.getMessages(
               userAccessToken,
               conversationSheetId,
+              connectionStatus.connectionId,
+              decryptedSharedSecret,
               { limit: 1, offset: 0 }
             );
             if (result.messages.length > 0) {
@@ -10262,6 +10312,62 @@ class ProductionServer {
           pnFolder.id
         );
 
+        // Get user's metadata folder for connection lookup
+        const metadataFolder = await this.getMetadataFolder(userAccessToken, userCredentials.identityId);
+        if (!metadataFolder) {
+          return res.status(500).json({ error: 'Failed to access metadata folder' });
+        }
+        const metadataFolderId = metadataFolder.metadataFolderId;
+
+        // Look up connection to get shared secret
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
+        const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
+        
+        const connectionStatus = await ConnectionsService.getConnectionStatus(
+          userAccessToken,
+          metadataFolderId,
+          userCredentials.identityId,
+          participantDid
+        );
+
+        if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
+          return res.status(403).json({
+            error: 'Connection not found. Users must be connected to view messages.',
+            error_description: 'Connection not found. Users must be connected to view messages.'
+          });
+        }
+
+        // Get connection to retrieve shared secret
+        const connectionsFile = await ConnectionsService.getConnectionsFile(
+          userAccessToken,
+          metadataFolderId
+        );
+        if (!connectionsFile) {
+          return res.status(500).json({
+            error: 'Failed to retrieve connections file',
+            error_description: 'Failed to retrieve connections file'
+          });
+        }
+
+        const connection = connectionsFile.connections.find(
+          c => c.connectionId === connectionStatus.connectionId
+        );
+        if (!connection || !connection.sharedSecret) {
+          return res.status(500).json({
+            error: 'Connection missing shared secret. Connection may need to be re-established.',
+            error_description: 'Connection missing shared secret. Connection may need to be re-established.'
+          });
+        }
+
+        // Decrypt shared secret
+        const decryptedSharedSecret = MetadataEncryption.decryptField(connection.sharedSecret);
+        if (!decryptedSharedSecret) {
+          return res.status(500).json({
+            error: 'Failed to decrypt shared secret',
+            error_description: 'Failed to decrypt shared secret'
+          });
+        }
+
         // Get or create conversation sheet
         const conversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
           userAccessToken,
@@ -10269,10 +10375,12 @@ class ProductionServer {
           participantDid
         );
 
-        // Get messages from conversation sheet
+        // Get messages from conversation sheet (with decryption)
         const result = await MessageSheetsService.getMessages(
           userAccessToken,
           conversationSheetId,
+          connectionStatus.connectionId,
+          decryptedSharedSecret,
           { limit, offset }
         );
 
@@ -10447,6 +10555,55 @@ class ProductionServer {
           toDid
         );
 
+        // Look up connection to get shared secret
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
+        const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
+        
+        const connectionStatus = await ConnectionsService.getConnectionStatus(
+          senderAccessToken,
+          senderMetadataFolderId,
+          fromDid,
+          toDid
+        );
+
+        if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
+          return res.status(403).json({
+            error: 'Connection not found. Users must be connected to send messages.',
+            error_description: 'Connection not found. Users must be connected to send messages.'
+          });
+        }
+
+        // Get connection to retrieve shared secret
+        const connectionsFile = await ConnectionsService.getConnectionsFile(
+          senderAccessToken,
+          senderMetadataFolderId
+        );
+        if (!connectionsFile) {
+          return res.status(500).json({
+            error: 'Failed to retrieve connections file',
+            error_description: 'Failed to retrieve connections file'
+          });
+        }
+
+        const connection = connectionsFile.connections.find(
+          c => c.connectionId === connectionStatus.connectionId
+        );
+        if (!connection || !connection.sharedSecret) {
+          return res.status(500).json({
+            error: 'Connection missing shared secret. Connection may need to be re-established.',
+            error_description: 'Connection missing shared secret. Connection may need to be re-established.'
+          });
+        }
+
+        // Decrypt shared secret
+        const decryptedSharedSecret = MetadataEncryption.decryptField(connection.sharedSecret);
+        if (!decryptedSharedSecret) {
+          return res.status(500).json({
+            error: 'Failed to decrypt shared secret',
+            error_description: 'Failed to decrypt shared secret'
+          });
+        }
+
         // Create message object
         const message: any = {
           messageId,
@@ -10458,12 +10615,14 @@ class ProductionServer {
           mediaFileId
         };
 
-        // Append message to sender's conversation sheet
+        // Append message to sender's conversation sheet (with encryption)
         console.log('[SendMessage] Appending message to sender\'s sheet', { senderConversationSheetId, messageId });
         await MessageSheetsService.appendMessage(
           senderAccessToken,
           senderConversationSheetId,
-          message
+          message,
+          connectionStatus.connectionId,
+          decryptedSharedSecret
         );
         console.log('[SendMessage] Message appended to sender\'s sheet successfully');
 
@@ -10581,10 +10740,43 @@ class ProductionServer {
         if (!recipientAccessToken || recipientAccessToken.trim().length === 0) {
           throw new Error('Invalid recipient access token');
         }
+        // Get recipient's connection to retrieve shared secret
+        const recipientConnectionsFile = await ConnectionsService.getConnectionsFile(
+          recipientAccessToken,
+          recipientMetadataFolderId
+        );
+        if (!recipientConnectionsFile) {
+          return res.status(500).json({
+            error: 'Failed to retrieve recipient connections file',
+            error_description: 'Failed to retrieve recipient connections file'
+          });
+        }
+
+        const recipientConnection = recipientConnectionsFile.connections.find(
+          c => c.connectionId === connectionStatus.connectionId
+        );
+        if (!recipientConnection || !recipientConnection.sharedSecret) {
+          return res.status(500).json({
+            error: 'Recipient connection missing shared secret. Connection may need to be re-established.',
+            error_description: 'Recipient connection missing shared secret. Connection may need to be re-established.'
+          });
+        }
+
+        // Decrypt recipient's shared secret
+        const recipientDecryptedSharedSecret = MetadataEncryption.decryptField(recipientConnection.sharedSecret);
+        if (!recipientDecryptedSharedSecret) {
+          return res.status(500).json({
+            error: 'Failed to decrypt recipient shared secret',
+            error_description: 'Failed to decrypt recipient shared secret'
+          });
+        }
+
         await MessageSheetsService.appendMessage(
           recipientAccessToken,
           recipientConversationSheetId,
-          message
+          message,
+          connectionStatus.connectionId,
+          recipientDecryptedSharedSecret
         );
         console.log('[SendMessage] Message appended to recipient\'s sheet successfully');
 
@@ -11535,7 +11727,7 @@ class ProductionServer {
           }
         );
 
-        // Accept connection (updates acceptor's sheet)
+        // Accept connection (updates acceptor's sheet and generates shared secret)
         await ConnectionsService.acceptConnectionRequest(
           userAccessToken,
           metadataFolderId,
@@ -11543,12 +11735,19 @@ class ProductionServer {
           connectionId
         );
 
-        // Verify the connection was accepted in acceptor's file
+        // Get the shared secret from the accepted connection
         const verifyFile = await ConnectionsService.getConnectionsFile(userAccessToken, metadataFolderId);
+        let sharedSecret: string | undefined;
         if (verifyFile) {
           const verifyConnection = verifyFile.connections.find(c => c.connectionId === connectionId);
           if (verifyConnection && verifyConnection.status === 'accepted') {
+            sharedSecret = verifyConnection.sharedSecret;
             console.log(`[AcceptConnection] Verified: Connection ${connectionId} is now accepted in acceptor's file`);
+            if (sharedSecret) {
+              console.log(`[AcceptConnection] Retrieved shared secret for connection ${connectionId}`);
+            } else {
+              console.warn(`[AcceptConnection] WARNING: Connection ${connectionId} accepted but no shared secret found`);
+            }
           } else {
             console.error(`[AcceptConnection] WARNING: Connection ${connectionId} not found or not accepted in acceptor's file after accept`);
             console.error(`[AcceptConnection] Connection status:`, verifyConnection?.status || 'not found');
@@ -11595,7 +11794,8 @@ class ProductionServer {
                 otherUserCredentials.identityId,
                 connectionId,
                 'accepted',
-                userCredentials.identityId
+                userCredentials.identityId,
+                sharedSecret // Pass the shared secret to store in other user's connection
               );
               
               // Verify the update was successful

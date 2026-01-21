@@ -41,8 +41,19 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
         const threadMessages = await getThreadMessages(userState.pnIdentifier!, participantDid);
         // Reverse messages to show oldest first (chat order) - API returns newest first
         const reversedMessages = [...threadMessages].reverse();
+        
+        // Preserve optimistic (temporary) messages - merge with fetched messages
+        const tempMessages = messages.filter(msg => msg.messageId.startsWith('temp-'));
+        const existingMessageIds = new Set(reversedMessages.map(m => m.messageId));
+        const preservedTempMessages = tempMessages.filter(msg => !existingMessageIds.has(msg.messageId));
+        
+        // Combine fetched messages with preserved temporary messages
+        const allMessages = [...reversedMessages, ...preservedTempMessages];
+        // Sort by timestamp to maintain order
+        allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        
         // Only update messages if fetch was successful
-        setMessages(reversedMessages);
+        setMessages(allMessages);
 
         // Mark unread messages as read
         const unreadMessages = threadMessages.filter(m => !m.read && m.toDid === userState.pnIdentifier);
@@ -98,16 +109,42 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
     setNewMessage('');
     setSending(true);
 
+    // Create optimistic message immediately
+    const tempMessageId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const optimisticMessage: Message = {
+      messageId: tempMessageId,
+      fromDid: userState.pnIdentifier!,
+      toDid: participantDid,
+      content: content,
+      timestamp: new Date().toISOString(),
+      read: false
+    };
+
+    // Add optimistic message to UI immediately
+    setMessages(prev => [...prev, optimisticMessage]);
+    
+    // Scroll to bottom to show the new message
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 0);
+
     try {
       const sentMessage = await sendMessage(
         userState.pnIdentifier!,
         participantDid,
         content
       );
-      // Add new message to the end (newest messages go to bottom)
-      setMessages(prev => [...prev, sentMessage]);
+      
+      // Replace optimistic message with server response
+      setMessages(prev => prev.map(msg => 
+        msg.messageId === tempMessageId ? sentMessage : msg
+      ));
     } catch (error: any) {
       console.error('Failed to send message:', error);
+      
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(msg => msg.messageId !== tempMessageId));
+      
       // Extract error message from API response if available
       let errorMessage = 'Failed to send message';
       if (error?.message) {
@@ -161,6 +198,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
         ) : (
           messages.map((message) => {
             const isOwn = message.fromDid === userState.pnIdentifier;
+            const isTemporary = message.messageId.startsWith('temp-');
             
             return (
               <div
@@ -172,7 +210,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
                     isOwn
                       ? 'bg-blue-600 text-white'
                       : 'bg-neutral-800 text-white'
-                  }`}
+                  } ${isTemporary ? 'opacity-75' : ''}`}
                 >
                   <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                   {message.mediaFileId && (
@@ -184,8 +222,9 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
                   <p className={`text-xs mt-1 ${
                     isOwn ? 'text-blue-100' : 'text-neutral-400'
                   }`}>
+                    {isTemporary && '⏳ '}
                     {new Date(message.timestamp).toLocaleTimeString()}
-                    {message.read && isOwn && ' ✓'}
+                    {message.read && isOwn && !isTemporary && ' ✓'}
                   </p>
                 </div>
               </div>

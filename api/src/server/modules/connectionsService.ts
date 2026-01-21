@@ -12,6 +12,7 @@ export interface Connection {
   status: 'pending_sent' | 'pending_received' | 'accepted' | 'blocked';
   createdAt: string;
   acceptedAt?: string;
+  sharedSecret?: string; // Encrypted shared secret (new field)
 }
 
 export interface ConnectionsFile {
@@ -341,13 +342,33 @@ export class ConnectionsService {
 
       const now = new Date().toISOString();
 
-      // Update connection status in Sheets
+      // Generate shared secret if connection doesn't already have one
+      let sharedSecret: string | undefined;
+      if (!connection.sharedSecret) {
+        const crypto = await import('crypto');
+        const { MetadataEncryption } = await import('../utils/metadataEncryption');
+        
+        // Generate random 32-byte shared secret
+        const rawSecret = crypto.randomBytes(32).toString('base64');
+        
+        // Encrypt shared secret using MetadataEncryption
+        sharedSecret = MetadataEncryption.encryptField(rawSecret);
+        
+        console.log(`[ConnectionsService] Generated shared secret for connection ${connectionId}`);
+      } else {
+        // Connection already has shared secret (idempotent)
+        sharedSecret = connection.sharedSecret;
+        console.log(`[ConnectionsService] Connection ${connectionId} already has shared secret`);
+      }
+
+      // Update connection status and shared secret in Sheets
       await ConnectionsSheetsService.updateConnectionStatus(
         acceptorAccessToken,
         spreadsheetId,
         connectionId,
         'accepted',
-        now
+        now,
+        sharedSecret
       );
 
       // Note: The other user's file should also be updated, but that requires their access token
@@ -425,7 +446,8 @@ export class ConnectionsService {
     otherUserDid: string,
     connectionId: string,
     newStatus: 'accepted' | 'blocked',
-    acceptorDid?: string // The DID of the user who accepted (to create connection if missing)
+    acceptorDid?: string, // The DID of the user who accepted (to create connection if missing)
+    sharedSecret?: string // Encrypted shared secret to store in connection
   ): Promise<void> {
     try {
       // Get or create connections sheet
@@ -454,7 +476,8 @@ export class ConnectionsService {
               userDid: acceptorDid,
               status: 'accepted',
               createdAt: new Date().toISOString(),
-              acceptedAt: new Date().toISOString()
+              acceptedAt: new Date().toISOString(),
+              sharedSecret: sharedSecret
             }
           );
           return;
@@ -462,14 +485,15 @@ export class ConnectionsService {
         throw new Error('Connection not found');
       }
 
-      // Update connection status
+      // Update connection status and shared secret
       const now = new Date().toISOString();
       await ConnectionsSheetsService.updateConnectionStatus(
         otherUserAccessToken,
         spreadsheetId,
         connectionId,
         newStatus,
-        newStatus === 'accepted' ? now : undefined
+        newStatus === 'accepted' ? now : undefined,
+        sharedSecret
       );
     } catch (error) {
       console.error('Error updating other user connection via sheets, falling back to JSON:', error);

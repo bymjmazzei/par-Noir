@@ -12,6 +12,7 @@ export interface Connection {
   status: 'pending_sent' | 'pending_received' | 'accepted' | 'blocked';
   createdAt: string;
   acceptedAt?: string;
+  sharedSecret?: string; // Encrypted shared secret (new field)
 }
 
 export interface Follower {
@@ -44,7 +45,7 @@ export class ConnectionsSheetsService {
       requestBody: {
         properties: { title: this.CONNECTIONS_FILE_NAME },
         sheets: [
-          { properties: { title: 'Connections', gridProperties: { rowCount: 100000, columnCount: 5 } } },
+          { properties: { title: 'Connections', gridProperties: { rowCount: 100000, columnCount: 6 } } },
           { properties: { title: 'Blocked', gridProperties: { rowCount: 10000, columnCount: 1 } } },
           { properties: { title: 'Metadata', gridProperties: { rowCount: 10, columnCount: 2 } } }
         ]
@@ -68,7 +69,7 @@ export class ConnectionsSheetsService {
       requestBody: {
         valueInputOption: 'RAW',
         data: [
-          { range: 'Connections!A1:E1', values: [['Connection ID', 'User DID', 'Status', 'Created At', 'Accepted At']] },
+          { range: 'Connections!A1:F1', values: [['Connection ID', 'User DID', 'Status', 'Created At', 'Accepted At', 'Shared Secret']] },
           { range: 'Blocked!A1:A1', values: [['Blocked DID']] },
           { range: 'Metadata!A1:B2', values: [['Identifier', ''], ['UpdatedAt', '']] }
         ]
@@ -176,12 +177,12 @@ export class ConnectionsSheetsService {
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
-    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Connections!A2:E' });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Connections!A2:F' });
     if (connections.length) {
-      const rows = connections.map(c => [c.connectionId, c.userDid, c.status, c.createdAt, c.acceptedAt || '']);
+      const rows = connections.map(c => [c.connectionId, c.userDid, c.status, c.createdAt, c.acceptedAt || '', c.sharedSecret || '']);
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: 'Connections!A2:E',
+        range: 'Connections!A2:F',
         valueInputOption: 'RAW',
         requestBody: { values: rows }
       });
@@ -374,7 +375,7 @@ export class ConnectionsSheetsService {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: 'Connections!A:E',
+      range: 'Connections!A:F',
       valueInputOption: 'RAW',
       requestBody: {
         values: [[
@@ -382,7 +383,8 @@ export class ConnectionsSheetsService {
           connection.userDid,
           connection.status,
           connection.createdAt,
-          connection.acceptedAt || ''
+          connection.acceptedAt || '',
+          connection.sharedSecret || ''
         ]]
       }
     });
@@ -407,7 +409,7 @@ export class ConnectionsSheetsService {
     // Get all connections (skip header row)
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Connections!A2:E'
+      range: 'Connections!A2:F'
     });
 
     const rows = response.data.values || [];
@@ -416,7 +418,8 @@ export class ConnectionsSheetsService {
       userDid: row[1] || '',
       status: (row[2] || 'pending_sent') as Connection['status'],
       createdAt: row[3] || new Date().toISOString(),
-      acceptedAt: row[4] || undefined
+      acceptedAt: row[4] || undefined,
+      sharedSecret: row[5] || undefined
     }));
 
     // Filter by status if specified
@@ -454,7 +457,7 @@ export class ConnectionsSheetsService {
     // Get all connections to find the row
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Connections!A2:E'
+      range: 'Connections!A2:F'
     });
 
     const rows = response.data.values || [];
@@ -464,13 +467,20 @@ export class ConnectionsSheetsService {
       throw new Error('Connection not found');
     }
 
-    // Update status and acceptedAt (rowIndex + 2 because of header and 0-based index)
+    // Update status, acceptedAt, and optionally sharedSecret (rowIndex + 2 because of header and 0-based index)
+    const updateRange = sharedSecret !== undefined 
+      ? `Connections!C${rowIndex + 2}:F${rowIndex + 2}`
+      : `Connections!C${rowIndex + 2}:E${rowIndex + 2}`;
+    const updateValues = sharedSecret !== undefined
+      ? [[status, acceptedAt || '', sharedSecret]]
+      : [[status, acceptedAt || '']];
+
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `Connections!C${rowIndex + 2}:E${rowIndex + 2}`,
+      range: updateRange,
       valueInputOption: 'RAW',
       requestBody: {
-        values: [[status, acceptedAt || '']]
+        values: updateValues
       }
     });
   }
@@ -490,7 +500,7 @@ export class ConnectionsSheetsService {
     // Get all connections to find the row
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Connections!A2:E'
+      range: 'Connections!A2:F'
     });
 
     const rows = response.data.values || [];
