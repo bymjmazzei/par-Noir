@@ -46,7 +46,7 @@ body {
   width: 100vw;
   height: 100vh;
   background-image: url('./branding/Par-Noir-Background-Dark.png');
-  background-size: contain;
+  background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;
   background-attachment: fixed;
@@ -54,13 +54,6 @@ body {
   z-index: -1;
   transform: none;
   will-change: auto;
-}
-
-/* Responsive background sizing - only stretch on larger screens */
-@media (min-width: 1200px) {
-  .background {
-    background-size: cover;
-  }
 }
 
 /* Container */
@@ -5197,7 +5190,7 @@ section:nth-child(odd) {
 
 .security-layer {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 1.5rem;
   padding: 2rem;
   background: rgba(255, 255, 255, 0.03);
