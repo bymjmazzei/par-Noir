@@ -10,10 +10,10 @@
 import { VolumeIdGenerator } from '../utils/volumeIdGenerator';
 import { API_ENDPOINT } from '../config/api';
 
-/** Must be set in .env as VITE_PN_CLIENT_ID; no fallback. */
+/** Must be set in .env as VITE_PN_CLIENT_ID; no fallback. Use "browser-app" for the par Noir browser app. */
 function getClientId(): string {
   const id = import.meta.env.VITE_PN_CLIENT_ID;
-  if (!id) throw new Error('VITE_PN_CLIENT_ID must be set in .env');
+  if (!id) throw new Error('VITE_PN_CLIENT_ID must be set in .env (e.g. VITE_PN_CLIENT_ID=browser-app). Copy env.template to .env.');
   return id;
 }
 // For popup flow, redirect_uri should be oauth-callback.html (matches oauth-authorize.html)
