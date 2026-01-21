@@ -153,14 +153,26 @@ export async function sendMessage(
       let errorMessage = 'Failed to send message';
       try {
         const error = await response.json();
-        errorMessage = error.error_description || error.error || errorMessage;
-        if (error.details) {
-          errorMessage += ` - ${error.details}`;
+        // Extract error message, but sanitize technical errors that don't help users
+        const rawError = error.error_description || error.error || errorMessage;
+        
+        // Don't expose internal server errors (like "crypto is not defined") to users
+        if (response.status === 500 && (rawError.includes('crypto') || rawError.includes('undefined'))) {
+          errorMessage = 'Server error occurred while sending message. Please try again.';
+        } else {
+          errorMessage = rawError;
+          if (error.details) {
+            errorMessage += ` - ${error.details}`;
+          }
         }
       } catch (e) {
         // If response is not JSON, use status text
         const statusText = response.statusText || `HTTP ${response.status}`;
-        errorMessage = `Failed to send message: ${statusText}`;
+        if (response.status === 500) {
+          errorMessage = 'Server error occurred while sending message. Please try again.';
+        } else {
+          errorMessage = `Failed to send message: ${statusText}`;
+        }
       }
       throw new Error(errorMessage);
     }
