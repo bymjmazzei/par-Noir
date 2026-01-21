@@ -440,7 +440,7 @@ async generateApiKey(pnId: string): Promise<string> {
 - Add Veriff verification requirement
 - Add API key generation
 - Add API key display (one-time)
-- Make it open source (no license fees)
+- Make it freeware (no license fees)
 
 ### 4.3 AML/KYC Service
 
