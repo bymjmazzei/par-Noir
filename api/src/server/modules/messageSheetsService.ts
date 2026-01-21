@@ -27,33 +27,73 @@ export class MessageSheetsService {
     accessToken: string,
     pnFolderId: string
   ): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
-    const drive = google.drive({ version: 'v3', auth });
+    try {
+      const auth = new google.auth.OAuth2();
+      auth.setCredentials({ access_token: accessToken });
+      const drive = google.drive({ version: 'v3', auth });
 
-    // Search for existing messages folder
-    const folderQuery = `name='${this.MESSAGES_FOLDER_NAME}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    const searchResponse = await drive.files.list({
-      q: folderQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
+      // Search for existing messages folder
+      try {
+        const folderQuery = `name='${this.MESSAGES_FOLDER_NAME}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const searchResponse = await drive.files.list({
+          q: folderQuery,
+          fields: 'files(id,name)',
+          pageSize: 1
+        });
 
-    if (searchResponse.data.files && searchResponse.data.files.length > 0) {
-      return searchResponse.data.files[0].id!;
+        if (searchResponse.data.files && searchResponse.data.files.length > 0) {
+          console.log(`[MessageSheetsService] Found existing messages folder: ${searchResponse.data.files[0].id}`);
+          return searchResponse.data.files[0].id!;
+        }
+      } catch (searchError: any) {
+        console.error('[MessageSheetsService] Error searching for messages folder:', {
+          pnFolderId,
+          error: searchError?.message,
+          status: searchError?.response?.status
+        });
+        // Continue to create new folder
+      }
+
+      // Create messages folder
+      console.log(`[MessageSheetsService] Creating new messages folder in ${pnFolderId}`);
+      try {
+        const createResponse = await drive.files.create({
+          requestBody: {
+            name: this.MESSAGES_FOLDER_NAME,
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [pnFolderId]
+          },
+          fields: 'id'
+        });
+
+        const folderId = createResponse.data.id;
+        if (!folderId) {
+          throw new Error('Failed to create messages folder: no ID returned');
+        }
+
+        console.log(`[MessageSheetsService] Created messages folder: ${folderId}`);
+        return folderId;
+      } catch (createError: any) {
+        console.error('[MessageSheetsService] Failed to create messages folder:', {
+          pnFolderId,
+          error: createError?.message,
+          status: createError?.response?.status,
+          data: createError?.response?.data
+        });
+        throw new Error(`Failed to create messages folder: ${createError?.message || 'Unknown error'}`);
+      }
+    } catch (error: any) {
+      const errorDetails = {
+        pnFolderId,
+        message: error?.message,
+        code: error?.code,
+        status: error?.response?.status,
+        statusText: error?.response?.statusText,
+        data: error?.response?.data
+      };
+      console.error('[MessageSheetsService] Error in getOrCreateMessagesFolder:', errorDetails);
+      throw error;
     }
-
-    // Create messages folder
-    const createResponse = await drive.files.create({
-      requestBody: {
-        name: this.MESSAGES_FOLDER_NAME,
-        mimeType: 'application/vnd.google-apps.folder',
-        parents: [pnFolderId]
-      },
-      fields: 'id'
-    });
-
-    return createResponse.data.id!;
   }
 
   /**
@@ -64,68 +104,128 @@ export class MessageSheetsService {
     messagesFolderId: string,
     otherUserDid: string
   ): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
-    const sheets = google.sheets({ version: 'v4', auth });
-    const drive = google.drive({ version: 'v3', auth });
+    try {
+      const auth = new google.auth.OAuth2();
+      auth.setCredentials({ access_token: accessToken });
+      const sheets = google.sheets({ version: 'v4', auth });
+      const drive = google.drive({ version: 'v3', auth });
 
-    const sheetFileName = `conversation-${otherUserDid}`;
+      const sheetFileName = `conversation-${otherUserDid}`;
 
-    // Search for existing conversation sheet
-    const fileQuery = `name='${sheetFileName}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    const searchResponse = await drive.files.list({
-      q: fileQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
+      // Search for existing conversation sheet
+      try {
+        const fileQuery = `name='${sheetFileName}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+        const searchResponse = await drive.files.list({
+          q: fileQuery,
+          fields: 'files(id,name)',
+          pageSize: 1
+        });
 
-    if (searchResponse.data.files && searchResponse.data.files.length > 0) {
-      return searchResponse.data.files[0].id!;
-    }
+        if (searchResponse.data.files && searchResponse.data.files.length > 0) {
+          console.log(`[MessageSheetsService] Found existing conversation sheet for ${otherUserDid}: ${searchResponse.data.files[0].id}`);
+          return searchResponse.data.files[0].id!;
+        }
+      } catch (searchError: any) {
+        console.error('[MessageSheetsService] Error searching for conversation sheet:', {
+          otherUserDid,
+          messagesFolderId,
+          error: searchError?.message,
+          status: searchError?.response?.status
+        });
+        // Continue to create new sheet
+      }
 
-    // Create new conversation sheet
-    const spreadsheet = await sheets.spreadsheets.create({
-      requestBody: {
-        properties: {
-          title: sheetFileName
-        },
-        sheets: [
-          {
+      // Create new conversation sheet
+      console.log(`[MessageSheetsService] Creating new conversation sheet for ${otherUserDid}`);
+      let spreadsheet;
+      try {
+        spreadsheet = await sheets.spreadsheets.create({
+          requestBody: {
             properties: {
-              title: 'Messages',
-              gridProperties: {
-                rowCount: 10000,
-                columnCount: 6
+              title: sheetFileName
+            },
+            sheets: [
+              {
+                properties: {
+                  title: 'Messages',
+                  gridProperties: {
+                    rowCount: 10000,
+                    columnCount: 6
+                  }
+                }
               }
-            }
+            ]
           }
-        ]
+        });
+      } catch (createError: any) {
+        console.error('[MessageSheetsService] Failed to create conversation sheet:', {
+          otherUserDid,
+          error: createError?.message,
+          status: createError?.response?.status,
+          data: createError?.response?.data
+        });
+        throw new Error(`Failed to create conversation sheet: ${createError?.message || 'Unknown error'}`);
       }
-    });
 
-    const spreadsheetId = spreadsheet.data.spreadsheetId;
-    if (!spreadsheetId) {
-      throw new Error('Failed to create conversation sheet: no ID returned');
+      const spreadsheetId = spreadsheet.data.spreadsheetId;
+      if (!spreadsheetId) {
+        throw new Error('Failed to create conversation sheet: no ID returned');
+      }
+
+      // Move to messages folder
+      try {
+        await drive.files.update({
+          fileId: spreadsheetId,
+          addParents: messagesFolderId,
+          fields: 'id, parents'
+        });
+        console.log(`[MessageSheetsService] Moved conversation sheet ${spreadsheetId} to messages folder`);
+      } catch (moveError: any) {
+        console.error('[MessageSheetsService] Failed to move conversation sheet to folder:', {
+          spreadsheetId,
+          messagesFolderId,
+          error: moveError?.message,
+          status: moveError?.response?.status
+        });
+        // Don't fail - sheet exists, just not in the right folder
+        console.warn('[MessageSheetsService] Continuing despite folder move failure');
+      }
+
+      // Set up headers
+      try {
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: 'Messages!A1:F1',
+          valueInputOption: 'RAW',
+          requestBody: {
+            values: [['User DID', 'Message Content', 'Timestamp', 'Message ID', 'Read Status', 'Read At']]
+          }
+        });
+        console.log(`[MessageSheetsService] Set up headers for conversation sheet ${spreadsheetId}`);
+      } catch (headerError: any) {
+        console.error('[MessageSheetsService] Failed to set up headers for conversation sheet:', {
+          spreadsheetId,
+          error: headerError?.message,
+          status: headerError?.response?.status
+        });
+        // Don't fail - headers can be set manually if needed
+        console.warn('[MessageSheetsService] Continuing despite header setup failure');
+      }
+
+      return spreadsheetId;
+    } catch (error: any) {
+      const errorDetails = {
+        otherUserDid,
+        messagesFolderId,
+        message: error?.message,
+        code: error?.code,
+        status: error?.response?.status,
+        statusText: error?.response?.statusText,
+        data: error?.response?.data
+      };
+      console.error('[MessageSheetsService] Error in getOrCreateConversationSheet:', errorDetails);
+      throw error;
     }
-
-    // Move to messages folder
-    await drive.files.update({
-      fileId: spreadsheetId,
-      addParents: messagesFolderId,
-      fields: 'id, parents'
-    });
-
-    // Set up headers
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: 'Messages!A1:F1',
-      valueInputOption: 'RAW',
-      requestBody: {
-        values: [['User DID', 'Message Content', 'Timestamp', 'Message ID', 'Read Status', 'Read At']]
-      }
-    });
-
-    return spreadsheetId;
   }
 
   /**
@@ -136,25 +236,67 @@ export class MessageSheetsService {
     spreadsheetId: string,
     message: Message
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
-    const sheets = google.sheets({ version: 'v4', auth });
-
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: 'Messages!A:F',
-      valueInputOption: 'RAW',
-      requestBody: {
-        values: [[
-          message.fromDid,
-          message.content,
-          message.timestamp,
-          message.messageId,
-          message.read ? 'true' : 'false',
-          message.readAt || ''
-        ]]
+    try {
+      // Validation checks
+      if (!accessToken || typeof accessToken !== 'string' || accessToken.trim().length === 0) {
+        throw new Error('Invalid access token: token is empty or invalid');
       }
-    });
+
+      if (!spreadsheetId || typeof spreadsheetId !== 'string' || spreadsheetId.trim().length === 0) {
+        throw new Error(`Invalid spreadsheet ID: ${spreadsheetId}`);
+      }
+
+      // Google Sheets IDs are typically long alphanumeric strings
+      // Basic format check (at least 10 characters, alphanumeric with some special chars)
+      if (spreadsheetId.length < 10) {
+        throw new Error(`Invalid spreadsheet ID format: ${spreadsheetId} (too short)`);
+      }
+
+      const auth = new google.auth.OAuth2();
+      auth.setCredentials({ access_token: accessToken });
+      const sheets = google.sheets({ version: 'v4', auth });
+
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: 'Messages!A:F',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [[
+            message.fromDid,
+            message.content,
+            message.timestamp,
+            message.messageId,
+            message.read ? 'true' : 'false',
+            message.readAt || ''
+          ]]
+        }
+      });
+    } catch (error: any) {
+      const errorDetails = {
+        message: error?.message,
+        code: error?.code,
+        status: error?.response?.status,
+        statusText: error?.response?.statusText,
+        data: error?.response?.data,
+        spreadsheetId,
+        messageId: message.messageId,
+        fromDid: message.fromDid,
+        toDid: message.toDid
+      };
+      console.error('[MessageSheetsService] Failed to append message:', errorDetails);
+      console.error('[MessageSheetsService] Full error:', error);
+      
+      // Provide more descriptive error message
+      if (error?.response?.status === 403) {
+        throw new Error(`Permission denied: Cannot write to spreadsheet ${spreadsheetId}. Check access token permissions.`);
+      } else if (error?.response?.status === 404) {
+        throw new Error(`Spreadsheet not found: ${spreadsheetId}. Sheet may have been deleted.`);
+      } else if (error?.response?.status === 429) {
+        throw new Error('Google Sheets API rate limit exceeded. Please try again later.');
+      } else {
+        throw new Error(`Failed to append message to sheet: ${error?.message || 'Unknown error'}`);
+      }
+    }
   }
 
   /**

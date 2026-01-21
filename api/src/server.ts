@@ -10292,11 +10292,18 @@ class ProductionServer {
     });
 
     this.app.post('/api/messages/send', async (req, res) => {
+      console.log('[SendMessage] Endpoint called', { 
+        fromDid: req.body?.fromDid, 
+        toDid: req.body?.toDid,
+        hasContent: !!req.body?.content,
+        contentLength: req.body?.content?.length
+      });
       try {
         const { fromDid, toDid, content, mediaFileId, isConnectionRequest } = req.body;
         if (!fromDid || !toDid || !content) {
           return res.status(400).json({ error: 'fromDid, toDid, and content are required' });
         }
+        console.log('[SendMessage] Request validated, starting message processing', { fromDid, toDid, messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` });
 
         // Import services at the top
         const { ConnectionsService } = await import('./server/modules/connectionsService');
@@ -10452,11 +10459,13 @@ class ProductionServer {
         };
 
         // Append message to sender's conversation sheet
+        console.log('[SendMessage] Appending message to sender\'s sheet', { senderConversationSheetId, messageId });
         await MessageSheetsService.appendMessage(
           senderAccessToken,
           senderConversationSheetId,
           message
         );
+        console.log('[SendMessage] Message appended to sender\'s sheet successfully');
 
         // Record activity for sender FIRST
         await ActivityLedgerService.recordActivity(
@@ -10545,6 +10554,7 @@ class ProductionServer {
         if (!recipientPnFolder) {
           return res.status(500).json({ error: 'Recipient folder not found' });
         }
+        console.log('[SendMessage] Recipient folder found', { recipientPnFolderId: recipientPnFolder.id });
 
         // Get or create messages folder for recipient
         const recipientMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
@@ -10553,18 +10563,28 @@ class ProductionServer {
         );
 
         // Get or create conversation sheet for recipient
+        console.log('[SendMessage] Getting or creating recipient conversation sheet', { fromDid, recipientMessagesFolderId });
         const recipientConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
           recipientAccessToken,
           recipientMessagesFolderId,
           fromDid
         );
+        console.log('[SendMessage] Recipient conversation sheet ready', { recipientConversationSheetId });
 
         // Append message to recipient's conversation sheet
+        console.log('[SendMessage] Appending message to recipient\'s sheet', { recipientConversationSheetId, messageId });
+        if (!recipientConversationSheetId || recipientConversationSheetId.trim().length === 0) {
+          throw new Error('Invalid recipient conversation sheet ID');
+        }
+        if (!recipientAccessToken || recipientAccessToken.trim().length === 0) {
+          throw new Error('Invalid recipient access token');
+        }
         await MessageSheetsService.appendMessage(
           recipientAccessToken,
           recipientConversationSheetId,
           message
         );
+        console.log('[SendMessage] Message appended to recipient\'s sheet successfully');
 
         // Record activity for recipient FIRST
         await ActivityLedgerService.recordActivity(
