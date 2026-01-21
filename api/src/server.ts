@@ -10624,10 +10624,19 @@ class ProductionServer {
           }
         });
       } catch (error: any) {
-        console.error('Error sending message:', error);
+        console.error('[SendMessage] Error sending message:', error);
+        console.error('[SendMessage] Error stack:', error?.stack);
+        console.error('[SendMessage] Error details:', {
+          fromDid,
+          toDid,
+          message: error?.message,
+          name: error?.name,
+          code: error?.code
+        });
         return res.status(500).json({
           error: 'Failed to send message',
-          error_description: error.message || 'Failed to send message'
+          error_description: error.message || 'Failed to send message',
+          details: error?.stack ? 'Check server logs for details' : undefined
         });
       }
     });
