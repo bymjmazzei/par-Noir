@@ -987,7 +987,7 @@ function App() {
           viewingCreatorId={viewingCreatorId}
           mePageTab={mePageData.mePageTab}
           onTabSelect={(tab) => { setMePageTab(tab); setCurrentFeedIndex(0); }}
-          isOwnIndex={isOwnIndex}
+          isOwnIndex={mePageData.isOwnIndex}
           filteredMeFiles={mePageData.filteredMeFiles}
           currentFeedIndex={currentFeedIndex}
           setCurrentFeedIndex={setCurrentFeedIndex}
