@@ -108,24 +108,19 @@ export async function getThreadMessages(
   userDid: string,
   participantDid: string
 ): Promise<Message[]> {
-  try {
-    const response = await fetch(
-      `${API_ENDPOINT}/api/messages/thread?userDid=${userDid}&participantDid=${participantDid}`,
-      {
-        headers: getAuthHeaders()
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error('Failed to load thread messages');
+  const response = await fetch(
+    `${API_ENDPOINT}/api/messages/thread?userDid=${userDid}&participantDid=${participantDid}`,
+    {
+      headers: getAuthHeaders()
     }
+  );
 
-    const result = await response.json();
-    return result.messages || [];
-  } catch (error) {
-    console.error('Failed to get thread messages:', error);
-    return [];
+  if (!response.ok) {
+    throw new Error('Failed to load thread messages');
   }
+
+  const result = await response.json();
+  return result.messages || [];
 }
 
 /**

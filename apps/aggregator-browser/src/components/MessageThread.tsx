@@ -39,6 +39,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
       
       try {
         const threadMessages = await getThreadMessages(userState.pnIdentifier!, participantDid);
+        // Only update messages if fetch was successful
         setMessages(threadMessages);
 
         // Mark unread messages as read
@@ -51,7 +52,16 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
           }
         }
       } catch (error) {
-        console.error('Failed to load messages:', error);
+        // On network errors, preserve existing messages (don't clear them)
+        // Only log the error - don't update state
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load messages';
+        // Only log network errors, don't show to user for polling failures
+        if (errorMessage.includes('Failed to fetch') || errorMessage.includes('ERR_NETWORK')) {
+          console.warn('Network error while loading messages, preserving existing messages:', errorMessage);
+        } else {
+          console.error('Failed to load messages:', error);
+        }
+        // Don't update messages on error - preserve what we have
       } finally {
         if (isInitial) {
           setLoading(false);
