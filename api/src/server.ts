@@ -10341,25 +10341,31 @@ class ProductionServer {
           });
         }
 
-        // Get connection to retrieve shared secret
-        const connectionsFile = await ConnectionsService.getConnectionsFile(
+        // Get connection to retrieve shared secret - use Sheets directly
+        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+        const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
           userAccessToken,
           metadataFolderId
         );
-        if (!connectionsFile) {
-          return res.status(500).json({
-            error: 'Failed to retrieve connections file',
-            error_description: 'Failed to retrieve connections file'
-          });
-        }
-
-        const connection = connectionsFile.connections.find(
+        
+        // Get all connections to find the one with the matching connectionId
+        const connectionsResult = await ConnectionsSheetsService.getConnections(
+          userAccessToken,
+          spreadsheetId,
+          {
+            limit: 10000, // Large limit to get all connections
+            offset: 0
+            // No status filter - get all connections
+          }
+        );
+        
+        const connection = connectionsResult.connections.find(
           c => c.connectionId === connectionStatus.connectionId
         );
         if (!connection) {
           return res.status(500).json({
             error: 'Connection not found',
-            error_description: 'Connection not found'
+            error_description: `Connection ${connectionStatus.connectionId} not found in connections sheet`
           });
         }
 
@@ -10385,46 +10391,46 @@ class ProductionServer {
                 try {
                   const participantMetadataFolder = await this.getMetadataFolder(participantAccessToken, participantCredentials.identityId);
                   if (participantMetadataFolder) {
-                    const participantConnectionsFile = await ConnectionsService.getConnectionsFile(
+                    // Get connection from other user's Sheets directly
+                    const participantSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
                       participantAccessToken,
                       participantMetadataFolder.metadataFolderId
                     );
-                    if (participantConnectionsFile) {
-                      const participantConnection = participantConnectionsFile.connections.find(
-                        c => c.connectionId === connectionStatus.connectionId
-                      );
-                      if (participantConnection?.sharedSecret) {
-                        // Sync shared secret from other user
-                        sharedSecret = participantConnection.sharedSecret;
-                        console.log(`[Thread] Synced shared secret from other user's connection record`);
-                        
-                        // Store it in current user's connection record
-                        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-                        const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
-                          userAccessToken,
-                          metadataFolderId
-                        );
-                        await ConnectionsSheetsService.updateConnectionStatus(
-                          userAccessToken,
-                          spreadsheetId,
-                          connectionStatus.connectionId,
-                          connection.status,
-                          connection.acceptedAt,
-                          sharedSecret
-                        );
-                        console.log(`[Thread] Stored synced shared secret in user's connection record`);
-                      } else {
-                        console.warn(`[Thread] Other user also missing shared secret - connection may need to be re-established`);
-                        return res.status(500).json({
-                          error: 'Shared secret not found. Please reconnect with this user.',
-                          error_description: 'Shared secret not found. Please reconnect with this user.'
-                        });
+                    const participantConnectionsResult = await ConnectionsSheetsService.getConnections(
+                      participantAccessToken,
+                      participantSpreadsheetId,
+                      {
+                        limit: 10000,
+                        offset: 0
                       }
+                    );
+                    const participantConnection = participantConnectionsResult.connections.find(
+                      c => c.connectionId === connectionStatus.connectionId
+                    );
+                    if (participantConnection?.sharedSecret) {
+                      // Sync shared secret from other user
+                      sharedSecret = participantConnection.sharedSecret;
+                      console.log(`[Thread] Synced shared secret from other user's connection record`);
+                      
+                      // Store it in current user's connection record
+                      const userSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+                        userAccessToken,
+                        metadataFolderId
+                      );
+                      await ConnectionsSheetsService.updateConnectionStatus(
+                        userAccessToken,
+                        userSpreadsheetId,
+                        connectionStatus.connectionId,
+                        connection.status,
+                        connection.acceptedAt,
+                        sharedSecret
+                      );
+                      console.log(`[Thread] Stored synced shared secret in user's connection record`);
                     } else {
-                      console.warn(`[Thread] Other user's connections file not found`);
+                      console.warn(`[Thread] Other user also missing shared secret - connection may need to be re-established`);
                       return res.status(500).json({
-                        error: 'Failed to retrieve shared secret. Please reconnect with this user.',
-                        error_description: 'Failed to retrieve shared secret. Please reconnect with this user.'
+                        error: 'Shared secret not found. Please reconnect with this user.',
+                        error_description: 'Shared secret not found. Please reconnect with this user.'
                       });
                     }
                   } else {
@@ -10680,25 +10686,31 @@ class ProductionServer {
           });
         }
 
-        // Get connection to retrieve shared secret
-        const connectionsFile = await ConnectionsService.getConnectionsFile(
+        // Get connection to retrieve shared secret - use Sheets directly
+        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+        const senderSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
           senderAccessToken,
           senderMetadataFolderId
         );
-        if (!connectionsFile) {
-          return res.status(500).json({
-            error: 'Failed to retrieve connections file',
-            error_description: 'Failed to retrieve connections file'
-          });
-        }
-
-        const connection = connectionsFile.connections.find(
+        
+        // Get all connections to find the one with the matching connectionId
+        const senderConnectionsResult = await ConnectionsSheetsService.getConnections(
+          senderAccessToken,
+          senderSpreadsheetId,
+          {
+            limit: 10000, // Large limit to get all connections
+            offset: 0
+            // No status filter - get all connections
+          }
+        );
+        
+        const connection = senderConnectionsResult.connections.find(
           c => c.connectionId === connectionStatus.connectionId
         );
         if (!connection) {
           return res.status(500).json({
             error: 'Connection not found',
-            error_description: 'Connection not found'
+            error_description: `Connection ${connectionStatus.connectionId} not found in connections sheet`
           });
         }
 
@@ -10875,25 +10887,30 @@ class ProductionServer {
         if (!recipientAccessToken || recipientAccessToken.trim().length === 0) {
           throw new Error('Invalid recipient access token');
         }
-        // Get recipient's connection to retrieve shared secret
-        const recipientConnectionsFile = await ConnectionsService.getConnectionsFile(
+        // Get recipient's connection to retrieve shared secret - use Sheets directly
+        const recipientSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
           recipientAccessToken,
           recipientMetadataFolderId
         );
-        if (!recipientConnectionsFile) {
-          return res.status(500).json({
-            error: 'Failed to retrieve recipient connections file',
-            error_description: 'Failed to retrieve recipient connections file'
-          });
-        }
-
-        const recipientConnection = recipientConnectionsFile.connections.find(
+        
+        // Get all connections to find the one with the matching connectionId
+        const recipientConnectionsResult = await ConnectionsSheetsService.getConnections(
+          recipientAccessToken,
+          recipientSpreadsheetId,
+          {
+            limit: 10000, // Large limit to get all connections
+            offset: 0
+            // No status filter - get all connections
+          }
+        );
+        
+        const recipientConnection = recipientConnectionsResult.connections.find(
           c => c.connectionId === connectionStatus.connectionId
         );
         if (!recipientConnection) {
           return res.status(500).json({
             error: 'Recipient connection not found',
-            error_description: 'Recipient connection not found'
+            error_description: `Connection ${connectionStatus.connectionId} not found in recipient's connections sheet`
           });
         }
 
