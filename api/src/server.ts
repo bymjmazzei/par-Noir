@@ -10363,29 +10363,105 @@ class ProductionServer {
           });
         }
 
-        // Auto-generate shared secret if missing (fallback for existing connections)
+        // Sync shared secret from other user if missing (don't generate new one - it won't match!)
         let sharedSecret = connection.sharedSecret;
         if (!sharedSecret) {
-          console.log(`[Thread] Connection ${connectionStatus.connectionId} missing shared secret, generating one`);
-          const crypto = await import('crypto');
-          const rawSecret = crypto.randomBytes(32).toString('base64');
-          sharedSecret = MetadataEncryption.encryptField(rawSecret);
+          console.log(`[Thread] Connection ${connectionStatus.connectionId} missing shared secret, attempting to sync from other user`);
           
-          // Update connection with shared secret
-          const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-          const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
-            userAccessToken,
-            metadataFolderId
-          );
-          await ConnectionsSheetsService.updateConnectionStatus(
-            userAccessToken,
-            spreadsheetId,
-            connectionStatus.connectionId,
-            connection.status,
-            connection.acceptedAt,
-            sharedSecret
-          );
-          console.log(`[Thread] Generated and stored shared secret for connection ${connectionStatus.connectionId}`);
+          // Try to get shared secret from other user's connection record
+          try {
+            const participantPnIdentifier = participantDid.startsWith('pn-') ? participantDid : `pn-${participantDid}`;
+            const participantCredentials = await storageCredentialsService.getCredentials(participantPnIdentifier);
+            
+            if (participantCredentials?.credentials) {
+              const participantGoogleDriveAccounts = participantCredentials.credentials.googleDriveAccounts || 
+                (participantCredentials.credentials.googleDrive ? [participantCredentials.credentials.googleDrive] : []);
+              
+              if (participantGoogleDriveAccounts.length > 0) {
+                const participantAccount = participantGoogleDriveAccounts[0];
+                const participantAccountId = (participantAccount as any).backendId || (participantAccount as any).keyPrefix || (participantAccount as any).accountId || (participantAccount as any).id || undefined;
+                const participantAccessToken = await googleDriveProxyService.getAccessToken(participantCredentials.identityId, participantAccountId, [participantCredentials.identityId]);
+                
+                try {
+                  const participantMetadataFolder = await this.getMetadataFolder(participantAccessToken, participantCredentials.identityId);
+                  if (participantMetadataFolder) {
+                    const participantConnectionsFile = await ConnectionsService.getConnectionsFile(
+                      participantAccessToken,
+                      participantMetadataFolder.metadataFolderId
+                    );
+                    if (participantConnectionsFile) {
+                      const participantConnection = participantConnectionsFile.connections.find(
+                        c => c.connectionId === connectionStatus.connectionId
+                      );
+                      if (participantConnection?.sharedSecret) {
+                        // Sync shared secret from other user
+                        sharedSecret = participantConnection.sharedSecret;
+                        console.log(`[Thread] Synced shared secret from other user's connection record`);
+                        
+                        // Store it in current user's connection record
+                        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+                        const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+                          userAccessToken,
+                          metadataFolderId
+                        );
+                        await ConnectionsSheetsService.updateConnectionStatus(
+                          userAccessToken,
+                          spreadsheetId,
+                          connectionStatus.connectionId,
+                          connection.status,
+                          connection.acceptedAt,
+                          sharedSecret
+                        );
+                        console.log(`[Thread] Stored synced shared secret in user's connection record`);
+                      } else {
+                        console.warn(`[Thread] Other user also missing shared secret - connection may need to be re-established`);
+                        return res.status(500).json({
+                          error: 'Shared secret not found. Please reconnect with this user.',
+                          error_description: 'Shared secret not found. Please reconnect with this user.'
+                        });
+                      }
+                    } else {
+                      console.warn(`[Thread] Other user's connections file not found`);
+                      return res.status(500).json({
+                        error: 'Failed to retrieve shared secret. Please reconnect with this user.',
+                        error_description: 'Failed to retrieve shared secret. Please reconnect with this user.'
+                      });
+                    }
+                  } else {
+                    console.warn(`[Thread] Other user's metadata folder not found`);
+                    return res.status(500).json({
+                      error: 'Failed to retrieve shared secret. Please reconnect with this user.',
+                      error_description: 'Failed to retrieve shared secret. Please reconnect with this user.'
+                    });
+                  }
+                } catch (syncError: any) {
+                  console.error(`[Thread] Failed to sync shared secret from other user:`, syncError.message);
+                  return res.status(500).json({
+                    error: 'Failed to retrieve shared secret. Please reconnect with this user.',
+                    error_description: 'Failed to retrieve shared secret. Please reconnect with this user.'
+                  });
+                }
+              } else {
+                console.warn(`[Thread] Other user has no Google Drive connected`);
+                return res.status(500).json({
+                  error: 'Failed to retrieve shared secret. Please reconnect with this user.',
+                  error_description: 'Failed to retrieve shared secret. Please reconnect with this user.'
+                });
+              }
+            } else {
+              console.warn(`[Thread] Other user's credentials not found`);
+              return res.status(500).json({
+                error: 'Failed to retrieve shared secret. Please reconnect with this user.',
+                error_description: 'Failed to retrieve shared secret. Please reconnect with this user.'
+              });
+            }
+          } catch (error: any) {
+            console.error(`[Thread] Error syncing shared secret:`, error.message);
+            return res.status(500).json({
+              error: 'Failed to retrieve shared secret. Please reconnect with this user.',
+              error_description: 'Failed to retrieve shared secret. Please reconnect with this user.'
+            });
+          }
         }
 
         // Decrypt shared secret
@@ -12116,6 +12192,93 @@ class ProductionServer {
             }
 
             if (otherMetadataFolderId) {
+              // Check if other user has active conversation and restore sharedSecret if available
+              try {
+                const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+                const { google } = await import('googleapis');
+                
+                // Check if other user has conversation file (active conversation)
+                const otherPnFolderName = `par Noir - ${otherUserCredentials.identityId}`;
+                const otherFolderQuery = `name='${otherPnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const otherFoldersResponse = await fetch(
+                  `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(otherFolderQuery)}&fields=files(id,name)`,
+                  { headers: { 'Authorization': `Bearer ${otherAccessToken}` } }
+                );
+                
+                if (otherFoldersResponse.ok) {
+                  const otherFoldersData = await otherFoldersResponse.json() as { files?: Array<{ id: string }> };
+                  const otherPnFolder = otherFoldersData.files?.[0];
+                  
+                  if (otherPnFolder) {
+                    const otherMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+                      otherAccessToken,
+                      otherPnFolder.id
+                    );
+                    
+                    // Check if other user has conversation file
+                    const otherAuth = new google.auth.OAuth2();
+                    otherAuth.setCredentials({ access_token: otherAccessToken });
+                    const otherDrive = google.drive({ version: 'v3', auth: otherAuth });
+                    
+                    const otherConversationFileName = `conversation-${userCredentials.identityId}`;
+                    const otherConvQuery = `name='${otherConversationFileName}' and '${otherMessagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+                    const otherConvResponse = await otherDrive.files.list({
+                      q: otherConvQuery,
+                      fields: 'files(id,name)',
+                      pageSize: 1
+                    });
+                    
+                    // If other user has active conversation, check their connection record for sharedSecret
+                    if (otherConvResponse.data.files && otherConvResponse.data.files.length > 0) {
+                      const otherConnectionsFile = await ConnectionsService.getConnectionsFile(
+                        otherAccessToken,
+                        otherMetadataFolderId
+                      );
+                      if (otherConnectionsFile) {
+                        const otherConnection = otherConnectionsFile.connections.find(
+                          c => c.connectionId === connectionId
+                        );
+                        if (otherConnection?.sharedSecret) {
+                          // Other user has active conversation and sharedSecret - restore it
+                          console.log(`[AcceptConnection] Other user has active conversation, restoring shared secret from their connection record`);
+                          sharedSecret = otherConnection.sharedSecret;
+                          
+                          // Update acceptor's connection record with restored sharedSecret
+                          const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+                          const acceptorSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+                            userAccessToken,
+                            metadataFolderId
+                          );
+                          
+                          // Get the connection from verifyFile to update it
+                          if (verifyFile) {
+                            const connectionToUpdate = verifyFile.connections.find(c => c.connectionId === connectionId);
+                            if (connectionToUpdate) {
+                              await ConnectionsSheetsService.updateConnectionStatus(
+                                userAccessToken,
+                                acceptorSpreadsheetId,
+                                connectionId,
+                                connectionToUpdate.status,
+                                connectionToUpdate.acceptedAt,
+                                sharedSecret
+                              );
+                              console.log(`[AcceptConnection] Restored and synced shared secret from other user's active conversation`);
+                            }
+                          }
+                        } else {
+                          console.log(`[AcceptConnection] Other user has active conversation but no sharedSecret, using newly generated one`);
+                        }
+                      }
+                    } else {
+                      console.log(`[AcceptConnection] Other user has no active conversation, using newly generated sharedSecret`);
+                    }
+                  }
+                }
+              } catch (restoreError: any) {
+                console.warn(`[AcceptConnection] Failed to check/restore shared secret from other user, using newly generated one:`, restoreError.message);
+                // Continue with newly generated sharedSecret
+              }
+              
               try {
                 await ConnectionsService.updateOtherUserConnectionStatus(
                 otherAccessToken,
@@ -12127,14 +12290,40 @@ class ProductionServer {
                 sharedSecret // Pass the shared secret to store in other user's connection
               );
               
-              // Verify the update was successful
+              // Verify the update was successful and sharedSecret is stored in both records
               const verifyOtherFile = await ConnectionsService.getConnectionsFile(otherAccessToken, otherMetadataFolderId);
               if (verifyOtherFile) {
                 const verifyOtherConnection = verifyOtherFile.connections.find(c => c.connectionId === connectionId);
                 if (verifyOtherConnection && verifyOtherConnection.status === 'accepted') {
                   console.log(`[AcceptConnection] Verified: Connection ${connectionId} is now accepted in other user's file`);
+                  if (verifyOtherConnection.sharedSecret) {
+                    console.log(`[AcceptConnection] Verified: Shared secret is stored in other user's connection record`);
+                  } else {
+                    console.error(`[AcceptConnection] WARNING: Shared secret missing in other user's connection record after update`);
+                  }
                 } else {
                   console.error(`[AcceptConnection] WARNING: Connection ${connectionId} not found or not accepted in other user's file after update`);
+                }
+              }
+              
+              // Verify sharedSecret is stored in acceptor's record
+              const verifyAcceptorFile = await ConnectionsService.getConnectionsFile(userAccessToken, metadataFolderId);
+              if (verifyAcceptorFile) {
+                const verifyAcceptorConnection = verifyAcceptorFile.connections.find(c => c.connectionId === connectionId);
+                if (verifyAcceptorConnection?.sharedSecret) {
+                  console.log(`[AcceptConnection] Verified: Shared secret is stored in acceptor's connection record`);
+                  
+                  // Verify both users have the same sharedSecret
+                  if (verifyOtherFile) {
+                    const verifyOtherConnection = verifyOtherFile.connections.find(c => c.connectionId === connectionId);
+                    if (verifyOtherConnection?.sharedSecret && verifyAcceptorConnection.sharedSecret === verifyOtherConnection.sharedSecret) {
+                      console.log(`[AcceptConnection] Verified: Both users have the same shared secret stored`);
+                    } else if (verifyOtherConnection?.sharedSecret) {
+                      console.error(`[AcceptConnection] ERROR: Shared secret mismatch between users!`);
+                    }
+                  }
+                } else {
+                  console.error(`[AcceptConnection] WARNING: Shared secret missing in acceptor's connection record`);
                 }
               }
               } catch (otherUserFolderError: any) {
