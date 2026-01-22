@@ -13539,82 +13539,92 @@ class ProductionServer {
         }
 
         // Also remove connection from other user's connections sheet
-        if (otherUserPnIdentifier) {
-          console.log(`[RemoveConnection] Attempting to remove connection ${connectionId} from other user: ${otherUserPnIdentifier}`);
-          try {
-            const otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
-            
-            if (!otherUserCredentials?.credentials) {
-              console.error(`[RemoveConnection] Other user's credentials not found for ${otherUserPnIdentifier}`);
-              // Continue and return success with warning
-            } else {
-              const otherUserGoogleDriveAccounts = otherUserCredentials.credentials.googleDriveAccounts || 
-                (otherUserCredentials.credentials.googleDrive ? [otherUserCredentials.credentials.googleDrive] : []);
-              
-              if (otherUserGoogleDriveAccounts.length === 0) {
-                console.error(`[RemoveConnection] Other user has no Google Drive connected for ${otherUserPnIdentifier}`);
-                // Continue and return success with warning
-              } else {
-                const otherUserAccount = otherUserGoogleDriveAccounts[0];
-                const otherUserAccountId = (otherUserAccount as any).backendId || (otherUserAccount as any).keyPrefix || (otherUserAccount as any).accountId || (otherUserAccount as any).id || undefined;
-                const otherUserAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherUserAccountId, [otherUserCredentials.identityId]);
-                
-                try {
-                  const otherUserMetadataFolder = await this.getMetadataFolder(otherUserAccessToken, otherUserCredentials.identityId);
-                  if (!otherUserMetadataFolder) {
-                    console.error(`[RemoveConnection] Other user's metadata folder not found for ${otherUserPnIdentifier}`);
-                    // Continue and return success with warning
-                  } else {
-                    try {
-                      const otherUserSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
-                        otherUserAccessToken,
-                        otherUserMetadataFolder.metadataFolderId
-                      );
-                      
-                      try {
-                        await ConnectionsSheetsService.removeConnection(
-                          otherUserAccessToken,
-                          otherUserSpreadsheetId,
-                          connectionId
-                        );
-                        
-                        console.log(`[RemoveConnection] Successfully removed connection ${connectionId} from both users' connections sheets`);
-                        return res.json({ success: true });
-                      } catch (removeError: any) {
-                        if (removeError.message === 'Connection not found' || removeError.message?.includes('not found')) {
-                          console.warn(`[RemoveConnection] Connection ${connectionId} not found in other user's sheet (may have been already removed)`);
-                          return res.json({ success: true, warning: 'Connection removed from your list, but connection not found in other user\'s list (may have been already removed)' });
-                        } else {
-                          throw removeError; // Re-throw to be caught by outer catch
-                        }
-                      }
-                    } catch (sheetError: any) {
-                      console.error(`[RemoveConnection] Failed to get/create other user's connections sheet:`, sheetError.message);
-                      // Continue to return success with warning
-                    }
-                  }
-                } catch (metadataError: any) {
-                  console.error(`[RemoveConnection] Failed to get other user's metadata folder:`, metadataError.message);
-                  // Continue to return success with warning
-                }
-              }
-            }
-          } catch (otherUserError: any) {
-            console.error(`[RemoveConnection] CRITICAL: Failed to remove connection from other user's connections sheet:`, {
-              otherUserPnIdentifier,
-              error: otherUserError?.message,
-              stack: otherUserError?.stack,
-              status: otherUserError?.response?.status
-            });
-            // Continue to return success with warning
-          }
-          
-          // If we get here, we couldn't remove from other user but did remove from requesting user
-          return res.json({ success: true, warning: 'Connection removed from your list, but could not remove from other user' });
-        } else {
-          console.error(`[RemoveConnection] CRITICAL: Could not determine other user's pn identifier from connection ${connectionId}`);
-          // Still return success since we removed from requesting user
+        if (!otherUserPnIdentifier) {
+          console.error(`[RemoveConnection] Could not determine other user's pn identifier from connection ${connectionId}`);
           return res.json({ success: true, warning: 'Connection removed from your list, but could not determine other user to remove from their list' });
+        }
+
+        console.log(`[RemoveConnection] Attempting to remove connection ${connectionId} from other user: ${otherUserPnIdentifier}`);
+        
+        // Get other user's credentials - early return if not found
+        let otherUserCredentials;
+        try {
+          otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
+        } catch (error: any) {
+          console.error(`[RemoveConnection] Failed to get other user's credentials:`, error.message);
+          return res.json({ success: true, warning: 'Connection removed from your list, but could not access other user\'s credentials' });
+        }
+        
+        if (!otherUserCredentials?.credentials) {
+          console.error(`[RemoveConnection] Other user's credentials not found for ${otherUserPnIdentifier}`);
+          return res.json({ success: true, warning: 'Connection removed from your list, but other user\'s credentials not found' });
+        }
+
+        // Get other user's Google Drive accounts - early return if none
+        const otherUserGoogleDriveAccounts = otherUserCredentials.credentials.googleDriveAccounts || 
+          (otherUserCredentials.credentials.googleDrive ? [otherUserCredentials.credentials.googleDrive] : []);
+        
+        if (otherUserGoogleDriveAccounts.length === 0) {
+          console.error(`[RemoveConnection] Other user has no Google Drive connected for ${otherUserPnIdentifier}`);
+          return res.json({ success: true, warning: 'Connection removed from your list, but other user has no Google Drive connected' });
+        }
+
+        // Get other user's access token
+        const otherUserAccount = otherUserGoogleDriveAccounts[0];
+        const otherUserAccountId = (otherUserAccount as any).backendId || (otherUserAccount as any).keyPrefix || (otherUserAccount as any).accountId || (otherUserAccount as any).id || undefined;
+        let otherUserAccessToken: string;
+        try {
+          otherUserAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherUserAccountId, [otherUserCredentials.identityId]);
+        } catch (error: any) {
+          console.error(`[RemoveConnection] Failed to get other user's access token:`, error.message);
+          return res.json({ success: true, warning: 'Connection removed from your list, but could not get other user\'s access token' });
+        }
+
+        // Get other user's metadata folder - early return if not found
+        let otherUserMetadataFolder;
+        try {
+          otherUserMetadataFolder = await this.getMetadataFolder(otherUserAccessToken, otherUserCredentials.identityId);
+        } catch (error: any) {
+          console.error(`[RemoveConnection] Failed to get other user's metadata folder:`, error.message);
+          return res.json({ success: true, warning: 'Connection removed from your list, but could not access other user\'s metadata folder' });
+        }
+        
+        if (!otherUserMetadataFolder) {
+          console.error(`[RemoveConnection] Other user's metadata folder not found for ${otherUserPnIdentifier}`);
+          return res.json({ success: true, warning: 'Connection removed from your list, but other user\'s metadata folder not found' });
+        }
+
+        // Get other user's connections spreadsheet - early return if error
+        let otherUserSpreadsheetId: string;
+        try {
+          otherUserSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+            otherUserAccessToken,
+            otherUserMetadataFolder.metadataFolderId
+          );
+        } catch (error: any) {
+          console.error(`[RemoveConnection] Failed to get/create other user's connections sheet:`, error.message);
+          return res.json({ success: true, warning: 'Connection removed from your list, but could not access other user\'s connections sheet' });
+        }
+
+        // Now attempt the actual removal - this is the critical step
+        try {
+          await ConnectionsSheetsService.removeConnection(
+            otherUserAccessToken,
+            otherUserSpreadsheetId,
+            connectionId
+          );
+          
+          console.log(`[RemoveConnection] Successfully removed connection ${connectionId} from both users' connections sheets`);
+          return res.json({ success: true });
+        } catch (removeError: any) {
+          if (removeError.message === 'Connection not found' || removeError.message?.includes('not found')) {
+            console.warn(`[RemoveConnection] Connection ${connectionId} not found in other user's sheet (may have been already removed)`);
+            return res.json({ success: true, warning: 'Connection removed from your list, but connection not found in other user\'s list (may have been already removed)' });
+          } else {
+            // Re-throw unexpected errors to be caught by outer catch
+            console.error(`[RemoveConnection] Unexpected error removing from other user's sheet:`, removeError.message, removeError.stack);
+            throw removeError;
+          }
         }
 
         return res.json({ success: true });
