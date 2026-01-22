@@ -10264,6 +10264,8 @@ class ProductionServer {
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
         const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
 
+        console.log(`[Thread] Request: userDid=${userDid}, participantDid=${participantDid}`);
+
         if (!userDid || !participantDid) {
           return res.status(400).json({ error: 'userDid and participantDid are required' });
         }
@@ -10274,12 +10276,15 @@ class ProductionServer {
 
         // Normalize pn identifier
         const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        console.log(`[Thread] Normalized pnIdentifier: ${pnIdentifier}`);
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
+          console.log(`[Thread] No credentials found for ${pnIdentifier}`);
           return res.json({ messages: [] });
         }
+        console.log(`[Thread] Found credentials for ${pnIdentifier}`);
 
         const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
@@ -10327,17 +10332,24 @@ class ProductionServer {
         const { ConnectionsService } = await import('./server/modules/connectionsService');
         const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
         
+        // Normalize participantDid for connection lookup
+        // Use the normalized userDid (pnIdentifier) instead of identityId, as connections are stored by DID
+        const normalizedParticipantDid = participantDid.startsWith('pn-') ? participantDid : `pn-${participantDid}`;
+        console.log(`[Thread] Looking up connection: user=${pnIdentifier}, participant=${normalizedParticipantDid}`);
+        
         const connectionStatus = await ConnectionsService.getConnectionStatus(
           userAccessToken,
           metadataFolderId,
-          userCredentials.identityId,
-          participantDid
+          pnIdentifier,
+          normalizedParticipantDid
         );
+
+        console.log(`[Thread] Connection status: ${connectionStatus.status}, connectionId: ${connectionStatus.connectionId}`);
 
         if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
           return res.status(403).json({
             error: 'Connection not found. Users must be connected to view messages.',
-            error_description: 'Connection not found. Users must be connected to view messages.'
+            error_description: `Connection not found. Status: ${connectionStatus.status}`
           });
         }
 
@@ -10482,14 +10494,17 @@ class ProductionServer {
 
         console.log(`[Thread] Using connectionId: ${connectionStatus.connectionId}, hasSharedSecret: ${!!decryptedSharedSecret}`);
 
-        // Get or create conversation sheet
+        // Get or create conversation sheet (use original participantDid for sheet name, not normalized)
+        console.log(`[Thread] Getting or creating conversation sheet for participant: ${participantDid}`);
         const conversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
           userAccessToken,
           messagesFolderId,
           participantDid
         );
+        console.log(`[Thread] Conversation sheet ID: ${conversationSheetId}`);
 
         // Get messages from conversation sheet (with decryption)
+        console.log(`[Thread] Getting messages from sheet ${conversationSheetId}, connectionId: ${connectionStatus.connectionId}`);
         const result = await MessageSheetsService.getMessages(
           userAccessToken,
           conversationSheetId,
@@ -10497,6 +10512,7 @@ class ProductionServer {
           decryptedSharedSecret,
           { limit, offset }
         );
+        console.log(`[Thread] Retrieved ${result.messages.length} messages (total: ${result.total})`);
 
         // Set toDid for all messages
         result.messages.forEach(msg => {
@@ -10505,7 +10521,12 @@ class ProductionServer {
 
         return res.json({ messages: result.messages, total: result.total });
       } catch (error: any) {
-        console.error('Error getting thread messages:', error);
+        console.error('[Thread] Error getting thread messages:', {
+          error: error.message,
+          stack: error.stack,
+          userDid: req.query.userDid,
+          participantDid: req.query.participantDid
+        });
         return res.status(500).json({
           error: 'Failed to get thread messages',
           error_description: error.message || 'Failed to get thread messages'
