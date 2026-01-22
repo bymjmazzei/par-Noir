@@ -511,7 +511,23 @@ export class ConnectionsSheetsService {
       throw new Error('Connection not found');
     }
 
-    // Delete row (rowIndex + 2 because of header and 0-based index)
+    // Get the actual sheet ID for the "Connections" sheet
+    const spreadsheet = await sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: 'sheets.properties'
+    });
+
+    const connectionsSheet = spreadsheet.data.sheets?.find(
+      sheet => sheet.properties?.title === 'Connections'
+    );
+
+    if (!connectionsSheet?.properties?.sheetId) {
+      throw new Error('Connections sheet not found in spreadsheet');
+    }
+
+    const actualSheetId = connectionsSheet.properties.sheetId;
+
+    // Delete row (rowIndex + 1 because we're using 0-based index and skipping header)
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
@@ -519,7 +535,7 @@ export class ConnectionsSheetsService {
           {
             deleteDimension: {
               range: {
-                sheetId: 0,
+                sheetId: actualSheetId,
                 dimension: 'ROWS',
                 startIndex: rowIndex + 1, // 0-based, skip header
                 endIndex: rowIndex + 2
@@ -623,6 +639,22 @@ export class ConnectionsSheetsService {
       throw new Error('Follower not found');
     }
 
+    // Get the actual sheet ID for the "Followers" sheet
+    const spreadsheet = await sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: 'sheets.properties'
+    });
+
+    const followersSheet = spreadsheet.data.sheets?.find(
+      sheet => sheet.properties?.title === 'Followers'
+    );
+
+    if (!followersSheet?.properties?.sheetId) {
+      throw new Error('Followers sheet not found in spreadsheet');
+    }
+
+    const actualSheetId = followersSheet.properties.sheetId;
+
     // Delete row
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
@@ -631,7 +663,7 @@ export class ConnectionsSheetsService {
           {
             deleteDimension: {
               range: {
-                sheetId: 0,
+                sheetId: actualSheetId,
                 dimension: 'ROWS',
                 startIndex: rowIndex + 1,
                 endIndex: rowIndex + 2
@@ -742,6 +774,22 @@ export class ConnectionsSheetsService {
       throw new Error('Following entry not found');
     }
 
+    // Get the actual sheet ID for the "Following" sheet
+    const spreadsheet = await sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: 'sheets.properties'
+    });
+
+    const followingSheet = spreadsheet.data.sheets?.find(
+      sheet => sheet.properties?.title === 'Following'
+    );
+
+    if (!followingSheet?.properties?.sheetId) {
+      throw new Error('Following sheet not found in spreadsheet');
+    }
+
+    const actualSheetId = followingSheet.properties.sheetId;
+
     // Delete row
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
@@ -750,7 +798,7 @@ export class ConnectionsSheetsService {
           {
             deleteDimension: {
               range: {
-                sheetId: 0,
+                sheetId: actualSheetId,
                 dimension: 'ROWS',
                 startIndex: rowIndex + 1,
                 endIndex: rowIndex + 2
