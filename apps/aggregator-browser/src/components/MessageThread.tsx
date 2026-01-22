@@ -238,33 +238,33 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="text-neutral-400 hover:text-white transition-colors p-2"
+              aria-label="Menu"
+            >
+              <MoreVertical className="h-5 w-5" />
+            </button>
+            {showMenu && (
+              <div className="absolute left-0 mt-2 w-48 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg z-10">
+                <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    setShowDeleteConfirm(true);
+                  }}
+                  className="w-full text-left px-4 py-2 text-red-400 hover:bg-neutral-700 flex items-center space-x-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span>Delete Conversation</span>
+                </button>
+              </div>
+            )}
+          </div>
           <div>
             <h2 className="text-white font-semibold">{displayName}</h2>
             <p className="text-neutral-400 text-xs">{participantDid}</p>
           </div>
-        </div>
-        <div className="relative" ref={menuRef}>
-          <button
-            onClick={() => setShowMenu(!showMenu)}
-            className="text-neutral-400 hover:text-white transition-colors p-2"
-            aria-label="Menu"
-          >
-            <MoreVertical className="h-5 w-5" />
-          </button>
-          {showMenu && (
-            <div className="absolute right-0 mt-2 w-48 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg z-10">
-              <button
-                onClick={() => {
-                  setShowMenu(false);
-                  setShowDeleteConfirm(true);
-                }}
-                className="w-full text-left px-4 py-2 text-red-400 hover:bg-neutral-700 flex items-center space-x-2"
-              >
-                <Trash2 className="h-4 w-4" />
-                <span>Delete Conversation</span>
-              </button>
-            </div>
-          )}
         </div>
       </div>
 

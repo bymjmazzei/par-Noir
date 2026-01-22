@@ -4,9 +4,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { MessageCircle, UserPlus, Check, X, Clock } from 'lucide-react';
+import { MessageCircle, UserPlus, Check, X, Clock, MoreVertical, Trash2 } from 'lucide-react';
 import { MessageThread as MessageThreadType, MessageRequest } from '../services/messageService';
-import { getMessageThreads, getMessageRequests, respondToRequest } from '../services/messageService';
+import { getMessageThreads, getMessageRequests, respondToRequest, deleteConversation } from '../services/messageService';
 import { getPendingRequests as getConnectionPendingRequests, acceptConnectionRequest, rejectConnectionRequest } from '../services/connectionService';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
@@ -23,6 +23,9 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'threads' | 'requests'>('threads');
   const [processingRequests, setProcessingRequests] = useState<Set<string>>(new Set());
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ participantDid: string; participantName?: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Load threads and requests
   useEffect(() => {
@@ -81,6 +84,29 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
     
     return () => clearInterval(interval);
   }, [userState.isUnlocked, userState.pnIdentifier]);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      // Check if click is outside any menu
+      const menuElements = document.querySelectorAll('[data-menu-id]');
+      let clickedInsideMenu = false;
+      menuElements.forEach((menu) => {
+        if (menu.contains(target)) {
+          clickedInsideMenu = true;
+        }
+      });
+      if (!clickedInsideMenu && openMenuId !== null) {
+        setOpenMenuId(null);
+      }
+    };
+
+    if (openMenuId !== null) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [openMenuId]);
 
   const handleAcceptRequest = async (request: MessageRequest & { isConnectionRequest?: boolean; connectionId?: string }) => {
     if (!userState.pnIdentifier) return;
@@ -155,6 +181,36 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
     }
   };
 
+  const handleDeleteConversation = async (participantDid: string) => {
+    if (!userState.isUnlocked || !userState.pnIdentifier || deleting) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      // Optimistically remove from list
+      setThreads(prev => prev.filter(t => t.participantDid !== participantDid));
+      
+      await deleteConversation(userState.pnIdentifier, participantDid);
+      success('Conversation deleted');
+      
+      // Refresh thread list to ensure consistency
+      const threadsData = await getMessageThreads(userState.pnIdentifier);
+      setThreads(threadsData);
+    } catch (error: any) {
+      console.error('Failed to delete conversation:', error);
+      // Restore thread on error
+      const threadsData = await getMessageThreads(userState.pnIdentifier!);
+      setThreads(threadsData);
+      const errorMessage = error?.message || 'Failed to delete conversation';
+      showError(errorMessage);
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(null);
+      setOpenMenuId(null);
+    }
+  };
+
   if (!userState.isUnlocked || !userState.pnIdentifier) {
     return (
       <div className="h-full flex items-center justify-center bg-neutral-900">
@@ -218,43 +274,79 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
           ) : (
             <div className="divide-y divide-neutral-700">
               {threads.map((thread) => (
-                <button
-                  key={thread.participantDid}
-                  onClick={() => onThreadSelect(thread.participantDid, thread.participantName)}
-                  className="w-full p-4 hover:bg-neutral-800 transition-colors text-left"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3 flex-1 min-w-0">
-                      <div className="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center flex-shrink-0">
-                        <span className="text-blue-400 font-semibold">
-                          {(thread.participantName || thread.participantDid).charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <h3 className="text-white font-medium truncate">
-                            {thread.participantName || thread.participantDid.substring(0, 16) + '...'}
-                          </h3>
-                          {thread.unreadCount > 0 && (
-                            <span className="px-2 py-0.5 bg-blue-500 text-white text-xs rounded-full">
-                              {thread.unreadCount}
-                            </span>
+                <div key={thread.participantDid} className="relative">
+                  <button
+                    onClick={() => onThreadSelect(thread.participantDid, thread.participantName)}
+                    className="w-full p-4 hover:bg-neutral-800 transition-colors text-left"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3 flex-1 min-w-0">
+                        <div className="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-blue-400 font-semibold">
+                            {(thread.participantName || thread.participantDid).charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <h3 className="text-white font-medium truncate">
+                              {thread.participantName || thread.participantDid.substring(0, 16) + '...'}
+                            </h3>
+                            {thread.unreadCount > 0 && (
+                              <span className="px-2 py-0.5 bg-blue-500 text-white text-xs rounded-full">
+                                {thread.unreadCount}
+                              </span>
+                            )}
+                          </div>
+                          {thread.lastMessage && (
+                            <p className="text-neutral-400 text-sm truncate">
+                              {thread.lastMessage.content}
+                            </p>
                           )}
                         </div>
+                      </div>
+                      <div className="flex items-center space-x-2 flex-shrink-0">
                         {thread.lastMessage && (
-                          <p className="text-neutral-400 text-sm truncate">
-                            {thread.lastMessage.content}
-                          </p>
+                          <div className="text-neutral-500 text-xs">
+                            {new Date(thread.lastMessage.timestamp).toLocaleDateString()}
+                          </div>
                         )}
+                        <div 
+                          className="relative" 
+                          data-menu-id={thread.participantDid}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            onClick={() => setOpenMenuId(openMenuId === thread.participantDid ? null : thread.participantDid)}
+                            className="text-neutral-400 hover:text-white transition-colors p-2"
+                            aria-label="Menu"
+                          >
+                            <MoreVertical className="h-5 w-5" />
+                          </button>
+                          {openMenuId === thread.participantDid && (
+                            <div 
+                              className="absolute right-0 mt-2 w-48 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg z-10"
+                              data-menu-id={thread.participantDid}
+                            >
+                              <button
+                                onClick={() => {
+                                  setOpenMenuId(null);
+                                  setShowDeleteConfirm({
+                                    participantDid: thread.participantDid,
+                                    participantName: thread.participantName
+                                  });
+                                }}
+                                className="w-full text-left px-4 py-2 text-red-400 hover:bg-neutral-700 flex items-center space-x-2"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                <span>Delete Conversation</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    {thread.lastMessage && (
-                      <div className="text-neutral-500 text-xs ml-2 flex-shrink-0">
-                        {new Date(thread.lastMessage.timestamp).toLocaleDateString()}
-                      </div>
-                    )}
-                  </div>
-                </button>
+                  </button>
+                </div>
               ))}
             </div>
           )
@@ -308,6 +400,37 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
           )
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-neutral-800 rounded-lg p-6 max-w-md w-full mx-4 border border-neutral-700">
+            <h3 className="text-white font-semibold text-lg mb-2">Delete Conversation</h3>
+            <p className="text-neutral-400 text-sm mb-6">
+              Are you sure you want to delete this conversation? This will disconnect you from this user and you will no longer see this conversation. The other user will still be able to see the conversation on their end.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(null);
+                  setOpenMenuId(null);
+                }}
+                className="px-4 py-2 text-neutral-400 hover:text-white transition-colors"
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteConversation(showDeleteConfirm.participantDid)}
+                disabled={deleting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
