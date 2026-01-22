@@ -11094,6 +11094,124 @@ class ProductionServer {
       }
     });
 
+    // DELETE /api/messages/conversation/:participantDid - Delete conversation
+    this.app.delete('/api/messages/conversation/:participantDid', async (req, res) => {
+      try {
+        const { participantDid } = req.params;
+        const userDid = req.query.userDid as string;
+        
+        if (!userDid || !participantDid) {
+          return res.status(400).json({ error: 'userDid and participantDid are required' });
+        }
+
+        const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).backendId || (account as any).keyPrefix || (account as any).accountId || (account as any).id || undefined;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+
+        // Get metadata folder
+        let metadataFolderId: string;
+        try {
+          const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId);
+          if (!_g) {
+            return this.driveNotInitialized(res);
+          }
+          metadataFolderId = _g.metadataFolderId;
+        } catch (error: any) {
+          console.error('Error getting metadata folder:', error);
+          return res.status(500).json({ 
+            error: 'Failed to access Google Drive', 
+            error_description: error.message || 'Drive API error'
+          });
+        }
+
+        // Find user's pN folder
+        const pnFolderName = `par Noir - ${pnIdentifier}`;
+        const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const foldersResponse = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
+          { headers: { 'Authorization': `Bearer ${userAccessToken}` } }
+        );
+
+        if (!foldersResponse.ok) {
+          return res.status(500).json({ error: 'Failed to find user folder' });
+        }
+
+        const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
+        const pnFolder = foldersData.files?.[0];
+        if (!pnFolder) {
+          return res.status(500).json({ error: 'User folder not found' });
+        }
+
+        // Get or create messages folder
+        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+          userAccessToken,
+          pnFolder.id
+        );
+
+        // Delete conversation sheet
+        await MessageSheetsService.deleteConversation(
+          userAccessToken,
+          messagesFolderId,
+          participantDid
+        );
+
+        // Get connection ID to remove from connections sheet
+        const connectionsFile = await ConnectionsService.getConnectionsFile(userAccessToken, metadataFolderId);
+        if (connectionsFile) {
+          const connection = connectionsFile.connections.find(c => 
+            c.userDid === participantDid || c.userDid === (participantDid.startsWith('pn-') ? participantDid : `pn-${participantDid}`)
+          );
+          
+          if (connection) {
+            const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+            const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+              userAccessToken,
+              metadataFolderId
+            );
+            await ConnectionsSheetsService.removeConnection(
+              userAccessToken,
+              spreadsheetId,
+              connection.connectionId
+            );
+            console.log(`[DeleteConversation] Removed connection ${connection.connectionId} from connections sheet`);
+          } else {
+            console.warn(`[DeleteConversation] Connection not found for ${participantDid}, conversation sheet deleted anyway`);
+          }
+        } else {
+          console.warn(`[DeleteConversation] Connections file not found, conversation sheet deleted anyway`);
+        }
+
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error deleting conversation:', error);
+        return res.status(500).json({
+          error: 'Failed to delete conversation',
+          error_description: error.message || 'Failed to delete conversation'
+        });
+      }
+    });
+
     // ============================================================================
     // Profile APIs
     // ============================================================================
@@ -11993,6 +12111,7 @@ class ProductionServer {
         try {
           const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
           const { ProfileService } = await import('./server/modules/profileService');
+          const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
           
           // Get display names for the system message
           // Acceptor is the user accepting (user B), Requester is the user who sent the request (user A)
@@ -12003,6 +12122,16 @@ class ProductionServer {
           if (!connectionId) {
             console.warn('[AcceptConnection] No connectionId available for system messages');
             return res.json({ success: true });
+          }
+          
+          // Decrypt shared secret for restoration
+          let decryptedSharedSecret: string | undefined;
+          if (sharedSecret) {
+            try {
+              decryptedSharedSecret = MetadataEncryption.decryptField(sharedSecret);
+            } catch (e) {
+              console.warn('[AcceptConnection] Failed to decrypt shared secret for restoration:', e);
+            }
           }
           
           try {
@@ -12071,12 +12200,73 @@ class ProductionServer {
                 acceptorPnFolder.id
               );
 
-              // Get or create conversation sheet for acceptor
-              const acceptorConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
-                userAccessToken,
-                acceptorMessagesFolderId,
-                otherUserDid
-              );
+              // Check if acceptor's conversation file exists, if not try to restore from other user
+              let acceptorConversationSheetId: string;
+              try {
+                // Try to get existing conversation sheet
+                acceptorConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+                  userAccessToken,
+                  acceptorMessagesFolderId,
+                  otherUserDid
+                );
+                
+                // Check if the sheet is empty (only has header) - if so, try to restore
+                const { google } = await import('googleapis');
+                const auth = new google.auth.OAuth2();
+                auth.setCredentials({ access_token: userAccessToken });
+                const sheets = google.sheets({ version: 'v4', auth });
+                const existingMessages = await sheets.spreadsheets.values.get({
+                  spreadsheetId: acceptorConversationSheetId,
+                  range: 'Messages!A2:F'
+                });
+                
+                // If sheet is empty or doesn't exist, and we have other user's access, try to restore
+                if ((!existingMessages.data.values || existingMessages.data.values.length === 0) && 
+                    otherAccessToken && otherMetadataFolderId && decryptedSharedSecret) {
+                  try {
+                    // Find other user's pN folder
+                    const otherPnFolderName = `par Noir - ${otherUserCredentials.identityId}`;
+                    const otherFolderQuery = `name='${otherPnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                    const otherFoldersResponse = await fetch(
+                      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(otherFolderQuery)}&fields=files(id,name)`,
+                      { headers: { 'Authorization': `Bearer ${otherAccessToken}` } }
+                    );
+                    
+                    if (otherFoldersResponse.ok) {
+                      const otherFoldersData = await otherFoldersResponse.json() as { files?: Array<{ id: string }> };
+                      const otherPnFolder = otherFoldersData.files?.[0];
+                      
+                      if (otherPnFolder) {
+                        const otherMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+                          otherAccessToken,
+                          otherPnFolder.id
+                        );
+                        
+                        // Try to restore conversation from other user
+                        acceptorConversationSheetId = await MessageSheetsService.restoreConversationFromOtherUser(
+                          userAccessToken,
+                          acceptorMessagesFolderId,
+                          otherAccessToken,
+                          otherMessagesFolderId,
+                          otherUserDid,
+                          connectionId,
+                          decryptedSharedSecret
+                        );
+                        console.log(`[AcceptConnection] Restored acceptor's conversation from other user`);
+                      }
+                    }
+                  } catch (restoreError: any) {
+                    console.warn(`[AcceptConnection] Failed to restore acceptor's conversation, continuing with empty sheet:`, restoreError.message);
+                  }
+                }
+              } catch (error: any) {
+                // If getOrCreate fails, create empty sheet
+                acceptorConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+                  userAccessToken,
+                  acceptorMessagesFolderId,
+                  otherUserDid
+                );
+              }
 
               // Add initial system message to acceptor's conversation
               // System messages don't need encryption - use empty connectionId and sharedSecret
@@ -12119,12 +12309,73 @@ class ProductionServer {
                   requesterPnFolder.id
                 );
 
-                // Get or create conversation sheet for requester
-                const requesterConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
-                  otherAccessToken,
-                  requesterMessagesFolderId,
-                  userCredentials.identityId
-                );
+                // Check if requester's conversation file exists, if not try to restore from acceptor
+                let requesterConversationSheetId: string;
+                try {
+                  // Try to get existing conversation sheet
+                  requesterConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+                    otherAccessToken,
+                    requesterMessagesFolderId,
+                    userCredentials.identityId
+                  );
+                  
+                  // Check if the sheet is empty (only has header) - if so, try to restore
+                  const { google } = await import('googleapis');
+                  const otherAuth = new google.auth.OAuth2();
+                  otherAuth.setCredentials({ access_token: otherAccessToken });
+                  const otherSheets = google.sheets({ version: 'v4', auth: otherAuth });
+                  const existingMessages = await otherSheets.spreadsheets.values.get({
+                    spreadsheetId: requesterConversationSheetId,
+                    range: 'Messages!A2:F'
+                  });
+                  
+                  // If sheet is empty or doesn't exist, and we have acceptor's access, try to restore
+                  if ((!existingMessages.data.values || existingMessages.data.values.length === 0) && 
+                      userAccessToken && decryptedSharedSecret) {
+                    try {
+                      // Find acceptor's pN folder
+                      const acceptorPnFolderName = `par Noir - ${userCredentials.identityId}`;
+                      const acceptorFolderQuery = `name='${acceptorPnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                      const acceptorFoldersResponse = await fetch(
+                        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(acceptorFolderQuery)}&fields=files(id,name)`,
+                        { headers: { 'Authorization': `Bearer ${userAccessToken}` } }
+                      );
+                      
+                      if (acceptorFoldersResponse.ok) {
+                        const acceptorFoldersData = await acceptorFoldersResponse.json() as { files?: Array<{ id: string }> };
+                        const acceptorPnFolder = acceptorFoldersData.files?.[0];
+                        
+                        if (acceptorPnFolder) {
+                          const acceptorMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+                            userAccessToken,
+                            acceptorPnFolder.id
+                          );
+                          
+                          // Try to restore conversation from acceptor (reverse order)
+                          requesterConversationSheetId = await MessageSheetsService.restoreConversationFromOtherUser(
+                            otherAccessToken,
+                            requesterMessagesFolderId,
+                            userAccessToken,
+                            acceptorMessagesFolderId,
+                            userCredentials.identityId,
+                            connectionId,
+                            decryptedSharedSecret
+                          );
+                          console.log(`[AcceptConnection] Restored requester's conversation from acceptor`);
+                        }
+                      }
+                    } catch (restoreError: any) {
+                      console.warn(`[AcceptConnection] Failed to restore requester's conversation, continuing with empty sheet:`, restoreError.message);
+                    }
+                  }
+                } catch (error: any) {
+                  // If getOrCreate fails, create empty sheet
+                  requesterConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+                    otherAccessToken,
+                    requesterMessagesFolderId,
+                    userCredentials.identityId
+                  );
+                }
 
                 // Add initial system message to requester's conversation
                 // Message: "user b accepted user a's connection request" (acceptor accepted requester's request)

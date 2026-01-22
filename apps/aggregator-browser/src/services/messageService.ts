@@ -304,3 +304,24 @@ export async function deleteMessage(messageId: string, userDid: string): Promise
   }
 }
 
+/**
+ * Delete conversation
+ */
+export async function deleteConversation(
+  userDid: string,
+  participantDid: string
+): Promise<void> {
+  const response = await fetch(
+    `${API_ENDPOINT}/api/messages/conversation/${participantDid}?userDid=${encodeURIComponent(userDid)}`,
+    {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to delete conversation' }));
+    throw new Error(error.error || 'Failed to delete conversation');
+  }
+}
+

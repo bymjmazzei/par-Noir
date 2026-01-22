@@ -489,4 +489,148 @@ export class MessageSheetsService {
 
     return conversations;
   }
+
+  /**
+   * Delete conversation sheet for a user
+   * Only deletes the requesting user's file, not the other user's file
+   */
+  static async deleteConversation(
+    accessToken: string,
+    messagesFolderId: string,
+    otherUserDid: string
+  ): Promise<void> {
+    try {
+      const auth = new google.auth.OAuth2();
+      auth.setCredentials({ access_token: accessToken });
+      const drive = google.drive({ version: 'v3', auth });
+
+      const sheetFileName = `conversation-${otherUserDid}`;
+      
+      // Find the conversation sheet
+      const fileQuery = `name='${sheetFileName}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+      const searchResponse = await drive.files.list({
+        q: fileQuery,
+        fields: 'files(id,name)',
+        pageSize: 1
+      });
+
+      if (searchResponse.data.files && searchResponse.data.files.length > 0) {
+        const fileId = searchResponse.data.files[0].id!;
+        // Delete the file (move to trash)
+        await drive.files.delete({
+          fileId: fileId
+        });
+        console.log(`[MessageSheetsService] Deleted conversation sheet ${fileId} for ${otherUserDid}`);
+      } else {
+        console.warn(`[MessageSheetsService] Conversation sheet not found for ${otherUserDid}`);
+      }
+    } catch (error: any) {
+      console.error('[MessageSheetsService] Error deleting conversation sheet:', {
+        otherUserDid,
+        messagesFolderId,
+        error: error?.message,
+        status: error?.response?.status
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Restore conversation by copying messages from other user's conversation file
+   * Used when reconnecting after one user deleted their conversation
+   */
+  static async restoreConversationFromOtherUser(
+    userAccessToken: string,
+    userMessagesFolderId: string,
+    otherUserAccessToken: string,
+    otherUserMessagesFolderId: string,
+    otherUserDid: string,
+    connectionId: string,
+    sharedSecret: string // Decrypted shared secret
+  ): Promise<string> {
+    try {
+      const auth = new google.auth.OAuth2();
+      auth.setCredentials({ access_token: userAccessToken });
+      const sheets = google.sheets({ version: 'v4', auth });
+      const drive = google.drive({ version: 'v3', auth });
+
+      // Check if other user's conversation file exists
+      const otherUserSheetFileName = `conversation-${otherUserDid}`;
+      const otherUserFileQuery = `name='${otherUserSheetFileName}' and '${otherUserMessagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+      
+      const otherAuth = new google.auth.OAuth2();
+      otherAuth.setCredentials({ access_token: otherUserAccessToken });
+      const otherDrive = google.drive({ version: 'v3', auth: otherAuth });
+      const otherSheets = google.sheets({ version: 'v4', auth: otherAuth });
+
+      const otherUserFileResponse = await otherDrive.files.list({
+        q: otherUserFileQuery,
+        fields: 'files(id,name)',
+        pageSize: 1
+      });
+
+      if (!otherUserFileResponse.data.files || otherUserFileResponse.data.files.length === 0) {
+        // Other user's file doesn't exist, create empty conversation sheet
+        console.log(`[MessageSheetsService] Other user's conversation file not found, creating empty sheet`);
+        return await this.getOrCreateConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
+      }
+
+      const otherUserSheetId = otherUserFileResponse.data.files[0].id!;
+
+      // Get all messages from other user's sheet
+      const otherMessagesResponse = await otherSheets.spreadsheets.values.get({
+        spreadsheetId: otherUserSheetId,
+        range: 'Messages!A2:F' // Skip header
+      });
+
+      const otherMessages = otherMessagesResponse.data.values || [];
+
+      if (otherMessages.length === 0) {
+        // No messages to restore, create empty sheet
+        console.log(`[MessageSheetsService] Other user's conversation file is empty, creating empty sheet`);
+        return await this.getOrCreateConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
+      }
+
+      // Create new conversation sheet for user
+      const userSheetId = await this.getOrCreateConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
+
+      // Copy all messages to user's sheet
+      // Messages are already encrypted with the same connectionId and sharedSecret, so they can be copied as-is
+      const values = otherMessages.map(row => [
+        row[0] || '', // fromDid
+        row[1] || '', // encryptedContent (copy as-is, will decrypt correctly)
+        row[2] || '', // timestamp
+        row[3] || '', // messageId
+        row[4] || 'false', // read
+        row[5] || '' // readAt
+      ]);
+
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: userSheetId,
+        range: 'Messages!A:F',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: values
+        }
+      });
+
+      console.log(`[MessageSheetsService] Restored ${values.length} messages from ${otherUserDid}'s conversation file`);
+      return userSheetId;
+    } catch (error: any) {
+      console.error('[MessageSheetsService] Error restoring conversation from other user:', {
+        otherUserDid,
+        userMessagesFolderId,
+        otherUserMessagesFolderId,
+        error: error?.message,
+        status: error?.response?.status
+      });
+      // If restoration fails, still return a sheet ID (create empty one)
+      try {
+        return await this.getOrCreateConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
+      } catch (createError: any) {
+        console.error('[MessageSheetsService] Failed to create empty sheet after restoration failure:', createError);
+        throw error; // Throw original error
+      }
+    }
+  }
 }
