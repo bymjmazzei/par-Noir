@@ -369,10 +369,14 @@ export class MessageSheetsService {
             connectionId,
             hasSharedSecret: !!sharedSecret,
             encryptedContentLength: encryptedContent.length,
-            encryptedContentPreview: encryptedContent.substring(0, 50)
+            encryptedContentPreview: encryptedContent.substring(0, 50),
+            messageId: row[3] || index,
+            fromDid: row[0] || ''
           });
-          // Don't show encrypted content to users - show error message instead
-          decryptedContent = '[Message decryption failed. Please reconnect with this user.]';
+          // If decryption fails, this message was likely encrypted with a different connectionId/sharedSecret
+          // (e.g., from before reconnection). Skip it rather than showing an error message.
+          // Return null to filter it out, or show a generic message
+          decryptedContent = '[Message from previous connection - cannot decrypt]';
         }
       } else {
         // Plain text message (system messages or old messages without encryption)
