@@ -303,7 +303,7 @@ export class ConnectionsService {
     acceptorMetadataFolder: string,
     acceptorDid: string,
     connectionId: string
-  ): Promise<void> {
+  ): Promise<string> {
     try {
       // Get or create connections sheet
       const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
@@ -355,7 +355,7 @@ export class ConnectionsService {
             // Continue to update other user's connection below (don't return early)
           } else {
             // Already accepted with shared secret - idempotent
-            return;
+            return connection.sharedSecret!;
           }
         } else {
           throw new Error(`Connection request is not in acceptable status. Current status: ${connection.status}. Only pending_received or pending_sent connections can be accepted.`);
@@ -393,12 +393,12 @@ export class ConnectionsService {
         sharedSecret
       );
 
-      // Note: The other user's file should also be updated, but that requires their access token
-      // This will be handled by the API endpoint that has access to both users' tokens
+      // Return the shared secret so the API endpoint can sync it to the other user
+      return sharedSecret;
     } catch (error) {
       console.error('Error accepting connection request via sheets, falling back to JSON:', error);
       // Fallback to JSON for backward compatibility
-      await this.acceptConnectionRequestJSON(
+      return await this.acceptConnectionRequestJSON(
         acceptorAccessToken,
         acceptorMetadataFolder,
         acceptorDid,
@@ -415,7 +415,7 @@ export class ConnectionsService {
     acceptorMetadataFolder: string,
     acceptorDid: string,
     connectionId: string
-  ): Promise<void> {
+  ): Promise<string> {
     const acceptorFile = await this.getConnectionsFile(acceptorAccessToken, acceptorMetadataFolder);
     if (!acceptorFile) {
       throw new Error('Connections file not found');
@@ -438,8 +438,19 @@ export class ConnectionsService {
     // Allow accepting if it's pending_received or pending_sent (mutual request)
     if (connection.status !== 'pending_received' && connection.status !== 'pending_sent') {
       if (connection.status === 'accepted') {
-        // Already accepted, this is fine (idempotent)
-        return;
+        // Already accepted, return existing shared secret or generate one
+        if (connection.sharedSecret) {
+          return connection.sharedSecret;
+        }
+        // Generate shared secret for existing accepted connection
+        const crypto = await import('crypto');
+        const { MetadataEncryption } = await import('../utils/metadataEncryption');
+        const rawSecret = crypto.randomBytes(32).toString('base64');
+        const sharedSecret = MetadataEncryption.encryptField(rawSecret);
+        connection.sharedSecret = sharedSecret;
+        acceptorFile.updatedAt = new Date().toISOString();
+        await this.updateConnectionsFile(acceptorAccessToken, acceptorMetadataFolder, acceptorDid, acceptorFile);
+        return sharedSecret;
       }
       throw new Error(`Connection request is not in acceptable status. Current status: ${connection.status}. Only pending_received or pending_sent connections can be accepted.`);
     }
@@ -447,12 +458,21 @@ export class ConnectionsService {
     const otherUserDid = connection.userDid;
     const now = new Date().toISOString();
 
+    // Generate shared secret
+    const crypto = await import('crypto');
+    const { MetadataEncryption } = await import('../utils/metadataEncryption');
+    const rawSecret = crypto.randomBytes(32).toString('base64');
+    const sharedSecret = MetadataEncryption.encryptField(rawSecret);
+
     // Update acceptor's file
     connection.status = 'accepted';
     connection.acceptedAt = now;
+    connection.sharedSecret = sharedSecret;
     acceptorFile.updatedAt = now;
 
     await this.updateConnectionsFile(acceptorAccessToken, acceptorMetadataFolder, acceptorDid, acceptorFile);
+    
+    return sharedSecret;
 
     // Note: The other user's file should also be updated, but that requires their access token
     // This will be handled by the API endpoint that has access to both users' tokens

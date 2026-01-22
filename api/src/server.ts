@@ -12152,32 +12152,13 @@ class ProductionServer {
         );
 
         // Accept connection (updates acceptor's sheet and generates shared secret)
-        await ConnectionsService.acceptConnectionRequest(
+        const sharedSecret = await ConnectionsService.acceptConnectionRequest(
           userAccessToken,
           metadataFolderId,
           userCredentials.identityId, // Use identityId from credentials
           connectionId
         );
 
-        // Get the shared secret from the accepted connection - use Sheets directly
-        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-        const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
-          userAccessToken,
-          metadataFolderId
-        );
-        const connectionsResult = await ConnectionsSheetsService.getConnections(
-          userAccessToken,
-          spreadsheetId,
-          { limit: 10000, offset: 0 }
-        );
-        const verifyConnection = connectionsResult.connections.find(c => c.connectionId === connectionId);
-        if (!verifyConnection || verifyConnection.status !== 'accepted') {
-          return res.status(500).json({
-            error: 'Connection not found or not accepted',
-            error_description: 'Connection not found or not accepted after accept operation'
-          });
-        }
-        const sharedSecret = verifyConnection.sharedSecret;
         if (!sharedSecret) {
           return res.status(500).json({
             error: 'Shared secret not generated',
