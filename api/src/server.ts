@@ -10391,11 +10391,14 @@ class ProductionServer {
         // Decrypt shared secret
         const decryptedSharedSecret = MetadataEncryption.decryptField(sharedSecret);
         if (!decryptedSharedSecret) {
+          console.error(`[Thread] Failed to decrypt shared secret for connection ${connectionStatus.connectionId}`);
           return res.status(500).json({
             error: 'Failed to decrypt shared secret',
             error_description: 'Failed to decrypt shared secret'
           });
         }
+
+        console.log(`[Thread] Using connectionId: ${connectionStatus.connectionId}, hasSharedSecret: ${!!decryptedSharedSecret}`);
 
         // Get or create conversation sheet
         const conversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
@@ -10651,11 +10654,14 @@ class ProductionServer {
         // Decrypt shared secret
         const decryptedSharedSecret = MetadataEncryption.decryptField(sharedSecret);
         if (!decryptedSharedSecret) {
+          console.error(`[SendMessage] Failed to decrypt shared secret for connection ${connectionStatus.connectionId}`);
           return res.status(500).json({
             error: 'Failed to decrypt shared secret',
             error_description: 'Failed to decrypt shared secret'
           });
         }
+
+        console.log(`[SendMessage] Using connectionId: ${connectionStatus.connectionId}, hasSharedSecret: ${!!decryptedSharedSecret}`);
 
         // Create message object
         const message: any = {
@@ -10669,7 +10675,7 @@ class ProductionServer {
         };
 
         // Append message to sender's conversation sheet (with encryption)
-        console.log('[SendMessage] Appending message to sender\'s sheet', { senderConversationSheetId, messageId });
+        console.log('[SendMessage] Appending message to sender\'s sheet', { senderConversationSheetId, messageId, connectionId: connectionStatus.connectionId });
         await MessageSheetsService.appendMessage(
           senderAccessToken,
           senderConversationSheetId,
@@ -10808,19 +10814,51 @@ class ProductionServer {
         const recipientConnection = recipientConnectionsFile.connections.find(
           c => c.connectionId === connectionStatus.connectionId
         );
-        if (!recipientConnection || !recipientConnection.sharedSecret) {
+        if (!recipientConnection) {
           return res.status(500).json({
-            error: 'Recipient connection missing shared secret. Connection may need to be re-established.',
-            error_description: 'Recipient connection missing shared secret. Connection may need to be re-established.'
+            error: 'Recipient connection not found',
+            error_description: 'Recipient connection not found'
           });
         }
 
+        // Ensure recipient has the same shared secret as sender
+        let recipientSharedSecret = recipientConnection.sharedSecret;
+        if (!recipientSharedSecret || recipientSharedSecret !== sharedSecret) {
+          // Recipient is missing shared secret or has a different one - sync from sender
+          console.log(`[SendMessage] Recipient missing or mismatched shared secret, syncing from sender`);
+          const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+          const recipientSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+            recipientAccessToken,
+            recipientMetadataFolderId
+          );
+          await ConnectionsSheetsService.updateConnectionStatus(
+            recipientAccessToken,
+            recipientSpreadsheetId,
+            connectionStatus.connectionId,
+            recipientConnection.status,
+            recipientConnection.acceptedAt,
+            sharedSecret // Use sender's shared secret
+          );
+          recipientSharedSecret = sharedSecret;
+          console.log(`[SendMessage] Synced shared secret to recipient's connection ${connectionStatus.connectionId}`);
+        }
+
         // Decrypt recipient's shared secret
-        const recipientDecryptedSharedSecret = MetadataEncryption.decryptField(recipientConnection.sharedSecret);
+        const recipientDecryptedSharedSecret = MetadataEncryption.decryptField(recipientSharedSecret);
         if (!recipientDecryptedSharedSecret) {
+          console.error(`[SendMessage] Failed to decrypt recipient shared secret for connection ${connectionStatus.connectionId}`);
           return res.status(500).json({
             error: 'Failed to decrypt recipient shared secret',
             error_description: 'Failed to decrypt recipient shared secret'
+          });
+        }
+
+        // Verify both users have the same decrypted secret
+        if (decryptedSharedSecret !== recipientDecryptedSharedSecret) {
+          console.error(`[SendMessage] Shared secret mismatch! Sender: ${decryptedSharedSecret.substring(0, 10)}..., Recipient: ${recipientDecryptedSharedSecret.substring(0, 10)}...`);
+          return res.status(500).json({
+            error: 'Shared secret mismatch between users. Please reconnect.',
+            error_description: 'Shared secret mismatch between users. Please reconnect.'
           });
         }
 
@@ -11746,6 +11784,58 @@ class ProductionServer {
 
         // Check status - allow accepting if it's pending_received, pending_sent (mutual request), or already accepted (idempotent)
         if (connection.status === 'accepted') {
+          // Already accepted - but check if it has a shared secret
+          if (!connection.sharedSecret) {
+            console.log(`[AcceptConnection] Connection already accepted but missing shared secret, generating one`);
+            // Generate shared secret for existing accepted connection
+            const crypto = await import('crypto');
+            const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
+            const rawSecret = crypto.randomBytes(32).toString('base64');
+            const sharedSecret = MetadataEncryption.encryptField(rawSecret);
+            
+            // Update with shared secret
+            const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+            const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+              userAccessToken,
+              metadataFolderId
+            );
+            await ConnectionsSheetsService.updateConnectionStatus(
+              userAccessToken,
+              spreadsheetId,
+              connectionId,
+              'accepted',
+              connection.acceptedAt,
+              sharedSecret
+            );
+            
+            // Also update other user's connection with the same secret
+            const otherUserDid = connection.userDid;
+            const otherUserPnIdentifier = otherUserDid.startsWith('pn-') ? otherUserDid : `pn-${otherUserDid}`;
+            const otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
+            if (otherUserCredentials?.credentials) {
+              const otherGoogleDriveAccounts = otherUserCredentials.credentials.googleDriveAccounts || 
+                (otherUserCredentials.credentials.googleDrive ? [otherUserCredentials.credentials.googleDrive] : []);
+              if (otherGoogleDriveAccounts.length > 0) {
+                const otherAccount = otherGoogleDriveAccounts[0];
+                const otherAccountId = (otherAccount as any).backendId || (otherAccount as any).keyPrefix || (otherAccount as any).accountId || (otherAccount as any).id || undefined;
+                const otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherAccountId, [otherUserCredentials.identityId]);
+                const otherMetadataFolder = await this.getMetadataFolder(otherAccessToken, otherUserCredentials.identityId);
+                if (otherMetadataFolder) {
+                  await ConnectionsService.updateOtherUserConnectionStatus(
+                    otherAccessToken,
+                    otherMetadataFolder.metadataFolderId,
+                    otherUserCredentials.identityId,
+                    connectionId,
+                    'accepted',
+                    userCredentials.identityId,
+                    sharedSecret
+                  );
+                }
+              }
+            }
+            
+            console.log(`[AcceptConnection] Generated and stored shared secret for existing accepted connection ${connectionId}`);
+          }
           console.log(`[AcceptConnection] Connection already accepted, returning success`);
           return res.json({ success: true, message: 'Connection already accepted' });
         }

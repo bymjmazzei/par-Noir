@@ -363,13 +363,27 @@ export class MessageSheetsService {
             sharedSecret
           );
         } catch (decryptError: any) {
-          // If decryption fails, fall back to plain text (might be old format or missing secret)
-          console.warn(`[MessageSheetsService] Failed to decrypt message ${row[3] || index}, treating as plain text:`, decryptError?.message || 'Unknown error');
-          decryptedContent = encryptedContent;
+          // Log detailed error for debugging
+          console.error(`[MessageSheetsService] Failed to decrypt message ${row[3] || index}:`, {
+            error: decryptError?.message || 'Unknown error',
+            connectionId,
+            hasSharedSecret: !!sharedSecret,
+            encryptedContentLength: encryptedContent.length,
+            encryptedContentPreview: encryptedContent.substring(0, 50)
+          });
+          // Don't show encrypted content to users - show error message instead
+          decryptedContent = '[Message decryption failed. Please reconnect with this user.]';
         }
       } else {
         // Plain text message (system messages or old messages without encryption)
-        decryptedContent = encryptedContent;
+        // Only treat as plain text if it doesn't look like encrypted JSON
+        if (MessageEncryption.isEncrypted(encryptedContent)) {
+          // This is encrypted but we don't have a shared secret
+          console.warn(`[MessageSheetsService] Encrypted message found but no shared secret available for message ${row[3] || index}`);
+          decryptedContent = '[Message requires connection to decrypt. Please reconnect with this user.]';
+        } else {
+          decryptedContent = encryptedContent;
+        }
       }
       
       return {
