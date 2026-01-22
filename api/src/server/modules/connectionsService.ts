@@ -334,10 +334,32 @@ export class ConnectionsService {
       // Allow accepting if it's pending_received or pending_sent (mutual request)
       if (connection.status !== 'pending_received' && connection.status !== 'pending_sent') {
         if (connection.status === 'accepted') {
-          // Already accepted, this is fine (idempotent)
-          return;
+          // Already accepted - but check if it has a shared secret
+          if (!connection.sharedSecret) {
+            // Generate shared secret for existing accepted connection
+            const crypto = await import('crypto');
+            const { MetadataEncryption } = await import('../utils/metadataEncryption');
+            const rawSecret = crypto.randomBytes(32).toString('base64');
+            const sharedSecret = MetadataEncryption.encryptField(rawSecret);
+            
+            // Update with shared secret
+            await ConnectionsSheetsService.updateConnectionStatus(
+              acceptorAccessToken,
+              spreadsheetId,
+              connectionId,
+              'accepted',
+              connection.acceptedAt || new Date().toISOString(),
+              sharedSecret
+            );
+            console.log(`[ConnectionsService] Generated shared secret for existing accepted connection ${connectionId}`);
+            // Continue to update other user's connection below (don't return early)
+          } else {
+            // Already accepted with shared secret - idempotent
+            return;
+          }
+        } else {
+          throw new Error(`Connection request is not in acceptable status. Current status: ${connection.status}. Only pending_received or pending_sent connections can be accepted.`);
         }
-        throw new Error(`Connection request is not in acceptable status. Current status: ${connection.status}. Only pending_received or pending_sent connections can be accepted.`);
       }
 
       const now = new Date().toISOString();

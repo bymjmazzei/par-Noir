@@ -64,6 +64,7 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
   const [error, setError] = useState<string | null>(null);
   const [displayNames, setDisplayNames] = useState<Map<string, string>>(new Map());
   const [loadingNames, setLoadingNames] = useState<Set<string>>(new Set());
+  const [processingConnections, setProcessingConnections] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (isOpen && userDid) {
@@ -175,22 +176,76 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
   };
 
   const handleAccept = async (connectionId: string) => {
+    // Prevent duplicate processing
+    if (processingConnections.has(connectionId)) {
+      return; // Already processing
+    }
+
+    // Mark as processing and remove from UI immediately (optimistic UI)
+    setProcessingConnections(prev => new Set(prev).add(connectionId));
+    const originalRequest = pendingRequests.received.find(r => r.connectionId === connectionId);
+    setPendingRequests(prev => ({
+      ...prev,
+      received: prev.received.filter(r => r.connectionId !== connectionId)
+    }));
+
     try {
       await acceptConnectionRequest(connectionId, userDid);
       await loadData();
     } catch (error) {
+      // Restore request on error
+      if (originalRequest) {
+        setPendingRequests(prev => ({
+          ...prev,
+          received: [...prev.received, originalRequest]
+        }));
+      }
       console.error('Failed to accept:', error);
       setError('Failed to accept connection request');
+    } finally {
+      // Remove from processing set
+      setProcessingConnections(prev => {
+        const next = new Set(prev);
+        next.delete(connectionId);
+        return next;
+      });
     }
   };
 
   const handleReject = async (connectionId: string) => {
+    // Prevent duplicate processing
+    if (processingConnections.has(connectionId)) {
+      return; // Already processing
+    }
+
+    // Mark as processing and remove from UI immediately (optimistic UI)
+    setProcessingConnections(prev => new Set(prev).add(connectionId));
+    const originalRequest = pendingRequests.received.find(r => r.connectionId === connectionId);
+    setPendingRequests(prev => ({
+      ...prev,
+      received: prev.received.filter(r => r.connectionId !== connectionId)
+    }));
+
     try {
       await rejectConnectionRequest(connectionId, userDid);
       await loadData();
     } catch (error) {
+      // Restore request on error
+      if (originalRequest) {
+        setPendingRequests(prev => ({
+          ...prev,
+          received: [...prev.received, originalRequest]
+        }));
+      }
       console.error('Failed to reject:', error);
       setError('Failed to reject connection request');
+    } finally {
+      // Remove from processing set
+      setProcessingConnections(prev => {
+        const next = new Set(prev);
+        next.delete(connectionId);
+        return next;
+      });
     }
   };
 
@@ -348,15 +403,17 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
                             <div className="flex items-center space-x-2 ml-3">
                               <button
                                 onClick={() => handleAccept(request.connectionId)}
-                                className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition-colors"
+                                disabled={processingConnections.has(request.connectionId)}
+                                className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                Accept
+                                {processingConnections.has(request.connectionId) ? 'Processing...' : 'Accept'}
                               </button>
                               <button
                                 onClick={() => handleReject(request.connectionId)}
-                                className="px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 text-white text-xs rounded transition-colors"
+                                disabled={processingConnections.has(request.connectionId)}
+                                className="px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 text-white text-xs rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                Reject
+                                {processingConnections.has(request.connectionId) ? 'Processing...' : 'Reject'}
                               </button>
                             </div>
                           </div>

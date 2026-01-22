@@ -22,6 +22,7 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
   const [requests, setRequests] = useState<MessageRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'threads' | 'requests'>('threads');
+  const [processingRequests, setProcessingRequests] = useState<Set<string>>(new Set());
 
   // Load threads and requests
   useEffect(() => {
@@ -54,7 +55,11 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
           connectionId: conn.connectionId
         }));
         
-        setRequests([...messageRequests, ...connectionRequestsList]);
+        // Filter out requests that are currently being processed
+        const filteredRequests = [...messageRequests, ...connectionRequestsList].filter(
+          r => !processingRequests.has(r.requestId)
+        );
+        setRequests(filteredRequests);
       } catch (error) {
         console.error('Failed to load messages:', error);
       } finally {
@@ -80,6 +85,15 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
   const handleAcceptRequest = async (request: MessageRequest & { isConnectionRequest?: boolean; connectionId?: string }) => {
     if (!userState.pnIdentifier) return;
 
+    // Prevent duplicate processing
+    if (processingRequests.has(request.requestId)) {
+      return; // Already processing
+    }
+
+    // Mark as processing and remove from UI immediately (optimistic UI)
+    setProcessingRequests(prev => new Set(prev).add(request.requestId));
+    setRequests(prev => prev.filter(r => r.requestId !== request.requestId));
+
     try {
       if (request.isConnectionRequest && request.connectionId) {
         // Handle connection request
@@ -90,17 +104,34 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
         await respondToRequest(request.requestId, userState.pnIdentifier, true);
         success('Message request accepted');
       }
-      setRequests(prev => prev.filter(r => r.requestId !== request.requestId));
       // Reload threads to show new conversation
       const threadsData = await getMessageThreads(userState.pnIdentifier!);
       setThreads(threadsData);
     } catch (error: any) {
+      // Restore request on error
+      setRequests(prev => [...prev, request]);
       showError(error.message || 'Failed to accept request');
+    } finally {
+      // Remove from processing set
+      setProcessingRequests(prev => {
+        const next = new Set(prev);
+        next.delete(request.requestId);
+        return next;
+      });
     }
   };
 
   const handleDeclineRequest = async (request: MessageRequest & { isConnectionRequest?: boolean; connectionId?: string }) => {
     if (!userState.pnIdentifier) return;
+
+    // Prevent duplicate processing
+    if (processingRequests.has(request.requestId)) {
+      return; // Already processing
+    }
+
+    // Mark as processing and remove from UI immediately (optimistic UI)
+    setProcessingRequests(prev => new Set(prev).add(request.requestId));
+    setRequests(prev => prev.filter(r => r.requestId !== request.requestId));
 
     try {
       if (request.isConnectionRequest && request.connectionId) {
@@ -110,9 +141,17 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
         // Handle message request
         await respondToRequest(request.requestId, userState.pnIdentifier, false);
       }
-      setRequests(prev => prev.filter(r => r.requestId !== request.requestId));
     } catch (error: any) {
+      // Restore request on error
+      setRequests(prev => [...prev, request]);
       showError(error.message || 'Failed to decline request');
+    } finally {
+      // Remove from processing set
+      setProcessingRequests(prev => {
+        const next = new Set(prev);
+        next.delete(request.requestId);
+        return next;
+      });
     }
   };
 
@@ -248,17 +287,19 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={() => handleAcceptRequest(request)}
-                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
+                      disabled={processingRequests.has(request.requestId)}
+                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Check className="h-4 w-4" />
-                      <span>Accept</span>
+                      <span>{processingRequests.has(request.requestId) ? 'Processing...' : 'Accept'}</span>
                     </button>
                     <button
                       onClick={() => handleDeclineRequest(request)}
-                      className="flex-1 px-4 py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 transition-colors flex items-center justify-center space-x-2"
+                      disabled={processingRequests.has(request.requestId)}
+                      className="flex-1 px-4 py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <X className="h-4 w-4" />
-                      <span>Decline</span>
+                      <span>{processingRequests.has(request.requestId) ? 'Processing...' : 'Decline'}</span>
                     </button>
                   </div>
                 </div>

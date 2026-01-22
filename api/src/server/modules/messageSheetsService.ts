@@ -363,8 +363,9 @@ export class MessageSheetsService {
             sharedSecret
           );
         } catch (decryptError: any) {
-          console.error(`[MessageSheetsService] Failed to decrypt message ${row[3] || index}:`, decryptError);
-          throw new Error(`Failed to decrypt message: ${decryptError?.message || 'Unknown error'}`);
+          // If decryption fails, fall back to plain text (might be old format or missing secret)
+          console.warn(`[MessageSheetsService] Failed to decrypt message ${row[3] || index}, treating as plain text:`, decryptError?.message || 'Unknown error');
+          decryptedContent = encryptedContent;
         }
       } else {
         // Plain text message (system messages or old messages without encryption)

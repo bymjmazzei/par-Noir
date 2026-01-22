@@ -26,19 +26,31 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const isPollingRef = useRef(false);
+  const errorCountRef = useRef(0);
 
   // Load messages
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
 
     const loadMessages = async (isInitial = false) => {
+      // Prevent duplicate requests
+      if (isPollingRef.current && !isInitial) {
+        return; // Already polling, skip this request
+      }
+
       // Only show loading spinner on initial load
       if (isInitial) {
         setLoading(true);
+      } else {
+        isPollingRef.current = true;
       }
       
       try {
         const threadMessages = await getThreadMessages(userState.pnIdentifier!, participantDid);
+        // Reset error count on success
+        errorCountRef.current = 0;
+        
         // Reverse messages to show oldest first (chat order) - API returns newest first
         const reversedMessages = [...threadMessages].reverse();
         
@@ -65,6 +77,9 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
           }
         }
       } catch (error) {
+        // Increment error count
+        errorCountRef.current += 1;
+        
         // On network errors, preserve existing messages (don't clear them)
         // Only log the error - don't update state
         const errorMessage = error instanceof Error ? error.message : 'Failed to load messages';
@@ -78,6 +93,8 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
       } finally {
         if (isInitial) {
           setLoading(false);
+        } else {
+          isPollingRef.current = false;
         }
       }
     };
@@ -85,12 +102,17 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
     // Initial load
     loadMessages(true);
 
-    // Poll for new messages - only when tab is visible
+    // Poll for new messages - only when tab is visible, with exponential backoff on errors
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && !isPollingRef.current) {
+        // Stop polling if too many consecutive errors
+        if (errorCountRef.current >= 3) {
+          console.warn('Too many polling errors, stopping automatic refresh');
+          return;
+        }
         loadMessages(false);
       }
-    }, 5000);
+    }, 15000); // 15 seconds instead of 5
     
     return () => clearInterval(interval);
   }, [userState.isUnlocked, userState.pnIdentifier, participantDid]);

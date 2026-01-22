@@ -10206,16 +10206,20 @@ class ProductionServer {
             const connection = connectionsFile.connections.find(
               c => c.connectionId === connectionStatus.connectionId
             );
-            if (!connection || !connection.sharedSecret) {
-              console.warn(`[Inbox] Connection missing shared secret for ${conversation.otherUserDid}, skipping`);
+            if (!connection) {
+              console.warn(`[Inbox] Connection not found for ${conversation.otherUserDid}, skipping`);
               continue;
             }
 
-            // Decrypt shared secret
-            const decryptedSharedSecret = MetadataEncryption.decryptField(connection.sharedSecret);
-            if (!decryptedSharedSecret) {
-              console.warn(`[Inbox] Failed to decrypt shared secret for ${conversation.otherUserDid}, skipping`);
-              continue;
+            // Allow reading messages even if shared secret is missing (will read as plain text)
+            let decryptedSharedSecret: string | undefined;
+            if (connection.sharedSecret) {
+              decryptedSharedSecret = MetadataEncryption.decryptField(connection.sharedSecret);
+              if (!decryptedSharedSecret) {
+                console.warn(`[Inbox] Failed to decrypt shared secret for ${conversation.otherUserDid}, will read as plain text`);
+              }
+            } else {
+              console.warn(`[Inbox] Connection missing shared secret for ${conversation.otherUserDid}, will read as plain text`);
             }
 
             const conversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
@@ -10227,7 +10231,7 @@ class ProductionServer {
               userAccessToken,
               conversationSheetId,
               connectionStatus.connectionId,
-              decryptedSharedSecret,
+              decryptedSharedSecret || '', // Empty string allows plain text reading
               { limit: 1, offset: 0 }
             );
             if (result.messages.length > 0) {
@@ -10352,15 +10356,40 @@ class ProductionServer {
         const connection = connectionsFile.connections.find(
           c => c.connectionId === connectionStatus.connectionId
         );
-        if (!connection || !connection.sharedSecret) {
+        if (!connection) {
           return res.status(500).json({
-            error: 'Connection missing shared secret. Connection may need to be re-established.',
-            error_description: 'Connection missing shared secret. Connection may need to be re-established.'
+            error: 'Connection not found',
+            error_description: 'Connection not found'
           });
         }
 
+        // Auto-generate shared secret if missing (fallback for existing connections)
+        let sharedSecret = connection.sharedSecret;
+        if (!sharedSecret) {
+          console.log(`[Thread] Connection ${connectionStatus.connectionId} missing shared secret, generating one`);
+          const crypto = await import('crypto');
+          const rawSecret = crypto.randomBytes(32).toString('base64');
+          sharedSecret = MetadataEncryption.encryptField(rawSecret);
+          
+          // Update connection with shared secret
+          const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+          const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+            userAccessToken,
+            metadataFolderId
+          );
+          await ConnectionsSheetsService.updateConnectionStatus(
+            userAccessToken,
+            spreadsheetId,
+            connectionStatus.connectionId,
+            connection.status,
+            connection.acceptedAt,
+            sharedSecret
+          );
+          console.log(`[Thread] Generated and stored shared secret for connection ${connectionStatus.connectionId}`);
+        }
+
         // Decrypt shared secret
-        const decryptedSharedSecret = MetadataEncryption.decryptField(connection.sharedSecret);
+        const decryptedSharedSecret = MetadataEncryption.decryptField(sharedSecret);
         if (!decryptedSharedSecret) {
           return res.status(500).json({
             error: 'Failed to decrypt shared secret',
@@ -10587,15 +10616,40 @@ class ProductionServer {
         const connection = connectionsFile.connections.find(
           c => c.connectionId === connectionStatus.connectionId
         );
-        if (!connection || !connection.sharedSecret) {
+        if (!connection) {
           return res.status(500).json({
-            error: 'Connection missing shared secret. Connection may need to be re-established.',
-            error_description: 'Connection missing shared secret. Connection may need to be re-established.'
+            error: 'Connection not found',
+            error_description: 'Connection not found'
           });
         }
 
+        // Auto-generate shared secret if missing (fallback for existing connections)
+        let sharedSecret = connection.sharedSecret;
+        if (!sharedSecret) {
+          console.log(`[SendMessage] Connection ${connectionStatus.connectionId} missing shared secret, generating one`);
+          const crypto = await import('crypto');
+          const rawSecret = crypto.randomBytes(32).toString('base64');
+          sharedSecret = MetadataEncryption.encryptField(rawSecret);
+          
+          // Update connection with shared secret
+          const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+          const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+            senderAccessToken,
+            senderMetadataFolderId
+          );
+          await ConnectionsSheetsService.updateConnectionStatus(
+            senderAccessToken,
+            spreadsheetId,
+            connectionStatus.connectionId,
+            connection.status,
+            connection.acceptedAt,
+            sharedSecret
+          );
+          console.log(`[SendMessage] Generated and stored shared secret for connection ${connectionStatus.connectionId}`);
+        }
+
         // Decrypt shared secret
-        const decryptedSharedSecret = MetadataEncryption.decryptField(connection.sharedSecret);
+        const decryptedSharedSecret = MetadataEncryption.decryptField(sharedSecret);
         if (!decryptedSharedSecret) {
           return res.status(500).json({
             error: 'Failed to decrypt shared secret',
