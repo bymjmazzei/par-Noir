@@ -12222,7 +12222,7 @@ class ProductionServer {
                 
                 // If sheet is empty or doesn't exist, and we have other user's access, try to restore
                 if ((!existingMessages.data.values || existingMessages.data.values.length === 0) && 
-                    otherAccessToken && otherMetadataFolderId && decryptedSharedSecret) {
+                    otherAccessToken && otherMetadataFolderId && decryptedSharedSecret && otherUserCredentials) {
                   try {
                     // Find other user's pN folder
                     const otherPnFolderName = `par Noir - ${otherUserCredentials.identityId}`;
