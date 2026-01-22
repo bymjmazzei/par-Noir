@@ -11177,29 +11177,40 @@ class ProductionServer {
         );
 
         // Get connection ID to remove from connections sheet
-        const connectionsFile = await ConnectionsService.getConnectionsFile(userAccessToken, metadataFolderId);
-        if (connectionsFile) {
-          const connection = connectionsFile.connections.find(c => 
-            c.userDid === participantDid || c.userDid === (participantDid.startsWith('pn-') ? participantDid : `pn-${participantDid}`)
-          );
-          
-          if (connection) {
-            const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-            const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
-              userAccessToken,
-              metadataFolderId
+        // Wrap in try-catch to ensure conversation deletion succeeds even if connection removal fails
+        try {
+          const connectionsFile = await ConnectionsService.getConnectionsFile(userAccessToken, metadataFolderId);
+          if (connectionsFile) {
+            const connection = connectionsFile.connections.find(c => 
+              c.userDid === participantDid || c.userDid === (participantDid.startsWith('pn-') ? participantDid : `pn-${participantDid}`)
             );
-            await ConnectionsSheetsService.removeConnection(
-              userAccessToken,
-              spreadsheetId,
-              connection.connectionId
-            );
-            console.log(`[DeleteConversation] Removed connection ${connection.connectionId} from connections sheet`);
+            
+            if (connection) {
+              const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+              const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+                userAccessToken,
+                metadataFolderId
+              );
+              await ConnectionsSheetsService.removeConnection(
+                userAccessToken,
+                spreadsheetId,
+                connection.connectionId
+              );
+              console.log(`[DeleteConversation] Removed connection ${connection.connectionId} from connections sheet`);
+            } else {
+              console.warn(`[DeleteConversation] Connection not found for ${participantDid}, conversation sheet deleted anyway`);
+            }
           } else {
-            console.warn(`[DeleteConversation] Connection not found for ${participantDid}, conversation sheet deleted anyway`);
+            console.warn(`[DeleteConversation] Connections file not found, conversation sheet deleted anyway`);
           }
-        } else {
-          console.warn(`[DeleteConversation] Connections file not found, conversation sheet deleted anyway`);
+        } catch (connectionError: any) {
+          // Log error but don't fail the deletion - conversation sheet is already deleted
+          console.error(`[DeleteConversation] Failed to remove connection from connections sheet:`, {
+            participantDid,
+            error: connectionError?.message,
+            status: connectionError?.response?.status
+          });
+          console.warn(`[DeleteConversation] Conversation sheet deleted, but connection removal failed. This is non-critical.`);
         }
 
         return res.json({ success: true });
