@@ -11178,6 +11178,7 @@ class ProductionServer {
 
         // Get connection ID to remove from connections sheet
         // Wrap in try-catch to ensure conversation deletion succeeds even if connection removal fails
+        let connectionId: string | undefined;
         try {
           const connectionsFile = await ConnectionsService.getConnectionsFile(userAccessToken, metadataFolderId);
           if (connectionsFile) {
@@ -11186,6 +11187,7 @@ class ProductionServer {
             );
             
             if (connection) {
+              connectionId = connection.connectionId;
               const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
               const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
                 userAccessToken,
@@ -11196,7 +11198,7 @@ class ProductionServer {
                 spreadsheetId,
                 connection.connectionId
               );
-              console.log(`[DeleteConversation] Removed connection ${connection.connectionId} from connections sheet`);
+              console.log(`[DeleteConversation] Removed connection ${connection.connectionId} from user's connections sheet`);
             } else {
               console.warn(`[DeleteConversation] Connection not found for ${participantDid}, conversation sheet deleted anyway`);
             }
@@ -11205,12 +11207,67 @@ class ProductionServer {
           }
         } catch (connectionError: any) {
           // Log error but don't fail the deletion - conversation sheet is already deleted
-          console.error(`[DeleteConversation] Failed to remove connection from connections sheet:`, {
+          console.error(`[DeleteConversation] Failed to remove connection from user's connections sheet:`, {
             participantDid,
             error: connectionError?.message,
             status: connectionError?.response?.status
           });
           console.warn(`[DeleteConversation] Conversation sheet deleted, but connection removal failed. This is non-critical.`);
+        }
+
+        // Also remove connection from other user's connections sheet
+        if (connectionId) {
+          try {
+            const participantPnIdentifier = participantDid.startsWith('pn-') ? participantDid : `pn-${participantDid}`;
+            const participantCredentials = await storageCredentialsService.getCredentials(participantPnIdentifier);
+            
+            if (participantCredentials?.credentials) {
+              const participantGoogleDriveAccounts = participantCredentials.credentials.googleDriveAccounts || 
+                (participantCredentials.credentials.googleDrive ? [participantCredentials.credentials.googleDrive] : []);
+              
+              if (participantGoogleDriveAccounts.length > 0) {
+                const participantAccount = participantGoogleDriveAccounts[0];
+                const participantAccountId = (participantAccount as any).backendId || (participantAccount as any).keyPrefix || (participantAccount as any).accountId || (participantAccount as any).id || undefined;
+                const participantAccessToken = await googleDriveProxyService.getAccessToken(participantCredentials.identityId, participantAccountId, [participantCredentials.identityId]);
+                
+                try {
+                  const participantMetadataFolder = await this.getMetadataFolder(participantAccessToken, participantCredentials.identityId);
+                  if (participantMetadataFolder) {
+                    const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+                    const participantSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+                      participantAccessToken,
+                      participantMetadataFolder.metadataFolderId
+                    );
+                    await ConnectionsSheetsService.removeConnection(
+                      participantAccessToken,
+                      participantSpreadsheetId,
+                      connectionId
+                    );
+                    console.log(`[DeleteConversation] Removed connection ${connectionId} from other user's connections sheet`);
+                  } else {
+                    console.warn(`[DeleteConversation] Other user's metadata folder not found, connection removed from user's sheet only`);
+                  }
+                } catch (otherUserError: any) {
+                  console.warn(`[DeleteConversation] Failed to remove connection from other user's connections sheet:`, {
+                    participantDid,
+                    error: otherUserError?.message,
+                    status: otherUserError?.response?.status
+                  });
+                  // Non-critical - connection removed from user's sheet, conversation deleted
+                }
+              } else {
+                console.warn(`[DeleteConversation] Other user has no Google Drive connected, connection removed from user's sheet only`);
+              }
+            } else {
+              console.warn(`[DeleteConversation] Other user's credentials not found, connection removed from user's sheet only`);
+            }
+          } catch (otherUserError: any) {
+            console.warn(`[DeleteConversation] Failed to remove connection from other user's connections sheet:`, {
+              participantDid,
+              error: otherUserError?.message
+            });
+            // Non-critical - connection removed from user's sheet, conversation deleted
+          }
         }
 
         return res.json({ success: true });
