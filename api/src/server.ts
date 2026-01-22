@@ -12166,6 +12166,23 @@ class ProductionServer {
           });
         }
 
+        // Get connection details from acceptor's sheet for syncing to other user
+        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+        const acceptorSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+          userAccessToken,
+          metadataFolderId
+        );
+        const acceptorConnectionsResult = await ConnectionsSheetsService.getConnections(
+          userAccessToken,
+          acceptorSpreadsheetId,
+          { limit: 10000, offset: 0 }
+        );
+        const acceptorConnection = acceptorConnectionsResult.connections.find(
+          (c: any) => c.connectionId === connectionId
+        );
+        const acceptedAt = acceptorConnection?.acceptedAt || new Date().toISOString();
+        const createdAt = acceptorConnection?.createdAt || new Date().toISOString();
+
         // Get other user's credentials (requester) - will be reused for multiple operations
         const otherUserPnIdentifier = otherUserDid.startsWith('pn-') ? otherUserDid : `pn-${otherUserDid}`;
         let otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
@@ -12213,7 +12230,7 @@ class ProductionServer {
                   { limit: 10000, offset: 0 }
                 );
                 const otherConnection = otherConnectionsResult.connections.find(
-                  c => c.connectionId === connectionId
+                  (c: any) => c.connectionId === connectionId
                 );
                 
                 if (otherConnection) {
@@ -12223,7 +12240,7 @@ class ProductionServer {
                     otherSpreadsheetId,
                     connectionId,
                     'accepted',
-                    verifyConnection.acceptedAt || new Date().toISOString(),
+                    acceptedAt,
                     sharedSecret
                   );
                 } else {
@@ -12235,8 +12252,8 @@ class ProductionServer {
                       connectionId,
                       userDid: userCredentials.identityId,
                       status: 'accepted',
-                      createdAt: verifyConnection.createdAt || new Date().toISOString(),
-                      acceptedAt: verifyConnection.acceptedAt || new Date().toISOString(),
+                      createdAt,
+                      acceptedAt,
                       sharedSecret
                     }
                   );
