@@ -594,11 +594,26 @@ export class MessageSheetsService {
       // Create new conversation sheet for user
       const userSheetId = await this.getOrCreateConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
 
-      // Copy all messages to user's sheet
-      // Messages are already encrypted with the same connectionId and sharedSecret, so they can be copied as-is
-      const values = otherMessages.map(row => [
+      // Filter messages: only restore plain text messages (system messages)
+      // Encrypted messages were encrypted with the old connectionId/sharedSecret and cannot be decrypted
+      // with the new connectionId/sharedSecret, so we skip them
+      const { MessageEncryption } = await import('../utils/messageEncryption');
+      const plainTextMessages = otherMessages.filter(row => {
+        const content = row[1] || '';
+        const fromDid = row[0] || '';
+        // Only restore system messages or plain text messages (not encrypted)
+        return fromDid === 'system' || !MessageEncryption.isEncrypted(content);
+      });
+
+      if (plainTextMessages.length === 0) {
+        console.log(`[MessageSheetsService] No plain text messages to restore (all were encrypted with old connection), creating empty sheet`);
+        return userSheetId;
+      }
+
+      // Copy only plain text messages to user's sheet
+      const values = plainTextMessages.map(row => [
         row[0] || '', // fromDid
-        row[1] || '', // encryptedContent (copy as-is, will decrypt correctly)
+        row[1] || '', // content (plain text, can be copied as-is)
         row[2] || '', // timestamp
         row[3] || '', // messageId
         row[4] || 'false', // read
@@ -614,7 +629,7 @@ export class MessageSheetsService {
         }
       });
 
-      console.log(`[MessageSheetsService] Restored ${values.length} messages from ${otherUserDid}'s conversation file`);
+      console.log(`[MessageSheetsService] Restored ${values.length} plain text messages from ${otherUserDid}'s conversation file (skipped ${otherMessages.length - plainTextMessages.length} encrypted messages)`);
       return userSheetId;
     } catch (error: any) {
       console.error('[MessageSheetsService] Error restoring conversation from other user:', {
