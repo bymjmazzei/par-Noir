@@ -12107,7 +12107,7 @@ class ProductionServer {
         const createdAt = acceptorConnection?.createdAt || new Date().toISOString();
 
         // Get other user's credentials (requester) - required for syncing shared secret
-        const otherUserPnIdentifier = otherUserDid.startsWith('pn-') ? otherUserDid : `pn-${otherUserDid}`;
+        // otherUserPnIdentifier already declared above
         let otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
         if (!otherUserCredentials?.credentials && otherUserDid !== otherUserPnIdentifier) {
           otherUserCredentials = await storageCredentialsService.getCredentials(otherUserDid);
