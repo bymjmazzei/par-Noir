@@ -8,7 +8,7 @@ import { ConnectionsSheetsService } from './connectionsSheetsService';
 
 export interface Connection {
   connectionId: string;
-  userDid: string;
+  userPnIdentifier: string;
   status: 'pending_sent' | 'pending_received' | 'accepted' | 'blocked';
   createdAt: string;
   acceptedAt?: string;
@@ -19,7 +19,7 @@ export interface ConnectionsFile {
   identifier: string;
   updatedAt: string;
   connections: Connection[];
-  blocked: string[]; // Array of blocked user DIDs
+  blocked: string[]; // Array of blocked user pn-identifiers
 }
 
 export class ConnectionsService {
@@ -93,10 +93,10 @@ export class ConnectionsService {
         spreadsheetId
       );
 
-      // Find connection with user2 (normalize when comparing)
+      // Find connection with user2 (normalize when comparing - handles legacy data)
       const connection = result.connections.find(c => {
-        const normalizedCUserDid = this.normalizeToPnIdentifier(c.userDid);
-        return normalizedCUserDid === normalizedUser2Did;
+        const normalizedCUserPnIdentifier = this.normalizeToPnIdentifier(c.userPnIdentifier);
+        return normalizedCUserPnIdentifier === normalizedUser2Did;
       });
       
       if (!connection) {
@@ -125,10 +125,10 @@ export class ConnectionsService {
         return { status: 'blocked' };
       }
 
-      // Normalize when comparing connections
+      // Normalize when comparing connections (handles legacy data)
       const connection = connectionsFile.connections.find(c => {
-        const normalizedCUserDid = this.normalizeToPnIdentifier(c.userDid);
-        return normalizedCUserDid === normalizedUser2Did;
+        const normalizedCUserPnIdentifier = this.normalizeToPnIdentifier(c.userPnIdentifier);
+        return normalizedCUserPnIdentifier === normalizedUser2Did;
       });
       if (!connection) {
         return { status: 'not_connected' };
@@ -179,8 +179,8 @@ export class ConnectionsService {
           requesterSheetId
         );
         const existingReq = existingRequester.connections.find(c => {
-          const normalizedCUserDid = this.normalizeToPnIdentifier(c.userDid);
-          return normalizedCUserDid === normalizedRecipientDid;
+          const normalizedCUserPnIdentifier = this.normalizeToPnIdentifier(c.userPnIdentifier);
+          return normalizedCUserPnIdentifier === normalizedRecipientDid;
         });
         if (existingReq) {
           await ConnectionsSheetsService.removeConnection(
@@ -199,8 +199,8 @@ export class ConnectionsService {
           recipientSheetId
         );
         const existingRec = existingRecipient.connections.find(c => {
-          const normalizedCUserDid = this.normalizeToPnIdentifier(c.userDid);
-          return normalizedCUserDid === normalizedRequesterDid;
+          const normalizedCUserPnIdentifier = this.normalizeToPnIdentifier(c.userPnIdentifier);
+          return normalizedCUserPnIdentifier === normalizedRequesterDid;
         });
         if (existingRec) {
           await ConnectionsSheetsService.removeConnection(
@@ -219,7 +219,7 @@ export class ConnectionsService {
         requesterSheetId,
         {
           connectionId,
-          userDid: normalizedRecipientDid,
+          userPnIdentifier: normalizedRecipientDid,
           status: 'pending_sent',
           createdAt: now
         }
@@ -231,7 +231,7 @@ export class ConnectionsService {
         recipientSheetId,
         {
           connectionId,
-          userDid: normalizedRequesterDid,
+          userPnIdentifier: normalizedRequesterDid,
           status: 'pending_received',
           createdAt: now
         }
@@ -239,7 +239,7 @@ export class ConnectionsService {
 
       return {
         connectionId,
-        userDid: normalizedRecipientDid,
+        userPnIdentifier: normalizedRecipientDid,
         status: 'pending_sent',
         createdAt: now
       };
@@ -291,12 +291,12 @@ export class ConnectionsService {
 
     // Normalize when filtering (handles legacy data)
     requesterFile.connections = requesterFile.connections.filter(c => {
-      const normalizedCUserDid = this.normalizeToPnIdentifier(c.userDid);
-      return normalizedCUserDid !== normalizedRecipientDid;
+      const normalizedCUserPnIdentifier = this.normalizeToPnIdentifier(c.userPnIdentifier);
+      return normalizedCUserPnIdentifier !== normalizedRecipientDid;
     });
     requesterFile.connections.push({
       connectionId,
-      userDid: normalizedRecipientDid,
+      userPnIdentifier: normalizedRecipientDid,
       status: 'pending_sent',
       createdAt: now
     });
@@ -319,13 +319,13 @@ export class ConnectionsService {
 
     // Normalize when filtering (handles legacy data)
     recipientFile.connections = recipientFile.connections.filter(c => {
-      const normalizedCUserDid = this.normalizeToPnIdentifier(c.userDid);
-      return normalizedCUserDid !== normalizedRequesterDid;
+      const normalizedCUserPnIdentifier = this.normalizeToPnIdentifier(c.userPnIdentifier);
+      return normalizedCUserPnIdentifier !== normalizedRequesterDid;
     });
     
     recipientFile.connections.push({
       connectionId,
-      userDid: normalizedRequesterDid,
+      userPnIdentifier: normalizedRequesterDid,
       status: 'pending_received',
       createdAt: now
     });
@@ -334,7 +334,7 @@ export class ConnectionsService {
 
     return {
       connectionId,
-      userDid: normalizedRecipientDid,
+      userPnIdentifier: normalizedRecipientDid,
       status: 'pending_sent',
       createdAt: now
     };
@@ -502,7 +502,9 @@ export class ConnectionsService {
       throw new Error(`Connection request is not in acceptable status. Current status: ${connection.status}. Only pending_received or pending_sent connections can be accepted.`);
     }
 
-    const otherUserDid = connection.userDid;
+    // Normalize connection.userPnIdentifier when reading (handles legacy data)
+    const otherUserPnIdentifier = this.normalizeToPnIdentifier(connection.userPnIdentifier);
+    connection.userPnIdentifier = otherUserPnIdentifier;
     const now = new Date().toISOString();
 
     // Generate shared secret
@@ -561,18 +563,18 @@ export class ConnectionsService {
       if (!connection) {
         // Connection doesn't exist - create it if accepting
         if (newStatus === 'accepted' && normalizedAcceptorDid) {
-          await ConnectionsSheetsService.addConnection(
-            otherUserAccessToken,
-            spreadsheetId,
-            {
-              connectionId,
-              userDid: normalizedAcceptorDid,
-              status: 'accepted',
-              createdAt: new Date().toISOString(),
-              acceptedAt: new Date().toISOString(),
-              sharedSecret: sharedSecret
-            }
-          );
+        await ConnectionsSheetsService.addConnection(
+          otherUserAccessToken,
+          spreadsheetId,
+          {
+            connectionId,
+            userPnIdentifier: normalizedAcceptorDid,
+            status: 'accepted',
+            createdAt: new Date().toISOString(),
+            acceptedAt: new Date().toISOString(),
+            sharedSecret: sharedSecret
+          }
+        );
           return;
         }
         throw new Error('Connection not found');
@@ -628,7 +630,7 @@ export class ConnectionsService {
           updatedAt: now,
           connections: [{
             connectionId,
-            userDid: normalizedAcceptorDid,
+            userPnIdentifier: normalizedAcceptorDid,
             status: 'accepted',
             createdAt: now,
             acceptedAt: now
@@ -648,11 +650,11 @@ export class ConnectionsService {
     const connection = otherUserFile.connections.find(c => c.connectionId === connectionId);
     if (!connection) {
       console.log(`[updateOtherUserConnectionStatus] Connection ${connectionId} not found in ${normalizedOtherUserDid}'s file`);
-      console.log(`[updateOtherUserConnectionStatus] Available connections:`, otherUserFile.connections.map(c => ({
-        connectionId: c.connectionId,
-        userDid: c.userDid,
-        status: c.status
-      })));
+        console.log(`[updateOtherUserConnectionStatus] Available connections:`, otherUserFile.connections.map(c => ({
+          connectionId: c.connectionId,
+          userPnIdentifier: c.userPnIdentifier,
+          status: c.status
+        })));
       
       // If accepting and we have acceptorDid, create the connection
       if (newStatus === 'accepted' && normalizedAcceptorDid) {
@@ -660,7 +662,7 @@ export class ConnectionsService {
         const now = new Date().toISOString();
         otherUserFile.connections.push({
           connectionId,
-          userDid: normalizedAcceptorDid,
+          userPnIdentifier: normalizedAcceptorDid,
           status: 'accepted',
           createdAt: now,
           acceptedAt: now
@@ -675,13 +677,13 @@ export class ConnectionsService {
       return; // Connection not found in their file
     }
 
-    // Normalize connection.userDid when reading (handles legacy data)
-    const normalizedConnectionUserDid = this.normalizeToPnIdentifier(connection.userDid);
-    connection.userDid = normalizedConnectionUserDid;
+    // Normalize connection.userPnIdentifier when reading (handles legacy data)
+    const normalizedConnectionUserPnIdentifier = this.normalizeToPnIdentifier(connection.userPnIdentifier);
+    connection.userPnIdentifier = normalizedConnectionUserPnIdentifier;
 
     console.log(`[updateOtherUserConnectionStatus] Found connection in ${normalizedOtherUserDid}'s file:`, {
       connectionId: connection.connectionId,
-      userDid: normalizedConnectionUserDid,
+      userPnIdentifier: normalizedConnectionUserPnIdentifier,
       currentStatus: connection.status,
       newStatus
     });
@@ -695,8 +697,8 @@ export class ConnectionsService {
       connection.status = 'blocked';
       // Normalize blocked entries when checking and adding (handles legacy data)
       const normalizedBlocked = otherUserFile.blocked.map(b => this.normalizeToPnIdentifier(b));
-      if (!normalizedBlocked.includes(normalizedConnectionUserDid)) {
-        otherUserFile.blocked.push(normalizedConnectionUserDid);
+      if (!normalizedBlocked.includes(normalizedConnectionUserPnIdentifier)) {
+        otherUserFile.blocked.push(normalizedConnectionUserPnIdentifier);
       }
       // Update blocked array with normalized values
       otherUserFile.blocked = normalizedBlocked;

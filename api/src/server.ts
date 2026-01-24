@@ -5521,7 +5521,7 @@ class ProductionServer {
                   'like',
                   {
                     targetType: 'file',
-                    targetId: fileId,
+                    targetPnIdentifier: fileId, // For files, this is the file ID, not a pn-identifier
                     metadata: { fileOwnerDid }
                   }
                 );
@@ -5549,8 +5549,8 @@ class ProductionServer {
                   'like',
                   {
                     targetType: 'file',
-                    targetId: fileId,
-                    actorDid: userDid,
+                    targetPnIdentifier: fileId, // For files, this is the file ID, not a pn-identifier
+                    actorPnIdentifier: userDid, // Normalize in recordActivity
                     metadata: { fileId }
                   }
                 );
@@ -6002,7 +6002,7 @@ class ProductionServer {
                   'comment',
                   {
                     targetType: 'file',
-                    targetId: fileId,
+                    targetPnIdentifier: fileId, // For files, this is the file ID, not a pn-identifier
                     metadata: { commentId: comment.id, fileOwnerDid: ownerDid }
                   }
                 );
@@ -6030,8 +6030,8 @@ class ProductionServer {
                   'comment',
                   {
                     targetType: 'file',
-                    targetId: fileId,
-                    actorDid: userDid,
+                    targetPnIdentifier: fileId, // For files, this is the file ID, not a pn-identifier
+                    actorPnIdentifier: userDid, // Normalize in recordActivity
                     metadata: { commentId: comment.id, fileId }
                   }
                 );
@@ -6382,7 +6382,7 @@ class ProductionServer {
                   'share',
                   {
                     targetType: 'file',
-                    targetId: fileId,
+                    targetPnIdentifier: fileId, // For files, this is the file ID, not a pn-identifier
                     metadata: { fileOwnerDid }
                   }
                 );
@@ -6410,8 +6410,8 @@ class ProductionServer {
                   'share',
                   {
                     targetType: 'file',
-                    targetId: fileId,
-                    actorDid: userDid,
+                    targetPnIdentifier: fileId, // For files, this is the file ID, not a pn-identifier
+                    actorPnIdentifier: userDid, // Normalize in recordActivity
                     metadata: { fileId }
                   }
                 );
@@ -10115,7 +10115,7 @@ class ProductionServer {
 
         // Format conversations for response (backward compatibility with threads)
         const threads = conversations.map(conv => ({
-          participantDid: conv.otherUserDid,
+          participantDid: conv.otherUserPnIdentifier, // participantDid is the API field name, contains pn-identifier
           lastMessageAt: conv.lastMessageAt
         }));
 
@@ -10193,7 +10193,7 @@ class ProductionServer {
 
         // Format conversations for response (backward compatibility with threads)
         const threads = conversations.map(conv => ({
-          participantDid: conv.otherUserDid,
+          participantDid: conv.otherUserPnIdentifier,
           lastMessageAt: conv.lastMessageAt
         }));
 
@@ -10299,19 +10299,19 @@ class ProductionServer {
         const allMessages: any[] = [];
         for (const conversation of conversations) {
           try {
-            // Normalize otherUserDid (getConversations already normalizes, but normalize again to be safe)
-            const normalizedOtherUserDid = conversation.otherUserDid.startsWith('pn-') ? conversation.otherUserDid : `pn-${conversation.otherUserDid}`;
+            // Normalize otherUserPnIdentifier (getConversations already normalizes, but normalize again to be safe)
+            const normalizedOtherUserPnIdentifier = conversation.otherUserPnIdentifier.startsWith('pn-') ? conversation.otherUserPnIdentifier : `pn-${conversation.otherUserPnIdentifier}`;
             
             // Look up connection to get shared secret (use normalized)
             const connectionStatus = await ConnectionsService.getConnectionStatus(
               userAccessToken,
               metadataFolderId,
               pnIdentifier,
-              normalizedOtherUserDid
+              normalizedOtherUserPnIdentifier
             );
 
             if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
-              console.warn(`[Inbox] Connection not found for ${conversation.otherUserDid}, skipping`);
+              console.warn(`[Inbox] Connection not found for ${conversation.otherUserPnIdentifier}, skipping`);
               continue;
             }
 
@@ -10321,7 +10321,7 @@ class ProductionServer {
               metadataFolderId
             );
             if (!connectionsFile) {
-              console.warn(`[Inbox] Connections file not found, skipping ${conversation.otherUserDid}`);
+              console.warn(`[Inbox] Connections file not found, skipping ${conversation.otherUserPnIdentifier}`);
               continue;
             }
 
@@ -10329,7 +10329,7 @@ class ProductionServer {
               c => c.connectionId === connectionStatus.connectionId
             );
             if (!connection) {
-              console.warn(`[Inbox] Connection not found for ${conversation.otherUserDid}, skipping`);
+              console.warn(`[Inbox] Connection not found for ${conversation.otherUserPnIdentifier}, skipping`);
               continue;
             }
 
@@ -10338,16 +10338,16 @@ class ProductionServer {
             if (connection.sharedSecret) {
               decryptedSharedSecret = MetadataEncryption.decryptField(connection.sharedSecret);
               if (!decryptedSharedSecret) {
-                console.warn(`[Inbox] Failed to decrypt shared secret for ${conversation.otherUserDid}, will read as plain text`);
+                console.warn(`[Inbox] Failed to decrypt shared secret for ${conversation.otherUserPnIdentifier}, will read as plain text`);
               }
             } else {
-              console.warn(`[Inbox] Connection missing shared secret for ${conversation.otherUserDid}, will read as plain text`);
+              console.warn(`[Inbox] Connection missing shared secret for ${conversation.otherUserPnIdentifier}, will read as plain text`);
             }
 
             const conversationSheetId = await MessageSheetsService.getConversationSheet(
               userAccessToken,
               messagesFolderId,
-              normalizedOtherUserDid
+              normalizedOtherUserPnIdentifier
             );
             const result = await MessageSheetsService.getMessages(
               userAccessToken,
@@ -10358,11 +10358,11 @@ class ProductionServer {
             );
             if (result.messages.length > 0) {
               const msg = result.messages[0];
-              msg.toDid = normalizedOtherUserDid;
+              msg.toPnIdentifier = normalizedOtherUserPnIdentifier;
               allMessages.push(msg);
             }
           } catch (error) {
-            console.error(`Failed to get messages for conversation ${conversation.otherUserDid}:`, error);
+            console.error(`Failed to get messages for conversation ${conversation.otherUserPnIdentifier}:`, error);
           }
         }
 
@@ -10561,9 +10561,9 @@ class ProductionServer {
           { limit, offset }
         );
 
-        // Set toDid for all messages (use normalized)
+        // Set toPnIdentifier for all messages (use normalized)
         result.messages.forEach(msg => {
-          msg.toDid = normalizedParticipantDid;
+          msg.toPnIdentifier = normalizedParticipantDid;
         });
 
         console.log('[GetThread] Returning', result.messages.length, 'messages');
@@ -10819,11 +10819,11 @@ class ProductionServer {
 
         console.log(`[SendMessage] Using connectionId: ${connectionStatus.connectionId}, hasSharedSecret: ${!!decryptedSharedSecret}`);
 
-        // Create message object (use normalized DIDs)
+        // Create message object (use normalized pn-identifiers)
         const message: any = {
           messageId,
-          fromDid: normalizedFromDid,
-          toDid: normalizedToDid,
+          fromPnIdentifier: normalizedFromDid,
+          toPnIdentifier: normalizedToDid,
           content,
           timestamp,
           read: false,
@@ -10849,21 +10849,21 @@ class ProductionServer {
           'message_sent',
           {
             targetType: 'message',
-            targetId: messageId,
-            actorDid: normalizedFromDid,
-            metadata: { toDid: normalizedToDid, threadId, content: content.substring(0, 100) }
+            targetPnIdentifier: messageId, // For messages, this is the message ID, not a pn-identifier
+            actorPnIdentifier: normalizedFromDid,
+            metadata: { toPnIdentifier: normalizedToDid, threadId, content: content.substring(0, 100) }
           }
         );
 
-        // Record messaging activity for sender (use normalized DIDs)
+        // Record messaging activity for sender (use normalized pn-identifiers)
         await MessagingLedgerService.recordMessagingActivity(
           senderAccessToken,
           senderMetadataFolderId,
           normalizedFromDid, // Use normalized pn-identifier
           'message_sent',
           {
-            fromDid: normalizedFromDid,
-            toDid: normalizedToDid,
+            fromPnIdentifier: normalizedFromDid,
+            toPnIdentifier: normalizedToDid,
             messageId,
             threadId,
             metadata: { content: content.substring(0, 100), mediaFileId }
@@ -11039,21 +11039,21 @@ class ProductionServer {
           'message_received',
           {
             targetType: 'message',
-            targetId: messageId,
-            actorDid: normalizedFromDid,
-            metadata: { fromDid: normalizedFromDid, threadId, content: content.substring(0, 100) }
+            targetPnIdentifier: messageId, // For messages, this is the message ID, not a pn-identifier
+            actorPnIdentifier: normalizedFromDid,
+            metadata: { fromPnIdentifier: normalizedFromDid, threadId, content: content.substring(0, 100) }
           }
         );
 
-        // Record messaging activity for recipient (use normalized DIDs)
+        // Record messaging activity for recipient (use normalized pn-identifiers)
         await MessagingLedgerService.recordMessagingActivity(
           recipientAccessToken,
           recipientMetadataFolderId,
           normalizedToDid, // Use normalized pn-identifier
           'message_received',
           {
-            fromDid: normalizedFromDid,
-            toDid: normalizedToDid,
+            fromPnIdentifier: normalizedFromDid,
+            toPnIdentifier: normalizedToDid,
             messageId,
             threadId,
             metadata: { content: content.substring(0, 100), mediaFileId }
@@ -11079,8 +11079,8 @@ class ProductionServer {
           success: true,
           message: {
             messageId,
-            fromDid: normalizedFromDid,
-            toDid: normalizedToDid,
+            fromPnIdentifier: normalizedFromDid,
+            toPnIdentifier: normalizedToDid,
             content,
             mediaFileId,
             timestamp,
@@ -11350,8 +11350,8 @@ class ProductionServer {
           if (connectionsFile) {
             // Normalize when searching (handles legacy data)
             const connection = connectionsFile.connections.find(c => {
-              const normalizedCUserDid = c.userDid.startsWith('pn-') ? c.userDid : `pn-${c.userDid}`;
-              return normalizedCUserDid === normalizedParticipantDid;
+              const normalizedCUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`;
+              return normalizedCUserPnIdentifier === normalizedParticipantDid;
             });
             
             if (connection) {
@@ -11943,7 +11943,7 @@ class ProductionServer {
             'connection_request',
             {
               targetType: 'user',
-              targetId: recipientDid,
+              targetPnIdentifier: recipientPnIdentifier, // Use normalized
               metadata: { connectionId: connection.connectionId }
             }
           );
@@ -11970,8 +11970,8 @@ class ProductionServer {
             'connection_request',
             {
               targetType: 'user',
-              targetId: requesterPnIdentifier,
-              actorDid: requesterPnIdentifier,
+              targetPnIdentifier: requesterPnIdentifier,
+              actorPnIdentifier: requesterPnIdentifier,
               metadata: { connectionId: connection.connectionId }
             }
           );
@@ -12097,7 +12097,7 @@ class ProductionServer {
         console.log(`[AcceptConnection] User has ${connectionsFile.connections.length} connections:`, 
           connectionsFile.connections.map(c => ({
             connectionId: c.connectionId,
-            userDid: c.userDid,
+            userPnIdentifier: c.userPnIdentifier,
             status: c.status
           }))
         );
@@ -12105,7 +12105,7 @@ class ProductionServer {
         // Find connection - prioritize pending_received, but also check for pending_sent (mutual request scenario)
         const allMatchingConnections = connectionsFile.connections.filter(c => c.connectionId === connectionId);
         console.log(`[AcceptConnection] Found ${allMatchingConnections.length} connections with ID ${connectionId}:`, 
-          allMatchingConnections.map(c => ({ userDid: c.userDid, status: c.status }))
+          allMatchingConnections.map(c => ({ userPnIdentifier: c.userPnIdentifier, status: c.status }))
         );
 
         // Prioritize pending_received connection (the one we want to accept)
@@ -12123,9 +12123,9 @@ class ProductionServer {
 
         if (!connection) {
           console.error(`[AcceptConnection] Connection ${connectionId} not found in user's connections file`);
-          console.error(`[AcceptConnection] Available connections:`, connectionsFile.connections.map(c => ({
+          console.error(`[AcceptConnection] Available connections:`,           connectionsFile.connections.map(c => ({
             connectionId: c.connectionId,
-            userDid: c.userDid,
+            userPnIdentifier: c.userPnIdentifier,
             status: c.status
           })));
           return res.status(404).json({ error: 'Connection request not found' });
@@ -12133,7 +12133,7 @@ class ProductionServer {
 
         console.log(`[AcceptConnection] Found connection:`, {
           connectionId: connection.connectionId,
-          userDid: connection.userDid,
+          userPnIdentifier: connection.userPnIdentifier,
           status: connection.status,
           expectedStatus: 'pending_received'
         });
@@ -12165,8 +12165,9 @@ class ProductionServer {
             );
             
             // Also update other user's connection with the same secret
-            const otherUserDid = connection.userDid;
-            const otherUserPnIdentifier = otherUserDid.startsWith('pn-') ? otherUserDid : `pn-${otherUserDid}`;
+            // Normalize connection.userPnIdentifier when reading (handles legacy data)
+            const otherUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-') ? connection.userPnIdentifier : `pn-${connection.userPnIdentifier}`;
+            connection.userPnIdentifier = otherUserPnIdentifier;
             const otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
             if (otherUserCredentials?.credentials) {
               const otherGoogleDriveAccounts = otherUserCredentials.credentials.googleDriveAccounts || 
@@ -12210,10 +12211,9 @@ class ProductionServer {
           });
         }
 
-        // Normalize connection.userDid when reading (handles legacy data)
-        const otherUserDid = connection.userDid;
-        const normalizedOtherUserDid = otherUserDid.startsWith('pn-') ? otherUserDid : `pn-${otherUserDid}`;
-        const otherUserPnIdentifier = normalizedOtherUserDid;
+        // Normalize connection.userPnIdentifier when reading (handles legacy data)
+        const otherUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-') ? connection.userPnIdentifier : `pn-${connection.userPnIdentifier}`;
+        connection.userPnIdentifier = otherUserPnIdentifier;
 
         // Record activity FIRST (use normalized DIDs)
         const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
@@ -12225,7 +12225,7 @@ class ProductionServer {
           'connection_accepted',
           {
             targetType: 'user',
-            targetId: normalizedOtherUserDid,
+            targetPnIdentifier: otherUserPnIdentifier,
             metadata: { connectionId }
           }
         );
@@ -12329,7 +12329,7 @@ class ProductionServer {
             otherSpreadsheetId,
             {
               connectionId,
-              userDid: pnIdentifier, // Use normalized pn-identifier
+              userPnIdentifier: pnIdentifier, // Use normalized pn-identifier
               status: 'accepted',
               createdAt,
               acceptedAt,
@@ -12350,8 +12350,8 @@ class ProductionServer {
               'connection_accepted',
               {
                 targetType: 'user',
-                targetId: pnIdentifier, // Use normalized pn-identifier
-                actorDid: pnIdentifier, // Use normalized pn-identifier
+                targetPnIdentifier: pnIdentifier, // Use normalized pn-identifier
+                actorPnIdentifier: pnIdentifier, // Use normalized pn-identifier
                 metadata: { connectionId }
               }
             );
@@ -12378,7 +12378,7 @@ class ProductionServer {
           // Get display names for the system message
           // Acceptor is the user accepting (user B), Requester is the user who sent the request (user A)
           let acceptorDisplayName = userCredentials.identityId.substring(0, 8);
-          let requesterDisplayName = otherUserDid.substring(0, 8);
+          let requesterDisplayName = otherUserPnIdentifier.substring(0, 8);
           
           // Ensure connectionId and sharedSecret are available for system messages
           if (!connectionId) {
@@ -12469,7 +12469,7 @@ class ProductionServer {
                 acceptorConversationSheetId = await MessageSheetsService.getConversationSheet(
                   userAccessToken,
                   acceptorMessagesFolderId,
-                  otherUserDid
+                  otherUserPnIdentifier
                 );
                 
                 // Check if the sheet is empty (only has header) - if so, try to restore
@@ -12510,7 +12510,7 @@ class ProductionServer {
                           acceptorMessagesFolderId,
                           otherAccessToken,
                           otherMessagesFolderId,
-                          normalizedOtherUserDid,
+                          otherUserPnIdentifier,
                           connectionId,
                           decryptedSharedSecret
                         );
@@ -12527,7 +12527,7 @@ class ProductionServer {
                   acceptorConversationSheetId = await MessageSheetsService.createConversationSheet(
                     userAccessToken,
                     acceptorMessagesFolderId,
-                    normalizedOtherUserDid
+                    otherUserPnIdentifier
                   );
                 } else {
                   throw error;
@@ -12543,8 +12543,8 @@ class ProductionServer {
                 acceptorConversationSheetId,
                 {
                   messageId: systemMessageId,
-                  fromDid: 'system',
-                  toDid: userCredentials.identityId,
+                  fromPnIdentifier: 'system',
+                  toPnIdentifier: userCredentials.identityId,
                   content: `${acceptorDisplayName} accepted ${requesterDisplayName}'s connection request`,
                   timestamp: now,
                   read: false
@@ -12656,8 +12656,8 @@ class ProductionServer {
                   requesterConversationSheetId,
                   {
                     messageId: systemMessageId2,
-                    fromDid: 'system',
-                    toDid: otherUserCredentials.identityId,
+                    fromPnIdentifier: 'system',
+                    toPnIdentifier: otherUserCredentials.identityId,
                     content: `${acceptorDisplayName} accepted ${requesterDisplayName}'s connection request`,
                     timestamp: now2,
                     read: false
@@ -12673,7 +12673,7 @@ class ProductionServer {
           console.error('[AcceptConnection] Error details:', {
             connectionId,
             acceptorDid: userCredentials.identityId,
-            requesterDid: otherUserDid,
+            requesterDid: otherUserPnIdentifier,
             error: conversationError?.message,
             stack: conversationError?.stack
           });
@@ -12839,10 +12839,10 @@ class ProductionServer {
         const connections = await ConnectionsService.getConnections(userAccessToken, metadataFolderId);
         console.log(`[GetConnections] Found ${connections.length} accepted connections for user ${pnIdentifier}`);
 
-        // Normalize userDid in returned connections (handles legacy data)
+        // Normalize userPnIdentifier in returned connections (handles legacy data)
         const normalizedConnections = connections.map(c => ({
           ...c,
-          userDid: c.userDid.startsWith('pn-') ? c.userDid : `pn-${c.userDid}`
+          userPnIdentifier: c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`
         }));
 
         return res.json({ connections: normalizedConnections });
@@ -12899,7 +12899,7 @@ class ProductionServer {
           ? (targetId.startsWith('pn-') ? targetId : `pn-${targetId}`)
           : targetId;
 
-        // Record activity FIRST (use normalized targetId)
+        // Record activity FIRST (use normalized targetPnIdentifier)
         await ActivityLedgerService.recordActivity(
           userAccessToken,
           metadataFolderId,
@@ -12907,8 +12907,8 @@ class ProductionServer {
           'follow',
           {
             targetType: targetTypeStr,
-            targetId: normalizedTargetId,
-            metadata: { targetType: targetTypeStr, targetId: normalizedTargetId }
+            targetPnIdentifier: normalizedTargetId,
+            metadata: { targetType: targetTypeStr, targetPnIdentifier: normalizedTargetId }
           }
         );
 
@@ -12918,13 +12918,13 @@ class ProductionServer {
           metadataFolderId
         );
 
-        // Add to following sheet (use normalized targetId)
+        // Add to following sheet (use normalized targetPnIdentifier)
         await ConnectionsSheetsService.addFollowing(
           userAccessToken,
           followingSheetId,
           {
             targetType: targetTypeStr as 'user' | 'feed',
-            targetId: String(normalizedTargetId),
+            targetPnIdentifier: String(normalizedTargetId),
             followedAt: new Date().toISOString()
           }
         );
@@ -12957,7 +12957,7 @@ class ProductionServer {
                   targetAccessToken,
                   followersSheetId,
                   {
-                    followerDid: pnIdentifier,
+                    followerPnIdentifier: pnIdentifier,
                     followedAt: new Date().toISOString()
                   }
                 );
@@ -12969,11 +12969,11 @@ class ProductionServer {
                     targetMetadataFolderId,
                     targetCredentials.identityId,
                     {
-                      user_did: targetCredentials.identityId,
+                      user_pn_identifier: targetCredentials.identityId,
                       type: 'follow',
                       title: 'New Follower',
                       message: `${pnIdentifier} started following you`,
-                      data: { user_did: pnIdentifier }
+                      data: { user_pn_identifier: pnIdentifier }
                     }
                   );
                 } catch (notificationError) {
@@ -13249,7 +13249,7 @@ class ProductionServer {
           { targetType: 'feed' }
         );
 
-        return res.json({ feeds: result.following.map(f => f.targetId), total: result.total });
+        return res.json({ feeds: result.following.map(f => f.targetPnIdentifier), total: result.total });
       } catch (error: any) {
         console.error('Error getting followed feeds:', error);
         return res.status(500).json({
@@ -13300,7 +13300,7 @@ class ProductionServer {
           { targetType: 'user' }
         );
 
-        return res.json({ users: result.following.map(f => f.targetId), total: result.total });
+        return res.json({ users: result.following.map(f => f.targetPnIdentifier), total: result.total });
       } catch (error: any) {
         console.error('Error getting followed users:', error);
         return res.status(500).json({
@@ -13378,15 +13378,15 @@ class ProductionServer {
 
         const pending = await ConnectionsService.getPendingRequests(userAccessToken, metadataFolderId);
 
-        // Normalize userDid in returned connections (handles legacy data)
+        // Normalize userPnIdentifier in returned connections (handles legacy data)
         const normalizedPending = {
           sent: pending.sent.map(c => ({
             ...c,
-            userDid: c.userDid.startsWith('pn-') ? c.userDid : `pn-${c.userDid}`
+            userPnIdentifier: c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`
           })),
           received: pending.received.map(c => ({
             ...c,
-            userDid: c.userDid.startsWith('pn-') ? c.userDid : `pn-${c.userDid}`
+            userPnIdentifier: c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`
           }))
         };
 
@@ -13551,9 +13551,9 @@ class ProductionServer {
           );
           const connection = result.connections.find(c => c.connectionId === connectionId);
           if (connection) {
-            // Normalize to pn identifier format (credentials are stored under pn identifiers)
-            otherUserPnIdentifier = connection.userDid.startsWith('pn-') ? connection.userDid : `pn-${connection.userDid}`;
-            console.log(`[RemoveConnection] Found connection ${connectionId} with other user: ${connection.userDid} (normalized: ${otherUserPnIdentifier})`);
+            // Normalize to pn identifier format (handles legacy data)
+            otherUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-') ? connection.userPnIdentifier : `pn-${connection.userPnIdentifier}`;
+            console.log(`[RemoveConnection] Found connection ${connectionId} with other user: ${connection.userPnIdentifier} (normalized: ${otherUserPnIdentifier})`);
           } else {
             console.error(`[RemoveConnection] Connection ${connectionId} not found in user's connections sheet. Total connections: ${result.total}, Retrieved: ${result.connections.length}. Available connectionIds:`, result.connections.map(c => c.connectionId));
           }

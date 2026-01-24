@@ -8,7 +8,7 @@ import { google } from 'googleapis';
 
 export interface Notification {
   notification_id: string;
-  user_did: string;
+  user_pn_identifier: string;
   type: 'feed_new_post' | 'feed_new_comment' | 'feed_new_like' | 'feed_new_subscriber' | 'comment_reply' | 'mention' | 'connection_request' | 'connection_accepted' | 'repost' | 'follow' | 'new_message';
   title: string;
   message: string;
@@ -16,7 +16,7 @@ export interface Notification {
     feed_id?: string;
     file_id?: string;
     comment_id?: string;
-    user_did?: string;
+    user_pn_identifier?: string;
     connection_id?: string;
     message_id?: string;
     thread_id?: string;
@@ -121,7 +121,7 @@ export class NotificationsSheetsService {
       requestBody: {
         values: [[
           notification.notification_id,
-          notification.user_did,
+          notification.user_pn_identifier,
           notification.type,
           notification.title,
           notification.message,
@@ -167,9 +167,13 @@ export class NotificationsSheetsService {
         // If data is not valid JSON, leave as empty object
       }
 
+      // Normalize user_pn_identifier when reading (handles legacy data)
+      const userPnIdentifier = row[1] || '';
+      const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : (userPnIdentifier ? `pn-${userPnIdentifier}` : '');
+
       return {
         notification_id: row[0] || '',
-        user_did: row[1] || '',
+        user_pn_identifier: normalizedUserPnIdentifier,
         type: (row[2] || 'new_message') as Notification['type'],
         title: row[3] || '',
         message: row[4] || '',
@@ -382,7 +386,7 @@ export class NotificationsSheetsService {
     if (notifications.length > 0) {
       const rows = notifications.map(n => [
         n.notification_id,
-        n.user_did,
+        n.user_pn_identifier,
         n.type,
         n.title,
         n.message,

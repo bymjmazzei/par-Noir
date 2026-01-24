@@ -8,10 +8,10 @@ import { google } from 'googleapis';
 
 export interface MessagingActivityEntry {
   message_activity_id: string;
-  user_did: string;
+  user_pn_identifier: string;
   activity_type: 'message_sent' | 'message_received' | 'message_read' | 'thread_created';
-  from_did?: string;
-  to_did?: string;
+  from_pn_identifier?: string;
+  to_pn_identifier?: string;
   message_id?: string;
   thread_id?: string;
   metadata?: any;
@@ -106,10 +106,10 @@ export class MessagingLedgerSheetsService {
       requestBody: {
         values: [[
           activity.message_activity_id,
-          activity.user_did,
+          activity.user_pn_identifier,
           activity.activity_type,
-          activity.from_did || '',
-          activity.to_did || '',
+          activity.from_pn_identifier || '',
+          activity.to_pn_identifier || '',
           activity.message_id || '',
           activity.thread_id || '',
           JSON.stringify(activity.metadata || {}),
@@ -150,10 +150,10 @@ export class MessagingLedgerSheetsService {
     let activities = response.data.values.map((row: any[]) => {
       const activity: MessagingActivityEntry = {
         message_activity_id: row[0],
-        user_did: row[1],
+        user_pn_identifier: row[1],
         activity_type: row[2],
-        from_did: row[3] || undefined,
-        to_did: row[4] || undefined,
+        from_pn_identifier: row[3] || undefined,
+        to_pn_identifier: row[4] || undefined,
         message_id: row[5] || undefined,
         thread_id: row[6] || undefined,
         metadata: row[7] ? JSON.parse(row[7]) : {},

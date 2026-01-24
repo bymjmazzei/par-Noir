@@ -8,11 +8,11 @@ import { google } from 'googleapis';
 
 export interface ActivityEntry {
   activity_id: string;
-  user_did: string;
+  user_pn_identifier: string;
   activity_type: string;
   target_type?: string;
-  target_id?: string;
-  actor_did?: string;
+  target_pn_identifier?: string; // pn-identifier when target_type is 'user', otherwise the target ID (feed ID, file ID, etc.)
+  actor_pn_identifier?: string;
   metadata?: any;
   created_at: string;
 }
@@ -112,11 +112,11 @@ export class ActivityLedgerSheetsService {
       requestBody: {
         values: [[
           activity.activity_id,
-          activity.user_did,
+          activity.user_pn_identifier,
           activity.activity_type,
           activity.target_type || '',
-          activity.target_id || '',
-          activity.actor_did || '',
+          activity.target_pn_identifier || '',
+          activity.actor_pn_identifier || '',
           JSON.stringify(activity.metadata || {}),
           activity.created_at
         ]]
@@ -160,11 +160,11 @@ export class ActivityLedgerSheetsService {
 
       return {
         activity_id: row[0] || '',
-        user_did: row[1] || '',
+        user_pn_identifier: row[1] || '',
         activity_type: row[2] || '',
         target_type: row[3] || undefined,
-        target_id: row[4] || undefined,
-        actor_did: row[5] || undefined,
+        target_pn_identifier: row[4] || undefined,
+        actor_pn_identifier: row[5] || undefined,
         metadata,
         created_at: row[7] || new Date().toISOString()
       };
@@ -177,7 +177,12 @@ export class ActivityLedgerSheetsService {
 
     // Filter by user DID if specified
     if (options?.userDid) {
-      activities = activities.filter(a => a.user_did === options.userDid);
+      // Normalize when filtering (handles legacy data)
+      const normalizedUserDid = options.userDid?.startsWith('pn-') ? options.userDid : `pn-${options.userDid}`;
+      activities = activities.filter(a => {
+        const normalizedAUserPnIdentifier = a.user_pn_identifier.startsWith('pn-') ? a.user_pn_identifier : `pn-${a.user_pn_identifier}`;
+        return normalizedAUserPnIdentifier === normalizedUserDid;
+      });
     }
 
     // Sort by created_at descending (most recent first)
@@ -232,11 +237,11 @@ export class ActivityLedgerSheetsService {
 
     return {
       activity_id: row[0] || '',
-      user_did: row[1] || '',
+      user_pn_identifier: row[1] || '',
       activity_type: row[2] || '',
       target_type: row[3] || undefined,
-      target_id: row[4] || undefined,
-      actor_did: row[5] || undefined,
+      target_pn_identifier: row[4] || undefined,
+      actor_pn_identifier: row[5] || undefined,
       metadata,
       created_at: row[7] || new Date().toISOString()
     };

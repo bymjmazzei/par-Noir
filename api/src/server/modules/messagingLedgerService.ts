@@ -89,20 +89,20 @@ export class MessagingLedgerService {
   static async recordMessagingActivity(
     accessToken: string,
     metadataFolderId: string,
-    userDid: string,
+    userPnIdentifier: string,
     activityType: MessagingActivityEntry['activity_type'],
     options?: {
-      fromDid?: string;
-      toDid?: string;
+      fromPnIdentifier?: string;
+      toPnIdentifier?: string;
       messageId?: string;
       threadId?: string;
       metadata?: any;
     }
   ): Promise<MessagingActivityEntry> {
-    // Normalize all DIDs to pn-identifiers
-    const normalizedUserDid = this.normalizeToPnIdentifier(userDid);
-    const normalizedFromDid = options?.fromDid ? this.normalizeToPnIdentifier(options.fromDid) : undefined;
-    const normalizedToDid = options?.toDid ? this.normalizeToPnIdentifier(options.toDid) : undefined;
+    // Normalize all pn-identifiers (handles legacy data)
+    const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
+    const normalizedFromPnIdentifier = options?.fromPnIdentifier ? this.normalizeToPnIdentifier(options.fromPnIdentifier) : undefined;
+    const normalizedToPnIdentifier = options?.toPnIdentifier ? this.normalizeToPnIdentifier(options.toPnIdentifier) : undefined;
 
     const activityId = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -110,10 +110,10 @@ export class MessagingLedgerService {
     // Create activity entry
     const activity: MessagingActivityEntry = {
       message_activity_id: activityId,
-      user_did: normalizedUserDid,
+      user_pn_identifier: normalizedUserPnIdentifier,
       activity_type: activityType,
-      from_did: normalizedFromDid,
-      to_did: normalizedToDid,
+      from_pn_identifier: normalizedFromPnIdentifier,
+      to_pn_identifier: normalizedToPnIdentifier,
       message_id: options?.messageId || undefined,
       thread_id: options?.threadId || undefined,
       metadata: options?.metadata || {},

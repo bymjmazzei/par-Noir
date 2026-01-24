@@ -10,11 +10,11 @@ import { ActivityLedgerSheetsService, ActivityEntry as SheetsActivityEntry } fro
 
 export interface ActivityEntry {
   activity_id: string;
-  user_did: string;
+  user_pn_identifier: string;
   activity_type: string;
   target_type?: string;
-  target_id?: string;
-  actor_did?: string;
+  target_pn_identifier?: string; // pn-identifier when target_type is 'user', otherwise the target ID
+  actor_pn_identifier?: string;
   metadata?: any;
   created_at: string;
 }
@@ -46,22 +46,22 @@ export class ActivityLedgerService {
   static async recordActivity(
     accessToken: string,
     metadataFolderId: string,
-    userDid: string,
+    userPnIdentifier: string,
     activityType: ActivityType,
     options?: {
       targetType?: string;
-      targetId?: string;
-      actorDid?: string;
+      targetPnIdentifier?: string; // pn-identifier when targetType is 'user', otherwise the target ID
+      actorPnIdentifier?: string;
       metadata?: any;
     }
   ): Promise<ActivityEntry> {
-    // Normalize all DIDs to pn-identifiers
-    const normalizedUserDid = this.normalizeToPnIdentifier(userDid);
-    const normalizedActorDid = options?.actorDid ? this.normalizeToPnIdentifier(options.actorDid) : undefined;
-    // Normalize targetId only if targetType is 'user' (not for feeds or other types)
-    const normalizedTargetId = options?.targetId && options?.targetType === 'user' 
-      ? this.normalizeToPnIdentifier(options.targetId)
-      : options?.targetId;
+    // Normalize all pn-identifiers (handles legacy data)
+    const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
+    const normalizedActorPnIdentifier = options?.actorPnIdentifier ? this.normalizeToPnIdentifier(options.actorPnIdentifier) : undefined;
+    // Normalize targetPnIdentifier only if targetType is 'user' (not for feeds or other types)
+    const normalizedTargetPnIdentifier = options?.targetPnIdentifier && options?.targetType === 'user' 
+      ? this.normalizeToPnIdentifier(options.targetPnIdentifier)
+      : options?.targetPnIdentifier;
 
     try {
       const activityId = crypto.randomUUID();
@@ -76,11 +76,11 @@ export class ActivityLedgerService {
       // Create activity entry
       const activity: SheetsActivityEntry = {
         activity_id: activityId,
-        user_did: normalizedUserDid,
+        user_pn_identifier: normalizedUserPnIdentifier,
         activity_type: activityType,
         target_type: options?.targetType || undefined,
-        target_id: normalizedTargetId,
-        actor_did: normalizedActorDid,
+        target_pn_identifier: normalizedTargetPnIdentifier,
+        actor_pn_identifier: normalizedActorPnIdentifier,
         metadata: options?.metadata || {},
         created_at: now
       };
@@ -92,7 +92,7 @@ export class ActivityLedgerService {
     } catch (error) {
       console.error('[ActivityLedgerService] Error recording activity via sheets:', error);
       console.error('[ActivityLedgerService] Error details:', {
-        userDid,
+        userPnIdentifier,
         activityType,
         metadataFolderId,
         error: error instanceof Error ? error.message : String(error),

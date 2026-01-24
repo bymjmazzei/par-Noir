@@ -8,8 +8,8 @@ import { google } from 'googleapis';
 
 export interface Message {
   messageId: string;
-  fromDid: string;
-  toDid: string;
+  fromPnIdentifier: string;
+  toPnIdentifier: string;
   content: string;
   timestamp: string;
   read: boolean;
@@ -259,7 +259,7 @@ export class MessageSheetsService {
       // Encrypt message content using connection's shared secret
       // For system messages or if shared secret is empty, store as plain text (backward compatibility)
       let encryptedContent: string;
-      if (message.fromDid === 'system' || !sharedSecret || sharedSecret === '') {
+      if (message.fromPnIdentifier === 'system' || !sharedSecret || sharedSecret === '') {
         // System messages or messages without shared secret are stored as plain text
         encryptedContent = message.content;
       } else {
@@ -275,8 +275,8 @@ export class MessageSheetsService {
       auth.setCredentials({ access_token: accessToken });
       const sheets = google.sheets({ version: 'v4', auth });
 
-      // Normalize fromDid before storing
-      const normalizedFromDid = this.normalizeToPnIdentifier(message.fromDid);
+      // Normalize fromPnIdentifier before storing (handles legacy data)
+      const normalizedFromPnIdentifier = this.normalizeToPnIdentifier(message.fromPnIdentifier);
       
       await sheets.spreadsheets.values.append({
         spreadsheetId,
@@ -284,7 +284,7 @@ export class MessageSheetsService {
         valueInputOption: 'RAW',
         requestBody: {
           values: [[
-            normalizedFromDid,
+            normalizedFromPnIdentifier,
             encryptedContent, // Store encrypted content
             message.timestamp,
             message.messageId,
@@ -302,8 +302,8 @@ export class MessageSheetsService {
         data: error?.response?.data,
         spreadsheetId,
         messageId: message.messageId,
-        fromDid: message.fromDid,
-        toDid: message.toDid
+        fromPnIdentifier: message.fromPnIdentifier,
+        toPnIdentifier: message.toPnIdentifier
       };
       console.error('[MessageSheetsService] Failed to append message:', errorDetails);
       console.error('[MessageSheetsService] Full error:', error);
@@ -393,14 +393,14 @@ export class MessageSheetsService {
         }
       }
       
-      // Normalize fromDid when reading (handles legacy data)
-      const fromDid = row[0] || '';
-      const normalizedFromDid = this.normalizeToPnIdentifier(fromDid);
+      // Normalize fromPnIdentifier when reading (handles legacy data)
+      const fromPnIdentifier = row[0] || '';
+      const normalizedFromPnIdentifier = this.normalizeToPnIdentifier(fromPnIdentifier);
       
       return {
         messageId: row[3] || `msg-${index}`,
-        fromDid: normalizedFromDid,
-        toDid: '', // Will be set by caller based on conversation
+        fromPnIdentifier: normalizedFromPnIdentifier,
+        toPnIdentifier: '', // Will be set by caller based on conversation
         content: decryptedContent,
         timestamp: row[2] || new Date().toISOString(),
         read: row[4] === 'true',
@@ -465,7 +465,7 @@ export class MessageSheetsService {
   static async getConversations(
     accessToken: string,
     messagesFolderId: string
-  ): Promise<Array<{ otherUserDid: string; spreadsheetId: string; lastMessageAt: string }>> {
+  ): Promise<Array<{ otherUserPnIdentifier: string; spreadsheetId: string; lastMessageAt: string }>> {
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const drive = google.drive({ version: 'v3', auth });
@@ -478,14 +478,14 @@ export class MessageSheetsService {
       orderBy: 'modifiedTime desc'
     });
 
-    const conversations: Array<{ otherUserDid: string; spreadsheetId: string; lastMessageAt: string }> = [];
+    const conversations: Array<{ otherUserPnIdentifier: string; spreadsheetId: string; lastMessageAt: string }> = [];
 
     if (searchResponse.data.files) {
       for (const file of searchResponse.data.files) {
         const fileName = file.name || '';
-        const extractedOtherUserDid = fileName.replace('conversation-', '');
-        // Normalize otherUserDid when extracting from filename (handles legacy data)
-        const normalizedOtherUserDid = this.normalizeToPnIdentifier(extractedOtherUserDid);
+        const extractedOtherUserPnIdentifier = fileName.replace('conversation-', '');
+        // Normalize otherUserPnIdentifier when extracting from filename (handles legacy data)
+        const normalizedOtherUserPnIdentifier = this.normalizeToPnIdentifier(extractedOtherUserPnIdentifier);
         const spreadsheetId = file.id!;
 
         // Use modifiedTime from Drive API as lastMessageAt (much faster than reading Sheets)
@@ -493,7 +493,7 @@ export class MessageSheetsService {
         const lastMessageAt = file.modifiedTime || new Date().toISOString();
 
         conversations.push({
-          otherUserDid: normalizedOtherUserDid,
+          otherUserPnIdentifier: normalizedOtherUserPnIdentifier,
           spreadsheetId,
           lastMessageAt
         });

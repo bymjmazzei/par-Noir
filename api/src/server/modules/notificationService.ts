@@ -11,7 +11,7 @@ import { NotificationsSheetsService, Notification as SheetsNotification } from '
 
 export interface Notification {
   notification_id: string;
-  user_did: string;
+  user_pn_identifier: string;
   type: 'feed_new_post' | 'feed_new_comment' | 'feed_new_like' | 'feed_new_subscriber' | 'comment_reply' | 'mention' | 'connection_request' | 'connection_accepted' | 'repost' | 'follow' | 'new_message';
   title: string;
   message: string;
@@ -19,7 +19,7 @@ export interface Notification {
     feed_id?: string;
     file_id?: string;
     comment_id?: string;
-    user_did?: string;
+    user_pn_identifier?: string;
     connection_id?: string;
     message_id?: string;
     thread_id?: string;
@@ -30,7 +30,7 @@ export interface Notification {
 }
 
 export interface NotificationPreferences {
-  user_did: string;
+  user_pn_identifier: string;
   feed_new_post: boolean;
   feed_new_comment: boolean;
   feed_new_like: boolean;
@@ -134,15 +134,27 @@ export class NotificationService {
     const normalizedUserDid = this.normalizeToPnIdentifier(userDid);
     const normalizedData = notification.data ? { ...notification.data } : {};
     
-    // Normalize user_did, from_did, to_did in data if present
+    // Normalize user_pn_identifier, from_pn_identifier, to_pn_identifier in data if present (handles legacy field names)
     if (normalizedData.user_did) {
-      normalizedData.user_did = this.normalizeToPnIdentifier(normalizedData.user_did);
+      normalizedData.user_pn_identifier = this.normalizeToPnIdentifier(normalizedData.user_did);
+      delete normalizedData.user_did;
+    }
+    if (normalizedData.user_pn_identifier) {
+      normalizedData.user_pn_identifier = this.normalizeToPnIdentifier(normalizedData.user_pn_identifier);
     }
     if (normalizedData.from_did) {
-      normalizedData.from_did = this.normalizeToPnIdentifier(normalizedData.from_did);
+      normalizedData.from_pn_identifier = this.normalizeToPnIdentifier(normalizedData.from_did);
+      delete normalizedData.from_did;
+    }
+    if (normalizedData.from_pn_identifier) {
+      normalizedData.from_pn_identifier = this.normalizeToPnIdentifier(normalizedData.from_pn_identifier);
     }
     if (normalizedData.to_did) {
-      normalizedData.to_did = this.normalizeToPnIdentifier(normalizedData.to_did);
+      normalizedData.to_pn_identifier = this.normalizeToPnIdentifier(normalizedData.to_did);
+      delete normalizedData.to_did;
+    }
+    if (normalizedData.to_pn_identifier) {
+      normalizedData.to_pn_identifier = this.normalizeToPnIdentifier(normalizedData.to_pn_identifier);
     }
 
     try {
@@ -158,7 +170,7 @@ export class NotificationService {
       // Create notification entry
       const newNotification: SheetsNotification = {
         notification_id: notificationId,
-        user_did: normalizedUserDid,
+        user_pn_identifier: normalizedUserDid,
         type: notification.type,
         title: notification.title,
         message: notification.message,
@@ -369,7 +381,7 @@ export class NotificationService {
     accessToken: string,
     metadataFolderId: string,
     userDid: string,
-    preferences: Partial<Omit<NotificationPreferences, 'user_did'>>
+    preferences: Partial<Omit<NotificationPreferences, 'user_pn_identifier'>>
   ): Promise<NotificationPreferences> {
     let notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
     const now = new Date().toISOString();
@@ -401,9 +413,9 @@ export class NotificationService {
   /**
    * Get default notification preferences
    */
-  private static getDefaultPreferences(userDid: string): NotificationPreferences {
+  private static getDefaultPreferences(userPnIdentifier: string): NotificationPreferences {
     return {
-      user_did: userDid,
+      user_pn_identifier: userPnIdentifier,
       feed_new_post: true,
       feed_new_comment: true,
       feed_new_like: false,
@@ -434,7 +446,7 @@ export class NotificationService {
           subscriber.metadataFolderId,
           subscriber.userDid,
           {
-            user_did: subscriber.userDid,
+            user_pn_identifier: subscriber.userDid, // Normalize in createNotification
             type: 'feed_new_post',
             title: `New post in ${feedName}`,
             message: `A new post has been added to ${feedName}`,
@@ -474,14 +486,14 @@ export class NotificationService {
       metadataFolderId,
       fileOwnerDid,
       {
-        user_did: fileOwnerDid,
+        user_pn_identifier: fileOwnerDid, // Normalize in createNotification
         type: 'feed_new_comment',
         title: 'New comment on your post',
         message: `Someone commented on your post`,
         data: {
           file_id: fileId,
           comment_id: commentId,
-          user_did: commenterDid
+          user_pn_identifier: commenterDid // Normalize in createNotification
         }
       }
     );
@@ -508,7 +520,7 @@ export class NotificationService {
       metadataFolderId,
       fileOwnerDid,
       {
-        user_did: fileOwnerDid,
+        user_pn_identifier: fileOwnerDid, // Normalize in createNotification
         type: 'feed_new_like',
         title: 'New like on your post',
         message: `Someone liked your post`,
@@ -537,13 +549,13 @@ export class NotificationService {
       metadataFolderId,
       creatorDid,
       {
-        user_did: creatorDid,
+        user_pn_identifier: creatorDid, // Normalize in createNotification
         type: 'feed_new_subscriber',
         title: 'New subscriber',
         message: `Someone subscribed to ${feedName}`,
         data: {
           feed_id: feedId,
-          user_did: subscriberDid
+          user_pn_identifier: subscriberDid // Normalize in createNotification
         }
       }
     );
@@ -569,7 +581,7 @@ export class NotificationService {
       metadataFolderId,
       normalizedRecipientDid,
       {
-        user_did: normalizedRecipientDid,
+        user_pn_identifier: normalizedRecipientDid,
         type: 'connection_request',
         title: 'New connection request',
         message: 'Someone wants to connect with you',
@@ -601,13 +613,13 @@ export class NotificationService {
       metadataFolderId,
       normalizedRequesterDid,
       {
-        user_did: normalizedRequesterDid,
+        user_pn_identifier: normalizedRequesterDid,
         type: 'connection_accepted',
         title: 'Connection accepted',
         message: 'Your connection request was accepted',
         data: {
           connection_id: connectionId,
-          user_did: normalizedAcceptorDid
+          user_pn_identifier: normalizedAcceptorDid
         }
       }
     );
@@ -634,7 +646,7 @@ export class NotificationService {
       metadataFolderId,
       originalOwnerDid,
       {
-        user_did: originalOwnerDid,
+        user_pn_identifier: originalOwnerDid, // Normalize in createNotification
         type: 'repost',
         title: 'Your post was reposted',
         message: 'Someone reposted your content',
@@ -666,13 +678,13 @@ export class NotificationService {
       metadataFolderId,
       normalizedToDid,
       {
-        user_did: normalizedToDid,
+        user_pn_identifier: normalizedToDid,
         type: 'new_message',
         title: 'New message',
         message: 'You have a new message',
         data: {
           message_id: messageId,
-          from_did: normalizedFromDid,
+          from_pn_identifier: normalizedFromDid,
           thread_id: threadId
         }
       }

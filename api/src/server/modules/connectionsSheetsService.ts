@@ -8,7 +8,7 @@ import { google } from 'googleapis';
 
 export interface Connection {
   connectionId: string;
-  userDid: string;
+  userPnIdentifier: string;
   status: 'pending_sent' | 'pending_received' | 'accepted' | 'blocked';
   createdAt: string;
   acceptedAt?: string;
@@ -16,14 +16,14 @@ export interface Connection {
 }
 
 export interface Follower {
-  followerDid: string;
+  followerPnIdentifier: string;
   followedAt: string;
   feedId?: string;
 }
 
 export interface Following {
   targetType: 'user' | 'feed';
-  targetId: string;
+  targetPnIdentifier: string; // pn-identifier when targetType is 'user', feed ID when 'feed'
   followedAt: string;
 }
 
@@ -184,10 +184,10 @@ export class ConnectionsSheetsService {
     const sheets = google.sheets({ version: 'v4', auth });
     await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Connections!A2:F' });
     if (connections.length) {
-      // Normalize userDid in all connections before writing
+      // Normalize userPnIdentifier in all connections before writing (handles legacy data)
       const rows = connections.map(c => {
-        const normalizedUserDid = c.userDid.startsWith('pn-') ? c.userDid : `pn-${c.userDid}`;
-        return [c.connectionId, normalizedUserDid, c.status, c.createdAt, c.acceptedAt || '', c.sharedSecret || ''];
+        const normalizedUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`;
+        return [c.connectionId, normalizedUserPnIdentifier, c.status, c.createdAt, c.acceptedAt || '', c.sharedSecret || ''];
       });
       await sheets.spreadsheets.values.update({
         spreadsheetId,
@@ -378,6 +378,8 @@ export class ConnectionsSheetsService {
     spreadsheetId: string,
     connection: Connection
   ): Promise<void> {
+    // Normalize userPnIdentifier before writing (handles legacy data)
+    const normalizedUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-') ? connection.userPnIdentifier : `pn-${connection.userPnIdentifier}`;
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
@@ -389,7 +391,7 @@ export class ConnectionsSheetsService {
       requestBody: {
         values: [[
           connection.connectionId,
-          connection.userDid,
+          normalizedUserPnIdentifier,
           connection.status,
           connection.createdAt,
           connection.acceptedAt || '',
@@ -423,12 +425,12 @@ export class ConnectionsSheetsService {
 
     const rows = response.data.values || [];
     let connections: Connection[] = rows.map(row => {
-      // Normalize userDid when reading from sheet (handles legacy data)
-      const userDid = row[1] || '';
-      const normalizedUserDid = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+      // Normalize userPnIdentifier when reading from sheet (handles legacy data)
+      const userPnIdentifier = row[1] || '';
+      const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
       return {
         connectionId: row[0] || '',
-        userDid: normalizedUserDid,
+        userPnIdentifier: normalizedUserPnIdentifier,
         status: (row[2] || 'pending_sent') as Connection['status'],
         createdAt: row[3] || new Date().toISOString(),
         acceptedAt: row[4] || undefined,
@@ -591,8 +593,8 @@ export class ConnectionsSheetsService {
     spreadsheetId: string,
     follower: Follower
   ): Promise<void> {
-    // Normalize followerDid before writing
-    const normalizedFollowerDid = follower.followerDid.startsWith('pn-') ? follower.followerDid : `pn-${follower.followerDid}`;
+    // Normalize followerPnIdentifier before writing (handles legacy data)
+    const normalizedFollowerPnIdentifier = follower.followerPnIdentifier.startsWith('pn-') ? follower.followerPnIdentifier : `pn-${follower.followerPnIdentifier}`;
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
@@ -603,7 +605,7 @@ export class ConnectionsSheetsService {
       valueInputOption: 'RAW',
       requestBody: {
         values: [[
-          normalizedFollowerDid,
+          normalizedFollowerPnIdentifier,
           follower.followedAt,
           follower.feedId || ''
         ]]
@@ -634,11 +636,11 @@ export class ConnectionsSheetsService {
 
     const rows = response.data.values || [];
     const followers: Follower[] = rows.map(row => {
-      // Normalize followerDid when reading from sheet (handles legacy data)
-      const followerDid = row[0] || '';
-      const normalizedFollowerDid = followerDid.startsWith('pn-') ? followerDid : (followerDid ? `pn-${followerDid}` : '');
+      // Normalize followerPnIdentifier when reading from sheet (handles legacy data)
+      const followerPnIdentifier = row[0] || '';
+      const normalizedFollowerPnIdentifier = followerPnIdentifier.startsWith('pn-') ? followerPnIdentifier : (followerPnIdentifier ? `pn-${followerPnIdentifier}` : '');
       return {
-        followerDid: normalizedFollowerDid,
+        followerPnIdentifier: normalizedFollowerPnIdentifier,
         followedAt: row[1] || new Date().toISOString(),
         feedId: row[2] || undefined
       };
@@ -663,10 +665,10 @@ export class ConnectionsSheetsService {
   static async removeFollower(
     accessToken: string,
     spreadsheetId: string,
-    followerDid: string
+    followerPnIdentifier: string
   ): Promise<void> {
-    // Normalize followerDid parameter
-    const normalizedFollowerDid = followerDid.startsWith('pn-') ? followerDid : `pn-${followerDid}`;
+    // Normalize followerPnIdentifier parameter
+    const normalizedFollowerPnIdentifier = followerPnIdentifier.startsWith('pn-') ? followerPnIdentifier : `pn-${followerPnIdentifier}`;
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
@@ -680,8 +682,8 @@ export class ConnectionsSheetsService {
     const rows = response.data.values || [];
     // Normalize each row entry when searching (handles legacy data)
     const rowIndex = rows.findIndex(row => {
-      const normalizedRowFollowerDid = (row[0] || '').startsWith('pn-') ? row[0] : ((row[0] || '') ? `pn-${row[0]}` : '');
-      return normalizedRowFollowerDid === normalizedFollowerDid;
+      const normalizedRowFollowerPnIdentifier = (row[0] || '').startsWith('pn-') ? row[0] : ((row[0] || '') ? `pn-${row[0]}` : '');
+      return normalizedRowFollowerPnIdentifier === normalizedFollowerPnIdentifier;
     });
 
     if (rowIndex === -1) {
@@ -732,6 +734,10 @@ export class ConnectionsSheetsService {
     spreadsheetId: string,
     following: Following
   ): Promise<void> {
+    // Normalize targetPnIdentifier before writing (only if it's a user, not a feed)
+    const normalizedTargetPnIdentifier = following.targetType === 'user' && following.targetPnIdentifier && !following.targetPnIdentifier.startsWith('pn-')
+      ? `pn-${following.targetPnIdentifier}`
+      : following.targetPnIdentifier;
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
@@ -743,7 +749,7 @@ export class ConnectionsSheetsService {
       requestBody: {
         values: [[
           following.targetType,
-          following.targetId,
+          normalizedTargetPnIdentifier,
           following.followedAt
         ]]
       }
@@ -775,14 +781,14 @@ export class ConnectionsSheetsService {
     const rows = response.data.values || [];
     let following: Following[] = rows.map(row => {
       const targetType = (row[0] || 'user') as 'user' | 'feed';
-      const targetId = row[1] || '';
-      // Normalize targetId when reading from sheet (handles legacy data, only for users)
-      const normalizedTargetId = targetType === 'user' && targetId && !targetId.startsWith('pn-')
-        ? `pn-${targetId}`
-        : targetId;
+      const targetPnIdentifier = row[1] || '';
+      // Normalize targetPnIdentifier when reading from sheet (handles legacy data, only for users)
+      const normalizedTargetPnIdentifier = targetType === 'user' && targetPnIdentifier && !targetPnIdentifier.startsWith('pn-')
+        ? `pn-${targetPnIdentifier}`
+        : targetPnIdentifier;
       return {
         targetType,
-        targetId: normalizedTargetId,
+        targetPnIdentifier: normalizedTargetPnIdentifier,
         followedAt: row[2] || new Date().toISOString()
       };
     });
@@ -812,12 +818,12 @@ export class ConnectionsSheetsService {
     accessToken: string,
     spreadsheetId: string,
     targetType: 'user' | 'feed',
-    targetId: string
+    targetPnIdentifier: string
   ): Promise<void> {
-    // Normalize targetId parameter (only if it's a user, not a feed)
-    const normalizedTargetId = targetType === 'user' && targetId && !targetId.startsWith('pn-')
-      ? `pn-${targetId}`
-      : targetId;
+    // Normalize targetPnIdentifier parameter (only if it's a user, not a feed)
+    const normalizedTargetPnIdentifier = targetType === 'user' && targetPnIdentifier && !targetPnIdentifier.startsWith('pn-')
+      ? `pn-${targetPnIdentifier}`
+      : targetPnIdentifier;
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
@@ -832,11 +838,11 @@ export class ConnectionsSheetsService {
     // Normalize each row entry when searching (handles legacy data)
     const rowIndex = rows.findIndex(row => {
       const rowTargetType = (row[0] || 'user') as 'user' | 'feed';
-      const rowTargetId = row[1] || '';
-      const normalizedRowTargetId = rowTargetType === 'user' && rowTargetId && !rowTargetId.startsWith('pn-')
-        ? `pn-${rowTargetId}`
-        : rowTargetId;
-      return rowTargetType === targetType && normalizedRowTargetId === normalizedTargetId;
+      const rowTargetPnIdentifier = row[1] || '';
+      const normalizedRowTargetPnIdentifier = rowTargetType === 'user' && rowTargetPnIdentifier && !rowTargetPnIdentifier.startsWith('pn-')
+        ? `pn-${rowTargetPnIdentifier}`
+        : rowTargetPnIdentifier;
+      return rowTargetType === targetType && normalizedRowTargetPnIdentifier === normalizedTargetPnIdentifier;
     });
 
     if (rowIndex === -1) {
