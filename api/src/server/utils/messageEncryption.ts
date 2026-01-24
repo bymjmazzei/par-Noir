@@ -15,9 +15,9 @@ interface EncryptedMessagePayload {
 
 export class MessageEncryption {
   private static readonly algorithm = 'aes-256-gcm';
-  private static readonly pbkdf2Iterations = 100000; // 100k iterations (optimized for strong random secrets)
+  private static readonly pbkdf2Iterations = 1000000; // 1M iterations (military-grade)
   private static readonly pbkdf2KeyLength = 32; // 256 bits for AES-256
-  private static readonly pbkdf2Digest = 'sha512'; // SHA-512
+  private static readonly pbkdf2Digest = 'sha512'; // SHA-512 (military-grade)
 
   /**
    * Derive encryption key from connectionId and shared secret
@@ -29,7 +29,7 @@ export class MessageEncryption {
     // Hash the key material with SHA-256
     const hashedMaterial = crypto.createHash('sha256').update(keyMaterial).digest();
     
-    // Derive key using PBKDF2
+    // Derive key using PBKDF2 (1M iterations, SHA-512)
     return crypto.pbkdf2Sync(
       hashedMaterial,
       salt,

@@ -10069,27 +10069,19 @@ class ProductionServer {
           pnFolder.id
         );
 
-        // Get conversations with pagination support
-        const limit = req.query.limit ? parseInt(req.query.limit as string) : 25;
-        const pageToken = req.query.pageToken as string | undefined;
-        
-        const result = await MessageSheetsService.getConversations(
+        // Get all conversations
+        const conversations = await MessageSheetsService.getConversations(
           userAccessToken,
-          messagesFolderId,
-          { limit, pageToken }
+          messagesFolderId
         );
 
         // Format conversations for response (backward compatibility with threads)
-        const threads = result.conversations.map(conv => ({
+        const threads = conversations.map(conv => ({
           participantDid: conv.otherUserDid,
           lastMessageAt: conv.lastMessageAt
         }));
 
-        return res.json({ 
-          conversations: result.conversations, 
-          threads,
-          nextPageToken: result.nextPageToken
-        });
+        return res.json({ conversations, threads }); // Return both for compatibility
       } catch (error: any) {
         console.error('Error getting message conversations:', error);
         return res.status(500).json({
@@ -10155,26 +10147,19 @@ class ProductionServer {
           pnFolder.id
         );
 
-        // Get conversations with pagination support
-        const limit = req.query.limit ? parseInt(req.query.limit as string) : 25;
-        const pageToken = req.query.pageToken as string | undefined;
-        
-        const result = await MessageSheetsService.getConversations(
+        // Get all conversations
+        const conversations = await MessageSheetsService.getConversations(
           userAccessToken,
-          messagesFolderId,
-          { limit, pageToken }
+          messagesFolderId
         );
 
         // Format conversations for response (backward compatibility with threads)
-        const threads = result.conversations.map(conv => ({
+        const threads = conversations.map(conv => ({
           participantDid: conv.otherUserDid,
           lastMessageAt: conv.lastMessageAt
         }));
 
-        return res.json({ 
-          threads,
-          nextPageToken: result.nextPageToken
-        });
+        return res.json({ threads });
       } catch (error: any) {
         console.error('Error getting message threads:', error);
         return res.status(500).json({
@@ -10256,11 +10241,10 @@ class ProductionServer {
           pnFolder.id
         );
 
-        // Get all conversations (with default limit for inbox)
-        const result = await MessageSheetsService.getConversations(
+        // Get all conversations
+        const conversations = await MessageSheetsService.getConversations(
           userAccessToken,
-          messagesFolderId,
-          { limit: 100 } // Get more for inbox aggregate view
+          messagesFolderId
         );
 
         // Get latest message from each conversation
@@ -10275,7 +10259,7 @@ class ProductionServer {
         const metadataFolderId = metadataFolder.metadataFolderId;
 
         const allMessages: any[] = [];
-        for (const conversation of result.conversations) {
+        for (const conversation of conversations) {
           try {
             // Look up connection to get shared secret
             const connectionStatus = await ConnectionsService.getConnectionStatus(
@@ -10461,14 +10445,22 @@ class ProductionServer {
         );
         console.log('[GetThread] Connections sheet ID:', spreadsheetId);
         
-        console.log('[GetThread] Looking up connection by ID');
-        // Get specific connection by connectionId (optimized)
-        const connection = await ConnectionsSheetsService.getConnectionById(
+        console.log('[GetThread] Fetching all connections');
+        // Get all connections to find the one with the matching connectionId
+        const connectionsResult = await ConnectionsSheetsService.getConnections(
           userAccessToken,
           spreadsheetId,
-          connectionStatus.connectionId
+          {
+            limit: 10000, // Large limit to get all connections
+            offset: 0
+            // No status filter - get all connections
+          }
         );
+        console.log('[GetThread] Found', connectionsResult.connections.length, 'connections');
         
+        const connection = connectionsResult.connections.find(
+          c => c.connectionId === connectionStatus.connectionId
+        );
         if (!connection) {
           console.error('[GetThread] Connection not found in sheet, connectionId:', connectionStatus.connectionId);
           return res.status(500).json({
@@ -10476,7 +10468,6 @@ class ProductionServer {
             error_description: `Connection ${connectionStatus.connectionId} not found in connections sheet`
           });
         }
-        console.log('[GetThread] Found connection');
 
         console.log('[GetThread] Found connection, checking shared secret');
         // Get shared secret from connection - generate if missing (for backwards compatibility)
@@ -10728,13 +10719,20 @@ class ProductionServer {
           senderMetadataFolderId
         );
         
-        // Get specific connection by connectionId (optimized)
-        const connection = await ConnectionsSheetsService.getConnectionById(
+        // Get all connections to find the one with the matching connectionId
+        const senderConnectionsResult = await ConnectionsSheetsService.getConnections(
           senderAccessToken,
           senderSpreadsheetId,
-          connectionStatus.connectionId
+          {
+            limit: 10000, // Large limit to get all connections
+            offset: 0
+            // No status filter - get all connections
+          }
         );
         
+        const connection = senderConnectionsResult.connections.find(
+          c => c.connectionId === connectionStatus.connectionId
+        );
         if (!connection) {
           return res.status(500).json({
             error: 'Connection not found',
