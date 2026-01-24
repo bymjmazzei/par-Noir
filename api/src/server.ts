@@ -11866,23 +11866,25 @@ class ProductionServer {
         // Get recipient's metadata folder
         let recipientMetadataFolderId: string;
         try {
+          // Create refresh function for retry on 401 - force refresh
+          const refreshTokenFn = async () => {
+            return await googleDriveProxyService.forceRefreshAccessToken(recipientCredentials.identityId, recipientAccountId, [recipientCredentials.identityId]);
+          };
+          
           // Use normalized recipientPnIdentifier (not recipientDid which might be a DID)
-          const _g = await this.getMetadataFolder(recipientAccessToken, recipientPnIdentifier);
+          const _g = await this.getMetadataFolder(recipientAccessToken, recipientPnIdentifier, refreshTokenFn);
           if (!_g) {
-            // Folders actually missing - this is the only case for DRIVE_NOT_INITIALIZED
             return this.driveNotInitialized(res);
           }
           recipientMetadataFolderId = _g.metadataFolderId;
         } catch (error: any) {
-          // Drive API error (token, permissions, etc.) - return appropriate error
-          if (error.message?.includes('authentication failed')) {
+          if (error.message?.includes('authentication failed') || error?.response?.status === 401 || error?.response?.status === 403) {
             return res.status(401).json({
               error: 'Google Drive authentication failed',
               code: 'DRIVE_AUTH_FAILED',
-              message: error.message
+              message: error.message || `Google Drive API returned ${error?.response?.status || 'unknown error'}`
             });
           }
-          console.error('[ConnectionRequest] Drive API error getting recipient metadata folder:', error);
           return res.status(500).json({ 
             error: 'Failed to access Google Drive', 
             error_description: error.message || 'Drive API error'
