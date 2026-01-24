@@ -10270,6 +10270,10 @@ class ProductionServer {
     });
 
     this.app.get('/api/messages/thread', async (req, res) => {
+      console.log('[GetThread] Endpoint called', { 
+        userDid: req.query.userDid, 
+        participantDid: req.query.participantDid 
+      });
       try {
         const userDid = req.query.userDid as string;
         const participantDid = req.query.participantDid as string;
@@ -10277,6 +10281,7 @@ class ProductionServer {
         const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
 
         if (!userDid || !participantDid) {
+          console.error('[GetThread] Missing required parameters');
           return res.status(400).json({ error: 'userDid and participantDid are required' });
         }
 
@@ -10328,24 +10333,23 @@ class ProductionServer {
           pnFolder.id
         );
 
-        // Get user's metadata folder for connection lookup (create if needed)
-        let metadataFolderId: string;
-        try {
-          metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
-        } catch (metadataError: any) {
-          console.error('[Thread] Failed to get/create metadata folder:', metadataError.message);
-          // If metadata folder doesn't exist and can't be created, return empty messages
-          // This can happen if Drive isn't initialized yet
+        // Get user's metadata folder for connection lookup
+        const metadataFolder = await this.getMetadataFolder(userAccessToken, pnIdentifier);
+        if (!metadataFolder) {
+          console.error('[GetThread] Metadata folder not found for', pnIdentifier);
           return res.json({ messages: [], total: 0 });
         }
+        const metadataFolderId = metadataFolder.metadataFolderId;
 
         // Look up connection to get shared secret
+        console.log('[GetThread] Looking up connection');
         const { ConnectionsService } = await import('./server/modules/connectionsService');
         const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
         
         // Normalize participantDid for connection lookup
         // Use the normalized userDid (pnIdentifier) instead of identityId, as connections are stored by DID
         const normalizedParticipantDid = participantDid.startsWith('pn-') ? participantDid : `pn-${participantDid}`;
+        console.log('[GetThread] Checking connection between', pnIdentifier, 'and', normalizedParticipantDid);
         
         const connectionStatus = await ConnectionsService.getConnectionStatus(
           userAccessToken,
@@ -10354,7 +10358,9 @@ class ProductionServer {
           normalizedParticipantDid
         );
 
+        console.log('[GetThread] Connection status:', connectionStatus);
         if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
+          console.error('[GetThread] Connection not found or not connected');
           return res.status(403).json({
             error: 'Connection not found. Users must be connected to view messages.',
             error_description: `Connection not found. Status: ${connectionStatus.status}`
@@ -10409,6 +10415,7 @@ class ProductionServer {
         }
 
         // Get or create conversation sheet (use original participantDid for sheet name, not normalized)
+        console.log('[GetThread] Getting conversation sheet');
         const conversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
           userAccessToken,
           messagesFolderId,
@@ -10416,6 +10423,7 @@ class ProductionServer {
         );
 
         // Get messages from conversation sheet (with decryption)
+        console.log('[GetThread] Fetching messages from sheet');
         const result = await MessageSheetsService.getMessages(
           userAccessToken,
           conversationSheetId,
@@ -10429,6 +10437,7 @@ class ProductionServer {
           msg.toDid = participantDid;
         });
 
+        console.log('[GetThread] Returning', result.messages.length, 'messages');
         return res.json({ messages: result.messages, total: result.total });
       } catch (error: any) {
         console.error('Error getting thread messages:', error);
