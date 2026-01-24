@@ -4667,8 +4667,12 @@ class ProductionServer {
                 const { PreferencesSheetsService } = await import('./server/modules/preferencesSheetsService');
                 try {
                   await PreferencesSheetsService.getOrCreatePreferencesSheet(accessToken, metadataFolderId);
-                } catch {
-                  await PreferencesSheetsService.createPreferencesSheet(accessToken, metadataFolderId);
+                } catch (prefSheetError: any) {
+                  if (prefSheetError?.message?.includes('not found')) {
+                    await PreferencesSheetsService.createPreferencesSheet(accessToken, metadataFolderId);
+                  } else {
+                    throw prefSheetError;
+                  }
                 }
                 console.log(`[StorageCredentials PUT] Initialized preferences.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (prefError: any) {
@@ -4682,8 +4686,12 @@ class ProductionServer {
                 const { NotificationsSheetsService } = await import('./server/modules/notificationsSheetsService');
                 try {
                   await NotificationsSheetsService.getOrCreateNotificationsSheet(accessToken, metadataFolderId);
-                } catch {
-                  await NotificationsSheetsService.createNotificationsSheet(accessToken, metadataFolderId);
+                } catch (notifSheetError: any) {
+                  if (notifSheetError?.message?.includes('not found')) {
+                    await NotificationsSheetsService.createNotificationsSheet(accessToken, metadataFolderId);
+                  } else {
+                    throw notifSheetError;
+                  }
                 }
                 console.log(`[StorageCredentials PUT] Initialized notifications.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (notifError: any) {
@@ -4695,23 +4703,36 @@ class ProductionServer {
                 const { ActivityLedgerSheetsService } = await import('./server/modules/activityLedgerSheetsService');
                 try {
                   await ActivityLedgerSheetsService.getOrCreateActivityLedgerSheet(accessToken, metadataFolderId);
-                } catch {
-                  await ActivityLedgerSheetsService.createActivityLedgerSheet(accessToken, metadataFolderId);
+                } catch (activitySheetError: any) {
+                  if (activitySheetError?.message?.includes('not found')) {
+                    await ActivityLedgerSheetsService.createActivityLedgerSheet(accessToken, metadataFolderId);
+                  } else {
+                    throw activitySheetError;
+                  }
                 }
                 console.log(`[StorageCredentials PUT] Initialized activity_ledger.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (activityError: any) {
                 console.warn(`[StorageCredentials PUT] Failed to initialize activity_ledger.xlsx:`, activityError?.message || activityError);
               }
               
-              // Initialize connections.xlsx
+              // Initialize connections.xlsx - ONLY create if truly doesn't exist
               try {
                 const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
                 try {
                   await ConnectionsSheetsService.getOrCreateConnectionsSheet(accessToken, metadataFolderId);
-                } catch {
-                  await ConnectionsSheetsService.createConnectionsSheet(accessToken, metadataFolderId);
+                  console.log(`[StorageCredentials PUT] Found existing connections.xlsx for identityId: ${sanitizedIdentityId}`);
+                } catch (getError: any) {
+                  // CRITICAL: Only create if the sheet genuinely doesn't exist, not on any error
+                  // This prevents accidentally overwriting existing connections due to transient errors
+                  if (getError?.message?.includes('not found')) {
+                    console.log(`[StorageCredentials PUT] connections.xlsx not found, creating new one for identityId: ${sanitizedIdentityId}`);
+                    await ConnectionsSheetsService.createConnectionsSheet(accessToken, metadataFolderId);
+                  } else {
+                    // Don't create on auth errors, API errors, etc - these indicate a real problem
+                    console.error(`[StorageCredentials PUT] Failed to access connections.xlsx (will NOT create new one):`, getError?.message || getError);
+                    throw getError;
+                  }
                 }
-                console.log(`[StorageCredentials PUT] Initialized connections.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (connError: any) {
                 console.warn(`[StorageCredentials PUT] Failed to initialize connections.xlsx:`, connError?.message || connError);
               }
@@ -4721,8 +4742,12 @@ class ProductionServer {
                 const { EngagementSheetsService } = await import('./server/modules/engagementSheetsService');
                 try {
                   await EngagementSheetsService.getOrCreateEngagementSheet(accessToken, metadataFolderId);
-                } catch {
-                  await EngagementSheetsService.createEngagementSheet(accessToken, metadataFolderId);
+                } catch (engSheetError: any) {
+                  if (engSheetError?.message?.includes('not found')) {
+                    await EngagementSheetsService.createEngagementSheet(accessToken, metadataFolderId);
+                  } else {
+                    throw engSheetError;
+                  }
                 }
                 console.log(`[StorageCredentials PUT] Initialized engagement.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (engError: any) {
@@ -4734,8 +4759,12 @@ class ProductionServer {
                 const { MessagingLedgerSheetsService } = await import('./server/modules/messagingLedgerSheetsService');
                 try {
                   await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(accessToken, metadataFolderId);
-                } catch {
-                  await MessagingLedgerSheetsService.createMessagingLedgerSheet(accessToken, metadataFolderId);
+                } catch (msgSheetError: any) {
+                  if (msgSheetError?.message?.includes('not found')) {
+                    await MessagingLedgerSheetsService.createMessagingLedgerSheet(accessToken, metadataFolderId);
+                  } else {
+                    throw msgSheetError;
+                  }
                 }
                 console.log(`[StorageCredentials PUT] Initialized messaging_ledger.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (msgError: any) {
@@ -4768,8 +4797,12 @@ class ProductionServer {
                 const { ZKPDataPointsSheetsService } = await import('./server/modules/zkpDataPointsSheetsService');
                 try {
                   await ZKPDataPointsSheetsService.getOrCreateZKPDataPointsSheet(accessToken, metadataFolderId);
-                } catch {
-                  await ZKPDataPointsSheetsService.createZKPDataPointsSheet(accessToken, metadataFolderId);
+                } catch (zkpSheetError: any) {
+                  if (zkpSheetError?.message?.includes('not found')) {
+                    await ZKPDataPointsSheetsService.createZKPDataPointsSheet(accessToken, metadataFolderId);
+                  } else {
+                    throw zkpSheetError;
+                  }
                 }
                 console.log(`[StorageCredentials PUT] Initialized zkp-data-points.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (zkpError: any) {
@@ -4781,8 +4814,12 @@ class ProductionServer {
                 const { ThirdPartyPermissionsSheetsService } = await import('./server/modules/thirdPartyPermissionsSheetsService');
                 try {
                   await ThirdPartyPermissionsSheetsService.getOrCreateThirdPartyPermissionsSheet(accessToken, metadataFolderId);
-                } catch {
-                  await ThirdPartyPermissionsSheetsService.createThirdPartyPermissionsSheet(accessToken, metadataFolderId);
+                } catch (permSheetError: any) {
+                  if (permSheetError?.message?.includes('not found')) {
+                    await ThirdPartyPermissionsSheetsService.createThirdPartyPermissionsSheet(accessToken, metadataFolderId);
+                  } else {
+                    throw permSheetError;
+                  }
                 }
                 console.log(`[StorageCredentials PUT] Initialized third-party-permissions.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (permError: any) {
@@ -4794,13 +4831,21 @@ class ProductionServer {
                 const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
                 try {
                   await ConnectionsSheetsService.getOrCreateFollowersSheet(accessToken, metadataFolderId);
-                } catch {
-                  await ConnectionsSheetsService.createFollowersSheet(accessToken, metadataFolderId);
+                } catch (followersSheetError: any) {
+                  if (followersSheetError?.message?.includes('not found')) {
+                    await ConnectionsSheetsService.createFollowersSheet(accessToken, metadataFolderId);
+                  } else {
+                    throw followersSheetError;
+                  }
                 }
                 try {
                   await ConnectionsSheetsService.getOrCreateFollowingSheet(accessToken, metadataFolderId);
-                } catch {
-                  await ConnectionsSheetsService.createFollowingSheet(accessToken, metadataFolderId);
+                } catch (followingSheetError: any) {
+                  if (followingSheetError?.message?.includes('not found')) {
+                    await ConnectionsSheetsService.createFollowingSheet(accessToken, metadataFolderId);
+                  } else {
+                    throw followingSheetError;
+                  }
                 }
                 console.log(`[StorageCredentials PUT] Initialized followers.xlsx and following.xlsx for identityId: ${sanitizedIdentityId}`);
               } catch (ffError: any) {
