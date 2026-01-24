@@ -10069,19 +10069,27 @@ class ProductionServer {
           pnFolder.id
         );
 
-        // Get all conversations
-        const conversations = await MessageSheetsService.getConversations(
+        // Get conversations with pagination support
+        const limit = req.query.limit ? parseInt(req.query.limit as string) : 25;
+        const pageToken = req.query.pageToken as string | undefined;
+        
+        const result = await MessageSheetsService.getConversations(
           userAccessToken,
-          messagesFolderId
+          messagesFolderId,
+          { limit, pageToken }
         );
 
         // Format conversations for response (backward compatibility with threads)
-        const threads = conversations.map(conv => ({
+        const threads = result.conversations.map(conv => ({
           participantDid: conv.otherUserDid,
           lastMessageAt: conv.lastMessageAt
         }));
 
-        return res.json({ conversations, threads }); // Return both for compatibility
+        return res.json({ 
+          conversations: result.conversations, 
+          threads,
+          nextPageToken: result.nextPageToken
+        });
       } catch (error: any) {
         console.error('Error getting message conversations:', error);
         return res.status(500).json({
@@ -10147,19 +10155,26 @@ class ProductionServer {
           pnFolder.id
         );
 
-        // Get all conversations
-        const conversations = await MessageSheetsService.getConversations(
+        // Get conversations with pagination support
+        const limit = req.query.limit ? parseInt(req.query.limit as string) : 25;
+        const pageToken = req.query.pageToken as string | undefined;
+        
+        const result = await MessageSheetsService.getConversations(
           userAccessToken,
-          messagesFolderId
+          messagesFolderId,
+          { limit, pageToken }
         );
 
         // Format conversations for response (backward compatibility with threads)
-        const threads = conversations.map(conv => ({
+        const threads = result.conversations.map(conv => ({
           participantDid: conv.otherUserDid,
           lastMessageAt: conv.lastMessageAt
         }));
 
-        return res.json({ threads });
+        return res.json({ 
+          threads,
+          nextPageToken: result.nextPageToken
+        });
       } catch (error: any) {
         console.error('Error getting message threads:', error);
         return res.status(500).json({
@@ -10241,10 +10256,11 @@ class ProductionServer {
           pnFolder.id
         );
 
-        // Get all conversations
-        const conversations = await MessageSheetsService.getConversations(
+        // Get all conversations (with default limit for inbox)
+        const result = await MessageSheetsService.getConversations(
           userAccessToken,
-          messagesFolderId
+          messagesFolderId,
+          { limit: 100 } // Get more for inbox aggregate view
         );
 
         // Get latest message from each conversation
@@ -10259,7 +10275,7 @@ class ProductionServer {
         const metadataFolderId = metadataFolder.metadataFolderId;
 
         const allMessages: any[] = [];
-        for (const conversation of conversations) {
+        for (const conversation of result.conversations) {
           try {
             // Look up connection to get shared secret
             const connectionStatus = await ConnectionsService.getConnectionStatus(

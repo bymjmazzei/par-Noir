@@ -445,18 +445,29 @@ export class MessageSheetsService {
    */
   static async getConversations(
     accessToken: string,
-    messagesFolderId: string
-  ): Promise<Array<{ otherUserDid: string; spreadsheetId: string; lastMessageAt: string }>> {
+    messagesFolderId: string,
+    options?: {
+      limit?: number;
+      pageToken?: string;
+    }
+  ): Promise<{ 
+    conversations: Array<{ otherUserDid: string; spreadsheetId: string; lastMessageAt: string }>;
+    nextPageToken?: string;
+  }> {
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const drive = google.drive({ version: 'v3', auth });
 
-    // List all conversation sheets
+    const limit = options?.limit || 25; // Default to 25 conversations
+
+    // List conversation sheets with pagination
     const fileQuery = `'${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and name contains 'conversation-'`;
     const searchResponse = await drive.files.list({
       q: fileQuery,
-      fields: 'files(id,name,modifiedTime)',
-      orderBy: 'modifiedTime desc'
+      fields: 'files(id,name,modifiedTime),nextPageToken',
+      orderBy: 'modifiedTime desc',
+      pageSize: limit,
+      pageToken: options?.pageToken
     });
 
     const conversations: Array<{ otherUserDid: string; spreadsheetId: string; lastMessageAt: string }> = [];
@@ -479,7 +490,10 @@ export class MessageSheetsService {
       }
     }
 
-    return conversations;
+    return {
+      conversations,
+      nextPageToken: searchResponse.data.nextPageToken || undefined
+    };
   }
 
   /**
