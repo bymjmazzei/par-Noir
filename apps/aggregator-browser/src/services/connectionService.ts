@@ -24,7 +24,7 @@ function getAuthHeaders(): HeadersInit {
 
 export interface Connection {
   connectionId: string;
-  userDid: string;
+  userPnIdentifier: string;
   status: 'pending_sent' | 'pending_received' | 'accepted' | 'blocked';
   createdAt: string;
   acceptedAt?: string;

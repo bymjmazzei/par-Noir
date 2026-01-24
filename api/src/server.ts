@@ -10579,21 +10579,21 @@ class ProductionServer {
     });
 
     this.app.post('/api/messages/send', async (req, res) => {
-      console.log('[SendMessage] Endpoint called', { 
-        fromDid: req.body?.fromDid, 
-        toDid: req.body?.toDid,
+        console.log('[SendMessage] Endpoint called', { 
+        fromPnIdentifier: req.body?.fromPnIdentifier, 
+        toPnIdentifier: req.body?.toPnIdentifier,
         hasContent: !!req.body?.content,
         contentLength: req.body?.content?.length
       });
       try {
-        const { fromDid, toDid, content, mediaFileId, isConnectionRequest } = req.body;
-        if (!fromDid || !toDid || !content) {
-          return res.status(400).json({ error: 'fromDid, toDid, and content are required' });
+        const { fromPnIdentifier, toPnIdentifier, content, mediaFileId, isConnectionRequest } = req.body;
+        if (!fromPnIdentifier || !toPnIdentifier || !content) {
+          return res.status(400).json({ error: 'fromPnIdentifier, toPnIdentifier, and content are required' });
         }
         
-        // Normalize DIDs to pn-identifiers at the start
-        const normalizedFromDid = fromDid.startsWith('pn-') ? fromDid : `pn-${fromDid}`;
-        const normalizedToDid = toDid.startsWith('pn-') ? toDid : `pn-${toDid}`;
+        // Normalize pn-identifiers (handles legacy data)
+        const normalizedFromDid = fromPnIdentifier.startsWith('pn-') ? fromPnIdentifier : `pn-${fromPnIdentifier}`;
+        const normalizedToDid = toPnIdentifier.startsWith('pn-') ? toPnIdentifier : `pn-${toPnIdentifier}`;
         
         console.log('[SendMessage] Request validated, starting message processing', { fromDid: normalizedFromDid, toDid: normalizedToDid, messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` });
 
@@ -11089,12 +11089,12 @@ class ProductionServer {
           }
         });
       } catch (error: any) {
-        const { fromDid: reqFromDid, toDid: reqToDid } = req.body || {};
+        const { fromPnIdentifier: reqFromPnIdentifier, toPnIdentifier: reqToPnIdentifier } = req.body || {};
         console.error('[SendMessage] Error sending message:', error);
         console.error('[SendMessage] Error stack:', error?.stack);
         console.error('[SendMessage] Error details:', {
-          fromDid: reqFromDid,
-          toDid: reqToDid,
+          fromPnIdentifier: reqFromPnIdentifier,
+          toPnIdentifier: reqToPnIdentifier,
           message: error?.message,
           name: error?.name,
           code: error?.code
@@ -11109,17 +11109,17 @@ class ProductionServer {
 
     this.app.post('/api/messages/requests', async (req, res) => {
       try {
-        const { fromDid, toDid, content } = req.body;
-        if (!fromDid || !toDid || !content) {
-          return res.status(400).json({ error: 'fromDid, toDid, and content are required' });
+        const { fromPnIdentifier, toPnIdentifier, content } = req.body;
+        if (!fromPnIdentifier || !toPnIdentifier || !content) {
+          return res.status(400).json({ error: 'fromPnIdentifier, toPnIdentifier, and content are required' });
         }
         // TODO: Implement message request creation in Google Drive
         return res.json({
           success: true,
           request: {
             requestId: `req_${Date.now()}`,
-            fromDid,
-            toDid,
+            fromPnIdentifier,
+            toPnIdentifier,
             content,
             timestamp: new Date().toISOString(),
             status: 'pending'

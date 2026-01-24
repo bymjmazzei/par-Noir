@@ -72,7 +72,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
         setMessages(allMessages);
 
         // Mark unread messages as read
-        const unreadMessages = threadMessages.filter(m => !m.read && m.toDid === userState.pnIdentifier);
+        const unreadMessages = threadMessages.filter(m => !m.read && m.toPnIdentifier === userState.pnIdentifier);
         for (const message of unreadMessages) {
           try {
             await markAsRead(message.messageId, userState.pnIdentifier!, participantDid);
@@ -153,8 +153,8 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
     const tempMessageId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const optimisticMessage: Message = {
       messageId: tempMessageId,
-      fromDid: userState.pnIdentifier!,
-      toDid: participantDid,
+      fromPnIdentifier: userState.pnIdentifier!,
+      toPnIdentifier: participantDid,
       content: content,
       timestamp: new Date().toISOString(),
       read: false
@@ -312,7 +312,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
           </div>
         ) : (
           messages.map((message) => {
-            const isOwn = message.fromDid === userState.pnIdentifier;
+            const isOwn = message.fromPnIdentifier === userState.pnIdentifier;
             const isTemporary = message.messageId.startsWith('temp-');
             
             return (

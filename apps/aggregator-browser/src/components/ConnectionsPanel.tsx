@@ -88,9 +88,9 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
         
         // Load display names for all connections and pending requests
         const allUserDids = new Set<string>();
-        connectionsData.forEach(c => allUserDids.add(c.userDid));
-        pendingData.sent.forEach(c => allUserDids.add(c.userDid));
-        pendingData.received.forEach(c => allUserDids.add(c.userDid));
+        connectionsData.forEach(c => allUserDids.add(c.userPnIdentifier));
+        pendingData.sent.forEach(c => allUserDids.add(c.userPnIdentifier));
+        pendingData.received.forEach(c => allUserDids.add(c.userPnIdentifier));
         
         loadDisplayNames(Array.from(allUserDids));
       } else if (activeTab === 'followers') {
@@ -392,11 +392,11 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
                             className="p-3 bg-neutral-800 rounded-lg flex items-center justify-between"
                           >
                             <button
-                              onClick={() => onCreatorClick?.(request.userDid)}
+                              onClick={() => onCreatorClick?.(request.userPnIdentifier)}
                               className="flex-1 text-left hover:opacity-80 transition-opacity"
                             >
                               <p className="text-white text-sm font-medium">
-                                {getDisplayName(request.userDid)}
+                                {getDisplayName(request.userPnIdentifier)}
                               </p>
                               <p className="text-neutral-400 text-xs">Wants to connect</p>
                             </button>
@@ -431,11 +431,11 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
                             className="p-3 bg-neutral-800 rounded-lg flex items-center justify-between"
                           >
                             <button
-                              onClick={() => onCreatorClick?.(request.userDid)}
+                              onClick={() => onCreatorClick?.(request.userPnIdentifier)}
                               className="flex-1 text-left hover:opacity-80 transition-opacity"
                             >
                               <p className="text-white text-sm font-medium">
-                                {getDisplayName(request.userDid)}
+                                {getDisplayName(request.userPnIdentifier)}
                               </p>
                               <p className="text-neutral-400 text-xs">Pending request</p>
                             </button>
@@ -471,11 +471,11 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
                         className="p-3 bg-neutral-800 rounded-lg flex items-center justify-between"
                       >
                         <button
-                          onClick={() => onCreatorClick?.(connection.userDid)}
+                          onClick={() => onCreatorClick?.(connection.userPnIdentifier)}
                           className="flex-1 text-left hover:opacity-80 transition-opacity"
                         >
                           <p className="text-white text-sm font-medium">
-                            {getDisplayName(connection.userDid)}
+                            {getDisplayName(connection.userPnIdentifier)}
                           </p>
                           <p className="text-neutral-400 text-xs">
                             {connection.status === 'accepted' ? 'Connected' : connection.status}

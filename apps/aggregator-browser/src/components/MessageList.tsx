@@ -49,9 +49,9 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
         const messageRequests = requestsData.filter(r => r.status === 'pending');
         const connectionRequestsList = connectionRequests.received.map(conn => ({
           requestId: conn.connectionId,
-          fromDid: conn.userDid,
-          toDid: userState.pnIdentifier!,
-          content: `Connection request from ${conn.userDid.substring(0, 8)}...`,
+          fromPnIdentifier: conn.userPnIdentifier,
+          toPnIdentifier: userState.pnIdentifier!,
+          content: `Connection request from ${conn.userPnIdentifier.substring(0, 8)}...`,
           timestamp: conn.createdAt,
           status: 'pending' as const,
           isConnectionRequest: true,
@@ -363,12 +363,12 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
                   <div className="flex items-start space-x-3 mb-3">
                     <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center flex-shrink-0">
                       <span className="text-blue-400 font-semibold text-sm">
-                        {request.fromDid.charAt(0).toUpperCase()}
+                        {request.fromPnIdentifier.charAt(0).toUpperCase()}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="text-white font-medium mb-1">
-                        {request.fromDid.substring(0, 16) + '...'}
+                        {request.fromPnIdentifier.substring(0, 16) + '...'}
                       </h3>
                       <p className="text-neutral-400 text-sm mb-2">{request.content}</p>
                       <p className="text-neutral-500 text-xs">

@@ -22,8 +22,8 @@ function getAuthHeaders(): HeadersInit {
 
 export interface Message {
   messageId: string;
-  fromDid: string;
-  toDid: string;
+  fromPnIdentifier: string;
+  toPnIdentifier: string;
   content: string;
   mediaFileId?: string;
   timestamp: string;
@@ -34,8 +34,8 @@ export interface Message {
 
 export interface MessageRequest {
   requestId: string;
-  fromDid: string;
-  toDid: string;
+  fromPnIdentifier: string;
+  toPnIdentifier: string;
   content: string;
   timestamp: string;
   status: 'pending' | 'accepted' | 'declined';
@@ -137,8 +137,8 @@ export async function sendMessage(
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        fromDid,
-        toDid,
+        fromPnIdentifier: fromDid,
+        toPnIdentifier: toDid,
         content,
         mediaFileId
       })
@@ -193,8 +193,8 @@ export async function sendMessageRequest(
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        fromDid,
-        toDid,
+        fromPnIdentifier: fromDid,
+        toPnIdentifier: toDid,
         content
       })
     });
