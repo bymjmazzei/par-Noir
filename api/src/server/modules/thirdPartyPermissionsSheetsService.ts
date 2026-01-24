@@ -59,7 +59,7 @@ export class ThirdPartyPermissionsSheetsService {
    * Get third-party permissions sheet. Scoped search only; throws if not found.
    * Created at Drive connection init; this does not create, move, or delete.
    */
-  static async getOrCreateThirdPartyPermissionsSheet(
+  static async getThirdPartyPermissionsSheet(
     accessToken: string,
     metadataFolderId: string
   ): Promise<string> {
@@ -78,7 +78,7 @@ export class ThirdPartyPermissionsSheetsService {
       return searchResponse.data.files[0].id!;
     }
 
-    throw new Error(`${this.THIRD_PARTY_PERMISSIONS_FILE_NAME} not found in _metadata. Ensure Drive is initialized (connect and initialize in dashboard).`);
+    throw new Error('Sheet not found. Your Google Drive may be corrupted. Please re-initialize Google Drive in the dashboard (Storage settings).');
   }
 
   /**

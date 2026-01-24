@@ -408,10 +408,13 @@ class ProductionServer {
     const cc = folderName as 'media' | 'thoughts' | 'collections';
     try {
       try {
-        await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'owner', cc);
-      } catch {
-        await IndexSheetsService.createIndexSheet(accessToken, folderId, 'owner', cc);
-        await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'owner', cc);
+        await IndexSheetsService.getIndexSheet(accessToken, folderId, 'owner', cc);
+      } catch (getError: any) {
+        if (getError?.message?.includes('not found')) {
+          await IndexSheetsService.createIndexSheet(accessToken, folderId, 'owner', cc);
+        } else {
+          throw getError;
+        }
       }
       console.log(`[initializeContentClassIndexFiles] Initialized owner-file-index.xlsx in '${folderName}'`);
     } catch (e: any) {
@@ -420,10 +423,13 @@ class ProductionServer {
     try {
       let publicSheetId: string;
       try {
-        publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'public', cc);
-      } catch {
-        await IndexSheetsService.createIndexSheet(accessToken, folderId, 'public', cc);
-        publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'public', cc);
+        publicSheetId = await IndexSheetsService.getIndexSheet(accessToken, folderId, 'public', cc);
+      } catch (getError: any) {
+        if (getError?.message?.includes('not found')) {
+          publicSheetId = await IndexSheetsService.createIndexSheet(accessToken, folderId, 'public', cc);
+        } else {
+          throw getError;
+        }
       }
       await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
       console.log(`[initializeContentClassIndexFiles] Initialized public-file-index.xlsx in '${folderName}'`);
@@ -446,10 +452,13 @@ class ProductionServer {
     try {
       let publicSheetId: string;
       try {
-        publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'public');
-      } catch {
-        await IndexSheetsService.createIndexSheet(accessToken, metadataFolderId, 'public');
-        publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'public');
+        publicSheetId = await IndexSheetsService.getIndexSheet(accessToken, metadataFolderId, 'public');
+      } catch (getError: any) {
+        if (getError?.message?.includes('not found')) {
+          publicSheetId = await IndexSheetsService.createIndexSheet(accessToken, metadataFolderId, 'public');
+        } else {
+          throw getError;
+        }
       }
       try {
         const { google } = await import('googleapis');
@@ -471,10 +480,13 @@ class ProductionServer {
 
     try {
       try {
-        await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'owner');
-      } catch {
-        await IndexSheetsService.createIndexSheet(accessToken, metadataFolderId, 'owner');
-        await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'owner');
+        await IndexSheetsService.getIndexSheet(accessToken, metadataFolderId, 'owner');
+      } catch (getError: any) {
+        if (getError?.message?.includes('not found')) {
+          await IndexSheetsService.createIndexSheet(accessToken, metadataFolderId, 'owner');
+        } else {
+          throw getError;
+        }
       }
       console.log(`[initializeIndexFiles] Initialized owner-file-index.xlsx`);
     } catch (error: any) {
@@ -623,7 +635,7 @@ class ProductionServer {
       const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
       
       // Get or create owner index sheet
-      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
+      const spreadsheetId = await IndexSheetsService.getIndexSheet(
         accessToken,
         metadataFolderId,
         'owner'
@@ -660,7 +672,7 @@ class ProductionServer {
     const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
     
     // Get or create owner index sheet
-    const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
+    const spreadsheetId = await IndexSheetsService.getIndexSheet(
       accessToken,
       metadataFolderId,
       'owner'
@@ -791,7 +803,7 @@ class ProductionServer {
         }
 
         contentClassIndex.updatedAt = new Date().toISOString();
-        const ownerSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'owner', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
+        const ownerSheetId = await IndexSheetsService.getIndexSheet(accessToken, contentTypeFolderId, 'owner', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
         await IndexSheetsService.setAllFiles(accessToken, ownerSheetId, contentClassIndex.files, contentClassIndex.updatedAt);
     }
   }
@@ -809,7 +821,7 @@ class ProductionServer {
       const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
       
       // Get or create public index sheet
-      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
+      const spreadsheetId = await IndexSheetsService.getIndexSheet(
         accessToken,
         metadataFolderId,
         'public'
@@ -942,7 +954,7 @@ class ProductionServer {
     
     // Save updated root index (Sheets)
     const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-    const ownerSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'owner');
+    const ownerSheetId = await IndexSheetsService.getIndexSheet(accessToken, metadataFolderId, 'owner');
     await IndexSheetsService.setAllFiles(accessToken, ownerSheetId, index.files, index.updatedAt);
     
     // Also remove from content class-specific index if we know the contentClass (thought→thoughts, collection→collections)
@@ -974,7 +986,7 @@ class ProductionServer {
             if (contentClassIndex.files.length !== contentClassInitialLength) {
               contentClassIndex.updatedAt = new Date().toISOString();
               const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-              const ownerSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'owner', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
+              const ownerSheetId = await IndexSheetsService.getIndexSheet(accessToken, contentTypeFolderId, 'owner', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
               await IndexSheetsService.setAllFiles(accessToken, ownerSheetId, contentClassIndex.files, contentClassIndex.updatedAt);
             }
           }
@@ -1028,7 +1040,7 @@ class ProductionServer {
     
     // Save updated root index (Sheets) and ensure public permission
     const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-    const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'public');
+    const publicSheetId = await IndexSheetsService.getIndexSheet(accessToken, metadataFolderId, 'public');
     await IndexSheetsService.setAllFiles(accessToken, publicSheetId, index.files, index.updatedAt);
     await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
     
@@ -1061,7 +1073,7 @@ class ProductionServer {
             if (contentClassIndex.files.length !== contentClassInitialLength) {
               contentClassIndex.updatedAt = new Date().toISOString();
               const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-              const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'public', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
+              const publicSheetId = await IndexSheetsService.getIndexSheet(accessToken, contentTypeFolderId, 'public', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
               await IndexSheetsService.setAllFiles(accessToken, publicSheetId, contentClassIndex.files, contentClassIndex.updatedAt);
               await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
             }
@@ -1210,7 +1222,7 @@ class ProductionServer {
 
     // Save root public index (Sheets) and ensure public permission
     const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-    const publicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, metadataFolderId, 'public');
+    const publicSheetId = await IndexSheetsService.getIndexSheet(accessToken, metadataFolderId, 'public');
     await IndexSheetsService.setAllFiles(accessToken, publicSheetId, index.files, index.updatedAt);
     await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
     
@@ -1268,7 +1280,7 @@ class ProductionServer {
 
     if (contentTypeFolderId) {
         const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-        const contentClassPublicSheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, contentTypeFolderId, 'public', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
+        const contentClassPublicSheetId = await IndexSheetsService.getIndexSheet(accessToken, contentTypeFolderId, 'public', contentTypeFolderName as 'media' | 'thoughts' | 'collections');
         const { files } = await IndexSheetsService.getFiles(accessToken, contentClassPublicSheetId);
         const contentClassIndex = {
           identifier: pnIdentifier,
@@ -1504,7 +1516,7 @@ class ProductionServer {
   ): Promise<any | null> {
     try {
       const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'public', contentClass);
+      const spreadsheetId = await IndexSheetsService.getIndexSheet(accessToken, folderId, 'public', contentClass);
       const { files } = await IndexSheetsService.getFiles(accessToken, spreadsheetId);
       const updatedAt = await IndexSheetsService.getUpdatedAt(accessToken, spreadsheetId);
       return {
@@ -1529,7 +1541,7 @@ class ProductionServer {
   ): Promise<any | null> {
     try {
       const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-      const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(accessToken, folderId, 'owner', contentClass);
+      const spreadsheetId = await IndexSheetsService.getIndexSheet(accessToken, folderId, 'owner', contentClass);
       const { files } = await IndexSheetsService.getFiles(accessToken, spreadsheetId);
       const updatedAt = await IndexSheetsService.getUpdatedAt(accessToken, spreadsheetId);
       return {
@@ -2081,7 +2093,7 @@ class ProductionServer {
               const metadataFolder = out.metadataFolderId;
               
               // Get or create public-file-index.xlsx
-              const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
+              const spreadsheetId = await IndexSheetsService.getIndexSheet(
                 credentialsRecord.credentials.access_token,
                 metadataFolder,
                 'public'
@@ -3963,7 +3975,7 @@ class ProductionServer {
                 const metadataFolder = out.metadataFolderId;
                 
                 // Get or create public-file-index.xlsx
-                const spreadsheetId = await IndexSheetsService.getOrCreateIndexSheet(
+                const spreadsheetId = await IndexSheetsService.getIndexSheet(
                   credentialsRecord.credentials.access_token,
                   metadataFolder,
                   'public'
@@ -4666,7 +4678,7 @@ class ProductionServer {
                 // Initialize preferences.xlsx (for interaction history logging)
                 const { PreferencesSheetsService } = await import('./server/modules/preferencesSheetsService');
                 try {
-                  await PreferencesSheetsService.getOrCreatePreferencesSheet(accessToken, metadataFolderId);
+                  await PreferencesSheetsService.getPreferencesSheet(accessToken, metadataFolderId);
                 } catch (prefSheetError: any) {
                   if (prefSheetError?.message?.includes('not found')) {
                     await PreferencesSheetsService.createPreferencesSheet(accessToken, metadataFolderId);
@@ -4685,7 +4697,7 @@ class ProductionServer {
               try {
                 const { NotificationsSheetsService } = await import('./server/modules/notificationsSheetsService');
                 try {
-                  await NotificationsSheetsService.getOrCreateNotificationsSheet(accessToken, metadataFolderId);
+                  await NotificationsSheetsService.getNotificationsSheet(accessToken, metadataFolderId);
                 } catch (notifSheetError: any) {
                   if (notifSheetError?.message?.includes('not found')) {
                     await NotificationsSheetsService.createNotificationsSheet(accessToken, metadataFolderId);
@@ -4702,7 +4714,7 @@ class ProductionServer {
               try {
                 const { ActivityLedgerSheetsService } = await import('./server/modules/activityLedgerSheetsService');
                 try {
-                  await ActivityLedgerSheetsService.getOrCreateActivityLedgerSheet(accessToken, metadataFolderId);
+                  await ActivityLedgerSheetsService.getActivityLedgerSheet(accessToken, metadataFolderId);
                 } catch (activitySheetError: any) {
                   if (activitySheetError?.message?.includes('not found')) {
                     await ActivityLedgerSheetsService.createActivityLedgerSheet(accessToken, metadataFolderId);
@@ -4719,7 +4731,7 @@ class ProductionServer {
               try {
                 const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
                 try {
-                  await ConnectionsSheetsService.getOrCreateConnectionsSheet(accessToken, metadataFolderId);
+                  await ConnectionsSheetsService.getConnectionsSheet(accessToken, metadataFolderId);
                   console.log(`[StorageCredentials PUT] Found existing connections.xlsx for identityId: ${sanitizedIdentityId}`);
                 } catch (getError: any) {
                   // CRITICAL: Only create if the sheet genuinely doesn't exist, not on any error
@@ -4741,7 +4753,7 @@ class ProductionServer {
               try {
                 const { EngagementSheetsService } = await import('./server/modules/engagementSheetsService');
                 try {
-                  await EngagementSheetsService.getOrCreateEngagementSheet(accessToken, metadataFolderId);
+                  await EngagementSheetsService.getEngagementSheet(accessToken, metadataFolderId);
                 } catch (engSheetError: any) {
                   if (engSheetError?.message?.includes('not found')) {
                     await EngagementSheetsService.createEngagementSheet(accessToken, metadataFolderId);
@@ -4758,7 +4770,7 @@ class ProductionServer {
               try {
                 const { MessagingLedgerSheetsService } = await import('./server/modules/messagingLedgerSheetsService');
                 try {
-                  await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(accessToken, metadataFolderId);
+                  await MessagingLedgerSheetsService.getMessagingLedgerSheet(accessToken, metadataFolderId);
                 } catch (msgSheetError: any) {
                   if (msgSheetError?.message?.includes('not found')) {
                     await MessagingLedgerSheetsService.createMessagingLedgerSheet(accessToken, metadataFolderId);
@@ -4796,7 +4808,7 @@ class ProductionServer {
               try {
                 const { ZKPDataPointsSheetsService } = await import('./server/modules/zkpDataPointsSheetsService');
                 try {
-                  await ZKPDataPointsSheetsService.getOrCreateZKPDataPointsSheet(accessToken, metadataFolderId);
+                  await ZKPDataPointsSheetsService.getZKPDataPointsSheet(accessToken, metadataFolderId);
                 } catch (zkpSheetError: any) {
                   if (zkpSheetError?.message?.includes('not found')) {
                     await ZKPDataPointsSheetsService.createZKPDataPointsSheet(accessToken, metadataFolderId);
@@ -4813,7 +4825,7 @@ class ProductionServer {
               try {
                 const { ThirdPartyPermissionsSheetsService } = await import('./server/modules/thirdPartyPermissionsSheetsService');
                 try {
-                  await ThirdPartyPermissionsSheetsService.getOrCreateThirdPartyPermissionsSheet(accessToken, metadataFolderId);
+                  await ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(accessToken, metadataFolderId);
                 } catch (permSheetError: any) {
                   if (permSheetError?.message?.includes('not found')) {
                     await ThirdPartyPermissionsSheetsService.createThirdPartyPermissionsSheet(accessToken, metadataFolderId);
@@ -4830,7 +4842,7 @@ class ProductionServer {
               try {
                 const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
                 try {
-                  await ConnectionsSheetsService.getOrCreateFollowersSheet(accessToken, metadataFolderId);
+                  await ConnectionsSheetsService.getFollowersSheet(accessToken, metadataFolderId);
                 } catch (followersSheetError: any) {
                   if (followersSheetError?.message?.includes('not found')) {
                     await ConnectionsSheetsService.createFollowersSheet(accessToken, metadataFolderId);
@@ -4839,7 +4851,7 @@ class ProductionServer {
                   }
                 }
                 try {
-                  await ConnectionsSheetsService.getOrCreateFollowingSheet(accessToken, metadataFolderId);
+                  await ConnectionsSheetsService.getFollowingSheet(accessToken, metadataFolderId);
                 } catch (followingSheetError: any) {
                   if (followingSheetError?.message?.includes('not found')) {
                     await ConnectionsSheetsService.createFollowingSheet(accessToken, metadataFolderId);
@@ -10291,7 +10303,7 @@ class ProductionServer {
               console.warn(`[Inbox] Connection missing shared secret for ${conversation.otherUserDid}, will read as plain text`);
             }
 
-            const conversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+            const conversationSheetId = await MessageSheetsService.getConversationSheet(
               userAccessToken,
               messagesFolderId,
               conversation.otherUserDid
@@ -10427,7 +10439,7 @@ class ProductionServer {
         console.log('[GetThread] Getting connections sheet');
         // Get connection to retrieve shared secret - use Sheets directly
         const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-        const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+        const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
           userAccessToken,
           metadataFolderId
         );
@@ -10482,7 +10494,7 @@ class ProductionServer {
 
         // Get or create conversation sheet (use original participantDid for sheet name, not normalized)
         console.log('[GetThread] Getting conversation sheet');
-        const conversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+        const conversationSheetId = await MessageSheetsService.getConversationSheet(
           userAccessToken,
           messagesFolderId,
           participantDid
@@ -10665,7 +10677,7 @@ class ProductionServer {
         );
 
         // Get or create conversation sheet for sender
-        const senderConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+        const senderConversationSheetId = await MessageSheetsService.getConversationSheet(
           senderAccessToken,
           senderMessagesFolderId,
           toDid
@@ -10692,7 +10704,7 @@ class ProductionServer {
 
         // Get connection to retrieve shared secret - use Sheets directly
         const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-        const senderSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+        const senderSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
           senderAccessToken,
           senderMetadataFolderId
         );
@@ -10728,7 +10740,7 @@ class ProductionServer {
           
           // Update connection with shared secret
           const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-          const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+          const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
             senderAccessToken,
             senderMetadataFolderId
           );
@@ -10876,7 +10888,7 @@ class ProductionServer {
 
         // Get or create conversation sheet for recipient
         console.log('[SendMessage] Getting or creating recipient conversation sheet', { fromDid, recipientMessagesFolderId });
-        const recipientConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+        const recipientConversationSheetId = await MessageSheetsService.getConversationSheet(
           recipientAccessToken,
           recipientMessagesFolderId,
           fromDid
@@ -10892,7 +10904,7 @@ class ProductionServer {
           throw new Error('Invalid recipient access token');
         }
         // Get recipient's connection to retrieve shared secret - use Sheets directly
-        const recipientSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+        const recipientSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
           recipientAccessToken,
           recipientMetadataFolderId
         );
@@ -10924,7 +10936,7 @@ class ProductionServer {
           // Recipient is missing shared secret or has a different one - sync from sender
           console.log(`[SendMessage] Recipient missing or mismatched shared secret, syncing from sender`);
           const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-          const recipientSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+          const recipientSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
             recipientAccessToken,
             recipientMetadataFolderId
           );
@@ -11150,7 +11162,7 @@ class ProductionServer {
           return res.status(400).json({ error: 'participantDid is required to mark message as read' });
         }
 
-        const conversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+        const conversationSheetId = await MessageSheetsService.getConversationSheet(
           userAccessToken,
           messagesFolderId,
           participantDid
@@ -11286,7 +11298,7 @@ class ProductionServer {
             if (connection) {
               connectionId = connection.connectionId;
               const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-              const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+              const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
                 userAccessToken,
                 metadataFolderId
               );
@@ -11331,7 +11343,7 @@ class ProductionServer {
                   const participantMetadataFolder = await this.getMetadataFolder(participantAccessToken, participantPnIdentifier);
                   if (participantMetadataFolder) {
                     const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-                    const participantSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+                    const participantSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
                       participantAccessToken,
                       participantMetadataFolder.metadataFolderId
                     );
@@ -12078,7 +12090,7 @@ class ProductionServer {
             
             // Update with shared secret
             const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-            const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+            const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
               userAccessToken,
               metadataFolderId
             );
@@ -12171,7 +12183,7 @@ class ProductionServer {
 
         // Get connection details from acceptor's sheet for syncing to other user
         const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-        const acceptorSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+        const acceptorSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
           userAccessToken,
           metadataFolderId
         );
@@ -12224,7 +12236,7 @@ class ProductionServer {
         const otherMetadataFolderId = otherMetadataFolder.metadataFolderId;
 
         // Sync shared secret to other user's connection record - this MUST succeed
-        const otherSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+        const otherSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
           otherAccessToken,
           otherMetadataFolderId
         );
@@ -12389,11 +12401,11 @@ class ProductionServer {
                 acceptorPnFolder.id
               );
 
-              // Check if acceptor's conversation file exists, if not try to restore from other user
+              // Check if acceptor's conversation file exists, if not create
               let acceptorConversationSheetId: string;
               try {
-                // Try to get existing conversation sheet
-                acceptorConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+                // Try to get existing conversation sheet (if reconnecting after deletion)
+                acceptorConversationSheetId = await MessageSheetsService.getConversationSheet(
                   userAccessToken,
                   acceptorMessagesFolderId,
                   otherUserDid
@@ -12449,12 +12461,16 @@ class ProductionServer {
                   }
                 }
               } catch (error: any) {
-                // If getOrCreate fails, create empty sheet
-                acceptorConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
-                  userAccessToken,
-                  acceptorMessagesFolderId,
-                  otherUserDid
-                );
+                // First connection or re-connection after deletion - create new sheet
+                if (error?.message?.includes('not found')) {
+                  acceptorConversationSheetId = await MessageSheetsService.createConversationSheet(
+                    userAccessToken,
+                    acceptorMessagesFolderId,
+                    otherUserDid
+                  );
+                } else {
+                  throw error;
+                }
               }
 
               // Add initial system message to acceptor's conversation
@@ -12502,7 +12518,7 @@ class ProductionServer {
                 let requesterConversationSheetId: string;
                 try {
                   // Try to get existing conversation sheet
-                  requesterConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
+                  requesterConversationSheetId = await MessageSheetsService.createConversationSheet(
                     otherAccessToken,
                     requesterMessagesFolderId,
                     userCredentials.identityId
@@ -12558,12 +12574,16 @@ class ProductionServer {
                     }
                   }
                 } catch (error: any) {
-                  // If getOrCreate fails, create empty sheet
-                  requesterConversationSheetId = await MessageSheetsService.getOrCreateConversationSheet(
-                    otherAccessToken,
-                    requesterMessagesFolderId,
-                    userCredentials.identityId
-                  );
+                  // First connection or re-connection after deletion - create new sheet
+                  if (error?.message?.includes('not found')) {
+                    requesterConversationSheetId = await MessageSheetsService.createConversationSheet(
+                      otherAccessToken,
+                      requesterMessagesFolderId,
+                      userCredentials.identityId
+                    );
+                  } else {
+                    throw error;
+                  }
                 }
 
                 // Add initial system message to requester's conversation
@@ -12818,7 +12838,7 @@ class ProductionServer {
         );
 
         // Get or create following sheet
-        const followingSheetId = await ConnectionsSheetsService.getOrCreateFollowingSheet(
+        const followingSheetId = await ConnectionsSheetsService.getFollowingSheet(
           userAccessToken,
           metadataFolderId
         );
@@ -12853,7 +12873,7 @@ class ProductionServer {
                 const _g = await this.getMetadataFolder(targetAccessToken, targetCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const targetMetadataFolderId = _g.metadataFolderId;
 
                 // Get or create followers sheet (paid feeds only)
-                const followersSheetId = await ConnectionsSheetsService.getOrCreateFollowersSheet(
+                const followersSheetId = await ConnectionsSheetsService.getFollowersSheet(
                   targetAccessToken,
                   targetMetadataFolderId
                 );
@@ -12938,7 +12958,7 @@ class ProductionServer {
         const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
         // Get following sheet
-        const followingSheetId = await ConnectionsSheetsService.getOrCreateFollowingSheet(
+        const followingSheetId = await ConnectionsSheetsService.getFollowingSheet(
           userAccessToken,
           metadataFolderId
         );
@@ -12968,7 +12988,7 @@ class ProductionServer {
                 const _g = await this.getMetadataFolder(targetAccessToken, targetCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const targetMetadataFolderId = _g.metadataFolderId;
 
                 // Get followers sheet
-                const followersSheetId = await ConnectionsSheetsService.getOrCreateFollowersSheet(
+                const followersSheetId = await ConnectionsSheetsService.getFollowersSheet(
                   targetAccessToken,
                   targetMetadataFolderId
                 );
@@ -13030,7 +13050,7 @@ class ProductionServer {
 
         // Check if followers sheet exists (only for paid feeds)
         try {
-          const followersSheetId = await ConnectionsSheetsService.getOrCreateFollowersSheet(
+          const followersSheetId = await ConnectionsSheetsService.getFollowersSheet(
             userAccessToken,
             metadataFolderId
           );
@@ -13087,7 +13107,7 @@ class ProductionServer {
         const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
         // Get following sheet
-        const followingSheetId = await ConnectionsSheetsService.getOrCreateFollowingSheet(
+        const followingSheetId = await ConnectionsSheetsService.getFollowingSheet(
           userAccessToken,
           metadataFolderId
         );
@@ -13140,7 +13160,7 @@ class ProductionServer {
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
         const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
-        const followingSheetId = await ConnectionsSheetsService.getOrCreateFollowingSheet(
+        const followingSheetId = await ConnectionsSheetsService.getFollowingSheet(
           userAccessToken,
           metadataFolderId
         );
@@ -13191,7 +13211,7 @@ class ProductionServer {
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
         const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
-        const followingSheetId = await ConnectionsSheetsService.getOrCreateFollowingSheet(
+        const followingSheetId = await ConnectionsSheetsService.getFollowingSheet(
           userAccessToken,
           metadataFolderId
         );
@@ -13412,7 +13432,7 @@ class ProductionServer {
         let otherUserPnIdentifier: string | undefined;
         
         try {
-          userSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+          userSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
             userAccessToken,
             metadataFolderId
           );
@@ -13529,7 +13549,7 @@ class ProductionServer {
         // Get other user's connections spreadsheet - early return if error
         let otherUserSpreadsheetId: string;
         try {
-          otherUserSpreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+          otherUserSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
             otherUserAccessToken,
             otherUserMetadataFolder.metadataFolderId
           );

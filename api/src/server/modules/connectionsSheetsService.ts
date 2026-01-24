@@ -83,7 +83,7 @@ export class ConnectionsSheetsService {
    * Get connections sheet. Scoped search only; throws if not found.
    * Created at Drive connection init; this does not create, move, or delete.
    */
-  static async getOrCreateConnectionsSheet(
+  static async getConnectionsSheet(
     accessToken: string,
     metadataFolderId: string
   ): Promise<string> {
@@ -102,7 +102,7 @@ export class ConnectionsSheetsService {
       return searchResponse.data.files[0].id!;
     }
 
-    throw new Error(`${this.CONNECTIONS_FILE_NAME} not found in _metadata. Ensure Drive is initialized (connect and initialize in dashboard).`);
+    throw new Error('Sheet not found. Your Google Drive may be corrupted. Please re-initialize Google Drive in the dashboard (Storage settings).');
   }
 
   /**
@@ -278,7 +278,7 @@ export class ConnectionsSheetsService {
    * Get followers sheet. Scoped search only; throws if not found.
    * Created at Drive connection init; this does not create, move, or delete.
    */
-  static async getOrCreateFollowersSheet(
+  static async getFollowersSheet(
     accessToken: string,
     metadataFolderId: string
   ): Promise<string> {
@@ -297,7 +297,7 @@ export class ConnectionsSheetsService {
       return searchResponse.data.files[0].id!;
     }
 
-    throw new Error(`${this.FOLLOWERS_FILE_NAME} not found in _metadata. Ensure Drive is initialized (connect and initialize in dashboard).`);
+    throw new Error('Sheet not found. Your Google Drive may be corrupted. Please re-initialize Google Drive in the dashboard (Storage settings).');
   }
 
   /**
@@ -339,7 +339,7 @@ export class ConnectionsSheetsService {
    * Get following sheet. Scoped search only; throws if not found.
    * Created at Drive connection init; this does not create, move, or delete.
    */
-  static async getOrCreateFollowingSheet(
+  static async getFollowingSheet(
     accessToken: string,
     metadataFolderId: string
   ): Promise<string> {
@@ -358,7 +358,7 @@ export class ConnectionsSheetsService {
       return searchResponse.data.files[0].id!;
     }
 
-    throw new Error(`${this.FOLLOWING_FILE_NAME} not found in _metadata. Ensure Drive is initialized (connect and initialize in dashboard).`);
+    throw new Error('Sheet not found. Your Google Drive may be corrupted. Please re-initialize Google Drive in the dashboard (Storage settings).');
   }
 
   /**

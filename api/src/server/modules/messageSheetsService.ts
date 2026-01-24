@@ -97,135 +97,127 @@ export class MessageSheetsService {
   }
 
   /**
-   * Get or create conversation sheet for a specific user
+   * Get conversation sheet for a specific user (search only, does not create)
    */
-  static async getOrCreateConversationSheet(
+  static async getConversationSheet(
     accessToken: string,
     messagesFolderId: string,
     otherUserDid: string
   ): Promise<string> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const drive = google.drive({ version: 'v3', auth });
+
+    const sheetFileName = `conversation-${otherUserDid}`;
+    const fileQuery = `name='${sheetFileName}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    
+    const searchResponse = await drive.files.list({
+      q: fileQuery,
+      fields: 'files(id,name)',
+      pageSize: 1
+    });
+
+    if (searchResponse.data.files && searchResponse.data.files.length > 0) {
+      console.log(`[MessageSheetsService] Found existing conversation sheet for ${otherUserDid}: ${searchResponse.data.files[0].id}`);
+      return searchResponse.data.files[0].id!;
+    }
+
+    throw new Error('Sheet not found. Your Google Drive may be corrupted. Please re-initialize Google Drive in the dashboard (Storage settings).');
+  }
+
+  /**
+   * Create conversation sheet for a specific user
+   */
+  static async createConversationSheet(
+    accessToken: string,
+    messagesFolderId: string,
+    otherUserDid: string
+  ): Promise<string> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+    const drive = google.drive({ version: 'v3', auth });
+
+    const sheetFileName = `conversation-${otherUserDid}`;
+
+    // Create new conversation sheet
+    console.log(`[MessageSheetsService] Creating new conversation sheet for ${otherUserDid}`);
+    let spreadsheet;
     try {
-      const auth = new google.auth.OAuth2();
-      auth.setCredentials({ access_token: accessToken });
-      const sheets = google.sheets({ version: 'v4', auth });
-      const drive = google.drive({ version: 'v3', auth });
-
-      const sheetFileName = `conversation-${otherUserDid}`;
-
-      // Search for existing conversation sheet
-      try {
-        const fileQuery = `name='${sheetFileName}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-        const searchResponse = await drive.files.list({
-          q: fileQuery,
-          fields: 'files(id,name)',
-          pageSize: 1
-        });
-
-        if (searchResponse.data.files && searchResponse.data.files.length > 0) {
-          console.log(`[MessageSheetsService] Found existing conversation sheet for ${otherUserDid}: ${searchResponse.data.files[0].id}`);
-          return searchResponse.data.files[0].id!;
-        }
-      } catch (searchError: any) {
-        console.error('[MessageSheetsService] Error searching for conversation sheet:', {
-          otherUserDid,
-          messagesFolderId,
-          error: searchError?.message,
-          status: searchError?.response?.status
-        });
-        // Continue to create new sheet
-      }
-
-      // Create new conversation sheet
-      console.log(`[MessageSheetsService] Creating new conversation sheet for ${otherUserDid}`);
-      let spreadsheet;
-      try {
-        spreadsheet = await sheets.spreadsheets.create({
-          requestBody: {
-            properties: {
-              title: sheetFileName
-            },
-            sheets: [
-              {
-                properties: {
-                  title: 'Messages',
-                  gridProperties: {
-                    rowCount: 10000,
-                    columnCount: 6
-                  }
+      spreadsheet = await sheets.spreadsheets.create({
+        requestBody: {
+          properties: {
+            title: sheetFileName
+          },
+          sheets: [
+            {
+              properties: {
+                title: 'Messages',
+                gridProperties: {
+                  rowCount: 10000,
+                  columnCount: 6
                 }
               }
-            ]
-          }
-        });
-      } catch (createError: any) {
-        console.error('[MessageSheetsService] Failed to create conversation sheet:', {
-          otherUserDid,
-          error: createError?.message,
-          status: createError?.response?.status,
-          data: createError?.response?.data
-        });
-        throw new Error(`Failed to create conversation sheet: ${createError?.message || 'Unknown error'}`);
-      }
-
-      const spreadsheetId = spreadsheet.data.spreadsheetId;
-      if (!spreadsheetId) {
-        throw new Error('Failed to create conversation sheet: no ID returned');
-      }
-
-      // Move to messages folder
-      try {
-        await drive.files.update({
-          fileId: spreadsheetId,
-          addParents: messagesFolderId,
-          fields: 'id, parents'
-        });
-        console.log(`[MessageSheetsService] Moved conversation sheet ${spreadsheetId} to messages folder`);
-      } catch (moveError: any) {
-        console.error('[MessageSheetsService] Failed to move conversation sheet to folder:', {
-          spreadsheetId,
-          messagesFolderId,
-          error: moveError?.message,
-          status: moveError?.response?.status
-        });
-        // Don't fail - sheet exists, just not in the right folder
-        console.warn('[MessageSheetsService] Continuing despite folder move failure');
-      }
-
-      // Set up headers
-      try {
-        await sheets.spreadsheets.values.update({
-          spreadsheetId,
-          range: 'Messages!A1:F1',
-          valueInputOption: 'RAW',
-          requestBody: {
-            values: [['User DID', 'Message Content', 'Timestamp', 'Message ID', 'Read Status', 'Read At']]
-          }
-        });
-        console.log(`[MessageSheetsService] Set up headers for conversation sheet ${spreadsheetId}`);
-      } catch (headerError: any) {
-        console.error('[MessageSheetsService] Failed to set up headers for conversation sheet:', {
-          spreadsheetId,
-          error: headerError?.message,
-          status: headerError?.response?.status
-        });
-        // Don't fail - headers can be set manually if needed
-        console.warn('[MessageSheetsService] Continuing despite header setup failure');
-      }
-
-      return spreadsheetId;
-    } catch (error: any) {
-      const errorDetails = {
+            }
+          ]
+        }
+      });
+    } catch (createError: any) {
+      console.error('[MessageSheetsService] Failed to create conversation sheet:', {
         otherUserDid,
-        messagesFolderId,
-        message: error?.message,
-        code: error?.code,
-        status: error?.response?.status,
-        statusText: error?.response?.statusText,
-        data: error?.response?.data
-      };
-      console.error('[MessageSheetsService] Error in getOrCreateConversationSheet:', errorDetails);
-      throw error;
+        error: createError?.message,
+        status: createError?.response?.status,
+        data: createError?.response?.data
+      });
+      throw new Error(`Failed to create conversation sheet: ${createError?.message || 'Unknown error'}`);
     }
+
+    const spreadsheetId = spreadsheet.data.spreadsheetId;
+    if (!spreadsheetId) {
+      throw new Error('Failed to create conversation sheet: no ID returned');
+    }
+
+    // Move to messages folder
+    try {
+      await drive.files.update({
+        fileId: spreadsheetId,
+        addParents: messagesFolderId,
+        fields: 'id, parents'
+      });
+      console.log(`[MessageSheetsService] Moved conversation sheet ${spreadsheetId} to messages folder`);
+    } catch (moveError: any) {
+      console.error('[MessageSheetsService] Failed to move conversation sheet to folder:', {
+        spreadsheetId,
+        messagesFolderId,
+        error: moveError?.message,
+        status: moveError?.response?.status
+      });
+      // Don't fail - sheet exists, just not in the right folder
+      console.warn('[MessageSheetsService] Continuing despite folder move failure');
+    }
+
+    // Set up headers
+    try {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Messages!A1:F1',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [['User DID', 'Message Content', 'Timestamp', 'Message ID', 'Read Status', 'Read At']]
+        }
+      });
+      console.log(`[MessageSheetsService] Set up headers for conversation sheet ${spreadsheetId}`);
+    } catch (headerError: any) {
+      console.error('[MessageSheetsService] Failed to set up headers for conversation sheet:', {
+        spreadsheetId,
+        error: headerError?.message,
+        status: headerError?.response?.status
+      });
+      // Don't fail - headers can be set manually if needed
+      console.warn('[MessageSheetsService] Continuing despite header setup failure');
+    }
+
+    return spreadsheetId;
   }
 
   /**
@@ -576,7 +568,7 @@ export class MessageSheetsService {
       if (!otherUserFileResponse.data.files || otherUserFileResponse.data.files.length === 0) {
         // Other user's file doesn't exist, create empty conversation sheet
         console.log(`[MessageSheetsService] Other user's conversation file not found, creating empty sheet`);
-        return await this.getOrCreateConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
+        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
       }
 
       const otherUserSheetId = otherUserFileResponse.data.files[0].id!;
@@ -592,11 +584,11 @@ export class MessageSheetsService {
       if (otherMessages.length === 0) {
         // No messages to restore, create empty sheet
         console.log(`[MessageSheetsService] Other user's conversation file is empty, creating empty sheet`);
-        return await this.getOrCreateConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
+        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
       }
 
       // Create new conversation sheet for user
-      const userSheetId = await this.getOrCreateConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
+      const userSheetId = await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
 
       // Filter messages: only restore plain text messages (system messages)
       // Encrypted messages were encrypted with the old connectionId/sharedSecret and cannot be decrypted
@@ -645,7 +637,7 @@ export class MessageSheetsService {
       });
       // If restoration fails, still return a sheet ID (create empty one)
       try {
-        return await this.getOrCreateConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
+        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
       } catch (createError: any) {
         console.error('[MessageSheetsService] Failed to create empty sheet after restoration failure:', createError);
         throw error; // Throw original error

@@ -113,7 +113,7 @@ export class IndexSheetsService {
    * Sheets are created at Drive connection init; this does not create, move, or delete.
    * @param contentClass - When set (e.g. 'media'|'thoughts'|'collections'), uses {contentClass}-{owner|public}-index.xlsx. Omit for root indexes.
    */
-  static async getOrCreateIndexSheet(
+  static async getIndexSheet(
     accessToken: string,
     metadataFolderId: string,
     indexType: 'public' | 'owner',
@@ -141,7 +141,7 @@ export class IndexSheetsService {
       return searchResponse.data.files[0].id!;
     }
 
-    throw new Error(`Index sheet ${fileName} not found in folder. Ensure Drive is initialized (connect and initialize in dashboard).`);
+    throw new Error('Sheet not found. Your Google Drive may be corrupted. Please re-initialize Google Drive in the dashboard (Storage settings).');
   }
 
   /**

@@ -80,7 +80,7 @@ export class NotificationsSheetsService {
    * Get notifications sheet. Scoped search only; throws if not found.
    * Created at Drive connection init; this does not create, move, or delete.
    */
-  static async getOrCreateNotificationsSheet(
+  static async getNotificationsSheet(
     accessToken: string,
     metadataFolderId: string
   ): Promise<string> {
@@ -99,7 +99,7 @@ export class NotificationsSheetsService {
       return searchResponse.data.files[0].id!;
     }
 
-    throw new Error(`${this.NOTIFICATIONS_FILE_NAME} not found in _metadata. Ensure Drive is initialized (connect and initialize in dashboard).`);
+    throw new Error('Sheet not found. Your Google Drive may be corrupted. Please re-initialize Google Drive in the dashboard (Storage settings).');
   }
 
   /**
