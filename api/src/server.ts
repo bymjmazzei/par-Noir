@@ -285,6 +285,13 @@ class ProductionServer {
     // Throw error if API call failed (token issue, permissions, etc.)
     if (!pnFolderResponse.ok) {
       const errorText = await pnFolderResponse.text().catch(() => 'Unknown error');
+      console.error(`[getMetadataFolder] Google Drive API error (${pnFolderResponse.status}):`, {
+        status: pnFolderResponse.status,
+        statusText: pnFolderResponse.statusText,
+        errorText: errorText.substring(0, 500),
+        url: pnFolderUrl.substring(0, 100),
+        tokenPrefix: accessToken.substring(0, 20)
+      });
       if (pnFolderResponse.status === 401 || pnFolderResponse.status === 403) {
         throw new Error(`Google Drive authentication failed (${pnFolderResponse.status}): ${errorText.substring(0, 200)}`);
       }
@@ -11763,6 +11770,7 @@ class ProductionServer {
 
         // Get or create requester's metadata folder
         console.log('[ConnectionRequest] About to get requester metadata folder');
+        console.log('[ConnectionRequest] Using access token prefix:', requesterAccessToken.substring(0, 20));
         let requesterMetadataFolderId: string;
         try {
           // Use normalized requesterPnIdentifier (not requesterDid which might be a DID)
@@ -11775,14 +11783,21 @@ class ProductionServer {
           console.log('[ConnectionRequest] Successfully got requester metadata folder:', requesterMetadataFolderId);
         } catch (error: any) {
           // Drive API error (token, permissions, etc.) - return appropriate error
-          if (error.message?.includes('authentication failed')) {
+          console.error('[ConnectionRequest] ERROR getting requester metadata folder:', {
+            error: error?.message,
+            stack: error?.stack,
+            name: error?.name,
+            status: error?.response?.status,
+            statusText: error?.response?.statusText,
+            data: error?.response?.data
+          });
+          if (error.message?.includes('authentication failed') || error?.response?.status === 401 || error?.response?.status === 403) {
             return res.status(401).json({
               error: 'Google Drive authentication failed',
               code: 'DRIVE_AUTH_FAILED',
-              message: error.message
+              message: error.message || `Google Drive API returned ${error?.response?.status || 'unknown error'}`
             });
           }
-          console.error('[ConnectionRequest] Drive API error getting requester metadata folder:', error);
           return res.status(500).json({ 
             error: 'Failed to access Google Drive', 
             error_description: error.message || 'Drive API error'
