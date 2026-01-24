@@ -29,7 +29,7 @@ export class MessageEncryption {
     // Hash the key material with SHA-256
     const hashedMaterial = crypto.createHash('sha256').update(keyMaterial).digest();
     
-    // Derive key using PBKDF2 (1M iterations, SHA-512)
+    // Derive key using PBKDF2
     return crypto.pbkdf2Sync(
       hashedMaterial,
       salt,
