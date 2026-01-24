@@ -12528,7 +12528,7 @@ class ProductionServer {
                 let requesterConversationSheetId: string;
                 try {
                   // Try to get existing conversation sheet
-                  requesterConversationSheetId = await MessageSheetsService.createConversationSheet(
+                  requesterConversationSheetId = await MessageSheetsService.getConversationSheet(
                     otherAccessToken,
                     requesterMessagesFolderId,
                     userCredentials.identityId
