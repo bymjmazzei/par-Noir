@@ -41,7 +41,7 @@ export class ZKPDataPointsService {
   ): Promise<Record<string, ZKPDataPoint> | null> {
     try {
       const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
-      const spreadsheetId = await ZKPDataPointsSheetsService.getOrCreateZKPDataPointsSheet(
+      const spreadsheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(
         accessToken,
         metadataFolderId
       );
@@ -99,7 +99,7 @@ export class ZKPDataPointsService {
   ): Promise<ZKPDataPoint | null> {
     try {
       const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
-      const spreadsheetId = await ZKPDataPointsSheetsService.getOrCreateZKPDataPointsSheet(
+      const spreadsheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(
         accessToken,
         metadataFolderId
       );
@@ -288,7 +288,7 @@ export class ZKPDataPointsService {
   ): Promise<void> {
     try {
       const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
-      const spreadsheetId = await ZKPDataPointsSheetsService.getOrCreateZKPDataPointsSheet(
+      const spreadsheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(
         accessToken,
         metadataFolderId
       );

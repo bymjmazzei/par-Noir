@@ -200,7 +200,7 @@ export class PreferencesService {
           // Update "Current" sheet in preferences.xlsx with current preferences state
           try {
             const { PreferencesSheetsService } = await import('./preferencesSheetsService');
-            const spreadsheetId = await PreferencesSheetsService.getOrCreatePreferencesSheet(
+            const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
               accessToken,
               metadataFolderId
             );
@@ -268,7 +268,7 @@ export class PreferencesService {
       // Update "Current" sheet in preferences.xlsx with current preferences state
       try {
         const { PreferencesSheetsService } = await import('./preferencesSheetsService');
-        const spreadsheetId = await PreferencesSheetsService.getOrCreatePreferencesSheet(
+        const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
           accessToken,
           metadataFolderId
         );
@@ -309,7 +309,7 @@ export class PreferencesService {
   ): Promise<void> {
     try {
       const { PreferencesSheetsService } = await import('./preferencesSheetsService');
-      const spreadsheetId = await PreferencesSheetsService.getOrCreatePreferencesSheet(
+      const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
         accessToken,
         metadataFolderId
       );
@@ -442,7 +442,7 @@ export class PreferencesService {
     // Log tag preference interaction to sheet
     try {
       const { PreferencesSheetsService } = await import('./preferencesSheetsService');
-      const spreadsheetId = await PreferencesSheetsService.getOrCreatePreferencesSheet(
+      const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
         accessToken,
         metadataFolderId
       );
@@ -500,7 +500,7 @@ export class PreferencesService {
     if (existingTagPreference) {
       try {
         const { PreferencesSheetsService } = await import('./preferencesSheetsService');
-        const spreadsheetId = await PreferencesSheetsService.getOrCreatePreferencesSheet(
+        const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
           accessToken,
           metadataFolderId
         );

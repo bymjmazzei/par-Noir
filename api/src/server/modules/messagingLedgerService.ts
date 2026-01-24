@@ -29,7 +29,7 @@ export class MessagingLedgerService {
     try {
 
       // Get or create Sheets file
-      const spreadsheetId = await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(
+      const spreadsheetId = await MessagingLedgerSheetsService.getMessagingLedgerSheet(
         accessToken,
         metadataFolderId
       );
@@ -62,7 +62,7 @@ export class MessagingLedgerService {
   ): Promise<void> {
 
     // Get or create Sheets file
-    const spreadsheetId = await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(
+    const spreadsheetId = await MessagingLedgerSheetsService.getMessagingLedgerSheet(
       accessToken,
       metadataFolderId
     );
@@ -109,7 +109,7 @@ export class MessagingLedgerService {
     };
 
     // Get or create Sheets file
-    const spreadsheetId = await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(
+    const spreadsheetId = await MessagingLedgerSheetsService.getMessagingLedgerSheet(
       accessToken,
       metadataFolderId
     );
@@ -135,7 +135,7 @@ export class MessagingLedgerService {
   ): Promise<{ activities: MessagingActivityEntry[]; total: number }> {
 
     // Get or create Sheets file
-    const spreadsheetId = await MessagingLedgerSheetsService.getOrCreateMessagingLedgerSheet(
+    const spreadsheetId = await MessagingLedgerSheetsService.getMessagingLedgerSheet(
       accessToken,
       metadataFolderId
     );

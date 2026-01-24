@@ -58,7 +58,7 @@ export class NotificationService {
     metadataFolderId: string
   ): Promise<NotificationsFile | null> {
     try {
-      const spreadsheetId = await NotificationsSheetsService.getOrCreateNotificationsSheet(
+      const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
         accessToken,
         metadataFolderId
       );
@@ -91,7 +91,7 @@ export class NotificationService {
     identifier: string,
     notificationsData: NotificationsFile
   ): Promise<void> {
-    const spreadsheetId = await NotificationsSheetsService.getOrCreateNotificationsSheet(
+    const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
       accessToken,
       metadataFolderId
     );
@@ -123,7 +123,7 @@ export class NotificationService {
       const now = new Date().toISOString();
 
       // Get or create notifications sheet
-      const spreadsheetId = await NotificationsSheetsService.getOrCreateNotificationsSheet(
+      const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
         accessToken,
         metadataFolderId
       );
@@ -172,7 +172,7 @@ export class NotificationService {
   ): Promise<{ notifications: Notification[]; total: number }> {
     try {
       // Get or create notifications sheet
-      const spreadsheetId = await NotificationsSheetsService.getOrCreateNotificationsSheet(
+      const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
         accessToken,
         metadataFolderId
       );
@@ -209,7 +209,7 @@ export class NotificationService {
   ): Promise<boolean> {
     try {
       // Get or create notifications sheet
-      const spreadsheetId = await NotificationsSheetsService.getOrCreateNotificationsSheet(
+      const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
         accessToken,
         metadataFolderId
       );
@@ -239,7 +239,7 @@ export class NotificationService {
   ): Promise<number> {
     try {
       // Get or create notifications sheet
-      const spreadsheetId = await NotificationsSheetsService.getOrCreateNotificationsSheet(
+      const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
         accessToken,
         metadataFolderId
       );
@@ -295,7 +295,7 @@ export class NotificationService {
   ): Promise<number> {
     try {
       // Get or create notifications sheet
-      const spreadsheetId = await NotificationsSheetsService.getOrCreateNotificationsSheet(
+      const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
         accessToken,
         metadataFolderId
       );

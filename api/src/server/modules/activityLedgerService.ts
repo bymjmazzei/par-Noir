@@ -53,7 +53,7 @@ export class ActivityLedgerService {
       const now = new Date().toISOString();
 
       // Get or create activity ledger sheet
-      const spreadsheetId = await ActivityLedgerSheetsService.getOrCreateActivityLedgerSheet(
+      const spreadsheetId = await ActivityLedgerSheetsService.getActivityLedgerSheet(
         accessToken,
         metadataFolderId
       );
@@ -101,7 +101,7 @@ export class ActivityLedgerService {
   ): Promise<{ activities: ActivityEntry[]; total: number }> {
     try {
       // Get or create activity ledger sheet
-      const spreadsheetId = await ActivityLedgerSheetsService.getOrCreateActivityLedgerSheet(
+      const spreadsheetId = await ActivityLedgerSheetsService.getActivityLedgerSheet(
         accessToken,
         metadataFolderId
       );

@@ -68,7 +68,7 @@ export class ConnectionsService {
   ): Promise<{ status: 'not_connected' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked'; connectionId?: string }> {
     try {
       // Get or create connections sheet
-      const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+      const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
         user1AccessToken,
         user1MetadataFolder
       );
@@ -135,12 +135,12 @@ export class ConnectionsService {
       const now = new Date().toISOString();
 
       // Get or create connections sheets for both users
-      const requesterSheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+      const requesterSheetId = await ConnectionsSheetsService.getConnectionsSheet(
         requesterAccessToken,
         requesterMetadataFolder
       );
 
-      const recipientSheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+      const recipientSheetId = await ConnectionsSheetsService.getConnectionsSheet(
         recipientAccessToken,
         recipientMetadataFolder
       );
@@ -306,7 +306,7 @@ export class ConnectionsService {
   ): Promise<string> {
     try {
       // Get or create connections sheet
-      const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+      const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
         acceptorAccessToken,
         acceptorMetadataFolder
       );
@@ -493,7 +493,7 @@ export class ConnectionsService {
   ): Promise<void> {
     try {
       // Get or create connections sheet
-      const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+      const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
         otherUserAccessToken,
         otherUserMetadataFolder
       );
@@ -672,7 +672,7 @@ export class ConnectionsService {
   ): Promise<Connection[]> {
     try {
       // Get or create connections sheet
-      const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+      const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
         accessToken,
         metadataFolderId
       );
@@ -707,7 +707,7 @@ export class ConnectionsService {
   ): Promise<{ sent: Connection[]; received: Connection[] }> {
     try {
       // Get or create connections sheet
-      const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
+      const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
         accessToken,
         metadataFolderId
       );

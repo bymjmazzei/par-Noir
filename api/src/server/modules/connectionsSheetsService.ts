@@ -197,7 +197,7 @@ export class ConnectionsSheetsService {
     metadataFolderId: string
   ): Promise<{ identifier: string; updatedAt: string; connections: Connection[]; blocked: string[] } | null> {
     try {
-      const spreadsheetId = await this.getOrCreateConnectionsSheet(accessToken, metadataFolderId);
+      const spreadsheetId = await this.getConnectionsSheet(accessToken, metadataFolderId);
       const [connRes, blocked, meta] = await Promise.all([
         this.getConnections(accessToken, spreadsheetId, { limit: 999999, offset: 0 }),
         this.getBlocked(accessToken, spreadsheetId),
@@ -225,7 +225,7 @@ export class ConnectionsSheetsService {
     identifier: string,
     data: { identifier: string; updatedAt: string; connections: Connection[]; blocked: string[] }
   ): Promise<void> {
-    const spreadsheetId = await this.getOrCreateConnectionsSheet(accessToken, metadataFolderId);
+    const spreadsheetId = await this.getConnectionsSheet(accessToken, metadataFolderId);
     await this.setAllConnections(accessToken, spreadsheetId, data.connections);
     try {
       await this.setBlocked(accessToken, spreadsheetId, data.blocked);

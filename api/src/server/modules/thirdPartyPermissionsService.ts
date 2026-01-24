@@ -42,7 +42,7 @@ export class ThirdPartyPermissionsService {
   ): Promise<Record<string, ThirdPartyPermission> | null> {
     try {
       const { ThirdPartyPermissionsSheetsService } = await import('./thirdPartyPermissionsSheetsService');
-      const spreadsheetId = await ThirdPartyPermissionsSheetsService.getOrCreateThirdPartyPermissionsSheet(
+      const spreadsheetId = await ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(
         accessToken,
         metadataFolderId
       );
@@ -81,7 +81,7 @@ export class ThirdPartyPermissionsService {
   ): Promise<void> {
     try {
       const { ThirdPartyPermissionsSheetsService } = await import('./thirdPartyPermissionsSheetsService');
-      const spreadsheetId = await ThirdPartyPermissionsSheetsService.getOrCreateThirdPartyPermissionsSheet(
+      const spreadsheetId = await ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(
         accessToken,
         metadataFolderId
       );

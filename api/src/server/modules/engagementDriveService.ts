@@ -31,7 +31,7 @@ export class EngagementDriveService {
   ): Promise<UserEngagement | null> {
     try {
       // Get or create Sheets file
-      const spreadsheetId = await EngagementSheetsService.getOrCreateEngagementSheet(
+      const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
         accessToken,
         metadataFolderId
       );
@@ -71,7 +71,7 @@ export class EngagementDriveService {
   ): Promise<UserEngagement> {
 
     // Get or create Sheets file
-    const spreadsheetId = await EngagementSheetsService.getOrCreateEngagementSheet(
+    const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
       accessToken,
       metadataFolderId
     );
@@ -122,7 +122,7 @@ export class EngagementDriveService {
     metadataFolderId: string
   ): Promise<{ liked: boolean }> {
 
-    const spreadsheetId = await EngagementSheetsService.getOrCreateEngagementSheet(
+    const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
       accessToken,
       metadataFolderId
     );
@@ -161,7 +161,7 @@ export class EngagementDriveService {
     metadataFolderId: string
   ): Promise<{ disliked: boolean }> {
 
-    const spreadsheetId = await EngagementSheetsService.getOrCreateEngagementSheet(
+    const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
       accessToken,
       metadataFolderId
     );
@@ -194,7 +194,7 @@ export class EngagementDriveService {
     metadataFolderId: string
   ): Promise<boolean> {
 
-    const spreadsheetId = await EngagementSheetsService.getOrCreateEngagementSheet(
+    const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
       accessToken,
       metadataFolderId
     );
@@ -212,7 +212,7 @@ export class EngagementDriveService {
     metadataFolderId: string
   ): Promise<boolean> {
 
-    const spreadsheetId = await EngagementSheetsService.getOrCreateEngagementSheet(
+    const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
       accessToken,
       metadataFolderId
     );
@@ -232,7 +232,7 @@ export class EngagementDriveService {
     metadataFolderId: string
   ): Promise<UserComment> {
 
-    const spreadsheetId = await EngagementSheetsService.getOrCreateEngagementSheet(
+    const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
       accessToken,
       metadataFolderId
     );
