@@ -10470,14 +10470,24 @@ class ProductionServer {
         }
 
         console.log('[GetThread] Found connection, checking shared secret');
-        // Get shared secret from connection - it should exist if connection was properly accepted
-        const sharedSecret = connection.sharedSecret;
+        // Get shared secret from connection - generate if missing (for backwards compatibility)
+        let sharedSecret = connection.sharedSecret;
         if (!sharedSecret) {
-          console.error('[GetThread] Shared secret missing from connection');
-          return res.status(500).json({
-            error: 'Shared secret not found. Please reconnect with this user.',
-            error_description: 'Connection exists but shared secret is missing. The connection may not have been properly accepted. Please disconnect and reconnect.'
-          });
+          console.log(`[GetThread] Connection ${connectionStatus.connectionId} missing shared secret, generating one`);
+          const crypto = await import('crypto');
+          const rawSecret = crypto.randomBytes(32).toString('base64');
+          sharedSecret = MetadataEncryption.encryptField(rawSecret);
+          
+          // Update connection with shared secret
+          await ConnectionsSheetsService.updateConnectionStatus(
+            userAccessToken,
+            spreadsheetId,
+            connectionStatus.connectionId,
+            connection.status,
+            connection.acceptedAt,
+            sharedSecret
+          );
+          console.log(`[GetThread] Generated and stored shared secret for connection ${connectionStatus.connectionId}`);
         }
 
         console.log('[GetThread] Decrypting shared secret');

@@ -468,22 +468,44 @@ export class ConnectionsSheetsService {
       throw new Error('Connection not found');
     }
 
-    // Update status, acceptedAt, and optionally sharedSecret (rowIndex + 2 because of header and 0-based index)
-    const updateRange = sharedSecret !== undefined 
-      ? `Connections!C${rowIndex + 2}:F${rowIndex + 2}`
-      : `Connections!C${rowIndex + 2}:E${rowIndex + 2}`;
-    const updateValues = sharedSecret !== undefined
-      ? [[status, acceptedAt || '', sharedSecret]]
-      : [[status, acceptedAt || '']];
-
+    // Update status (C), acceptedAt (E), and optionally sharedSecret (F)
+    // NOTE: Column D is Created At and should NEVER be overwritten
+    // Columns: A=ConnectionID, B=UserDID, C=Status, D=CreatedAt, E=AcceptedAt, F=SharedSecret
+    const actualRow = rowIndex + 2; // +2 because of header and 0-based index
+    
+    // Update status (column C)
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: updateRange,
+      range: `Connections!C${actualRow}`,
       valueInputOption: 'RAW',
       requestBody: {
-        values: updateValues
+        values: [[status]]
       }
     });
+    
+    // Update acceptedAt (column E) if provided
+    if (acceptedAt) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `Connections!E${actualRow}`,
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [[acceptedAt]]
+        }
+      });
+    }
+    
+    // Update sharedSecret (column F) if provided
+    if (sharedSecret !== undefined) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `Connections!F${actualRow}`,
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [[sharedSecret]]
+        }
+      });
+    }
   }
 
   /**
