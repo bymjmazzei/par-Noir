@@ -327,55 +327,59 @@ export class MessageSheetsService {
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
 
-    // Get all messages (skip header row)
+    const limit = options?.limit || 50;
+    const offset = options?.offset || 0;
+
+    // First, get total count (cheap - only reads column A)
+    const countResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Messages!A2:A'
+    });
+    
+    const total = (countResponse.data.values || []).length;
+    
+    if (total === 0) {
+      return { messages: [], total: 0 };
+    }
+
+    // Calculate which rows to fetch for pagination (sorted by newest first)
+    // Messages are stored oldest->newest, so reverse the range
+    const startRow = Math.max(2, total + 2 - offset - limit); // +2 for header offset
+    const endRow = Math.max(2, total + 2 - offset);
+    
+    // Only fetch the rows we need
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Messages!A2:F'
+      range: `Messages!A${startRow}:F${endRow}`
     });
 
     const rows = response.data.values || [];
-    const total = rows.length;
 
-    // Parse and decrypt messages
+    // Parse and decrypt messages (only the fetched ones)
     const { MessageEncryption } = await import('../utils/messageEncryption');
     const messages: Message[] = rows.map((row, index) => {
       const encryptedContent = row[1] || '';
       let decryptedContent = '';
       
-      // Check if content is encrypted or plain text
       const isEncrypted = MessageEncryption.isEncrypted(encryptedContent);
-      const fromDid = row[0] || '';
       
       if (isEncrypted && sharedSecret && sharedSecret !== '') {
         try {
-          // Decrypt message content
           decryptedContent = MessageEncryption.decryptMessage(
             encryptedContent,
             connectionId,
             sharedSecret
           );
         } catch (decryptError: any) {
-          // Log detailed error for debugging
           console.error(`[MessageSheetsService] Failed to decrypt message ${row[3] || index}:`, {
             error: decryptError?.message || 'Unknown error',
             connectionId,
-            hasSharedSecret: !!sharedSecret,
-            encryptedContentLength: encryptedContent.length,
-            encryptedContentPreview: encryptedContent.substring(0, 50),
-            messageId: row[3] || index,
-            fromDid: row[0] || ''
+            messageId: row[3] || index
           });
-          // If decryption fails, this message was likely encrypted with a different connectionId/sharedSecret
-          // (e.g., from before reconnection). Skip it rather than showing an error message.
-          // Return null to filter it out, or show a generic message
           decryptedContent = '[Message from previous connection - cannot decrypt]';
         }
       } else {
-        // Plain text message (system messages or old messages without encryption)
-        // Only treat as plain text if it doesn't look like encrypted JSON
         if (MessageEncryption.isEncrypted(encryptedContent)) {
-          // This is encrypted but we don't have a shared secret
-          console.warn(`[MessageSheetsService] Encrypted message found but no shared secret available for message ${row[3] || index}`);
           decryptedContent = '[Message requires connection to decrypt. Please reconnect with this user.]';
         } else {
           decryptedContent = encryptedContent;
@@ -385,7 +389,7 @@ export class MessageSheetsService {
       return {
         messageId: row[3] || `msg-${index}`,
         fromDid: row[0] || '',
-        toDid: '', // Will be set by caller based on conversation
+        toDid: '',
         content: decryptedContent,
         timestamp: row[2] || new Date().toISOString(),
         read: row[4] === 'true',
@@ -393,18 +397,10 @@ export class MessageSheetsService {
       };
     });
 
-    // Sort by timestamp descending (most recent first)
-    messages.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    // Reverse to show newest first
+    messages.reverse();
 
-    // Apply pagination
-    const limit = options?.limit || 50;
-    const offset = options?.offset || 0;
-    const paginatedMessages = messages.slice(offset, offset + limit);
-
-    return {
-      messages: paginatedMessages,
-      total
-    };
+    return { messages, total };
   }
 
   /**

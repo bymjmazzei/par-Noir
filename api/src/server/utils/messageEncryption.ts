@@ -15,9 +15,9 @@ interface EncryptedMessagePayload {
 
 export class MessageEncryption {
   private static readonly algorithm = 'aes-256-gcm';
-  private static readonly pbkdf2Iterations = 1000000; // 1M iterations (military-grade)
+  private static readonly pbkdf2Iterations = 100000; // 100k iterations (optimized for strong random secrets)
   private static readonly pbkdf2KeyLength = 32; // 256 bits for AES-256
-  private static readonly pbkdf2Digest = 'sha512'; // SHA-512 (military-grade)
+  private static readonly pbkdf2Digest = 'sha512'; // SHA-512
 
   /**
    * Derive encryption key from connectionId and shared secret

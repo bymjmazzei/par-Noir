@@ -10445,22 +10445,14 @@ class ProductionServer {
         );
         console.log('[GetThread] Connections sheet ID:', spreadsheetId);
         
-        console.log('[GetThread] Fetching all connections');
-        // Get all connections to find the one with the matching connectionId
-        const connectionsResult = await ConnectionsSheetsService.getConnections(
+        console.log('[GetThread] Looking up connection by ID');
+        // Get specific connection by connectionId (optimized)
+        const connection = await ConnectionsSheetsService.getConnectionById(
           userAccessToken,
           spreadsheetId,
-          {
-            limit: 10000, // Large limit to get all connections
-            offset: 0
-            // No status filter - get all connections
-          }
+          connectionStatus.connectionId
         );
-        console.log('[GetThread] Found', connectionsResult.connections.length, 'connections');
         
-        const connection = connectionsResult.connections.find(
-          c => c.connectionId === connectionStatus.connectionId
-        );
         if (!connection) {
           console.error('[GetThread] Connection not found in sheet, connectionId:', connectionStatus.connectionId);
           return res.status(500).json({
@@ -10468,6 +10460,7 @@ class ProductionServer {
             error_description: `Connection ${connectionStatus.connectionId} not found in connections sheet`
           });
         }
+        console.log('[GetThread] Found connection');
 
         console.log('[GetThread] Found connection, checking shared secret');
         // Get shared secret from connection - generate if missing (for backwards compatibility)
@@ -10719,20 +10712,13 @@ class ProductionServer {
           senderMetadataFolderId
         );
         
-        // Get all connections to find the one with the matching connectionId
-        const senderConnectionsResult = await ConnectionsSheetsService.getConnections(
+        // Get specific connection by connectionId (optimized)
+        const connection = await ConnectionsSheetsService.getConnectionById(
           senderAccessToken,
           senderSpreadsheetId,
-          {
-            limit: 10000, // Large limit to get all connections
-            offset: 0
-            // No status filter - get all connections
-          }
+          connectionStatus.connectionId
         );
         
-        const connection = senderConnectionsResult.connections.find(
-          c => c.connectionId === connectionStatus.connectionId
-        );
         if (!connection) {
           return res.status(500).json({
             error: 'Connection not found',

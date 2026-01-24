@@ -441,6 +441,42 @@ export class ConnectionsSheetsService {
   }
 
   /**
+   * Get single connection by connectionId (optimized lookup)
+   * Returns null if not found
+   */
+  static async getConnectionById(
+    accessToken: string,
+    spreadsheetId: string,
+    connectionId: string
+  ): Promise<Connection | null> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    // Get all connections (must read entire range to find by connectionId)
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Connections!A2:F'
+    });
+
+    const rows = response.data.values || [];
+    const row = rows.find(r => r[0] === connectionId);
+    
+    if (!row) {
+      return null;
+    }
+
+    return {
+      connectionId: row[0] || '',
+      userDid: row[1] || '',
+      status: (row[2] || 'pending_sent') as Connection['status'],
+      createdAt: row[3] || new Date().toISOString(),
+      acceptedAt: row[4] || undefined,
+      sharedSecret: row[5] || undefined
+    };
+  }
+
+  /**
    * Update connection status in connections sheet
    */
   static async updateConnectionStatus(
