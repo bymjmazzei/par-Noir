@@ -11802,9 +11802,9 @@ class ProductionServer {
         // Get or create requester's metadata folder
         let requesterMetadataFolderId: string;
         try {
-          // Create refresh function for retry on 401
+          // Create refresh function for retry on 401 - force refresh
           const refreshTokenFn = async () => {
-            return await googleDriveProxyService.getAccessToken(requesterCredentials.identityId, requesterAccountId, [requesterCredentials.identityId]);
+            return await googleDriveProxyService.forceRefreshAccessToken(requesterCredentials.identityId, requesterAccountId, [requesterCredentials.identityId]);
           };
           
           // Use normalized requesterPnIdentifier (not requesterDid which might be a DID)
