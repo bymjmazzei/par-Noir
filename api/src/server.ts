@@ -10328,12 +10328,8 @@ class ProductionServer {
           pnFolder.id
         );
 
-        // Get user's metadata folder for connection lookup
-        const metadataFolder = await this.getMetadataFolder(userAccessToken, pnIdentifier);
-        if (!metadataFolder) {
-          return res.status(500).json({ error: 'Failed to access metadata folder' });
-        }
-        const metadataFolderId = metadataFolder.metadataFolderId;
+        // Get user's metadata folder for connection lookup (create if needed)
+        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
 
         // Look up connection to get shared secret
         const { ConnectionsService } = await import('./server/modules/connectionsService');
