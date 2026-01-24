@@ -34,6 +34,13 @@ export type ActivityType =
 
 export class ActivityLedgerService {
   /**
+   * Normalize identifier to pn-identifier format
+   */
+  private static normalizeToPnIdentifier(did: string): string {
+    return did.startsWith('pn-') ? did : `pn-${did}`;
+  }
+
+  /**
    * Record an activity
    */
   static async recordActivity(
@@ -48,6 +55,14 @@ export class ActivityLedgerService {
       metadata?: any;
     }
   ): Promise<ActivityEntry> {
+    // Normalize all DIDs to pn-identifiers
+    const normalizedUserDid = this.normalizeToPnIdentifier(userDid);
+    const normalizedActorDid = options?.actorDid ? this.normalizeToPnIdentifier(options.actorDid) : undefined;
+    // Normalize targetId only if targetType is 'user' (not for feeds or other types)
+    const normalizedTargetId = options?.targetId && options?.targetType === 'user' 
+      ? this.normalizeToPnIdentifier(options.targetId)
+      : options?.targetId;
+
     try {
       const activityId = crypto.randomUUID();
       const now = new Date().toISOString();
@@ -61,11 +76,11 @@ export class ActivityLedgerService {
       // Create activity entry
       const activity: SheetsActivityEntry = {
         activity_id: activityId,
-        user_did: userDid,
+        user_did: normalizedUserDid,
         activity_type: activityType,
         target_type: options?.targetType || undefined,
-        target_id: options?.targetId || undefined,
-        actor_did: options?.actorDid || undefined,
+        target_id: normalizedTargetId,
+        actor_did: normalizedActorDid,
         metadata: options?.metadata || {},
         created_at: now
       };

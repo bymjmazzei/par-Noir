@@ -51,6 +51,13 @@ export interface NotificationsFile {
 
 export class NotificationService {
   /**
+   * Normalize identifier to pn-identifier format
+   */
+  private static normalizeToPnIdentifier(did: string): string {
+    return did.startsWith('pn-') ? did : `pn-${did}`;
+  }
+
+  /**
    * Get notifications file from user's Google Drive (Sheets).
    */
   static async getNotificationsFile(
@@ -70,8 +77,11 @@ export class NotificationService {
       const metadata = await NotificationsSheetsService.getMetadata(accessToken, spreadsheetId);
       const updatedAt = metadata?.updatedAt ?? (notifications[0]?.created_at ?? new Date().toISOString());
       const preferences = metadata?.preferences as NotificationPreferences | undefined;
+      // Normalize identifier when reading (handles legacy data)
+      const identifier = metadata?.identifier ?? '';
+      const normalizedIdentifier = identifier.startsWith('pn-') ? identifier : (identifier ? `pn-${identifier}` : '');
       return {
-        identifier: metadata?.identifier ?? '',
+        identifier: normalizedIdentifier,
         updatedAt,
         notifications,
         ...(preferences && { preferences })
@@ -91,6 +101,8 @@ export class NotificationService {
     identifier: string,
     notificationsData: NotificationsFile
   ): Promise<void> {
+    // Normalize identifier before writing
+    const normalizedIdentifier = this.normalizeToPnIdentifier(identifier);
     const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
       accessToken,
       metadataFolderId
@@ -105,7 +117,7 @@ export class NotificationService {
       spreadsheetId,
       notificationsData.updatedAt,
       (notificationsData.preferences ?? null) as Record<string, unknown> | null,
-      identifier
+      normalizedIdentifier
     );
   }
 
@@ -118,6 +130,21 @@ export class NotificationService {
     userDid: string,
     notification: Omit<Notification, 'notification_id' | 'created_at' | 'read'>
   ): Promise<Notification> {
+    // Normalize userDid and all DIDs in notification data
+    const normalizedUserDid = this.normalizeToPnIdentifier(userDid);
+    const normalizedData = notification.data ? { ...notification.data } : {};
+    
+    // Normalize user_did, from_did, to_did in data if present
+    if (normalizedData.user_did) {
+      normalizedData.user_did = this.normalizeToPnIdentifier(normalizedData.user_did);
+    }
+    if (normalizedData.from_did) {
+      normalizedData.from_did = this.normalizeToPnIdentifier(normalizedData.from_did);
+    }
+    if (normalizedData.to_did) {
+      normalizedData.to_did = this.normalizeToPnIdentifier(normalizedData.to_did);
+    }
+
     try {
       const notificationId = crypto.randomUUID();
       const now = new Date().toISOString();
@@ -131,11 +158,11 @@ export class NotificationService {
       // Create notification entry
       const newNotification: SheetsNotification = {
         notification_id: notificationId,
-        user_did: userDid,
+        user_did: normalizedUserDid,
         type: notification.type,
         title: notification.title,
         message: notification.message,
-        data: notification.data || {},
+        data: normalizedData,
         read: false,
         created_at: now
       };
@@ -532,19 +559,23 @@ export class NotificationService {
     requesterDid: string,
     recipientDid: string
   ): Promise<void> {
+    // Normalize DIDs to pn-identifiers
+    const normalizedRequesterDid = this.normalizeToPnIdentifier(requesterDid);
+    const normalizedRecipientDid = this.normalizeToPnIdentifier(recipientDid);
+    
     // Always create notification - preferences only control alerting/display, not storage
     await this.createNotification(
       accessToken,
       metadataFolderId,
-      recipientDid,
+      normalizedRecipientDid,
       {
-        user_did: recipientDid,
+        user_did: normalizedRecipientDid,
         type: 'connection_request',
         title: 'New connection request',
         message: 'Someone wants to connect with you',
         data: {
           connection_id: connectionId,
-          user_did: requesterDid
+          user_did: normalizedRequesterDid
         }
       }
     );
@@ -560,19 +591,23 @@ export class NotificationService {
     acceptorDid: string,
     requesterDid: string
   ): Promise<void> {
+    // Normalize DIDs to pn-identifiers
+    const normalizedAcceptorDid = this.normalizeToPnIdentifier(acceptorDid);
+    const normalizedRequesterDid = this.normalizeToPnIdentifier(requesterDid);
+    
     // Always create notification - preferences only control alerting/display, not storage
     await this.createNotification(
       accessToken,
       metadataFolderId,
-      requesterDid,
+      normalizedRequesterDid,
       {
-        user_did: requesterDid,
+        user_did: normalizedRequesterDid,
         type: 'connection_accepted',
         title: 'Connection accepted',
         message: 'Your connection request was accepted',
         data: {
           connection_id: connectionId,
-          user_did: acceptorDid
+          user_did: normalizedAcceptorDid
         }
       }
     );
@@ -622,18 +657,22 @@ export class NotificationService {
     toDid: string,
     threadId?: string
   ): Promise<void> {
+    // Normalize DIDs to pn-identifiers
+    const normalizedFromDid = this.normalizeToPnIdentifier(fromDid);
+    const normalizedToDid = this.normalizeToPnIdentifier(toDid);
+    
     await this.createNotification(
       accessToken,
       metadataFolderId,
-      toDid,
+      normalizedToDid,
       {
-        user_did: toDid,
+        user_did: normalizedToDid,
         type: 'new_message',
         title: 'New message',
         message: 'You have a new message',
         data: {
           message_id: messageId,
-          from_did: fromDid,
+          from_did: normalizedFromDid,
           thread_id: threadId
         }
       }

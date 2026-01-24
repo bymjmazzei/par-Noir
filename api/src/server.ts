@@ -10299,12 +10299,15 @@ class ProductionServer {
         const allMessages: any[] = [];
         for (const conversation of conversations) {
           try {
-            // Look up connection to get shared secret
+            // Normalize otherUserDid (getConversations already normalizes, but normalize again to be safe)
+            const normalizedOtherUserDid = conversation.otherUserDid.startsWith('pn-') ? conversation.otherUserDid : `pn-${conversation.otherUserDid}`;
+            
+            // Look up connection to get shared secret (use normalized)
             const connectionStatus = await ConnectionsService.getConnectionStatus(
               userAccessToken,
               metadataFolderId,
               pnIdentifier,
-              conversation.otherUserDid
+              normalizedOtherUserDid
             );
 
             if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
@@ -10344,7 +10347,7 @@ class ProductionServer {
             const conversationSheetId = await MessageSheetsService.getConversationSheet(
               userAccessToken,
               messagesFolderId,
-              conversation.otherUserDid
+              normalizedOtherUserDid
             );
             const result = await MessageSheetsService.getMessages(
               userAccessToken,
@@ -10355,7 +10358,7 @@ class ProductionServer {
             );
             if (result.messages.length > 0) {
               const msg = result.messages[0];
-              msg.toDid = conversation.otherUserDid;
+              msg.toDid = normalizedOtherUserDid;
               allMessages.push(msg);
             }
           } catch (error) {
@@ -10540,12 +10543,12 @@ class ProductionServer {
         }
         console.log('[GetThread] Successfully decrypted shared secret');
 
-        // Get or create conversation sheet (use original participantDid for sheet name, not normalized)
+        // Get or create conversation sheet (use normalized participantDid)
         console.log('[GetThread] Getting conversation sheet');
         const conversationSheetId = await MessageSheetsService.getConversationSheet(
           userAccessToken,
           messagesFolderId,
-          participantDid
+          normalizedParticipantDid
         );
 
         // Get messages from conversation sheet (with decryption)
@@ -10558,9 +10561,9 @@ class ProductionServer {
           { limit, offset }
         );
 
-        // Set toDid for all messages
+        // Set toDid for all messages (use normalized)
         result.messages.forEach(msg => {
-          msg.toDid = participantDid;
+          msg.toDid = normalizedParticipantDid;
         });
 
         console.log('[GetThread] Returning', result.messages.length, 'messages');
@@ -10587,7 +10590,12 @@ class ProductionServer {
         if (!fromDid || !toDid || !content) {
           return res.status(400).json({ error: 'fromDid, toDid, and content are required' });
         }
-        console.log('[SendMessage] Request validated, starting message processing', { fromDid, toDid, messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` });
+        
+        // Normalize DIDs to pn-identifiers at the start
+        const normalizedFromDid = fromDid.startsWith('pn-') ? fromDid : `pn-${fromDid}`;
+        const normalizedToDid = toDid.startsWith('pn-') ? toDid : `pn-${toDid}`;
+        
+        console.log('[SendMessage] Request validated, starting message processing', { fromDid: normalizedFromDid, toDid: normalizedToDid, messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` });
 
         // Import services at the top
         const { ConnectionsService } = await import('./server/modules/connectionsService');
@@ -10598,8 +10606,8 @@ class ProductionServer {
         if (!isConnectionRequest) {
           try {
             
-            // Get sender's credentials and metadata folder
-            const senderCredentials = await storageCredentialsService.getCredentials(fromDid);
+            // Get sender's credentials and metadata folder (use normalized)
+            const senderCredentials = await storageCredentialsService.getCredentials(normalizedFromDid);
             if (!senderCredentials?.credentials) {
               return res.status(403).json({ error: 'Only connections can message each other' });
             }
@@ -10613,7 +10621,7 @@ class ProductionServer {
 
             const account = googleDriveAccounts[0];
             const accountId = this.extractAccountId(account);
-            const senderAccessToken = await googleDriveProxyService.getAccessToken(fromDid, accountId, [fromDid]);
+            const senderAccessToken = await googleDriveProxyService.getAccessToken(normalizedFromDid, accountId, [normalizedFromDid]);
             
             // Find metadata folder
             const folderSearchQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -10627,12 +10635,12 @@ class ProductionServer {
               if (folderData.files && folderData.files.length > 0) {
                 const metadataFolderId = folderData.files[0].id;
                 
-                // Check if connected
+                // Check if connected (use normalized DIDs)
                 const areConnected = await ConnectionsService.areConnected(
                   senderAccessToken,
                   metadataFolderId,
-                  fromDid,
-                  toDid
+                  normalizedFromDid,
+                  normalizedToDid
                 );
 
                 if (!areConnected) {
@@ -10657,11 +10665,10 @@ class ProductionServer {
         
         const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const timestamp = new Date().toISOString();
-        const threadId = [fromDid, toDid].sort().join('_');
+        const threadId = [normalizedFromDid, normalizedToDid].sort().join('_');
 
-        // Get sender's credentials
-        const senderPnIdentifier = fromDid.startsWith('pn-') ? fromDid : `pn-${fromDid}`;
-        const senderCredentials = await storageCredentialsService.getCredentials(senderPnIdentifier);
+        // Get sender's credentials (use normalized)
+        const senderCredentials = await storageCredentialsService.getCredentials(normalizedFromDid);
         if (!senderCredentials?.credentials) {
           return res.status(404).json({ error: 'Sender credentials not found' });
         }
@@ -10680,7 +10687,7 @@ class ProductionServer {
         // Get sender's metadata folder with proper error handling
         let senderMetadataFolderId: string;
         try {
-          const senderMetadataFolder = await this.getMetadataFolder(senderAccessToken, senderPnIdentifier);
+          const senderMetadataFolder = await this.getMetadataFolder(senderAccessToken, normalizedFromDid);
           if (!senderMetadataFolder) {
             return this.driveNotInitialized(res);
           }
@@ -10701,7 +10708,7 @@ class ProductionServer {
         }
 
         // Find sender's pN folder
-        const pnFolderName = `par Noir - ${senderPnIdentifier}`;
+        const pnFolderName = `par Noir - ${normalizedFromDid}`;
         const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
         const foldersResponse = await fetch(
           `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
@@ -10724,22 +10731,19 @@ class ProductionServer {
           senderPnFolder.id
         );
 
-        // Get or create conversation sheet for sender
+        // Get or create conversation sheet for sender (use normalized)
         const senderConversationSheetId = await MessageSheetsService.getConversationSheet(
           senderAccessToken,
           senderMessagesFolderId,
-          toDid
+          normalizedToDid
         );
 
-        // Look up connection to get shared secret
+        // Look up connection to get shared secret (use normalized DIDs)
         const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
-        
-        // Normalize DIDs for connection lookup (connections are stored by normalized DID)
-        const normalizedToDid = toDid.startsWith('pn-') ? toDid : `pn-${toDid}`;
         const connectionStatus = await ConnectionsService.getConnectionStatus(
           senderAccessToken,
           senderMetadataFolderId,
-          senderPnIdentifier,
+          normalizedFromDid,
           normalizedToDid
         );
 
@@ -10815,11 +10819,11 @@ class ProductionServer {
 
         console.log(`[SendMessage] Using connectionId: ${connectionStatus.connectionId}, hasSharedSecret: ${!!decryptedSharedSecret}`);
 
-        // Create message object
+        // Create message object (use normalized DIDs)
         const message: any = {
           messageId,
-          fromDid,
-          toDid,
+          fromDid: normalizedFromDid,
+          toDid: normalizedToDid,
           content,
           timestamp,
           read: false,
@@ -10837,38 +10841,37 @@ class ProductionServer {
         );
         console.log('[SendMessage] Message appended to sender\'s sheet successfully');
 
-        // Record activity for sender FIRST
+        // Record activity for sender FIRST (use normalized DIDs)
         await ActivityLedgerService.recordActivity(
           senderAccessToken,
           senderMetadataFolderId,
-          senderCredentials.identityId,
+          normalizedFromDid, // Use normalized pn-identifier
           'message_sent',
           {
             targetType: 'message',
             targetId: messageId,
-            actorDid: fromDid,
-            metadata: { toDid, threadId, content: content.substring(0, 100) }
+            actorDid: normalizedFromDid,
+            metadata: { toDid: normalizedToDid, threadId, content: content.substring(0, 100) }
           }
         );
 
-        // Record messaging activity for sender
+        // Record messaging activity for sender (use normalized DIDs)
         await MessagingLedgerService.recordMessagingActivity(
           senderAccessToken,
           senderMetadataFolderId,
-          senderCredentials.identityId,
+          normalizedFromDid, // Use normalized pn-identifier
           'message_sent',
           {
-            fromDid,
-            toDid,
+            fromDid: normalizedFromDid,
+            toDid: normalizedToDid,
             messageId,
             threadId,
             metadata: { content: content.substring(0, 100), mediaFileId }
           }
         );
 
-        // Get recipient's credentials
-        const recipientPnIdentifier = toDid.startsWith('pn-') ? toDid : `pn-${toDid}`;
-        const recipientCredentials = await storageCredentialsService.getCredentials(recipientPnIdentifier);
+        // Get recipient's credentials (use normalized)
+        const recipientCredentials = await storageCredentialsService.getCredentials(normalizedToDid);
         if (!recipientCredentials?.credentials) {
           return res.status(404).json({ error: 'Recipient credentials not found' });
         }
@@ -10887,7 +10890,7 @@ class ProductionServer {
         // Get recipient's metadata folder with proper error handling
         let recipientMetadataFolderId: string;
         try {
-          const recipientMetadataFolder = await this.getMetadataFolder(recipientAccessToken, recipientPnIdentifier);
+          const recipientMetadataFolder = await this.getMetadataFolder(recipientAccessToken, normalizedToDid);
           if (!recipientMetadataFolder) {
             return this.driveNotInitialized(res);
           }
@@ -10908,7 +10911,7 @@ class ProductionServer {
         }
 
         // Find recipient's pN folder
-        const recipientPnFolderName = `par Noir - ${recipientPnIdentifier}`;
+        const recipientPnFolderName = `par Noir - ${normalizedToDid}`;
         const recipientFolderQuery = `name='${recipientPnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
         const recipientFoldersResponse = await fetch(
           `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(recipientFolderQuery)}&fields=files(id,name)`,
@@ -10934,12 +10937,12 @@ class ProductionServer {
         );
         console.log('[SendMessage] Recipient messages folder ready', { recipientMessagesFolderId });
 
-        // Get or create conversation sheet for recipient
-        console.log('[SendMessage] Getting or creating recipient conversation sheet', { fromDid, recipientMessagesFolderId });
+        // Get or create conversation sheet for recipient (use normalized)
+        console.log('[SendMessage] Getting or creating recipient conversation sheet', { fromDid: normalizedFromDid, recipientMessagesFolderId });
         const recipientConversationSheetId = await MessageSheetsService.getConversationSheet(
           recipientAccessToken,
           recipientMessagesFolderId,
-          fromDid
+          normalizedFromDid
         );
         console.log('[SendMessage] Recipient conversation sheet ready', { recipientConversationSheetId });
 
@@ -11028,43 +11031,43 @@ class ProductionServer {
         );
         console.log('[SendMessage] Message appended to recipient\'s sheet successfully');
 
-        // Record activity for recipient FIRST
+        // Record activity for recipient FIRST (use normalized DIDs)
         await ActivityLedgerService.recordActivity(
           recipientAccessToken,
           recipientMetadataFolderId,
-          recipientCredentials.identityId,
+          normalizedToDid, // Use normalized pn-identifier
           'message_received',
           {
             targetType: 'message',
             targetId: messageId,
-            actorDid: fromDid,
-            metadata: { fromDid, threadId, content: content.substring(0, 100) }
+            actorDid: normalizedFromDid,
+            metadata: { fromDid: normalizedFromDid, threadId, content: content.substring(0, 100) }
           }
         );
 
-        // Record messaging activity for recipient
+        // Record messaging activity for recipient (use normalized DIDs)
         await MessagingLedgerService.recordMessagingActivity(
           recipientAccessToken,
           recipientMetadataFolderId,
-          recipientCredentials.identityId,
+          normalizedToDid, // Use normalized pn-identifier
           'message_received',
           {
-            fromDid,
-            toDid,
+            fromDid: normalizedFromDid,
+            toDid: normalizedToDid,
             messageId,
             threadId,
             metadata: { content: content.substring(0, 100), mediaFileId }
           }
         );
 
-        // Send notification to recipient (check preferences)
+        // Send notification to recipient (check preferences) (use normalized DIDs)
         try {
           await NotificationService.notifyNewMessage(
             recipientAccessToken,
             recipientMetadataFolderId,
             messageId,
-            fromDid,
-            recipientCredentials.identityId,
+            normalizedFromDid,
+            normalizedToDid,
             threadId
           );
         } catch (notificationError: any) {
@@ -11076,8 +11079,8 @@ class ProductionServer {
           success: true,
           message: {
             messageId,
-            fromDid,
-            toDid,
+            fromDid: normalizedFromDid,
+            toDid: normalizedToDid,
             content,
             mediaFileId,
             timestamp,
@@ -11210,10 +11213,13 @@ class ProductionServer {
           return res.status(400).json({ error: 'participantDid is required to mark message as read' });
         }
 
+        // Normalize participantDid
+        const normalizedParticipantDid = participantDid.startsWith('pn-') ? participantDid : `pn-${participantDid}`;
+
         const conversationSheetId = await MessageSheetsService.getConversationSheet(
           userAccessToken,
           messagesFolderId,
-          participantDid
+          normalizedParticipantDid
         );
 
         // Mark message as read
@@ -11326,11 +11332,14 @@ class ProductionServer {
           pnFolder.id
         );
 
-        // Delete conversation sheet
+        // Normalize participantDid
+        const normalizedParticipantDid = participantDid.startsWith('pn-') ? participantDid : `pn-${participantDid}`;
+
+        // Delete conversation sheet (use normalized)
         await MessageSheetsService.deleteConversation(
           userAccessToken,
           messagesFolderId,
-          participantDid
+          normalizedParticipantDid
         );
 
         // Get connection ID to remove from connections sheet
@@ -11339,9 +11348,11 @@ class ProductionServer {
         try {
           const connectionsFile = await ConnectionsService.getConnectionsFile(userAccessToken, metadataFolderId);
           if (connectionsFile) {
-            const connection = connectionsFile.connections.find(c => 
-              c.userDid === participantDid || c.userDid === (participantDid.startsWith('pn-') ? participantDid : `pn-${participantDid}`)
-            );
+            // Normalize when searching (handles legacy data)
+            const connection = connectionsFile.connections.find(c => {
+              const normalizedCUserDid = c.userDid.startsWith('pn-') ? c.userDid : `pn-${c.userDid}`;
+              return normalizedCUserDid === normalizedParticipantDid;
+            });
             
             if (connection) {
               connectionId = connection.connectionId;
@@ -11375,8 +11386,8 @@ class ProductionServer {
         // Also remove connection from other user's connections sheet
         if (connectionId) {
           try {
-            const participantPnIdentifier = participantDid.startsWith('pn-') ? participantDid : `pn-${participantDid}`;
-            const participantCredentials = await storageCredentialsService.getCredentials(participantPnIdentifier);
+            // Use normalized participantDid
+            const participantCredentials = await storageCredentialsService.getCredentials(normalizedParticipantDid);
             
             if (participantCredentials?.credentials) {
               const participantGoogleDriveAccounts = participantCredentials.credentials.googleDriveAccounts || 
@@ -11388,7 +11399,7 @@ class ProductionServer {
                 const participantAccessToken = await googleDriveProxyService.getAccessToken(participantCredentials.identityId, participantAccountId, [participantCredentials.identityId]);
                 
                 try {
-                  const participantMetadataFolder = await this.getMetadataFolder(participantAccessToken, participantPnIdentifier);
+                  const participantMetadataFolder = await this.getMetadataFolder(participantAccessToken, normalizedParticipantDid);
                   if (participantMetadataFolder) {
                     const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
                     const participantSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
@@ -11492,11 +11503,11 @@ class ProductionServer {
 
         const metadataFolderId = folderData.files[0].id;
 
-        // Update profile image
+        // Update profile image (use normalized pnIdentifier)
         await ProfileService.updateProfileImage(
           userAccessToken,
           metadataFolderId,
-          userDid,
+          pnIdentifier,
           fileId
         );
 
@@ -11570,7 +11581,7 @@ class ProductionServer {
         await ProfileService.updateDisplayName(
           userAccessToken,
           metadataFolderId,
-          userDid,
+          pnIdentifier,
           displayName
         );
 
@@ -11891,16 +11902,16 @@ class ProductionServer {
           });
         }
 
-        // Send connection request
+        // Send connection request (pass normalized pn-identifiers)
         let connection;
         try {
           connection = await ConnectionsService.sendConnectionRequest(
             requesterAccessToken,
             requesterMetadataFolderId,
-            requesterDid,
+            requesterPnIdentifier,
             recipientAccessToken,
             recipientMetadataFolderId,
-            recipientDid
+            recipientPnIdentifier
           );
         } catch (connectionError: any) {
           console.error('[ConnectionRequest] Error in ConnectionsService.sendConnectionRequest:', connectionError);
@@ -11950,17 +11961,17 @@ class ProductionServer {
           // Continue - don't fail the request
         }
 
-        // Record activity for recipient (using pnIdentifier from credentials)
+        // Record activity for recipient (use normalized pn-identifier)
         try {
           await ActivityLedgerService.recordActivity(
             recipientAccessToken,
             recipientMetadataFolderId,
-            recipientCredentials.identityId,
+            recipientPnIdentifier, // Use normalized pn-identifier
             'connection_request',
             {
               targetType: 'user',
-              targetId: requesterDid,
-              actorDid: requesterDid,
+              targetId: requesterPnIdentifier,
+              actorDid: requesterPnIdentifier,
               metadata: { connectionId: connection.connectionId }
             }
           );
@@ -11978,14 +11989,14 @@ class ProductionServer {
           // Continue - don't fail the request
         }
 
-        // Send notification to recipient
+        // Send notification to recipient (use normalized DIDs)
         try {
           await NotificationService.notifyConnectionRequest(
             recipientAccessToken,
             recipientMetadataFolderId,
             connection.connectionId,
-            requesterDid,
-            recipientDid
+            requesterPnIdentifier,
+            recipientPnIdentifier
           );
           console.log(`[ConnectionRequest] Notification sent to recipient: ${recipientCredentials.identityId}`);
         } catch (error: any) {
@@ -12166,13 +12177,14 @@ class ProductionServer {
                 const otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherAccountId, [otherUserCredentials.identityId]);
                 const otherMetadataFolder = await this.getMetadataFolder(otherAccessToken, otherUserPnIdentifier);
                 if (otherMetadataFolder) {
+                  // Use normalized pn-identifiers (pnIdentifier was normalized at start of function)
                   await ConnectionsService.updateOtherUserConnectionStatus(
                     otherAccessToken,
                     otherMetadataFolder.metadataFolderId,
-                    otherUserCredentials.identityId,
+                    otherUserPnIdentifier, // Use normalized
                     connectionId,
                     'accepted',
-                    userCredentials.identityId,
+                    pnIdentifier, // Use normalized pn-identifier from start of function
                     sharedSecret
                   );
                 }
@@ -12198,20 +12210,22 @@ class ProductionServer {
           });
         }
 
+        // Normalize connection.userDid when reading (handles legacy data)
         const otherUserDid = connection.userDid;
-        const otherUserPnIdentifier = otherUserDid.startsWith('pn-') ? otherUserDid : `pn-${otherUserDid}`;
+        const normalizedOtherUserDid = otherUserDid.startsWith('pn-') ? otherUserDid : `pn-${otherUserDid}`;
+        const otherUserPnIdentifier = normalizedOtherUserDid;
 
-        // Record activity FIRST
+        // Record activity FIRST (use normalized DIDs)
         const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
         
         await ActivityLedgerService.recordActivity(
           userAccessToken,
           metadataFolderId,
-          userCredentials.identityId,
+          pnIdentifier, // Use normalized pn-identifier
           'connection_accepted',
           {
             targetType: 'user',
-            targetId: otherUserDid,
+            targetId: normalizedOtherUserDid,
             metadata: { connectionId }
           }
         );
@@ -12220,7 +12234,7 @@ class ProductionServer {
         const sharedSecret = await ConnectionsService.acceptConnectionRequest(
           userAccessToken,
           metadataFolderId,
-          userCredentials.identityId, // Use identityId from credentials
+          pnIdentifier, // Use normalized pn-identifier
           connectionId
         );
 
@@ -12249,11 +12263,8 @@ class ProductionServer {
         const createdAt = acceptorConnection?.createdAt || new Date().toISOString();
 
         // Get other user's credentials (requester) - required for syncing shared secret
-        // otherUserPnIdentifier already declared above
-        let otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
-        if (!otherUserCredentials?.credentials && otherUserDid !== otherUserPnIdentifier) {
-          otherUserCredentials = await storageCredentialsService.getCredentials(otherUserDid);
-        }
+        // Use normalized pn-identifier only (no fallback to original DID)
+        const otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
 
         if (!otherUserCredentials?.credentials) {
           return res.status(500).json({
@@ -12318,7 +12329,7 @@ class ProductionServer {
             otherSpreadsheetId,
             {
               connectionId,
-              userDid: userCredentials.identityId,
+              userDid: pnIdentifier, // Use normalized pn-identifier
               status: 'accepted',
               createdAt,
               acceptedAt,
@@ -12335,12 +12346,12 @@ class ProductionServer {
             await ActivityLedgerService.recordActivity(
               otherAccessToken,
               otherMetadataFolderId,
-              otherUserCredentials.identityId,
+              otherUserPnIdentifier, // Use normalized pn-identifier
               'connection_accepted',
               {
                 targetType: 'user',
-                targetId: userCredentials.identityId,
-                actorDid: userCredentials.identityId,
+                targetId: pnIdentifier, // Use normalized pn-identifier
+                actorDid: pnIdentifier, // Use normalized pn-identifier
                 metadata: { connectionId }
               }
             );
@@ -12349,8 +12360,8 @@ class ProductionServer {
               otherAccessToken,
               otherMetadataFolderId,
               connectionId,
-              userCredentials.identityId,
-              otherUserCredentials.identityId
+              pnIdentifier, // Use normalized pn-identifier
+              otherUserPnIdentifier // Use normalized pn-identifier
             );
           } catch (otherUserActivityError: any) {
             console.warn('Failed to record activity/notification for other user:', otherUserActivityError);
@@ -12499,7 +12510,7 @@ class ProductionServer {
                           acceptorMessagesFolderId,
                           otherAccessToken,
                           otherMessagesFolderId,
-                          otherUserDid,
+                          normalizedOtherUserDid,
                           connectionId,
                           decryptedSharedSecret
                         );
@@ -12516,7 +12527,7 @@ class ProductionServer {
                   acceptorConversationSheetId = await MessageSheetsService.createConversationSheet(
                     userAccessToken,
                     acceptorMessagesFolderId,
-                    otherUserDid
+                    normalizedOtherUserDid
                   );
                 } else {
                   throw error;
@@ -12567,11 +12578,11 @@ class ProductionServer {
                 // Check if requester's conversation file exists, if not try to restore from acceptor
                 let requesterConversationSheetId: string;
                 try {
-                  // Try to get existing conversation sheet
+                  // Try to get existing conversation sheet (use normalized pnIdentifier)
                   requesterConversationSheetId = await MessageSheetsService.getConversationSheet(
                     otherAccessToken,
                     requesterMessagesFolderId,
-                    userCredentials.identityId
+                    pnIdentifier
                   );
                   
                   // Check if the sheet is empty (only has header) - if so, try to restore
@@ -12612,7 +12623,7 @@ class ProductionServer {
                             requesterMessagesFolderId,
                             userAccessToken,
                             acceptorMessagesFolderId,
-                            userCredentials.identityId,
+                            pnIdentifier,
                             connectionId,
                             decryptedSharedSecret
                           );
@@ -12629,7 +12640,7 @@ class ProductionServer {
                     requesterConversationSheetId = await MessageSheetsService.createConversationSheet(
                       otherAccessToken,
                       requesterMessagesFolderId,
-                      userCredentials.identityId
+                      pnIdentifier
                     );
                   } else {
                     throw error;
@@ -12738,11 +12749,14 @@ class ProductionServer {
           });
         }
 
+        // Normalize userDid before calling removeConnection
+        const normalizedUserDid = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        
         // Remove connection from user's file
         await ConnectionsService.removeConnection(
           userAccessToken,
           metadataFolderId,
-          userDid,
+          normalizedUserDid,
           connectionId
         );
 
@@ -12825,7 +12839,13 @@ class ProductionServer {
         const connections = await ConnectionsService.getConnections(userAccessToken, metadataFolderId);
         console.log(`[GetConnections] Found ${connections.length} accepted connections for user ${pnIdentifier}`);
 
-        return res.json({ connections });
+        // Normalize userDid in returned connections (handles legacy data)
+        const normalizedConnections = connections.map(c => ({
+          ...c,
+          userDid: c.userDid.startsWith('pn-') ? c.userDid : `pn-${c.userDid}`
+        }));
+
+        return res.json({ connections: normalizedConnections });
       } catch (error: any) {
         console.error('Error getting connections:', error);
         return res.status(500).json({
@@ -12874,16 +12894,21 @@ class ProductionServer {
         const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
         const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
-        // Record activity FIRST
+        // Normalize targetId if it's a user (not a feed)
+        const normalizedTargetId = targetTypeStr === 'user' && targetId
+          ? (targetId.startsWith('pn-') ? targetId : `pn-${targetId}`)
+          : targetId;
+
+        // Record activity FIRST (use normalized targetId)
         await ActivityLedgerService.recordActivity(
           userAccessToken,
           metadataFolderId,
           userCredentials.identityId,
           'follow',
           {
-            targetType,
-            targetId,
-            metadata: { targetType, targetId }
+            targetType: targetTypeStr,
+            targetId: normalizedTargetId,
+            metadata: { targetType: targetTypeStr, targetId: normalizedTargetId }
           }
         );
 
@@ -12893,22 +12918,21 @@ class ProductionServer {
           metadataFolderId
         );
 
-        // Add to following sheet
+        // Add to following sheet (use normalized targetId)
         await ConnectionsSheetsService.addFollowing(
           userAccessToken,
           followingSheetId,
           {
             targetType: targetTypeStr as 'user' | 'feed',
-            targetId: String(targetId),
+            targetId: String(normalizedTargetId),
             followedAt: new Date().toISOString()
           }
         );
 
-        // If following a user with paid feed, add to their followers sheet
+        // If following a user with paid feed, add to their followers sheet (use normalized targetId)
         if (targetTypeStr === 'user') {
           try {
-            const targetPnIdentifier = targetId.startsWith('pn-') ? targetId : `pn-${targetId}`;
-            const targetCredentials = await storageCredentialsService.getCredentials(targetPnIdentifier);
+            const targetCredentials = await storageCredentialsService.getCredentials(normalizedTargetId);
             
             if (targetCredentials?.credentials) {
               // Check if target has paid feed (this would need feed service check)
@@ -12928,17 +12952,17 @@ class ProductionServer {
                   targetMetadataFolderId
                 );
 
-                // Add follower
+                // Add follower (use normalized pnIdentifier)
                 await ConnectionsSheetsService.addFollower(
                   targetAccessToken,
                   followersSheetId,
                   {
-                    followerDid: userDid,
+                    followerDid: pnIdentifier,
                     followedAt: new Date().toISOString()
                   }
                 );
 
-                // Send notification to target user
+                // Send notification to target user (use normalized DIDs)
                 try {
                   await NotificationService.createNotification(
                     targetAccessToken,
@@ -12948,8 +12972,8 @@ class ProductionServer {
                       user_did: targetCredentials.identityId,
                       type: 'follow',
                       title: 'New Follower',
-                      message: `${userDid} started following you`,
-                      data: { user_did: userDid }
+                      message: `${pnIdentifier} started following you`,
+                      data: { user_did: pnIdentifier }
                     }
                   );
                 } catch (notificationError) {
@@ -13013,19 +13037,23 @@ class ProductionServer {
           metadataFolderId
         );
 
-        // Remove from following sheet
+        // Normalize targetId if it's a user (not a feed)
+        const normalizedTargetId = targetTypeStr === 'user' && targetIdStr
+          ? (targetIdStr.startsWith('pn-') ? targetIdStr : `pn-${targetIdStr}`)
+          : targetIdStr;
+
+        // Remove from following sheet (use normalized targetId)
         await ConnectionsSheetsService.removeFollowing(
           userAccessToken,
           followingSheetId,
           targetTypeStr as 'user' | 'feed',
-          targetIdStr
+          normalizedTargetId
         );
 
         // If unfollowing a user, remove from their followers sheet
         if (targetTypeStr === 'user') {
           try {
-            const targetPnIdentifier = targetIdStr.startsWith('pn-') ? targetIdStr : `pn-${targetIdStr}`;
-            const targetCredentials = await storageCredentialsService.getCredentials(targetPnIdentifier);
+            const targetCredentials = await storageCredentialsService.getCredentials(normalizedTargetId);
             
             if (targetCredentials?.credentials) {
               const targetGoogleDriveAccounts = targetCredentials.credentials.googleDriveAccounts || 
@@ -13043,11 +13071,11 @@ class ProductionServer {
                   targetMetadataFolderId
                 );
 
-                // Remove follower
+                // Remove follower (use normalized pnIdentifier)
                 await ConnectionsSheetsService.removeFollower(
                   targetAccessToken,
                   followersSheetId,
-                  String(userDid)
+                  pnIdentifier
                 );
               }
             }
@@ -13350,7 +13378,19 @@ class ProductionServer {
 
         const pending = await ConnectionsService.getPendingRequests(userAccessToken, metadataFolderId);
 
-        return res.json(pending);
+        // Normalize userDid in returned connections (handles legacy data)
+        const normalizedPending = {
+          sent: pending.sent.map(c => ({
+            ...c,
+            userDid: c.userDid.startsWith('pn-') ? c.userDid : `pn-${c.userDid}`
+          })),
+          received: pending.received.map(c => ({
+            ...c,
+            userDid: c.userDid.startsWith('pn-') ? c.userDid : `pn-${c.userDid}`
+          }))
+        };
+
+        return res.json(normalizedPending);
       } catch (error: any) {
         console.error('Error getting pending requests:', error);
         return res.status(500).json({
@@ -13373,8 +13413,12 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(userDid as string);
+        // Normalize DIDs to pn-identifiers
+        const normalizedUserDid = (userDid as string).startsWith('pn-') ? (userDid as string) : `pn-${userDid as string}`;
+        const normalizedOtherUserDid = otherUserDid.startsWith('pn-') ? otherUserDid : `pn-${otherUserDid}`;
+
+        // Get user's credentials (use normalized)
+        const userCredentials = await storageCredentialsService.getCredentials(normalizedUserDid);
         if (!userCredentials?.credentials) {
           return res.json({ status: 'not_connected' });
         }
@@ -13393,7 +13437,7 @@ class ProductionServer {
         // Get metadata folder
         let metadataFolderId: string;
         try {
-          const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId);
+          const _g = await this.getMetadataFolder(userAccessToken, normalizedUserDid);
           if (!_g) {
             // Folders actually missing - this is the only case for DRIVE_NOT_INITIALIZED
             return this.driveNotInitialized(res);
@@ -13418,8 +13462,8 @@ class ProductionServer {
         const status = await ConnectionsService.getConnectionStatus(
           userAccessToken,
           metadataFolderId,
-          userDid as string,
-          otherUserDid
+          normalizedUserDid,
+          normalizedOtherUserDid
         );
 
         return res.json(status);

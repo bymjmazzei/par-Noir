@@ -17,6 +17,12 @@ export interface MessagingLedgerFile {
 }
 
 export class MessagingLedgerService {
+  /**
+   * Normalize identifier to pn-identifier format
+   */
+  private static normalizeToPnIdentifier(did: string): string {
+    return did.startsWith('pn-') ? did : `pn-${did}`;
+  }
 
   /**
    * Get messaging ledger file from user's Google Drive (uses Sheets)
@@ -40,8 +46,10 @@ export class MessagingLedgerService {
         spreadsheetId
       );
 
+      // Normalize identifier if provided (handles legacy data)
+      const normalizedIdentifier = identifier ? this.normalizeToPnIdentifier(identifier) : '';
       return {
-        identifier: identifier || '',
+        identifier: normalizedIdentifier,
         updatedAt: new Date().toISOString(),
         activities
       };
@@ -91,6 +99,10 @@ export class MessagingLedgerService {
       metadata?: any;
     }
   ): Promise<MessagingActivityEntry> {
+    // Normalize all DIDs to pn-identifiers
+    const normalizedUserDid = this.normalizeToPnIdentifier(userDid);
+    const normalizedFromDid = options?.fromDid ? this.normalizeToPnIdentifier(options.fromDid) : undefined;
+    const normalizedToDid = options?.toDid ? this.normalizeToPnIdentifier(options.toDid) : undefined;
 
     const activityId = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -98,10 +110,10 @@ export class MessagingLedgerService {
     // Create activity entry
     const activity: MessagingActivityEntry = {
       message_activity_id: activityId,
-      user_did: userDid,
+      user_did: normalizedUserDid,
       activity_type: activityType,
-      from_did: options?.fromDid || undefined,
-      to_did: options?.toDid || undefined,
+      from_did: normalizedFromDid,
+      to_did: normalizedToDid,
       message_id: options?.messageId || undefined,
       thread_id: options?.threadId || undefined,
       metadata: options?.metadata || {},

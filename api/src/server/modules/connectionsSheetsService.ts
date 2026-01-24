@@ -149,7 +149,10 @@ export class ConnectionsSheetsService {
     try {
       const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Metadata!B1:B2' });
       const rows = res.data.values || [];
-      return { identifier: rows[0]?.[0] || '', updatedAt: rows[1]?.[0] || new Date().toISOString() };
+      const identifier = rows[0]?.[0] || '';
+      // Normalize identifier when reading (handles legacy data)
+      const normalizedIdentifier = identifier.startsWith('pn-') ? identifier : (identifier ? `pn-${identifier}` : '');
+      return { identifier: normalizedIdentifier, updatedAt: rows[1]?.[0] || new Date().toISOString() };
     } catch {
       return { identifier: '', updatedAt: new Date().toISOString() };
     }
@@ -159,6 +162,8 @@ export class ConnectionsSheetsService {
    * Set Metadata (identifier, updatedAt) in Metadata sheet
    */
   static async setMetadata(accessToken: string, spreadsheetId: string, identifier: string, updatedAt: string): Promise<void> {
+    // Normalize identifier before writing
+    const normalizedIdentifier = identifier.startsWith('pn-') ? identifier : `pn-${identifier}`;
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
@@ -166,7 +171,7 @@ export class ConnectionsSheetsService {
       spreadsheetId,
       range: 'Metadata!B1:B2',
       valueInputOption: 'RAW',
-      requestBody: { values: [[identifier], [updatedAt]] }
+      requestBody: { values: [[normalizedIdentifier], [updatedAt]] }
     });
   }
 
@@ -179,7 +184,11 @@ export class ConnectionsSheetsService {
     const sheets = google.sheets({ version: 'v4', auth });
     await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Connections!A2:F' });
     if (connections.length) {
-      const rows = connections.map(c => [c.connectionId, c.userDid, c.status, c.createdAt, c.acceptedAt || '', c.sharedSecret || '']);
+      // Normalize userDid in all connections before writing
+      const rows = connections.map(c => {
+        const normalizedUserDid = c.userDid.startsWith('pn-') ? c.userDid : `pn-${c.userDid}`;
+        return [c.connectionId, normalizedUserDid, c.status, c.createdAt, c.acceptedAt || '', c.sharedSecret || ''];
+      });
       await sheets.spreadsheets.values.update({
         spreadsheetId,
         range: 'Connections!A2:F',
@@ -413,14 +422,19 @@ export class ConnectionsSheetsService {
     });
 
     const rows = response.data.values || [];
-    let connections: Connection[] = rows.map(row => ({
-      connectionId: row[0] || '',
-      userDid: row[1] || '',
-      status: (row[2] || 'pending_sent') as Connection['status'],
-      createdAt: row[3] || new Date().toISOString(),
-      acceptedAt: row[4] || undefined,
-      sharedSecret: row[5] || undefined
-    }));
+    let connections: Connection[] = rows.map(row => {
+      // Normalize userDid when reading from sheet (handles legacy data)
+      const userDid = row[1] || '';
+      const normalizedUserDid = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+      return {
+        connectionId: row[0] || '',
+        userDid: normalizedUserDid,
+        status: (row[2] || 'pending_sent') as Connection['status'],
+        createdAt: row[3] || new Date().toISOString(),
+        acceptedAt: row[4] || undefined,
+        sharedSecret: row[5] || undefined
+      };
+    });
 
     // Filter by status if specified
     if (options?.status) {
@@ -577,6 +591,8 @@ export class ConnectionsSheetsService {
     spreadsheetId: string,
     follower: Follower
   ): Promise<void> {
+    // Normalize followerDid before writing
+    const normalizedFollowerDid = follower.followerDid.startsWith('pn-') ? follower.followerDid : `pn-${follower.followerDid}`;
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
@@ -587,7 +603,7 @@ export class ConnectionsSheetsService {
       valueInputOption: 'RAW',
       requestBody: {
         values: [[
-          follower.followerDid,
+          normalizedFollowerDid,
           follower.followedAt,
           follower.feedId || ''
         ]]
@@ -617,11 +633,16 @@ export class ConnectionsSheetsService {
     });
 
     const rows = response.data.values || [];
-    const followers: Follower[] = rows.map(row => ({
-      followerDid: row[0] || '',
-      followedAt: row[1] || new Date().toISOString(),
-      feedId: row[2] || undefined
-    }));
+    const followers: Follower[] = rows.map(row => {
+      // Normalize followerDid when reading from sheet (handles legacy data)
+      const followerDid = row[0] || '';
+      const normalizedFollowerDid = followerDid.startsWith('pn-') ? followerDid : (followerDid ? `pn-${followerDid}` : '');
+      return {
+        followerDid: normalizedFollowerDid,
+        followedAt: row[1] || new Date().toISOString(),
+        feedId: row[2] || undefined
+      };
+    });
 
     const total = followers.length;
 
@@ -644,6 +665,8 @@ export class ConnectionsSheetsService {
     spreadsheetId: string,
     followerDid: string
   ): Promise<void> {
+    // Normalize followerDid parameter
+    const normalizedFollowerDid = followerDid.startsWith('pn-') ? followerDid : `pn-${followerDid}`;
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
@@ -655,7 +678,11 @@ export class ConnectionsSheetsService {
     });
 
     const rows = response.data.values || [];
-    const rowIndex = rows.findIndex(row => row[0] === followerDid);
+    // Normalize each row entry when searching (handles legacy data)
+    const rowIndex = rows.findIndex(row => {
+      const normalizedRowFollowerDid = (row[0] || '').startsWith('pn-') ? row[0] : ((row[0] || '') ? `pn-${row[0]}` : '');
+      return normalizedRowFollowerDid === normalizedFollowerDid;
+    });
 
     if (rowIndex === -1) {
       throw new Error('Follower not found');
@@ -746,11 +773,19 @@ export class ConnectionsSheetsService {
     });
 
     const rows = response.data.values || [];
-    let following: Following[] = rows.map(row => ({
-      targetType: (row[0] || 'user') as 'user' | 'feed',
-      targetId: row[1] || '',
-      followedAt: row[2] || new Date().toISOString()
-    }));
+    let following: Following[] = rows.map(row => {
+      const targetType = (row[0] || 'user') as 'user' | 'feed';
+      const targetId = row[1] || '';
+      // Normalize targetId when reading from sheet (handles legacy data, only for users)
+      const normalizedTargetId = targetType === 'user' && targetId && !targetId.startsWith('pn-')
+        ? `pn-${targetId}`
+        : targetId;
+      return {
+        targetType,
+        targetId: normalizedTargetId,
+        followedAt: row[2] || new Date().toISOString()
+      };
+    });
 
     // Filter by target type if specified
     if (options?.targetType) {
@@ -779,6 +814,10 @@ export class ConnectionsSheetsService {
     targetType: 'user' | 'feed',
     targetId: string
   ): Promise<void> {
+    // Normalize targetId parameter (only if it's a user, not a feed)
+    const normalizedTargetId = targetType === 'user' && targetId && !targetId.startsWith('pn-')
+      ? `pn-${targetId}`
+      : targetId;
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
@@ -790,7 +829,15 @@ export class ConnectionsSheetsService {
     });
 
     const rows = response.data.values || [];
-    const rowIndex = rows.findIndex(row => row[0] === targetType && row[1] === targetId);
+    // Normalize each row entry when searching (handles legacy data)
+    const rowIndex = rows.findIndex(row => {
+      const rowTargetType = (row[0] || 'user') as 'user' | 'feed';
+      const rowTargetId = row[1] || '';
+      const normalizedRowTargetId = rowTargetType === 'user' && rowTargetId && !rowTargetId.startsWith('pn-')
+        ? `pn-${rowTargetId}`
+        : rowTargetId;
+      return rowTargetType === targetType && normalizedRowTargetId === normalizedTargetId;
+    });
 
     if (rowIndex === -1) {
       throw new Error('Following entry not found');

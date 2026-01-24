@@ -15,6 +15,13 @@ export class ProfileService {
   private static readonly PROFILE_FILE_NAME = 'profile.json';
 
   /**
+   * Normalize identifier to pn-identifier format
+   */
+  private static normalizeToPnIdentifier(did: string): string {
+    return did.startsWith('pn-') ? did : `pn-${did}`;
+  }
+
+  /**
    * Get profile file from user's Google Drive
    */
   static async getProfileFile(
@@ -71,7 +78,13 @@ export class ProfileService {
     identifier: string,
     profileData: UserProfile
   ): Promise<void> {
-    const profileContent = JSON.stringify(profileData, null, 2);
+    // Normalize identifier before storing
+    const normalizedIdentifier = this.normalizeToPnIdentifier(identifier);
+    const normalizedProfileData = {
+      ...profileData,
+      identifier: normalizedIdentifier
+    };
+    const profileContent = JSON.stringify(normalizedProfileData, null, 2);
 
     try {
       // Search for existing profile.json

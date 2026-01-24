@@ -21,6 +21,13 @@ export class MessageSheetsService {
   private static readonly MESSAGES_FOLDER_NAME = 'par-noir-messages';
 
   /**
+   * Normalize identifier to pn-identifier format
+   */
+  private static normalizeToPnIdentifier(did: string): string {
+    return did.startsWith('pn-') ? did : `pn-${did}`;
+  }
+
+  /**
    * Get or create messages folder in user's Google Drive
    */
   static async getOrCreateMessagesFolder(
@@ -104,11 +111,13 @@ export class MessageSheetsService {
     messagesFolderId: string,
     otherUserDid: string
   ): Promise<string> {
+    // Normalize otherUserDid to pn-identifier
+    const normalizedOtherUserDid = this.normalizeToPnIdentifier(otherUserDid);
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const drive = google.drive({ version: 'v3', auth });
 
-    const sheetFileName = `conversation-${otherUserDid}`;
+    const sheetFileName = `conversation-${normalizedOtherUserDid}`;
     const fileQuery = `name='${sheetFileName}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
     
     const searchResponse = await drive.files.list({
@@ -266,13 +275,16 @@ export class MessageSheetsService {
       auth.setCredentials({ access_token: accessToken });
       const sheets = google.sheets({ version: 'v4', auth });
 
+      // Normalize fromDid before storing
+      const normalizedFromDid = this.normalizeToPnIdentifier(message.fromDid);
+      
       await sheets.spreadsheets.values.append({
         spreadsheetId,
         range: 'Messages!A:F',
         valueInputOption: 'RAW',
         requestBody: {
           values: [[
-            message.fromDid,
+            normalizedFromDid,
             encryptedContent, // Store encrypted content
             message.timestamp,
             message.messageId,
@@ -382,9 +394,13 @@ export class MessageSheetsService {
         }
       }
       
+      // Normalize fromDid when reading (handles legacy data)
+      const fromDid = row[0] || '';
+      const normalizedFromDid = this.normalizeToPnIdentifier(fromDid);
+      
       return {
         messageId: row[3] || `msg-${index}`,
-        fromDid: row[0] || '',
+        fromDid: normalizedFromDid,
         toDid: '', // Will be set by caller based on conversation
         content: decryptedContent,
         timestamp: row[2] || new Date().toISOString(),
@@ -468,7 +484,9 @@ export class MessageSheetsService {
     if (searchResponse.data.files) {
       for (const file of searchResponse.data.files) {
         const fileName = file.name || '';
-        const otherUserDid = fileName.replace('conversation-', '');
+        const extractedOtherUserDid = fileName.replace('conversation-', '');
+        // Normalize otherUserDid when extracting from filename (handles legacy data)
+        const normalizedOtherUserDid = this.normalizeToPnIdentifier(extractedOtherUserDid);
         const spreadsheetId = file.id!;
 
         // Use modifiedTime from Drive API as lastMessageAt (much faster than reading Sheets)
@@ -476,7 +494,7 @@ export class MessageSheetsService {
         const lastMessageAt = file.modifiedTime || new Date().toISOString();
 
         conversations.push({
-          otherUserDid,
+          otherUserDid: normalizedOtherUserDid,
           spreadsheetId,
           lastMessageAt
         });
@@ -495,12 +513,14 @@ export class MessageSheetsService {
     messagesFolderId: string,
     otherUserDid: string
   ): Promise<void> {
+    // Normalize otherUserDid to pn-identifier
+    const normalizedOtherUserDid = this.normalizeToPnIdentifier(otherUserDid);
     try {
       const auth = new google.auth.OAuth2();
       auth.setCredentials({ access_token: accessToken });
       const drive = google.drive({ version: 'v3', auth });
 
-      const sheetFileName = `conversation-${otherUserDid}`;
+      const sheetFileName = `conversation-${normalizedOtherUserDid}`;
       
       // Find the conversation sheet
       const fileQuery = `name='${sheetFileName}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
@@ -544,6 +564,8 @@ export class MessageSheetsService {
     connectionId: string,
     sharedSecret: string // Decrypted shared secret
   ): Promise<string> {
+    // Normalize otherUserDid to pn-identifier
+    const normalizedOtherUserDid = this.normalizeToPnIdentifier(otherUserDid);
     try {
       const auth = new google.auth.OAuth2();
       auth.setCredentials({ access_token: userAccessToken });
@@ -551,7 +573,7 @@ export class MessageSheetsService {
       const drive = google.drive({ version: 'v3', auth });
 
       // Check if other user's conversation file exists
-      const otherUserSheetFileName = `conversation-${otherUserDid}`;
+      const otherUserSheetFileName = `conversation-${normalizedOtherUserDid}`;
       const otherUserFileQuery = `name='${otherUserSheetFileName}' and '${otherUserMessagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
       
       const otherAuth = new google.auth.OAuth2();
@@ -584,11 +606,11 @@ export class MessageSheetsService {
       if (otherMessages.length === 0) {
         // No messages to restore, create empty sheet
         console.log(`[MessageSheetsService] Other user's conversation file is empty, creating empty sheet`);
-        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
+        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, normalizedOtherUserDid);
       }
 
       // Create new conversation sheet for user
-      const userSheetId = await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
+      const userSheetId = await this.createConversationSheet(userAccessToken, userMessagesFolderId, normalizedOtherUserDid);
 
       // Filter messages: only restore plain text messages (system messages)
       // Encrypted messages were encrypted with the old connectionId/sharedSecret and cannot be decrypted
@@ -637,7 +659,7 @@ export class MessageSheetsService {
       });
       // If restoration fails, still return a sheet ID (create empty one)
       try {
-        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
+        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, normalizedOtherUserDid);
       } catch (createError: any) {
         console.error('[MessageSheetsService] Failed to create empty sheet after restoration failure:', createError);
         throw error; // Throw original error
