@@ -10379,13 +10379,16 @@ class ProductionServer {
           });
         }
 
+        console.log('[GetThread] Getting connections sheet');
         // Get connection to retrieve shared secret - use Sheets directly
         const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
         const spreadsheetId = await ConnectionsSheetsService.getOrCreateConnectionsSheet(
           userAccessToken,
           metadataFolderId
         );
+        console.log('[GetThread] Connections sheet ID:', spreadsheetId);
         
+        console.log('[GetThread] Fetching all connections');
         // Get all connections to find the one with the matching connectionId
         const connectionsResult = await ConnectionsSheetsService.getConnections(
           userAccessToken,
@@ -10396,35 +10399,41 @@ class ProductionServer {
             // No status filter - get all connections
           }
         );
+        console.log('[GetThread] Found', connectionsResult.connections.length, 'connections');
         
         const connection = connectionsResult.connections.find(
           c => c.connectionId === connectionStatus.connectionId
         );
         if (!connection) {
+          console.error('[GetThread] Connection not found in sheet, connectionId:', connectionStatus.connectionId);
           return res.status(500).json({
             error: 'Connection not found',
             error_description: `Connection ${connectionStatus.connectionId} not found in connections sheet`
           });
         }
 
+        console.log('[GetThread] Found connection, checking shared secret');
         // Get shared secret from connection - it should exist if connection was properly accepted
         const sharedSecret = connection.sharedSecret;
         if (!sharedSecret) {
+          console.error('[GetThread] Shared secret missing from connection');
           return res.status(500).json({
             error: 'Shared secret not found. Please reconnect with this user.',
             error_description: 'Connection exists but shared secret is missing. The connection may not have been properly accepted. Please disconnect and reconnect.'
           });
         }
 
+        console.log('[GetThread] Decrypting shared secret');
         // Decrypt shared secret
         const decryptedSharedSecret = MetadataEncryption.decryptField(sharedSecret);
         if (!decryptedSharedSecret) {
-          console.error(`[Thread] Failed to decrypt shared secret for connection ${connectionStatus.connectionId}`);
+          console.error(`[GetThread] Failed to decrypt shared secret for connection ${connectionStatus.connectionId}`);
           return res.status(500).json({
             error: 'Failed to decrypt shared secret',
             error_description: 'Failed to decrypt shared secret'
           });
         }
+        console.log('[GetThread] Successfully decrypted shared secret');
 
         // Get or create conversation sheet (use original participantDid for sheet name, not normalized)
         console.log('[GetThread] Getting conversation sheet');
@@ -10452,7 +10461,8 @@ class ProductionServer {
         console.log('[GetThread] Returning', result.messages.length, 'messages');
         return res.json({ messages: result.messages, total: result.total });
       } catch (error: any) {
-        console.error('Error getting thread messages:', error);
+        console.error('[GetThread] ERROR:', error);
+        console.error('[GetThread] ERROR stack:', error?.stack);
         return res.status(500).json({
           error: 'Failed to get thread messages',
           error_description: error.message || 'Failed to get thread messages'
