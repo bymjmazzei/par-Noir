@@ -356,7 +356,6 @@ export class MessageSheetsService {
       
       // Check if content is encrypted or plain text
       const isEncrypted = MessageEncryption.isEncrypted(encryptedContent);
-      const fromDid = row[0] || '';
       
       if (isEncrypted && sharedSecret && sharedSecret !== '') {
         try {
