@@ -10329,7 +10329,15 @@ class ProductionServer {
         );
 
         // Get user's metadata folder for connection lookup (create if needed)
-        const metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
+        let metadataFolderId: string;
+        try {
+          metadataFolderId = await this.getOrCreateMetadataFolder(userAccessToken, pnIdentifier);
+        } catch (metadataError: any) {
+          console.error('[Thread] Failed to get/create metadata folder:', metadataError.message);
+          // If metadata folder doesn't exist and can't be created, return empty messages
+          // This can happen if Drive isn't initialized yet
+          return res.json({ messages: [], total: 0 });
+        }
 
         // Look up connection to get shared secret
         const { ConnectionsService } = await import('./server/modules/connectionsService');
