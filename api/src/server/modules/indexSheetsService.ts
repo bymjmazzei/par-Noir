@@ -5,6 +5,7 @@
  */
 
 import { google } from 'googleapis';
+import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 
 export interface IndexFileEntry {
   fileId: string;
@@ -51,13 +52,14 @@ export class IndexSheetsService {
    * @param folderId - _metadata or a content-class folder (e.g. media, thoughts, collections)
    */
   static async createIndexSheet(
-    accessToken: string,
+    token: GoogleDriveToken,
     folderId: string,
     indexType: 'public' | 'owner',
+    userPnIdentifier: string,
+    accountId: string | undefined,
     contentClass?: 'media' | 'thoughts' | 'collections'
   ): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
@@ -114,13 +116,14 @@ export class IndexSheetsService {
    * @param contentClass - When set (e.g. 'media'|'thoughts'|'collections'), uses {contentClass}-{owner|public}-index.xlsx. Omit for root indexes.
    */
   static async getIndexSheet(
-    accessToken: string,
+    token: GoogleDriveToken,
     metadataFolderId: string,
     indexType: 'public' | 'owner',
+    userPnIdentifier: string,
+    accountId: string | undefined,
     contentClass?: 'media' | 'thoughts' | 'collections'
   ): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
     const fileName =
@@ -148,12 +151,13 @@ export class IndexSheetsService {
    * Add file to index
    */
   static async addFile(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    entry: IndexFileEntry
+    entry: IndexFileEntry,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     await sheets.spreadsheets.values.append({
@@ -176,13 +180,14 @@ export class IndexSheetsService {
    * Update file in index
    */
   static async updateFile(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
     fileId: string,
-    updates: Partial<IndexFileEntry>
+    updates: Partial<IndexFileEntry>,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all files
@@ -241,12 +246,13 @@ export class IndexSheetsService {
    * Remove file from index
    */
   static async removeFile(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    fileId: string
+    fileId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all files
@@ -284,12 +290,13 @@ export class IndexSheetsService {
    * Get file by ID
    */
   static async getFileById(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    fileId: string
+    fileId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<IndexFileEntry | null> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     const response = await sheets.spreadsheets.values.get({
@@ -315,13 +322,14 @@ export class IndexSheetsService {
    * Optionally stores updatedAt in Files!F1 for parity with JSON index structure.
    */
   static async setAllFiles(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
     entries: IndexFileEntry[],
+    userPnIdentifier: string,
+    accountId: string | undefined,
     updatedAt?: string
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     await sheets.spreadsheets.values.clear({
@@ -367,11 +375,12 @@ export class IndexSheetsService {
    * Get updatedAt from index metadata (Files!F1), if stored by setAllFiles.
    */
   static async getUpdatedAt(
-    accessToken: string,
-    spreadsheetId: string
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string | null> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     try {
       const res = await sheets.spreadsheets.values.get({
@@ -389,8 +398,10 @@ export class IndexSheetsService {
    * Get all files
    */
   static async getFiles(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined,
     options?: {
       visibility?: 'public' | 'private' | 'friends';
       contentClass?: 'media' | 'thought' | 'collection';
@@ -398,8 +409,7 @@ export class IndexSheetsService {
       offset?: number;
     }
   ): Promise<{ files: IndexFileEntry[]; total: number }> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     const response = await sheets.spreadsheets.values.get({

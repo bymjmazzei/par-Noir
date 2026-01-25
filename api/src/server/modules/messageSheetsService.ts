@@ -5,6 +5,7 @@
  */
 
 import { google } from 'googleapis';
+import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 
 export interface Message {
   messageId: string;
@@ -36,8 +37,10 @@ export class MessageSheetsService {
    * If cachedInboxSheetId is provided, returns it immediately (no search)
    */
   static async getInboxSheet(
-    accessToken: string,
+    token: GoogleDriveToken,
     messagesFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined,
     cachedInboxSheetId?: string
   ): Promise<string> {
     // If cached ID provided, return it immediately (no search!)
@@ -46,8 +49,7 @@ export class MessageSheetsService {
     }
 
     try {
-      const auth = new google.auth.OAuth2();
-      auth.setCredentials({ access_token: accessToken });
+      const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const drive = google.drive({ version: 'v3', auth });
       const sheets = google.sheets({ version: 'v4', auth });
 
@@ -102,12 +104,13 @@ export class MessageSheetsService {
    * ONLY use this during drive initialization - all other code should use getInboxSheet()
    */
   static async getOrCreateInboxSheet(
-    accessToken: string,
-    messagesFolderId: string
+    token: GoogleDriveToken,
+    messagesFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string> {
     try {
-      const auth = new google.auth.OAuth2();
-      auth.setCredentials({ access_token: accessToken });
+      const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const drive = google.drive({ version: 'v3', auth });
       const sheets = google.sheets({ version: 'v4', auth });
 
@@ -203,12 +206,13 @@ export class MessageSheetsService {
    * Get or create messages folder in user's Google Drive
    */
   static async getOrCreateMessagesFolder(
-    accessToken: string,
-    pnFolderId: string
+    token: GoogleDriveToken,
+    pnFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string> {
     try {
-      const auth = new google.auth.OAuth2();
-      auth.setCredentials({ access_token: accessToken });
+      const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const drive = google.drive({ version: 'v3', auth });
 
       // Search for existing messages folder
@@ -279,13 +283,14 @@ export class MessageSheetsService {
    * Get conversation sheet for a specific user (search only, does not create)
    */
   static async getConversationSheet(
-    accessToken: string,
+    token: GoogleDriveToken,
     messagesFolderId: string,
-    otherUserPnIdentifier: string
+    otherUserPnIdentifier: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string> {
     // Use pn identifier directly (already normalized)
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
     const sheetFileName = `conversation-${otherUserPnIdentifier}`;
@@ -309,12 +314,13 @@ export class MessageSheetsService {
    * Create conversation sheet for a specific user
    */
   static async createConversationSheet(
-    accessToken: string,
+    token: GoogleDriveToken,
     messagesFolderId: string,
-    otherUserPnIdentifier: string
+    otherUserPnIdentifier: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
@@ -405,15 +411,17 @@ export class MessageSheetsService {
    * Encrypts message content using connection's shared secret
    */
   static async appendMessage(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
     message: Message,
     connectionId: string,
-    sharedSecret: string // Decrypted shared secret
+    sharedSecret: string, // Decrypted shared secret
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
     try {
       // Validation checks
-      if (!accessToken || typeof accessToken !== 'string' || accessToken.trim().length === 0) {
+      if (!token.access_token || typeof token.access_token !== 'string' || token.access_token.trim().length === 0) {
         throw new Error('Invalid access token: token is empty or invalid');
       }
 
@@ -442,8 +450,7 @@ export class MessageSheetsService {
         );
       }
 
-      const auth = new google.auth.OAuth2();
-      auth.setCredentials({ access_token: accessToken });
+      const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const sheets = google.sheets({ version: 'v4', auth });
 
       // Use pn identifier directly (already normalized)
@@ -496,17 +503,18 @@ export class MessageSheetsService {
    * Optimized to read only needed rows from Sheets API
    */
   static async getMessages(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
     connectionId: string,
     sharedSecret: string, // Decrypted shared secret
+    userPnIdentifier: string,
+    accountId: string | undefined,
     options?: {
       limit?: number;
       offset?: number;
     }
   ): Promise<{ messages: Message[]; total: number }> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Default to last 10 messages if no limit specified (for initial load)
@@ -626,12 +634,13 @@ export class MessageSheetsService {
    * Mark message as read
    */
   static async markAsRead(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    messageId: string
+    messageId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all messages to find the row
@@ -663,11 +672,12 @@ export class MessageSheetsService {
    * Get all conversation sheets for a user
    */
   static async getConversations(
-    accessToken: string,
-    messagesFolderId: string
+    token: GoogleDriveToken,
+    messagesFolderId: string,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<Array<{ otherUserPnIdentifier: string; spreadsheetId: string; lastMessageAt: string }>> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
     // List all conversation sheets
@@ -723,18 +733,19 @@ export class MessageSheetsService {
    * Stores sharedSecret (encrypted) so no connection lookup needed
    */
   static async updateInboxEntry(
-    accessToken: string,
+    token: GoogleDriveToken,
     inboxSheetId: string,
     participantPnIdentifier: string,
     spreadsheetId: string,
     connectionId: string,
     lastMessageAt: string,
+    userPnIdentifier: string,
+    accountId: string | undefined,
     lastMessagePreview?: string,
     sharedSecret?: string // Encrypted shared secret
   ): Promise<void> {
     try {
-      const auth = new google.auth.OAuth2();
-      auth.setCredentials({ access_token: accessToken });
+      const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const sheets = google.sheets({ version: 'v4', auth });
 
       // Read all rows to find existing entry (include sharedSecret column)
@@ -827,13 +838,14 @@ export class MessageSheetsService {
    * Remove inbox entry for a conversation
    */
   static async removeInboxEntry(
-    accessToken: string,
+    token: GoogleDriveToken,
     inboxSheetId: string,
-    participantPnIdentifier: string
+    participantPnIdentifier: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
     try {
-      const auth = new google.auth.OAuth2();
-      auth.setCredentials({ access_token: accessToken });
+      const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const sheets = google.sheets({ version: 'v4', auth });
 
       // Read all rows to find entry
@@ -881,8 +893,10 @@ export class MessageSheetsService {
    * Get all conversations from inbox sheet
    */
   static async getInboxConversations(
-    accessToken: string,
-    inboxSheetId: string
+    token: GoogleDriveToken,
+    inboxSheetId: string,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<Array<{
     participantPnIdentifier: string;
     spreadsheetId: string;
@@ -892,8 +906,7 @@ export class MessageSheetsService {
     sharedSecret?: string; // Encrypted shared secret
   }>> {
     try {
-      const auth = new google.auth.OAuth2();
-      auth.setCredentials({ access_token: accessToken });
+      const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const sheets = google.sheets({ version: 'v4', auth });
 
       // Read all rows (already sorted by lastMessageAt descending)
@@ -928,14 +941,15 @@ export class MessageSheetsService {
    * Only deletes the requesting user's file, not the other user's file
    */
   static async deleteConversation(
-    accessToken: string,
+    token: GoogleDriveToken,
     messagesFolderId: string,
-    otherUserPnIdentifier: string
+    otherUserPnIdentifier: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
     // Use pn identifier directly (already normalized)
     try {
-      const auth = new google.auth.OAuth2();
-      auth.setCredentials({ access_token: accessToken });
+      const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const drive = google.drive({ version: 'v3', auth });
 
       const sheetFileName = `conversation-${otherUserPnIdentifier}`;
@@ -974,18 +988,21 @@ export class MessageSheetsService {
    * Used when reconnecting after one user deleted their conversation
    */
   static async restoreConversationFromOtherUser(
-    userAccessToken: string,
+    userToken: GoogleDriveToken,
     userMessagesFolderId: string,
-    otherUserAccessToken: string,
+    otherUserToken: GoogleDriveToken,
     otherUserMessagesFolderId: string,
     otherUserPnIdentifier: string,
     connectionId: string,
-    sharedSecret: string // Decrypted shared secret
+    sharedSecret: string, // Decrypted shared secret
+    userPnIdentifier: string,
+    userAccountId: string | undefined,
+    otherUserPnIdentifierForAuth: string,
+    otherUserAccountId: string | undefined
   ): Promise<string> {
     // Use pn identifier directly (already normalized)
     try {
-      const auth = new google.auth.OAuth2();
-      auth.setCredentials({ access_token: userAccessToken });
+      const auth = GoogleOAuth2Helper.createClient(userToken, userPnIdentifier, userAccountId);
       const sheets = google.sheets({ version: 'v4', auth });
       const drive = google.drive({ version: 'v3', auth });
 
@@ -993,8 +1010,7 @@ export class MessageSheetsService {
       const otherUserSheetFileName = `conversation-${otherUserPnIdentifier}`;
       const otherUserFileQuery = `name='${otherUserSheetFileName}' and '${otherUserMessagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
       
-      const otherAuth = new google.auth.OAuth2();
-      otherAuth.setCredentials({ access_token: otherUserAccessToken });
+      const otherAuth = GoogleOAuth2Helper.createClient(otherUserToken, otherUserPnIdentifierForAuth, otherUserAccountId);
       const otherDrive = google.drive({ version: 'v3', auth: otherAuth });
       const otherSheets = google.sheets({ version: 'v4', auth: otherAuth });
 
@@ -1023,11 +1039,11 @@ export class MessageSheetsService {
       if (otherMessages.length === 0) {
         // No messages to restore, create empty sheet
         console.log(`[MessageSheetsService] Other user's conversation file is empty, creating empty sheet`);
-        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserPnIdentifier);
+        return await this.createConversationSheet(userToken, userMessagesFolderId, otherUserPnIdentifier, userPnIdentifier, userAccountId);
       }
 
       // Create new conversation sheet for user
-      const userSheetId = await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserPnIdentifier);
+      const userSheetId = await this.createConversationSheet(userToken, userMessagesFolderId, otherUserPnIdentifier, userPnIdentifier, userAccountId);
 
       // Filter messages: only restore plain text messages (system messages)
       // Encrypted messages were encrypted with the old connectionId/sharedSecret and cannot be decrypted
@@ -1076,7 +1092,7 @@ export class MessageSheetsService {
       });
       // If restoration fails, still return a sheet ID (create empty one)
       try {
-        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserPnIdentifier);
+        return await this.createConversationSheet(userToken, userMessagesFolderId, otherUserPnIdentifier, userPnIdentifier, userAccountId);
       } catch (createError: any) {
         console.error('[MessageSheetsService] Failed to create empty sheet after restoration failure:', createError);
         throw error; // Throw original error

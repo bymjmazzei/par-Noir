@@ -5,6 +5,7 @@
  */
 
 import { google } from 'googleapis';
+import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 
 export interface Connection {
   connectionId: string;
@@ -35,9 +36,13 @@ export class ConnectionsSheetsService {
   /**
    * Create connections sheet in _metadata. Used only at Drive connection init.
    */
-  static async createConnectionsSheet(accessToken: string, metadataFolderId: string): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+  static async createConnectionsSheet(
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<string> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
@@ -84,11 +89,12 @@ export class ConnectionsSheetsService {
    * Created at Drive connection init; this does not create, move, or delete.
    */
   static async getConnectionsSheet(
-    accessToken: string,
-    metadataFolderId: string
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
     const fileQuery = `name='${this.CONNECTIONS_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
@@ -108,9 +114,13 @@ export class ConnectionsSheetsService {
   /**
    * Get blocked DIDs from Blocked sheet
    */
-  static async getBlocked(accessToken: string, spreadsheetId: string): Promise<string[]> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+  static async getBlocked(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<string[]> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     try {
       const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Blocked!A2:A' });
@@ -124,9 +134,14 @@ export class ConnectionsSheetsService {
   /**
    * Set blocked DIDs in Blocked sheet
    */
-  static async setBlocked(accessToken: string, spreadsheetId: string, blocked: string[]): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+  static async setBlocked(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    blocked: string[],
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Blocked!A2:A' });
     if (blocked.length) {
@@ -142,9 +157,13 @@ export class ConnectionsSheetsService {
   /**
    * Get Metadata (identifier, updatedAt) from Metadata sheet
    */
-  static async getMetadata(accessToken: string, spreadsheetId: string): Promise<{ identifier: string; updatedAt: string }> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+  static async getMetadata(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<{ identifier: string; updatedAt: string }> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     try {
       const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Metadata!B1:B2' });
@@ -161,11 +180,17 @@ export class ConnectionsSheetsService {
   /**
    * Set Metadata (identifier, updatedAt) in Metadata sheet
    */
-  static async setMetadata(accessToken: string, spreadsheetId: string, identifier: string, updatedAt: string): Promise<void> {
+  static async setMetadata(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    identifier: string,
+    updatedAt: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
     // Normalize identifier before writing
     const normalizedIdentifier = identifier.startsWith('pn-') ? identifier : `pn-${identifier}`;
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     await sheets.spreadsheets.values.update({
       spreadsheetId,
@@ -178,9 +203,14 @@ export class ConnectionsSheetsService {
   /**
    * Overwrite all connections in the Connections sheet
    */
-  static async setAllConnections(accessToken: string, spreadsheetId: string, connections: Connection[]): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+  static async setAllConnections(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    connections: Connection[],
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Connections!A2:F' });
     if (connections.length) {
@@ -202,15 +232,17 @@ export class ConnectionsSheetsService {
    * Get connections file (identifier, updatedAt, connections, blocked) from Sheets.
    */
   static async getConnectionsFile(
-    accessToken: string,
-    metadataFolderId: string
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<{ identifier: string; updatedAt: string; connections: Connection[]; blocked: string[] } | null> {
     try {
-      const spreadsheetId = await this.getConnectionsSheet(accessToken, metadataFolderId);
+      const spreadsheetId = await this.getConnectionsSheet(token, metadataFolderId, userPnIdentifier, accountId);
       const [connRes, blocked, meta] = await Promise.all([
-        this.getConnections(accessToken, spreadsheetId, { limit: 999999, offset: 0 }),
-        this.getBlocked(accessToken, spreadsheetId),
-        this.getMetadata(accessToken, spreadsheetId)
+        this.getConnections(token, spreadsheetId, userPnIdentifier, accountId, { limit: 999999, offset: 0 }),
+        this.getBlocked(token, spreadsheetId, userPnIdentifier, accountId),
+        this.getMetadata(token, spreadsheetId, userPnIdentifier, accountId)
       ]);
       return {
         identifier: meta.identifier,
@@ -229,20 +261,22 @@ export class ConnectionsSheetsService {
    * setBlocked/setMetadata are best-effort on legacy spreadsheets that lack those sheets.
    */
   static async updateConnectionsFile(
-    accessToken: string,
+    token: GoogleDriveToken,
     metadataFolderId: string,
     identifier: string,
-    data: { identifier: string; updatedAt: string; connections: Connection[]; blocked: string[] }
+    data: { identifier: string; updatedAt: string; connections: Connection[]; blocked: string[] },
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const spreadsheetId = await this.getConnectionsSheet(accessToken, metadataFolderId);
-    await this.setAllConnections(accessToken, spreadsheetId, data.connections);
+    const spreadsheetId = await this.getConnectionsSheet(token, metadataFolderId, userPnIdentifier, accountId);
+    await this.setAllConnections(token, spreadsheetId, data.connections, userPnIdentifier, accountId);
     try {
-      await this.setBlocked(accessToken, spreadsheetId, data.blocked);
+      await this.setBlocked(token, spreadsheetId, data.blocked, userPnIdentifier, accountId);
     } catch (e) {
       console.warn('ConnectionsSheetsService.updateConnectionsFile setBlocked (legacy sheet?):', e);
     }
     try {
-      await this.setMetadata(accessToken, spreadsheetId, identifier, data.updatedAt);
+      await this.setMetadata(token, spreadsheetId, identifier, data.updatedAt, userPnIdentifier, accountId);
     } catch (e) {
       console.warn('ConnectionsSheetsService.updateConnectionsFile setMetadata (legacy sheet?):', e);
     }
@@ -251,9 +285,13 @@ export class ConnectionsSheetsService {
   /**
    * Create followers sheet in _metadata. Used only at Drive connection init.
    */
-  static async createFollowersSheet(accessToken: string, metadataFolderId: string): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+  static async createFollowersSheet(
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<string> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
@@ -288,11 +326,12 @@ export class ConnectionsSheetsService {
    * Created at Drive connection init; this does not create, move, or delete.
    */
   static async getFollowersSheet(
-    accessToken: string,
-    metadataFolderId: string
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
     const fileQuery = `name='${this.FOLLOWERS_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
@@ -312,9 +351,13 @@ export class ConnectionsSheetsService {
   /**
    * Create following sheet in _metadata. Used only at Drive connection init.
    */
-  static async createFollowingSheet(accessToken: string, metadataFolderId: string): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+  static async createFollowingSheet(
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<string> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
@@ -349,11 +392,12 @@ export class ConnectionsSheetsService {
    * Created at Drive connection init; this does not create, move, or delete.
    */
   static async getFollowingSheet(
-    accessToken: string,
-    metadataFolderId: string
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
     const fileQuery = `name='${this.FOLLOWING_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
@@ -374,9 +418,11 @@ export class ConnectionsSheetsService {
    * Add connection to connections sheet
    */
   static async addConnection(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    connection: Connection
+    connection: Connection,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
     // Validate required fields
     if (!connection.connectionId || !connection.userPnIdentifier) {
@@ -390,8 +436,7 @@ export class ConnectionsSheetsService {
     if (normalizedUserPnIdentifier === 'pn-' || normalizedUserPnIdentifier.length <= 3) {
       throw new Error(`Invalid userPnIdentifier: ${connection.userPnIdentifier} (normalized to ${normalizedUserPnIdentifier})`);
     }
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     await sheets.spreadsheets.values.append({
@@ -415,16 +460,17 @@ export class ConnectionsSheetsService {
    * Get connections from connections sheet
    */
   static async getConnections(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined,
     options?: {
       limit?: number;
       offset?: number;
       status?: Connection['status'];
     }
   ): Promise<{ connections: Connection[]; total: number }> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all connections (skip header row)
@@ -489,10 +535,12 @@ export class ConnectionsSheetsService {
    * Single sheet read; use when looking up multiple connections (e.g. inbox enrichment).
    */
   static async getConnectionsMap(
-    accessToken: string,
-    spreadsheetId: string
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<Map<string, Connection>> {
-    const { connections } = await this.getConnections(accessToken, spreadsheetId, {
+    const { connections } = await this.getConnections(token, spreadsheetId, userPnIdentifier, accountId, {
       limit: 999999,
       offset: 0
     });
@@ -508,12 +556,13 @@ export class ConnectionsSheetsService {
    * More efficient than getConnections when you only need one connection
    */
   static async getConnectionById(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    connectionId: string
+    connectionId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<Connection | null> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all connections (skip header row)
@@ -559,15 +608,16 @@ export class ConnectionsSheetsService {
    * Update connection status in connections sheet
    */
   static async updateConnectionStatus(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
     connectionId: string,
     status: Connection['status'],
+    userPnIdentifier: string,
+    accountId: string | undefined,
     acceptedAt?: string,
     sharedSecret?: string
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all connections to find the row
@@ -627,12 +677,13 @@ export class ConnectionsSheetsService {
    * Remove connection from connections sheet
    */
   static async removeConnection(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    connectionId: string
+    connectionId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all connections to find the row
@@ -688,9 +739,11 @@ export class ConnectionsSheetsService {
    * Add follower to followers sheet
    */
   static async addFollower(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    follower: Follower
+    follower: Follower,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
     // Validate required fields
     if (!follower.followerPnIdentifier) {
@@ -704,8 +757,7 @@ export class ConnectionsSheetsService {
     if (normalizedFollowerPnIdentifier === 'pn-' || normalizedFollowerPnIdentifier.length <= 3) {
       throw new Error(`Invalid followerPnIdentifier: ${follower.followerPnIdentifier} (normalized to ${normalizedFollowerPnIdentifier})`);
     }
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     await sheets.spreadsheets.values.append({
@@ -726,15 +778,16 @@ export class ConnectionsSheetsService {
    * Get followers from followers sheet
    */
   static async getFollowers(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined,
     options?: {
       limit?: number;
       offset?: number;
     }
   ): Promise<{ followers: Follower[]; total: number }> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all followers (skip header row)
@@ -786,14 +839,15 @@ export class ConnectionsSheetsService {
    * Remove follower from followers sheet
    */
   static async removeFollower(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    followerPnIdentifier: string
+    followerPnIdentifier: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
     // Normalize followerPnIdentifier parameter
     const normalizedFollowerPnIdentifier = followerPnIdentifier.startsWith('pn-') ? followerPnIdentifier : `pn-${followerPnIdentifier}`;
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all followers to find the row
@@ -853,9 +907,11 @@ export class ConnectionsSheetsService {
    * Add following entry to following sheet
    */
   static async addFollowing(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    following: Following
+    following: Following,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
     // Validate required fields
     if (!following.targetPnIdentifier) {
@@ -871,8 +927,7 @@ export class ConnectionsSheetsService {
     if (following.targetType === 'user' && (normalizedTargetPnIdentifier === 'pn-' || normalizedTargetPnIdentifier.length <= 3)) {
       throw new Error(`Invalid targetPnIdentifier for user: ${following.targetPnIdentifier} (normalized to ${normalizedTargetPnIdentifier})`);
     }
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     await sheets.spreadsheets.values.append({
@@ -893,16 +948,17 @@ export class ConnectionsSheetsService {
    * Get following entries from following sheet
    */
   static async getFollowing(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined,
     options?: {
       limit?: number;
       offset?: number;
       targetType?: 'user' | 'feed';
     }
   ): Promise<{ following: Following[]; total: number }> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all following (skip header row)
@@ -964,17 +1020,18 @@ export class ConnectionsSheetsService {
    * Remove following entry from following sheet
    */
   static async removeFollowing(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
     targetType: 'user' | 'feed',
-    targetPnIdentifier: string
+    targetPnIdentifier: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
     // Normalize targetPnIdentifier parameter (only if it's a user, not a feed)
     const normalizedTargetPnIdentifier = targetType === 'user' && targetPnIdentifier && !targetPnIdentifier.startsWith('pn-')
       ? `pn-${targetPnIdentifier}`
       : targetPnIdentifier;
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all following to find the row

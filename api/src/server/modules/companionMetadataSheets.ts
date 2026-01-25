@@ -14,6 +14,7 @@
 
 import { google } from 'googleapis';
 import { MetadataEncryption } from '../utils/metadataEncryption';
+import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 
 export interface CompanionMetadata {
   fileId: string;
@@ -78,13 +79,14 @@ export class CompanionMetadataSheets {
    * Create a new companion metadata spreadsheet with all sheets
    */
   static async createSpreadsheet(
-    accessToken: string,
+    token: GoogleDriveToken,
     folderId: string,
     fileId: string,
-    metadata: CompanionMetadata
+    metadata: CompanionMetadata,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
 
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
@@ -300,12 +302,13 @@ export class CompanionMetadataSheets {
    * Find companion metadata spreadsheet by fileId
    */
   static async findSpreadsheet(
-    accessToken: string,
+    token: GoogleDriveToken,
     folderId: string,
-    fileId: string
+    fileId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string | null> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
 
     const drive = google.drive({ version: 'v3', auth });
 
@@ -358,11 +361,12 @@ export class CompanionMetadataSheets {
    * Read companion metadata from spreadsheet
    */
   static async readMetadata(
-    accessToken: string,
-    spreadsheetId: string
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<CompanionMetadata | null> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
 
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -415,7 +419,7 @@ export class CompanionMetadataSheets {
       };
 
       // Derive engagement counts from sheets
-      const engagement = await this.getEngagementCounts(accessToken, spreadsheetId);
+      const engagement = await this.getEngagementCounts(token, spreadsheetId, userPnIdentifier, accountId);
       metadata.engagement = engagement;
 
       return metadata;
@@ -429,8 +433,10 @@ export class CompanionMetadataSheets {
    * Derive engagement counts by counting rows in engagement sheets
    */
   static async getEngagementCounts(
-    accessToken: string,
-    spreadsheetId: string
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<{
     views: number;
     likes: number;
@@ -439,8 +445,7 @@ export class CompanionMetadataSheets {
     saves: number;
     lastUpdated: string;
   }> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
 
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -530,12 +535,13 @@ export class CompanionMetadataSheets {
    * Update metadata sheet row
    */
   static async updateMetadata(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    metadata: Partial<CompanionMetadata>
+    metadata: Partial<CompanionMetadata>,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
 
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -622,12 +628,13 @@ export class CompanionMetadataSheets {
    * Append a like to the Likes sheet
    */
   static async appendLike(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    like: LikeRecord
+    like: LikeRecord,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
 
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -651,13 +658,14 @@ export class CompanionMetadataSheets {
    * Remove a like from the Likes sheet (by fileId and pnIdentifier)
    */
   static async removeLike(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
     fileId: string,
-    pnIdentifier: string
+    pnIdentifier: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
 
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -703,12 +711,13 @@ export class CompanionMetadataSheets {
    * Append a comment to the Comments sheet
    */
   static async appendComment(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    comment: CommentRecord
+    comment: CommentRecord,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
 
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -739,12 +748,13 @@ export class CompanionMetadataSheets {
    * Append a share to the Shares sheet
    */
   static async appendShare(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    share: ShareRecord
+    share: ShareRecord,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
 
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -768,12 +778,13 @@ export class CompanionMetadataSheets {
    * Append a save to the Saves sheet
    */
   static async appendSave(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    save: SaveRecord
+    save: SaveRecord,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
 
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -797,13 +808,14 @@ export class CompanionMetadataSheets {
    * Remove a save from the Saves sheet (by fileId and pnIdentifier)
    */
   static async removeSave(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
     fileId: string,
-    pnIdentifier: string
+    pnIdentifier: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
 
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -849,12 +861,13 @@ export class CompanionMetadataSheets {
    * Get all likes for a file
    */
   static async getLikes(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    fileId: string
+    fileId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<LikeRecord[]> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
 
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -885,12 +898,13 @@ export class CompanionMetadataSheets {
    * Get all comments for a file
    */
   static async getComments(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    fileId: string
+    fileId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<CommentRecord[]> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
 
     const sheets = google.sheets({ version: 'v4', auth });
 

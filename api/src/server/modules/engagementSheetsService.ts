@@ -5,6 +5,7 @@
  */
 
 import { google } from 'googleapis';
+import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 
 export interface UserComment {
   fileId: string;
@@ -27,9 +28,13 @@ export class EngagementSheetsService {
   /**
    * Create engagement sheet in _metadata. Used only at Drive connection init.
    */
-  static async createEngagementSheet(accessToken: string, metadataFolderId: string): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+  static async createEngagementSheet(
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<string> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
@@ -80,11 +85,12 @@ export class EngagementSheetsService {
    * Created at Drive connection init; this does not create, move, or delete.
    */
   static async getEngagementSheet(
-    accessToken: string,
-    metadataFolderId: string
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
     const fileQuery = `name='${this.ENGAGEMENT_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
@@ -105,12 +111,13 @@ export class EngagementSheetsService {
    * Add like
    */
   static async addLike(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    fileId: string
+    fileId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     const timestamp = new Date().toISOString();
@@ -128,12 +135,13 @@ export class EngagementSheetsService {
    * Remove like
    */
   static async removeLike(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    fileId: string
+    fileId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all likes
@@ -171,11 +179,12 @@ export class EngagementSheetsService {
    * Get likes
    */
   static async getLikes(
-    accessToken: string,
-    spreadsheetId: string
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string[]> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     const response = await sheets.spreadsheets.values.get({
@@ -194,12 +203,13 @@ export class EngagementSheetsService {
    * Add dislike
    */
   static async addDislike(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    fileId: string
+    fileId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     const timestamp = new Date().toISOString();
@@ -217,12 +227,13 @@ export class EngagementSheetsService {
    * Remove dislike
    */
   static async removeDislike(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    fileId: string
+    fileId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     const response = await sheets.spreadsheets.values.get({
@@ -257,11 +268,12 @@ export class EngagementSheetsService {
    * Get dislikes
    */
   static async getDislikes(
-    accessToken: string,
-    spreadsheetId: string
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string[]> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     const response = await sheets.spreadsheets.values.get({
@@ -280,12 +292,13 @@ export class EngagementSheetsService {
    * Add comment
    */
   static async addComment(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    comment: UserComment
+    comment: UserComment,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     await sheets.spreadsheets.values.append({
@@ -311,12 +324,13 @@ export class EngagementSheetsService {
    * Get comments
    */
   static async getComments(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined,
     fileId?: string
   ): Promise<UserComment[]> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     const response = await sheets.spreadsheets.values.get({
@@ -353,12 +367,13 @@ export class EngagementSheetsService {
    * Add share
    */
   static async addShare(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    fileId: string
+    fileId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     const timestamp = new Date().toISOString();
@@ -376,11 +391,12 @@ export class EngagementSheetsService {
    * Get shares
    */
   static async getShares(
-    accessToken: string,
-    spreadsheetId: string
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string[]> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     const response = await sheets.spreadsheets.values.get({
@@ -399,12 +415,13 @@ export class EngagementSheetsService {
    * Add save
    */
   static async addSave(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    fileId: string
+    fileId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     const timestamp = new Date().toISOString();
@@ -422,11 +439,12 @@ export class EngagementSheetsService {
    * Get saves
    */
   static async getSaves(
-    accessToken: string,
-    spreadsheetId: string
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string[]> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     const response = await sheets.spreadsheets.values.get({

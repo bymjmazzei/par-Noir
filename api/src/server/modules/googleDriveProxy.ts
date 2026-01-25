@@ -426,6 +426,99 @@ export class GoogleDriveProxyService {
   }
 
   /**
+   * Update stored token after automatic refresh by OAuth2 client library
+   * Called from GoogleOAuth2Helper when tokens are refreshed automatically
+   */
+  async updateStoredToken(
+    userPnIdentifier: string,
+    accountId: string | undefined,
+    newAccessToken: string,
+    expiryDate?: Date
+  ): Promise<void> {
+    const pnIdentifier = userPnIdentifier?.startsWith('pn-') ? userPnIdentifier : userPnIdentifier;
+    
+    if (!pnIdentifier || !pnIdentifier.startsWith('pn-')) {
+      throw new Error('Invalid pn identifier');
+    }
+    
+    const identifierCandidates = [pnIdentifier];
+    const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(identifierCandidates);
+    
+    if (!credentialsRecord) {
+      throw new Error('Credentials not found');
+    }
+    
+    const credentials = credentialsRecord.credentials;
+    let account: GoogleDriveToken | null = null;
+    
+    if (accountId && credentials.googleDriveAccounts) {
+      const actualAccountId = accountId.includes('::') ? accountId.split('::')[1] : accountId;
+      account = credentials.googleDriveAccounts.find(
+        (acc: any) => 
+          acc.backendId === accountId || 
+          acc.keyPrefix === accountId ||
+          acc.backendId === actualAccountId ||
+          acc.keyPrefix === actualAccountId
+      ) || null;
+    } else if (credentials.googleDriveAccounts && credentials.googleDriveAccounts.length > 0) {
+      account = credentials.googleDriveAccounts[0];
+    } else if (credentials.googleDrive) {
+      account = credentials.googleDrive;
+    }
+    
+    if (!account) {
+      throw new Error('Google Drive account not found');
+    }
+    
+    // Update the account with new token
+    const expiresAt = expiryDate ? expiryDate.getTime() : undefined;
+    const expiresIn = expiresAt ? Math.floor((expiresAt - Date.now()) / 1000) : undefined;
+    
+    if (accountId && credentials.googleDriveAccounts) {
+      const accountIndex = credentials.googleDriveAccounts.findIndex(
+        (acc: any) => 
+          acc.backendId === accountId || 
+          acc.keyPrefix === accountId ||
+          `${acc.backendId}` === accountId ||
+          `${acc.keyPrefix}` === accountId
+      );
+      if (accountIndex >= 0) {
+        credentials.googleDriveAccounts[accountIndex] = {
+          ...credentials.googleDriveAccounts[accountIndex],
+          access_token: newAccessToken,
+          accessToken: newAccessToken,
+          expires_at: expiresAt,
+          expires_in: expiresIn,
+          // Preserve refresh_token
+          refresh_token: (account as any).refresh_token || (account as any).refreshToken,
+          refreshToken: (account as any).refresh_token || (account as any).refreshToken
+        };
+      }
+    } else if (credentials.googleDriveAccounts && credentials.googleDriveAccounts.length > 0) {
+      credentials.googleDriveAccounts[0] = {
+        ...credentials.googleDriveAccounts[0],
+        access_token: newAccessToken,
+        accessToken: newAccessToken,
+        expires_at: expiresAt,
+        expires_in: expiresIn,
+        refresh_token: (account as any).refresh_token || (account as any).refreshToken,
+        refreshToken: (account as any).refresh_token || (account as any).refreshToken
+      };
+    } else if (credentials.googleDrive) {
+      credentials.googleDrive = {
+        ...credentials.googleDrive,
+        access_token: newAccessToken,
+        expires_at: expiresAt,
+        expires_in: expiresIn,
+        refresh_token: (account as any).refresh_token
+      };
+    }
+    
+    // Save updated credentials
+    await storageCredentialsService.upsertCredentials(credentialsRecord.identityId, credentials);
+  }
+
+  /**
    * Refresh Google Drive access token
    */
   private async refreshAccessToken(refreshToken: string): Promise<GoogleDriveToken> {

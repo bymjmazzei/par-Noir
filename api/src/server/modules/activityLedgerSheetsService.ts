@@ -5,6 +5,7 @@
  */
 
 import { google } from 'googleapis';
+import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 
 export interface ActivityEntry {
   activity_id: string;
@@ -23,9 +24,13 @@ export class ActivityLedgerSheetsService {
   /**
    * Create activity ledger sheet in _metadata. Used only at Drive connection init.
    */
-  static async createActivityLedgerSheet(accessToken: string, metadataFolderId: string): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+  static async createActivityLedgerSheet(
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<string> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
@@ -72,11 +77,12 @@ export class ActivityLedgerSheetsService {
    * Created at Drive connection init; this does not create, move, or delete.
    */
   static async getActivityLedgerSheet(
-    accessToken: string,
-    metadataFolderId: string
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
     const fileQuery = `name='${this.ACTIVITY_LEDGER_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
@@ -97,12 +103,13 @@ export class ActivityLedgerSheetsService {
    * Append activity to activity ledger sheet
    */
   static async appendActivity(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    activity: ActivityEntry
+    activity: ActivityEntry,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     await sheets.spreadsheets.values.append({
@@ -128,8 +135,10 @@ export class ActivityLedgerSheetsService {
    * Get activities from activity ledger sheet
    */
   static async getActivities(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined,
     options?: {
       limit?: number;
       offset?: number;
@@ -137,8 +146,7 @@ export class ActivityLedgerSheetsService {
       userPnIdentifier?: string;
     }
   ): Promise<{ activities: ActivityEntry[]; total: number }> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all activities (skip header row)
@@ -210,12 +218,13 @@ export class ActivityLedgerSheetsService {
    * Get activity by ID
    */
   static async getActivityById(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    activityId: string
+    activityId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<ActivityEntry | null> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all activities to find the one with matching ID

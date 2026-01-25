@@ -7,6 +7,7 @@
 
 import { google } from 'googleapis';
 import { ZKPDataPoint } from './zkpDataPointsService';
+import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 
 export class ZKPDataPointsSheetsService {
   private static readonly ZKP_DATA_POINTS_FILE_NAME = 'zkp-data-points.xlsx';
@@ -14,9 +15,13 @@ export class ZKPDataPointsSheetsService {
   /**
    * Create ZKP data points sheet in _metadata. Used only at Drive connection init.
    */
-  static async createZKPDataPointsSheet(accessToken: string, metadataFolderId: string): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+  static async createZKPDataPointsSheet(
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<string> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
@@ -56,11 +61,12 @@ export class ZKPDataPointsSheetsService {
    * Created at Drive connection init; this does not create, move, or delete.
    */
   static async getZKPDataPointsSheet(
-    accessToken: string,
-    metadataFolderId: string
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
     const fileQuery = `name='${this.ZKP_DATA_POINTS_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
@@ -81,12 +87,13 @@ export class ZKPDataPointsSheetsService {
    * Add or update ZKP data point
    */
   static async addZKPDataPoint(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    dataPoint: ZKPDataPoint
+    dataPoint: ZKPDataPoint,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Check if data point already exists
@@ -146,11 +153,12 @@ export class ZKPDataPointsSheetsService {
    * Get all ZKP data points
    */
   static async getZKPDataPoints(
-    accessToken: string,
-    spreadsheetId: string
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<Record<string, ZKPDataPoint>> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     const response = await sheets.spreadsheets.values.get({
@@ -191,11 +199,13 @@ export class ZKPDataPointsSheetsService {
    * Get a specific ZKP data point by ID
    */
   static async getZKPDataPoint(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    dataPointId: string
+    dataPointId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<ZKPDataPoint | null> {
-    const allDataPoints = await this.getZKPDataPoints(accessToken, spreadsheetId);
+    const allDataPoints = await this.getZKPDataPoints(token, spreadsheetId, userPnIdentifier, accountId);
     return allDataPoints[dataPointId] || null;
   }
 
@@ -203,12 +213,13 @@ export class ZKPDataPointsSheetsService {
    * Delete a ZKP data point
    */
   static async deleteZKPDataPoint(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    dataPointId: string
+    dataPointId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Find the row with this data point ID

@@ -5,6 +5,7 @@
  */
 
 import { google } from 'googleapis';
+import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 
 export interface MessagingActivityEntry {
   message_activity_id: string;
@@ -24,9 +25,13 @@ export class MessagingLedgerSheetsService {
   /**
    * Create messaging ledger sheet in _metadata. Used only at Drive connection init.
    */
-  static async createMessagingLedgerSheet(accessToken: string, metadataFolderId: string): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+  static async createMessagingLedgerSheet(
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<string> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
@@ -66,11 +71,12 @@ export class MessagingLedgerSheetsService {
    * Created at Drive connection init; this does not create, move, or delete.
    */
   static async getMessagingLedgerSheet(
-    accessToken: string,
-    metadataFolderId: string
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
     const fileQuery = `name='${this.MESSAGING_LEDGER_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
@@ -91,12 +97,13 @@ export class MessagingLedgerSheetsService {
    * Append activity to ledger
    */
   static async appendActivity(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    activity: MessagingActivityEntry
+    activity: MessagingActivityEntry,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     await sheets.spreadsheets.values.append({
@@ -123,8 +130,10 @@ export class MessagingLedgerSheetsService {
    * Get activities
    */
   static async getActivities(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined,
     options?: {
       limit?: number;
       offset?: number;
@@ -132,8 +141,7 @@ export class MessagingLedgerSheetsService {
       threadId?: string;
     }
   ): Promise<{ activities: MessagingActivityEntry[]; total: number }> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all activities (skip header row)

@@ -5,6 +5,7 @@
  */
 
 import { google } from 'googleapis';
+import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 
 export interface Notification {
   notification_id: string;
@@ -32,9 +33,13 @@ export class NotificationsSheetsService {
   /**
    * Create notifications sheet in _metadata. Used only at Drive connection init.
    */
-  static async createNotificationsSheet(accessToken: string, metadataFolderId: string): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+  static async createNotificationsSheet(
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<string> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
@@ -81,11 +86,12 @@ export class NotificationsSheetsService {
    * Created at Drive connection init; this does not create, move, or delete.
    */
   static async getNotificationsSheet(
-    accessToken: string,
-    metadataFolderId: string
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<string> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
     const fileQuery = `name='${this.NOTIFICATIONS_FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
@@ -106,12 +112,13 @@ export class NotificationsSheetsService {
    * Append notification to notifications sheet
    */
   static async appendNotification(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    notification: Notification
+    notification: Notification,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     await sheets.spreadsheets.values.append({
@@ -137,8 +144,10 @@ export class NotificationsSheetsService {
    * Get notifications from notifications sheet
    */
   static async getNotifications(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined,
     options?: {
       limit?: number;
       offset?: number;
@@ -146,8 +155,7 @@ export class NotificationsSheetsService {
       type?: Notification['type'];
     }
   ): Promise<{ notifications: Notification[]; total: number }> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all notifications (skip header row)
@@ -213,12 +221,13 @@ export class NotificationsSheetsService {
    * Mark notification as read
    */
   static async markAsRead(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    notificationId: string
+    notificationId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<boolean> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all notifications to find the row
@@ -257,12 +266,12 @@ export class NotificationsSheetsService {
    * Mark all notifications as read
    */
   static async markAllAsRead(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    userPnIdentifier: string
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<number> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get all notifications
@@ -307,11 +316,12 @@ export class NotificationsSheetsService {
    * Get metadata (updatedAt, preferences) from Metadata sheet. Returns null if sheet does not exist.
    */
   static async getMetadata(
-    accessToken: string,
-    spreadsheetId: string
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<{ updatedAt: string; preferences: Record<string, unknown> | null; identifier: string } | null> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     try {
       const res = await sheets.spreadsheets.values.get({
@@ -339,14 +349,15 @@ export class NotificationsSheetsService {
    * Set metadata (updatedAt, preferences, identifier) in Metadata sheet. Creates sheet if it does not exist.
    */
   static async setMetadata(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
     updatedAt: string,
     preferences: Record<string, unknown> | null,
-    identifier: string
+    identifier: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     try {
       await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Metadata!A1' });
@@ -372,12 +383,13 @@ export class NotificationsSheetsService {
    * Replace all notification rows in the Notifications sheet (keeps header).
    */
   static async setAllNotifications(
-    accessToken: string,
+    token: GoogleDriveToken,
     spreadsheetId: string,
-    notifications: Notification[]
+    notifications: Notification[],
+    userPnIdentifier: string,
+    accountId: string | undefined
   ): Promise<void> {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     await sheets.spreadsheets.values.clear({
       spreadsheetId,
