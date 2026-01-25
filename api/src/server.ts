@@ -10130,7 +10130,18 @@ class ProductionServer {
           console.warn('[GetConversations] Metadata folder not found, skipping lastMessage retrieval');
         }
         const metadataFolderId = metadataFolder?.metadataFolderId;
-        const spreadsheetId = metadataFolder?.spreadsheetId;
+        // Get spreadsheetId separately using getConnectionsSheet
+        let spreadsheetId: string | undefined;
+        if (metadataFolderId) {
+          try {
+            spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
+              userAccessToken,
+              metadataFolderId
+            );
+          } catch (error) {
+            console.warn('[GetConversations] Failed to get connections sheet:', error);
+          }
+        }
 
         const conversationsWithLastMessage = await Promise.all(
           topConversations.map(async (conv) => {
@@ -10154,11 +10165,14 @@ class ProductionServer {
                 normalizedParticipantPnIdentifier
               );
 
-              if (!connectionStatus || connectionStatus.status !== 'connected') {
+              if (!connectionStatus || connectionStatus.status !== 'connected' || !connectionStatus.connectionId) {
                 return { ...conv, lastMessage: null };
               }
 
               // Get connection to retrieve shared secret
+              if (!spreadsheetId) {
+                return { ...conv, lastMessage: null };
+              }
               const connection = await ConnectionsSheetsService.getConnectionById(
                 userAccessToken,
                 spreadsheetId,
@@ -10631,15 +10645,21 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
+        // Declare recipient credentials and token variables outside the if block
+        let recipientCredentials: any = null;
+        let recipientAccessToken: string | null = null;
+
         // Check if users are connected (unless this is a connection request)
         if (!isConnectionRequest) {
           try {
             
             // Get sender's and recipient's credentials in parallel
-            const [senderCredentials, recipientCredentials] = await Promise.all([
+            const [senderCredentials, fetchedRecipientCredentials] = await Promise.all([
               storageCredentialsService.getCredentials(fromPnIdentifier),
               storageCredentialsService.getCredentials(toPnIdentifier)
             ]);
+            
+            recipientCredentials = fetchedRecipientCredentials;
 
             if (!senderCredentials?.credentials) {
               return res.status(403).json({ error: 'Only connections can message each other' });
@@ -10661,10 +10681,12 @@ class ProductionServer {
             const recipientAccount = recipientGoogleDriveAccounts?.[0];
             const recipientAccountId = recipientAccount ? this.extractAccountId(recipientAccount) : undefined;
 
-            const [senderAccessToken, recipientAccessToken] = await Promise.all([
+            const [senderAccessToken, fetchedRecipientAccessToken] = await Promise.all([
               googleDriveProxyService.getAccessToken(fromPnIdentifier, accountId, [fromPnIdentifier]),
               recipientAccountId ? googleDriveProxyService.getAccessToken(toPnIdentifier, recipientAccountId, [toPnIdentifier]) : Promise.resolve(null)
             ]);
+            
+            recipientAccessToken = fetchedRecipientAccessToken;
             
             // Find metadata folder
             const folderSearchQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
