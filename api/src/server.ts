@@ -10480,10 +10480,12 @@ class ProductionServer {
           : `pn-${participantPnIdentifier}`;
         console.log('[GetThread] Checking connection between', pnIdentifier, 'and', normalizedParticipantPnIdentifier);
         
+        // Ensure both identifiers are normalized before checking connection
+        const normalizedUserPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
         const connectionStatus = await ConnectionsService.getConnectionStatus(
           userAccessToken,
           metadataFolderId,
-          pnIdentifier,
+          normalizedUserPnIdentifier,
           normalizedParticipantPnIdentifier
         );
 
