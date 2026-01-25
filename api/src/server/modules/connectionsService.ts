@@ -440,7 +440,7 @@ export class ConnectionsService {
       return await this.acceptConnectionRequestJSON(
         acceptorAccessToken,
         acceptorMetadataFolder,
-        acceptorDid,
+        acceptorPnIdentifier,
         connectionId
       );
     }
@@ -452,7 +452,7 @@ export class ConnectionsService {
   private static async acceptConnectionRequestJSON(
     acceptorAccessToken: string,
     acceptorMetadataFolder: string,
-    acceptorDid: string,
+    acceptorPnIdentifier: string,
     connectionId: string
   ): Promise<string> {
     const acceptorFile = await this.getConnectionsFile(acceptorAccessToken, acceptorMetadataFolder);
@@ -511,7 +511,7 @@ export class ConnectionsService {
     connection.sharedSecret = sharedSecret;
     acceptorFile.updatedAt = now;
 
-    await this.updateConnectionsFile(acceptorAccessToken, acceptorMetadataFolder, acceptorDid, acceptorFile);
+    await this.updateConnectionsFile(acceptorAccessToken, acceptorMetadataFolder, acceptorPnIdentifier, acceptorFile);
     
     return sharedSecret;
 

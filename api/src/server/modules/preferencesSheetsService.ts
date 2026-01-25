@@ -31,7 +31,8 @@ export type PreferenceActionType =
 
 export interface PreferenceInteraction {
   interaction_id: string;
-  user_did: string;
+  user_did?: string; // Legacy field for backward compatibility
+  user_pn_identifier?: string; // New standard field
   preference_type: PreferenceType;
   action_type: PreferenceActionType;
   previous_value?: string; // JSON string

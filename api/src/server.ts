@@ -10359,7 +10359,7 @@ class ProductionServer {
             const conversationSheetId = await MessageSheetsService.getConversationSheet(
               userAccessToken,
               messagesFolderId,
-              normalizedOtherUserPnIdentifier
+              conversation.otherUserPnIdentifier
             );
             const result = await MessageSheetsService.getMessages(
               userAccessToken,
@@ -10370,7 +10370,7 @@ class ProductionServer {
             );
             if (result.messages.length > 0) {
               const msg = result.messages[0];
-              msg.toPnIdentifier = normalizedOtherUserPnIdentifier;
+              msg.toPnIdentifier = conversation.otherUserPnIdentifier;
               allMessages.push(msg);
             }
           } catch (error) {
@@ -11412,7 +11412,7 @@ class ProductionServer {
                 const participantAccessToken = await googleDriveProxyService.getAccessToken(participantCredentials.identityId, participantAccountId, [participantCredentials.identityId]);
                 
                 try {
-                  const participantMetadataFolder = await this.getMetadataFolder(participantAccessToken, normalizedParticipantDid);
+                  const participantMetadataFolder = await this.getMetadataFolder(participantAccessToken, normalizedParticipantPnIdentifier);
                   if (participantMetadataFolder) {
                     const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
                     const participantSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
@@ -11632,10 +11632,11 @@ class ProductionServer {
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const db = (await import('./server/utils/database')).getDatabasePool();
 
-        let pnIdentifier: string | null = null;
-
         // Use pn identifier directly (already normalized)
-        // No DID lookup needed - pn identifier is the standard
+        const pnIdentifier = typeof req.params.userPnIdentifier === 'string' ? req.params.userPnIdentifier : String(req.params.userPnIdentifier || '');
+        if (!pnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
+        }
 
         // First, try to get from database (fast lookup)
         const dbProfileResult = await db.query(`
@@ -11993,7 +11994,6 @@ class ProductionServer {
           console.error(`[ConnectionRequest] Error details:`, { 
             connectionId: connection.connectionId, 
             requesterPnIdentifier, 
-            recipientPnIdentifier, 
             recipientPnIdentifier: recipientCredentials.identityId,
             error: error.message, 
             stack: error.stack 
@@ -12016,7 +12016,6 @@ class ProductionServer {
           console.error(`[ConnectionRequest] Error details:`, { 
             connectionId: connection.connectionId, 
             requesterPnIdentifier, 
-            recipientPnIdentifier, 
             recipientPnIdentifier: recipientCredentials.identityId,
             error: error.message, 
             stack: error.stack 
@@ -12801,7 +12800,10 @@ class ProductionServer {
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
         // Use pn identifier directly (already normalized)
-        const pnIdentifier = userPnIdentifier;
+        const pnIdentifier = typeof userPnIdentifier === 'string' ? userPnIdentifier : String(userPnIdentifier || '');
+        if (!pnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
+        }
         console.log(`[GetConnections] User: ${pnIdentifier}`);
 
         // Get user's credentials
@@ -13346,10 +13348,14 @@ class ProductionServer {
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
         // Use pn identifier directly (already normalized)
-        console.log(`[PendingRequests] User: ${userPnIdentifier}`);
+        const pnIdentifier = typeof userPnIdentifier === 'string' ? userPnIdentifier : String(userPnIdentifier || '');
+        if (!pnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
+        }
+        console.log(`[PendingRequests] User: ${pnIdentifier}`);
         
         // Get user's credentials
-        let userCredentials = await storageCredentialsService.getCredentials(userPnIdentifier);
+        let userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           console.error(`[PendingRequests] No credentials found: ${userPnIdentifier}`);
           return res.json({ sent: [], received: [] });
@@ -13449,8 +13455,11 @@ class ProductionServer {
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
         // Use pn identifiers directly (already normalized)
-        const normalizedUserPnIdentifier = userPnIdentifier;
-        const normalizedOtherUserPnIdentifier = otherUserPnIdentifier;
+        const normalizedUserPnIdentifier = typeof userPnIdentifier === 'string' ? userPnIdentifier : String(userPnIdentifier || '');
+        const normalizedOtherUserPnIdentifier = typeof otherUserPnIdentifier === 'string' ? otherUserPnIdentifier : String(otherUserPnIdentifier || '');
+        if (!normalizedUserPnIdentifier || !normalizedOtherUserPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier and otherUserPnIdentifier are required' });
+        }
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(normalizedUserPnIdentifier);
@@ -13472,7 +13481,7 @@ class ProductionServer {
         // Get metadata folder
         let metadataFolderId: string;
         try {
-          const _g = await this.getMetadataFolder(userAccessToken, normalizedUserDid);
+          const _g = await this.getMetadataFolder(userAccessToken, normalizedUserPnIdentifier);
           if (!_g) {
             // Folders actually missing - this is the only case for DRIVE_NOT_INITIALIZED
             return this.driveNotInitialized(res);
@@ -13497,8 +13506,8 @@ class ProductionServer {
         const status = await ConnectionsService.getConnectionStatus(
           userAccessToken,
           metadataFolderId,
-          normalizedUserPnIdentifier,
-          normalizedOtherUserPnIdentifier
+          normalizedUserPnIdentifier as string,
+          normalizedOtherUserPnIdentifier as string
         );
 
         return res.json(status);

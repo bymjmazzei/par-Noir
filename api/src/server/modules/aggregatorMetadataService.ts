@@ -14,7 +14,8 @@ export interface EngagementMetrics {
   lastUpdated: string;
   engagementHistory?: Array<{
     type: 'like' | 'comment' | 'share' | 'view';
-    did?: string; // Optional: who engaged (for analytics, privacy-preserving)
+    did?: string; // Legacy field for backward compatibility
+    pn_identifier?: string; // Standard field: who engaged (for analytics, privacy-preserving)
     timestamp: string;
   }>;
 }

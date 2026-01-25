@@ -171,7 +171,7 @@ export class NotificationService {
       // Create notification entry
       const newNotification: SheetsNotification = {
         notification_id: notificationId,
-        user_pn_identifier: normalizedUserDid,
+        user_pn_identifier: normalizedUserPnIdentifier,
         type: notification.type,
         title: notification.title,
         message: notification.message,
