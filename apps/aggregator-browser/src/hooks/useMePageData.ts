@@ -392,9 +392,14 @@ export function useMePageData({
         const top: IndexedFile[] = [];
         const seen = new Set<string>();
         for (const c of conn) {
-          if (seen.has(c.userDid)) continue;
-          seen.add(c.userDid);
-          const owner = normalizeId(c.userDid);
+          // Connection.userPnIdentifier is the other user's identifier
+          if (!c.userPnIdentifier) {
+            console.warn('[useMePageData] Connection missing userPnIdentifier:', c);
+            continue;
+          }
+          if (seen.has(c.userPnIdentifier)) continue;
+          seen.add(c.userPnIdentifier);
+          const owner = normalizeId(c.userPnIdentifier);
           const files = indexedFiles.filter((f) => normalizeId(getCreatorIdentifier(f) ?? '') === owner);
           const topPost = files.find((f) => f.metadata.isTopPost === true) ||
             files.sort((a, b) =>

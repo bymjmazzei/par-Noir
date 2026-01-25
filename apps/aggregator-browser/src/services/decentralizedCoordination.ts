@@ -429,7 +429,7 @@ export async function getConnectionStatus(
     
     // Check received requests
     const received = pendingRequests.received.find(
-      conn => conn.userDid === otherUserDid || conn.otherUserDid === otherUserDid
+      conn => (conn.userDid && conn.userDid === otherUserDid) || (conn.otherUserDid && conn.otherUserDid === otherUserDid)
     );
     if (received) {
       return {
@@ -440,7 +440,7 @@ export async function getConnectionStatus(
 
     // Check sent requests
     const sent = pendingRequests.sent.find(
-      conn => conn.userDid === otherUserDid || conn.otherUserDid === otherUserDid
+      conn => (conn.userDid && conn.userDid === otherUserDid) || (conn.otherUserDid && conn.otherUserDid === otherUserDid)
     );
     if (sent) {
       return {
@@ -452,7 +452,7 @@ export async function getConnectionStatus(
     // Check accepted connections
     const connections = await getConnections(userDid);
     const connected = connections.find(
-      conn => conn.userDid === otherUserDid || conn.otherUserDid === otherUserDid
+      conn => (conn.userDid && conn.userDid === otherUserDid) || (conn.otherUserDid && conn.otherUserDid === otherUserDid)
     );
     if (connected) {
       return {

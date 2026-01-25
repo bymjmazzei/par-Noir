@@ -180,6 +180,11 @@ export class ActivityLedgerSheetsService {
       // Normalize when filtering (handles legacy data)
       const normalizedUserDid = options.userDid?.startsWith('pn-') ? options.userDid : `pn-${options.userDid}`;
       activities = activities.filter(a => {
+        // Validate user_pn_identifier exists before calling .startsWith()
+        if (!a.user_pn_identifier) {
+          console.warn('[ActivityLedgerSheetsService] Skipping activity with undefined user_pn_identifier:', a);
+          return false;
+        }
         const normalizedAUserPnIdentifier = a.user_pn_identifier.startsWith('pn-') ? a.user_pn_identifier : `pn-${a.user_pn_identifier}`;
         return normalizedAUserPnIdentifier === normalizedUserDid;
       });

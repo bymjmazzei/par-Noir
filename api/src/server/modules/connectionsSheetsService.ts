@@ -378,8 +378,18 @@ export class ConnectionsSheetsService {
     spreadsheetId: string,
     connection: Connection
   ): Promise<void> {
+    // Validate required fields
+    if (!connection.connectionId || !connection.userPnIdentifier) {
+      throw new Error(`Invalid connection: missing connectionId or userPnIdentifier`);
+    }
+    
     // Normalize userPnIdentifier before writing (handles legacy data)
     const normalizedUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-') ? connection.userPnIdentifier : `pn-${connection.userPnIdentifier}`;
+    
+    // Ensure normalized identifier is valid
+    if (normalizedUserPnIdentifier === 'pn-' || normalizedUserPnIdentifier.length <= 3) {
+      throw new Error(`Invalid userPnIdentifier: ${connection.userPnIdentifier} (normalized to ${normalizedUserPnIdentifier})`);
+    }
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
@@ -424,19 +434,37 @@ export class ConnectionsSheetsService {
     });
 
     const rows = response.data.values || [];
-    let connections: Connection[] = rows.map(row => {
+    let connections: Connection[] = [];
+    
+    for (const row of rows) {
+      // Validate required fields - connectionId and userPnIdentifier are required
+      const connectionId = row[0];
+      const userPnIdentifier = row[1];
+      
+      // Skip invalid rows (missing required fields)
+      if (!connectionId || !userPnIdentifier) {
+        console.warn('[ConnectionsSheetsService] Skipping invalid connection row:', { connectionId, userPnIdentifier, row });
+        continue;
+      }
+      
       // Normalize userPnIdentifier when reading from sheet (handles legacy data)
-      const userPnIdentifier = row[1] || '';
       const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
-      return {
-        connectionId: row[0] || '',
+      
+      // Ensure normalized identifier is valid (not just 'pn-')
+      if (normalizedUserPnIdentifier === 'pn-' || normalizedUserPnIdentifier.length <= 3) {
+        console.warn('[ConnectionsSheetsService] Skipping connection with invalid userPnIdentifier:', { connectionId, userPnIdentifier, normalizedUserPnIdentifier });
+        continue;
+      }
+      
+      connections.push({
+        connectionId,
         userPnIdentifier: normalizedUserPnIdentifier,
         status: (row[2] || 'pending_sent') as Connection['status'],
         createdAt: row[3] || new Date().toISOString(),
         acceptedAt: row[4] || undefined,
         sharedSecret: row[5] || undefined
-      };
-    });
+      });
+    }
 
     // Filter by status if specified
     if (options?.status) {
@@ -593,8 +621,18 @@ export class ConnectionsSheetsService {
     spreadsheetId: string,
     follower: Follower
   ): Promise<void> {
+    // Validate required fields
+    if (!follower.followerPnIdentifier) {
+      throw new Error('Follower missing followerPnIdentifier');
+    }
+    
     // Normalize followerPnIdentifier before writing (handles legacy data)
     const normalizedFollowerPnIdentifier = follower.followerPnIdentifier.startsWith('pn-') ? follower.followerPnIdentifier : `pn-${follower.followerPnIdentifier}`;
+    
+    // Ensure normalized identifier is valid
+    if (normalizedFollowerPnIdentifier === 'pn-' || normalizedFollowerPnIdentifier.length <= 3) {
+      throw new Error(`Invalid followerPnIdentifier: ${follower.followerPnIdentifier} (normalized to ${normalizedFollowerPnIdentifier})`);
+    }
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
@@ -635,16 +673,30 @@ export class ConnectionsSheetsService {
     });
 
     const rows = response.data.values || [];
-    const followers: Follower[] = rows.map(row => {
+    const followers: Follower[] = [];
+    
+    for (const row of rows) {
+      const followerPnIdentifier = row[0];
+      // Skip invalid rows (missing required field)
+      if (!followerPnIdentifier) {
+        console.warn('[ConnectionsSheetsService] Skipping invalid follower row:', row);
+        continue;
+      }
       // Normalize followerPnIdentifier when reading from sheet (handles legacy data)
-      const followerPnIdentifier = row[0] || '';
       const normalizedFollowerPnIdentifier = followerPnIdentifier.startsWith('pn-') ? followerPnIdentifier : (followerPnIdentifier ? `pn-${followerPnIdentifier}` : '');
-      return {
+      
+      // Ensure normalized identifier is valid
+      if (normalizedFollowerPnIdentifier === 'pn-' || normalizedFollowerPnIdentifier.length <= 3) {
+        console.warn('[ConnectionsSheetsService] Skipping follower with invalid followerPnIdentifier:', { row, normalizedFollowerPnIdentifier });
+        continue;
+      }
+      
+      followers.push({
         followerPnIdentifier: normalizedFollowerPnIdentifier,
         followedAt: row[1] || new Date().toISOString(),
         feedId: row[2] || undefined
-      };
-    });
+      });
+    }
 
     const total = followers.length;
 
@@ -734,10 +786,20 @@ export class ConnectionsSheetsService {
     spreadsheetId: string,
     following: Following
   ): Promise<void> {
+    // Validate required fields
+    if (!following.targetPnIdentifier) {
+      throw new Error('Following missing targetPnIdentifier');
+    }
+    
     // Normalize targetPnIdentifier before writing (only if it's a user, not a feed)
     const normalizedTargetPnIdentifier = following.targetType === 'user' && following.targetPnIdentifier && !following.targetPnIdentifier.startsWith('pn-')
       ? `pn-${following.targetPnIdentifier}`
       : following.targetPnIdentifier;
+    
+    // For users, ensure normalized identifier is valid
+    if (following.targetType === 'user' && (normalizedTargetPnIdentifier === 'pn-' || normalizedTargetPnIdentifier.length <= 3)) {
+      throw new Error(`Invalid targetPnIdentifier for user: ${following.targetPnIdentifier} (normalized to ${normalizedTargetPnIdentifier})`);
+    }
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
@@ -779,19 +841,35 @@ export class ConnectionsSheetsService {
     });
 
     const rows = response.data.values || [];
-    let following: Following[] = rows.map(row => {
+    let following: Following[] = [];
+    
+    for (const row of rows) {
       const targetType = (row[0] || 'user') as 'user' | 'feed';
-      const targetPnIdentifier = row[1] || '';
+      const targetPnIdentifier = row[1];
+      
+      // Skip invalid rows (missing required field)
+      if (!targetPnIdentifier) {
+        console.warn('[ConnectionsSheetsService] Skipping invalid following row:', row);
+        continue;
+      }
+      
       // Normalize targetPnIdentifier when reading from sheet (handles legacy data, only for users)
       const normalizedTargetPnIdentifier = targetType === 'user' && targetPnIdentifier && !targetPnIdentifier.startsWith('pn-')
         ? `pn-${targetPnIdentifier}`
         : targetPnIdentifier;
-      return {
+      
+      // For users, ensure normalized identifier is valid
+      if (targetType === 'user' && (normalizedTargetPnIdentifier === 'pn-' || normalizedTargetPnIdentifier.length <= 3)) {
+        console.warn('[ConnectionsSheetsService] Skipping following with invalid targetPnIdentifier for user:', { row, normalizedTargetPnIdentifier });
+        continue;
+      }
+      
+      following.push({
         targetType,
         targetPnIdentifier: normalizedTargetPnIdentifier,
         followedAt: row[2] || new Date().toISOString()
-      };
-    });
+      });
+    }
 
     // Filter by target type if specified
     if (options?.targetType) {

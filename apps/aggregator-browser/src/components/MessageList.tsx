@@ -51,7 +51,7 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
           requestId: conn.connectionId,
           fromPnIdentifier: conn.userPnIdentifier,
           toPnIdentifier: userState.pnIdentifier!,
-          content: `Connection request from ${conn.userPnIdentifier.substring(0, 8)}...`,
+          content: `Connection request from ${conn.userPnIdentifier?.substring(0, 8) || 'Unknown'}...`,
           timestamp: conn.createdAt,
           status: 'pending' as const,
           isConnectionRequest: true,
@@ -368,7 +368,7 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="text-white font-medium mb-1">
-                        {request.fromPnIdentifier.substring(0, 16) + '...'}
+                        {(request.fromPnIdentifier?.substring(0, 16) || 'Unknown') + '...'}
                       </h3>
                       <p className="text-neutral-400 text-sm mb-2">{request.content}</p>
                       <p className="text-neutral-500 text-xs">

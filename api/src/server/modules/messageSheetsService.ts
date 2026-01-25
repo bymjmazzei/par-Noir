@@ -484,8 +484,22 @@ export class MessageSheetsService {
       for (const file of searchResponse.data.files) {
         const fileName = file.name || '';
         const extractedOtherUserPnIdentifier = fileName.replace('conversation-', '');
+        
+        // Skip if filename doesn't contain a valid identifier
+        if (!extractedOtherUserPnIdentifier || extractedOtherUserPnIdentifier === fileName) {
+          console.warn('[MessageSheetsService] Skipping conversation file with invalid name:', fileName);
+          continue;
+        }
+        
         // Normalize otherUserPnIdentifier when extracting from filename (handles legacy data)
         const normalizedOtherUserPnIdentifier = this.normalizeToPnIdentifier(extractedOtherUserPnIdentifier);
+        
+        // Ensure normalized identifier is valid (not just 'pn-')
+        if (normalizedOtherUserPnIdentifier === 'pn-' || normalizedOtherUserPnIdentifier.length <= 3) {
+          console.warn('[MessageSheetsService] Skipping conversation with invalid otherUserPnIdentifier:', { fileName, extractedOtherUserPnIdentifier, normalizedOtherUserPnIdentifier });
+          continue;
+        }
+        
         const spreadsheetId = file.id!;
 
         // Use modifiedTime from Drive API as lastMessageAt (much faster than reading Sheets)

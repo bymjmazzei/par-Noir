@@ -223,7 +223,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
     }
   };
 
-  const displayName = participantName || participantDid.substring(0, 16) + '...';
+  const displayName = participantName || (participantDid?.substring(0, 16) || 'Unknown') + '...';
 
   return (
     <div className="h-full flex flex-col bg-neutral-900">

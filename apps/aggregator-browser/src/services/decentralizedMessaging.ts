@@ -201,7 +201,16 @@ export async function getMessageThreads(userDid: string): Promise<Array<{
     const threadsMap = new Map<string, DecentralizedMessage[]>();
     
     messages.forEach(msg => {
+      // Validate message has required fields
+      if (!msg.fromDid || !msg.toDid) {
+        console.warn('[decentralizedMessaging] Skipping message with missing fromDid/toDid:', msg);
+        return;
+      }
       const participantDid = msg.fromDid === userDid ? msg.toDid : msg.fromDid;
+      if (!participantDid) {
+        console.warn('[decentralizedMessaging] Skipping message with invalid participantDid:', msg);
+        return;
+      }
       if (!threadsMap.has(participantDid)) {
         threadsMap.set(participantDid, []);
       }

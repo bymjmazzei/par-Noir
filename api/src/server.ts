@@ -10114,8 +10114,16 @@ class ProductionServer {
         );
 
         // Format conversations for response (backward compatibility with threads)
-        const threads = conversations.map(conv => ({
-          participantDid: conv.otherUserPnIdentifier, // participantDid is the API field name, contains pn-identifier
+        // Filter out conversations with invalid otherUserPnIdentifier
+        const validConversations = conversations.filter(conv => {
+          if (!conv.otherUserPnIdentifier) {
+            console.warn('[GetConversations] Filtering out conversation with undefined otherUserPnIdentifier:', conv);
+            return false;
+          }
+          return true;
+        });
+        const threads = validConversations.map(conv => ({
+          participantDid: conv.otherUserPnIdentifier!, // participantDid is the API field name, contains pn-identifier
           lastMessageAt: conv.lastMessageAt
         }));
 
@@ -10192,8 +10200,16 @@ class ProductionServer {
         );
 
         // Format conversations for response (backward compatibility with threads)
-        const threads = conversations.map(conv => ({
-          participantDid: conv.otherUserPnIdentifier,
+        // Filter out conversations with invalid otherUserPnIdentifier
+        const validConversations = conversations.filter(conv => {
+          if (!conv.otherUserPnIdentifier) {
+            console.warn('[GetThreads] Filtering out conversation with undefined otherUserPnIdentifier:', conv);
+            return false;
+          }
+          return true;
+        });
+        const threads = validConversations.map(conv => ({
+          participantDid: conv.otherUserPnIdentifier!,
           lastMessageAt: conv.lastMessageAt
         }));
 
@@ -10299,7 +10315,11 @@ class ProductionServer {
         const allMessages: any[] = [];
         for (const conversation of conversations) {
           try {
-            // Normalize otherUserPnIdentifier (getConversations already normalizes, but normalize again to be safe)
+            // Validate and normalize otherUserPnIdentifier (getConversations already normalizes, but normalize again to be safe)
+            if (!conversation.otherUserPnIdentifier) {
+              console.warn(`[Inbox] Conversation missing otherUserPnIdentifier, skipping:`, conversation);
+              continue;
+            }
             const normalizedOtherUserPnIdentifier = conversation.otherUserPnIdentifier.startsWith('pn-') ? conversation.otherUserPnIdentifier : `pn-${conversation.otherUserPnIdentifier}`;
             
             // Look up connection to get shared secret (use normalized)
@@ -11350,6 +11370,10 @@ class ProductionServer {
           if (connectionsFile) {
             // Normalize when searching (handles legacy data)
             const connection = connectionsFile.connections.find(c => {
+              if (!c.userPnIdentifier) {
+                console.warn('[DeleteConversation] Connection missing userPnIdentifier:', c);
+                return false;
+              }
               const normalizedCUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`;
               return normalizedCUserPnIdentifier === normalizedParticipantDid;
             });
@@ -12166,6 +12190,10 @@ class ProductionServer {
             
             // Also update other user's connection with the same secret
             // Normalize connection.userPnIdentifier when reading (handles legacy data)
+            if (!connection.userPnIdentifier) {
+              console.error('[AcceptConnection] Connection missing userPnIdentifier, cannot update other user:', connection);
+              throw new Error('Connection missing userPnIdentifier');
+            }
             const otherUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-') ? connection.userPnIdentifier : `pn-${connection.userPnIdentifier}`;
             connection.userPnIdentifier = otherUserPnIdentifier;
             const otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
@@ -12212,6 +12240,10 @@ class ProductionServer {
         }
 
         // Normalize connection.userPnIdentifier when reading (handles legacy data)
+        if (!connection.userPnIdentifier) {
+          console.error('[AcceptConnection] Connection missing userPnIdentifier:', connection);
+          throw new Error('Connection missing userPnIdentifier');
+        }
         const otherUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-') ? connection.userPnIdentifier : `pn-${connection.userPnIdentifier}`;
         connection.userPnIdentifier = otherUserPnIdentifier;
 
@@ -12840,10 +12872,19 @@ class ProductionServer {
         console.log(`[GetConnections] Found ${connections.length} accepted connections for user ${pnIdentifier}`);
 
         // Normalize userPnIdentifier in returned connections (handles legacy data)
-        const normalizedConnections = connections.map(c => ({
-          ...c,
-          userPnIdentifier: c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`
-        }));
+        // Filter out invalid connections first, then normalize
+        const normalizedConnections = connections
+          .filter(c => {
+            if (!c.userPnIdentifier) {
+              console.warn('[GetConnections] Filtering out connection with undefined userPnIdentifier:', c);
+              return false;
+            }
+            return true;
+          })
+          .map(c => ({
+            ...c,
+            userPnIdentifier: c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`
+          }));
 
         return res.json({ connections: normalizedConnections });
       } catch (error: any) {
@@ -13379,15 +13420,32 @@ class ProductionServer {
         const pending = await ConnectionsService.getPendingRequests(userAccessToken, metadataFolderId);
 
         // Normalize userPnIdentifier in returned connections (handles legacy data)
+        // Filter out invalid connections first, then normalize
         const normalizedPending = {
-          sent: pending.sent.map(c => ({
-            ...c,
-            userPnIdentifier: c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`
-          })),
-          received: pending.received.map(c => ({
-            ...c,
-            userPnIdentifier: c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`
-          }))
+          sent: pending.sent
+            .filter(c => {
+              if (!c.userPnIdentifier) {
+                console.warn('[PendingRequests] Filtering out connection with undefined userPnIdentifier:', c);
+                return false;
+              }
+              return true;
+            })
+            .map(c => ({
+              ...c,
+              userPnIdentifier: c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`
+            })),
+          received: pending.received
+            .filter(c => {
+              if (!c.userPnIdentifier) {
+                console.warn('[PendingRequests] Filtering out connection with undefined userPnIdentifier:', c);
+                return false;
+              }
+              return true;
+            })
+            .map(c => ({
+              ...c,
+              userPnIdentifier: c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`
+            }))
         };
 
         return res.json(normalizedPending);
@@ -13551,7 +13609,11 @@ class ProductionServer {
           );
           const connection = result.connections.find(c => c.connectionId === connectionId);
           if (connection) {
-            // Normalize to pn identifier format (handles legacy data)
+            // Validate and normalize to pn identifier format (handles legacy data)
+            if (!connection.userPnIdentifier) {
+              console.error(`[RemoveConnection] Connection ${connectionId} missing userPnIdentifier:`, connection);
+              return res.status(500).json({ error: 'Connection missing userPnIdentifier' });
+            }
             otherUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-') ? connection.userPnIdentifier : `pn-${connection.userPnIdentifier}`;
             console.log(`[RemoveConnection] Found connection ${connectionId} with other user: ${connection.userPnIdentifier} (normalized: ${otherUserPnIdentifier})`);
           } else {

@@ -20,14 +20,14 @@ import {
 } from '../services/connectionService';
 
 interface Follower {
-  followerDid: string;
+  followerPnIdentifier: string;
   followedAt: string;
   feedId?: string;
 }
 
 interface Following {
   targetType: 'user' | 'feed';
-  targetId: string;
+  targetPnIdentifier: string;
   followedAt: string;
 }
 
@@ -259,7 +259,7 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
     }
   };
 
-  const handleFollow = async (targetType: 'user' | 'feed', targetId: string) => {
+  const handleFollow = async (targetType: 'user' | 'feed', targetPnIdentifier: string) => {
     try {
       const response = await fetch(`${API_ENDPOINT}/api/connections/follow`, {
         method: 'POST',
@@ -267,7 +267,7 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
         body: JSON.stringify({
           userDid,
           targetType,
-          targetId
+          targetId: targetPnIdentifier // API still expects targetId in request body
         })
       });
 
@@ -279,7 +279,7 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
     }
   };
 
-  const handleUnfollow = async (targetType: 'user' | 'feed', targetId: string) => {
+  const handleUnfollow = async (targetType: 'user' | 'feed', targetPnIdentifier: string) => {
     try {
       const response = await fetch(`${API_ENDPOINT}/api/connections/unfollow`, {
         method: 'POST',
@@ -287,7 +287,7 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
         body: JSON.stringify({
           userDid,
           targetType,
-          targetId
+          targetId: targetPnIdentifier // API still expects targetId in request body
         })
       });
 
@@ -512,7 +512,7 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
                     className="p-3 bg-neutral-800 rounded-lg flex items-center justify-between"
                   >
                     <div className="flex-1">
-                      <p className="text-white text-sm">{follower.followerDid.substring(0, 16)}...</p>
+                      <p className="text-white text-sm">{follower.followerPnIdentifier?.substring(0, 16) || 'Unknown'}...</p>
                       <p className="text-neutral-400 text-xs">
                         Followed {new Date(follower.followedAt).toLocaleDateString()}
                       </p>
@@ -538,14 +538,14 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
                   >
                     <div className="flex-1">
                       <p className="text-white text-sm">
-                        {item.targetType === 'user' ? '👤' : '📰'} {item.targetId.substring(0, 16)}...
+                        {item.targetType === 'user' ? '👤' : '📰'} {item.targetPnIdentifier?.substring(0, 16) || 'Unknown'}...
                       </p>
                       <p className="text-neutral-400 text-xs">
                         {item.targetType === 'user' ? 'User' : 'Feed'} • {new Date(item.followedAt).toLocaleDateString()}
                       </p>
                     </div>
                     <button
-                      onClick={() => handleUnfollow(item.targetType, item.targetId)}
+                      onClick={() => handleUnfollow(item.targetType, item.targetPnIdentifier)}
                       className="p-2 hover:bg-neutral-700 rounded transition-colors"
                       title="Unfollow"
                     >

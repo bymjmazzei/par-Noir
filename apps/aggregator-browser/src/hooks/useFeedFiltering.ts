@@ -129,10 +129,15 @@ export function useFeedFiltering({
       const connectedDids = new Set<string>();
       const userDidNormalized = normalizeId(userDid);
       connections.forEach((conn) => {
-        const connUserDid = normalizeId(conn.userDid);
-        const otherUserDid = normalizeId((conn as any).otherUserDid ?? null);
-        if (connUserDid !== userDidNormalized) connectedDids.add(connUserDid);
-        if (otherUserDid && otherUserDid !== userDidNormalized) connectedDids.add(otherUserDid);
+        // Connection.userPnIdentifier is the other user's identifier in the connection
+        if (!conn.userPnIdentifier) {
+          console.warn('[useFeedFiltering] Connection missing userPnIdentifier:', conn);
+          return;
+        }
+        const otherUserPnIdentifier = normalizeId(conn.userPnIdentifier);
+        if (otherUserPnIdentifier && otherUserPnIdentifier !== userDidNormalized) {
+          connectedDids.add(otherUserPnIdentifier);
+        }
       });
       return files.filter((file) => {
         const fileCreatorId = getCreatorIdentifier(file);
