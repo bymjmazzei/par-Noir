@@ -10098,17 +10098,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
         const accountId = this.extractAccountId(account);
-        // Extract token directly from credentials (avoids duplicate DB query)
-        let userAccessToken: string;
-        try {
-          userAccessToken = googleDriveProxyService.extractAccessTokenFromCredentials(
-            userCredentials.credentials,
-            accountId
-          );
-        } catch (extractError: any) {
-          // If extraction fails (e.g., token expired), fall back to getAccessToken which will refresh
-          userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
-        }
+        // Use getAccessToken so token is refreshed when expired (extract skips refresh -> 401 -> 500)
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
         // Check for cached inbox sheet ID in credentials (fastest path)
         const cachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
@@ -10517,17 +10508,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
         const accountId = this.extractAccountId(account);
-        // Extract token directly from credentials (avoids duplicate DB query)
-        let userAccessToken: string;
-        try {
-          userAccessToken = googleDriveProxyService.extractAccessTokenFromCredentials(
-            userCredentials.credentials,
-            accountId
-          );
-        } catch (extractError: any) {
-          // If extraction fails (e.g., token expired), fall back to getAccessToken which will refresh
-          userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
-        }
+        // Use getAccessToken so token is refreshed when expired
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
         // Normalize participantPnIdentifier to ensure consistent format
         const normalizedParticipantPnIdentifier = participantPnIdentifier.startsWith('pn-') 
