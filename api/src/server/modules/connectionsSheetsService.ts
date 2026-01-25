@@ -485,6 +485,58 @@ export class ConnectionsSheetsService {
   }
 
   /**
+   * Get a specific connection by connectionId
+   * More efficient than getConnections when you only need one connection
+   */
+  static async getConnectionById(
+    accessToken: string,
+    spreadsheetId: string,
+    connectionId: string
+  ): Promise<Connection | null> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    // Get all connections (skip header row)
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Connections!A2:F'
+    });
+
+    const rows = response.data.values || [];
+    
+    // Find the connection by connectionId (stop early if found)
+    for (const row of rows) {
+      const rowConnectionId = row[0];
+      if (rowConnectionId === connectionId) {
+        const userPnIdentifier = row[1];
+        if (!userPnIdentifier) {
+          return null;
+        }
+        
+        // Normalize userPnIdentifier when reading from sheet (handles legacy data)
+        const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+        
+        // Ensure normalized identifier is valid
+        if (normalizedUserPnIdentifier === 'pn-' || normalizedUserPnIdentifier.length <= 3) {
+          return null;
+        }
+        
+        return {
+          connectionId: rowConnectionId,
+          userPnIdentifier: normalizedUserPnIdentifier,
+          status: (row[2] || 'pending_sent') as Connection['status'],
+          createdAt: row[3] || new Date().toISOString(),
+          acceptedAt: row[4] || undefined,
+          sharedSecret: row[5] || undefined
+        };
+      }
+    }
+    
+    return null;
+  }
+
+  /**
    * Update connection status in connections sheet
    */
   static async updateConnectionStatus(

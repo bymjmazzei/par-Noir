@@ -5,14 +5,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { MessageCircle, UserPlus, Check, X, Clock, MoreVertical, Trash2 } from 'lucide-react';
-import { MessageThread as MessageThreadType, MessageRequest } from '../services/messageService';
+import { MessageThread as MessageThreadType, MessageRequest, Message, getConversationMessages } from '../services/messageService';
 import { getMessageThreads, getMessageRequests, respondToRequest, deleteConversation } from '../services/messageService';
 import { getPendingRequests as getConnectionPendingRequests, acceptConnectionRequest, rejectConnectionRequest } from '../services/connectionService';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
 
 interface MessageListProps {
-  onThreadSelect: (participantPnIdentifier: string, participantName?: string) => void;
+  onThreadSelect: (participantPnIdentifier: string, participantName?: string, preloadedMessages?: Message[]) => void;
 }
 
 export function MessageList({ onThreadSelect }: MessageListProps) {
@@ -26,6 +26,7 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ participantPnIdentifier: string; participantName?: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [preloadedMessages, setPreloadedMessages] = useState<Map<string, Message[]>>(new Map());
 
   // Load threads and requests
   useEffect(() => {
@@ -44,6 +45,29 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
           getConnectionPendingRequests(userState.pnIdentifier!)
         ]);
         setThreads(threadsData);
+        
+        // Preload last 10 messages for top 3-5 conversations (background, non-blocking)
+        if (threadsData.length > 0 && userState.pnIdentifier) {
+          const topConversations = threadsData.slice(0, 5).filter(t => t.participantPnIdentifier);
+          // Preload in background without blocking UI
+          Promise.all(
+            topConversations.map(async (thread) => {
+              try {
+                const messages = await getConversationMessages(userState.pnIdentifier!, thread.participantPnIdentifier);
+                setPreloadedMessages(prev => {
+                  const next = new Map(prev);
+                  next.set(thread.participantPnIdentifier, messages);
+                  return next;
+                });
+              } catch (error) {
+                // Silently fail - preloading is optional
+                console.warn(`Failed to preload messages for ${thread.participantPnIdentifier}:`, error);
+              }
+            })
+          ).catch(() => {
+            // Ignore errors - preloading is optional
+          });
+        }
         
         // Combine message requests and connection requests
         const messageRequests = requestsData.filter(r => r.status === 'pending');
@@ -278,7 +302,10 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
               {threads.filter(t => t.participantPnIdentifier).map((thread) => (
                 <div key={thread.participantPnIdentifier} className="relative">
                   <button
-                    onClick={() => onThreadSelect(thread.participantPnIdentifier, thread.participantName)}
+                    onClick={() => {
+                      const preloaded = preloadedMessages.get(thread.participantPnIdentifier);
+                      onThreadSelect(thread.participantPnIdentifier, thread.participantName, preloaded);
+                    }}
                     className="w-full p-4 hover:bg-neutral-800 transition-colors text-left"
                   >
                     <div className="flex items-center justify-between">

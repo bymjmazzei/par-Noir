@@ -30,6 +30,7 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
   const [selectedThread, setSelectedThread] = useState<{
     participantPnIdentifier: string;
     participantName?: string;
+    preloadedMessages?: any[];
   } | null>(initialThread);
   const [showActivityLedger, setShowActivityLedger] = useState(false);
   const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
@@ -48,6 +49,7 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
       <MessageThread
         participantPnIdentifier={selectedThread.participantPnIdentifier}
         participantName={selectedThread.participantName}
+        preloadedMessages={selectedThread.preloadedMessages}
         onBack={() => setSelectedThread(null)}
       />
     );
@@ -136,8 +138,8 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
       <div className="flex-1 overflow-hidden">
         {activeTab === 'messages' ? (
           <MessageList
-            onThreadSelect={(participantPnIdentifier, participantName) => {
-              setSelectedThread({ participantPnIdentifier, participantName });
+            onThreadSelect={(participantPnIdentifier, participantName, preloadedMessages) => {
+              setSelectedThread({ participantPnIdentifier, participantName, preloadedMessages });
             }}
           />
         ) : (

@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Send, Image as ImageIcon, Paperclip, MoreVertical, Trash2 } from 'lucide-react';
+import { ArrowLeft, Send, Image as ImageIcon, Paperclip, MoreVertical, Trash2, Check } from 'lucide-react';
 import { Message } from '../services/messageService';
 import { useUserState } from '../contexts/UserStateContext';
 import { getConversationMessages, sendMessage, markAsRead, deleteConversation } from '../services/messageService';
@@ -14,65 +14,110 @@ import { ToastContainer } from './Toast';
 interface MessageThreadProps {
   participantPnIdentifier: string;
   participantName?: string;
+  preloadedMessages?: Message[];
   onBack: () => void;
 }
 
-export function MessageThread({ participantPnIdentifier, participantName, onBack }: MessageThreadProps) {
+export function MessageThread({ participantPnIdentifier, participantName, preloadedMessages, onBack }: MessageThreadProps) {
   const { userState } = useUserState();
   const { error: showError, toasts, removeToast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [totalMessages, setTotalMessages] = useState(0);
   const [sending, setSending] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const isPollingRef = useRef(false);
   const errorCountRef = useRef(0);
+  const currentOffsetRef = useRef(0);
 
   // Load messages
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
 
-    const loadMessages = async (isInitial = false) => {
+    const loadMessages = async (isInitial = false, loadMore = false) => {
       // Prevent duplicate requests
-      if (isPollingRef.current && !isInitial) {
+      if (isPollingRef.current && !isInitial && !loadMore) {
         return; // Already polling, skip this request
       }
 
-      // Only show loading spinner on initial load
-      if (isInitial) {
+      if (loadMore) {
+        setLoadingMore(true);
+      } else if (isInitial) {
         setLoading(true);
       } else {
         isPollingRef.current = true;
       }
       
       try {
-        const conversationMessages = await getConversationMessages(userState.pnIdentifier!, participantPnIdentifier);
+        const limit = 10;
+        const offset = loadMore ? currentOffsetRef.current : 0;
+        
+        // Use preloaded messages if available (only on initial load)
+        let result: { messages: Message[]; total: number };
+        if (isInitial && preloadedMessages && preloadedMessages.length > 0) {
+          result = { messages: preloadedMessages, total: preloadedMessages.length };
+          // Still fetch in background to get latest messages
+          getConversationMessages(userState.pnIdentifier!, participantPnIdentifier, limit, 0)
+            .then(latestResult => {
+              setTotalMessages(latestResult.total);
+              const reversedMessages = [...latestResult.messages].reverse();
+              const tempMessages = messages.filter(msg => msg.messageId.startsWith('temp-'));
+              const existingMessageIds = new Set(reversedMessages.map(m => m.messageId));
+              const preservedTempMessages = tempMessages.filter(msg => !existingMessageIds.has(msg.messageId));
+              const allMessages = [...reversedMessages, ...preservedTempMessages];
+              allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+              setMessages(allMessages);
+              currentOffsetRef.current = reversedMessages.length;
+              setHasMore(reversedMessages.length < latestResult.total);
+            })
+            .catch(() => {
+              // Ignore errors - we already have preloaded messages
+            });
+        } else {
+          result = await getConversationMessages(userState.pnIdentifier!, participantPnIdentifier, limit, offset);
+        }
+        
         // Reset error count on success
         errorCountRef.current = 0;
+        setTotalMessages(result.total);
         
         // Reverse messages to show oldest first (chat order) - API returns newest first
-        const reversedMessages = [...conversationMessages].reverse();
+        const reversedMessages = [...result.messages].reverse();
         
-        // Preserve optimistic (temporary) messages - merge with fetched messages
-        const tempMessages = messages.filter(msg => msg.messageId.startsWith('temp-'));
-        const existingMessageIds = new Set(reversedMessages.map(m => m.messageId));
-        const preservedTempMessages = tempMessages.filter(msg => !existingMessageIds.has(msg.messageId));
-        
-        // Combine fetched messages with preserved temporary messages
-        const allMessages = [...reversedMessages, ...preservedTempMessages];
-        // Sort by timestamp to maintain order
-        allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-        
-        // Only update messages if fetch was successful
-        setMessages(allMessages);
+        if (loadMore) {
+          // Prepend older messages
+          const existingMessageIds = new Set(messages.map(m => m.messageId));
+          const newMessages = reversedMessages.filter(m => !existingMessageIds.has(m.messageId));
+          setMessages(prev => [...newMessages, ...prev]);
+          currentOffsetRef.current += reversedMessages.length;
+          setHasMore(currentOffsetRef.current < result.total);
+        } else {
+          // Replace messages (initial load or refresh)
+          const tempMessages = messages.filter(msg => msg.messageId.startsWith('temp-'));
+          const existingMessageIds = new Set(reversedMessages.map(m => m.messageId));
+          const preservedTempMessages = tempMessages.filter(msg => !existingMessageIds.has(msg.messageId));
+          
+          // Combine fetched messages with preserved temporary messages
+          const allMessages = [...reversedMessages, ...preservedTempMessages];
+          // Sort by timestamp to maintain order
+          allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+          
+          setMessages(allMessages);
+          currentOffsetRef.current = reversedMessages.length;
+          setHasMore(reversedMessages.length < result.total);
+        }
 
         // Mark unread messages as read
-        const unreadMessages = conversationMessages.filter(m => !m.read && m.toPnIdentifier === userState.pnIdentifier);
+        const unreadMessages = result.messages.filter(m => !m.read && m.toPnIdentifier === userState.pnIdentifier);
         for (const message of unreadMessages) {
           try {
             await markAsRead(message.messageId, userState.pnIdentifier!, participantPnIdentifier);
@@ -95,7 +140,9 @@ export function MessageThread({ participantPnIdentifier, participantName, onBack
         }
         // Don't update messages on error - preserve what we have
       } finally {
-        if (isInitial) {
+        if (loadMore) {
+          setLoadingMore(false);
+        } else if (isInitial) {
           setLoading(false);
         } else {
           isPollingRef.current = false;
@@ -103,8 +150,20 @@ export function MessageThread({ participantPnIdentifier, participantName, onBack
       }
     };
 
-    // Initial load
-    loadMessages(true);
+    // Initial load - use preloaded messages if available
+    if (preloadedMessages && preloadedMessages.length > 0) {
+      // Use preloaded messages immediately
+      const reversedMessages = [...preloadedMessages].reverse();
+      setMessages(reversedMessages);
+      setTotalMessages(preloadedMessages.length);
+      currentOffsetRef.current = reversedMessages.length;
+      setHasMore(reversedMessages.length < preloadedMessages.length);
+      setLoading(false);
+      // Fetch latest in background
+      loadMessages(false, false);
+    } else {
+      loadMessages(true, false);
+    }
 
     // Poll for new messages - only when tab is visible, with exponential backoff on errors
     const interval = setInterval(() => {
@@ -114,17 +173,73 @@ export function MessageThread({ participantPnIdentifier, participantName, onBack
           console.warn('Too many polling errors, stopping automatic refresh');
           return;
         }
-        loadMessages(false);
+        loadMessages(false, false);
       }
     }, 15000); // 15 seconds instead of 5
     
     return () => clearInterval(interval);
-  }, [userState.isUnlocked, userState.pnIdentifier, participantPnIdentifier]);
+  }, [userState.isUnlocked, userState.pnIdentifier, participantPnIdentifier, preloadedMessages]);
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to bottom when messages change (but not when loading more)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (!loadingMore && messagesContainerRef.current) {
+      const container = messagesContainerRef.current;
+      // Only auto-scroll if we're near the bottom (within 100px)
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+      if (isNearBottom) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  }, [messages, loadingMore]);
+
+  // Scroll detection for loading older messages
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container || !hasMore || loadingMore || !userState.pnIdentifier) return;
+
+    const handleScroll = () => {
+      // Load more when scrolled to top (within 200px)
+      if (container.scrollTop < 200 && hasMore && !loadingMore && !isPollingRef.current) {
+        const loadMoreMessages = async () => {
+          const limit = 10;
+          const offset = currentOffsetRef.current;
+          
+          setLoadingMore(true);
+          try {
+            const result = await getConversationMessages(userState.pnIdentifier!, participantPnIdentifier, limit, offset);
+            const reversedMessages = [...result.messages].reverse();
+            
+            // Preserve scroll position
+            const previousScrollHeight = container.scrollHeight;
+            const previousScrollTop = container.scrollTop;
+            
+            // Prepend older messages
+            const existingMessageIds = new Set(messages.map(m => m.messageId));
+            const newMessages = reversedMessages.filter(m => !existingMessageIds.has(m.messageId));
+            setMessages(prev => [...newMessages, ...prev]);
+            
+            // Restore scroll position after DOM update
+            setTimeout(() => {
+              const newScrollHeight = container.scrollHeight;
+              container.scrollTop = previousScrollTop + (newScrollHeight - previousScrollHeight);
+            }, 0);
+            
+            currentOffsetRef.current += reversedMessages.length;
+            setHasMore(currentOffsetRef.current < result.total);
+          } catch (error) {
+            console.error('Failed to load older messages:', error);
+          } finally {
+            setLoadingMore(false);
+          }
+        };
+        
+        loadMoreMessages();
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [hasMore, loadingMore, userState.pnIdentifier, participantPnIdentifier, messages]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -300,7 +415,7 @@ export function MessageThread({ participantPnIdentifier, participantName, onBack
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {loading ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto mb-2"></div>
@@ -311,7 +426,14 @@ export function MessageThread({ participantPnIdentifier, participantName, onBack
             <p className="text-neutral-400">No messages yet. Start the conversation!</p>
           </div>
         ) : (
-          messages.map((message) => {
+          <>
+            {loadingMore && (
+              <div className="text-center py-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400 mx-auto mb-2"></div>
+                <p className="text-neutral-400 text-xs">Loading older messages...</p>
+              </div>
+            )}
+            {messages.map((message) => {
             const isOwn = message.fromPnIdentifier === userState.pnIdentifier;
             const isTemporary = message.messageId.startsWith('temp-');
             
@@ -334,13 +456,31 @@ export function MessageThread({ participantPnIdentifier, participantName, onBack
                       <span className="text-xs">Media attached</span>
                     </div>
                   )}
-                  <p className={`text-xs mt-1 ${
-                    isOwn ? 'text-blue-100' : 'text-neutral-400'
-                  }`}>
-                    {isTemporary && '⏳ '}
-                    {new Date(message.timestamp).toLocaleTimeString()}
-                    {message.read && isOwn && !isTemporary && ' ✓'}
-                  </p>
+                  <div className="flex items-center justify-end space-x-1 mt-1">
+                    <p className={`text-xs ${
+                      isOwn ? 'text-blue-100' : 'text-neutral-400'
+                    }`}>
+                      {isTemporary && '⏳ '}
+                      {new Date(message.timestamp).toLocaleTimeString()}
+                    </p>
+                    {isOwn && !isTemporary && (
+                      <div className="flex items-center">
+                        {message.read && message.readAt ? (
+                          // Read: "READ" text
+                          <span className="text-xs text-blue-200 ml-1">READ</span>
+                        ) : message.read ? (
+                          // Received: Double overlapping checkmarks
+                          <div className="relative">
+                            <Check className="h-3 w-3 text-blue-200" />
+                            <Check className="h-3 w-3 text-blue-200 absolute -right-0.5 -top-0.5" style={{ opacity: 0.7 }} />
+                          </div>
+                        ) : (
+                          // Sent: Single checkmark
+                          <Check className="h-3 w-3 text-blue-200/60" />
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );

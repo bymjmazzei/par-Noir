@@ -515,6 +515,23 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       isUnlocked: true,
       pnIdentifier
     }));
+
+    // Preload top 5 conversations in background (non-blocking)
+    // This improves perceived performance when user opens inbox
+    const preloadConversations = async () => {
+      try {
+        const { getMessageThreads } = await import('../services/messageService');
+        await getMessageThreads(pnIdentifier);
+        // Store in cache for instant inbox display
+        // The conversations will be cached by the messageService
+      } catch (error) {
+        // Silently fail - preloading is optional
+        console.warn('[UserStateContext] Failed to preload conversations:', error);
+      }
+    };
+    
+    // Start preloading in background (don't await)
+    preloadConversations();
   };
 
   const setLocked = () => {

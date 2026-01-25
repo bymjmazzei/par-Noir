@@ -106,10 +106,19 @@ export async function getMessageThreads(userPnIdentifier: string): Promise<Messa
  */
 export async function getConversationMessages(
   userPnIdentifier: string,
-  participantPnIdentifier: string
-): Promise<Message[]> {
+  participantPnIdentifier: string,
+  limit?: number,
+  offset?: number
+): Promise<{ messages: Message[]; total: number }> {
+  const params = new URLSearchParams({
+    userPnIdentifier,
+    participantPnIdentifier
+  });
+  if (limit !== undefined) params.append('limit', limit.toString());
+  if (offset !== undefined) params.append('offset', offset.toString());
+  
   const response = await fetch(
-    `${API_ENDPOINT}/api/messages/conversation?userPnIdentifier=${userPnIdentifier}&participantPnIdentifier=${participantPnIdentifier}`,
+    `${API_ENDPOINT}/api/messages/conversation?${params.toString()}`,
     {
       headers: getAuthHeaders()
     }
@@ -120,7 +129,10 @@ export async function getConversationMessages(
   }
 
   const result = await response.json();
-  return result.messages || [];
+  return {
+    messages: result.messages || [],
+    total: result.total || 0
+  };
 }
 
 /**

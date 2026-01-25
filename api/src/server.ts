@@ -10114,12 +10114,107 @@ class ProductionServer {
           }
           return true;
         });
-        const conversationsWithParticipant = validConversations.map(conv => ({
-          otherUserPnIdentifier: conv.otherUserPnIdentifier,
-          participantPnIdentifier: conv.otherUserPnIdentifier,
-          spreadsheetId: conv.spreadsheetId,
-          lastMessageAt: conv.lastMessageAt
-        }));
+
+        // Sort by lastMessageAt descending (most recent first) - already sorted by Drive API but ensure it
+        validConversations.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+
+        // Get last message for top 5 conversations in parallel
+        const topConversations = validConversations.slice(0, 5);
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
+        const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
+        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+        
+        // Get metadata folder for connection lookup
+        const metadataFolder = await this.getMetadataFolder(userAccessToken, pnIdentifier);
+        if (!metadataFolder) {
+          console.warn('[GetConversations] Metadata folder not found, skipping lastMessage retrieval');
+        }
+        const metadataFolderId = metadataFolder?.metadataFolderId;
+        const spreadsheetId = metadataFolder?.spreadsheetId;
+
+        const conversationsWithLastMessage = await Promise.all(
+          topConversations.map(async (conv) => {
+            let lastMessage = null;
+            
+            try {
+              if (!metadataFolderId || !spreadsheetId) {
+                return { ...conv, lastMessage: null };
+              }
+
+              // Normalize participantPnIdentifier
+              const normalizedParticipantPnIdentifier = conv.otherUserPnIdentifier.startsWith('pn-') 
+                ? conv.otherUserPnIdentifier 
+                : `pn-${conv.otherUserPnIdentifier}`;
+
+              // Get connection status to find connectionId
+              const connectionStatus = await ConnectionsService.getConnectionStatus(
+                userAccessToken,
+                metadataFolderId,
+                pnIdentifier,
+                normalizedParticipantPnIdentifier
+              );
+
+              if (!connectionStatus || connectionStatus.status !== 'connected') {
+                return { ...conv, lastMessage: null };
+              }
+
+              // Get connection to retrieve shared secret
+              const connection = await ConnectionsSheetsService.getConnectionById(
+                userAccessToken,
+                spreadsheetId,
+                connectionStatus.connectionId
+              );
+
+              if (!connection || !connection.sharedSecret) {
+                return { ...conv, lastMessage: null };
+              }
+
+              // Decrypt shared secret
+              const decryptedSharedSecret = MetadataEncryption.decryptField(connection.sharedSecret);
+              if (!decryptedSharedSecret) {
+                return { ...conv, lastMessage: null };
+              }
+
+              // Get last message (limit 1, offset 0)
+              const messagesResult = await MessageSheetsService.getMessages(
+                userAccessToken,
+                conv.spreadsheetId,
+                connectionStatus.connectionId,
+                decryptedSharedSecret,
+                { limit: 1, offset: 0 }
+              );
+
+              if (messagesResult.messages.length > 0) {
+                lastMessage = messagesResult.messages[0];
+              }
+            } catch (error: any) {
+              // Silently fail - lastMessage is optional
+              console.warn(`[GetConversations] Failed to get last message for conversation ${conv.otherUserPnIdentifier}:`, error.message);
+            }
+
+            return {
+              ...conv,
+              lastMessage
+            };
+          })
+        );
+
+        // Combine top conversations with lastMessage and remaining conversations without
+        const conversationsWithParticipant = [
+          ...conversationsWithLastMessage.map(conv => ({
+            otherUserPnIdentifier: conv.otherUserPnIdentifier,
+            participantPnIdentifier: conv.otherUserPnIdentifier,
+            spreadsheetId: conv.spreadsheetId,
+            lastMessageAt: conv.lastMessageAt,
+            lastMessage: conv.lastMessage || undefined
+          })),
+          ...validConversations.slice(5).map(conv => ({
+            otherUserPnIdentifier: conv.otherUserPnIdentifier,
+            participantPnIdentifier: conv.otherUserPnIdentifier,
+            spreadsheetId: conv.spreadsheetId,
+            lastMessageAt: conv.lastMessageAt
+          }))
+        ];
         
         const threads = validConversations.map(conv => ({
           participantPnIdentifier: conv.otherUserPnIdentifier!,
@@ -10428,21 +10523,12 @@ class ProductionServer {
         );
         console.log('[GetConversation] Connections sheet ID:', spreadsheetId);
         
-        console.log('[GetConversation] Fetching all connections');
-        // Get all connections to find the one with the matching connectionId
-        const connectionsResult = await ConnectionsSheetsService.getConnections(
+        console.log('[GetConversation] Fetching connection by ID');
+        // Get connection directly by connectionId (more efficient than loading all connections)
+        const connection = await ConnectionsSheetsService.getConnectionById(
           userAccessToken,
           spreadsheetId,
-          {
-            limit: 10000, // Large limit to get all connections
-            offset: 0
-            // No status filter - get all connections
-          }
-        );
-        console.log('[GetConversation] Found', connectionsResult.connections.length, 'connections');
-        
-        const connection = connectionsResult.connections.find(
-          c => c.connectionId === connectionStatus.connectionId
+          connectionStatus.connectionId
         );
         if (!connection) {
           console.error('[GetConversation] Connection not found in sheet, connectionId:', connectionStatus.connectionId);
@@ -10494,13 +10580,16 @@ class ProductionServer {
         );
 
         // Get messages from conversation sheet (with decryption)
-        console.log('[GetConversation] Fetching messages from sheet');
+        // Default to last 10 messages for initial load
+        const messageLimit = limit || 10;
+        const messageOffset = offset || 0;
+        console.log('[GetConversation] Fetching messages from sheet', { limit: messageLimit, offset: messageOffset });
         const result = await MessageSheetsService.getMessages(
           userAccessToken,
           conversationSheetId,
           connectionStatus.connectionId,
           decryptedSharedSecret,
-          { limit, offset }
+          { limit: messageLimit, offset: messageOffset }
         );
 
         // Set toPnIdentifier for all messages (use normalized)
@@ -10546,8 +10635,12 @@ class ProductionServer {
         if (!isConnectionRequest) {
           try {
             
-            // Get sender's credentials and metadata folder
-            const senderCredentials = await storageCredentialsService.getCredentials(fromPnIdentifier);
+            // Get sender's and recipient's credentials in parallel
+            const [senderCredentials, recipientCredentials] = await Promise.all([
+              storageCredentialsService.getCredentials(fromPnIdentifier),
+              storageCredentialsService.getCredentials(toPnIdentifier)
+            ]);
+
             if (!senderCredentials?.credentials) {
               return res.status(403).json({ error: 'Only connections can message each other' });
             }
@@ -10561,7 +10654,17 @@ class ProductionServer {
 
             const account = googleDriveAccounts[0];
             const accountId = this.extractAccountId(account);
-            const senderAccessToken = await googleDriveProxyService.getAccessToken(fromPnIdentifier, accountId, [fromPnIdentifier]);
+
+            // Get sender and recipient access tokens in parallel
+            const recipientGoogleDriveAccounts = recipientCredentials?.credentials?.googleDriveAccounts || 
+              (recipientCredentials?.credentials?.googleDrive ? [recipientCredentials.credentials.googleDrive] : []);
+            const recipientAccount = recipientGoogleDriveAccounts?.[0];
+            const recipientAccountId = recipientAccount ? this.extractAccountId(recipientAccount) : undefined;
+
+            const [senderAccessToken, recipientAccessToken] = await Promise.all([
+              googleDriveProxyService.getAccessToken(fromPnIdentifier, accountId, [fromPnIdentifier]),
+              recipientAccountId ? googleDriveProxyService.getAccessToken(toPnIdentifier, recipientAccountId, [toPnIdentifier]) : Promise.resolve(null)
+            ]);
             
             // Find metadata folder
             const folderSearchQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -10701,19 +10804,11 @@ class ProductionServer {
           senderMetadataFolderId
         );
         
-        // Get all connections to find the one with the matching connectionId
-        const senderConnectionsResult = await ConnectionsSheetsService.getConnections(
+        // Get connection directly by connectionId (more efficient than loading all connections)
+        const connection = await ConnectionsSheetsService.getConnectionById(
           senderAccessToken,
           senderSpreadsheetId,
-          {
-            limit: 10000, // Large limit to get all connections
-            offset: 0
-            // No status filter - get all connections
-          }
-        );
-        
-        const connection = senderConnectionsResult.connections.find(
-          c => c.connectionId === connectionStatus.connectionId
+          connectionStatus.connectionId
         );
         if (!connection) {
           return res.status(500).json({
@@ -10810,8 +10905,8 @@ class ProductionServer {
           }
         );
 
-        // Get recipient's credentials
-        const recipientCredentials = await storageCredentialsService.getCredentials(toPnIdentifier);
+        // Recipient credentials and access token already fetched in parallel above
+        // Validate recipient credentials
         if (!recipientCredentials?.credentials) {
           return res.status(404).json({ error: 'Recipient credentials not found' });
         }
@@ -10823,9 +10918,9 @@ class ProductionServer {
           return res.status(404).json({ error: 'Recipient has no Google Drive connected' });
         }
 
-        const recipientAccount = recipientGoogleDriveAccounts[0];
-        const recipientAccountId = (recipientAccount as any).backendId || (recipientAccount as any).keyPrefix || (recipientAccount as any).accountId || (recipientAccount as any).id || undefined;
-        const recipientAccessToken = await googleDriveProxyService.getAccessToken(toPnIdentifier, recipientAccountId, [toPnIdentifier]);
+        if (!recipientAccessToken) {
+          return res.status(404).json({ error: 'Failed to get recipient access token' });
+        }
         
         // Get recipient's metadata folder with proper error handling
         let recipientMetadataFolderId: string;
@@ -10900,19 +10995,11 @@ class ProductionServer {
           recipientMetadataFolderId
         );
         
-        // Get all connections to find the one with the matching connectionId
-        const recipientConnectionsResult = await ConnectionsSheetsService.getConnections(
+        // Get connection directly by connectionId (more efficient than loading all connections)
+        const recipientConnection = await ConnectionsSheetsService.getConnectionById(
           recipientAccessToken,
           recipientSpreadsheetId,
-          {
-            limit: 10000, // Large limit to get all connections
-            offset: 0
-            // No status filter - get all connections
-          }
-        );
-        
-        const recipientConnection = recipientConnectionsResult.connections.find(
-          c => c.connectionId === connectionStatus.connectionId
+          connectionStatus.connectionId
         );
         if (!recipientConnection) {
           return res.status(500).json({
@@ -12201,13 +12288,10 @@ class ProductionServer {
           userAccessToken,
           metadataFolderId
         );
-        const acceptorConnectionsResult = await ConnectionsSheetsService.getConnections(
+        const acceptorConnection = await ConnectionsSheetsService.getConnectionById(
           userAccessToken,
           acceptorSpreadsheetId,
-          { limit: 10000, offset: 0 }
-        );
-        const acceptorConnection = acceptorConnectionsResult.connections.find(
-          (c: any) => c.connectionId === connectionId
+          connectionId
         );
         const acceptedAt = acceptorConnection?.acceptedAt || new Date().toISOString();
         const createdAt = acceptorConnection?.createdAt || new Date().toISOString();
@@ -12252,14 +12336,11 @@ class ProductionServer {
           otherMetadataFolderId
         );
         
-        // Get other user's connection to check current status
-        const otherConnectionsResult = await ConnectionsSheetsService.getConnections(
+        // Get other user's connection to check current status (more efficient than loading all connections)
+        const otherConnection = await ConnectionsSheetsService.getConnectionById(
           otherAccessToken,
           otherSpreadsheetId,
-          { limit: 10000, offset: 0 }
-        );
-        const otherConnection = otherConnectionsResult.connections.find(
-          (c: any) => c.connectionId === connectionId
+          connectionId
         );
         
         if (otherConnection) {
@@ -13514,17 +13595,12 @@ class ProductionServer {
         }
         
         try {
-          // Get ALL connections (not filtered by status, no pagination) to find the connection
-          const result = await ConnectionsSheetsService.getConnections(
+          // Get connection directly by connectionId (more efficient than loading all connections)
+          const connection = await ConnectionsSheetsService.getConnectionById(
             userAccessToken,
             userSpreadsheetId,
-            {
-              limit: 10000, // Large limit to get all connections
-              offset: 0
-              // No status filter - get all connections
-            }
+            connectionId
           );
-          const connection = result.connections.find(c => c.connectionId === connectionId);
           if (connection) {
             // Validate and normalize to pn identifier format (handles legacy data)
             if (!connection.userPnIdentifier) {
@@ -13534,7 +13610,7 @@ class ProductionServer {
             otherUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-') ? connection.userPnIdentifier : `pn-${connection.userPnIdentifier}`;
             console.log(`[RemoveConnection] Found connection ${connectionId} with other user: ${connection.userPnIdentifier} (normalized: ${otherUserPnIdentifier})`);
           } else {
-            console.error(`[RemoveConnection] Connection ${connectionId} not found in user's connections sheet. Total connections: ${result.total}, Retrieved: ${result.connections.length}. Available connectionIds:`, result.connections.map(c => c.connectionId));
+            console.error(`[RemoveConnection] Connection ${connectionId} not found in user's connections sheet`);
           }
         } catch (error: any) {
           console.error(`[RemoveConnection] Failed to get connection details:`, error.message, error.stack);
