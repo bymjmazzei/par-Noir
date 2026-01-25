@@ -34,13 +34,13 @@ export class GoogleDriveProxyService {
    * Supports multiple accounts - if accountId is provided, uses that specific account
    * Handles token refresh if needed
    */
-  async getAccessToken(userDid: string, accountId?: string, additionalCandidates?: string[]): Promise<string> {
-    console.log(`[GoogleDriveProxy] getAccessToken called with userDid: ${userDid}, accountId: ${accountId}`);
+  async getAccessToken(userPnIdentifier: string, accountId?: string, additionalCandidates?: string[]): Promise<string> {
+    console.log(`[GoogleDriveProxy] getAccessToken called with userPnIdentifier: ${userPnIdentifier}, accountId: ${accountId}`);
     
     // CRITICAL: Use ONLY the pn identifier (first candidate)
     // Dashboard stores credentials under pn identifier only, so we should only try that
     // The additionalCandidates array should only contain the pn identifier
-    const pnIdentifier = userDid?.startsWith('pn-') ? userDid : (additionalCandidates?.[0] || userDid);
+    const pnIdentifier = userPnIdentifier?.startsWith('pn-') ? userPnIdentifier : (additionalCandidates?.[0] || userPnIdentifier);
     
     if (!pnIdentifier || !pnIdentifier.startsWith('pn-')) {
       console.error(`[GoogleDriveProxy] Invalid pn identifier: ${pnIdentifier}. Expected format: pn-{hash}`);
@@ -56,7 +56,7 @@ export class GoogleDriveProxyService {
     const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(identifierCandidates);
     
     if (!credentialsRecord) {
-      console.error(`[GoogleDriveProxy] No credentials record found for userDid: ${userDid} (tried: ${identifierCandidates.filter(Boolean).join(', ')})`);
+      console.error(`[GoogleDriveProxy] No credentials record found for userPnIdentifier: ${userPnIdentifier} (tried: ${identifierCandidates.filter(Boolean).join(', ')})`);
       throw new Error('Google Drive not connected. Please connect in the dashboard.');
     }
     
@@ -233,7 +233,7 @@ export class GoogleDriveProxyService {
         }
         
         // CRITICAL: Always save credentials after refresh to persist the refresh token
-        // CRITICAL: Use the pn identifier from the credentials record, not userDid
+        // CRITICAL: Use the pn identifier from the credentials record, not userPnIdentifier
         await storageCredentialsService.upsertCredentials(credentialsRecord.identityId, credentials);
         console.log(`[GoogleDriveProxy] Credentials saved after token refresh for accountId: ${accountId || 'default'}`);
         
@@ -268,8 +268,8 @@ export class GoogleDriveProxyService {
   /**
    * Force refresh access token (public method for 401 retries)
    */
-  async forceRefreshAccessToken(userDid: string, accountId?: string, additionalCandidates?: string[]): Promise<string> {
-    const pnIdentifier = userDid?.startsWith('pn-') ? userDid : (additionalCandidates?.[0] || userDid);
+  async forceRefreshAccessToken(userPnIdentifier: string, accountId?: string, additionalCandidates?: string[]): Promise<string> {
+    const pnIdentifier = userPnIdentifier?.startsWith('pn-') ? userPnIdentifier : (additionalCandidates?.[0] || userPnIdentifier);
     if (!pnIdentifier || !pnIdentifier.startsWith('pn-')) {
       throw new Error('Invalid pn identifier');
     }
@@ -392,8 +392,8 @@ export class GoogleDriveProxyService {
   /**
    * List files from Google Drive
    */
-  async listFiles(userDid: string, query?: string, pageSize: number = 50, accountId?: string, additionalCandidates?: string[]): Promise<GoogleDriveFile[]> {
-    let accessToken = await this.getAccessToken(userDid, accountId, additionalCandidates);
+  async listFiles(userPnIdentifier: string, query?: string, pageSize: number = 50, accountId?: string, additionalCandidates?: string[]): Promise<GoogleDriveFile[]> {
+    let accessToken = await this.getAccessToken(userPnIdentifier, accountId, additionalCandidates);
 
     const params = new URLSearchParams({
       fields: 'nextPageToken, files(id, name, mimeType, size, createdTime, modifiedTime, webViewLink, webContentLink, thumbnailLink, parents, description)',
@@ -418,7 +418,7 @@ export class GoogleDriveProxyService {
       
       // Force refresh by getting credentials and updating expires_at to past
       // CRITICAL: Use only pn identifier
-      const pnIdentifier = userDid?.startsWith('pn-') ? userDid : (additionalCandidates?.[0] || userDid);
+      const pnIdentifier = userPnIdentifier?.startsWith('pn-') ? userPnIdentifier : (additionalCandidates?.[0] || userPnIdentifier);
       const identifierCandidates = pnIdentifier?.startsWith('pn-') ? [pnIdentifier] : [];
       const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(identifierCandidates);
       
@@ -451,7 +451,7 @@ export class GoogleDriveProxyService {
             (account as any).expires_at = Date.now() - 1000;
             await storageCredentialsService.upsertCredentials(credentialsRecord.identityId, credentials);
             // Get fresh token (will trigger refresh)
-            accessToken = await this.getAccessToken(userDid, accountId, additionalCandidates);
+            accessToken = await this.getAccessToken(userPnIdentifier, accountId, additionalCandidates);
             refreshSucceeded = true;
             
             // Retry the request with refreshed token
@@ -498,7 +498,7 @@ export class GoogleDriveProxyService {
    * Upload file to Google Drive
    */
   async uploadFile(
-    userDid: string,
+    userPnIdentifier: string,
     file: Buffer,
     fileName: string,
     mimeType: string,
@@ -507,10 +507,10 @@ export class GoogleDriveProxyService {
     additionalCandidates?: string[]
   ): Promise<GoogleDriveFile> {
     // Get access token and also get the account info for retry logic
-    let accessToken = await this.getAccessToken(userDid, accountId, additionalCandidates);
+    let accessToken = await this.getAccessToken(userPnIdentifier, accountId, additionalCandidates);
     
     // Get account info for refresh token if needed for retry
-    const credentialsRecord = await storageCredentialsService.getCredentials(userDid);
+    const credentialsRecord = await storageCredentialsService.getCredentials(userPnIdentifier);
     const credentials = credentialsRecord?.credentials;
     let refreshToken: string | undefined;
     if (accountId && credentials?.googleDriveAccounts) {
@@ -598,8 +598,8 @@ export class GoogleDriveProxyService {
   /**
    * Download file from Google Drive
    */
-  async downloadFile(userDid: string, fileId: string, accountId?: string, additionalCandidates?: string[]): Promise<Blob> {
-    const accessToken = await this.getAccessToken(userDid, accountId, additionalCandidates);
+  async downloadFile(userPnIdentifier: string, fileId: string, accountId?: string, additionalCandidates?: string[]): Promise<Blob> {
+    const accessToken = await this.getAccessToken(userPnIdentifier, accountId, additionalCandidates);
 
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
       headers: {
@@ -618,8 +618,8 @@ export class GoogleDriveProxyService {
   /**
    * Get file metadata from Google Drive
    */
-  async getFileMetadata(userDid: string, fileId: string, accountId?: string): Promise<GoogleDriveFile> {
-    const accessToken = await this.getAccessToken(userDid, accountId);
+  async getFileMetadata(userPnIdentifier: string, fileId: string, accountId?: string): Promise<GoogleDriveFile> {
+    const accessToken = await this.getAccessToken(userPnIdentifier, accountId);
 
     const response = await fetch(
       `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime,webViewLink,webContentLink,parents,description`,
@@ -641,8 +641,8 @@ export class GoogleDriveProxyService {
   /**
    * Delete file from Google Drive
    */
-  async deleteFile(userDid: string, fileId: string, accountId?: string): Promise<void> {
-    const accessToken = await this.getAccessToken(userDid, accountId);
+  async deleteFile(userPnIdentifier: string, fileId: string, accountId?: string): Promise<void> {
+    const accessToken = await this.getAccessToken(userPnIdentifier, accountId);
 
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
       method: 'DELETE',
@@ -662,7 +662,7 @@ export class GoogleDriveProxyService {
    * This is a non-throwing function that gracefully handles errors
    */
   async deleteCompanionMetadataFiles(
-    userDid: string,
+    userPnIdentifier: string,
     pnIdentifier: string,
     fileIds: string[],
     accountId?: string
@@ -678,7 +678,7 @@ export class GoogleDriveProxyService {
     }
 
     try {
-      const accessToken = await this.getAccessToken(userDid, accountId);
+      const accessToken = await this.getAccessToken(userPnIdentifier, accountId);
       
       // Get pN folder and metadata folder
       const pnFolderName = `par Noir - ${pnIdentifier}`;
@@ -741,7 +741,7 @@ export class GoogleDriveProxyService {
             const jsonData = await jsonResponse.json() as { files?: Array<{ id: string }> };
             if (jsonData.files && jsonData.files.length > 0) {
               try {
-                await this.deleteFile(userDid, jsonData.files[0].id, accountId);
+                await this.deleteFile(userPnIdentifier, jsonData.files[0].id, accountId);
                 result.deletedJson++;
                 console.log(`✅ [deleteCompanionMetadataFiles] Deleted JSON metadata file for ${fileId}`);
               } catch (jsonDeleteError: any) {
@@ -763,7 +763,7 @@ export class GoogleDriveProxyService {
             
             if (spreadsheetId) {
               try {
-                await this.deleteFile(userDid, spreadsheetId, accountId);
+                await this.deleteFile(userPnIdentifier, spreadsheetId, accountId);
                 result.deletedSpreadsheets++;
                 console.log(`✅ [deleteCompanionMetadataFiles] Deleted spreadsheet metadata for ${fileId}`);
               } catch (spreadsheetDeleteError: any) {
@@ -793,7 +793,7 @@ export class GoogleDriveProxyService {
    * Returns object with mainFileId if found, null otherwise
    */
   async readCompanionMetadata(
-    userDid: string,
+    userPnIdentifier: string,
     pnIdentifier: string,
     fileId: string,
     accountId?: string
@@ -803,7 +803,7 @@ export class GoogleDriveProxyService {
     }
 
     try {
-      const accessToken = await this.getAccessToken(userDid, accountId);
+      const accessToken = await this.getAccessToken(userPnIdentifier, accountId);
       
       // Get pN folder and metadata folder
       const pnFolderName = `par Noir - ${pnIdentifier}`;
@@ -971,12 +971,12 @@ export class GoogleDriveProxyService {
    * Update file metadata in Google Drive
    */
   async updateFileMetadata(
-    userDid: string,
+    userPnIdentifier: string,
     fileId: string,
     updates: { name?: string; description?: string; parents?: string[] },
     accountId?: string
   ): Promise<GoogleDriveFile> {
-    const accessToken = await this.getAccessToken(userDid, accountId);
+    const accessToken = await this.getAccessToken(userPnIdentifier, accountId);
 
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
       method: 'PATCH',

@@ -127,11 +127,12 @@ export class NotificationService {
   static async createNotification(
     accessToken: string,
     metadataFolderId: string,
-    userDid: string,
+    userPnIdentifier: string,
     notification: Omit<Notification, 'notification_id' | 'created_at' | 'read'>
   ): Promise<Notification> {
-    // Normalize userDid and all DIDs in notification data
-    const normalizedUserDid = this.normalizeToPnIdentifier(userDid);
+    // Use pn identifier directly (already normalized)
+    // Normalize any legacy DID fields in notification data for backward compatibility
+    const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
     const normalizedData = notification.data ? { ...notification.data } : {};
     
     // Normalize user_pn_identifier, from_pn_identifier, to_pn_identifier in data if present (handles legacy field names)
@@ -186,7 +187,7 @@ export class NotificationService {
     } catch (error) {
       console.error('[NotificationService] Error creating notification via sheets:', error);
       console.error('[NotificationService] Error details:', {
-        userDid,
+        userPnIdentifier,
         notificationType: notification.type,
         metadataFolderId,
         error: error instanceof Error ? error.message : String(error),
@@ -243,7 +244,7 @@ export class NotificationService {
   static async markAsRead(
     accessToken: string,
     metadataFolderId: string,
-    userDid: string,
+    userPnIdentifier: string,
     notificationId: string
   ): Promise<boolean> {
     try {
@@ -258,7 +259,7 @@ export class NotificationService {
     } catch (error) {
       console.error('[NotificationService] Error marking notification as read via sheets:', error);
       console.error('[NotificationService] Error details:', {
-        userDid,
+        userPnIdentifier,
         notificationId,
         metadataFolderId,
         error: error instanceof Error ? error.message : String(error),
@@ -274,7 +275,7 @@ export class NotificationService {
   static async markAllAsRead(
     accessToken: string,
     metadataFolderId: string,
-    userDid: string
+    userPnIdentifier: string
   ): Promise<number> {
     try {
       // Get or create notifications sheet
@@ -284,11 +285,11 @@ export class NotificationService {
       );
 
       // Mark all as read in sheet
-      return await NotificationsSheetsService.markAllAsRead(accessToken, spreadsheetId, userDid);
+      return await NotificationsSheetsService.markAllAsRead(accessToken, spreadsheetId, userPnIdentifier);
     } catch (error) {
       console.error('[NotificationService] Error marking all notifications as read via sheets:', error);
       console.error('[NotificationService] Error details:', {
-        userDid,
+        userPnIdentifier,
         metadataFolderId,
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined
@@ -303,7 +304,7 @@ export class NotificationService {
   static async deleteNotification(
     accessToken: string,
     metadataFolderId: string,
-    userDid: string,
+    userPnIdentifier: string,
     notificationId: string
   ): Promise<boolean> {
     const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
@@ -318,7 +319,7 @@ export class NotificationService {
 
     if (notificationsFile.notifications.length < initialLength) {
       notificationsFile.updatedAt = new Date().toISOString();
-      await this.updateNotificationsFile(accessToken, metadataFolderId, userDid, notificationsFile);
+      await this.updateNotificationsFile(accessToken, metadataFolderId, userPnIdentifier, notificationsFile);
       return true;
     }
 
@@ -363,12 +364,12 @@ export class NotificationService {
   static async getPreferences(
     accessToken: string,
     metadataFolderId: string,
-    userDid: string
+    userPnIdentifier: string
   ): Promise<NotificationPreferences> {
     const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
     
     if (!notificationsFile || !notificationsFile.preferences) {
-      return this.getDefaultPreferences(userDid);
+      return this.getDefaultPreferences(userPnIdentifier);
     }
 
     return notificationsFile.preferences;
@@ -380,7 +381,7 @@ export class NotificationService {
   static async updatePreferences(
     accessToken: string,
     metadataFolderId: string,
-    userDid: string,
+    userPnIdentifier: string,
     preferences: Partial<Omit<NotificationPreferences, 'user_pn_identifier'>>
   ): Promise<NotificationPreferences> {
     let notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
@@ -388,15 +389,15 @@ export class NotificationService {
 
     if (!notificationsFile) {
       notificationsFile = {
-        identifier: userDid,
+        identifier: userPnIdentifier,
         updatedAt: now,
         notifications: [],
-        preferences: this.getDefaultPreferences(userDid)
+        preferences: this.getDefaultPreferences(userPnIdentifier)
       };
     }
 
     if (!notificationsFile.preferences) {
-      notificationsFile.preferences = this.getDefaultPreferences(userDid);
+      notificationsFile.preferences = this.getDefaultPreferences(userPnIdentifier);
     }
 
     // Update preferences
@@ -406,7 +407,7 @@ export class NotificationService {
     };
     notificationsFile.updatedAt = now;
 
-    await this.updateNotificationsFile(accessToken, metadataFolderId, userDid, notificationsFile);
+    await this.updateNotificationsFile(accessToken, metadataFolderId, userPnIdentifier, notificationsFile);
     return notificationsFile.preferences;
   }
 
@@ -436,7 +437,7 @@ export class NotificationService {
     fileId: string,
     feedName: string,
     creatorDid: string,
-    subscriberAccessTokens: Array<{ accessToken: string; metadataFolderId: string; userDid: string }>
+    subscriberAccessTokens: Array<{ accessToken: string; metadataFolderId: string; userPnIdentifier: string }>
   ): Promise<void> {
     for (const subscriber of subscriberAccessTokens) {
       try {
@@ -444,9 +445,9 @@ export class NotificationService {
         await this.createNotification(
           subscriber.accessToken,
           subscriber.metadataFolderId,
-          subscriber.userDid,
+          subscriber.userPnIdentifier,
           {
-            user_pn_identifier: subscriber.userDid, // Normalize in createNotification
+            user_pn_identifier: subscriber.userPnIdentifier, // Already normalized
             type: 'feed_new_post',
             title: `New post in ${feedName}`,
             message: `A new post has been added to ${feedName}`,
@@ -568,26 +569,26 @@ export class NotificationService {
     accessToken: string,
     metadataFolderId: string,
     connectionId: string,
-    requesterDid: string,
-    recipientDid: string
+    requesterPnIdentifier: string,
+    recipientPnIdentifier: string
   ): Promise<void> {
-    // Normalize DIDs to pn-identifiers
-    const normalizedRequesterDid = this.normalizeToPnIdentifier(requesterDid);
-    const normalizedRecipientDid = this.normalizeToPnIdentifier(recipientDid);
+    // Use pn identifiers directly (already normalized)
+    const normalizedRequesterPnIdentifier = this.normalizeToPnIdentifier(requesterPnIdentifier);
+    const normalizedRecipientPnIdentifier = this.normalizeToPnIdentifier(recipientPnIdentifier);
     
     // Always create notification - preferences only control alerting/display, not storage
     await this.createNotification(
       accessToken,
       metadataFolderId,
-      normalizedRecipientDid,
+        normalizedRecipientPnIdentifier,
       {
-        user_pn_identifier: normalizedRecipientDid,
+        user_pn_identifier: normalizedRecipientPnIdentifier,
         type: 'connection_request',
         title: 'New connection request',
         message: 'Someone wants to connect with you',
         data: {
           connection_id: connectionId,
-          user_did: normalizedRequesterDid
+          requester_pn_identifier: normalizedRequesterPnIdentifier
         }
       }
     );
@@ -600,26 +601,23 @@ export class NotificationService {
     accessToken: string,
     metadataFolderId: string,
     connectionId: string,
-    acceptorDid: string,
-    requesterDid: string
+    acceptorPnIdentifier: string,
+    requesterPnIdentifier: string
   ): Promise<void> {
-    // Normalize DIDs to pn-identifiers
-    const normalizedAcceptorDid = this.normalizeToPnIdentifier(acceptorDid);
-    const normalizedRequesterDid = this.normalizeToPnIdentifier(requesterDid);
-    
+    // Use pn identifiers directly (already normalized)
     // Always create notification - preferences only control alerting/display, not storage
     await this.createNotification(
       accessToken,
       metadataFolderId,
-      normalizedRequesterDid,
+      requesterPnIdentifier,
       {
-        user_pn_identifier: normalizedRequesterDid,
+        user_pn_identifier: requesterPnIdentifier,
         type: 'connection_accepted',
         title: 'Connection accepted',
         message: 'Your connection request was accepted',
         data: {
           connection_id: connectionId,
-          user_pn_identifier: normalizedAcceptorDid
+          user_pn_identifier: acceptorPnIdentifier
         }
       }
     );
@@ -665,26 +663,23 @@ export class NotificationService {
     accessToken: string,
     metadataFolderId: string,
     messageId: string,
-    fromDid: string,
-    toDid: string,
+    fromPnIdentifier: string,
+    toPnIdentifier: string,
     threadId?: string
   ): Promise<void> {
-    // Normalize DIDs to pn-identifiers
-    const normalizedFromDid = this.normalizeToPnIdentifier(fromDid);
-    const normalizedToDid = this.normalizeToPnIdentifier(toDid);
-    
+    // Use pn identifiers directly (already normalized)
     await this.createNotification(
       accessToken,
       metadataFolderId,
-      normalizedToDid,
+      toPnIdentifier,
       {
-        user_pn_identifier: normalizedToDid,
+        user_pn_identifier: toPnIdentifier,
         type: 'new_message',
         title: 'New message',
         message: 'You have a new message',
         data: {
           message_id: messageId,
-          from_pn_identifier: normalizedFromDid,
+          from_pn_identifier: fromPnIdentifier,
           thread_id: threadId
         }
       }

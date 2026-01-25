@@ -94,8 +94,8 @@ const didDocumentManager = new DIDDocumentManager();
 
 export interface DecentralizedConnection {
   connectionId: string;
-  userDid: string;
-  otherUserDid: string;
+  userPnIdentifier: string;
+  otherUserPnIdentifier: string;
   status: 'pending_sent' | 'pending_received' | 'accepted' | 'blocked';
   createdAt: string;
   acceptedAt?: string;
@@ -104,8 +104,8 @@ export interface DecentralizedConnection {
 
 export interface DecentralizedMessage {
   messageId: string;
-  fromDid: string;
-  toDid: string;
+  fromPnIdentifier: string;
+  toPnIdentifier: string;
   content: string;
   mediaFileId?: string;
   timestamp: string;
@@ -119,14 +119,14 @@ export interface DecentralizedMessage {
  * Send connection request - stores in IPFS and updates DID document
  */
 export async function sendConnectionRequest(
-  requesterDid: string,
-  recipientDid: string
+  requesterPnIdentifier: string,
+  recipientPnIdentifier: string
 ): Promise<DecentralizedConnection> {
   try {
     const connectionRequest: DecentralizedConnection = {
       connectionId: `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      userDid: requesterDid,
-      otherUserDid: recipientDid,
+      userPnIdentifier: requesterPnIdentifier,
+      otherUserPnIdentifier: recipientPnIdentifier,
       status: 'pending_sent',
       createdAt: new Date().toISOString()
     };
@@ -136,31 +136,32 @@ export async function sendConnectionRequest(
     connectionRequest.cid = cid;
 
     // Update requester's DID document with outgoing connection
-    const requesterDoc = await didDocumentManager.getDidDocument(requesterDid);
+    // Note: DID document uses DID format, but we store pn identifier in connection data
+    const requesterDoc = await didDocumentManager.getDidDocument(requesterPnIdentifier);
     if (requesterDoc) {
       const connectionService = requesterDoc.service?.find(s => s.id === '#connections') || {
-        id: `${requesterDid}#connections`,
+        id: `${requesterPnIdentifier}#connections`,
         type: 'Connections',
-        serviceEndpoint: `ipfs://connections/${requesterDid}`
+        serviceEndpoint: `ipfs://connections/${requesterPnIdentifier}`
       };
 
       // Add outgoing connection CID
       const outgoingConnections = (connectionService as any).outgoingConnections || [];
       outgoingConnections.push({
         connectionId: connectionRequest.connectionId,
-        recipientDid,
+        recipientPnIdentifier,
         cid,
         timestamp: connectionRequest.createdAt
       });
 
-      await didDocumentManager.updateDidDocument(requesterDid, {
+      await didDocumentManager.updateDidDocument(requesterPnIdentifier, {
         service: [
           ...(requesterDoc.service || []).filter(s => s.id !== '#connections'),
           {
             ...connectionService,
-            id: `${requesterDid}#connections`,
+            id: `${requesterPnIdentifier}#connections`,
             type: 'Connections',
-            serviceEndpoint: `ipfs://connections/${requesterDid}`,
+            serviceEndpoint: `ipfs://connections/${requesterPnIdentifier}`,
             outgoingConnections
           }
         ]
@@ -168,31 +169,31 @@ export async function sendConnectionRequest(
     }
 
     // Update recipient's DID document with incoming connection
-    const recipientDoc = await didDocumentManager.getDidDocument(recipientDid);
+    const recipientDoc = await didDocumentManager.getDidDocument(recipientPnIdentifier);
     if (recipientDoc) {
       const connectionService = recipientDoc.service?.find(s => s.id === '#connections') || {
-        id: `${recipientDid}#connections`,
+        id: `${recipientPnIdentifier}#connections`,
         type: 'Connections',
-        serviceEndpoint: `ipfs://connections/${recipientDid}`
+        serviceEndpoint: `ipfs://connections/${recipientPnIdentifier}`
       };
 
       // Add incoming connection CID
       const incomingConnections = (connectionService as any).incomingConnections || [];
       incomingConnections.push({
         connectionId: connectionRequest.connectionId,
-        requesterDid,
+        requesterPnIdentifier,
         cid,
         timestamp: connectionRequest.createdAt
       });
 
-      await didDocumentManager.updateDidDocument(recipientDid, {
+      await didDocumentManager.updateDidDocument(recipientPnIdentifier, {
         service: [
           ...(recipientDoc.service || []).filter(s => s.id !== '#connections'),
           {
             ...connectionService,
-            id: `${recipientDid}#connections`,
+            id: `${recipientPnIdentifier}#connections`,
             type: 'Connections',
-            serviceEndpoint: `ipfs://connections/${recipientDid}`,
+            serviceEndpoint: `ipfs://connections/${recipientPnIdentifier}`,
             incomingConnections
           }
         ]
@@ -211,14 +212,14 @@ export async function sendConnectionRequest(
  */
 export async function acceptConnectionRequest(
   connectionId: string,
-  userDid: string,
-  otherUserDid: string
+  userPnIdentifier: string,
+  otherUserPnIdentifier: string
 ): Promise<void> {
   try {
     const now = new Date().toISOString();
 
     // Update user's DID document - mark connection as accepted
-    const userDoc = await didDocumentManager.getDidDocument(userDid);
+    const userDoc = await didDocumentManager.getDidDocument(userPnIdentifier);
     if (userDoc) {
       const connectionService = userDoc.service?.find(s => s.id === '#connections');
       if (connectionService) {
@@ -235,12 +236,12 @@ export async function acceptConnectionRequest(
         if (acceptedConn) {
           acceptedConnections.push({
             ...acceptedConn,
-            otherUserDid,
+            otherUserPnIdentifier,
             acceptedAt: now
           });
         }
 
-        await didDocumentManager.updateDidDocument(userDid, {
+        await didDocumentManager.updateDidDocument(userPnIdentifier, {
           service: [
             ...(userDoc.service || []).filter(s => s.id !== '#connections'),
             {
@@ -253,7 +254,7 @@ export async function acceptConnectionRequest(
     }
 
     // Update other user's DID document - mark their outgoing as accepted
-    const otherUserDoc = await didDocumentManager.getDidDocument(otherUserDid);
+    const otherUserDoc = await didDocumentManager.getDidDocument(otherUserPnIdentifier);
     if (otherUserDoc) {
       const connectionService = otherUserDoc.service?.find(s => s.id === '#connections');
       if (connectionService) {
@@ -270,12 +271,12 @@ export async function acceptConnectionRequest(
         if (acceptedConn) {
           acceptedConnections.push({
             ...acceptedConn,
-            otherUserDid: userDid,
+            otherUserPnIdentifier: userPnIdentifier,
             acceptedAt: now
           });
         }
 
-        await didDocumentManager.updateDidDocument(otherUserDid, {
+        await didDocumentManager.updateDidDocument(otherUserPnIdentifier, {
           service: [
             ...(otherUserDoc.service || []).filter(s => s.id !== '#connections'),
             {
@@ -295,12 +296,12 @@ export async function acceptConnectionRequest(
 /**
  * Get pending connection requests from DID document
  */
-export async function getPendingRequests(userDid: string): Promise<{
+export async function getPendingRequests(userPnIdentifier: string): Promise<{
   sent: DecentralizedConnection[];
   received: DecentralizedConnection[];
 }> {
   try {
-    const userDoc = await didDocumentManager.getDidDocument(userDid);
+    const userDoc = await didDocumentManager.getDidDocument(userPnIdentifier);
     if (!userDoc) {
       return { sent: [], received: [] };
     }
@@ -357,9 +358,9 @@ export async function getPendingRequests(userDid: string): Promise<{
 /**
  * Get accepted connections from DID document
  */
-export async function getConnections(userDid: string): Promise<DecentralizedConnection[]> {
+export async function getConnections(userPnIdentifier: string): Promise<DecentralizedConnection[]> {
   try {
-    const userDoc = await didDocumentManager.getDidDocument(userDid);
+    const userDoc = await didDocumentManager.getDidDocument(userPnIdentifier);
     if (!userDoc) {
       return [];
     }
@@ -387,8 +388,8 @@ export async function getConnections(userDid: string): Promise<DecentralizedConn
           // Create connection object from metadata if CID fetch fails
           connections.push({
             connectionId: conn.connectionId,
-            userDid,
-            otherUserDid: conn.otherUserDid,
+            userPnIdentifier,
+            otherUserPnIdentifier: conn.otherUserPnIdentifier,
             status: 'accepted',
             createdAt: conn.timestamp || new Date().toISOString(),
             acceptedAt: conn.acceptedAt
@@ -398,8 +399,8 @@ export async function getConnections(userDid: string): Promise<DecentralizedConn
         // Use metadata directly if no CID
         connections.push({
           connectionId: conn.connectionId,
-          userDid,
-          otherUserDid: conn.otherUserDid,
+          userPnIdentifier,
+          otherUserPnIdentifier: conn.otherUserPnIdentifier,
           status: 'accepted',
           createdAt: conn.timestamp || new Date().toISOString(),
           acceptedAt: conn.acceptedAt
@@ -418,18 +419,18 @@ export async function getConnections(userDid: string): Promise<DecentralizedConn
  * Check connection status with another user
  */
 export async function getConnectionStatus(
-  userDid: string,
-  otherUserDid: string
+  userPnIdentifier: string,
+  otherUserPnIdentifier: string
 ): Promise<{
   status: 'not_connected' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked';
   connectionId?: string;
 }> {
   try {
-    const pendingRequests = await getPendingRequests(userDid);
+    const pendingRequests = await getPendingRequests(userPnIdentifier);
     
     // Check received requests
     const received = pendingRequests.received.find(
-      conn => (conn.userDid && conn.userDid === otherUserDid) || (conn.otherUserDid && conn.otherUserDid === otherUserDid)
+      conn => (conn.userPnIdentifier && conn.userPnIdentifier === otherUserPnIdentifier) || (conn.otherUserPnIdentifier && conn.otherUserPnIdentifier === otherUserPnIdentifier)
     );
     if (received) {
       return {
@@ -440,7 +441,7 @@ export async function getConnectionStatus(
 
     // Check sent requests
     const sent = pendingRequests.sent.find(
-      conn => (conn.userDid && conn.userDid === otherUserDid) || (conn.otherUserDid && conn.otherUserDid === otherUserDid)
+      conn => (conn.userPnIdentifier && conn.userPnIdentifier === otherUserPnIdentifier) || (conn.otherUserPnIdentifier && conn.otherUserPnIdentifier === otherUserPnIdentifier)
     );
     if (sent) {
       return {
@@ -450,9 +451,9 @@ export async function getConnectionStatus(
     }
 
     // Check accepted connections
-    const connections = await getConnections(userDid);
+    const connections = await getConnections(userPnIdentifier);
     const connected = connections.find(
-      conn => (conn.userDid && conn.userDid === otherUserDid) || (conn.otherUserDid && conn.otherUserDid === otherUserDid)
+      conn => (conn.userPnIdentifier && conn.userPnIdentifier === otherUserPnIdentifier) || (conn.otherUserPnIdentifier && conn.otherUserPnIdentifier === otherUserPnIdentifier)
     );
     if (connected) {
       return {

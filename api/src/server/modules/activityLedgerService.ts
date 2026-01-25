@@ -126,7 +126,7 @@ export class ActivityLedgerService {
         limit: options?.limit,
         offset: options?.offset,
         activityType: options?.activityType,
-        userDid: undefined // All activities for this user (sheet is per-user)
+        userPnIdentifier: undefined // All activities for this user (sheet is per-user)
       });
 
       return result;

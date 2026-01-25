@@ -42,7 +42,7 @@ export interface MessageRequest {
 }
 
 export interface MessageThread {
-  participantDid: string;
+  participantPnIdentifier: string;
   participantName?: string;
   lastMessage?: Message;
   unreadCount: number;
@@ -52,9 +52,9 @@ export interface MessageThread {
 /**
  * Get messages from user's inbox
  */
-export async function getMessages(userDid: string): Promise<Message[]> {
+export async function getMessages(userPnIdentifier: string): Promise<Message[]> {
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/messages/inbox?userDid=${userDid}`, {
+    const response = await fetch(`${API_ENDPOINT}/api/messages/inbox?userPnIdentifier=${userPnIdentifier}`, {
       headers: getAuthHeaders()
     });
 
@@ -73,9 +73,9 @@ export async function getMessages(userDid: string): Promise<Message[]> {
 /**
  * Get message threads (conversations)
  */
-export async function getMessageThreads(userDid: string): Promise<MessageThread[]> {
+export async function getMessageThreads(userPnIdentifier: string): Promise<MessageThread[]> {
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/messages/conversations?userDid=${userDid}`, {
+    const response = await fetch(`${API_ENDPOINT}/api/messages/conversations?userPnIdentifier=${userPnIdentifier}`, {
       headers: getAuthHeaders()
     });
 
@@ -89,7 +89,7 @@ export async function getMessageThreads(userDid: string): Promise<MessageThread[
     
     // Convert to MessageThread format
     return conversations.map((conv: any) => ({
-      participantDid: conv.participantDid || conv.otherUserDid,
+      participantPnIdentifier: conv.participantPnIdentifier || conv.otherUserPnIdentifier,
       participantName: conv.participantName,
       lastMessage: conv.lastMessage,
       unreadCount: conv.unreadCount || 0,
@@ -105,11 +105,11 @@ export async function getMessageThreads(userDid: string): Promise<MessageThread[
  * Get messages in a thread with a specific user
  */
 export async function getThreadMessages(
-  userDid: string,
-  participantDid: string
+  userPnIdentifier: string,
+  participantPnIdentifier: string
 ): Promise<Message[]> {
   const response = await fetch(
-    `${API_ENDPOINT}/api/messages/thread?userDid=${userDid}&participantDid=${participantDid}`,
+    `${API_ENDPOINT}/api/messages/thread?userPnIdentifier=${userPnIdentifier}&participantPnIdentifier=${participantPnIdentifier}`,
     {
       headers: getAuthHeaders()
     }
@@ -127,8 +127,8 @@ export async function getThreadMessages(
  * Send message via Google Drive/API
  */
 export async function sendMessage(
-  fromDid: string,
-  toDid: string,
+  fromPnIdentifier: string,
+  toPnIdentifier: string,
   content: string,
   mediaFileId?: string
 ): Promise<Message> {
@@ -137,8 +137,8 @@ export async function sendMessage(
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        fromPnIdentifier: fromDid,
-        toPnIdentifier: toDid,
+        fromPnIdentifier,
+        toPnIdentifier,
         content,
         mediaFileId
       })
@@ -184,8 +184,8 @@ export async function sendMessage(
  * Send message request
  */
 export async function sendMessageRequest(
-  fromDid: string,
-  toDid: string,
+  fromPnIdentifier: string,
+  toPnIdentifier: string,
   content: string
 ): Promise<MessageRequest> {
   try {
@@ -193,8 +193,8 @@ export async function sendMessageRequest(
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        fromPnIdentifier: fromDid,
-        toPnIdentifier: toDid,
+        fromPnIdentifier,
+        toPnIdentifier,
         content
       })
     });
@@ -214,9 +214,9 @@ export async function sendMessageRequest(
 /**
  * Get message requests
  */
-export async function getMessageRequests(userDid: string): Promise<MessageRequest[]> {
+export async function getMessageRequests(userPnIdentifier: string): Promise<MessageRequest[]> {
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/messages/requests?userDid=${userDid}`, {
+    const response = await fetch(`${API_ENDPOINT}/api/messages/requests?userPnIdentifier=${userPnIdentifier}`, {
       headers: getAuthHeaders()
     });
 
@@ -237,7 +237,7 @@ export async function getMessageRequests(userDid: string): Promise<MessageReques
  */
 export async function respondToRequest(
   requestId: string,
-  userDid: string,
+  userPnIdentifier: string,
   accept: boolean
 ): Promise<void> {
   try {
@@ -245,7 +245,7 @@ export async function respondToRequest(
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        userDid,
+        userPnIdentifier,
         accept
       })
     });
@@ -262,14 +262,14 @@ export async function respondToRequest(
 /**
  * Mark message as read
  */
-export async function markAsRead(messageId: string, userDid: string, participantDid?: string): Promise<void> {
+export async function markAsRead(messageId: string, userPnIdentifier: string, participantPnIdentifier?: string): Promise<void> {
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/${messageId}/read`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        userDid,
-        participantDid // Required for Google Sheets to find the right conversation sheet
+        userPnIdentifier,
+        participantPnIdentifier // Required for Google Sheets to find the right conversation sheet
       })
     });
 
@@ -285,13 +285,13 @@ export async function markAsRead(messageId: string, userDid: string, participant
 /**
  * Delete message
  */
-export async function deleteMessage(messageId: string, userDid: string): Promise<void> {
+export async function deleteMessage(messageId: string, userPnIdentifier: string): Promise<void> {
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/${messageId}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        userDid
+        userPnIdentifier
       })
     });
 
@@ -308,11 +308,11 @@ export async function deleteMessage(messageId: string, userDid: string): Promise
  * Delete conversation
  */
 export async function deleteConversation(
-  userDid: string,
-  participantDid: string
+  userPnIdentifier: string,
+  participantPnIdentifier: string
 ): Promise<void> {
   const response = await fetch(
-    `${API_ENDPOINT}/api/messages/conversation/${participantDid}?userDid=${encodeURIComponent(userDid)}`,
+    `${API_ENDPOINT}/api/messages/conversation/${participantPnIdentifier}?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
     {
       method: 'DELETE',
       headers: getAuthHeaders()

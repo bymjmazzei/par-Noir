@@ -558,7 +558,7 @@ export function FullScreenFeed({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             fileId: visibleFileId,
-            userDid: userState.pnIdentifier,
+            userPnIdentifier: userState.pnIdentifier,
             viewDuration
           })
         }).catch(err => {

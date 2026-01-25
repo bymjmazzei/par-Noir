@@ -130,7 +130,7 @@ export function useEngagement() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fileIds,
-          userDid: userState.isUnlocked ? userState.pnIdentifier : undefined
+          userPnIdentifier: userState.isUnlocked ? userState.pnIdentifier : undefined
         })
       });
 
@@ -185,7 +185,7 @@ export function useEngagement() {
         const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/like`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userDid: userState.pnIdentifier })
+          body: JSON.stringify({ userPnIdentifier: userState.pnIdentifier })
         });
 
         if (response.ok) {
@@ -229,7 +229,7 @@ export function useEngagement() {
         const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/dislike`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userDid: userState.pnIdentifier })
+          body: JSON.stringify({ userPnIdentifier: userState.pnIdentifier })
         });
 
         if (response.ok) {
@@ -289,7 +289,7 @@ export function useEngagement() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            userDid: userState.pnIdentifier,
+            userPnIdentifier: userState.pnIdentifier,
             content,
             authorName,
             parentCommentId,
@@ -420,7 +420,7 @@ export function useEngagement() {
         const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/comment/${commentId}/like`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userDid: userState.pnIdentifier })
+          body: JSON.stringify({ userPnIdentifier: userState.pnIdentifier })
         });
 
         if (response.ok) {
@@ -500,7 +500,7 @@ export function useEngagement() {
         const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/share`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userDid: userState.pnIdentifier })
+          body: JSON.stringify({ userPnIdentifier: userState.pnIdentifier })
         });
 
         if (response.ok) {
@@ -535,7 +535,7 @@ export function useEngagement() {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
 
     try {
-      const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/like?userDid=${userState.pnIdentifier}`);
+      const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/like?userPnIdentifier=${userState.pnIdentifier}`);
       if (response.ok) {
         const result = await response.json();
         setEngagement(prev => {

@@ -32,9 +32,9 @@ export interface SavedFeed {
 /**
  * Get user's saved feed (private curated feed)
  */
-export async function getSavedFeed(userDid: string): Promise<SavedFeed | null> {
+export async function getSavedFeed(userPnIdentifier: string): Promise<SavedFeed | null> {
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/feeds/saved?userDid=${userDid}`, {
+    const response = await fetch(`${API_ENDPOINT}/api/feeds/saved?userPnIdentifier=${userPnIdentifier}`, {
       headers: getAuthHeaders()
     });
 
@@ -46,7 +46,7 @@ export async function getSavedFeed(userDid: string): Promise<SavedFeed | null> {
     if (response.status === 404) {
       // No saved posts yet - return empty feed
       return {
-        feedId: `saved-${userDid}`,
+        feedId: `saved-${userPnIdentifier}`,
         feedName: 'Saved',
         fileIds: [],
         createdAt: new Date().toISOString(),
@@ -75,23 +75,18 @@ export async function getSavedFeed(userDid: string): Promise<SavedFeed | null> {
  * Create or update saved feed with a file
  */
 export async function saveToFeed(
-  userDid: string,
+  userPnIdentifier: string,
   fileId: string
 ): Promise<SavedFeed> {
   try {
-    // The API expects pnIdentifier (not DID) based on the error
-    // userDid parameter is actually the pnIdentifier from userState
-    const requestBody = {
-      userDid: userDid, // This is the pnIdentifier (e.g., "83c1db813607")
-      fileId: fileId
-    };
-    
-    console.log('Saving to feed:', { userDid, fileId, requestBody });
-    
-    const response = await fetch(`${API_ENDPOINT}/api/feeds/saved`, {
+    // The API expects pnIdentifier
+    const response = await fetch(`${API_ENDPOINT}/api/feeds/saved/add`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify({
+        userPnIdentifier,
+        fileId
+      })
     });
 
     if (!response.ok) {
@@ -132,7 +127,7 @@ export async function saveToFeed(
  * Remove file from saved feed
  */
 export async function removeFromSavedFeed(
-  userDid: string,
+  userPnIdentifier: string,
   fileId: string
 ): Promise<void> {
   try {
@@ -140,7 +135,7 @@ export async function removeFromSavedFeed(
       method: 'DELETE',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        userDid,
+        userPnIdentifier,
         fileId
       })
     });
@@ -158,11 +153,11 @@ export async function removeFromSavedFeed(
  * Check if file is saved in user's feed
  */
 export async function isFileSaved(
-  userDid: string,
+  userPnIdentifier: string,
   fileId: string
 ): Promise<boolean> {
   try {
-    const savedFeed = await getSavedFeed(userDid);
+    const savedFeed = await getSavedFeed(userPnIdentifier);
     return savedFeed?.fileIds.includes(fileId) || false;
   } catch (error) {
     console.error('Failed to check if file is saved:', error);

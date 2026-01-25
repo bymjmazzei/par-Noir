@@ -10,7 +10,7 @@ export function useModals() {
   const [showSearch, setShowSearch] = useState(false);
   const [showInbox, setShowInbox] = useState(false);
   const [initialThread, setInitialThread] = useState<{
-    participantDid: string;
+    participantPnIdentifier: string;
     participantName?: string;
   } | null>(null);
   const [showSettings, setShowSettings] = useState(false);

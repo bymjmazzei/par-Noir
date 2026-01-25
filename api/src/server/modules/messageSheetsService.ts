@@ -21,10 +21,12 @@ export class MessageSheetsService {
   private static readonly MESSAGES_FOLDER_NAME = 'par-noir-messages';
 
   /**
-   * Normalize identifier to pn-identifier format
+   * Normalize identifier to pn-identifier format (for legacy data compatibility only)
+   * New code should expect pn identifier already normalized
    */
-  private static normalizeToPnIdentifier(did: string): string {
-    return did.startsWith('pn-') ? did : `pn-${did}`;
+  private static normalizeToPnIdentifier(pnIdentifier: string): string {
+    // For legacy data compatibility - check if already normalized
+    return pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
   }
 
   /**
@@ -109,15 +111,14 @@ export class MessageSheetsService {
   static async getConversationSheet(
     accessToken: string,
     messagesFolderId: string,
-    otherUserDid: string
+    otherUserPnIdentifier: string
   ): Promise<string> {
-    // Normalize otherUserDid to pn-identifier
-    const normalizedOtherUserDid = this.normalizeToPnIdentifier(otherUserDid);
+    // Use pn identifier directly (already normalized)
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const drive = google.drive({ version: 'v3', auth });
 
-    const sheetFileName = `conversation-${normalizedOtherUserDid}`;
+    const sheetFileName = `conversation-${otherUserPnIdentifier}`;
     const fileQuery = `name='${sheetFileName}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
     
     const searchResponse = await drive.files.list({
@@ -127,7 +128,7 @@ export class MessageSheetsService {
     });
 
     if (searchResponse.data.files && searchResponse.data.files.length > 0) {
-      console.log(`[MessageSheetsService] Found existing conversation sheet for ${otherUserDid}: ${searchResponse.data.files[0].id}`);
+      console.log(`[MessageSheetsService] Found existing conversation sheet for ${otherUserPnIdentifier}: ${searchResponse.data.files[0].id}`);
       return searchResponse.data.files[0].id!;
     }
 
@@ -140,17 +141,17 @@ export class MessageSheetsService {
   static async createConversationSheet(
     accessToken: string,
     messagesFolderId: string,
-    otherUserDid: string
+    otherUserPnIdentifier: string
   ): Promise<string> {
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
-    const sheetFileName = `conversation-${otherUserDid}`;
+    const sheetFileName = `conversation-${otherUserPnIdentifier}`;
 
     // Create new conversation sheet
-    console.log(`[MessageSheetsService] Creating new conversation sheet for ${otherUserDid}`);
+    console.log(`[MessageSheetsService] Creating new conversation sheet for ${otherUserPnIdentifier}`);
     let spreadsheet;
     try {
       spreadsheet = await sheets.spreadsheets.create({
@@ -173,7 +174,7 @@ export class MessageSheetsService {
       });
     } catch (createError: any) {
       console.error('[MessageSheetsService] Failed to create conversation sheet:', {
-        otherUserDid,
+        otherUserPnIdentifier,
         error: createError?.message,
         status: createError?.response?.status,
         data: createError?.response?.data
@@ -275,16 +276,14 @@ export class MessageSheetsService {
       auth.setCredentials({ access_token: accessToken });
       const sheets = google.sheets({ version: 'v4', auth });
 
-      // Normalize fromPnIdentifier before storing (handles legacy data)
-      const normalizedFromPnIdentifier = this.normalizeToPnIdentifier(message.fromPnIdentifier);
-      
+      // Use pn identifier directly (already normalized)
       await sheets.spreadsheets.values.append({
         spreadsheetId,
         range: 'Messages!A:F',
         valueInputOption: 'RAW',
         requestBody: {
           values: [[
-            normalizedFromPnIdentifier,
+            message.fromPnIdentifier,
             encryptedContent, // Store encrypted content
             message.timestamp,
             message.messageId,
@@ -374,7 +373,7 @@ export class MessageSheetsService {
             encryptedContentLength: encryptedContent.length,
             encryptedContentPreview: encryptedContent.substring(0, 50),
             messageId: row[3] || index,
-            fromDid: row[0] || ''
+            fromPnIdentifier: row[0] || ''
           });
           // If decryption fails, this message was likely encrypted with a different connectionId/sharedSecret
           // (e.g., from before reconnection). Skip it rather than showing an error message.
@@ -393,9 +392,10 @@ export class MessageSheetsService {
         }
       }
       
-      // Normalize fromPnIdentifier when reading (handles legacy data)
+      // Use pn identifier directly (normalization only for legacy data compatibility)
       const fromPnIdentifier = row[0] || '';
-      const normalizedFromPnIdentifier = this.normalizeToPnIdentifier(fromPnIdentifier);
+      // Normalize only if needed for legacy data compatibility
+      const normalizedFromPnIdentifier = fromPnIdentifier.startsWith('pn-') ? fromPnIdentifier : this.normalizeToPnIdentifier(fromPnIdentifier);
       
       return {
         messageId: row[3] || `msg-${index}`,
@@ -524,16 +524,15 @@ export class MessageSheetsService {
   static async deleteConversation(
     accessToken: string,
     messagesFolderId: string,
-    otherUserDid: string
+    otherUserPnIdentifier: string
   ): Promise<void> {
-    // Normalize otherUserDid to pn-identifier
-    const normalizedOtherUserDid = this.normalizeToPnIdentifier(otherUserDid);
+    // Use pn identifier directly (already normalized)
     try {
       const auth = new google.auth.OAuth2();
       auth.setCredentials({ access_token: accessToken });
       const drive = google.drive({ version: 'v3', auth });
 
-      const sheetFileName = `conversation-${normalizedOtherUserDid}`;
+      const sheetFileName = `conversation-${otherUserPnIdentifier}`;
       
       // Find the conversation sheet
       const fileQuery = `name='${sheetFileName}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
@@ -549,13 +548,13 @@ export class MessageSheetsService {
         await drive.files.delete({
           fileId: fileId
         });
-        console.log(`[MessageSheetsService] Deleted conversation sheet ${fileId} for ${otherUserDid}`);
+        console.log(`[MessageSheetsService] Deleted conversation sheet ${fileId} for ${otherUserPnIdentifier}`);
       } else {
-        console.warn(`[MessageSheetsService] Conversation sheet not found for ${otherUserDid}`);
+        console.warn(`[MessageSheetsService] Conversation sheet not found for ${otherUserPnIdentifier}`);
       }
     } catch (error: any) {
       console.error('[MessageSheetsService] Error deleting conversation sheet:', {
-        otherUserDid,
+        otherUserPnIdentifier,
         messagesFolderId,
         error: error?.message,
         status: error?.response?.status
@@ -573,12 +572,11 @@ export class MessageSheetsService {
     userMessagesFolderId: string,
     otherUserAccessToken: string,
     otherUserMessagesFolderId: string,
-    otherUserDid: string,
+    otherUserPnIdentifier: string,
     connectionId: string,
     sharedSecret: string // Decrypted shared secret
   ): Promise<string> {
-    // Normalize otherUserDid to pn-identifier
-    const normalizedOtherUserDid = this.normalizeToPnIdentifier(otherUserDid);
+    // Use pn identifier directly (already normalized)
     try {
       const auth = new google.auth.OAuth2();
       auth.setCredentials({ access_token: userAccessToken });
@@ -586,7 +584,7 @@ export class MessageSheetsService {
       const drive = google.drive({ version: 'v3', auth });
 
       // Check if other user's conversation file exists
-      const otherUserSheetFileName = `conversation-${normalizedOtherUserDid}`;
+      const otherUserSheetFileName = `conversation-${otherUserPnIdentifier}`;
       const otherUserFileQuery = `name='${otherUserSheetFileName}' and '${otherUserMessagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
       
       const otherAuth = new google.auth.OAuth2();
@@ -603,7 +601,7 @@ export class MessageSheetsService {
       if (!otherUserFileResponse.data.files || otherUserFileResponse.data.files.length === 0) {
         // Other user's file doesn't exist, create empty conversation sheet
         console.log(`[MessageSheetsService] Other user's conversation file not found, creating empty sheet`);
-        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserDid);
+        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserPnIdentifier);
       }
 
       const otherUserSheetId = otherUserFileResponse.data.files[0].id!;
@@ -619,11 +617,11 @@ export class MessageSheetsService {
       if (otherMessages.length === 0) {
         // No messages to restore, create empty sheet
         console.log(`[MessageSheetsService] Other user's conversation file is empty, creating empty sheet`);
-        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, normalizedOtherUserDid);
+        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserPnIdentifier);
       }
 
       // Create new conversation sheet for user
-      const userSheetId = await this.createConversationSheet(userAccessToken, userMessagesFolderId, normalizedOtherUserDid);
+      const userSheetId = await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserPnIdentifier);
 
       // Filter messages: only restore plain text messages (system messages)
       // Encrypted messages were encrypted with the old connectionId/sharedSecret and cannot be decrypted
@@ -631,9 +629,9 @@ export class MessageSheetsService {
       const { MessageEncryption } = await import('../utils/messageEncryption');
       const plainTextMessages = otherMessages.filter(row => {
         const content = row[1] || '';
-        const fromDid = row[0] || '';
+        const fromPnIdentifier = row[0] || '';
         // Only restore system messages or plain text messages (not encrypted)
-        return fromDid === 'system' || !MessageEncryption.isEncrypted(content);
+        return fromPnIdentifier === 'system' || !MessageEncryption.isEncrypted(content);
       });
 
       if (plainTextMessages.length === 0) {
@@ -643,7 +641,7 @@ export class MessageSheetsService {
 
       // Copy only plain text messages to user's sheet
       const values = plainTextMessages.map(row => [
-        row[0] || '', // fromDid
+        row[0] || '', // fromPnIdentifier
         row[1] || '', // content (plain text, can be copied as-is)
         row[2] || '', // timestamp
         row[3] || '', // messageId
@@ -660,11 +658,11 @@ export class MessageSheetsService {
         }
       });
 
-      console.log(`[MessageSheetsService] Restored ${values.length} plain text messages from ${otherUserDid}'s conversation file (skipped ${otherMessages.length - plainTextMessages.length} encrypted messages)`);
+      console.log(`[MessageSheetsService] Restored ${values.length} plain text messages from ${otherUserPnIdentifier}'s conversation file (skipped ${otherMessages.length - plainTextMessages.length} encrypted messages)`);
       return userSheetId;
     } catch (error: any) {
       console.error('[MessageSheetsService] Error restoring conversation from other user:', {
-        otherUserDid,
+        otherUserPnIdentifier,
         userMessagesFolderId,
         otherUserMessagesFolderId,
         error: error?.message,
@@ -672,7 +670,7 @@ export class MessageSheetsService {
       });
       // If restoration fails, still return a sheet ID (create empty one)
       try {
-        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, normalizedOtherUserDid);
+        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserPnIdentifier);
       } catch (createError: any) {
         console.error('[MessageSheetsService] Failed to create empty sheet after restoration failure:', createError);
         throw error; // Throw original error

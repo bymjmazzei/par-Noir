@@ -1016,7 +1016,7 @@ function App() {
             uploadQueueService.addTask({
               type: 'saveToFeed',
               accountId: '',
-              metadata: { fileId, userDid: userState.pnIdentifier!, isSaved: false },
+              metadata: { fileId, userPnIdentifier: userState.pnIdentifier!, isSaved: false },
               onComplete: () => { mePageData.refreshSavedFeed(); },
               onError: () => { showErrorToast('Failed to save. Please try again.'); mePageData.setSavedFeedFileIds(prev => prev.filter(id => id !== fileId)); },
             });

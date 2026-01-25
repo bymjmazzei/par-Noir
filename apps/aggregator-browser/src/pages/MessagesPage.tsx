@@ -7,7 +7,7 @@ import { Inbox } from '../components/Inbox';
 import { Notification } from '../services/notificationService';
 
 export interface MessagesPageProps {
-  initialThread: { participantDid: string; participantName?: string } | null;
+  initialThread: { participantPnIdentifier: string; participantName?: string } | null;
   onCreatorClick: (creatorId: string) => void;
   onNotificationClick: (notification: Notification) => void;
 }

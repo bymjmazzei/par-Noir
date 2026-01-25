@@ -9,8 +9,8 @@ import { PNOAuthService } from './pnOAuthService';
 
 export interface DecentralizedMessage {
   messageId: string;
-  fromDid: string;
-  toDid: string;
+  fromPnIdentifier: string;
+  toPnIdentifier: string;
   content: string;
   mediaFileId?: string;
   timestamp: string;
@@ -21,7 +21,7 @@ export interface DecentralizedMessage {
 }
 
 interface MessageInbox {
-  did: string;
+  pnIdentifier: string;
   messages: DecentralizedMessage[];
   lastUpdated: string;
 }
@@ -30,8 +30,8 @@ interface MessageInbox {
  * Send message - attempts direct P2P, falls back to IPFS storage
  */
 export async function sendMessage(
-  fromDid: string,
-  toDid: string,
+  fromPnIdentifier: string,
+  toPnIdentifier: string,
   content: string,
   mediaFileId?: string,
   encrypted: boolean = true
@@ -39,8 +39,8 @@ export async function sendMessage(
   try {
     const message: DecentralizedMessage = {
       messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      fromDid,
-      toDid,
+      fromPnIdentifier,
+      toPnIdentifier,
       content,
       mediaFileId,
       timestamp: new Date().toISOString(),
@@ -55,11 +55,11 @@ export async function sendMessage(
     message.cid = cid;
 
     // Store message reference in sender's local inbox
-    await storeMessageLocally(fromDid, message, 'sent');
+    await storeMessageLocally(fromPnIdentifier, message, 'sent');
 
     // Store message reference in recipient's inbox (IPFS)
     // Recipient will poll their DID document for new messages
-    await storeMessageInIPFSInbox(toDid, message);
+    await storeMessageInIPFSInbox(toPnIdentifier, message);
 
     return message;
   } catch (error) {
@@ -72,12 +72,12 @@ export async function sendMessage(
  * Store message in user's local inbox
  */
 async function storeMessageLocally(
-  userDid: string,
+  userPnIdentifier: string,
   message: DecentralizedMessage,
   folder: 'inbox' | 'sent'
 ): Promise<void> {
   try {
-    const inboxKey = `pn_messages_${userDid}_${folder}`;
+    const inboxKey = `pn_messages_${userPnIdentifier}_${folder}`;
     const existing = localStorage.getItem(inboxKey);
     const messages: DecentralizedMessage[] = existing ? JSON.parse(existing) : [];
     
@@ -99,7 +99,7 @@ async function storeMessageLocally(
  * Updates recipient's DID document with inbox CID
  */
 async function storeMessageInIPFSInbox(
-  recipientDid: string,
+  recipientPnIdentifier: string,
   message: DecentralizedMessage
 ): Promise<void> {
   try {
@@ -108,7 +108,7 @@ async function storeMessageInIPFSInbox(
     // In production, use IPFS pubsub or a more sophisticated inbox system
     
     // Store message in inbox structure
-    const inboxKey = `pn_messages_${recipientDid}_inbox`;
+    const inboxKey = `pn_messages_${recipientPnIdentifier}_inbox`;
     const existing = localStorage.getItem(inboxKey);
     const messages: DecentralizedMessage[] = existing ? JSON.parse(existing) : [];
     
@@ -117,7 +117,7 @@ async function storeMessageInIPFSInbox(
     // Store inbox in IPFS periodically (every 10 messages or every 5 minutes)
     // For now, store immediately
     const inbox: MessageInbox = {
-      did: recipientDid,
+      pnIdentifier: recipientPnIdentifier,
       messages: messages.slice(-100), // Keep last 100 messages in IPFS
       lastUpdated: new Date().toISOString()
     };
@@ -127,27 +127,27 @@ async function storeMessageInIPFSInbox(
     // Update recipient's DID document with inbox CID
     // This would require DID document access - for now, store locally
     // In full implementation, update DID document service endpoint
-    localStorage.setItem(`pn_inbox_cid_${recipientDid}`, inboxCid);
+    localStorage.setItem(`pn_inbox_cid_${recipientPnIdentifier}`, inboxCid);
     localStorage.setItem(inboxKey, JSON.stringify(messages));
   } catch (error) {
     console.error('Failed to store message in IPFS inbox:', error);
     // Fallback: store locally only
-    await storeMessageLocally(recipientDid, message, 'inbox');
+    await storeMessageLocally(recipientPnIdentifier, message, 'inbox');
   }
 }
 
 /**
  * Get messages from user's inbox (local + IPFS)
  */
-export async function getMessages(userDid: string): Promise<DecentralizedMessage[]> {
+export async function getMessages(userPnIdentifier: string): Promise<DecentralizedMessage[]> {
   try {
     // Get messages from local storage
-    const inboxKey = `pn_messages_${userDid}_inbox`;
+    const inboxKey = `pn_messages_${userPnIdentifier}_inbox`;
     const localMessages = localStorage.getItem(inboxKey);
     const messages: DecentralizedMessage[] = localMessages ? JSON.parse(localMessages) : [];
 
     // Try to get messages from IPFS inbox
-    const inboxCid = localStorage.getItem(`pn_inbox_cid_${userDid}`);
+    const inboxCid = localStorage.getItem(`pn_inbox_cid_${userPnIdentifier}`);
     if (inboxCid) {
       try {
         const inboxData = await ipfsService.downloadFromIPFS(inboxCid);
@@ -187,45 +187,45 @@ export async function getMessages(userDid: string): Promise<DecentralizedMessage
 /**
  * Get message threads (conversations)
  */
-export async function getMessageThreads(userDid: string): Promise<Array<{
-  participantDid: string;
+export async function getMessageThreads(userPnIdentifier: string): Promise<Array<{
+  participantPnIdentifier: string;
   participantName?: string;
   lastMessage?: DecentralizedMessage;
   unreadCount: number;
   messages: DecentralizedMessage[];
 }>> {
   try {
-    const messages = await getMessages(userDid);
+    const messages = await getMessages(userPnIdentifier);
     
     // Group messages by participant
     const threadsMap = new Map<string, DecentralizedMessage[]>();
     
     messages.forEach(msg => {
       // Validate message has required fields
-      if (!msg.fromDid || !msg.toDid) {
-        console.warn('[decentralizedMessaging] Skipping message with missing fromDid/toDid:', msg);
+      if (!msg.fromPnIdentifier || !msg.toPnIdentifier) {
+        console.warn('[decentralizedMessaging] Skipping message with missing fromPnIdentifier/toPnIdentifier:', msg);
         return;
       }
-      const participantDid = msg.fromDid === userDid ? msg.toDid : msg.fromDid;
-      if (!participantDid) {
-        console.warn('[decentralizedMessaging] Skipping message with invalid participantDid:', msg);
+      const participantPnIdentifier = msg.fromPnIdentifier === userPnIdentifier ? msg.toPnIdentifier : msg.fromPnIdentifier;
+      if (!participantPnIdentifier) {
+        console.warn('[decentralizedMessaging] Skipping message with invalid participantPnIdentifier:', msg);
         return;
       }
-      if (!threadsMap.has(participantDid)) {
-        threadsMap.set(participantDid, []);
+      if (!threadsMap.has(participantPnIdentifier)) {
+        threadsMap.set(participantPnIdentifier, []);
       }
-      threadsMap.get(participantDid)!.push(msg);
+      threadsMap.get(participantPnIdentifier)!.push(msg);
     });
     
     // Convert to thread format
-    const threads = Array.from(threadsMap.entries()).map(([participantDid, msgs]) => {
+    const threads = Array.from(threadsMap.entries()).map(([participantPnIdentifier, msgs]) => {
       const sorted = msgs.sort((a, b) => 
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
-      const unread = sorted.filter(msg => !msg.read && msg.toDid === userDid);
+      const unread = sorted.filter(msg => !msg.read && msg.toPnIdentifier === userPnIdentifier);
       
       return {
-        participantDid,
+        participantPnIdentifier,
         lastMessage: sorted[sorted.length - 1],
         unreadCount: unread.length,
         messages: sorted
@@ -246,9 +246,9 @@ export async function getMessageThreads(userDid: string): Promise<Array<{
 /**
  * Mark message as read
  */
-export async function markAsRead(messageId: string, userDid: string): Promise<void> {
+export async function markAsRead(messageId: string, userPnIdentifier: string): Promise<void> {
   try {
-    const inboxKey = `pn_messages_${userDid}_inbox`;
+    const inboxKey = `pn_messages_${userPnIdentifier}_inbox`;
     const localMessages = localStorage.getItem(inboxKey);
     if (!localMessages) return;
     
@@ -268,9 +268,9 @@ export async function markAsRead(messageId: string, userDid: string): Promise<vo
 /**
  * Delete message
  */
-export async function deleteMessage(messageId: string, userDid: string): Promise<void> {
+export async function deleteMessage(messageId: string, userPnIdentifier: string): Promise<void> {
   try {
-    const inboxKey = `pn_messages_${userDid}_inbox`;
+    const inboxKey = `pn_messages_${userPnIdentifier}_inbox`;
     const localMessages = localStorage.getItem(inboxKey);
     if (!localMessages) return;
     
@@ -280,7 +280,7 @@ export async function deleteMessage(messageId: string, userDid: string): Promise
     localStorage.setItem(inboxKey, JSON.stringify(messages));
     
     // Also remove from sent folder
-    const sentKey = `pn_messages_${userDid}_sent`;
+    const sentKey = `pn_messages_${userPnIdentifier}_sent`;
     const sentMessages = localStorage.getItem(sentKey);
     if (sentMessages) {
       const sent: DecentralizedMessage[] = JSON.parse(sentMessages)

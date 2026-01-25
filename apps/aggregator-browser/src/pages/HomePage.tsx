@@ -292,7 +292,7 @@ export function HomePage() {
                 getShareCount={getShareCount}
                 userState={userState}
                 onCreatorClick={(id) => setViewingCreatorId(id)}
-                onMessage={(id) => { setInitialThread({ participantDid: id }); setShowInbox(true); setActiveBottomTab('messages'); }}
+                onMessage={(id) => { setInitialThread({ participantPnIdentifier: id }); setShowInbox(true); setActiveBottomTab('messages'); }}
               />
               {viewMode === 'feed' && hasMore && <div id="feed-infinite-scroll-sentinel" data-feed-container="true" style={{ height: '1px', width: '100%' }} />}
               {viewMode === 'feed' && isLoadingMore && <div className="flex justify-center py-4"><p className="text-text-secondary text-sm">Loading more...</p></div>}

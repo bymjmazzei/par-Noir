@@ -12,12 +12,12 @@ import { useToast } from '../hooks/useToast';
 import { ToastContainer } from './Toast';
 
 interface MessageThreadProps {
-  participantDid: string;
+  participantPnIdentifier: string;
   participantName?: string;
   onBack: () => void;
 }
 
-export function MessageThread({ participantDid, participantName, onBack }: MessageThreadProps) {
+export function MessageThread({ participantPnIdentifier, participantName, onBack }: MessageThreadProps) {
   const { userState } = useUserState();
   const { error: showError, toasts, removeToast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -51,7 +51,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
       }
       
       try {
-        const threadMessages = await getThreadMessages(userState.pnIdentifier!, participantDid);
+        const threadMessages = await getThreadMessages(userState.pnIdentifier!, participantPnIdentifier);
         // Reset error count on success
         errorCountRef.current = 0;
         
@@ -75,7 +75,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
         const unreadMessages = threadMessages.filter(m => !m.read && m.toPnIdentifier === userState.pnIdentifier);
         for (const message of unreadMessages) {
           try {
-            await markAsRead(message.messageId, userState.pnIdentifier!, participantDid);
+            await markAsRead(message.messageId, userState.pnIdentifier!, participantPnIdentifier);
           } catch (error) {
             console.error('Failed to mark as read:', error);
           }
@@ -119,7 +119,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
     }, 15000); // 15 seconds instead of 5
     
     return () => clearInterval(interval);
-  }, [userState.isUnlocked, userState.pnIdentifier, participantDid]);
+  }, [userState.isUnlocked, userState.pnIdentifier, participantPnIdentifier]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -154,7 +154,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
     const optimisticMessage: Message = {
       messageId: tempMessageId,
       fromPnIdentifier: userState.pnIdentifier!,
-      toPnIdentifier: participantDid,
+      toPnIdentifier: participantPnIdentifier,
       content: content,
       timestamp: new Date().toISOString(),
       read: false
@@ -171,7 +171,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
     try {
       const sentMessage = await sendMessage(
         userState.pnIdentifier!,
-        participantDid,
+        participantPnIdentifier,
         content
       );
       
@@ -209,7 +209,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
 
     setDeleting(true);
     try {
-      await deleteConversation(userState.pnIdentifier, participantDid);
+      await deleteConversation(userState.pnIdentifier, participantPnIdentifier);
       // Navigate back to message list after successful deletion
       onBack();
     } catch (error: any) {
@@ -223,7 +223,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
     }
   };
 
-  const displayName = participantName || (participantDid?.substring(0, 16) || 'Unknown') + '...';
+  const displayName = participantName || (participantPnIdentifier?.substring(0, 16) || 'Unknown') + '...';
 
   return (
     <div className="h-full flex flex-col bg-neutral-900">
@@ -263,7 +263,7 @@ export function MessageThread({ participantDid, participantName, onBack }: Messa
           </div>
           <div>
             <h2 className="text-white font-semibold">{displayName}</h2>
-            <p className="text-neutral-400 text-xs">{participantDid}</p>
+            <p className="text-neutral-400 text-xs">{participantPnIdentifier}</p>
           </div>
         </div>
       </div>

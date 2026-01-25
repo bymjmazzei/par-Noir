@@ -129,7 +129,7 @@ export function FeedEngagementSidebar({
       accountId: '', // Not used for saved feed operations
       metadata: {
         fileId,
-        userDid: userState.pnIdentifier,
+        userPnIdentifier: userState.pnIdentifier,
         isSaved: isSaved // Current state before toggle
       },
       onComplete: (result) => {
@@ -167,7 +167,7 @@ export function FeedEngagementSidebar({
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ userDid: userState.pnIdentifier })
+            body: JSON.stringify({ userPnIdentifier: userState.pnIdentifier })
           });
         } catch (engagementErr) {
           console.warn('Failed to record share engagement:', engagementErr);

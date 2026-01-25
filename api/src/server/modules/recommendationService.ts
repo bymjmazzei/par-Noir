@@ -27,7 +27,7 @@ export interface RecommendationScore {
 }
 
 export interface RecommendationOptions {
-  userDid?: string;
+  userPnIdentifier?: string;
   feedId?: string; // 'public', 'curated', 'me', or specific feed ID
   limit?: number;
   offset?: number;
@@ -83,7 +83,7 @@ export class RecommendationService {
    */
   static async calculateUserScore(
     file: CentralIndexEntry,
-    userDid: string,
+    userPnIdentifier: string,
     publicScore: number,
     publicReasons: string[],
     options: RecommendationOptions
@@ -99,7 +99,7 @@ export class RecommendationService {
         SELECT 1 FROM engagement 
         WHERE file_id = $1 AND user_did = $2 AND type = 'like'
         LIMIT 1
-      `, [file.fileId, userDid]);
+      `, [file.fileId, userPnIdentifier]);
       
       if (likeResult.rows.length > 0) {
         score += 20;
@@ -111,7 +111,7 @@ export class RecommendationService {
         SELECT 1 FROM engagement 
         WHERE file_id = $1 AND user_did = $2 AND type = 'dislike'
         LIMIT 1
-      `, [file.fileId, userDid]);
+      `, [file.fileId, userPnIdentifier]);
       
       if (dislikeResult.rows.length > 0) {
         score -= 50;
@@ -119,7 +119,7 @@ export class RecommendationService {
       }
       
       // Get user tag preferences
-      const userPreferences = await UserPreferenceService.getUserTagPreferences(userDid);
+      const userPreferences = await UserPreferenceService.getUserTagPreferences(userPnIdentifier);
       
       // Check if content matches user preferences
       // This would require tag normalization - for now, we'll use a simplified approach
@@ -150,7 +150,7 @@ export class RecommendationService {
       const subscribedFeedsResult = await db.query(`
         SELECT feed_id FROM feed_subscriptions 
         WHERE user_did = $1
-      `, [userDid]);
+      `, [userPnIdentifier]);
       
       const subscribedFeedIds = subscribedFeedsResult.rows.map(r => r.feed_id);
       const fileFeedIds = (file.metadata as any).feedIds || [];
@@ -171,7 +171,7 @@ export class RecommendationService {
           WHERE (user_did_1 = $1 AND user_did_2 = $2) 
              OR (user_did_1 = $2 AND user_did_2 = $1)
           LIMIT 1
-        `, [userDid, creatorId]);
+        `, [userPnIdentifier, creatorId]);
         
         if (connectionResult.rows.length > 0) {
           score += 10;
@@ -188,7 +188,7 @@ export class RecommendationService {
         WHERE e.user_did = $1 AND e.type = 'like'
         GROUP BY e.file_id
         LIMIT 100
-      `, [userDid]);
+      `, [userPnIdentifier]);
       
       // Boost content types user frequently likes
       const fileType = file.metadata.fileType;
@@ -221,19 +221,19 @@ export class RecommendationService {
    */
   static async calculateContentScore(
     file: CentralIndexEntry,
-    userDid: string | undefined,
+    userPnIdentifier: string | undefined,
     options: RecommendationOptions
   ): Promise<{ score: number; reasons: string[] }> {
     // First, calculate public score (base score everyone gets)
     const { score: publicScore, reasons: publicReasons } = await this.calculatePublicScore(file, options);
 
     // If no user, return public score
-    if (!userDid) {
+    if (!userPnIdentifier) {
       return { score: Math.max(0, publicScore), reasons: publicReasons };
     }
 
     // Otherwise, extend with user personalization
-    return await this.calculateUserScore(file, userDid, publicScore, publicReasons, options);
+    return await this.calculateUserScore(file, userPnIdentifier, publicScore, publicReasons, options);
   }
 
   /**
@@ -283,7 +283,7 @@ export class RecommendationService {
     // Calculate scores for all files
     const scoredFiles = await Promise.all(
       files.map(async (file) => {
-        const { score, reasons } = await this.calculateContentScore(file, options.userDid, options);
+        const { score, reasons } = await this.calculateContentScore(file, options.userPnIdentifier, options);
         
         scores.set(file.fileId, {
           fileId: file.fileId,

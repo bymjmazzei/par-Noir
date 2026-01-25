@@ -134,7 +134,7 @@ export class ActivityLedgerSheetsService {
       limit?: number;
       offset?: number;
       activityType?: string;
-      userDid?: string;
+      userPnIdentifier?: string;
     }
   ): Promise<{ activities: ActivityEntry[]; total: number }> {
     const auth = new google.auth.OAuth2();
@@ -175,10 +175,10 @@ export class ActivityLedgerSheetsService {
       activities = activities.filter(a => a.activity_type === options.activityType);
     }
 
-    // Filter by user DID if specified
-    if (options?.userDid) {
-      // Normalize when filtering (handles legacy data)
-      const normalizedUserDid = options.userDid?.startsWith('pn-') ? options.userDid : `pn-${options.userDid}`;
+    // Filter by user pn identifier if specified
+    if (options?.userPnIdentifier) {
+      // Normalize when filtering
+      const normalizedUserPnIdentifier = options.userPnIdentifier?.startsWith('pn-') ? options.userPnIdentifier : `pn-${options.userPnIdentifier}`;
       activities = activities.filter(a => {
         // Validate user_pn_identifier exists before calling .startsWith()
         if (!a.user_pn_identifier) {
@@ -186,7 +186,7 @@ export class ActivityLedgerSheetsService {
           return false;
         }
         const normalizedAUserPnIdentifier = a.user_pn_identifier.startsWith('pn-') ? a.user_pn_identifier : `pn-${a.user_pn_identifier}`;
-        return normalizedAUserPnIdentifier === normalizedUserDid;
+        return normalizedAUserPnIdentifier === normalizedUserPnIdentifier;
       });
     }
 

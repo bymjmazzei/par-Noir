@@ -67,14 +67,14 @@ export class EngagementService {
   /**
    * Check if user is verified
    */
-  private static async isUserVerified(userDid: string): Promise<boolean> {
+  private static async isUserVerified(userPnIdentifier: string): Promise<boolean> {
     const db = getDatabasePool();
     try {
       const result = await db.query(`
         SELECT 1 FROM verified_identities 
         WHERE identity_id = $1 AND is_active = TRUE
         LIMIT 1
-      `, [userDid]);
+      `, [userPnIdentifier]);
       return result.rows.length > 0;
     } catch {
       return false;
@@ -84,7 +84,7 @@ export class EngagementService {
   /**
    * Get recent action count for rate limiting
    */
-  private static async getRecentActionCount(userDid: string, window: string): Promise<number> {
+  private static async getRecentActionCount(userPnIdentifier: string, window: string): Promise<number> {
     const db = getDatabasePool();
     const windowMs = window === '1 hour' ? 3600000 : 3600000; // Default to 1 hour
     
@@ -93,7 +93,7 @@ export class EngagementService {
       FROM engagement
       WHERE user_did = $1
       AND created_at > NOW() - INTERVAL '1 hour'
-    `, [userDid]);
+    `, [userPnIdentifier]);
     
     return parseInt(result.rows[0].count, 10);
   }
@@ -101,22 +101,22 @@ export class EngagementService {
   /**
    * Toggle like for a file with bot detection and verification tracking
    */
-  static async toggleLike(fileId: string, userDid: string): Promise<{ liked: boolean; count: number }> {
+  static async toggleLike(fileId: string, userPnIdentifier: string): Promise<{ liked: boolean; count: number }> {
     const db = getDatabasePool();
     
     try {
       // Check verification status
-      const isVerified = await this.isUserVerified(userDid);
+      const isVerified = await this.isUserVerified(userPnIdentifier);
       
       // Calculate bot score for unverified users
       let botScore = 0.0;
       if (!isVerified) {
-        const botResult = await BotDetectionService.calculateBotScore(userDid);
+        const botResult = await BotDetectionService.calculateBotScore(userPnIdentifier);
         botScore = botResult.botScore;
         
         // Check rate limits
         const rateLimit = BotDetectionService.getRateLimitForBotScore(botScore);
-        const recentActions = await this.getRecentActionCount(userDid, rateLimit.window);
+        const recentActions = await this.getRecentActionCount(userPnIdentifier, rateLimit.window);
         
         if (recentActions >= rateLimit.maxActions) {
           throw new Error(`Rate limit: ${rateLimit.maxActions} actions per ${rateLimit.window} allowed`);
@@ -128,21 +128,21 @@ export class EngagementService {
         SELECT engagement_id FROM engagement 
         WHERE file_id = $1 AND user_did = $2 AND type = 'like'
         LIMIT 1
-      `, [fileId, userDid]);
+      `, [fileId, userPnIdentifier]);
 
       if (existing.rows.length > 0) {
         // Unlike - remove the engagement
         await db.query(`
           DELETE FROM engagement 
           WHERE file_id = $1 AND user_did = $2 AND type = 'like'
-        `, [fileId, userDid]);
+        `, [fileId, userPnIdentifier]);
       } else {
         // Like - add the engagement with verification and bot score
         await db.query(`
           INSERT INTO engagement (file_id, user_did, type, is_verified, bot_score)
           VALUES ($1, $2, 'like', $3, $4)
           ON CONFLICT (file_id, user_did, type) DO NOTHING
-        `, [fileId, userDid, isVerified, botScore]);
+        `, [fileId, userPnIdentifier, isVerified, botScore]);
       }
 
       // Get updated count
@@ -167,14 +167,14 @@ export class EngagementService {
   /**
    * Check if user has liked a file
    */
-  static async isLiked(fileId: string, userDid: string): Promise<boolean> {
+  static async isLiked(fileId: string, userPnIdentifier: string): Promise<boolean> {
     const db = getDatabasePool();
     
     const result = await db.query(`
       SELECT 1 FROM engagement 
       WHERE file_id = $1 AND user_did = $2 AND type = 'like'
       LIMIT 1
-    `, [fileId, userDid]);
+        `, [fileId, userPnIdentifier]);
 
     return result.rows.length > 0;
   }
@@ -182,7 +182,7 @@ export class EngagementService {
   /**
    * Toggle dislike for a file
    */
-  static async toggleDislike(fileId: string, userDid: string): Promise<{ disliked: boolean; count: number }> {
+  static async toggleDislike(fileId: string, userPnIdentifier: string): Promise<{ disliked: boolean; count: number }> {
     const db = getDatabasePool();
     
     try {
@@ -191,27 +191,27 @@ export class EngagementService {
         SELECT engagement_id FROM engagement 
         WHERE file_id = $1 AND user_did = $2 AND type = 'dislike'
         LIMIT 1
-      `, [fileId, userDid]);
+      `, [fileId, userPnIdentifier]);
 
       if (existing.rows.length > 0) {
         // Remove dislike
         await db.query(`
           DELETE FROM engagement 
           WHERE file_id = $1 AND user_did = $2 AND type = 'dislike'
-        `, [fileId, userDid]);
+        `, [fileId, userPnIdentifier]);
       } else {
         // Add dislike - remove like if exists (user can't like and dislike)
         await db.query(`
           DELETE FROM engagement 
           WHERE file_id = $1 AND user_did = $2 AND type = 'like'
-        `, [fileId, userDid]);
+        `, [fileId, userPnIdentifier]);
         
         // Add dislike
         await db.query(`
           INSERT INTO engagement (file_id, user_did, type)
           VALUES ($1, $2, 'dislike')
           ON CONFLICT (file_id, user_did, type) DO NOTHING
-        `, [fileId, userDid]);
+        `, [fileId, userPnIdentifier]);
       }
 
       // Get updated count
@@ -233,14 +233,14 @@ export class EngagementService {
   /**
    * Check if user has disliked a file
    */
-  static async isDisliked(fileId: string, userDid: string): Promise<boolean> {
+  static async isDisliked(fileId: string, userPnIdentifier: string): Promise<boolean> {
     const db = getDatabasePool();
     
     const result = await db.query(`
       SELECT 1 FROM engagement 
       WHERE file_id = $1 AND user_did = $2 AND type = 'dislike'
       LIMIT 1
-    `, [fileId, userDid]);
+        `, [fileId, userPnIdentifier]);
 
     return result.rows.length > 0;
   }
@@ -252,7 +252,7 @@ export class EngagementService {
    */
   static async addComment(
     fileId: string,
-    userDid: string,
+    userPnIdentifier: string,
     content: string,
     authorName?: string,
     fileOwnerDid?: string,
@@ -263,17 +263,17 @@ export class EngagementService {
     
     try {
       // Check verification status
-      const isVerified = await this.isUserVerified(userDid);
+      const isVerified = await this.isUserVerified(userPnIdentifier);
       
       // Calculate bot score for unverified users
       let botScore = 0.0;
       if (!isVerified) {
-        const botResult = await BotDetectionService.calculateBotScore(userDid);
+        const botResult = await BotDetectionService.calculateBotScore(userPnIdentifier);
         botScore = botResult.botScore;
         
         // Check rate limits
         const rateLimit = BotDetectionService.getRateLimitForBotScore(botScore);
-        const recentActions = await this.getRecentActionCount(userDid, rateLimit.window);
+        const recentActions = await this.getRecentActionCount(userPnIdentifier, rateLimit.window);
         
         if (recentActions >= rateLimit.maxActions) {
           throw new Error(`Rate limit: ${rateLimit.maxActions} actions per ${rateLimit.window} allowed`);
@@ -299,7 +299,7 @@ export class EngagementService {
       const commentData = {
         content,
         fileOwnerDid: ownerDid || null,
-        commentorDid: userDid,
+        commentorDid: userPnIdentifier,
         parentCommentId: parentCommentId || null,
         postReply: postReply || null,
         note: 'File owner owns content; commentor references it'
@@ -309,7 +309,7 @@ export class EngagementService {
         INSERT INTO engagement (file_id, user_did, type, content, is_verified, bot_score)
         VALUES ($1, $2, 'comment', $3, $4, $5)
         RETURNING *
-      `, [fileId, userDid, JSON.stringify(commentData), isVerified, botScore]);
+      `, [fileId, userPnIdentifier, JSON.stringify(commentData), isVerified, botScore]);
 
       const row = result.rows[0];
       const parsedContent = JSON.parse(row.content || '{}');
@@ -483,22 +483,22 @@ export class EngagementService {
   /**
    * Like a comment with bot detection and verification tracking
    */
-  static async likeComment(fileId: string, commentId: string, userDid: string): Promise<{ liked: boolean; likes: string[] }> {
+  static async likeComment(fileId: string, commentId: string, userPnIdentifier: string): Promise<{ liked: boolean; likes: string[] }> {
     const db = getDatabasePool();
     
     try {
       // Check verification status
-      const isVerified = await this.isUserVerified(userDid);
+      const isVerified = await this.isUserVerified(userPnIdentifier);
       
       // Calculate bot score for unverified users
       let botScore = 0.0;
       if (!isVerified) {
-        const botResult = await BotDetectionService.calculateBotScore(userDid);
+        const botResult = await BotDetectionService.calculateBotScore(userPnIdentifier);
         botScore = botResult.botScore;
         
         // Check rate limits
         const rateLimit = BotDetectionService.getRateLimitForBotScore(botScore);
-        const recentActions = await this.getRecentActionCount(userDid, rateLimit.window);
+        const recentActions = await this.getRecentActionCount(userPnIdentifier, rateLimit.window);
         
         if (recentActions >= rateLimit.maxActions) {
           throw new Error(`Rate limit: ${rateLimit.maxActions} actions per ${rateLimit.window} allowed`);
@@ -511,7 +511,7 @@ export class EngagementService {
         WHERE file_id = $1 AND user_did = $2 AND type = 'comment_like' 
         AND content::jsonb->>'commentId' = $3
         LIMIT 1
-      `, [fileId, userDid, commentId]);
+      `, [fileId, userPnIdentifier, commentId]);
 
       if (existing.rows.length > 0) {
         // Unlike - remove the like
@@ -519,13 +519,13 @@ export class EngagementService {
           DELETE FROM engagement 
           WHERE file_id = $1 AND user_did = $2 AND type = 'comment_like' 
           AND content::jsonb->>'commentId' = $3
-        `, [fileId, userDid, commentId]);
+        `, [fileId, userPnIdentifier, commentId]);
       } else {
         // Like - add the like with verification and bot score
         await db.query(`
           INSERT INTO engagement (file_id, user_did, type, content, is_verified, bot_score)
           VALUES ($1, $2, 'comment_like', $3, $4, $5)
-        `, [fileId, userDid, JSON.stringify({ commentId }), isVerified, botScore]);
+        `, [fileId, userPnIdentifier, JSON.stringify({ commentId }), isVerified, botScore]);
       }
 
       // Get updated likes list
@@ -548,22 +548,22 @@ export class EngagementService {
   /**
    * Record a share with bot detection and verification tracking
    */
-  static async recordShare(fileId: string, userDid: string): Promise<number> {
+  static async recordShare(fileId: string, userPnIdentifier: string): Promise<number> {
     const db = getDatabasePool();
     
     try {
       // Check verification status
-      const isVerified = await this.isUserVerified(userDid);
+      const isVerified = await this.isUserVerified(userPnIdentifier);
       
       // Calculate bot score for unverified users
       let botScore = 0.0;
       if (!isVerified) {
-        const botResult = await BotDetectionService.calculateBotScore(userDid);
+        const botResult = await BotDetectionService.calculateBotScore(userPnIdentifier);
         botScore = botResult.botScore;
         
         // Check rate limits
         const rateLimit = BotDetectionService.getRateLimitForBotScore(botScore);
-        const recentActions = await this.getRecentActionCount(userDid, rateLimit.window);
+        const recentActions = await this.getRecentActionCount(userPnIdentifier, rateLimit.window);
         
         if (recentActions >= rateLimit.maxActions) {
           throw new Error(`Rate limit: ${rateLimit.maxActions} actions per ${rateLimit.window} allowed`);
@@ -574,7 +574,7 @@ export class EngagementService {
         INSERT INTO engagement (file_id, user_did, type, is_verified, bot_score)
         VALUES ($1, $2, 'share', $3, $4)
         ON CONFLICT (file_id, user_did, type) DO NOTHING
-      `, [fileId, userDid, isVerified, botScore]);
+      `, [fileId, userPnIdentifier, isVerified, botScore]);
 
       // Get share count
       const countResult = await db.query(`
@@ -595,22 +595,22 @@ export class EngagementService {
   /**
    * Toggle save for a file with bot detection and verification tracking
    */
-  static async toggleSave(fileId: string, userDid: string): Promise<{ saved: boolean; count: number }> {
+  static async toggleSave(fileId: string, userPnIdentifier: string): Promise<{ saved: boolean; count: number }> {
     const db = getDatabasePool();
     
     try {
       // Check verification status
-      const isVerified = await this.isUserVerified(userDid);
+      const isVerified = await this.isUserVerified(userPnIdentifier);
       
       // Calculate bot score for unverified users
       let botScore = 0.0;
       if (!isVerified) {
-        const botResult = await BotDetectionService.calculateBotScore(userDid);
+        const botResult = await BotDetectionService.calculateBotScore(userPnIdentifier);
         botScore = botResult.botScore;
         
         // Check rate limits
         const rateLimit = BotDetectionService.getRateLimitForBotScore(botScore);
-        const recentActions = await this.getRecentActionCount(userDid, rateLimit.window);
+        const recentActions = await this.getRecentActionCount(userPnIdentifier, rateLimit.window);
         
         if (recentActions >= rateLimit.maxActions) {
           throw new Error(`Rate limit: ${rateLimit.maxActions} actions per ${rateLimit.window} allowed`);
@@ -622,21 +622,21 @@ export class EngagementService {
         SELECT engagement_id FROM engagement 
         WHERE file_id = $1 AND user_did = $2 AND type = 'save'
         LIMIT 1
-      `, [fileId, userDid]);
+      `, [fileId, userPnIdentifier]);
 
       if (existing.rows.length > 0) {
         // Unsave - remove the engagement
         await db.query(`
           DELETE FROM engagement 
           WHERE file_id = $1 AND user_did = $2 AND type = 'save'
-        `, [fileId, userDid]);
+        `, [fileId, userPnIdentifier]);
       } else {
         // Save - add the engagement with verification and bot score
         await db.query(`
           INSERT INTO engagement (file_id, user_did, type, is_verified, bot_score)
           VALUES ($1, $2, 'save', $3, $4)
           ON CONFLICT (file_id, user_did, type) DO NOTHING
-        `, [fileId, userDid, isVerified, botScore]);
+        `, [fileId, userPnIdentifier, isVerified, botScore]);
       }
 
       // Get updated count
@@ -658,14 +658,14 @@ export class EngagementService {
   /**
    * Check if user has saved a file
    */
-  static async isSaved(fileId: string, userDid: string): Promise<boolean> {
+  static async isSaved(fileId: string, userPnIdentifier: string): Promise<boolean> {
     const db = getDatabasePool();
     
     const result = await db.query(`
       SELECT 1 FROM engagement 
       WHERE file_id = $1 AND user_did = $2 AND type = 'save'
       LIMIT 1
-    `, [fileId, userDid]);
+        `, [fileId, userPnIdentifier]);
 
     return result.rows.length > 0;
   }
@@ -815,7 +815,7 @@ export class EngagementService {
   /**
    * Check which files a user has liked (bulk)
    */
-  static async getBulkLikedFiles(fileIds: string[], userDid: string): Promise<Set<string>> {
+  static async getBulkLikedFiles(fileIds: string[], userPnIdentifier: string): Promise<Set<string>> {
     const db = getDatabasePool();
     const likedSet = new Set<string>();
 
@@ -827,7 +827,7 @@ export class EngagementService {
       const result = await db.query(`
         SELECT file_id FROM engagement 
         WHERE file_id = ANY($1::text[]) AND user_did = $2 AND type = 'like'
-      `, [fileIds, userDid]);
+      `, [fileIds, userPnIdentifier]);
 
       result.rows.forEach(row => {
         likedSet.add(row.file_id);
@@ -898,7 +898,7 @@ export class EngagementService {
    * Used for event-driven updates when user likes/unlikes
    * Note: Individual user engagement is stored in Google Drive, this is only for public count aggregation
    */
-  static async toggleLikePublicCount(fileId: string, userDid: string, liked: boolean): Promise<void> {
+  static async toggleLikePublicCount(fileId: string, userPnIdentifier: string, liked: boolean): Promise<void> {
     const db = getDatabasePool();
     
     try {
@@ -908,13 +908,13 @@ export class EngagementService {
           INSERT INTO engagement (file_id, user_did, type)
           VALUES ($1, $2, 'like')
           ON CONFLICT (file_id, user_did, type) DO NOTHING
-        `, [fileId, userDid]);
+        `, [fileId, userPnIdentifier]);
       } else {
         // Delete record to decrement count
         await db.query(`
           DELETE FROM engagement 
           WHERE file_id = $1 AND user_did = $2 AND type = 'like'
-        `, [fileId, userDid]);
+        `, [fileId, userPnIdentifier]);
       }
     } catch (error) {
       console.error('Failed to update public like count:', error);
@@ -925,7 +925,7 @@ export class EngagementService {
   /**
    * Update public dislike count (insert or delete record for counting)
    */
-  static async toggleDislikePublicCount(fileId: string, userDid: string, disliked: boolean): Promise<void> {
+  static async toggleDislikePublicCount(fileId: string, userPnIdentifier: string, disliked: boolean): Promise<void> {
     const db = getDatabasePool();
     
     try {
@@ -935,13 +935,13 @@ export class EngagementService {
           INSERT INTO engagement (file_id, user_did, type)
           VALUES ($1, $2, 'dislike')
           ON CONFLICT (file_id, user_did, type) DO NOTHING
-        `, [fileId, userDid]);
+        `, [fileId, userPnIdentifier]);
       } else {
         // Delete record to decrement count
         await db.query(`
           DELETE FROM engagement 
           WHERE file_id = $1 AND user_did = $2 AND type = 'dislike'
-        `, [fileId, userDid]);
+        `, [fileId, userPnIdentifier]);
       }
     } catch (error) {
       console.error('Failed to update public dislike count:', error);
@@ -953,7 +953,7 @@ export class EngagementService {
    * Increment public comment count
    * Note: Individual comment content is stored in Google Drive, this is only for counting
    */
-  static async incrementCommentCount(fileId: string, userDid: string): Promise<void> {
+  static async incrementCommentCount(fileId: string, userPnIdentifier: string): Promise<void> {
     const db = getDatabasePool();
     
     try {
@@ -965,7 +965,7 @@ export class EngagementService {
         INSERT INTO engagement (file_id, user_did, type)
         VALUES ($1, $2, 'comment')
         ON CONFLICT (file_id, user_did, type) DO NOTHING
-      `, [fileId, userDid]);
+      `, [fileId, userPnIdentifier]);
     } catch (error) {
       console.error('Failed to increment comment count:', error);
       // Don't throw - counting is best effort

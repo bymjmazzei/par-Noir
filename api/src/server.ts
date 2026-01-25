@@ -5361,7 +5361,7 @@ class ProductionServer {
         const service = AggregatorMetadataServiceDB.getInstance();
 
         const { fileId, type } = req.params;
-        const { userDid } = req.body;
+        const { userPnIdentifier } = req.body;
 
         if (!fileId) {
           return res.status(400).json({ error: 'Missing fileId parameter' });
@@ -5374,7 +5374,7 @@ class ProductionServer {
         const updated = await service.updateEngagement(
           fileId,
           type as 'like' | 'view' | 'share' | 'comment',
-          userDid
+          userPnIdentifier
         );
 
         if (!updated) {
@@ -5411,14 +5411,14 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const { fileId } = req.params;
-        const { userDid } = req.body;
+        const { userPnIdentifier } = req.body;
 
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly (already normalized)
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials and metadata folder for Google Drive operations
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -5494,14 +5494,13 @@ class ProductionServer {
         };
 
         // Record activity and send notification (only when liking, not unliking)
-        if (result.liked && fileOwnerDid && fileOwnerDid !== userDid) {
+        if (result.liked && fileOwnerDid && fileOwnerDid !== userPnIdentifier) {
           try {
             const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
             const { NotificationService } = await import('./server/modules/notificationService');
             const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
             // Get user's credentials and metadata folder
-            const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
             const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
             if (userCredentials?.credentials) {
               const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
@@ -5550,7 +5549,7 @@ class ProductionServer {
                   {
                     targetType: 'file',
                     targetPnIdentifier: fileId, // For files, this is the file ID, not a pn-identifier
-                    actorPnIdentifier: userDid, // Normalize in recordActivity
+                    actorPnIdentifier: userPnIdentifier,
                     metadata: { fileId }
                   }
                 );
@@ -5560,7 +5559,7 @@ class ProductionServer {
                   ownerAccessToken,
                   ownerMetadataFolderId,
                   fileId,
-                  userDid,
+                  userPnIdentifier,
                   ownerCredentials.identityId
                 );
               }
@@ -5647,12 +5646,12 @@ class ProductionServer {
                         // Add like to sheet
                         await CompanionMetadataSheets.appendLike(accessToken, spreadsheetId, {
                           fileId,
-                          pnIdentifier: userDid,
+                          pnIdentifier: userPnIdentifier,
                           timestamp: new Date().toISOString()
                         });
                       } else {
                         // Remove like from sheet
-                        await CompanionMetadataSheets.removeLike(accessToken, spreadsheetId, fileId, userDid);
+                        await CompanionMetadataSheets.removeLike(accessToken, spreadsheetId, fileId, userPnIdentifier);
                       }
                     }
                   }
@@ -5683,14 +5682,14 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const { fileId } = req.params;
-        const userDid = req.query.userDid;
+        const userPnIdentifier = req.query.userPnIdentifier;
 
-        if (!userDid || typeof userDid !== 'string') {
-          return res.status(400).json({ error: 'userDid query parameter is required' });
+        if (!userPnIdentifier || typeof userPnIdentifier !== 'string') {
+          return res.status(400).json({ error: 'userPnIdentifier query parameter is required' });
         }
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly (already normalized)
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -5731,14 +5730,14 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const { fileId } = req.params;
-        const { userDid } = req.body;
+        const { userPnIdentifier } = req.body;
 
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly (already normalized)
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials and metadata folder for Google Drive operations
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -5816,14 +5815,14 @@ class ProductionServer {
         };
 
         // Record activity and send notification (only when disliking, not removing dislike)
-        if (result.disliked && fileOwnerDid && fileOwnerDid !== userDid) {
+        if (result.disliked && fileOwnerDid && fileOwnerDid !== userPnIdentifier) {
           try {
             const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
             const { NotificationService } = await import('./server/modules/notificationService');
             const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
             // Get user's credentials and metadata folder
-            const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+            const pnIdentifier = userPnIdentifier;
             const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
             if (userCredentials?.credentials) {
               const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
@@ -5849,18 +5848,6 @@ class ProductionServer {
                 //   }
                 // );
 
-                // Send notification to file owner (optional - may not want notifications for dislikes)
-                // Uncomment if you want to notify creators about dislikes
-                // await NotificationService.sendNotification({
-                //   userDid: fileOwnerDid,
-                //   type: 'engagement',
-                //   title: 'New Dislike',
-                //   message: 'Someone disliked your content',
-                //   metadata: {
-                //     fileId: fileId,
-                //     fromUserDid: userDid
-                //   }
-                // });
               }
             }
           } catch (activityError) {
@@ -5884,13 +5871,13 @@ class ProductionServer {
       try {
         const { EngagementService } = await import('./server/modules/engagementService');
         const { fileId } = req.params;
-        const { userDid } = req.query;
+        const { userPnIdentifier } = req.query;
 
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid query parameter is required' });
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier query parameter is required' });
         }
 
-        const disliked = await EngagementService.isDisliked(fileId, userDid as string);
+        const disliked = await EngagementService.isDisliked(fileId, userPnIdentifier as string);
 
         return res.json({ disliked });
       } catch (error: any) {
@@ -5910,14 +5897,14 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const { fileId } = req.params;
-        const { userDid, content, authorName, fileOwnerDid, parentCommentId, postReply } = req.body;
+        const { userPnIdentifier, content, authorName, fileOwnerDid, parentCommentId, postReply } = req.body;
 
-        if (!userDid || !content) {
-          return res.status(400).json({ error: 'userDid and content are required' });
+        if (!userPnIdentifier || !content) {
+          return res.status(400).json({ error: 'userPnIdentifier and content are required' });
         }
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly (already normalized)
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials and metadata folder for Google Drive operations
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -6031,7 +6018,7 @@ class ProductionServer {
                   {
                     targetType: 'file',
                     targetPnIdentifier: fileId, // For files, this is the file ID, not a pn-identifier
-                    actorPnIdentifier: userDid, // Normalize in recordActivity
+                    actorPnIdentifier: userPnIdentifier,
                     metadata: { commentId: comment.id, fileId }
                   }
                 );
@@ -6042,7 +6029,7 @@ class ProductionServer {
                   ownerMetadataFolderId,
                   fileId,
                   comment.id,
-                  userDid,
+                  userPnIdentifier,
                   ownerCredentials.identityId
                 );
               }
@@ -6127,8 +6114,8 @@ class ProductionServer {
                       await CompanionMetadataSheets.appendComment(accessToken, spreadsheetId, {
                         fileId,
                         commentId: comment.id,
-                        pnIdentifier: userDid,
-                        authorName: comment.authorName || userDid.substring(0, 8),
+                        pnIdentifier: userPnIdentifier,
+                        authorName: comment.authorName || userPnIdentifier.substring(0, 8),
                         content: comment.content,
                         timestamp: comment.timestamp
                       });
@@ -6158,13 +6145,13 @@ class ProductionServer {
       try {
         const { EngagementService } = await import('./server/modules/engagementService');
         const { fileId, commentId } = req.params;
-        const { userDid } = req.body;
+        const { userPnIdentifier } = req.body;
 
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
-        const result = await EngagementService.likeComment(fileId, commentId, userDid);
+        const result = await EngagementService.likeComment(fileId, commentId, userPnIdentifier);
 
         return res.json({
           liked: result.liked,
@@ -6220,7 +6207,7 @@ class ProductionServer {
         const { RecommendationService } = await import('./server/modules/recommendationService');
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
         
-        const userDid = req.query.userDid as string | undefined;
+        const userPnIdentifier = req.query.userPnIdentifier as string | undefined;
         const feedId = req.query.feedId as string | 'public' | 'curated' | 'me';
         const limit = parseInt(req.query.limit as string) || 50;
         const offset = parseInt(req.query.offset as string) || 0;
@@ -6259,7 +6246,7 @@ class ProductionServer {
         const result = await RecommendationService.getRecommendedContent(
           baseFiles.files,
           {
-            userDid,
+            userPnIdentifier,
             feedId,
             limit,
             offset,
@@ -6284,32 +6271,31 @@ class ProductionServer {
       }
     });
 
-    // GET /api/engagement/user/:userDid - Get all likes and comments for a user
-    this.app.get('/api/engagement/user/:userDid', async (req, res) => {
+    // GET /api/engagement/user/:userPnIdentifier - Get all likes and comments for a user
+    this.app.get('/api/engagement/user/:userPnIdentifier', async (req, res) => {
       try {
         const { EngagementService } = await import('./server/modules/engagementService');
-        const { userDid } = req.params;
+        const { userPnIdentifier } = req.params;
 
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
         const db = (await import('./server/utils/database')).getDatabasePool();
         
-        // Normalize userDid - check both with and without "pn-" prefix
-        // Engagement table might store it in either format
-        const normalizedUserDid = userDid.startsWith('pn-') ? userDid.substring(3) : userDid;
-        const withPrefix = `pn-${normalizedUserDid}`;
-        const withoutPrefix = normalizedUserDid;
+        // Use userPnIdentifier directly (already normalized)
+        // Engagement table stores pn identifier
+        const withPrefix = userPnIdentifier;
+        const withoutPrefix = userPnIdentifier.startsWith('pn-') ? userPnIdentifier.substring(3) : userPnIdentifier;
         
-        // Get all files the user has liked (check both formats)
+        // Get all files the user has liked (check both formats for legacy data)
         const likedResult = await db.query(`
           SELECT DISTINCT file_id 
           FROM engagement 
           WHERE (user_did = $1 OR user_did = $2) AND type = 'like'
         `, [withPrefix, withoutPrefix]);
         
-        // Get all files the user has commented on (check both formats)
+        // Get all files the user has commented on (check both formats for legacy data)
         const commentedResult = await db.query(`
           SELECT DISTINCT file_id 
           FROM engagement 
@@ -6319,7 +6305,7 @@ class ProductionServer {
         const likedFileIds = likedResult.rows.map(row => row.file_id);
         const commentedFileIds = commentedResult.rows.map(row => row.file_id);
 
-        console.log(`📊 User engagement query: userDid=${userDid}, normalized=${normalizedUserDid}, found ${likedFileIds.length} likes, ${commentedFileIds.length} comments`);
+        console.log(`📊 User engagement query: userPnIdentifier=${userPnIdentifier}, found ${likedFileIds.length} likes, ${commentedFileIds.length} comments`);
 
         return res.json({
           likedFileIds,
@@ -6341,13 +6327,13 @@ class ProductionServer {
         const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { fileId } = req.params;
-        const { userDid } = req.body;
+        const { userPnIdentifier } = req.body;
 
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
-        const count = await EngagementService.recordShare(fileId, userDid);
+        const count = await EngagementService.recordShare(fileId, userPnIdentifier);
 
         // Get file owner for activity logging and notifications
         const aggregator = AggregatorMetadataServiceDB.getInstance();
@@ -6355,14 +6341,14 @@ class ProductionServer {
         const fileOwnerDid = fileMetadataForOwner?.pnIdentifier;
 
         // Record activity and send notification
-        if (fileOwnerDid && fileOwnerDid !== userDid) {
+        if (fileOwnerDid && fileOwnerDid !== userPnIdentifier) {
           try {
             const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
             const { NotificationService } = await import('./server/modules/notificationService');
             const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
             // Get user's credentials and metadata folder
-            const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+            const pnIdentifier = userPnIdentifier;
             const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
             if (userCredentials?.credentials) {
               const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
@@ -6411,7 +6397,7 @@ class ProductionServer {
                   {
                     targetType: 'file',
                     targetPnIdentifier: fileId, // For files, this is the file ID, not a pn-identifier
-                    actorPnIdentifier: userDid, // Normalize in recordActivity
+                    actorPnIdentifier: userPnIdentifier,
                     metadata: { fileId }
                   }
                 );
@@ -6421,7 +6407,7 @@ class ProductionServer {
                   ownerAccessToken,
                   ownerMetadataFolderId,
                   fileId,
-                  userDid,
+                  userPnIdentifier,
                   ownerCredentials.identityId
                 );
               }
@@ -6505,7 +6491,7 @@ class ProductionServer {
                       // Add share to sheet
                       await CompanionMetadataSheets.appendShare(accessToken, spreadsheetId, {
                         fileId,
-                        pnIdentifier: userDid,
+                        pnIdentifier: userPnIdentifier,
                         timestamp: new Date().toISOString()
                       });
                     }
@@ -6537,13 +6523,13 @@ class ProductionServer {
         const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { fileId } = req.params;
-        const { userDid } = req.body;
+        const { userPnIdentifier } = req.body;
 
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
-        const result = await EngagementService.toggleSave(fileId, userDid);
+        const result = await EngagementService.toggleSave(fileId, userPnIdentifier);
 
         // Update engagement counts in database metadata
         const aggregator = AggregatorMetadataServiceDB.getInstance();
@@ -6623,12 +6609,12 @@ class ProductionServer {
                         // Add save to sheet
                         await CompanionMetadataSheets.appendSave(accessToken, spreadsheetId, {
                           fileId,
-                          pnIdentifier: userDid,
+                          pnIdentifier: userPnIdentifier,
                           timestamp: new Date().toISOString()
                         });
                       } else {
                         // Remove save from sheet
-                        await CompanionMetadataSheets.removeSave(accessToken, spreadsheetId, fileId, userDid);
+                        await CompanionMetadataSheets.removeSave(accessToken, spreadsheetId, fileId, userPnIdentifier);
                       }
                     }
                   }
@@ -6674,7 +6660,7 @@ class ProductionServer {
     this.app.post('/api/engagement/bulk-stats', async (req, res) => {
       try {
         const { EngagementService } = await import('./server/modules/engagementService');
-        const { fileIds, userDid } = req.body;
+        const { fileIds, userPnIdentifier } = req.body;
 
         if (!fileIds || !Array.isArray(fileIds)) {
           return res.status(400).json({ error: 'fileIds array is required' });
@@ -6688,10 +6674,10 @@ class ProductionServer {
           stats[key] = value;
         });
 
-        // Also check which files the user has liked if userDid is provided
+        // Also check which files the user has liked if userPnIdentifier is provided
         const likedFiles: string[] = [];
-        if (userDid && fileIds.length > 0) {
-          const likedSet = await EngagementService.getBulkLikedFiles(fileIds, userDid);
+        if (userPnIdentifier && fileIds.length > 0) {
+          const likedSet = await EngagementService.getBulkLikedFiles(fileIds, userPnIdentifier);
           likedFiles.push(...Array.from(likedSet));
         }
 
@@ -6737,10 +6723,10 @@ class ProductionServer {
     // POST /api/file-views - Track viewing behavior for bot detection
     this.app.post('/api/file-views', async (req, res) => {
       try {
-        const { fileId, userDid, viewDuration } = req.body;
+        const { fileId, userPnIdentifier, viewDuration } = req.body;
         
-        if (!fileId || !userDid) {
-          return res.status(400).json({ error: 'fileId and userDid are required' });
+        if (!fileId || !userPnIdentifier) {
+          return res.status(400).json({ error: 'fileId and userPnIdentifier are required' });
         }
         
         const db = (await import('./server/utils/database')).getDatabasePool();
@@ -6750,7 +6736,7 @@ class ProductionServer {
           await db.query(`
             INSERT INTO file_views (file_id, user_did, view_duration, viewed_at)
             VALUES ($1, $2, $3::DECIMAL, NOW())
-          `, [fileId, userDid, viewDuration || 0]);
+          `, [fileId, userPnIdentifier, viewDuration || 0]);
         } catch (insertError: any) {
           // If unique constraint violation (23505), update instead
           // This handles race conditions where two requests try to insert simultaneously
@@ -6762,7 +6748,7 @@ class ProductionServer {
               WHERE file_id = $1 
               AND user_did = $2 
               AND DATE(viewed_at) = DATE(NOW())
-            `, [fileId, userDid, viewDuration || 0]);
+            `, [fileId, userPnIdentifier, viewDuration || 0]);
           } else {
             throw insertError; // Re-throw if it's a different error
           }
@@ -6902,18 +6888,18 @@ class ProductionServer {
     // MUST come before /api/feeds/:feedId to avoid route conflict
     // ============================================================================
 
-    // GET /api/feeds/saved?userDid=... - Get user's saved posts (index query, not a feed)
+    // GET /api/feeds/saved?userPnIdentifier=... - Get user's saved posts (index query, not a feed)
     this.app.get('/api/feeds/saved', async (req, res) => {
       try {
-        const { userDid } = req.query;
+        const { userPnIdentifier } = req.query;
         const db = (await import('./server/utils/database')).getDatabasePool();
 
-        if (!userDid || typeof userDid !== 'string') {
-          return res.status(400).json({ error: 'userDid is required' });
+        if (!userPnIdentifier || typeof userPnIdentifier !== 'string') {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
-        // Saved posts use feed_id format: "saved-{userDid}"
-        const savedFeedId = `saved-${userDid}`;
+        // Saved posts use feed_id format: "saved-{userPnIdentifier}"
+        const savedFeedId = `saved-${userPnIdentifier}`;
 
         // Query saved posts directly - no need to create a feed entry
         const postsResult = await db.query(`
@@ -7059,16 +7045,16 @@ class ProductionServer {
       try {
         const { FeedService } = await import('./server/modules/feedService');
         const { feedId } = req.params;
-        const { userDid, creatorGoogleTokens } = req.body;
+        const { userPnIdentifier, creatorGoogleTokens } = req.body;
 
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
         // Note: creatorGoogleTokens is optional - if creator doesn't have Drive connected,
         // subscription is stored in database only and can sync to Drive later
 
-        const success = await FeedService.subscribeToFeed(feedId, userDid, creatorGoogleTokens);
+        const success = await FeedService.subscribeToFeed(feedId, userPnIdentifier, creatorGoogleTokens);
 
         if (!success) {
           return res.status(500).json({ error: 'Failed to subscribe to feed' });
@@ -7090,13 +7076,13 @@ class ProductionServer {
       try {
         const { FeedService } = await import('./server/modules/feedService');
         const { feedId } = req.params;
-        const { userDid } = req.body;
+        const { userPnIdentifier } = req.body;
 
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
-        const success = await FeedService.unsubscribeFromFeed(feedId, userDid);
+        const success = await FeedService.unsubscribeFromFeed(feedId, userPnIdentifier);
 
         if (!success) {
           return res.status(500).json({ error: 'Failed to unsubscribe from feed' });
@@ -7109,16 +7095,16 @@ class ProductionServer {
       }
     });
 
-    // GET /api/users/:userDid/subscriptions - Get user's subscriptions
-    this.app.get('/api/users/:userDid/subscriptions', async (req, res) => {
+    // GET /api/users/:userPnIdentifier/subscriptions - Get user's subscriptions
+    this.app.get('/api/users/:userPnIdentifier/subscriptions', async (req, res) => {
       try {
         const { FeedService } = await import('./server/modules/feedService');
-        const { userDid } = req.params;
+        const { userPnIdentifier } = req.params;
 
-        const feeds = await FeedService.getUserSubscriptions(userDid);
+        const feeds = await FeedService.getUserSubscriptions(userPnIdentifier);
 
         return res.json({
-          userDid,
+          userPnIdentifier,
           feeds,
           count: feeds.length
         });
@@ -7173,14 +7159,14 @@ class ProductionServer {
     // POST /api/feeds/saved - Add file to saved feed
     this.app.post('/api/feeds/saved', async (req, res) => {
       try {
-        const { userDid, fileId } = req.body;
+        const { userPnIdentifier, fileId } = req.body;
         const db = (await import('./server/utils/database')).getDatabasePool();
 
-        if (!userDid || !fileId) {
-          return res.status(400).json({ error: 'userDid and fileId are required' });
+        if (!userPnIdentifier || !fileId) {
+          return res.status(400).json({ error: 'userPnIdentifier and fileId are required' });
         }
 
-        const savedFeedId = `saved-${userDid}`;
+        const savedFeedId = `saved-${userPnIdentifier}`;
 
         // Check if saved feed exists, create if not
         let feedResult = await db.query(`
@@ -7194,7 +7180,7 @@ class ProductionServer {
           await db.query(`
             INSERT INTO feeds (feed_id, feed_name, creator_did, creator_tier, rating_range)
             VALUES ($1, $2, $3, $4, $5::jsonb)
-          `, [savedFeedId, 'Saved', userDid, 'free', JSON.stringify(['GA', 'FF', 'T13+', 'YA16+', 'M18+', 'NSFW', 'X18+'])]);
+          `, [savedFeedId, 'Saved', userPnIdentifier, 'free', JSON.stringify(['GA', 'FF', 'T13+', 'YA16+', 'M18+', 'NSFW', 'X18+'])]);
 
           feedResult = await db.query(`
             SELECT feed_id, feed_name, created_at, updated_at
@@ -7236,7 +7222,7 @@ class ProductionServer {
         await db.query(`
           INSERT INTO feed_posts (feed_id, file_id, added_by)
           VALUES ($1, $2, $3)
-        `, [savedFeedId, fileId, userDid]);
+        `, [savedFeedId, fileId, userPnIdentifier]);
 
         // Update feed updated_at
         await db.query(`
@@ -7273,14 +7259,14 @@ class ProductionServer {
     // DELETE /api/feeds/saved - Remove file from saved feed
     this.app.delete('/api/feeds/saved', async (req, res) => {
       try {
-        const { userDid, fileId } = req.body;
+        const { userPnIdentifier, fileId } = req.body;
         const db = (await import('./server/utils/database')).getDatabasePool();
 
-        if (!userDid || !fileId) {
-          return res.status(400).json({ error: 'userDid and fileId are required' });
+        if (!userPnIdentifier || !fileId) {
+          return res.status(400).json({ error: 'userPnIdentifier and fileId are required' });
         }
 
-        const savedFeedId = `saved-${userDid}`;
+        const savedFeedId = `saved-${userPnIdentifier}`;
 
         // Remove file from saved feed
         const result = await db.query(`
@@ -7372,21 +7358,21 @@ class ProductionServer {
     this.app.get('/api/feeds/recommended', async (req, res) => {
       try {
         const { FeedService } = await import('./server/modules/feedService');
-        const { userDid, limit = 10 } = req.query;
+        const { userPnIdentifier, limit = 10 } = req.query;
 
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
         const feeds = await FeedService.getRecommendedFeeds({
-          userDid: userDid as string,
+          userPnIdentifier: userPnIdentifier as string,
           limit: limit ? parseInt(limit as string, 10) : 10
         });
 
         return res.json({
           feeds,
           count: feeds.length,
-          userDid
+          userPnIdentifier
         });
       } catch (error: any) {
         console.error('Error getting recommended feeds:', error);
@@ -10054,17 +10040,17 @@ class ProductionServer {
     // GET /api/messages/conversations - Get all conversation threads
     this.app.get('/api/messages/conversations', async (req, res) => {
       try {
-        const userDid = req.query.userDid as string;
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        const userPnIdentifier = req.query.userPnIdentifier as string;
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
         const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly (already normalized)
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -10122,12 +10108,19 @@ class ProductionServer {
           }
           return true;
         });
+        const conversationsWithParticipant = validConversations.map(conv => ({
+          otherUserPnIdentifier: conv.otherUserPnIdentifier,
+          participantPnIdentifier: conv.otherUserPnIdentifier,
+          spreadsheetId: conv.spreadsheetId,
+          lastMessageAt: conv.lastMessageAt
+        }));
+        
         const threads = validConversations.map(conv => ({
-          participantDid: conv.otherUserPnIdentifier!, // participantDid is the API field name, contains pn-identifier
+          participantPnIdentifier: conv.otherUserPnIdentifier!,
           lastMessageAt: conv.lastMessageAt
         }));
 
-        return res.json({ conversations, threads }); // Return both for compatibility
+        return res.json({ conversations: conversationsWithParticipant, threads }); // Return both for compatibility
       } catch (error: any) {
         console.error('Error getting message conversations:', error);
         return res.status(500).json({
@@ -10140,17 +10133,17 @@ class ProductionServer {
     // GET /api/messages/threads - Alias for conversations (backward compatibility)
     this.app.get('/api/messages/threads', async (req, res) => {
       try {
-        const userDid = req.query.userDid as string;
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        const userPnIdentifier = req.query.userPnIdentifier as string;
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
         const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly (already normalized)
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -10209,7 +10202,7 @@ class ProductionServer {
           return true;
         });
         const threads = validConversations.map(conv => ({
-          participantDid: conv.otherUserPnIdentifier!,
+          participantPnIdentifier: conv.otherUserPnIdentifier!,
           lastMessageAt: conv.lastMessageAt
         }));
 
@@ -10225,9 +10218,9 @@ class ProductionServer {
 
     this.app.get('/api/messages/requests', async (req, res) => {
       try {
-        const userDid = req.query.userDid as string;
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        const userPnIdentifier = req.query.userPnIdentifier as string;
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
         // TODO: Implement message requests retrieval from Google Drive
         return res.json({ requests: [] });
@@ -10242,17 +10235,17 @@ class ProductionServer {
 
     this.app.get('/api/messages/inbox', async (req, res) => {
       try {
-        const userDid = req.query.userDid as string;
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        const userPnIdentifier = req.query.userPnIdentifier as string;
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
         const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly (already normalized)
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -10320,14 +10313,13 @@ class ProductionServer {
               console.warn(`[Inbox] Conversation missing otherUserPnIdentifier, skipping:`, conversation);
               continue;
             }
-            const normalizedOtherUserPnIdentifier = conversation.otherUserPnIdentifier.startsWith('pn-') ? conversation.otherUserPnIdentifier : `pn-${conversation.otherUserPnIdentifier}`;
-            
-            // Look up connection to get shared secret (use normalized)
+            // Use pn identifier directly (already normalized)
+            // Look up connection to get shared secret
             const connectionStatus = await ConnectionsService.getConnectionStatus(
               userAccessToken,
               metadataFolderId,
               pnIdentifier,
-              normalizedOtherUserPnIdentifier
+              conversation.otherUserPnIdentifier
             );
 
             if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
@@ -10401,26 +10393,26 @@ class ProductionServer {
 
     this.app.get('/api/messages/thread', async (req, res) => {
       console.log('[GetThread] Endpoint called', { 
-        userDid: req.query.userDid, 
-        participantDid: req.query.participantDid 
+        userPnIdentifier: req.query.userPnIdentifier, 
+        participantPnIdentifier: req.query.participantPnIdentifier 
       });
       try {
-        const userDid = req.query.userDid as string;
-        const participantDid = req.query.participantDid as string;
+        const userPnIdentifier = req.query.userPnIdentifier as string;
+        const participantPnIdentifier = req.query.participantPnIdentifier as string;
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
         const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
 
-        if (!userDid || !participantDid) {
+        if (!userPnIdentifier || !participantPnIdentifier) {
           console.error('[GetThread] Missing required parameters');
-          return res.status(400).json({ error: 'userDid and participantDid are required' });
+          return res.status(400).json({ error: 'userPnIdentifier and participantPnIdentifier are required' });
         }
 
         const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly (already normalized)
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -10476,16 +10468,15 @@ class ProductionServer {
         const { ConnectionsService } = await import('./server/modules/connectionsService');
         const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
         
-        // Normalize participantDid for connection lookup
-        // Use the normalized userDid (pnIdentifier) instead of identityId, as connections are stored by DID
-        const normalizedParticipantDid = participantDid.startsWith('pn-') ? participantDid : `pn-${participantDid}`;
-        console.log('[GetThread] Checking connection between', pnIdentifier, 'and', normalizedParticipantDid);
+        // Use participantPnIdentifier directly (already normalized)
+        const normalizedParticipantPnIdentifier = participantPnIdentifier;
+        console.log('[GetThread] Checking connection between', pnIdentifier, 'and', normalizedParticipantPnIdentifier);
         
         const connectionStatus = await ConnectionsService.getConnectionStatus(
           userAccessToken,
           metadataFolderId,
           pnIdentifier,
-          normalizedParticipantDid
+          normalizedParticipantPnIdentifier
         );
 
         console.log('[GetThread] Connection status:', connectionStatus);
@@ -10563,12 +10554,12 @@ class ProductionServer {
         }
         console.log('[GetThread] Successfully decrypted shared secret');
 
-        // Get or create conversation sheet (use normalized participantDid)
+        // Get or create conversation sheet (use normalized participantPnIdentifier)
         console.log('[GetThread] Getting conversation sheet');
         const conversationSheetId = await MessageSheetsService.getConversationSheet(
           userAccessToken,
           messagesFolderId,
-          normalizedParticipantDid
+          normalizedParticipantPnIdentifier
         );
 
         // Get messages from conversation sheet (with decryption)
@@ -10583,7 +10574,7 @@ class ProductionServer {
 
         // Set toPnIdentifier for all messages (use normalized)
         result.messages.forEach(msg => {
-          msg.toPnIdentifier = normalizedParticipantDid;
+          msg.toPnIdentifier = normalizedParticipantPnIdentifier;
         });
 
         console.log('[GetThread] Returning', result.messages.length, 'messages');
@@ -10612,10 +10603,8 @@ class ProductionServer {
         }
         
         // Normalize pn-identifiers (handles legacy data)
-        const normalizedFromDid = fromPnIdentifier.startsWith('pn-') ? fromPnIdentifier : `pn-${fromPnIdentifier}`;
-        const normalizedToDid = toPnIdentifier.startsWith('pn-') ? toPnIdentifier : `pn-${toPnIdentifier}`;
-        
-        console.log('[SendMessage] Request validated, starting message processing', { fromDid: normalizedFromDid, toDid: normalizedToDid, messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` });
+        // Use pn identifiers directly (already normalized)
+        console.log('[SendMessage] Request validated, starting message processing', { fromPnIdentifier, toPnIdentifier, messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` });
 
         // Import services at the top
         const { ConnectionsService } = await import('./server/modules/connectionsService');
@@ -10626,8 +10615,8 @@ class ProductionServer {
         if (!isConnectionRequest) {
           try {
             
-            // Get sender's credentials and metadata folder (use normalized)
-            const senderCredentials = await storageCredentialsService.getCredentials(normalizedFromDid);
+            // Get sender's credentials and metadata folder
+            const senderCredentials = await storageCredentialsService.getCredentials(fromPnIdentifier);
             if (!senderCredentials?.credentials) {
               return res.status(403).json({ error: 'Only connections can message each other' });
             }
@@ -10641,7 +10630,7 @@ class ProductionServer {
 
             const account = googleDriveAccounts[0];
             const accountId = this.extractAccountId(account);
-            const senderAccessToken = await googleDriveProxyService.getAccessToken(normalizedFromDid, accountId, [normalizedFromDid]);
+            const senderAccessToken = await googleDriveProxyService.getAccessToken(senderCredentials.identityId, accountId, [senderCredentials.identityId]);
             
             // Find metadata folder
             const folderSearchQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -10655,12 +10644,12 @@ class ProductionServer {
               if (folderData.files && folderData.files.length > 0) {
                 const metadataFolderId = folderData.files[0].id;
                 
-                // Check if connected (use normalized DIDs)
+                // Check if connected
                 const areConnected = await ConnectionsService.areConnected(
                   senderAccessToken,
                   metadataFolderId,
-                  normalizedFromDid,
-                  normalizedToDid
+                  fromPnIdentifier,
+                  toPnIdentifier
                 );
 
                 if (!areConnected) {
@@ -10685,10 +10674,10 @@ class ProductionServer {
         
         const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const timestamp = new Date().toISOString();
-        const threadId = [normalizedFromDid, normalizedToDid].sort().join('_');
+        const threadId = [fromPnIdentifier, toPnIdentifier].sort().join('_');
 
-        // Get sender's credentials (use normalized)
-        const senderCredentials = await storageCredentialsService.getCredentials(normalizedFromDid);
+        // Get sender's credentials
+        const senderCredentials = await storageCredentialsService.getCredentials(fromPnIdentifier);
         if (!senderCredentials?.credentials) {
           return res.status(404).json({ error: 'Sender credentials not found' });
         }
@@ -10707,7 +10696,7 @@ class ProductionServer {
         // Get sender's metadata folder with proper error handling
         let senderMetadataFolderId: string;
         try {
-          const senderMetadataFolder = await this.getMetadataFolder(senderAccessToken, normalizedFromDid);
+          const senderMetadataFolder = await this.getMetadataFolder(senderAccessToken, fromPnIdentifier);
           if (!senderMetadataFolder) {
             return this.driveNotInitialized(res);
           }
@@ -10728,7 +10717,7 @@ class ProductionServer {
         }
 
         // Find sender's pN folder
-        const pnFolderName = `par Noir - ${normalizedFromDid}`;
+        const pnFolderName = `par Noir - ${fromPnIdentifier}`;
         const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
         const foldersResponse = await fetch(
           `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
@@ -10751,20 +10740,20 @@ class ProductionServer {
           senderPnFolder.id
         );
 
-        // Get or create conversation sheet for sender (use normalized)
+        // Get or create conversation sheet for sender
         const senderConversationSheetId = await MessageSheetsService.getConversationSheet(
           senderAccessToken,
           senderMessagesFolderId,
-          normalizedToDid
+          toPnIdentifier
         );
 
-        // Look up connection to get shared secret (use normalized DIDs)
+        // Look up connection to get shared secret
         const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
         const connectionStatus = await ConnectionsService.getConnectionStatus(
           senderAccessToken,
           senderMetadataFolderId,
-          normalizedFromDid,
-          normalizedToDid
+          fromPnIdentifier,
+          toPnIdentifier
         );
 
         if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
@@ -10839,11 +10828,11 @@ class ProductionServer {
 
         console.log(`[SendMessage] Using connectionId: ${connectionStatus.connectionId}, hasSharedSecret: ${!!decryptedSharedSecret}`);
 
-        // Create message object (use normalized pn-identifiers)
+        // Create message object
         const message: any = {
           messageId,
-          fromPnIdentifier: normalizedFromDid,
-          toPnIdentifier: normalizedToDid,
+          fromPnIdentifier,
+          toPnIdentifier,
           content,
           timestamp,
           read: false,
@@ -10861,37 +10850,37 @@ class ProductionServer {
         );
         console.log('[SendMessage] Message appended to sender\'s sheet successfully');
 
-        // Record activity for sender FIRST (use normalized DIDs)
+        // Record activity for sender FIRST
         await ActivityLedgerService.recordActivity(
           senderAccessToken,
           senderMetadataFolderId,
-          normalizedFromDid, // Use normalized pn-identifier
+          fromPnIdentifier,
           'message_sent',
           {
             targetType: 'message',
             targetPnIdentifier: messageId, // For messages, this is the message ID, not a pn-identifier
-            actorPnIdentifier: normalizedFromDid,
-            metadata: { toPnIdentifier: normalizedToDid, threadId, content: content.substring(0, 100) }
+            actorPnIdentifier: fromPnIdentifier,
+            metadata: { toPnIdentifier, threadId, content: content.substring(0, 100) }
           }
         );
 
-        // Record messaging activity for sender (use normalized pn-identifiers)
+        // Record messaging activity for sender
         await MessagingLedgerService.recordMessagingActivity(
           senderAccessToken,
           senderMetadataFolderId,
-          normalizedFromDid, // Use normalized pn-identifier
+          fromPnIdentifier,
           'message_sent',
           {
-            fromPnIdentifier: normalizedFromDid,
-            toPnIdentifier: normalizedToDid,
+            fromPnIdentifier,
+            toPnIdentifier,
             messageId,
             threadId,
             metadata: { content: content.substring(0, 100), mediaFileId }
           }
         );
 
-        // Get recipient's credentials (use normalized)
-        const recipientCredentials = await storageCredentialsService.getCredentials(normalizedToDid);
+        // Get recipient's credentials
+        const recipientCredentials = await storageCredentialsService.getCredentials(toPnIdentifier);
         if (!recipientCredentials?.credentials) {
           return res.status(404).json({ error: 'Recipient credentials not found' });
         }
@@ -10910,7 +10899,7 @@ class ProductionServer {
         // Get recipient's metadata folder with proper error handling
         let recipientMetadataFolderId: string;
         try {
-          const recipientMetadataFolder = await this.getMetadataFolder(recipientAccessToken, normalizedToDid);
+          const recipientMetadataFolder = await this.getMetadataFolder(recipientAccessToken, toPnIdentifier);
           if (!recipientMetadataFolder) {
             return this.driveNotInitialized(res);
           }
@@ -10931,7 +10920,7 @@ class ProductionServer {
         }
 
         // Find recipient's pN folder
-        const recipientPnFolderName = `par Noir - ${normalizedToDid}`;
+        const recipientPnFolderName = `par Noir - ${toPnIdentifier}`;
         const recipientFolderQuery = `name='${recipientPnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
         const recipientFoldersResponse = await fetch(
           `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(recipientFolderQuery)}&fields=files(id,name)`,
@@ -10957,12 +10946,12 @@ class ProductionServer {
         );
         console.log('[SendMessage] Recipient messages folder ready', { recipientMessagesFolderId });
 
-        // Get or create conversation sheet for recipient (use normalized)
-        console.log('[SendMessage] Getting or creating recipient conversation sheet', { fromDid: normalizedFromDid, recipientMessagesFolderId });
+        // Get or create conversation sheet for recipient
+        console.log('[SendMessage] Getting or creating recipient conversation sheet', { fromPnIdentifier, recipientMessagesFolderId });
         const recipientConversationSheetId = await MessageSheetsService.getConversationSheet(
           recipientAccessToken,
           recipientMessagesFolderId,
-          normalizedFromDid
+          fromPnIdentifier
         );
         console.log('[SendMessage] Recipient conversation sheet ready', { recipientConversationSheetId });
 
@@ -11051,43 +11040,43 @@ class ProductionServer {
         );
         console.log('[SendMessage] Message appended to recipient\'s sheet successfully');
 
-        // Record activity for recipient FIRST (use normalized DIDs)
+        // Record activity for recipient FIRST
         await ActivityLedgerService.recordActivity(
           recipientAccessToken,
           recipientMetadataFolderId,
-          normalizedToDid, // Use normalized pn-identifier
+          toPnIdentifier,
           'message_received',
           {
             targetType: 'message',
             targetPnIdentifier: messageId, // For messages, this is the message ID, not a pn-identifier
-            actorPnIdentifier: normalizedFromDid,
-            metadata: { fromPnIdentifier: normalizedFromDid, threadId, content: content.substring(0, 100) }
+            actorPnIdentifier: fromPnIdentifier,
+            metadata: { fromPnIdentifier, threadId, content: content.substring(0, 100) }
           }
         );
 
-        // Record messaging activity for recipient (use normalized pn-identifiers)
+        // Record messaging activity for recipient
         await MessagingLedgerService.recordMessagingActivity(
           recipientAccessToken,
           recipientMetadataFolderId,
-          normalizedToDid, // Use normalized pn-identifier
+          toPnIdentifier,
           'message_received',
           {
-            fromPnIdentifier: normalizedFromDid,
-            toPnIdentifier: normalizedToDid,
+            fromPnIdentifier,
+            toPnIdentifier,
             messageId,
             threadId,
             metadata: { content: content.substring(0, 100), mediaFileId }
           }
         );
 
-        // Send notification to recipient (check preferences) (use normalized DIDs)
+        // Send notification to recipient (check preferences)
         try {
           await NotificationService.notifyNewMessage(
             recipientAccessToken,
             recipientMetadataFolderId,
             messageId,
-            normalizedFromDid,
-            normalizedToDid,
+            fromPnIdentifier,
+            toPnIdentifier,
             threadId
           );
         } catch (notificationError: any) {
@@ -11099,8 +11088,8 @@ class ProductionServer {
           success: true,
           message: {
             messageId,
-            fromPnIdentifier: normalizedFromDid,
-            toPnIdentifier: normalizedToDid,
+            fromPnIdentifier,
+            toPnIdentifier,
             content,
             mediaFileId,
             timestamp,
@@ -11157,9 +11146,9 @@ class ProductionServer {
     this.app.post('/api/messages/requests/:requestId/respond', async (req, res) => {
       try {
         const { requestId } = req.params;
-        const { userDid, accept } = req.body;
-        if (!requestId || !userDid || typeof accept !== 'boolean') {
-          return res.status(400).json({ error: 'requestId, userDid, and accept are required' });
+        const { userPnIdentifier, accept } = req.body;
+        if (!requestId || !userPnIdentifier || typeof accept !== 'boolean') {
+          return res.status(400).json({ error: 'requestId, userPnIdentifier, and accept are required' });
         }
         // TODO: Implement message request response in Google Drive
         return res.json({ success: true });
@@ -11175,9 +11164,9 @@ class ProductionServer {
     this.app.post('/api/messages/:messageId/read', async (req, res) => {
       try {
         const { messageId } = req.params;
-        const { userDid, participantDid } = req.body;
-        if (!messageId || !userDid) {
-          return res.status(400).json({ error: 'messageId and userDid are required' });
+        const { userPnIdentifier, participantPnIdentifier } = req.body;
+        if (!messageId || !userPnIdentifier) {
+          return res.status(400).json({ error: 'messageId and userPnIdentifier are required' });
         }
 
         const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
@@ -11185,7 +11174,7 @@ class ProductionServer {
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
         // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -11228,18 +11217,18 @@ class ProductionServer {
           pnFolder.id
         );
 
-        // Get conversation sheet (need participantDid to find the right sheet)
-        if (!participantDid) {
-          return res.status(400).json({ error: 'participantDid is required to mark message as read' });
+        // Get conversation sheet (need participantPnIdentifier to find the right sheet)
+        if (!participantPnIdentifier) {
+          return res.status(400).json({ error: 'participantPnIdentifier is required to mark message as read' });
         }
 
-        // Normalize participantDid
-        const normalizedParticipantDid = participantDid.startsWith('pn-') ? participantDid : `pn-${participantDid}`;
+        // Use participantPnIdentifier directly (already normalized)
+        const normalizedParticipantPnIdentifier = participantPnIdentifier;
 
         const conversationSheetId = await MessageSheetsService.getConversationSheet(
           userAccessToken,
           messagesFolderId,
-          normalizedParticipantDid
+          normalizedParticipantPnIdentifier
         );
 
         // Mark message as read
@@ -11262,9 +11251,9 @@ class ProductionServer {
     this.app.delete('/api/messages/:messageId', async (req, res) => {
       try {
         const { messageId } = req.params;
-        const { userDid } = req.body;
-        if (!messageId || !userDid) {
-          return res.status(400).json({ error: 'messageId and userDid are required' });
+        const { userPnIdentifier } = req.body;
+        if (!messageId || !userPnIdentifier) {
+          return res.status(400).json({ error: 'messageId and userPnIdentifier are required' });
         }
         // TODO: Implement message deletion from Google Drive
         return res.json({ success: true });
@@ -11277,14 +11266,14 @@ class ProductionServer {
       }
     });
 
-    // DELETE /api/messages/conversation/:participantDid - Delete conversation
-    this.app.delete('/api/messages/conversation/:participantDid', async (req, res) => {
+    // DELETE /api/messages/conversation/:participantPnIdentifier - Delete conversation
+    this.app.delete('/api/messages/conversation/:participantPnIdentifier', async (req, res) => {
       try {
-        const { participantDid } = req.params;
-        const userDid = req.query.userDid as string;
+        const { participantPnIdentifier } = req.params;
+        const userPnIdentifier = req.query.userPnIdentifier as string;
         
-        if (!userDid || !participantDid) {
-          return res.status(400).json({ error: 'userDid and participantDid are required' });
+        if (!userPnIdentifier || !participantPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier and participantPnIdentifier are required' });
         }
 
         const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
@@ -11292,8 +11281,8 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly (already normalized)
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -11352,14 +11341,14 @@ class ProductionServer {
           pnFolder.id
         );
 
-        // Normalize participantDid
-        const normalizedParticipantDid = participantDid.startsWith('pn-') ? participantDid : `pn-${participantDid}`;
+        // Use participantPnIdentifier directly (already normalized)
+        const normalizedParticipantPnIdentifier = participantPnIdentifier;
 
         // Delete conversation sheet (use normalized)
         await MessageSheetsService.deleteConversation(
           userAccessToken,
           messagesFolderId,
-          normalizedParticipantDid
+          normalizedParticipantPnIdentifier
         );
 
         // Get connection ID to remove from connections sheet
@@ -11374,8 +11363,8 @@ class ProductionServer {
                 console.warn('[DeleteConversation] Connection missing userPnIdentifier:', c);
                 return false;
               }
-              const normalizedCUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`;
-              return normalizedCUserPnIdentifier === normalizedParticipantDid;
+              // Use pn identifier directly (already normalized)
+              return c.userPnIdentifier === normalizedParticipantPnIdentifier;
             });
             
             if (connection) {
@@ -11392,7 +11381,7 @@ class ProductionServer {
               );
               console.log(`[DeleteConversation] Removed connection ${connection.connectionId} from user's connections sheet`);
             } else {
-              console.warn(`[DeleteConversation] Connection not found for ${participantDid}, conversation sheet deleted anyway`);
+              console.warn(`[DeleteConversation] Connection not found for ${participantPnIdentifier}, conversation sheet deleted anyway`);
             }
           } else {
             console.warn(`[DeleteConversation] Connections file not found, conversation sheet deleted anyway`);
@@ -11400,7 +11389,7 @@ class ProductionServer {
         } catch (connectionError: any) {
           // Log error but don't fail the deletion - conversation sheet is already deleted
           console.error(`[DeleteConversation] Failed to remove connection from user's connections sheet:`, {
-            participantDid,
+            participantPnIdentifier,
             error: connectionError?.message,
             status: connectionError?.response?.status
           });
@@ -11410,8 +11399,8 @@ class ProductionServer {
         // Also remove connection from other user's connections sheet
         if (connectionId) {
           try {
-            // Use normalized participantDid
-            const participantCredentials = await storageCredentialsService.getCredentials(normalizedParticipantDid);
+            // Use normalized participantPnIdentifier
+            const participantCredentials = await storageCredentialsService.getCredentials(normalizedParticipantPnIdentifier);
             
             if (participantCredentials?.credentials) {
               const participantGoogleDriveAccounts = participantCredentials.credentials.googleDriveAccounts || 
@@ -11441,7 +11430,7 @@ class ProductionServer {
                   }
                 } catch (otherUserError: any) {
                   console.warn(`[DeleteConversation] Failed to remove connection from other user's connections sheet:`, {
-                    participantDid,
+                    participantPnIdentifier,
                     error: otherUserError?.message,
                     status: otherUserError?.response?.status
                   });
@@ -11455,7 +11444,7 @@ class ProductionServer {
             }
           } catch (otherUserError: any) {
             console.warn(`[DeleteConversation] Failed to remove connection from other user's connections sheet:`, {
-              participantDid,
+              participantPnIdentifier,
               error: otherUserError?.message
             });
             // Non-critical - connection removed from user's sheet, conversation deleted
@@ -11479,17 +11468,17 @@ class ProductionServer {
     // POST /api/profile/image - Set profile image fileId
     this.app.post('/api/profile/image', async (req, res) => {
       try {
-        const { userDid, fileId } = req.body;
-        if (!userDid || !fileId) {
-          return res.status(400).json({ error: 'userDid and fileId are required' });
+        const { userPnIdentifier, fileId } = req.body;
+        if (!userPnIdentifier || !fileId) {
+          return res.status(400).json({ error: 'userPnIdentifier and fileId are required' });
         }
 
         const { ProfileService } = await import('./server/modules/profileService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // CRITICAL: Normalize userDid to pn identifier format
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly (already normalized)
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials using normalized pn identifier
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -11548,17 +11537,17 @@ class ProductionServer {
     // POST /api/profile/display-name - Update display name
     this.app.post('/api/profile/display-name', async (req, res) => {
       try {
-        const { userDid, displayName } = req.body;
-        if (!userDid || !displayName) {
-          return res.status(400).json({ error: 'userDid and displayName are required' });
+        const { userPnIdentifier, displayName } = req.body;
+        if (!userPnIdentifier || !displayName) {
+          return res.status(400).json({ error: 'userPnIdentifier and displayName are required' });
         }
 
         const { ProfileService } = await import('./server/modules/profileService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // CRITICAL: Normalize userDid to pn identifier format
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly (already normalized)
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials using normalized pn identifier
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -11630,12 +11619,12 @@ class ProductionServer {
       }
     });
 
-    // GET /api/profile/:userDid - Get user profile
-    this.app.get('/api/profile/:userDid', async (req, res) => {
+    // GET /api/profile/:userPnIdentifier - Get user profile
+    this.app.get('/api/profile/:userPnIdentifier', async (req, res) => {
       try {
-        const { userDid } = req.params;
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        const { userPnIdentifier } = req.params;
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
         const { ProfileService } = await import('./server/modules/profileService');
@@ -11645,37 +11634,8 @@ class ProductionServer {
 
         let pnIdentifier: string | null = null;
 
-        // Check if userDid is already a pn identifier format
-        if (userDid.startsWith('pn-') || (!userDid.startsWith('did:') && userDid.length < 50)) {
-          // Normalize pn identifier format
-          pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
-        } else {
-          // userDid is a DID - look up the pn identifier from aggregator metadata
-          // Search for files where the creator DID matches
-          const didLookupQuery = `
-            SELECT DISTINCT pn_identifier
-            FROM aggregator_metadata
-            WHERE (
-              metadata->'creator'->'identifier'->>'value' = $1
-              OR metadata->'creator'->>'@id' = $1
-              OR metadata->'author'->>'did' = $1
-            )
-            LIMIT 1
-          `;
-          
-          const didLookupResult = await db.query(didLookupQuery, [userDid]);
-          
-          if (didLookupResult.rows.length > 0) {
-            pnIdentifier = didLookupResult.rows[0].pn_identifier;
-          } else {
-            // If no match found, return null profile
-            return res.json({ displayName: null, profileImageFileId: null });
-          }
-        }
-
-        if (!pnIdentifier) {
-          return res.json({ displayName: null, profileImageFileId: null });
-        }
+        // Use pn identifier directly (already normalized)
+        // No DID lookup needed - pn identifier is the standard
 
         // First, try to get from database (fast lookup)
         const dbProfileResult = await db.query(`
@@ -11785,12 +11745,12 @@ class ProductionServer {
     // POST /api/connections/request - Send connection request
     this.app.post('/api/connections/request', async (req, res) => {
       try {
-        const { requesterDid, recipientDid } = req.body;
-        if (!requesterDid || !recipientDid) {
-          return res.status(400).json({ error: 'requesterDid and recipientDid are required' });
+        const { requesterPnIdentifier, recipientPnIdentifier } = req.body;
+        if (!requesterPnIdentifier || !recipientPnIdentifier) {
+          return res.status(400).json({ error: 'requesterPnIdentifier and recipientPnIdentifier are required' });
         }
 
-        if (requesterDid === recipientDid) {
+        if (requesterPnIdentifier === recipientPnIdentifier) {
           return res.status(400).json({ error: 'Cannot connect to yourself' });
         }
 
@@ -11798,18 +11758,17 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize requesterDid to pn identifier format
-        const requesterPnIdentifier = requesterDid.startsWith('pn-') ? requesterDid : `pn-${requesterDid}`;
-        console.log(`[ConnectionRequest] Requester DID: ${requesterDid}, Normalized: ${requesterPnIdentifier}`);
+        // Use pn identifier directly (already normalized)
+        console.log(`[ConnectionRequest] Requester: ${requesterPnIdentifier}, Recipient: ${recipientPnIdentifier}`);
         
-        // Get requester's credentials - try both formats
+        // Get requester's credentials
         let requesterCredentials = await storageCredentialsService.getCredentials(requesterPnIdentifier);
-        if (!requesterCredentials?.credentials && requesterDid !== requesterPnIdentifier) {
-          // Try original format if normalized didn't work
-          requesterCredentials = await storageCredentialsService.getCredentials(requesterDid);
+        if (!requesterCredentials?.credentials) {
+          // Credentials not found
+          requesterCredentials = await storageCredentialsService.getCredentials(requesterPnIdentifier);
         }
         if (!requesterCredentials?.credentials) {
-          console.error(`[ConnectionRequest] No credentials found for requester. Tried: ${requesterPnIdentifier}, ${requesterDid}`);
+          console.error(`[ConnectionRequest] No credentials found for requester. Tried: ${requesterPnIdentifier}`);
           return res.status(404).json({ error: 'Requester credentials not found' });
         }
         console.log(`[ConnectionRequest] Found requester credentials under: ${requesterCredentials.identityId}`);
@@ -11859,7 +11818,7 @@ class ProductionServer {
             return await googleDriveProxyService.forceRefreshAccessToken(requesterCredentials.identityId, requesterAccountId, [requesterCredentials.identityId]);
           };
           
-          // Use normalized requesterPnIdentifier (not requesterDid which might be a DID)
+          // Use normalized requesterPnIdentifier
           const _g = await this.getMetadataFolder(requesterAccessToken, requesterPnIdentifier, refreshTokenFn);
           if (!_g) {
             return this.driveNotInitialized(res);
@@ -11879,18 +11838,13 @@ class ProductionServer {
           });
         }
 
-        // Normalize recipientDid to pn identifier format
-        const recipientPnIdentifier = recipientDid.startsWith('pn-') ? recipientDid : `pn-${recipientDid}`;
-        console.log(`[ConnectionRequest] Recipient DID: ${recipientDid}, Normalized: ${recipientPnIdentifier}`);
+        // Use recipientPnIdentifier directly (already normalized)
+        console.log(`[ConnectionRequest] Recipient: ${recipientPnIdentifier}`);
         
-        // Get recipient's credentials - try both formats
+        // Get recipient's credentials
         let recipientCredentials = await storageCredentialsService.getCredentials(recipientPnIdentifier);
-        if (!recipientCredentials?.credentials && recipientDid !== recipientPnIdentifier) {
-          // Try original format if normalized didn't work
-          recipientCredentials = await storageCredentialsService.getCredentials(recipientDid);
-        }
         if (!recipientCredentials?.credentials) {
-          console.error(`[ConnectionRequest] No credentials found for recipient. Tried: ${recipientPnIdentifier}, ${recipientDid}`);
+          console.error(`[ConnectionRequest] No credentials found for recipient: ${recipientPnIdentifier}`);
           return res.status(404).json({ error: 'Recipient credentials not found' });
         }
         console.log(`[ConnectionRequest] Found recipient credentials under: ${recipientCredentials.identityId}`);
@@ -11940,7 +11894,7 @@ class ProductionServer {
             return await googleDriveProxyService.forceRefreshAccessToken(recipientCredentials.identityId, recipientAccountId, [recipientCredentials.identityId]);
           };
           
-          // Use normalized recipientPnIdentifier (not recipientDid which might be a DID)
+          // Use normalized recipientPnIdentifier
           const _g = await this.getMetadataFolder(recipientAccessToken, recipientPnIdentifier, refreshTokenFn);
           if (!_g) {
             return this.driveNotInitialized(res);
@@ -12010,9 +11964,9 @@ class ProductionServer {
           console.error(`[ConnectionRequest] Failed to record activity for requester ${requesterCredentials.identityId}:`, error);
           console.error(`[ConnectionRequest] Error details:`, { 
             connectionId: connection.connectionId, 
-            requesterDid, 
-            recipientDid, 
-            requesterPnIdentifier: requesterCredentials.identityId,
+            requesterPnIdentifier, 
+            recipientPnIdentifier, 
+            requesterIdentityId: requesterCredentials.identityId,
             error: error.message, 
             stack: error.stack 
           });
@@ -12038,8 +11992,8 @@ class ProductionServer {
           console.error(`[ConnectionRequest] Failed to record activity for recipient ${recipientCredentials.identityId}:`, error);
           console.error(`[ConnectionRequest] Error details:`, { 
             connectionId: connection.connectionId, 
-            requesterDid, 
-            recipientDid, 
+            requesterPnIdentifier, 
+            recipientPnIdentifier, 
             recipientPnIdentifier: recipientCredentials.identityId,
             error: error.message, 
             stack: error.stack 
@@ -12061,8 +12015,8 @@ class ProductionServer {
           console.error(`[ConnectionRequest] Failed to send notification to recipient ${recipientCredentials.identityId}:`, error);
           console.error(`[ConnectionRequest] Error details:`, { 
             connectionId: connection.connectionId, 
-            requesterDid, 
-            recipientDid, 
+            requesterPnIdentifier, 
+            recipientPnIdentifier, 
             recipientPnIdentifier: recipientCredentials.identityId,
             error: error.message, 
             stack: error.stack 
@@ -12089,17 +12043,17 @@ class ProductionServer {
     this.app.post('/api/connections/:connectionId/accept', async (req, res) => {
       try {
         const { connectionId } = req.params;
-        const { userDid } = req.body;
-        if (!connectionId || !userDid) {
-          return res.status(400).json({ error: 'connectionId and userDid are required' });
+        const { userPnIdentifier } = req.body;
+        if (!connectionId || !userPnIdentifier) {
+          return res.status(400).json({ error: 'connectionId and userPnIdentifier are required' });
         }
 
         const { ConnectionsService } = await import('./server/modules/connectionsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // CRITICAL: Normalize userDid to pn identifier format
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly (already normalized)
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials using normalized pn identifier
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -12738,8 +12692,8 @@ class ProductionServer {
           console.error('[AcceptConnection] Failed to create conversation sheets:', conversationError);
           console.error('[AcceptConnection] Error details:', {
             connectionId,
-            acceptorDid: userCredentials.identityId,
-            requesterDid: otherUserPnIdentifier,
+            acceptorPnIdentifier: userCredentials.identityId,
+            requesterPnIdentifier: otherUserPnIdentifier,
             error: conversationError?.message,
             stack: conversationError?.stack
           });
@@ -12760,17 +12714,17 @@ class ProductionServer {
     this.app.post('/api/connections/:connectionId/reject', async (req, res) => {
       try {
         const { connectionId } = req.params;
-        const { userDid } = req.body;
-        if (!connectionId || !userDid) {
-          return res.status(400).json({ error: 'connectionId and userDid are required' });
+        const { userPnIdentifier } = req.body;
+        if (!connectionId || !userPnIdentifier) {
+          return res.status(400).json({ error: 'connectionId and userPnIdentifier are required' });
         }
 
         const { ConnectionsService } = await import('./server/modules/connectionsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // CRITICAL: Normalize userDid to pn identifier format
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly (already normalized)
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials using normalized pn identifier
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -12815,14 +12769,12 @@ class ProductionServer {
           });
         }
 
-        // Normalize userDid before calling removeConnection
-        const normalizedUserDid = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
-        
+        // Use userPnIdentifier directly (already normalized)
         // Remove connection from user's file
         await ConnectionsService.removeConnection(
           userAccessToken,
           metadataFolderId,
-          normalizedUserDid,
+          userPnIdentifier,
           connectionId
         );
 
@@ -12839,27 +12791,23 @@ class ProductionServer {
     // GET /api/connections - Get user's accepted connections
     this.app.get('/api/connections', async (req, res) => {
       try {
-        const { userDid } = req.query;
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        const { userPnIdentifier } = req.query;
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
         const { ConnectionsService } = await import('./server/modules/connectionsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // CRITICAL: Normalize userDid to pn identifier format
-        const pnIdentifier = (userDid as string).startsWith('pn-') ? (userDid as string) : `pn-${userDid}`;
-        console.log(`[GetConnections] User DID: ${userDid}, Normalized: ${pnIdentifier}`);
+        // Use pn identifier directly (already normalized)
+        const pnIdentifier = userPnIdentifier;
+        console.log(`[GetConnections] User: ${pnIdentifier}`);
 
-        // Get user's credentials using normalized pn identifier
+        // Get user's credentials
         let userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-        if (!userCredentials?.credentials && userDid !== pnIdentifier) {
-          // Try original format if normalized didn't work
-          userCredentials = await storageCredentialsService.getCredentials(userDid as string);
-        }
         if (!userCredentials?.credentials) {
-          console.log(`[GetConnections] No credentials found for user. Tried: ${pnIdentifier}, ${userDid}`);
+          console.log(`[GetConnections] No credentials found for user: ${pnIdentifier}`);
           return res.json({ connections: [] });
         }
         console.log(`[GetConnections] Found credentials under: ${userCredentials.identityId}`);
@@ -12917,7 +12865,7 @@ class ProductionServer {
           })
           .map(c => ({
             ...c,
-            userPnIdentifier: c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`
+            userPnIdentifier: c.userPnIdentifier
           }));
 
         return res.json({ connections: normalizedConnections });
@@ -12933,9 +12881,9 @@ class ProductionServer {
     // POST /api/connections/follow - Follow a user or feed
     this.app.post('/api/connections/follow', async (req, res) => {
       try {
-        const { userDid, targetType, targetId } = req.body;
-        if (!userDid || !targetType || !targetId) {
-          return res.status(400).json({ error: 'userDid, targetType, and targetId are required' });
+        const { userPnIdentifier, targetType, targetId } = req.body;
+        if (!userPnIdentifier || !targetType || !targetId) {
+          return res.status(400).json({ error: 'userPnIdentifier, targetType, and targetId are required' });
         }
 
         const targetTypeStr = String(targetType);
@@ -12950,8 +12898,8 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        const userDidStr = typeof userDid === 'string' ? userDid : String(userDid);
-        const pnIdentifier = userDidStr.startsWith('pn-') ? userDidStr : `pn-${userDidStr}`;
+        const userPnIdentifierStr = typeof userPnIdentifier === 'string' ? userPnIdentifier : String(userPnIdentifier);
+        const pnIdentifier = userPnIdentifierStr;
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.status(404).json({ error: 'User credentials not found' });
@@ -13075,9 +13023,9 @@ class ProductionServer {
     // POST /api/connections/unfollow - Unfollow a user or feed
     this.app.post('/api/connections/unfollow', async (req, res) => {
       try {
-        const { userDid, targetType, targetId } = req.body;
-        if (!userDid || !targetType || !targetId) {
-          return res.status(400).json({ error: 'userDid, targetType, and targetId are required' });
+        const { userPnIdentifier, targetType, targetId } = req.body;
+        if (!userPnIdentifier || !targetType || !targetId) {
+          return res.status(400).json({ error: 'userPnIdentifier, targetType, and targetId are required' });
         }
 
         const targetTypeStr = String(targetType);
@@ -13087,8 +13035,8 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        const userDidStr = typeof userDid === 'string' ? userDid : String(userDid);
-        const pnIdentifier = userDidStr.startsWith('pn-') ? userDidStr : `pn-${userDidStr}`;
+        const userPnIdentifierStr = typeof userPnIdentifier === 'string' ? userPnIdentifier : String(userPnIdentifier);
+        const pnIdentifier = userPnIdentifierStr;
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.status(404).json({ error: 'User credentials not found' });
@@ -13173,17 +13121,17 @@ class ProductionServer {
     // GET /api/connections/followers - Get user's followers (paid feeds only)
     this.app.get('/api/connections/followers', async (req, res) => {
       try {
-        const { userDid } = req.query;
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        const { userPnIdentifier } = req.query;
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
         const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        const userDidStr = typeof userDid === 'string' ? userDid : String(userDid);
-        const pnIdentifier = userDidStr.startsWith('pn-') ? userDidStr : `pn-${userDidStr}`;
+        const userPnIdentifierStr = typeof userPnIdentifier === 'string' ? userPnIdentifier : String(userPnIdentifier);
+        const pnIdentifier = userPnIdentifierStr;
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.json({ followers: [] });
@@ -13230,18 +13178,18 @@ class ProductionServer {
     // GET /api/connections/following - Get users/feeds user is following
     this.app.get('/api/connections/following', async (req, res) => {
       try {
-        const userDid = typeof req.query.userDid === 'string' ? req.query.userDid : String(req.query.userDid || '');
+        const userPnIdentifier = typeof req.query.userPnIdentifier === 'string' ? req.query.userPnIdentifier : String(req.query.userPnIdentifier || '');
         const targetType = typeof req.query.targetType === 'string' ? req.query.targetType : undefined;
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
         const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        const userDidStr = typeof userDid === 'string' ? userDid : String(userDid);
-        const pnIdentifier = userDidStr.startsWith('pn-') ? userDidStr : `pn-${userDidStr}`;
+        const userPnIdentifierStr = typeof userPnIdentifier === 'string' ? userPnIdentifier : String(userPnIdentifier);
+        const pnIdentifier = userPnIdentifierStr;
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.json({ following: [] });
@@ -13286,16 +13234,16 @@ class ProductionServer {
     // GET /api/connections/following/feeds - Get followed feeds
     this.app.get('/api/connections/following/feeds', async (req, res) => {
       try {
-        const userDid = typeof req.query.userDid === 'string' ? req.query.userDid : String(req.query.userDid || '');
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        const userPnIdentifier = typeof req.query.userPnIdentifier === 'string' ? req.query.userPnIdentifier : String(req.query.userPnIdentifier || '');
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
         const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        const pnIdentifier = userPnIdentifier;
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.json({ feeds: [] });
@@ -13337,16 +13285,16 @@ class ProductionServer {
     // GET /api/connections/following/users - Get followed users
     this.app.get('/api/connections/following/users', async (req, res) => {
       try {
-        const userDid = typeof req.query.userDid === 'string' ? req.query.userDid : String(req.query.userDid || '');
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        const userPnIdentifier = typeof req.query.userPnIdentifier === 'string' ? req.query.userPnIdentifier : String(req.query.userPnIdentifier || '');
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
         const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        const pnIdentifier = userPnIdentifier;
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.json({ users: [] });
@@ -13388,27 +13336,22 @@ class ProductionServer {
     // GET /api/connections/pending - Get pending requests
     this.app.get('/api/connections/pending', async (req, res) => {
       try {
-        const { userDid } = req.query;
-        if (!userDid) {
-          return res.status(400).json({ error: 'userDid is required' });
+        const { userPnIdentifier } = req.query;
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
 
         const { ConnectionsService } = await import('./server/modules/connectionsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize userDid to pn identifier format
-        const userPnIdentifier = (userDid as string).startsWith('pn-') ? (userDid as string) : `pn-${userDid}`;
-        console.log(`[PendingRequests] User DID: ${userDid}, Normalized: ${userPnIdentifier}`);
+        // Use pn identifier directly (already normalized)
+        console.log(`[PendingRequests] User: ${userPnIdentifier}`);
         
-        // Get user's credentials - try both formats
+        // Get user's credentials
         let userCredentials = await storageCredentialsService.getCredentials(userPnIdentifier);
-        if (!userCredentials?.credentials && userDid !== userPnIdentifier) {
-          // Try original format if normalized didn't work
-          userCredentials = await storageCredentialsService.getCredentials(userDid as string);
-        }
         if (!userCredentials?.credentials) {
-          console.error(`[PendingRequests] No credentials found. Tried: ${userPnIdentifier}, ${userDid}`);
+          console.error(`[PendingRequests] No credentials found: ${userPnIdentifier}`);
           return res.json({ sent: [], received: [] });
         }
         console.log(`[PendingRequests] Found credentials under: ${userCredentials.identityId}`);
@@ -13466,7 +13409,7 @@ class ProductionServer {
             })
             .map(c => ({
               ...c,
-              userPnIdentifier: c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`
+              userPnIdentifier: c.userPnIdentifier
             })),
           received: pending.received
             .filter(c => {
@@ -13478,7 +13421,7 @@ class ProductionServer {
             })
             .map(c => ({
               ...c,
-              userPnIdentifier: c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`
+              userPnIdentifier: c.userPnIdentifier
             }))
         };
 
@@ -13492,25 +13435,25 @@ class ProductionServer {
       }
     });
 
-    // GET /api/connections/:otherUserDid/status - Check connection status with another user
-    this.app.get('/api/connections/:otherUserDid/status', async (req, res) => {
+    // GET /api/connections/:otherUserPnIdentifier/status - Check connection status with another user
+    this.app.get('/api/connections/:otherUserPnIdentifier/status', async (req, res) => {
       try {
-        const { otherUserDid } = req.params;
-        const { userDid } = req.query;
-        if (!userDid || !otherUserDid) {
-          return res.status(400).json({ error: 'userDid and otherUserDid are required' });
+        const { otherUserPnIdentifier } = req.params;
+        const { userPnIdentifier } = req.query;
+        if (!userPnIdentifier || !otherUserPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier and otherUserPnIdentifier are required' });
         }
 
         const { ConnectionsService } = await import('./server/modules/connectionsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize DIDs to pn-identifiers
-        const normalizedUserDid = (userDid as string).startsWith('pn-') ? (userDid as string) : `pn-${userDid as string}`;
-        const normalizedOtherUserDid = otherUserDid.startsWith('pn-') ? otherUserDid : `pn-${otherUserDid}`;
+        // Use pn identifiers directly (already normalized)
+        const normalizedUserPnIdentifier = userPnIdentifier;
+        const normalizedOtherUserPnIdentifier = otherUserPnIdentifier;
 
-        // Get user's credentials (use normalized)
-        const userCredentials = await storageCredentialsService.getCredentials(normalizedUserDid);
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(normalizedUserPnIdentifier);
         if (!userCredentials?.credentials) {
           return res.json({ status: 'not_connected' });
         }
@@ -13554,8 +13497,8 @@ class ProductionServer {
         const status = await ConnectionsService.getConnectionStatus(
           userAccessToken,
           metadataFolderId,
-          normalizedUserDid,
-          normalizedOtherUserDid
+          normalizedUserPnIdentifier,
+          normalizedOtherUserPnIdentifier
         );
 
         return res.json(status);
@@ -13572,9 +13515,9 @@ class ProductionServer {
     this.app.delete('/api/connections/:connectionId', async (req, res) => {
       try {
         const { connectionId } = req.params;
-        const { userDid } = req.body;
-        if (!connectionId || !userDid) {
-          return res.status(400).json({ error: 'connectionId and userDid are required' });
+        const { userPnIdentifier } = req.body;
+        if (!connectionId || !userPnIdentifier) {
+          return res.status(400).json({ error: 'connectionId and userPnIdentifier are required' });
         }
 
         const { ConnectionsService } = await import('./server/modules/connectionsService');
@@ -13582,8 +13525,8 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // CRITICAL: Normalize userDid to pn identifier format
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials using normalized pn identifier
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -14788,12 +14731,12 @@ class ProductionServer {
     // GET /api/activity-ledger - Get user's activity ledger
     this.app.get('/api/activity-ledger', async (req, res) => {
       try {
-        const userDid = req.headers['x-user-did'] as string || req.query.userDid as string;
+        const userPnIdentifier = req.headers['x-user-pn-identifier'] as string || req.query.userPnIdentifier as string;
 
-        if (!userDid) {
+        if (!userPnIdentifier) {
           return res.status(401).json({
             error: 'unauthorized',
-            error_description: 'User DID required'
+            error_description: 'User pn identifier required'
           });
         }
 
@@ -14802,7 +14745,7 @@ class ProductionServer {
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
         // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -14859,12 +14802,12 @@ class ProductionServer {
 
     this.app.get('/api/notifications', async (req, res) => {
       try {
-        const userDid = req.headers['x-user-did'] as string || req.query.userDid as string;
+        const userPnIdentifier = req.headers['x-user-pn-identifier'] as string || req.query.userPnIdentifier as string;
         
-        if (!userDid) {
+        if (!userPnIdentifier) {
           return res.status(401).json({
             error: 'unauthorized',
-            error_description: 'User DID required'
+            error_description: 'User pn identifier required'
           });
         }
 
@@ -14872,8 +14815,8 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -14923,12 +14866,12 @@ class ProductionServer {
     // GET /api/notifications/unread-count - Get unread count
     this.app.get('/api/notifications/unread-count', async (req, res) => {
       try {
-        const userDid = req.headers['x-user-did'] as string || req.query.userDid as string;
+        const userPnIdentifier = req.headers['x-user-pn-identifier'] as string || req.query.userPnIdentifier as string;
         
-        if (!userDid) {
+        if (!userPnIdentifier) {
           return res.status(401).json({
             error: 'unauthorized',
-            error_description: 'User DID required'
+            error_description: 'User pn identifier required'
           });
         }
 
@@ -14936,8 +14879,8 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -14973,12 +14916,12 @@ class ProductionServer {
     this.app.put('/api/notifications/:notificationId/read', async (req, res) => {
       try {
         const { notificationId } = req.params;
-        const userDid = req.headers['x-user-did'] as string || req.body.userDid as string;
+        const userPnIdentifier = req.headers['x-user-pn-identifier'] as string || req.body.userPnIdentifier as string;
         
-        if (!userDid) {
+        if (!userPnIdentifier) {
           return res.status(401).json({
             error: 'unauthorized',
-            error_description: 'User DID required'
+            error_description: 'User pn identifier required'
           });
         }
 
@@ -14986,8 +14929,8 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -15029,12 +14972,12 @@ class ProductionServer {
     // PUT /api/notifications/read-all - Mark all notifications as read
     this.app.put('/api/notifications/read-all', async (req, res) => {
       try {
-        const userDid = req.headers['x-user-did'] as string || req.body.userDid as string;
+        const userPnIdentifier = req.headers['x-user-pn-identifier'] as string || req.body.userPnIdentifier as string;
         
-        if (!userDid) {
+        if (!userPnIdentifier) {
           return res.status(401).json({
             error: 'unauthorized',
-            error_description: 'User DID required'
+            error_description: 'User pn identifier required'
           });
         }
 
@@ -15042,8 +14985,8 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -15079,12 +15022,12 @@ class ProductionServer {
     this.app.delete('/api/notifications/:notificationId', async (req, res) => {
       try {
         const { notificationId } = req.params;
-        const userDid = req.headers['x-user-did'] as string || req.query.userDid as string;
+        const userPnIdentifier = req.headers['x-user-pn-identifier'] as string || req.query.userPnIdentifier as string;
         
-        if (!userDid) {
+        if (!userPnIdentifier) {
           return res.status(401).json({
             error: 'unauthorized',
-            error_description: 'User DID required'
+            error_description: 'User pn identifier required'
           });
         }
 
@@ -15092,8 +15035,8 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -15135,12 +15078,12 @@ class ProductionServer {
     // GET /api/notifications/preferences - Get notification preferences
     this.app.get('/api/notifications/preferences', async (req, res) => {
       try {
-        const userDid = req.headers['x-user-did'] as string || req.query.userDid as string;
+        const userPnIdentifier = req.headers['x-user-pn-identifier'] as string || req.query.userPnIdentifier as string;
         
-        if (!userDid) {
+        if (!userPnIdentifier) {
           return res.status(401).json({
             error: 'unauthorized',
-            error_description: 'User DID required'
+            error_description: 'User pn identifier required'
           });
         }
 
@@ -15148,15 +15091,15 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           // Return default preferences if no credentials
           return res.json({
-            user_did: userDid,
+            user_pn_identifier: userPnIdentifier,
             feed_new_post: true,
             feed_new_comment: true,
             feed_new_like: false,
@@ -15175,7 +15118,7 @@ class ProductionServer {
         if (googleDriveAccounts.length === 0) {
           // Return default preferences if no Google Drive
           return res.json({
-            user_did: userDid,
+            user_pn_identifier: userPnIdentifier,
             feed_new_post: true,
             feed_new_comment: true,
             feed_new_like: false,
@@ -15208,12 +15151,12 @@ class ProductionServer {
     // PUT /api/notifications/preferences - Update notification preferences
     this.app.put('/api/notifications/preferences', async (req, res) => {
       try {
-        const userDid = req.headers['x-user-did'] as string || req.body.userDid as string;
+        const userPnIdentifier = req.headers['x-user-pn-identifier'] as string || req.body.userPnIdentifier as string;
         
-        if (!userDid) {
+        if (!userPnIdentifier) {
           return res.status(401).json({
             error: 'unauthorized',
-            error_description: 'User DID required'
+            error_description: 'User pn identifier required'
           });
         }
 
@@ -15221,8 +15164,8 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize pn identifier
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        // Use pn identifier directly
+        const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);

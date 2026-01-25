@@ -24,10 +24,12 @@ export interface ConnectionsFile {
 
 export class ConnectionsService {
   /**
-   * Normalize identifier to pn-identifier format
+   * Normalize identifier to pn-identifier format (for legacy data compatibility only)
+   * New code should expect pn identifier already normalized
    */
-  private static normalizeToPnIdentifier(did: string): string {
-    return did.startsWith('pn-') ? did : `pn-${did}`;
+  private static normalizeToPnIdentifier(pnIdentifier: string): string {
+    // For legacy data compatibility - check if already normalized
+    return pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
   }
 
   /**
@@ -55,31 +57,26 @@ export class ConnectionsService {
   /**
    * Generate unique connection ID
    */
-  static generateConnectionId(userDid1: string, userDid2: string): string {
-    // Normalize to pn-identifier before generating ID
-    const normalized1 = this.normalizeToPnIdentifier(userDid1);
-    const normalized2 = this.normalizeToPnIdentifier(userDid2);
-    // Sort DIDs to ensure consistent ID regardless of order
-    const sorted = [normalized1, normalized2].sort();
+  static generateConnectionId(userPnIdentifier1: string, userPnIdentifier2: string): string {
+    // Use pn identifiers directly (already normalized)
+    // Sort to ensure consistent ID regardless of order
+    const sorted = [userPnIdentifier1, userPnIdentifier2].sort();
     const hash = `${sorted[0]}_${sorted[1]}`;
     return `conn_${Buffer.from(hash).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32)}`;
   }
 
   /**
    * Get connection status between two users
-   * Returns status from perspective of userDid1
+   * Returns status from perspective of userPnIdentifier1
    * Uses Google Sheets instead of JSON file
    */
   static async getConnectionStatus(
     user1AccessToken: string,
     user1MetadataFolder: string,
-    user1Did: string,
-    user2Did: string
+    user1PnIdentifier: string,
+    user2PnIdentifier: string
   ): Promise<{ status: 'not_connected' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked'; connectionId?: string }> {
-    // Normalize DIDs to pn-identifiers
-    const normalizedUser1Did = this.normalizeToPnIdentifier(user1Did);
-    const normalizedUser2Did = this.normalizeToPnIdentifier(user2Did);
-
+    // Use pn identifiers directly (already normalized)
     try {
       // Get or create connections sheet
       const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
@@ -95,8 +92,8 @@ export class ConnectionsService {
 
       // Find connection with user2 (normalize when comparing - handles legacy data)
       const connection = result.connections.find(c => {
-        const normalizedCUserPnIdentifier = this.normalizeToPnIdentifier(c.userPnIdentifier);
-        return normalizedCUserPnIdentifier === normalizedUser2Did;
+        const normalizedCUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : this.normalizeToPnIdentifier(c.userPnIdentifier);
+        return normalizedCUserPnIdentifier === user2PnIdentifier;
       });
       
       if (!connection) {
@@ -121,14 +118,14 @@ export class ConnectionsService {
 
       // Normalize blocked entries when checking (handles legacy data)
       const normalizedBlocked = connectionsFile.blocked.map(b => this.normalizeToPnIdentifier(b));
-      if (normalizedBlocked.includes(normalizedUser2Did)) {
+      if (normalizedBlocked.includes(user2PnIdentifier)) {
         return { status: 'blocked' };
       }
 
       // Normalize when comparing connections (handles legacy data)
       const connection = connectionsFile.connections.find(c => {
-        const normalizedCUserPnIdentifier = this.normalizeToPnIdentifier(c.userPnIdentifier);
-        return normalizedCUserPnIdentifier === normalizedUser2Did;
+        const normalizedCUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : this.normalizeToPnIdentifier(c.userPnIdentifier);
+        return normalizedCUserPnIdentifier === user2PnIdentifier;
       });
       if (!connection) {
         return { status: 'not_connected' };
@@ -148,17 +145,14 @@ export class ConnectionsService {
   static async sendConnectionRequest(
     requesterAccessToken: string,
     requesterMetadataFolder: string,
-    requesterDid: string,
+    requesterPnIdentifier: string,
     recipientAccessToken: string,
     recipientMetadataFolder: string,
-    recipientDid: string
+    recipientPnIdentifier: string
   ): Promise<Connection> {
-    // Normalize DIDs to pn-identifiers at the start
-    const normalizedRequesterDid = this.normalizeToPnIdentifier(requesterDid);
-    const normalizedRecipientDid = this.normalizeToPnIdentifier(recipientDid);
-
+    // Use pn identifiers directly (already normalized)
     try {
-      const connectionId = this.generateConnectionId(normalizedRequesterDid, normalizedRecipientDid);
+      const connectionId = this.generateConnectionId(requesterPnIdentifier, recipientPnIdentifier);
       const now = new Date().toISOString();
 
       // Get or create connections sheets for both users
@@ -179,8 +173,8 @@ export class ConnectionsService {
           requesterSheetId
         );
         const existingReq = existingRequester.connections.find(c => {
-          const normalizedCUserPnIdentifier = this.normalizeToPnIdentifier(c.userPnIdentifier);
-          return normalizedCUserPnIdentifier === normalizedRecipientDid;
+          const normalizedCUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : this.normalizeToPnIdentifier(c.userPnIdentifier);
+          return normalizedCUserPnIdentifier === recipientPnIdentifier;
         });
         if (existingReq) {
           await ConnectionsSheetsService.removeConnection(
@@ -199,8 +193,8 @@ export class ConnectionsService {
           recipientSheetId
         );
         const existingRec = existingRecipient.connections.find(c => {
-          const normalizedCUserPnIdentifier = this.normalizeToPnIdentifier(c.userPnIdentifier);
-          return normalizedCUserPnIdentifier === normalizedRequesterDid;
+          const normalizedCUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : this.normalizeToPnIdentifier(c.userPnIdentifier);
+          return normalizedCUserPnIdentifier === requesterPnIdentifier;
         });
         if (existingRec) {
           await ConnectionsSheetsService.removeConnection(
@@ -213,25 +207,25 @@ export class ConnectionsService {
         // Ignore if connection doesn't exist
       }
 
-      // Add connection request to requester's sheet (store normalized pn-identifier)
+      // Add connection request to requester's sheet
       await ConnectionsSheetsService.addConnection(
         requesterAccessToken,
         requesterSheetId,
         {
           connectionId,
-          userPnIdentifier: normalizedRecipientDid,
+          userPnIdentifier: recipientPnIdentifier,
           status: 'pending_sent',
           createdAt: now
         }
       );
 
-      // Add connection request to recipient's sheet (store normalized pn-identifier)
+      // Add connection request to recipient's sheet
       await ConnectionsSheetsService.addConnection(
         recipientAccessToken,
         recipientSheetId,
         {
           connectionId,
-          userPnIdentifier: normalizedRequesterDid,
+          userPnIdentifier: requesterPnIdentifier,
           status: 'pending_received',
           createdAt: now
         }
@@ -239,7 +233,7 @@ export class ConnectionsService {
 
       return {
         connectionId,
-        userPnIdentifier: normalizedRecipientDid,
+        userPnIdentifier: recipientPnIdentifier,
         status: 'pending_sent',
         createdAt: now
       };
@@ -249,10 +243,10 @@ export class ConnectionsService {
       return this.sendConnectionRequestJSON(
         requesterAccessToken,
         requesterMetadataFolder,
-        normalizedRequesterDid,
+        requesterPnIdentifier,
         recipientAccessToken,
         recipientMetadataFolder,
-        normalizedRecipientDid
+        recipientPnIdentifier
       );
     }
   }
@@ -263,78 +257,76 @@ export class ConnectionsService {
   private static async sendConnectionRequestJSON(
     requesterAccessToken: string,
     requesterMetadataFolder: string,
-    requesterDid: string,
+    requesterPnIdentifier: string,
     recipientAccessToken: string,
     recipientMetadataFolder: string,
-    recipientDid: string
+    recipientPnIdentifier: string
   ): Promise<Connection> {
-    // DIDs should already be normalized when passed to this method, but normalize again to be safe
-    const normalizedRequesterDid = this.normalizeToPnIdentifier(requesterDid);
-    const normalizedRecipientDid = this.normalizeToPnIdentifier(recipientDid);
+    // Use pn identifiers directly (already normalized)
 
-    const connectionId = this.generateConnectionId(normalizedRequesterDid, normalizedRecipientDid);
+    const connectionId = this.generateConnectionId(requesterPnIdentifier, recipientPnIdentifier);
     const now = new Date().toISOString();
 
     // Update requester's connections file
     let requesterFile = await this.getConnectionsFile(requesterAccessToken, requesterMetadataFolder);
     if (!requesterFile) {
       requesterFile = {
-        identifier: normalizedRequesterDid,
+        identifier: requesterPnIdentifier,
         updatedAt: now,
         connections: [],
         blocked: []
       };
     }
 
-    // Normalize identifier if it exists
-    requesterFile.identifier = this.normalizeToPnIdentifier(requesterFile.identifier || normalizedRequesterDid);
+    // Normalize identifier if it exists (for legacy data compatibility)
+    requesterFile.identifier = requesterFile.identifier?.startsWith('pn-') ? requesterFile.identifier : this.normalizeToPnIdentifier(requesterFile.identifier || requesterPnIdentifier);
 
     // Normalize when filtering (handles legacy data)
     requesterFile.connections = requesterFile.connections.filter(c => {
-      const normalizedCUserPnIdentifier = this.normalizeToPnIdentifier(c.userPnIdentifier);
-      return normalizedCUserPnIdentifier !== normalizedRecipientDid;
+      const normalizedCUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : this.normalizeToPnIdentifier(c.userPnIdentifier);
+      return normalizedCUserPnIdentifier !== recipientPnIdentifier;
     });
     requesterFile.connections.push({
       connectionId,
-      userPnIdentifier: normalizedRecipientDid,
+      userPnIdentifier: recipientPnIdentifier,
       status: 'pending_sent',
       createdAt: now
     });
     requesterFile.updatedAt = now;
-    await this.updateConnectionsFile(requesterAccessToken, requesterMetadataFolder, normalizedRequesterDid, requesterFile);
+    await this.updateConnectionsFile(requesterAccessToken, requesterMetadataFolder, requesterPnIdentifier, requesterFile);
 
     // Update recipient's connections file
     let recipientFile = await this.getConnectionsFile(recipientAccessToken, recipientMetadataFolder);
     if (!recipientFile) {
       recipientFile = {
-        identifier: normalizedRecipientDid,
+        identifier: recipientPnIdentifier,
         updatedAt: now,
         connections: [],
         blocked: []
       };
     }
 
-    // Normalize identifier if it exists
-    recipientFile.identifier = this.normalizeToPnIdentifier(recipientFile.identifier || normalizedRecipientDid);
+    // Normalize identifier if it exists (for legacy data compatibility)
+    recipientFile.identifier = recipientFile.identifier?.startsWith('pn-') ? recipientFile.identifier : this.normalizeToPnIdentifier(recipientFile.identifier || recipientPnIdentifier);
 
     // Normalize when filtering (handles legacy data)
     recipientFile.connections = recipientFile.connections.filter(c => {
-      const normalizedCUserPnIdentifier = this.normalizeToPnIdentifier(c.userPnIdentifier);
-      return normalizedCUserPnIdentifier !== normalizedRequesterDid;
+      const normalizedCUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : this.normalizeToPnIdentifier(c.userPnIdentifier);
+      return normalizedCUserPnIdentifier !== requesterPnIdentifier;
     });
     
     recipientFile.connections.push({
       connectionId,
-      userPnIdentifier: normalizedRequesterDid,
+      userPnIdentifier: requesterPnIdentifier,
       status: 'pending_received',
       createdAt: now
     });
     recipientFile.updatedAt = now;
-    await this.updateConnectionsFile(recipientAccessToken, recipientMetadataFolder, normalizedRecipientDid, recipientFile);
+    await this.updateConnectionsFile(recipientAccessToken, recipientMetadataFolder, recipientPnIdentifier, recipientFile);
 
     return {
       connectionId,
-      userPnIdentifier: normalizedRecipientDid,
+      userPnIdentifier: recipientPnIdentifier,
       status: 'pending_sent',
       createdAt: now
     };
@@ -348,7 +340,7 @@ export class ConnectionsService {
   static async acceptConnectionRequest(
     acceptorAccessToken: string,
     acceptorMetadataFolder: string,
-    acceptorDid: string,
+    acceptorPnIdentifier: string,
     connectionId: string
   ): Promise<string> {
     try {
@@ -496,7 +488,7 @@ export class ConnectionsService {
         const sharedSecret = MetadataEncryption.encryptField(rawSecret);
         connection.sharedSecret = sharedSecret;
         acceptorFile.updatedAt = new Date().toISOString();
-        await this.updateConnectionsFile(acceptorAccessToken, acceptorMetadataFolder, acceptorDid, acceptorFile);
+        await this.updateConnectionsFile(acceptorAccessToken, acceptorMetadataFolder, acceptorPnIdentifier, acceptorFile);
         return sharedSecret;
       }
       throw new Error(`Connection request is not in acceptable status. Current status: ${connection.status}. Only pending_received or pending_sent connections can be accepted.`);
@@ -534,15 +526,14 @@ export class ConnectionsService {
   static async updateOtherUserConnectionStatus(
     otherUserAccessToken: string,
     otherUserMetadataFolder: string,
-    otherUserDid: string,
+    otherUserPnIdentifier: string,
     connectionId: string,
     newStatus: 'accepted' | 'blocked',
-    acceptorDid?: string, // The DID of the user who accepted (to create connection if missing)
+    acceptorPnIdentifier?: string, // The pn identifier of the user who accepted (to create connection if missing)
     sharedSecret?: string // Encrypted shared secret to store in connection
   ): Promise<void> {
-    // Normalize DIDs to pn-identifiers
-    const normalizedOtherUserDid = this.normalizeToPnIdentifier(otherUserDid);
-    const normalizedAcceptorDid = acceptorDid ? this.normalizeToPnIdentifier(acceptorDid) : undefined;
+    // Use pn identifiers directly (already normalized)
+    const normalizedAcceptorPnIdentifier = acceptorPnIdentifier;
 
     try {
       // Get or create connections sheet
@@ -562,13 +553,13 @@ export class ConnectionsService {
 
       if (!connection) {
         // Connection doesn't exist - create it if accepting
-        if (newStatus === 'accepted' && normalizedAcceptorDid) {
+        if (newStatus === 'accepted' && normalizedAcceptorPnIdentifier) {
         await ConnectionsSheetsService.addConnection(
           otherUserAccessToken,
           spreadsheetId,
           {
             connectionId,
-            userPnIdentifier: normalizedAcceptorDid,
+            userPnIdentifier: normalizedAcceptorPnIdentifier,
             status: 'accepted',
             createdAt: new Date().toISOString(),
             acceptedAt: new Date().toISOString(),
@@ -596,10 +587,10 @@ export class ConnectionsService {
       await this.updateOtherUserConnectionStatusJSON(
         otherUserAccessToken,
         otherUserMetadataFolder,
-        normalizedOtherUserDid,
+        otherUserPnIdentifier,
         connectionId,
         newStatus,
-        normalizedAcceptorDid
+        normalizedAcceptorPnIdentifier
       );
     }
   }
@@ -610,78 +601,77 @@ export class ConnectionsService {
   private static async updateOtherUserConnectionStatusJSON(
     otherUserAccessToken: string,
     otherUserMetadataFolder: string,
-    otherUserDid: string,
+    otherUserPnIdentifier: string,
     connectionId: string,
     newStatus: 'accepted' | 'blocked',
-    acceptorDid?: string
+    acceptorPnIdentifier?: string
   ): Promise<void> {
-    // DIDs should already be normalized when passed to this method, but normalize again to be safe
-    const normalizedOtherUserDid = this.normalizeToPnIdentifier(otherUserDid);
-    const normalizedAcceptorDid = acceptorDid ? this.normalizeToPnIdentifier(acceptorDid) : undefined;
+    // Use pn identifiers directly (already normalized)
+    const normalizedAcceptorPnIdentifier = acceptorPnIdentifier;
 
     const otherUserFile = await this.getConnectionsFile(otherUserAccessToken, otherUserMetadataFolder);
     if (!otherUserFile) {
-      console.log(`[updateOtherUserConnectionStatus] Connections file not found for ${normalizedOtherUserDid}, creating new file`);
+      console.log(`[updateOtherUserConnectionStatus] Connections file not found for ${otherUserPnIdentifier}, creating new file`);
       // Create new file with the connection
-      if (newStatus === 'accepted' && normalizedAcceptorDid) {
+      if (newStatus === 'accepted' && normalizedAcceptorPnIdentifier) {
         const now = new Date().toISOString();
         const newFile: ConnectionsFile = {
-          identifier: normalizedOtherUserDid,
+          identifier: otherUserPnIdentifier,
           updatedAt: now,
           connections: [{
             connectionId,
-            userPnIdentifier: normalizedAcceptorDid,
+            userPnIdentifier: normalizedAcceptorPnIdentifier,
             status: 'accepted',
             createdAt: now,
             acceptedAt: now
           }],
           blocked: []
         };
-        await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, normalizedOtherUserDid, newFile);
-        console.log(`[updateOtherUserConnectionStatus] Created new connections file for ${normalizedOtherUserDid} with accepted connection to ${normalizedAcceptorDid}`);
+        await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserPnIdentifier, newFile);
+        console.log(`[updateOtherUserConnectionStatus] Created new connections file for ${otherUserPnIdentifier} with accepted connection to ${normalizedAcceptorPnIdentifier}`);
         return;
       }
-      return; // Can't create connection without acceptorDid
+      return; // Can't create connection without acceptorPnIdentifier
     }
 
-    // Normalize identifier if it exists
-    otherUserFile.identifier = this.normalizeToPnIdentifier(otherUserFile.identifier || normalizedOtherUserDid);
+    // Normalize identifier if it exists (for legacy data compatibility)
+    otherUserFile.identifier = otherUserFile.identifier?.startsWith('pn-') ? otherUserFile.identifier : this.normalizeToPnIdentifier(otherUserFile.identifier || otherUserPnIdentifier);
 
     const connection = otherUserFile.connections.find(c => c.connectionId === connectionId);
     if (!connection) {
-      console.log(`[updateOtherUserConnectionStatus] Connection ${connectionId} not found in ${normalizedOtherUserDid}'s file`);
+      console.log(`[updateOtherUserConnectionStatus] Connection ${connectionId} not found in ${otherUserPnIdentifier}'s file`);
         console.log(`[updateOtherUserConnectionStatus] Available connections:`, otherUserFile.connections.map(c => ({
           connectionId: c.connectionId,
           userPnIdentifier: c.userPnIdentifier,
           status: c.status
         })));
       
-      // If accepting and we have acceptorDid, create the connection
-      if (newStatus === 'accepted' && normalizedAcceptorDid) {
-        console.log(`[updateOtherUserConnectionStatus] Creating missing connection in ${normalizedOtherUserDid}'s file`);
+      // If accepting and we have acceptorPnIdentifier, create the connection
+      if (newStatus === 'accepted' && normalizedAcceptorPnIdentifier) {
+        console.log(`[updateOtherUserConnectionStatus] Creating missing connection in ${otherUserPnIdentifier}'s file`);
         const now = new Date().toISOString();
         otherUserFile.connections.push({
           connectionId,
-          userPnIdentifier: normalizedAcceptorDid,
+          userPnIdentifier: normalizedAcceptorPnIdentifier,
           status: 'accepted',
           createdAt: now,
           acceptedAt: now
         });
         otherUserFile.updatedAt = now;
-        await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, normalizedOtherUserDid, otherUserFile);
-        console.log(`[updateOtherUserConnectionStatus] Successfully created connection in ${normalizedOtherUserDid}'s file`);
+        await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserPnIdentifier, otherUserFile);
+        console.log(`[updateOtherUserConnectionStatus] Successfully created connection in ${otherUserPnIdentifier}'s file`);
         return;
       }
       
-      console.warn(`[updateOtherUserConnectionStatus] Connection not found and cannot create (missing acceptorDid or wrong status)`);
+      console.warn(`[updateOtherUserConnectionStatus] Connection not found and cannot create (missing acceptorPnIdentifier or wrong status)`);
       return; // Connection not found in their file
     }
 
     // Normalize connection.userPnIdentifier when reading (handles legacy data)
-    const normalizedConnectionUserPnIdentifier = this.normalizeToPnIdentifier(connection.userPnIdentifier);
+    const normalizedConnectionUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-') ? connection.userPnIdentifier : this.normalizeToPnIdentifier(connection.userPnIdentifier);
     connection.userPnIdentifier = normalizedConnectionUserPnIdentifier;
 
-    console.log(`[updateOtherUserConnectionStatus] Found connection in ${normalizedOtherUserDid}'s file:`, {
+    console.log(`[updateOtherUserConnectionStatus] Found connection in ${otherUserPnIdentifier}'s file:`, {
       connectionId: connection.connectionId,
       userPnIdentifier: normalizedConnectionUserPnIdentifier,
       currentStatus: connection.status,
@@ -705,8 +695,8 @@ export class ConnectionsService {
     }
 
     otherUserFile.updatedAt = now;
-    await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, normalizedOtherUserDid, otherUserFile);
-    console.log(`[updateOtherUserConnectionStatus] Successfully updated connection status to ${newStatus} in ${normalizedOtherUserDid}'s file`);
+    await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserPnIdentifier, otherUserFile);
+    console.log(`[updateOtherUserConnectionStatus] Successfully updated connection status to ${newStatus} in ${otherUserPnIdentifier}'s file`);
   }
 
   /**
@@ -715,24 +705,22 @@ export class ConnectionsService {
   static async removeConnection(
     userAccessToken: string,
     userMetadataFolder: string,
-    userDid: string,
+    userPnIdentifier: string,
     connectionId: string
   ): Promise<void> {
-    // Normalize userDid to pn-identifier
-    const normalizedUserDid = this.normalizeToPnIdentifier(userDid);
-
+    // Use pn identifier directly (already normalized)
     const connectionsFile = await this.getConnectionsFile(userAccessToken, userMetadataFolder);
     if (!connectionsFile) {
       return;
     }
 
-    // Normalize identifier if it exists
-    connectionsFile.identifier = this.normalizeToPnIdentifier(connectionsFile.identifier || normalizedUserDid);
+    // Normalize identifier if it exists (for legacy data compatibility)
+    connectionsFile.identifier = connectionsFile.identifier?.startsWith('pn-') ? connectionsFile.identifier : this.normalizeToPnIdentifier(connectionsFile.identifier || userPnIdentifier);
 
     connectionsFile.connections = connectionsFile.connections.filter(c => c.connectionId !== connectionId);
     connectionsFile.updatedAt = new Date().toISOString();
 
-    await this.updateConnectionsFile(userAccessToken, userMetadataFolder, normalizedUserDid, connectionsFile);
+    await this.updateConnectionsFile(userAccessToken, userMetadataFolder, userPnIdentifier, connectionsFile);
   }
 
   /**

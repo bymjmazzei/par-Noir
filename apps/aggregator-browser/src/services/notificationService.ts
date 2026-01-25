@@ -47,7 +47,7 @@ export class NotificationService {
    * Get user's notifications
    */
   static async getNotifications(
-    userDid: string,
+    userPnIdentifier: string,
     options?: {
       limit?: number;
       offset?: number;
@@ -56,7 +56,7 @@ export class NotificationService {
     }
   ): Promise<NotificationListResponse> {
     const params = new URLSearchParams();
-    params.append('userDid', userDid);
+    params.append('userPnIdentifier', userPnIdentifier);
     if (options?.limit) params.append('limit', options.limit.toString());
     if (options?.offset) params.append('offset', options.offset.toString());
     if (options?.unreadOnly) params.append('unreadOnly', 'true');
@@ -75,8 +75,8 @@ export class NotificationService {
   /**
    * Get unread notification count
    */
-  static async getUnreadCount(userDid: string): Promise<number> {
-    const response = await fetch(`${API_ENDPOINT}/api/notifications/unread-count?userDid=${userDid}`);
+  static async getUnreadCount(userPnIdentifier: string): Promise<number> {
+    const response = await fetch(`${API_ENDPOINT}/api/notifications/unread-count?userPnIdentifier=${userPnIdentifier}`);
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to get unread count' }));
@@ -90,13 +90,13 @@ export class NotificationService {
   /**
    * Mark notification as read
    */
-  static async markAsRead(notificationId: string, userDid: string): Promise<void> {
+  static async markAsRead(notificationId: string, userPnIdentifier: string): Promise<void> {
     const response = await fetch(`${API_ENDPOINT}/api/notifications/${notificationId}/read`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ userDid })
+      body: JSON.stringify({ userPnIdentifier })
     });
 
     if (!response.ok) {
@@ -108,13 +108,13 @@ export class NotificationService {
   /**
    * Mark all notifications as read
    */
-  static async markAllAsRead(userDid: string): Promise<number> {
+  static async markAllAsRead(userPnIdentifier: string): Promise<number> {
     const response = await fetch(`${API_ENDPOINT}/api/notifications/read-all`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ userDid })
+      body: JSON.stringify({ userPnIdentifier })
     });
 
     if (!response.ok) {
@@ -129,8 +129,8 @@ export class NotificationService {
   /**
    * Delete notification
    */
-  static async deleteNotification(notificationId: string, userDid: string): Promise<void> {
-    const response = await fetch(`${API_ENDPOINT}/api/notifications/${notificationId}?userDid=${userDid}`, {
+  static async deleteNotification(notificationId: string, userPnIdentifier: string): Promise<void> {
+    const response = await fetch(`${API_ENDPOINT}/api/notifications/${notificationId}?userPnIdentifier=${userPnIdentifier}`, {
       method: 'DELETE'
     });
 
@@ -143,8 +143,8 @@ export class NotificationService {
   /**
    * Get notification preferences
    */
-  static async getPreferences(userDid: string): Promise<NotificationPreferences> {
-    const response = await fetch(`${API_ENDPOINT}/api/notifications/preferences?userDid=${userDid}`);
+  static async getPreferences(userPnIdentifier: string): Promise<NotificationPreferences> {
+    const response = await fetch(`${API_ENDPOINT}/api/notifications/preferences?userPnIdentifier=${userPnIdentifier}`);
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to get preferences' }));
@@ -158,7 +158,7 @@ export class NotificationService {
    * Update notification preferences
    */
   static async updatePreferences(
-    userDid: string,
+    userPnIdentifier: string,
     preferences: Partial<Omit<NotificationPreferences, 'user_did'>>
   ): Promise<NotificationPreferences> {
     const response = await fetch(`${API_ENDPOINT}/api/notifications/preferences`, {
@@ -167,7 +167,7 @@ export class NotificationService {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        userDid,
+          userPnIdentifier,
         ...preferences
       })
     });

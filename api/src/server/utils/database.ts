@@ -308,8 +308,8 @@ export async function initializeDatabase(): Promise<void> {
     `);
 
     // Feeds table for curated feed management
-    // Note: feed_id is TEXT to support both UUIDs and special formats like "saved-{userDid}"
-    // For regular feeds, we generate a UUID string. For saved feeds, we use "saved-{userDid}"
+    // Note: feed_id is TEXT to support both UUIDs and special formats like "saved-{userPnIdentifier}"
+    // For regular feeds, we generate a UUID string. For saved feeds, we use "saved-{userPnIdentifier}"
     await db.query(`
       CREATE TABLE IF NOT EXISTS feeds (
         feed_id TEXT PRIMARY KEY DEFAULT (gen_random_uuid()::text),

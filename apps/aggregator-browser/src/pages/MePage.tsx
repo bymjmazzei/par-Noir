@@ -33,7 +33,7 @@ export interface MePageProps {
   onComment: (file: IndexedFile) => void;
   onShare: (fileId: string) => void;
   setViewingCreatorId: (id: string | null) => void;
-  setInitialThread: (t: { participantDid: string; participantName?: string } | null) => void;
+  setInitialThread: (t: { participantPnIdentifier: string; participantName?: string } | null) => void;
   setShowInbox: (v: boolean) => void;
   setActiveBottomTab: (tab: 'home' | 'search' | 'upload' | 'index' | 'messages') => void;
   setEditingFile: (f: IndexedFile | null) => void;
@@ -83,7 +83,7 @@ export function MePage({
   };
 
   const handleMessage = (creatorId: string) => {
-    setInitialThread({ participantDid: creatorId });
+    setInitialThread({ participantPnIdentifier: creatorId });
     setShowInbox(true);
     setActiveBottomTab('messages');
   };

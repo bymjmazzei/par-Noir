@@ -85,7 +85,7 @@ export interface HomePageContextValue {
   setViewingFile: (v: { file: IndexedFile; blob: Blob | null; url: string | null } | null) => void;
   setCommentingFile: (f: IndexedFile | null) => void;
   setEditingFile: (f: IndexedFile | null) => void;
-  setInitialThread: (t: { participantDid: string; participantName?: string } | null) => void;
+  setInitialThread: (t: { participantPnIdentifier: string; participantName?: string } | null) => void;
   setShowInbox: (v: boolean) => void;
   setActiveBottomTab: (t: 'home' | 'search' | 'upload' | 'index' | 'messages') => void;
   isLoadingMore: boolean;

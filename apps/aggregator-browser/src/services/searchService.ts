@@ -40,7 +40,7 @@ export interface SearchResult {
  */
 export async function searchFiles(
   options: SearchOptions,
-  userDid?: string
+  userPnIdentifier?: string
 ): Promise<SearchResult> {
   try {
     const params = new URLSearchParams();
@@ -61,8 +61,8 @@ export async function searchFiles(
       params.append('offset', options.offset.toString());
     }
     
-    if (userDid) {
-      params.append('userDid', userDid);
+    if (userPnIdentifier) {
+      params.append('userPnIdentifier', userPnIdentifier);
     }
 
     // Add filters
@@ -128,7 +128,7 @@ function fallbackSearch(options: SearchOptions): SearchResult {
  * Search user's personal history
  */
 export async function searchPersonalHistory(
-  userDid: string,
+  userPnIdentifier: string,
   options: SearchOptions
 ): Promise<SearchResult> {
   try {
@@ -150,7 +150,7 @@ export async function searchPersonalHistory(
       params.append('offset', options.offset.toString());
     }
 
-    const response = await fetch(`${API_ENDPOINT}/api/search/personal?userDid=${userDid}&${params.toString()}`, {
+    const response = await fetch(`${API_ENDPOINT}/api/search/personal?userPnIdentifier=${userPnIdentifier}&${params.toString()}`, {
       headers: getAuthHeaders()
     });
 

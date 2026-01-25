@@ -11,7 +11,7 @@ import { formatTimestamp } from '../utils/formatTimestamp';
 interface ActivityLedgerPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  userDid: string;
+  userPnIdentifier: string;
 }
 
 const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
@@ -57,7 +57,7 @@ function getActivityDescription(activity: ActivityEntry): string {
   }
 }
 
-export function ActivityLedgerPanel({ isOpen, onClose, userDid }: ActivityLedgerPanelProps) {
+export function ActivityLedgerPanel({ isOpen, onClose, userPnIdentifier }: ActivityLedgerPanelProps) {
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +77,7 @@ export function ActivityLedgerPanel({ isOpen, onClose, userDid }: ActivityLedger
 
     try {
       const currentOffset = reset ? 0 : offset;
-      const response = await ActivityLedgerService.getActivities(userDid, {
+      const response = await ActivityLedgerService.getActivities(userPnIdentifier, {
         limit: LIMIT,
         offset: currentOffset
       });
@@ -100,10 +100,10 @@ export function ActivityLedgerPanel({ isOpen, onClose, userDid }: ActivityLedger
   };
 
   useEffect(() => {
-    if (isOpen && userDid) {
+    if (isOpen && userPnIdentifier) {
       loadActivities(true);
     }
-  }, [isOpen, userDid]);
+  }, [isOpen, userPnIdentifier]);
 
   const handleScroll = () => {
     if (!scrollContainerRef.current || loading || !hasMore) return;

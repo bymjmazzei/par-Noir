@@ -34,26 +34,25 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Get user profile (display name and profile image fileId)
- * Accepts both pN identifiers (pn-{hash}) and DIDs (did:key:...)
+ * Uses pn identifier
  */
-export async function getUserProfile(userDid: string): Promise<UserProfile> {
+export async function getUserProfile(userPnIdentifier: string): Promise<UserProfile> {
   // Check if we have a cached result that's still valid
-  const cachedResult = profileResultCache.get(userDid);
+  const cachedResult = profileResultCache.get(userPnIdentifier);
   if (cachedResult && Date.now() - cachedResult.timestamp < CACHE_DURATION) {
     return cachedResult.profile;
   }
 
   // Check if there's already an ongoing request for this user
-  const cachedRequest = profileRequestCache.get(userDid);
+  const cachedRequest = profileRequestCache.get(userPnIdentifier);
   if (cachedRequest) {
     return cachedRequest;
   }
 
   const request = (async () => {
   try {
-    // API now handles both pN identifiers and DIDs
-    // No need to skip any format - let the API handle the lookup
-    const response = await fetch(`${API_ENDPOINT}/api/profile/${encodeURIComponent(userDid)}`, {
+    // API uses pn identifier
+    const response = await fetch(`${API_ENDPOINT}/api/profile/${encodeURIComponent(userPnIdentifier)}`, {
       headers: getAuthHeaders()
     });
 
@@ -77,7 +76,7 @@ export async function getUserProfile(userDid: string): Promise<UserProfile> {
       const profile = await response.json();
       
       // Cache successful result
-      profileResultCache.set(userDid, { profile, timestamp: Date.now() });
+      profileResultCache.set(userPnIdentifier, { profile, timestamp: Date.now() });
       
       return profile;
   } catch (error) {
@@ -89,25 +88,25 @@ export async function getUserProfile(userDid: string): Promise<UserProfile> {
       return { displayName: undefined, profileImageFileId: undefined };
     } finally {
       // Remove from request cache after request completes
-      profileRequestCache.delete(userDid);
+      profileRequestCache.delete(userPnIdentifier);
   }
   })();
 
   // Cache the request
-  profileRequestCache.set(userDid, request);
+  profileRequestCache.set(userPnIdentifier, request);
   return request;
 }
 
 /**
  * Update display name
  */
-export async function updateDisplayName(userDid: string, displayName: string): Promise<void> {
+export async function updateDisplayName(userPnIdentifier: string, displayName: string): Promise<void> {
   try {
     const response = await fetch(`${API_ENDPOINT}/api/profile/display-name`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        userDid,
+        userPnIdentifier,
         displayName
       })
     });

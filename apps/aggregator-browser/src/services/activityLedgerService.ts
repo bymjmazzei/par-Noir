@@ -42,7 +42,7 @@ export class ActivityLedgerService {
    * Get user's activities
    */
   static async getActivities(
-    userDid: string,
+    userPnIdentifier: string,
     options?: {
       limit?: number;
       offset?: number;
@@ -50,7 +50,7 @@ export class ActivityLedgerService {
     }
   ): Promise<ActivityListResponse> {
     const params = new URLSearchParams();
-    params.append('userDid', userDid);
+    params.append('userPnIdentifier', userPnIdentifier);
     if (options?.limit) params.append('limit', options.limit.toString());
     if (options?.offset) params.append('offset', options.offset.toString());
     if (options?.activityType) params.append('activityType', options.activityType);

@@ -175,7 +175,7 @@ export class PreferencesSheetsService {
       limit?: number;
       offset?: number;
       preferenceType?: PreferenceType;
-      userDid?: string;
+      userPnIdentifier?: string;
     }
   ): Promise<{ interactions: PreferenceInteraction[]; total: number }> {
     const auth = new google.auth.OAuth2();
@@ -220,8 +220,8 @@ export class PreferencesSheetsService {
     }
 
     // Filter by user DID if specified
-    if (options?.userDid) {
-      interactions = interactions.filter(i => i.user_did === options.userDid);
+    if (options?.userPnIdentifier) {
+      interactions = interactions.filter(i => i.user_did === options.userPnIdentifier);
     }
 
     // Sort by created_at descending (most recent first)

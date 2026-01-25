@@ -143,7 +143,7 @@ export class FeedService {
   /**
    * Check if user has access to feed (owner or delegate)
    */
-  static async hasFeedAccess(feedId: string, userDid: string, requiredPermission: 'read' | 'write' | 'manage' = 'read'): Promise<boolean> {
+  static async hasFeedAccess(feedId: string, userPnIdentifier: string, requiredPermission: 'read' | 'write' | 'manage' = 'read'): Promise<boolean> {
     const db = getDatabasePool();
     
     // Check if user is owner
@@ -152,7 +152,7 @@ export class FeedService {
       return false;
     }
 
-    if (feed.creatorId === userDid) {
+    if (feed.creatorId === userPnIdentifier) {
       return true; // Owner has all permissions
     }
 
@@ -161,7 +161,7 @@ export class FeedService {
       SELECT permissions FROM feed_delegations 
       WHERE feed_id = $1 AND delegate_did = $2
       LIMIT 1
-    `, [feedId, userDid]);
+      `, [feedId, userPnIdentifier]);
 
     if (delegationResult.rows.length === 0) {
       return false;
@@ -343,7 +343,7 @@ export class FeedService {
    * Creator stores subscriber info on their Google Drive
    * Subscriber stores local reference (handled by frontend)
    */
-  static async subscribeToFeed(feedId: string, userDid: string, creatorGoogleTokens?: any): Promise<boolean> {
+  static async subscribeToFeed(feedId: string, userPnIdentifier: string, creatorGoogleTokens?: any): Promise<boolean> {
     const db = getDatabasePool();
     
     try {
@@ -355,7 +355,7 @@ export class FeedService {
         SELECT subscription_id FROM feed_subscriptions 
         WHERE feed_id = $1 AND user_did = $2
         LIMIT 1
-      `, [feedId, userDid]);
+      `, [feedId, userPnIdentifier]);
       
       const isNewSubscription = existing.rows.length === 0;
       if (!feed) {
@@ -369,7 +369,7 @@ export class FeedService {
         INSERT INTO feed_subscriptions (feed_id, user_did)
         VALUES ($1, $2)
         ON CONFLICT (feed_id, user_did) DO NOTHING
-      `, [feedId, userDid]);
+      `, [feedId, userPnIdentifier]);
 
       // Add to creator subscriber index (database)
       await db.query(`
@@ -377,7 +377,7 @@ export class FeedService {
         VALUES ($1, $2, $3)
         ON CONFLICT (creator_did, subscriber_did, feed_id) 
         DO UPDATE SET subscribed_at = NOW()
-      `, [creatorDid, userDid, feedId]);
+      `, [creatorDid, userPnIdentifier, feedId]);
 
       // Store subscriber info on creator's Google Drive (if creator has Drive connected)
       if (creatorGoogleTokens) {
@@ -385,7 +385,7 @@ export class FeedService {
         await CreatorSubscriberStorage.storeSubscriberOnCreatorDrive(
           creatorDid,
           feedId,
-          userDid,
+          userPnIdentifier,
           creatorGoogleTokens
         );
       }
@@ -410,7 +410,7 @@ export class FeedService {
    * Unsubscribe from feed
    * Removes from database and creator's Google Drive
    */
-  static async unsubscribeFromFeed(feedId: string, userDid: string, creatorGoogleTokens?: any): Promise<boolean> {
+  static async unsubscribeFromFeed(feedId: string, userPnIdentifier: string, creatorGoogleTokens?: any): Promise<boolean> {
     const db = getDatabasePool();
     
     try {
@@ -426,13 +426,13 @@ export class FeedService {
       await db.query(`
         DELETE FROM feed_subscriptions 
         WHERE feed_id = $1 AND user_did = $2
-      `, [feedId, userDid]);
+      `, [feedId, userPnIdentifier]);
 
       // Remove from creator subscriber index
       await db.query(`
         DELETE FROM creator_subscriber_index
         WHERE creator_did = $1 AND subscriber_did = $2 AND feed_id = $3
-      `, [creatorDid, userDid, feedId]);
+      `, [creatorDid, userPnIdentifier, feedId]);
 
       // Remove from creator's Google Drive (if creator has Drive connected)
       if (creatorGoogleTokens) {
@@ -440,7 +440,7 @@ export class FeedService {
         await CreatorSubscriberStorage.removeSubscriberFromCreatorDrive(
           creatorDid,
           feedId,
-          userDid,
+          userPnIdentifier,
           creatorGoogleTokens
         );
       }
@@ -495,14 +495,14 @@ export class FeedService {
   /**
    * Check if user is subscribed to feed
    */
-  static async isSubscribed(feedId: string, userDid: string): Promise<boolean> {
+  static async isSubscribed(feedId: string, userPnIdentifier: string): Promise<boolean> {
     const db = getDatabasePool();
     
     const result = await db.query(`
       SELECT 1 FROM feed_subscriptions 
       WHERE feed_id = $1 AND user_did = $2
       LIMIT 1
-    `, [feedId, userDid]);
+      `, [feedId, userPnIdentifier]);
 
     return result.rows.length > 0;
   }
@@ -510,7 +510,7 @@ export class FeedService {
   /**
    * Get user's subscriptions
    */
-  static async getUserSubscriptions(userDid: string): Promise<Feed[]> {
+  static async getUserSubscriptions(userPnIdentifier: string): Promise<Feed[]> {
     const db = getDatabasePool();
     
     const result = await db.query<FeedRow>(`
@@ -518,7 +518,7 @@ export class FeedService {
       INNER JOIN feed_subscriptions fs ON f.feed_id = fs.feed_id
       WHERE fs.user_did = $1
       ORDER BY fs.subscribed_at DESC
-    `, [userDid]);
+    `, [userPnIdentifier]);
 
     return result.rows.map(row => this.rowToFeed(row));
   }
@@ -760,7 +760,7 @@ export class FeedService {
    * Get recommended feeds for user (based on their subscriptions and categories)
    */
   static async getRecommendedFeeds(filters: {
-    userDid: string;
+    userPnIdentifier: string;
     limit?: number;
   }): Promise<Feed[]> {
     const db = getDatabasePool();
@@ -772,7 +772,7 @@ export class FeedService {
       INNER JOIN feed_subscriptions fs ON f.feed_id = fs.feed_id
       WHERE fs.user_did = $1
         AND f.feed_category IS NOT NULL
-    `, [filters.userDid]);
+    `, [filters.userPnIdentifier]);
 
     const userCategories = userCategoriesResult.rows.map(row => row.feed_category);
 
@@ -790,7 +790,7 @@ export class FeedService {
           AND fs2.user_did = $1
         )
     `;
-    const params: any[] = [filters.userDid];
+    const params: any[] = [filters.userPnIdentifier];
     let paramCount = 1;
 
     // Prioritize feeds in categories user already subscribes to

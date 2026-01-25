@@ -302,7 +302,7 @@ export class PreferencesService {
   private static async logPreferenceInteractions(
     accessToken: string,
     metadataFolderId: string,
-    userDid: string,
+    userPnIdentifier: string,
     existingPreferences: UserPreferences | null,
     updatedPreferences: UserPreferences,
     changedPreferences: Partial<UserPreferences>
@@ -321,7 +321,7 @@ export class PreferencesService {
         const interactionId = crypto.randomUUID();
         await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
           interaction_id: interactionId,
-          user_did: userDid,
+          user_pn_identifier: userPnIdentifier,
           preference_type: 'display_name',
           action_type: existingPreferences?.displayName ? 'update' : 'add',
           previous_value: existingPreferences?.displayName ? JSON.stringify(existingPreferences.displayName) : undefined,
@@ -334,7 +334,7 @@ export class PreferencesService {
         const interactionId = crypto.randomUUID();
         await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
           interaction_id: interactionId,
-          user_did: userDid,
+          user_pn_identifier: userPnIdentifier,
           preference_type: 'profile_image',
           action_type: existingPreferences?.profileImageFileId ? 'update' : 'add',
           previous_value: existingPreferences?.profileImageFileId ? JSON.stringify(existingPreferences.profileImageFileId) : undefined,
@@ -347,7 +347,7 @@ export class PreferencesService {
         const interactionId = crypto.randomUUID();
         await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
           interaction_id: interactionId,
-          user_did: userDid,
+          user_pn_identifier: userPnIdentifier,
           preference_type: 'curated_feed_preferences',
           action_type: existingPreferences?.curatedFeedPreferences ? 'update' : 'add',
           previous_value: existingPreferences?.curatedFeedPreferences ? JSON.stringify(existingPreferences.curatedFeedPreferences) : undefined,
@@ -360,7 +360,7 @@ export class PreferencesService {
         const interactionId = crypto.randomUUID();
         await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
           interaction_id: interactionId,
-          user_did: userDid,
+          user_pn_identifier: userPnIdentifier,
           preference_type: 'subscribed_feed_ids',
           action_type: 'update',
           previous_value: existingPreferences?.subscribedFeedIds ? JSON.stringify(existingPreferences.subscribedFeedIds) : undefined,
@@ -376,7 +376,7 @@ export class PreferencesService {
         const interactionId = crypto.randomUUID();
         await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
           interaction_id: interactionId,
-          user_did: userDid,
+          user_pn_identifier: userPnIdentifier,
           preference_type: 'me_page_sort_order',
           action_type: existingPreferences?.mePageSortOrder ? 'update' : 'add',
           previous_value: existingPreferences?.mePageSortOrder ? JSON.stringify(existingPreferences.mePageSortOrder) : undefined,
@@ -399,7 +399,7 @@ export class PreferencesService {
   static async addTagPreference(
     accessToken: string,
     metadataFolderId: string,
-    userDid: string, // Actually the pnIdentifier
+    userPnIdentifier: string, // Actually the pnIdentifier
     tagId: string,
     preference: 'like' | 'dislike' | 'block' | 'subscribe',
     action: UserTagPreference['action'],
@@ -409,8 +409,8 @@ export class PreferencesService {
       metadata?: UserTagPreference['metadata'];
     }
   ): Promise<void> {
-    // Use userDid (which is actually pnIdentifier) for cache lookup
-    const existingPreferences = await this.getPreferencesFile(accessToken, metadataFolderId, userDid);
+    // Use userPnIdentifier for cache lookup
+    const existingPreferences = await this.getPreferencesFile(accessToken, metadataFolderId, userPnIdentifier);
     const tagPreferences = existingPreferences?.tagPreferences || [];
     
     const now = new Date().toISOString();
@@ -450,7 +450,7 @@ export class PreferencesService {
       const interactionId = crypto.randomUUID();
       await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
         interaction_id: interactionId,
-        user_did: userDid,
+        user_pn_identifier: userPnIdentifier,
         preference_type: 'tag_preference',
         action_type: action, // Use the action directly (swipe_like, swipe_dislike, etc.)
         previous_value: existingTagPreference ? JSON.stringify(existingTagPreference) : undefined,
@@ -466,7 +466,7 @@ export class PreferencesService {
       console.warn('[PreferencesService] Failed to log tag preference interaction:', error);
     }
 
-    await this.updatePreferencesFile(accessToken, metadataFolderId, userDid, {
+    await this.updatePreferencesFile(accessToken, metadataFolderId, userPnIdentifier, {
       tagPreferences
     });
   }
@@ -478,11 +478,11 @@ export class PreferencesService {
   static async removeTagPreference(
     accessToken: string,
     metadataFolderId: string,
-    userDid: string, // Actually the pnIdentifier
+    userPnIdentifier: string, // Actually the pnIdentifier
     tagId: string
   ): Promise<void> {
-    // Use userDid (which is actually pnIdentifier) for cache lookup
-    const existingPreferences = await this.getPreferencesFile(accessToken, metadataFolderId, userDid);
+    // Use userPnIdentifier for cache lookup
+    const existingPreferences = await this.getPreferencesFile(accessToken, metadataFolderId, userPnIdentifier);
     if (!existingPreferences?.tagPreferences) {
       return;
     }
@@ -509,7 +509,7 @@ export class PreferencesService {
         const now = new Date().toISOString();
         await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
           interaction_id: interactionId,
-          user_did: userDid,
+          user_pn_identifier: userPnIdentifier,
           preference_type: 'tag_preference',
           action_type: 'remove',
           previous_value: JSON.stringify(existingTagPreference),
@@ -526,7 +526,7 @@ export class PreferencesService {
       }
     }
 
-    await this.updatePreferencesFile(accessToken, metadataFolderId, userDid, {
+    await this.updatePreferencesFile(accessToken, metadataFolderId, userPnIdentifier, {
       tagPreferences
     });
   }

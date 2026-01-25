@@ -17,7 +17,7 @@ export interface FeedSubscription {
  * No central server needed - uses distributed pubsub
  */
 export async function subscribeToFeed(
-  userDid: string,
+  userPnIdentifier: string,
   creatorDid: string,
   feedId: string
 ): Promise<FeedSubscription> {
@@ -30,7 +30,7 @@ export async function subscribeToFeed(
     };
 
     // Store subscription locally
-    const subscriptionsKey = `pn_feed_subscriptions_${userDid}`;
+    const subscriptionsKey = `pn_feed_subscriptions_${userPnIdentifier}`;
     const existing = localStorage.getItem(subscriptionsKey);
     const subscriptions: FeedSubscription[] = existing ? JSON.parse(existing) : [];
     
@@ -46,7 +46,7 @@ export async function subscribeToFeed(
     const subscriptionCid = await ipfsService.uploadToIPFS(JSON.stringify(subscription));
     
     // Store CID reference
-    localStorage.setItem(`pn_subscription_cid_${userDid}_${feedId}`, subscriptionCid);
+    localStorage.setItem(`pn_subscription_cid_${userPnIdentifier}_${feedId}`, subscriptionCid);
 
     return subscription;
   } catch (error) {
@@ -59,12 +59,12 @@ export async function subscribeToFeed(
  * Unsubscribe from a feed
  */
 export async function unsubscribeFromFeed(
-  userDid: string,
+  userPnIdentifier: string,
   creatorDid: string,
   feedId: string
 ): Promise<void> {
   try {
-    const subscriptionsKey = `pn_feed_subscriptions_${userDid}`;
+    const subscriptionsKey = `pn_feed_subscriptions_${userPnIdentifier}`;
     const existing = localStorage.getItem(subscriptionsKey);
     if (!existing) return;
     
@@ -76,7 +76,7 @@ export async function unsubscribeFromFeed(
     localStorage.setItem(subscriptionsKey, JSON.stringify(subscriptions));
     
     // Remove CID reference
-    localStorage.removeItem(`pn_subscription_cid_${userDid}_${feedId}`);
+    localStorage.removeItem(`pn_subscription_cid_${userPnIdentifier}_${feedId}`);
   } catch (error) {
     console.error('Failed to unsubscribe from feed:', error);
   }
@@ -85,9 +85,9 @@ export async function unsubscribeFromFeed(
 /**
  * Get user's feed subscriptions
  */
-export async function getFeedSubscriptions(userDid: string): Promise<FeedSubscription[]> {
+export async function getFeedSubscriptions(userPnIdentifier: string): Promise<FeedSubscription[]> {
   try {
-    const subscriptionsKey = `pn_feed_subscriptions_${userDid}`;
+    const subscriptionsKey = `pn_feed_subscriptions_${userPnIdentifier}`;
     const existing = localStorage.getItem(subscriptionsKey);
     
     if (!existing) {

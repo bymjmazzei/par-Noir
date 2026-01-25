@@ -34,7 +34,7 @@ interface Following {
 interface ConnectionsPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  userDid: string;
+  userPnIdentifier: string;
   onCreatorClick?: (creatorId: string) => void;
 }
 
@@ -53,7 +53,7 @@ function getAuthHeaders(): HeadersInit {
   return headers;
 }
 
-export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: ConnectionsPanelProps) {
+export function ConnectionsPanel({ isOpen, onClose, userPnIdentifier, onCreatorClick }: ConnectionsPanelProps) {
   const { userState } = useUserState();
   const [activeTab, setActiveTab] = useState<'connections' | 'followers' | 'following'>('connections');
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -67,10 +67,10 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
   const [processingConnections, setProcessingConnections] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (isOpen && userDid) {
+    if (isOpen && userPnIdentifier) {
       loadData();
     }
-  }, [isOpen, userDid, activeTab]);
+  }, [isOpen, userPnIdentifier, activeTab]);
 
   const loadData = async () => {
     setLoading(true);
@@ -80,21 +80,21 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
       if (activeTab === 'connections') {
         // Load connections and pending requests
         const [connectionsData, pendingData] = await Promise.all([
-          getConnections(userDid),
-          getPendingRequests(userDid)
+          getConnections(userPnIdentifier),
+          getPendingRequests(userPnIdentifier)
         ]);
         setConnections(connectionsData);
         setPendingRequests(pendingData);
         
         // Load display names for all connections and pending requests
-        const allUserDids = new Set<string>();
-        connectionsData.forEach(c => allUserDids.add(c.userPnIdentifier));
-        pendingData.sent.forEach(c => allUserDids.add(c.userPnIdentifier));
-        pendingData.received.forEach(c => allUserDids.add(c.userPnIdentifier));
+        const allUserPnIdentifiers = new Set<string>();
+        connectionsData.forEach(c => allUserPnIdentifiers.add(c.userPnIdentifier));
+        pendingData.sent.forEach(c => allUserPnIdentifiers.add(c.userPnIdentifier));
+        pendingData.received.forEach(c => allUserPnIdentifiers.add(c.userPnIdentifier));
         
-        loadDisplayNames(Array.from(allUserDids));
+        loadDisplayNames(Array.from(allUserPnIdentifiers));
       } else if (activeTab === 'followers') {
-        const response = await fetch(`${API_ENDPOINT}/api/connections/followers?userDid=${userDid}`, {
+        const response = await fetch(`${API_ENDPOINT}/api/connections/followers?userPnIdentifier=${userPnIdentifier}`, {
           headers: getAuthHeaders()
         });
         if (response.ok) {
@@ -102,7 +102,7 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
           setFollowers(data.followers || []);
         }
       } else if (activeTab === 'following') {
-        const response = await fetch(`${API_ENDPOINT}/api/connections/following?userDid=${userDid}`, {
+        const response = await fetch(`${API_ENDPOINT}/api/connections/following?userPnIdentifier=${userPnIdentifier}`, {
           headers: getAuthHeaders()
         });
         if (response.ok) {
@@ -118,26 +118,26 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
     }
   };
 
-  const loadDisplayNames = async (userDids: string[]) => {
-    const toLoad = userDids.filter(did => !displayNames.has(did) && !loadingNames.has(did));
+  const loadDisplayNames = async (userPnIdentifiers: string[]) => {
+    const toLoad = userPnIdentifiers.filter(pnId => !displayNames.has(pnId) && !loadingNames.has(pnId));
     if (toLoad.length === 0) return;
 
     setLoadingNames(prev => new Set([...prev, ...toLoad]));
 
     try {
-      const namePromises = toLoad.map(async (did) => {
+      const namePromises = toLoad.map(async (pnId) => {
         try {
-          const profile = await getUserProfile(did);
-          return { did, name: profile.displayName || did };
+          const profile = await getUserProfile(pnId);
+          return { pnId, name: profile.displayName || pnId };
         } catch (error) {
-          return { did, name: did };
+          return { pnId, name: pnId };
         }
       });
 
       const results = await Promise.all(namePromises);
       setDisplayNames(prev => {
         const next = new Map(prev);
-        results.forEach(({ did, name }) => next.set(did, name));
+        results.forEach(({ pnId, name }) => next.set(pnId, name));
         return next;
       });
     } catch (error) {
@@ -145,19 +145,19 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
     } finally {
       setLoadingNames(prev => {
         const next = new Set(prev);
-        toLoad.forEach(did => next.delete(did));
+        toLoad.forEach(pnId => next.delete(pnId));
         return next;
       });
     }
   };
 
-  const getDisplayName = (userDid: string): string => {
-    return displayNames.get(userDid) || userDid;
+  const getDisplayName = (userPnIdentifier: string): string => {
+    return displayNames.get(userPnIdentifier) || userPnIdentifier;
   };
 
-  const handleConnect = async (targetUserDid: string) => {
+  const handleConnect = async (targetUserPnIdentifier: string) => {
     try {
-      await sendConnectionRequest(userDid, targetUserDid);
+      await sendConnectionRequest(userPnIdentifier, targetUserPnIdentifier);
       await loadData();
     } catch (error) {
       console.error('Failed to connect:', error);
@@ -167,7 +167,7 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
 
   const handleDisconnect = async (connectionId: string) => {
     try {
-      await removeConnection(connectionId, userDid);
+      await removeConnection(connectionId, userPnIdentifier);
       await loadData();
     } catch (error) {
       console.error('Failed to disconnect:', error);
@@ -190,7 +190,7 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
     }));
 
     try {
-      await acceptConnectionRequest(connectionId, userDid);
+      await acceptConnectionRequest(connectionId, userPnIdentifier);
       await loadData();
     } catch (error) {
       // Restore request on error
@@ -227,7 +227,7 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
     }));
 
     try {
-      await rejectConnectionRequest(connectionId, userDid);
+      await rejectConnectionRequest(connectionId, userPnIdentifier);
       await loadData();
     } catch (error) {
       // Restore request on error
@@ -251,7 +251,7 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
 
   const handleCancel = async (connectionId: string) => {
     try {
-      await rejectConnectionRequest(connectionId, userDid);
+      await rejectConnectionRequest(connectionId, userPnIdentifier);
       await loadData();
     } catch (error) {
       console.error('Failed to cancel:', error);
@@ -264,11 +264,11 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
       const response = await fetch(`${API_ENDPOINT}/api/connections/follow`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({
-          userDid,
-          targetType,
-          targetId: targetPnIdentifier // API still expects targetId in request body
-        })
+          body: JSON.stringify({
+            userPnIdentifier,
+            targetType,
+            targetId: targetPnIdentifier // API still expects targetId in request body
+          })
       });
 
       if (response.ok) {
@@ -285,7 +285,7 @@ export function ConnectionsPanel({ isOpen, onClose, userDid, onCreatorClick }: C
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
-          userDid,
+          userPnIdentifier,
           targetType,
           targetId: targetPnIdentifier // API still expects targetId in request body
         })

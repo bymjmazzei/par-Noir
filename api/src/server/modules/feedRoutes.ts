@@ -842,12 +842,12 @@ export function setupFeedRoutes(app: any) {
   });
 
   /**
-   * GET /api/users/:userDid/delegated-feeds
+   * GET /api/users/:userPnIdentifier/delegated-feeds
    * Get feeds where user is a delegate
    */
-  app.get('/api/users/:userDid/delegated-feeds', async (req: Request, res: Response) => {
+  app.get('/api/users/:userPnIdentifier/delegated-feeds', async (req: Request, res: Response) => {
     try {
-      const { userDid } = req.params;
+      const { userPnIdentifier } = req.params;
 
       // Get authenticated user
       const authHeader = req.headers.authorization;
@@ -864,11 +864,11 @@ export function setupFeedRoutes(app: any) {
       }
 
       // Verify user is requesting their own delegated feeds
-      // Check both DID and pnIdentifier since userDid param could be either format
-      const isAuthorized = tokenPayload.did === userDid || 
-                          tokenPayload.pnIdentifier === userDid ||
-                          (userDid.startsWith('pn-') && tokenPayload.pnIdentifier === userDid) ||
-                          (!userDid.startsWith('pn-') && tokenPayload.did === userDid);
+      // Check both DID and pnIdentifier since userPnIdentifier param could be either format
+      const isAuthorized = tokenPayload.did === userPnIdentifier || 
+                          tokenPayload.pnIdentifier === userPnIdentifier ||
+                          (userPnIdentifier.startsWith('pn-') && tokenPayload.pnIdentifier === userPnIdentifier) ||
+                          (!userPnIdentifier.startsWith('pn-') && tokenPayload.did === userPnIdentifier);
       
       if (!isAuthorized) {
         return res.status(403).json({ error: 'Not authorized' });
@@ -880,7 +880,7 @@ export function setupFeedRoutes(app: any) {
         INNER JOIN feed_delegations fd ON f.feed_id = fd.feed_id
         WHERE fd.delegate_did = $1
         ORDER BY fd.created_at DESC
-      `, [userDid]);
+      `, [userPnIdentifier]);
 
       const feeds = result.rows.map(row => {
         // Convert database row to FeedRow format

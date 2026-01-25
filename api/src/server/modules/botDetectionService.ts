@@ -22,7 +22,7 @@ export class BotDetectionService {
   /**
    * Calculate bot score for a user based on engagement patterns
    */
-  static async calculateBotScore(userDid: string): Promise<BotScoreResult> {
+  static async calculateBotScore(userPnIdentifier: string): Promise<BotScoreResult> {
     const db = getDatabasePool();
     
     // Get engagement patterns from last 7 days
@@ -40,7 +40,7 @@ export class BotDetectionService {
       FROM engagement
       WHERE user_did = $1
       AND created_at > NOW() - INTERVAL '7 days'
-    `, [userDid]);
+    `, [userPnIdentifier]);
 
     if (engagementPattern.rows.length === 0) {
       return {
@@ -97,14 +97,14 @@ export class BotDetectionService {
     }
 
     // Signal 5: No viewing time
-    const viewingScore = await this.analyzeViewingBehavior(userDid);
+    const viewingScore = await this.analyzeViewingBehavior(userPnIdentifier);
     if (viewingScore.noViewingTime) {
       signals.noViewingTime = 0.3;
       botScore += 0.3;
     }
 
     // Signal 6: Burst patterns
-    const burstScore = await this.detectBurstPatterns(userDid);
+    const burstScore = await this.detectBurstPatterns(userPnIdentifier);
     signals.burstPattern = burstScore;
     botScore += burstScore * 0.2;
 
@@ -118,7 +118,7 @@ export class BotDetectionService {
   /**
    * Analyze viewing behavior to detect if user actually views content
    */
-  private static async analyzeViewingBehavior(userDid: string): Promise<{ noViewingTime: boolean }> {
+  private static async analyzeViewingBehavior(userPnIdentifier: string): Promise<{ noViewingTime: boolean }> {
     const db = getDatabasePool();
     
     const views = await db.query(`
@@ -126,7 +126,7 @@ export class BotDetectionService {
       FROM file_views
       WHERE user_did = $1
       AND viewed_at > NOW() - INTERVAL '7 days'
-    `, [userDid]);
+    `, [userPnIdentifier]);
 
     if (views.rows.length === 0 || !views.rows[0].avg_view_time) {
       return { noViewingTime: false }; // No data = neutral
@@ -139,7 +139,7 @@ export class BotDetectionService {
   /**
    * Detect burst patterns (rapid-fire actions followed by silence)
    */
-  private static async detectBurstPatterns(userDid: string): Promise<number> {
+  private static async detectBurstPatterns(userPnIdentifier: string): Promise<number> {
     const db = getDatabasePool();
     
     // Check for bursts: many actions in short time, then silence
@@ -158,7 +158,7 @@ export class BotDetectionService {
         COUNT(*) FILTER (WHERE time_since_last < 5) as rapid_actions,
         COUNT(*) as total_actions
       FROM action_times
-    `, [userDid]);
+    `, [userPnIdentifier]);
 
     if (bursts.rows.length === 0 || !bursts.rows[0].total_actions) {
       return 0;

@@ -7,7 +7,7 @@
 import { getDatabasePool } from '../utils/database';
 
 export interface UserTagPreference {
-  userDid: string;
+  userPnIdentifier: string;
   tagId: string; // Normalized tag ID
   preference: 'like' | 'dislike' | 'block' | 'subscribe';
   sourceFileId?: string; // Which file triggered this preference
@@ -28,7 +28,7 @@ export class UserPreferenceService {
    * Store or update a user tag preference
    */
   static async setTagPreference(
-    userDid: string,
+    userPnIdentifier: string,
     tagId: string,
     preference: 'like' | 'dislike' | 'block' | 'subscribe',
     action: UserTagPreference['action'],
@@ -49,7 +49,7 @@ export class UserPreferenceService {
         SELECT preference_id FROM user_tag_preferences 
         WHERE user_did = $1 AND tag_id = $2
         LIMIT 1
-      `, [userDid, tagId]);
+      `, [userPnIdentifier, tagId]);
 
       if (existing.rows.length > 0) {
         // Update existing preference
@@ -69,7 +69,7 @@ export class UserPreferenceService {
           options?.sourceFileId || null,
           options?.metadata ? JSON.stringify(options.metadata) : null,
           now,
-          userDid,
+          userPnIdentifier,
           tagId
         ]);
       } else {
@@ -81,7 +81,7 @@ export class UserPreferenceService {
           )
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         `, [
-          userDid,
+          userPnIdentifier,
           tagId,
           preference,
           action,
@@ -102,7 +102,7 @@ export class UserPreferenceService {
    * Get user's preference for a tag
    */
   static async getTagPreference(
-    userDid: string,
+    userPnIdentifier: string,
     tagId: string
   ): Promise<UserTagPreference | null> {
     const db = getDatabasePool();
@@ -112,7 +112,7 @@ export class UserPreferenceService {
         SELECT * FROM user_tag_preferences 
         WHERE user_did = $1 AND tag_id = $2
         LIMIT 1
-      `, [userDid, tagId]);
+      `, [userPnIdentifier, tagId]);
 
       if (result.rows.length === 0) {
         return null;
@@ -120,7 +120,7 @@ export class UserPreferenceService {
 
       const row = result.rows[0];
       return {
-        userDid: row.user_did,
+        userPnIdentifier: row.user_did,
         tagId: row.tag_id,
         preference: row.preference,
         sourceFileId: row.source_file_id,
@@ -140,7 +140,7 @@ export class UserPreferenceService {
    * Get all user tag preferences
    */
   static async getUserTagPreferences(
-    userDid: string
+    userPnIdentifier: string
   ): Promise<Map<string, UserTagPreference>> {
     const db = getDatabasePool();
     
@@ -149,13 +149,13 @@ export class UserPreferenceService {
         SELECT * FROM user_tag_preferences 
         WHERE user_did = $1
         ORDER BY updated_at DESC
-      `, [userDid]);
+      `, [userPnIdentifier]);
 
       const preferences = new Map<string, UserTagPreference>();
       
       result.rows.forEach(row => {
         preferences.set(row.tag_id, {
-          userDid: row.user_did,
+          userPnIdentifier: row.user_did,
           tagId: row.tag_id,
           preference: row.preference,
           sourceFileId: row.source_file_id,
@@ -178,7 +178,7 @@ export class UserPreferenceService {
    * Remove a tag preference
    */
   static async removeTagPreference(
-    userDid: string,
+    userPnIdentifier: string,
     tagId: string
   ): Promise<void> {
     const db = getDatabasePool();
@@ -187,7 +187,7 @@ export class UserPreferenceService {
       await db.query(`
         DELETE FROM user_tag_preferences 
         WHERE user_did = $1 AND tag_id = $2
-      `, [userDid, tagId]);
+      `, [userPnIdentifier, tagId]);
     } catch (error) {
       console.error('Failed to remove tag preference:', error);
       throw error;

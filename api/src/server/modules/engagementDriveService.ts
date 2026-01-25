@@ -10,7 +10,7 @@ import { EngagementSheetsService, UserComment } from './engagementSheetsService'
 export type { UserComment };
 
 export interface UserEngagement {
-  userDid: string;
+  userPnIdentifier: string;
   updatedAt: string;
   likes: string[]; // File IDs
   dislikes: string[]; // File IDs
@@ -27,7 +27,7 @@ export class EngagementDriveService {
   static async getEngagementFile(
     accessToken: string,
     metadataFolderId: string,
-    userDid?: string
+    userPnIdentifier?: string
   ): Promise<UserEngagement | null> {
     try {
       // Get or create Sheets file
@@ -46,7 +46,7 @@ export class EngagementDriveService {
       ]);
 
       return {
-        userDid: userDid || '',
+        userPnIdentifier: userPnIdentifier || '',
         updatedAt: new Date().toISOString(),
         likes,
         dislikes,
@@ -66,7 +66,7 @@ export class EngagementDriveService {
   static async updateEngagementFile(
     accessToken: string,
     metadataFolderId: string,
-    userDid: string,
+    userPnIdentifier: string,
     engagement: Partial<UserEngagement>
   ): Promise<UserEngagement> {
 
@@ -77,7 +77,7 @@ export class EngagementDriveService {
     );
 
     // Get existing engagement
-    const existing = await this.getEngagementFile(accessToken, metadataFolderId, userDid);
+    const existing = await this.getEngagementFile(accessToken, metadataFolderId, userPnIdentifier);
 
     // Update likes if provided
     if (engagement.likes !== undefined) {
@@ -101,8 +101,8 @@ export class EngagementDriveService {
 
     // Similar logic for dislikes, shares, saves, comments...
     // For now, return the updated engagement
-    return await this.getEngagementFile(accessToken, metadataFolderId, userDid) || {
-      userDid,
+    return await this.getEngagementFile(accessToken, metadataFolderId, userPnIdentifier) || {
+      userPnIdentifier,
       updatedAt: new Date().toISOString(),
       likes: [],
       dislikes: [],
@@ -116,7 +116,7 @@ export class EngagementDriveService {
    * Toggle like for a file
    */
   static async toggleLike(
-    userDid: string,
+    userPnIdentifier: string,
     fileId: string,
     accessToken: string,
     metadataFolderId: string
@@ -155,7 +155,7 @@ export class EngagementDriveService {
    * Toggle dislike for a file
    */
   static async toggleDislike(
-    userDid: string,
+    userPnIdentifier: string,
     fileId: string,
     accessToken: string,
     metadataFolderId: string
@@ -225,7 +225,7 @@ export class EngagementDriveService {
    * Add a comment
    */
   static async addComment(
-    userDid: string,
+    userPnIdentifier: string,
     fileId: string,
     comment: Omit<UserComment, 'fileId'>,
     accessToken: string,
@@ -253,9 +253,9 @@ export class EngagementDriveService {
   static async getUserEngagement(
     accessToken: string,
     metadataFolderId: string,
-    userDid?: string
+    userPnIdentifier?: string
   ): Promise<UserEngagement | null> {
-    return await this.getEngagementFile(accessToken, metadataFolderId, userDid);
+    return await this.getEngagementFile(accessToken, metadataFolderId, userPnIdentifier);
   }
 }
 

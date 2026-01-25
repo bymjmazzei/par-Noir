@@ -9,11 +9,11 @@ import { NotificationService, Notification } from '../services/notificationServi
 import { formatTimestamp } from '../utils/formatTimestamp';
 
 interface NotificationListProps {
-  userDid: string;
+  userPnIdentifier: string;
   onPreferencesClick: () => void;
 }
 
-export function NotificationList({ userDid, onPreferencesClick }: NotificationListProps) {
+export function NotificationList({ userPnIdentifier, onPreferencesClick }: NotificationListProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +29,7 @@ export function NotificationList({ userDid, onPreferencesClick }: NotificationLi
 
     try {
       const currentOffset = reset ? 0 : offset;
-      const response = await NotificationService.getNotifications(userDid, {
+      const response = await NotificationService.getNotifications(userPnIdentifier, {
         limit: LIMIT,
         offset: currentOffset
       });
@@ -44,7 +44,7 @@ export function NotificationList({ userDid, onPreferencesClick }: NotificationLi
       setHasMore(response.notifications.length === LIMIT && response.total > currentOffset + response.notifications.length);
       
       // Update unread count
-      const unreadResponse = await NotificationService.getUnreadCount(userDid);
+      const unreadResponse = await NotificationService.getUnreadCount(userPnIdentifier);
       setUnreadCount(unreadResponse);
     } catch (err: any) {
       setError(err.message || 'Failed to load notifications');
@@ -61,11 +61,11 @@ export function NotificationList({ userDid, onPreferencesClick }: NotificationLi
       loadNotifications(true);
     }, 30000); // Every 30 seconds
     return () => clearInterval(interval);
-  }, [userDid]);
+  }, [userPnIdentifier]);
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {
-      await NotificationService.markAsRead(notificationId, userDid);
+      await NotificationService.markAsRead(notificationId, userPnIdentifier);
       setNotifications(prev =>
         prev.map(n => n.notification_id === notificationId ? { ...n, read: true } : n)
       );
@@ -77,7 +77,7 @@ export function NotificationList({ userDid, onPreferencesClick }: NotificationLi
 
   const handleMarkAllAsRead = async () => {
     try {
-      const marked = await NotificationService.markAllAsRead(userDid);
+      const marked = await NotificationService.markAllAsRead(userPnIdentifier);
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
       setUnreadCount(0);
     } catch (error) {

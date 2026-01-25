@@ -30,7 +30,7 @@ export interface UseFeedFilteringParams {
       } | null;
     };
   };
-  connectionsList: Array<{ connectionId: string; userDid: string; status: string; createdAt: string; acceptedAt?: string }>;
+  connectionsList: Array<{ connectionId: string; userPnIdentifier: string; status: string; createdAt: string; acceptedAt?: string }>;
   feeds: Feed[];
   viewMode: 'grid' | 'feed';
 }
@@ -114,10 +114,10 @@ export function useFeedFiltering({
     const applyConnectionFilter = (
       files: IndexedFile[],
       connectionFilter: 'all' | 'connections' | 'not_connections',
-      userDid: string,
+      userPnIdentifier: string,
       connections: Array<{
         connectionId: string;
-        userDid: string;
+        userPnIdentifier: string;
         status: string;
         createdAt: string;
         acceptedAt?: string;
@@ -126,8 +126,8 @@ export function useFeedFiltering({
       if (connectionFilter === 'all' || !userState.isUnlocked || connections.length === 0) {
         return files;
       }
-      const connectedDids = new Set<string>();
-      const userDidNormalized = normalizeId(userDid);
+      const connectedPnIdentifiers = new Set<string>();
+      const userPnIdentifierNormalized = normalizeId(userPnIdentifier);
       connections.forEach((conn) => {
         // Connection.userPnIdentifier is the other user's identifier in the connection
         if (!conn.userPnIdentifier) {
@@ -135,18 +135,18 @@ export function useFeedFiltering({
           return;
         }
         const otherUserPnIdentifier = normalizeId(conn.userPnIdentifier);
-        if (otherUserPnIdentifier && otherUserPnIdentifier !== userDidNormalized) {
-          connectedDids.add(otherUserPnIdentifier);
+        if (otherUserPnIdentifier && otherUserPnIdentifier !== userPnIdentifierNormalized) {
+          connectedPnIdentifiers.add(otherUserPnIdentifier);
         }
       });
       return files.filter((file) => {
         const fileCreatorId = getCreatorIdentifier(file);
         if (!fileCreatorId) return true;
         const fileCreatorNormalized = normalizeId(fileCreatorId);
-        if (fileCreatorNormalized === userDidNormalized) {
+        if (fileCreatorNormalized === userPnIdentifierNormalized) {
           return connectionFilter !== 'not_connections';
         }
-        const isConnected = connectedDids.has(fileCreatorNormalized);
+        const isConnected = connectedPnIdentifiers.has(fileCreatorNormalized);
         if (connectionFilter === 'connections') return isConnected;
         if (connectionFilter === 'not_connections') return !isConnected;
         return true;
@@ -176,7 +176,7 @@ export function useFeedFiltering({
 
     const processPublicFeed = (
       files: IndexedFile[],
-      connections: Array<{ connectionId: string; userDid: string; status: string; createdAt: string; acceptedAt?: string }>
+      connections: Array<{ connectionId: string; userPnIdentifier: string; status: string; createdAt: string; acceptedAt?: string }>
     ): IndexedFile[] => {
       let processed = files;
       if (curatedFeedPreferences && userState.pnIdentifier) {

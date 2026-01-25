@@ -1677,7 +1677,7 @@ export class AggregatorMetadataServiceDB {
   async updateEngagement(
     fileId: string,
     engagementType: 'like' | 'view' | 'share' | 'comment',
-    userDid?: string
+    userPnIdentifier?: string
   ): Promise<PublicMetadata | null> {
     const db = getDatabasePool();
 
@@ -1720,7 +1720,7 @@ export class AggregatorMetadataServiceDB {
       }
       engagement.engagementHistory.push({
         type: engagementType,
-        did: userDid,
+        pn_identifier: userPnIdentifier,
         timestamp: new Date().toISOString()
       });
 

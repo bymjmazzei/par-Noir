@@ -156,7 +156,7 @@ export class FeedService {
   /**
    * Subscribe to feed - stores subscription on user's cloud storage (like connection index)
    */
-  static async subscribeToFeed(feedId: string, userDid: string, creatorDid?: string): Promise<void> {
+  static async subscribeToFeed(feedId: string, userPnIdentifier: string, creatorPnIdentifier?: string): Promise<void> {
     // Store subscription via API - backend will save to user's cloud storage
     // Similar to how connection index is stored on user's Google Drive
     const session = PNOAuthService.loadSession();
@@ -172,7 +172,7 @@ export class FeedService {
       method: 'POST',
       headers,
       body: JSON.stringify({ 
-        userDid
+        userPnIdentifier
         // Backend will store this subscription in the user's cloud storage (Google Drive)
         // Similar to connection index storage pattern
       })
@@ -187,7 +187,7 @@ export class FeedService {
   /**
    * Unsubscribe from feed - removes from user's cloud storage
    */
-  static async unsubscribeFromFeed(feedId: string, userDid: string, creatorDid?: string): Promise<void> {
+  static async unsubscribeFromFeed(feedId: string, userPnIdentifier: string, creatorPnIdentifier?: string): Promise<void> {
     // Remove subscription via API - backend will remove from user's cloud storage
     const session = PNOAuthService.loadSession();
     const headers: HeadersInit = {
@@ -201,7 +201,7 @@ export class FeedService {
     const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/subscribe`, {
       method: 'DELETE',
       headers,
-      body: JSON.stringify({ userDid })
+      body: JSON.stringify({ userPnIdentifier })
     });
 
     if (!response.ok) {
@@ -213,8 +213,8 @@ export class FeedService {
   /**
    * Get user's subscriptions
    */
-  static async getUserSubscriptions(userDid: string): Promise<Feed[]> {
-    const response = await fetch(`${API_ENDPOINT}/api/users/${userDid}/subscriptions`);
+  static async getUserSubscriptions(userPnIdentifier: string): Promise<Feed[]> {
+    const response = await fetch(`${API_ENDPOINT}/api/users/${userPnIdentifier}/subscriptions`);
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to get subscriptions' }));
@@ -341,9 +341,9 @@ export class FeedService {
   /**
    * Get recommended feeds for user
    */
-  static async getRecommendedFeeds(userDid: string, limit?: number): Promise<Feed[]> {
+  static async getRecommendedFeeds(userPnIdentifier: string, limit?: number): Promise<Feed[]> {
     const params = new URLSearchParams();
-    params.append('userDid', userDid);
+    params.append('userPnIdentifier', userPnIdentifier);
     if (limit) params.append('limit', limit.toString());
 
     const response = await fetch(`${API_ENDPOINT}/api/feeds/recommended?${params.toString()}`);
@@ -360,7 +360,7 @@ export class FeedService {
   /**
    * Get delegated feeds for a user
    */
-  static async getDelegatedFeeds(userDid: string): Promise<Feed[]> {
+  static async getDelegatedFeeds(userPnIdentifier: string): Promise<Feed[]> {
     const session = PNOAuthService.loadSession();
     
     // Don't make request if no access token - user is not authenticated
@@ -373,7 +373,7 @@ export class FeedService {
       'Authorization': `Bearer ${session.accessToken}`
     };
 
-    const response = await fetch(`${API_ENDPOINT}/api/users/${userDid}/delegated-feeds`, {
+    const response = await fetch(`${API_ENDPOINT}/api/users/${userPnIdentifier}/delegated-feeds`, {
       headers
     });
 

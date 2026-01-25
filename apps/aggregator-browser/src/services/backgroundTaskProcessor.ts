@@ -793,10 +793,10 @@ async function processSaveToFeed(
   publicKey: string | undefined,
   accessToken: string
 ): Promise<void> {
-  const { fileId, userDid, isSaved } = task.metadata || {};
+  const { fileId, userPnIdentifier, isSaved } = task.metadata || {};
   
-  if (!fileId || !userDid) {
-    throw new Error('Missing required fields: fileId, userDid');
+  if (!fileId || !userPnIdentifier) {
+    throw new Error('Missing required fields: fileId, userPnIdentifier');
   }
 
   uploadQueueService.updateTaskProgress(task.id, 10);
@@ -804,11 +804,11 @@ async function processSaveToFeed(
   // Save or remove from saved feed
   if (isSaved) {
     // Remove from saved feed
-    await removeFromSavedFeed(userDid, fileId);
+    await removeFromSavedFeed(userPnIdentifier, fileId);
     uploadQueueService.updateTaskProgress(task.id, 60);
   } else {
     // Save to feed
-    await saveToFeed(userDid, fileId);
+    await saveToFeed(userPnIdentifier, fileId);
     uploadQueueService.updateTaskProgress(task.id, 60);
   }
 
@@ -820,7 +820,7 @@ async function processSaveToFeed(
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${accessToken}`
       },
-      body: JSON.stringify({ userDid })
+      body: JSON.stringify({ userPnIdentifier })
     });
   } catch (engagementErr) {
     console.warn('[BackgroundTaskProcessor] Failed to record save engagement:', engagementErr);
@@ -831,7 +831,7 @@ async function processSaveToFeed(
 
   uploadQueueService.setTaskResult(task.id, {
     fileId,
-    userDid,
+    userPnIdentifier,
     isSaved: !isSaved, // Toggle state
     success: true
   });

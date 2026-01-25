@@ -18,7 +18,7 @@ import { useUserState } from '../contexts/UserStateContext';
 interface InboxProps {
   onNotificationClick?: (notification: Notification) => void;
   initialThread?: {
-    participantDid: string;
+    participantPnIdentifier: string;
     participantName?: string;
   } | null;
   onCreatorClick?: (creatorId: string) => void;
@@ -28,7 +28,7 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
   const { userState } = useUserState();
   const [activeTab, setActiveTab] = useState<'messages' | 'notifications'>('messages');
   const [selectedThread, setSelectedThread] = useState<{
-    participantDid: string;
+    participantPnIdentifier: string;
     participantName?: string;
   } | null>(initialThread);
   const [showActivityLedger, setShowActivityLedger] = useState(false);
@@ -46,7 +46,7 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
   if (selectedThread) {
     return (
       <MessageThread
-        participantDid={selectedThread.participantDid}
+        participantPnIdentifier={selectedThread.participantPnIdentifier}
         participantName={selectedThread.participantName}
         onBack={() => setSelectedThread(null)}
       />
@@ -84,7 +84,7 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
         <ActivityLedgerPanel
           isOpen={showActivityLedger}
           onClose={() => setShowActivityLedger(false)}
-          userDid={userState.pnIdentifier}
+          userPnIdentifier={userState.pnIdentifier}
         />
       )}
 
@@ -101,7 +101,7 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
         <ConnectionsPanel
           isOpen={showConnectionsPanel}
           onClose={() => setShowConnectionsPanel(false)}
-          userDid={userState.pnIdentifier}
+          userPnIdentifier={userState.pnIdentifier}
           onCreatorClick={onCreatorClick}
         />
       )}
@@ -136,15 +136,15 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
       <div className="flex-1 overflow-hidden">
         {activeTab === 'messages' ? (
           <MessageList
-            onThreadSelect={(participantDid, participantName) => {
-              setSelectedThread({ participantDid, participantName });
+            onThreadSelect={(participantPnIdentifier, participantName) => {
+              setSelectedThread({ participantPnIdentifier, participantName });
             }}
           />
         ) : (
           <div className="h-full overflow-y-auto">
             {userState.isUnlocked && userState.pnIdentifier ? (
               <NotificationList
-                userDid={userState.pnIdentifier}
+                userPnIdentifier={userState.pnIdentifier}
                 onPreferencesClick={() => setShowNotificationPreferences(true)}
               />
             ) : (

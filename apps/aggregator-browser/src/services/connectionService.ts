@@ -45,8 +45,8 @@ export interface PendingRequests {
  * Uses Google Drive via API (no IPFS)
  */
 export async function sendConnectionRequest(
-  requesterDid: string,
-  recipientDid: string
+  requesterPnIdentifier: string,
+  recipientPnIdentifier: string
 ): Promise<Connection> {
   // Use Google Drive API directly (no IPFS)
   try {
@@ -54,8 +54,8 @@ export async function sendConnectionRequest(
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        requesterDid,
-        recipientDid
+        requesterPnIdentifier,
+        recipientPnIdentifier
       })
     });
 
@@ -90,7 +90,7 @@ export async function sendConnectionRequest(
  */
 export async function acceptConnectionRequest(
   connectionId: string,
-  userDid: string
+  userPnIdentifier: string
 ): Promise<void> {
   // Use Google Drive API directly
   try {
@@ -98,7 +98,7 @@ export async function acceptConnectionRequest(
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        userDid
+        userPnIdentifier
       })
     });
 
@@ -129,14 +129,14 @@ export async function acceptConnectionRequest(
  */
 export async function rejectConnectionRequest(
   connectionId: string,
-  userDid: string
+  userPnIdentifier: string
 ): Promise<void> {
   try {
     const response = await fetch(`${API_ENDPOINT}/api/connections/${connectionId}/reject`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        userDid
+        userPnIdentifier
       })
     });
 
@@ -166,10 +166,10 @@ export async function rejectConnectionRequest(
  * Get user's accepted connections
  * Uses Google Drive via API
  */
-export async function getConnections(userDid: string): Promise<Connection[]> {
+export async function getConnections(userPnIdentifier: string): Promise<Connection[]> {
   // Use Google Drive API directly
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/connections?userDid=${userDid}`, {
+    const response = await fetch(`${API_ENDPOINT}/api/connections?userPnIdentifier=${userPnIdentifier}`, {
       headers: getAuthHeaders()
     });
 
@@ -192,10 +192,10 @@ export async function getConnections(userDid: string): Promise<Connection[]> {
  * Get pending connection requests (both sent and received)
  * Uses Google Drive via API
  */
-export async function getPendingRequests(userDid: string): Promise<PendingRequests> {
+export async function getPendingRequests(userPnIdentifier: string): Promise<PendingRequests> {
   // Use Google Drive API directly
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/connections/pending?userDid=${userDid}`, {
+    const response = await fetch(`${API_ENDPOINT}/api/connections/pending?userPnIdentifier=${userPnIdentifier}`, {
       headers: getAuthHeaders()
     });
 
@@ -218,17 +218,17 @@ export async function getPendingRequests(userDid: string): Promise<PendingReques
  * Uses Google Drive via API
  */
 export async function getConnectionStatus(
-  userDid: string,
-  otherUserDid: string
+  userPnIdentifier: string,
+  otherUserPnIdentifier: string
 ): Promise<ConnectionStatus> {
   // Use Google Drive API directly
   try {
-    if (otherUserDid.length > 200) {
+    if (otherUserPnIdentifier.length > 200) {
       return { status: 'not_connected' };
     }
 
     const response = await fetch(
-      `${API_ENDPOINT}/api/connections/${encodeURIComponent(otherUserDid)}/status?userDid=${encodeURIComponent(userDid)}`,
+      `${API_ENDPOINT}/api/connections/${encodeURIComponent(otherUserPnIdentifier)}/status?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
       {
         headers: getAuthHeaders()
       }
@@ -237,7 +237,7 @@ export async function getConnectionStatus(
     if (!response.ok) {
       // Log error for debugging, but still return not_connected
       if (response.status === 401 || response.status === 500) {
-        console.warn(`[getConnectionStatus] API returned ${response.status} for ${otherUserDid}`);
+        console.warn(`[getConnectionStatus] API returned ${response.status} for ${otherUserPnIdentifier}`);
       }
       return { status: 'not_connected' };
     }
@@ -255,14 +255,14 @@ export async function getConnectionStatus(
  */
 export async function removeConnection(
   connectionId: string,
-  userDid: string
+  userPnIdentifier: string
 ): Promise<void> {
   try {
     const response = await fetch(`${API_ENDPOINT}/api/connections/${connectionId}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        userDid
+        userPnIdentifier
       })
     });
 

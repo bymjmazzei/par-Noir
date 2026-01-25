@@ -16,7 +16,7 @@ export type MePageTab = 'all' | 'media' | 'thoughts' | 'collections' | 'likes' |
 
 export interface ConnectionRow {
   connectionId: string;
-  userDid: string;
+  userPnIdentifier: string;
   status: string;
   createdAt: string;
   acceptedAt?: string;
@@ -72,7 +72,7 @@ export function useMePageData({
   // --- refs ---
   const savedFeedLoadingRef = useRef(false);
   const savedFeedErrorRef = useRef<{ timestamp: number; count: number } | null>(null);
-  const lastSavedFeedFetchRef = useRef<{ userDid: string; timestamp: number } | null>(null);
+  const lastSavedFeedFetchRef = useRef<{ userPnIdentifier: string; timestamp: number } | null>(null);
   const indexedFilesMapRef = useRef<Map<string, IndexedFile>>(new Map());
   const prevViewingCreatorIdRef = useRef<string | null>(null);
   const prevMePageTabRef = useRef<string>('all');
@@ -151,7 +151,7 @@ export function useMePageData({
       const delay = Math.min(30000 * Math.pow(2, savedFeedErrorRef.current.count), 300000);
       if (t < delay) return;
     }
-    if (lastSavedFeedFetchRef.current?.userDid === userState.pnIdentifier) {
+    if (lastSavedFeedFetchRef.current?.userPnIdentifier === userState.pnIdentifier) {
       if (Date.now() - lastSavedFeedFetchRef.current.timestamp < 30000) return;
     }
     savedFeedLoadingRef.current = true;
@@ -162,7 +162,7 @@ export function useMePageData({
         const saved = await getSavedFeed(userState.pnIdentifier);
         setSavedFeedFileIds(saved?.fileIds?.length ? saved.fileIds : []);
         savedFeedErrorRef.current = null;
-        lastSavedFeedFetchRef.current = { userDid: userState.pnIdentifier, timestamp: Date.now() };
+        lastSavedFeedFetchRef.current = { userPnIdentifier: userState.pnIdentifier, timestamp: Date.now() };
       } catch (e: any) {
         if (e?.status !== 500) console.error('Failed to load saved feed:', e);
         setSavedFeedFileIds([]);
@@ -684,7 +684,7 @@ export function useMePageData({
       if (s?.fileIds?.length) {
         setSavedFeedFileIds(s.fileIds);
         savedFeedErrorRef.current = null;
-        lastSavedFeedFetchRef.current = { userDid: userState.pnIdentifier, timestamp: Date.now() };
+        lastSavedFeedFetchRef.current = { userPnIdentifier: userState.pnIdentifier, timestamp: Date.now() };
       }
     } catch {}
   };

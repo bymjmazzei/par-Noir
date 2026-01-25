@@ -259,7 +259,7 @@ export class NotificationsSheetsService {
   static async markAllAsRead(
     accessToken: string,
     spreadsheetId: string,
-    userDid: string
+    userPnIdentifier: string
   ): Promise<number> {
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
@@ -277,7 +277,7 @@ export class NotificationsSheetsService {
 
     // Find all unread notifications for this user
     rows.forEach((row, index) => {
-      if (row[1] === userDid) {
+      if (row[1] === userPnIdentifier) {
         const isRead = row[6] === 'TRUE' || row[6] === true || row[6] === 'true';
         if (!isRead) {
           updates.push({
