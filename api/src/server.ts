@@ -4686,6 +4686,7 @@ class ProductionServer {
                       inboxSheetId,
                       messagesFolderId,
                       metadataFolderId,
+                      pnFolderId, // Cache pN folder ID - static, never changes
                       ...(credentials.cachedFolderIds || {})
                     };
                     credentials.cachedFolderIds = cachedFolderIds;
@@ -10810,137 +10811,344 @@ class ProductionServer {
 
         const senderAccount = senderGoogleDriveAccounts[0];
         const senderAccountId = (senderAccount as any).backendId || (senderAccount as any).keyPrefix || (senderAccount as any).accountId || (senderAccount as any).id || undefined;
-        const senderAccessToken = await googleDriveProxyService.getAccessToken(fromPnIdentifier, senderAccountId, [fromPnIdentifier]);
         
-        // Get sender's metadata folder with proper error handling
-        let senderMetadataFolderId: string;
-        try {
-          const senderMetadataFolder = await this.getMetadataFolder(senderAccessToken, fromPnIdentifier);
-          if (!senderMetadataFolder) {
-            return this.driveNotInitialized(res);
-          }
-          senderMetadataFolderId = senderMetadataFolder.metadataFolderId;
-        } catch (error: any) {
-          const errorMessage = error?.message || 'Unknown error';
-          if (errorMessage.includes('authentication failed (401)') || errorMessage.includes('authentication failed (403)')) {
-            return res.status(401).json({ 
-              error: 'Google Drive authentication failed',
+        // Get sender and recipient access tokens in parallel (already done above, but ensure recipient token is ready)
+        if (!recipientCredentials?.credentials) {
+          return res.status(404).json({ error: 'Recipient credentials not found' });
+        }
+        const recipientGoogleDriveAccounts = recipientCredentials.credentials.googleDriveAccounts || 
+          (recipientCredentials.credentials.googleDrive ? [recipientCredentials.credentials.googleDrive] : []);
+        if (recipientGoogleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'Recipient has no Google Drive connected' });
+        }
+        const recipientAccount = recipientGoogleDriveAccounts[0];
+        const recipientAccountId = recipientAccount ? this.extractAccountId(recipientAccount) : undefined;
+        
+        const [senderAccessToken, fetchedRecipientAccessToken] = await Promise.all([
+          googleDriveProxyService.getAccessToken(fromPnIdentifier, senderAccountId, [fromPnIdentifier]),
+          recipientAccountId ? googleDriveProxyService.getAccessToken(toPnIdentifier, recipientAccountId, [toPnIdentifier]) : Promise.resolve(null)
+        ]);
+        recipientAccessToken = fetchedRecipientAccessToken;
+        if (!recipientAccessToken) {
+          return res.status(404).json({ error: 'Failed to get recipient access token' });
+        }
+        
+        // Use cached folder IDs first - these are static and never change
+        const senderCachedFolderIds = senderCredentials.credentials.cachedFolderIds || {};
+        let senderMetadataFolderId: string | undefined = senderCachedFolderIds.metadataFolderId;
+        let senderPnFolderId: string | undefined = senderCachedFolderIds.pnFolderId;
+        let senderMessagesFolderId: string | undefined = senderCachedFolderIds.messagesFolderId;
+
+        const recipientCachedFolderIds = recipientCredentials.credentials.cachedFolderIds || {};
+        let recipientMetadataFolderId: string | undefined = recipientCachedFolderIds.metadataFolderId;
+        let recipientPnFolderId: string | undefined = recipientCachedFolderIds.pnFolderId;
+        let recipientMessagesFolderId: string | undefined = recipientCachedFolderIds.messagesFolderId;
+
+        // Parallelize folder lookups if cache is missing
+        const folderLookupPromises: Promise<any>[] = [];
+        
+        if (!senderMetadataFolderId || !senderPnFolderId) {
+          folderLookupPromises.push(
+            this.getMetadataFolder(senderAccessToken, fromPnIdentifier).then(senderMetadataFolder => {
+              if (!senderMetadataFolder) {
+                throw new Error('Sender metadata folder not found');
+              }
+              senderMetadataFolderId = senderMetadataFolder.metadataFolderId;
+              senderPnFolderId = senderMetadataFolder.pnFolderId;
+              // Cache the IDs for next time (async update)
+              if (senderPnFolderId && senderMetadataFolderId) {
+                const updatedCachedFolderIds = {
+                  ...senderCachedFolderIds,
+                  metadataFolderId: senderMetadataFolderId,
+                  pnFolderId: senderPnFolderId
+                };
+                senderCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
+                storageCredentialsService.upsertCredentials(fromPnIdentifier, senderCredentials.credentials).catch(err => {
+                  console.warn('[SendMessage] Failed to cache sender folder IDs:', err?.message);
+                });
+              }
+            }).catch((error: any) => {
+              const errorMessage = error?.message || 'Unknown error';
+              if (errorMessage.includes('authentication failed (401)') || errorMessage.includes('authentication failed (403)')) {
+                throw new Error(`Google Drive authentication failed: ${errorMessage}`);
+              }
+              throw new Error(`Failed to access sender's Google Drive: ${errorMessage}`);
+            })
+          );
+        }
+
+        if (!recipientMetadataFolderId || !recipientPnFolderId) {
+          folderLookupPromises.push(
+            this.getMetadataFolder(recipientAccessToken, toPnIdentifier).then(recipientMetadataFolder => {
+              if (!recipientMetadataFolder) {
+                throw new Error('Recipient metadata folder not found');
+              }
+              recipientMetadataFolderId = recipientMetadataFolder.metadataFolderId;
+              recipientPnFolderId = recipientMetadataFolder.pnFolderId;
+              // Cache the IDs for next time (async update)
+              if (recipientPnFolderId && recipientMetadataFolderId) {
+                const updatedCachedFolderIds = {
+                  ...recipientCachedFolderIds,
+                  metadataFolderId: recipientMetadataFolderId,
+                  pnFolderId: recipientPnFolderId
+                };
+                recipientCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
+                storageCredentialsService.upsertCredentials(toPnIdentifier, recipientCredentials.credentials).catch(err => {
+                  console.warn('[SendMessage] Failed to cache recipient folder IDs:', err?.message);
+                });
+              }
+            }).catch((error: any) => {
+              const errorMessage = error?.message || 'Unknown error';
+              if (errorMessage.includes('authentication failed (401)') || errorMessage.includes('authentication failed (403)')) {
+                throw new Error(`Google Drive authentication failed: ${errorMessage}`);
+              }
+              throw new Error(`Failed to access recipient's Google Drive: ${errorMessage}`);
+            })
+          );
+        }
+
+        // Wait for all folder lookups to complete
+        if (folderLookupPromises.length > 0) {
+          try {
+            await Promise.all(folderLookupPromises);
+          } catch (error: any) {
+            const errorMessage = error?.message || 'Unknown error';
+            if (errorMessage.includes('authentication failed')) {
+              return res.status(401).json({ 
+                error: 'Google Drive authentication failed',
+                error_description: errorMessage
+              });
+            }
+            if (errorMessage.includes('not found')) {
+              return this.driveNotInitialized(res);
+            }
+            return res.status(500).json({ 
+              error: 'Failed to access Google Drive',
               error_description: errorMessage
             });
           }
-          console.error('[SendMessage] Failed to get sender metadata folder:', error);
-          return res.status(500).json({ 
-            error: 'Failed to access sender\'s Google Drive',
-            error_description: errorMessage
-          });
         }
 
-        // Find sender's pN folder
-        const pnFolderName = `par Noir - ${fromPnIdentifier}`;
-        const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const foldersResponse = await fetch(
-          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
-          { headers: { 'Authorization': `Bearer ${senderAccessToken}` } }
-        );
-
-        if (!foldersResponse.ok) {
-          return res.status(500).json({ error: 'Failed to find sender folder' });
+        if (!senderPnFolderId || !recipientPnFolderId) {
+          return res.status(500).json({ error: 'pN folder not found' });
         }
 
-        const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
-        const senderPnFolder = foldersData.files?.[0];
-        if (!senderPnFolder) {
-          return res.status(500).json({ error: 'Sender folder not found' });
-        }
-
-        // Get or create messages folder for sender
-        const senderMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-          senderAccessToken,
-          senderPnFolder.id
-        );
-
-        // Get or create conversation sheet for sender
-        const senderConversationSheetId = await MessageSheetsService.getConversationSheet(
-          senderAccessToken,
-          senderMessagesFolderId,
-          toPnIdentifier
-        );
-
-        // Look up connection to get shared secret
-        const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
-        const connectionStatus = await ConnectionsService.getConnectionStatus(
-          senderAccessToken,
-          senderMetadataFolderId,
-          fromPnIdentifier,
-          toPnIdentifier
-        );
-
-        if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
-          return res.status(403).json({
-            error: 'Connection not found. Users must be connected to send messages.',
-            error_description: 'Connection not found. Users must be connected to send messages.'
-          });
-        }
-
-        // Get connection to retrieve shared secret - use Sheets directly
-        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-        const senderSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-          senderAccessToken,
-          senderMetadataFolderId
-        );
+        // Get or create messages folders in parallel if cache is missing
+        const messagesFolderPromises: Promise<any>[] = [];
         
-        // Get connection directly by connectionId (more efficient than loading all connections)
-        const connection = await ConnectionsSheetsService.getConnectionById(
-          senderAccessToken,
-          senderSpreadsheetId,
-          connectionStatus.connectionId
-        );
-        if (!connection) {
-          return res.status(500).json({
-            error: 'Connection not found',
-            error_description: `Connection ${connectionStatus.connectionId} not found in connections sheet`
-          });
+        if (!senderMessagesFolderId) {
+          messagesFolderPromises.push(
+            MessageSheetsService.getOrCreateMessagesFolder(senderAccessToken, senderPnFolderId).then(folderId => {
+              senderMessagesFolderId = folderId;
+              // Cache messages folder ID for next time
+              const updatedCachedFolderIds = {
+                ...senderCachedFolderIds,
+                messagesFolderId: folderId
+              };
+              senderCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
+              storageCredentialsService.upsertCredentials(fromPnIdentifier, senderCredentials.credentials).catch(err => {
+                console.warn('[SendMessage] Failed to cache sender messages folder ID:', err?.message);
+              });
+            })
+          );
         }
 
-        // Auto-generate shared secret if missing (fallback for existing connections)
-        let sharedSecret = connection.sharedSecret;
-        if (!sharedSecret) {
-          console.log(`[SendMessage] Connection ${connectionStatus.connectionId} missing shared secret, generating one`);
-          const crypto = await import('crypto');
-          const rawSecret = crypto.randomBytes(32).toString('base64');
-          sharedSecret = MetadataEncryption.encryptField(rawSecret);
+        if (!recipientMessagesFolderId) {
+          messagesFolderPromises.push(
+            MessageSheetsService.getOrCreateMessagesFolder(recipientAccessToken, recipientPnFolderId).then(folderId => {
+              recipientMessagesFolderId = folderId;
+              // Cache messages folder ID for next time
+              const updatedCachedFolderIds = {
+                ...recipientCachedFolderIds,
+                messagesFolderId: folderId
+              };
+              recipientCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
+              storageCredentialsService.upsertCredentials(toPnIdentifier, recipientCredentials.credentials).catch(err => {
+                console.warn('[SendMessage] Failed to cache recipient messages folder ID:', err?.message);
+              });
+            })
+          );
+        }
+
+        if (messagesFolderPromises.length > 0) {
+          await Promise.all(messagesFolderPromises);
+        }
+
+        if (!senderMessagesFolderId || !recipientMessagesFolderId) {
+          return res.status(500).json({ error: 'Messages folder not found' });
+        }
+
+        // Get conversation sheets in parallel (check cache first)
+        const senderConversationSheets = senderCachedFolderIds.conversationSheets || {};
+        let senderConversationSheetId: string | undefined = senderConversationSheets[toPnIdentifier];
+        
+        const recipientConversationSheets = recipientCachedFolderIds.conversationSheets || {};
+        let recipientConversationSheetId: string | undefined = recipientConversationSheets[fromPnIdentifier];
+
+        const conversationSheetPromises: Promise<any>[] = [];
+        
+        if (!senderConversationSheetId) {
+          conversationSheetPromises.push(
+            MessageSheetsService.getConversationSheet(senderAccessToken, senderMessagesFolderId, toPnIdentifier).then(sheetId => {
+              senderConversationSheetId = sheetId;
+              // Cache conversation sheet ID for next time
+              const updatedConversationSheets = {
+                ...senderConversationSheets,
+                [toPnIdentifier]: sheetId
+              };
+              const updatedCachedFolderIds = {
+                ...senderCachedFolderIds,
+                conversationSheets: updatedConversationSheets
+              };
+              senderCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
+              storageCredentialsService.upsertCredentials(fromPnIdentifier, senderCredentials.credentials).catch(err => {
+                console.warn('[SendMessage] Failed to cache sender conversation sheet ID:', err?.message);
+              });
+            })
+          );
+        }
+
+        if (!recipientConversationSheetId) {
+          conversationSheetPromises.push(
+            MessageSheetsService.getConversationSheet(recipientAccessToken, recipientMessagesFolderId, fromPnIdentifier).then(sheetId => {
+              recipientConversationSheetId = sheetId;
+              // Cache conversation sheet ID for next time
+              const updatedConversationSheets = {
+                ...recipientConversationSheets,
+                [fromPnIdentifier]: sheetId
+              };
+              const updatedCachedFolderIds = {
+                ...recipientCachedFolderIds,
+                conversationSheets: updatedConversationSheets
+              };
+              recipientCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
+              storageCredentialsService.upsertCredentials(toPnIdentifier, recipientCredentials.credentials).catch(err => {
+                console.warn('[SendMessage] Failed to cache recipient conversation sheet ID:', err?.message);
+              });
+            })
+          );
+        }
+
+        if (conversationSheetPromises.length > 0) {
+          await Promise.all(conversationSheetPromises);
+        }
+
+        if (!senderConversationSheetId || !recipientConversationSheetId) {
+          return res.status(500).json({ error: 'Conversation sheet not found' });
+        }
+
+        // Try to get sharedSecret from inbox first (fastest path - no connections sheet lookup)
+        const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
+        let sharedSecret: string | undefined;
+        let connectionId: string | undefined;
+        
+        try {
+          const senderInboxSheetId = senderCachedFolderIds.inboxSheetId || await MessageSheetsService.getInboxSheet(
+            senderAccessToken,
+            senderMessagesFolderId
+          );
+          const inboxConversations = await MessageSheetsService.getInboxConversations(
+            senderAccessToken,
+            senderInboxSheetId
+          );
+          const inboxEntry = inboxConversations.find(conv => conv.participantPnIdentifier === toPnIdentifier);
+          if (inboxEntry?.sharedSecret && inboxEntry?.connectionId) {
+            sharedSecret = inboxEntry.sharedSecret;
+            connectionId = inboxEntry.connectionId;
+            console.log('[SendMessage] Using sharedSecret from inbox cache (fast path)');
+          }
+        } catch (inboxError: any) {
+          console.warn('[SendMessage] Failed to read inbox for sharedSecret, falling back to connections sheet:', inboxError?.message);
+        }
+
+        // Fallback: Look up connection from connections sheet if inbox doesn't have it
+        if (!sharedSecret || !connectionId) {
+          if (!senderMetadataFolderId) {
+            return res.status(500).json({ error: 'Sender metadata folder not found' });
+          }
           
-          // Update connection with shared secret
+          const connectionStatus = await ConnectionsService.getConnectionStatus(
+            senderAccessToken,
+            senderMetadataFolderId,
+            fromPnIdentifier,
+            toPnIdentifier
+          );
+
+          if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
+            return res.status(403).json({
+              error: 'Connection not found. Users must be connected to send messages.',
+              error_description: 'Connection not found. Users must be connected to send messages.'
+            });
+          }
+
+          connectionId = connectionStatus.connectionId;
+
+          // Get connection to retrieve shared secret - use Sheets directly
           const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-          const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
+          const senderSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
             senderAccessToken,
             senderMetadataFolderId
           );
-          await ConnectionsSheetsService.updateConnectionStatus(
+          
+          // Get connection directly by connectionId (more efficient than loading all connections)
+          const connection = await ConnectionsSheetsService.getConnectionById(
             senderAccessToken,
-            spreadsheetId,
-            connectionStatus.connectionId,
-            connection.status,
-            connection.acceptedAt,
-            sharedSecret
+            senderSpreadsheetId,
+            connectionId
           );
-          console.log(`[SendMessage] Generated and stored shared secret for connection ${connectionStatus.connectionId}`);
+          if (!connection) {
+            return res.status(500).json({
+              error: 'Connection not found',
+              error_description: `Connection ${connectionId} not found in connections sheet`
+            });
+          }
+
+          // Auto-generate shared secret if missing (fallback for existing connections)
+          sharedSecret = connection.sharedSecret;
+          if (!sharedSecret) {
+            console.log(`[SendMessage] Connection ${connectionId} missing shared secret, generating one`);
+            const crypto = await import('crypto');
+            const rawSecret = crypto.randomBytes(32).toString('base64');
+            sharedSecret = MetadataEncryption.encryptField(rawSecret);
+            
+            // Update connection with shared secret
+            if (!senderMetadataFolderId) {
+              return res.status(500).json({ error: 'Sender metadata folder not found' });
+            }
+            const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
+              senderAccessToken,
+              senderMetadataFolderId
+            );
+            await ConnectionsSheetsService.updateConnectionStatus(
+              senderAccessToken,
+              spreadsheetId,
+              connectionId,
+              connection.status,
+              connection.acceptedAt,
+              sharedSecret
+            );
+            console.log(`[SendMessage] Generated and stored shared secret for connection ${connectionId}`);
+          }
+        }
+
+        if (!sharedSecret || !connectionId) {
+          return res.status(500).json({
+            error: 'Failed to get connection data',
+            error_description: 'Failed to get connection data'
+          });
         }
 
         // Decrypt shared secret
         const decryptedSharedSecret = MetadataEncryption.decryptField(sharedSecret);
         if (!decryptedSharedSecret) {
-          console.error(`[SendMessage] Failed to decrypt shared secret for connection ${connectionStatus.connectionId}`);
+          console.error(`[SendMessage] Failed to decrypt shared secret for connection ${connectionId}`);
           return res.status(500).json({
             error: 'Failed to decrypt shared secret',
             error_description: 'Failed to decrypt shared secret'
           });
         }
 
-        console.log(`[SendMessage] Using connectionId: ${connectionStatus.connectionId}, hasSharedSecret: ${!!decryptedSharedSecret}`);
-
-        // Store connectionId for use in async inbox update
-        const connectionId = connectionStatus.connectionId;
+        console.log(`[SendMessage] Using connectionId: ${connectionId}, hasSharedSecret: ${!!decryptedSharedSecret}`);
 
         // Create message object
         const message: any = {
@@ -10953,29 +11161,18 @@ class ProductionServer {
           mediaFileId
         };
 
-        // Append message to sender's conversation sheet (with encryption)
-        console.log('[SendMessage] Appending message to sender\'s sheet', { senderConversationSheetId, messageId, connectionId });
-        await MessageSheetsService.appendMessage(
-          senderAccessToken,
-          senderConversationSheetId,
-          message,
-          connectionId,
-          decryptedSharedSecret
-        );
-        console.log('[SendMessage] Message appended to sender\'s sheet successfully');
-
         // Update inbox for sender (non-blocking - fire and forget)
         (async () => {
           try {
-            const senderInboxSheetId = await MessageSheetsService.getInboxSheet(
+            const senderInboxSheetId = senderCachedFolderIds.inboxSheetId || await MessageSheetsService.getInboxSheet(
               senderAccessToken,
-              senderMessagesFolderId
+              senderMessagesFolderId!
             );
             await MessageSheetsService.updateInboxEntry(
               senderAccessToken,
               senderInboxSheetId,
               toPnIdentifier,
-              senderConversationSheetId,
+              senderConversationSheetId!,
               connectionId,
               timestamp,
               content.substring(0, 100), // Preview first 100 chars
@@ -10988,164 +11185,120 @@ class ProductionServer {
           }
         })();
 
-        // Record activity for sender FIRST
-        await ActivityLedgerService.recordActivity(
-          senderAccessToken,
-          senderMetadataFolderId,
-          fromPnIdentifier,
-          'message_sent',
-          {
-            targetType: 'message',
-            targetPnIdentifier: messageId, // For messages, this is the message ID, not a pn-identifier
-            actorPnIdentifier: fromPnIdentifier,
-            metadata: { toPnIdentifier, threadId, content: content.substring(0, 100) }
+        // Record activity for sender (non-blocking - fire and forget)
+        (async () => {
+          try {
+            await ActivityLedgerService.recordActivity(
+              senderAccessToken,
+              senderMetadataFolderId!,
+              fromPnIdentifier,
+              'message_sent',
+              {
+                targetType: 'message',
+                targetPnIdentifier: messageId,
+                actorPnIdentifier: fromPnIdentifier,
+                metadata: { toPnIdentifier, threadId, content: content.substring(0, 100) }
+              }
+            );
+          } catch (error: any) {
+            console.warn('[SendMessage] Failed to record sender activity:', error?.message);
           }
-        );
+        })();
 
-        // Record messaging activity for sender
-        await MessagingLedgerService.recordMessagingActivity(
-          senderAccessToken,
-          senderMetadataFolderId,
-          fromPnIdentifier,
-          'message_sent',
-          {
-            fromPnIdentifier,
-            toPnIdentifier,
-            messageId,
-            threadId,
-            metadata: { content: content.substring(0, 100), mediaFileId }
+        // Record messaging activity for sender (non-blocking - fire and forget)
+        (async () => {
+          try {
+            await MessagingLedgerService.recordMessagingActivity(
+              senderAccessToken,
+              senderMetadataFolderId!,
+              fromPnIdentifier,
+              'message_sent',
+              {
+                fromPnIdentifier,
+                toPnIdentifier,
+                messageId,
+                threadId,
+                metadata: { content: content.substring(0, 100), mediaFileId }
+              }
+            );
+          } catch (error: any) {
+            console.warn('[SendMessage] Failed to record sender messaging activity:', error?.message);
           }
-        );
+        })();
 
-        // Recipient credentials and access token already fetched in parallel above
-        // Validate recipient credentials
-        if (!recipientCredentials?.credentials) {
-          return res.status(404).json({ error: 'Recipient credentials not found' });
-        }
-
-        const recipientGoogleDriveAccounts = recipientCredentials.credentials.googleDriveAccounts || 
-          (recipientCredentials.credentials.googleDrive ? [recipientCredentials.credentials.googleDrive] : []);
-        
-        if (recipientGoogleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'Recipient has no Google Drive connected' });
-        }
-
-        if (!recipientAccessToken) {
-          return res.status(404).json({ error: 'Failed to get recipient access token' });
-        }
-        
-        // Get recipient's metadata folder with proper error handling
-        let recipientMetadataFolderId: string;
+        // Get recipient's sharedSecret (try inbox first, fallback to connections sheet)
+        let recipientSharedSecret: string | undefined;
         try {
-          const recipientMetadataFolder = await this.getMetadataFolder(recipientAccessToken, toPnIdentifier);
-          if (!recipientMetadataFolder) {
-            return this.driveNotInitialized(res);
+          const recipientInboxSheetId = recipientCachedFolderIds.inboxSheetId || await MessageSheetsService.getInboxSheet(
+            recipientAccessToken,
+            recipientMessagesFolderId!
+          );
+          const recipientInboxConversations = await MessageSheetsService.getInboxConversations(
+            recipientAccessToken,
+            recipientInboxSheetId
+          );
+          const recipientInboxEntry = recipientInboxConversations.find(conv => conv.participantPnIdentifier === fromPnIdentifier);
+          if (recipientInboxEntry?.sharedSecret) {
+            recipientSharedSecret = recipientInboxEntry.sharedSecret;
+            console.log('[SendMessage] Using recipient sharedSecret from inbox cache (fast path)');
           }
-          recipientMetadataFolderId = recipientMetadataFolder.metadataFolderId;
-        } catch (error: any) {
-          const errorMessage = error?.message || 'Unknown error';
-          if (errorMessage.includes('authentication failed (401)') || errorMessage.includes('authentication failed (403)')) {
-            return res.status(401).json({ 
-              error: 'Google Drive authentication failed',
-              error_description: errorMessage
-            });
+        } catch (recipientInboxError: any) {
+          console.warn('[SendMessage] Failed to read recipient inbox for sharedSecret, falling back to connections sheet:', recipientInboxError?.message);
+        }
+
+        // Fallback: Get recipient's connection to retrieve shared secret - use Sheets directly
+        if (!recipientSharedSecret) {
+          if (!recipientMetadataFolderId) {
+            return res.status(500).json({ error: 'Recipient metadata folder not found' });
           }
-          console.error('[SendMessage] Failed to get recipient metadata folder:', error);
-          return res.status(500).json({ 
-            error: 'Failed to access recipient\'s Google Drive',
-            error_description: errorMessage
-          });
-        }
-
-        // Find recipient's pN folder
-        const recipientPnFolderName = `par Noir - ${toPnIdentifier}`;
-        const recipientFolderQuery = `name='${recipientPnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const recipientFoldersResponse = await fetch(
-          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(recipientFolderQuery)}&fields=files(id,name)`,
-          { headers: { 'Authorization': `Bearer ${recipientAccessToken}` } }
-        );
-
-        if (!recipientFoldersResponse.ok) {
-          return res.status(500).json({ error: 'Failed to find recipient folder' });
-        }
-
-        const recipientFoldersData = await recipientFoldersResponse.json() as { files?: Array<{ id: string }> };
-        const recipientPnFolder = recipientFoldersData.files?.[0];
-        if (!recipientPnFolder) {
-          return res.status(500).json({ error: 'Recipient folder not found' });
-        }
-        console.log('[SendMessage] Recipient folder found', { recipientPnFolderId: recipientPnFolder.id });
-
-        // Get or create messages folder for recipient
-        console.log('[SendMessage] Getting or creating recipient messages folder', { recipientPnFolderId: recipientPnFolder.id });
-        const recipientMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-          recipientAccessToken,
-          recipientPnFolder.id
-        );
-        console.log('[SendMessage] Recipient messages folder ready', { recipientMessagesFolderId });
-
-        // Get or create conversation sheet for recipient
-        console.log('[SendMessage] Getting or creating recipient conversation sheet', { fromPnIdentifier, recipientMessagesFolderId });
-        const recipientConversationSheetId = await MessageSheetsService.getConversationSheet(
-          recipientAccessToken,
-          recipientMessagesFolderId,
-          fromPnIdentifier
-        );
-        console.log('[SendMessage] Recipient conversation sheet ready', { recipientConversationSheetId });
-
-        // Append message to recipient's conversation sheet
-        console.log('[SendMessage] Appending message to recipient\'s sheet', { recipientConversationSheetId, messageId });
-        if (!recipientConversationSheetId || recipientConversationSheetId.trim().length === 0) {
-          throw new Error('Invalid recipient conversation sheet ID');
-        }
-        if (!recipientAccessToken || recipientAccessToken.trim().length === 0) {
-          throw new Error('Invalid recipient access token');
-        }
-        // Get recipient's connection to retrieve shared secret - use Sheets directly
-        const recipientSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-          recipientAccessToken,
-          recipientMetadataFolderId
-        );
-        
-        // Get connection directly by connectionId (more efficient than loading all connections)
-        const recipientConnection = await ConnectionsSheetsService.getConnectionById(
-          recipientAccessToken,
-          recipientSpreadsheetId,
-          connectionStatus.connectionId
-        );
-        if (!recipientConnection) {
-          return res.status(500).json({
-            error: 'Recipient connection not found',
-            error_description: `Connection ${connectionStatus.connectionId} not found in recipient's connections sheet`
-          });
-        }
-
-        // Ensure recipient has the same shared secret as sender
-        let recipientSharedSecret = recipientConnection.sharedSecret;
-        if (!recipientSharedSecret || recipientSharedSecret !== sharedSecret) {
-          // Recipient is missing shared secret or has a different one - sync from sender
-          console.log(`[SendMessage] Recipient missing or mismatched shared secret, syncing from sender`);
           const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
           const recipientSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
             recipientAccessToken,
             recipientMetadataFolderId
           );
-          await ConnectionsSheetsService.updateConnectionStatus(
+          
+          // Get connection directly by connectionId (more efficient than loading all connections)
+          const recipientConnection = await ConnectionsSheetsService.getConnectionById(
             recipientAccessToken,
             recipientSpreadsheetId,
-            connectionStatus.connectionId,
-            recipientConnection.status,
-            recipientConnection.acceptedAt,
-            sharedSecret // Use sender's shared secret
+            connectionId
           );
-          recipientSharedSecret = sharedSecret;
-          console.log(`[SendMessage] Synced shared secret to recipient's connection ${connectionStatus.connectionId}`);
+          if (!recipientConnection) {
+            return res.status(500).json({
+              error: 'Recipient connection not found',
+              error_description: `Connection ${connectionId} not found in recipient's connections sheet`
+            });
+          }
+
+          // Ensure recipient has the same shared secret as sender
+          recipientSharedSecret = recipientConnection.sharedSecret;
+          if (!recipientSharedSecret || recipientSharedSecret !== sharedSecret) {
+            // Recipient is missing shared secret or has a different one - sync from sender
+            console.log(`[SendMessage] Recipient missing or mismatched shared secret, syncing from sender`);
+            await ConnectionsSheetsService.updateConnectionStatus(
+              recipientAccessToken,
+              recipientSpreadsheetId,
+              connectionId,
+              recipientConnection.status,
+              recipientConnection.acceptedAt,
+              sharedSecret // Use sender's shared secret
+            );
+            recipientSharedSecret = sharedSecret;
+            console.log(`[SendMessage] Synced shared secret to recipient's connection ${connectionId}`);
+          }
+        }
+
+        if (!recipientSharedSecret) {
+          return res.status(500).json({
+            error: 'Failed to get recipient shared secret',
+            error_description: 'Failed to get recipient shared secret'
+          });
         }
 
         // Decrypt recipient's shared secret
         const recipientDecryptedSharedSecret = MetadataEncryption.decryptField(recipientSharedSecret);
         if (!recipientDecryptedSharedSecret) {
-          console.error(`[SendMessage] Failed to decrypt recipient shared secret for connection ${connectionStatus.connectionId}`);
+          console.error(`[SendMessage] Failed to decrypt recipient shared secret for connection ${connectionId}`);
           return res.status(500).json({
             error: 'Failed to decrypt recipient shared secret',
             error_description: 'Failed to decrypt recipient shared secret'
@@ -11161,27 +11314,44 @@ class ProductionServer {
           });
         }
 
-        await MessageSheetsService.appendMessage(
-          recipientAccessToken,
-          recipientConversationSheetId,
-          message,
-          connectionId,
-          recipientDecryptedSharedSecret
-        );
-        console.log('[SendMessage] Message appended to recipient\'s sheet successfully');
+        // Append messages to both sheets in parallel
+        console.log('[SendMessage] Appending messages to both sheets in parallel', { 
+          senderSheetId: senderConversationSheetId, 
+          recipientSheetId: recipientConversationSheetId, 
+          messageId, 
+          connectionId 
+        });
+        
+        await Promise.all([
+          MessageSheetsService.appendMessage(
+            senderAccessToken,
+            senderConversationSheetId!,
+            message,
+            connectionId,
+            decryptedSharedSecret
+          ),
+          MessageSheetsService.appendMessage(
+            recipientAccessToken,
+            recipientConversationSheetId!,
+            message,
+            connectionId,
+            recipientDecryptedSharedSecret
+          )
+        ]);
+        console.log('[SendMessage] Messages appended to both sheets successfully');
 
         // Update inbox for recipient (non-blocking - fire and forget)
         (async () => {
           try {
-            const recipientInboxSheetId = await MessageSheetsService.getInboxSheet(
+            const recipientInboxSheetId = recipientCachedFolderIds.inboxSheetId || await MessageSheetsService.getInboxSheet(
               recipientAccessToken,
-              recipientMessagesFolderId
+              recipientMessagesFolderId!
             );
             await MessageSheetsService.updateInboxEntry(
               recipientAccessToken,
               recipientInboxSheetId,
               fromPnIdentifier,
-              recipientConversationSheetId,
+              recipientConversationSheetId!,
               connectionId,
               timestamp,
               content.substring(0, 100), // Preview first 100 chars
@@ -11194,48 +11364,59 @@ class ProductionServer {
           }
         })();
 
-        // Record activity for recipient FIRST
-        await ActivityLedgerService.recordActivity(
-          recipientAccessToken,
-          recipientMetadataFolderId,
-          toPnIdentifier,
-          'message_received',
-          {
-            targetType: 'message',
-            targetPnIdentifier: messageId, // For messages, this is the message ID, not a pn-identifier
-            actorPnIdentifier: fromPnIdentifier,
-            metadata: { fromPnIdentifier, threadId, content: content.substring(0, 100) }
+        // Record activity for recipient (non-blocking - fire and forget)
+        (async () => {
+          try {
+            await ActivityLedgerService.recordActivity(
+              recipientAccessToken,
+              recipientMetadataFolderId!,
+              toPnIdentifier,
+              'message_received',
+              {
+                targetType: 'message',
+                targetPnIdentifier: messageId,
+                actorPnIdentifier: fromPnIdentifier,
+                metadata: { fromPnIdentifier, threadId, content: content.substring(0, 100) }
+              }
+            );
+          } catch (error: any) {
+            console.warn('[SendMessage] Failed to record recipient activity:', error?.message);
           }
-        );
+        })();
 
-        // Record messaging activity for recipient
-        await MessagingLedgerService.recordMessagingActivity(
-          recipientAccessToken,
-          recipientMetadataFolderId,
-          toPnIdentifier,
-          'message_received',
-          {
-            fromPnIdentifier,
-            toPnIdentifier,
-            messageId,
-            threadId,
-            metadata: { content: content.substring(0, 100), mediaFileId }
+        // Record messaging activity for recipient (non-blocking - fire and forget)
+        (async () => {
+          try {
+            await MessagingLedgerService.recordMessagingActivity(
+              recipientAccessToken,
+              recipientMetadataFolderId!,
+              toPnIdentifier,
+              'message_received',
+              {
+                fromPnIdentifier,
+                toPnIdentifier,
+                messageId,
+                threadId,
+                metadata: { content: content.substring(0, 100), mediaFileId }
+              }
+            );
+          } catch (error: any) {
+            console.warn('[SendMessage] Failed to record recipient messaging activity:', error?.message);
           }
-        );
+        })();
 
-        // Send notification to recipient (check preferences)
-        try {
-          await NotificationService.notifyNewMessage(
+        // Send notification to recipient (check preferences) - non-blocking
+        if (recipientMetadataFolderId) {
+          NotificationService.notifyNewMessage(
             recipientAccessToken,
             recipientMetadataFolderId,
             messageId,
             fromPnIdentifier,
             toPnIdentifier,
             threadId
-          );
-        } catch (notificationError: any) {
-          console.warn('Failed to send notification:', notificationError);
-          // Don't fail the request if notification fails
+          ).catch((notificationError: any) => {
+            console.warn('Failed to send notification:', notificationError);
+          });
         }
 
         return res.json({
