@@ -33,18 +33,25 @@ export class MessageSheetsService {
   /**
    * Get existing Inbox sheet in messages folder (does not create)
    * Throws error if inbox sheet doesn't exist
+   * If cachedInboxSheetId is provided, returns it immediately (no search)
    */
   static async getInboxSheet(
     accessToken: string,
-    messagesFolderId: string
+    messagesFolderId: string,
+    cachedInboxSheetId?: string
   ): Promise<string> {
+    // If cached ID provided, return it immediately (no search!)
+    if (cachedInboxSheetId) {
+      return cachedInboxSheetId;
+    }
+
     try {
       const auth = new google.auth.OAuth2();
       auth.setCredentials({ access_token: accessToken });
       const drive = google.drive({ version: 'v3', auth });
       const sheets = google.sheets({ version: 'v4', auth });
 
-      // Search for existing Inbox sheet
+      // Search for existing Inbox sheet (only if cache missing)
       const fileQuery = `name='${this.INBOX_SHEET_NAME}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
       const searchResponse = await drive.files.list({
         q: fileQuery,

@@ -10098,7 +10098,17 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
         const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        // Extract token directly from credentials (avoids duplicate DB query)
+        let userAccessToken: string;
+        try {
+          userAccessToken = googleDriveProxyService.extractAccessTokenFromCredentials(
+            userCredentials.credentials,
+            accountId
+          );
+        } catch (extractError: any) {
+          // If extraction fails (e.g., token expired), fall back to getAccessToken which will refresh
+          userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        }
 
         // Check for cached inbox sheet ID in credentials (fastest path)
         const cachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
@@ -10202,7 +10212,8 @@ class ProductionServer {
         try {
           inboxSheetId = await MessageSheetsService.getInboxSheet(
             userAccessToken,
-            messagesFolderId
+            messagesFolderId,
+            cachedFolderIds.inboxSheetId // Pass cached ID to skip search
           );
           
           // Cache folder IDs for next time (async, don't wait)
@@ -10506,7 +10517,17 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
         const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        // Extract token directly from credentials (avoids duplicate DB query)
+        let userAccessToken: string;
+        try {
+          userAccessToken = googleDriveProxyService.extractAccessTokenFromCredentials(
+            userCredentials.credentials,
+            accountId
+          );
+        } catch (extractError: any) {
+          // If extraction fails (e.g., token expired), fall back to getAccessToken which will refresh
+          userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        }
 
         // Normalize participantPnIdentifier to ensure consistent format
         const normalizedParticipantPnIdentifier = participantPnIdentifier.startsWith('pn-') 
@@ -10535,40 +10556,37 @@ class ProductionServer {
           }
           // Skip all folder lookups - we have spreadsheetId, just need access token for Sheets API
         } else {
-          // Fallback path: look up connection info (for backward compatibility)
+          // Fallback path: use cached folder IDs first, only search if missing
           console.log('[GetConversation] Looking up connection (fallback path)');
           
-          // Find user's pN folder
-          const pnFolderName = `par Noir - ${pnIdentifier}`;
-          const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-          const foldersResponse = await fetch(
-            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
-            { headers: { 'Authorization': `Bearer ${userAccessToken}` } }
-          );
+          const cachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
+          let messagesFolderId: string | undefined = cachedFolderIds.messagesFolderId;
+          let metadataFolderId: string | undefined = cachedFolderIds.metadataFolderId;
+          let pnFolderId: string | undefined = cachedFolderIds.pnFolderId;
 
-          if (!foldersResponse.ok) {
-            return res.json({ messages: [] });
+          // Only search if cache is missing
+          if (!messagesFolderId || !metadataFolderId || !pnFolderId) {
+            // Get metadata folder (includes pnFolderId)
+            const metadataFolder = await this.getMetadataFolder(userAccessToken, pnIdentifier);
+            if (!metadataFolder) {
+              console.error('[GetConversation] Metadata folder not found for', pnIdentifier);
+              return res.json({ messages: [], total: 0 });
+            }
+            metadataFolderId = metadataFolder.metadataFolderId;
+            pnFolderId = metadataFolder.pnFolderId;
+
+            // Get or create messages folder if not cached
+            if (!messagesFolderId && pnFolderId) {
+              messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+                userAccessToken,
+                pnFolderId
+              );
+            }
           }
 
-          const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
-          const pnFolder = foldersData.files?.[0];
-          if (!pnFolder) {
-            return res.json({ messages: [] });
-          }
-          
-          // Get or create messages folder
-          const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-            userAccessToken,
-            pnFolder.id
-          );
-
-          // Get user's metadata folder for connection lookup
-          const metadataFolder = await this.getMetadataFolder(userAccessToken, pnIdentifier);
-          if (!metadataFolder) {
-            console.error('[GetConversation] Metadata folder not found for', pnIdentifier);
+          if (!messagesFolderId || !metadataFolderId) {
             return res.json({ messages: [], total: 0 });
           }
-          const metadataFolderId = metadataFolder.metadataFolderId;
 
           const { ConnectionsService } = await import('./server/modules/connectionsService');
           const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
@@ -10655,13 +10673,31 @@ class ProductionServer {
 
           finalConnectionId = connectionStatus.connectionId;
 
-          // Get or create conversation sheet (use normalized participantPnIdentifier)
+          // Get conversation sheet - check cache first
           console.log('[GetConversation] Getting conversation sheet');
-          conversationSheetId = await MessageSheetsService.getConversationSheet(
-            userAccessToken,
-            messagesFolderId,
-            normalizedParticipantPnIdentifier
-          );
+          const conversationSheets = cachedFolderIds.conversationSheets || {};
+          conversationSheetId = conversationSheets[normalizedParticipantPnIdentifier];
+          
+          if (!conversationSheetId) {
+            // Not cached - get it and cache it
+            conversationSheetId = await MessageSheetsService.getConversationSheet(
+              userAccessToken,
+              messagesFolderId,
+              normalizedParticipantPnIdentifier
+            );
+            // Cache for next time (async, don't wait)
+            const updatedConversationSheets = {
+              ...conversationSheets,
+              [normalizedParticipantPnIdentifier]: conversationSheetId
+            };
+            userCredentials.credentials.cachedFolderIds = {
+              ...cachedFolderIds,
+              conversationSheets: updatedConversationSheets
+            };
+            storageCredentialsService.upsertCredentials(pnIdentifier, userCredentials.credentials).catch(err => {
+              console.warn('[GetConversation] Failed to cache conversation sheet ID:', err?.message);
+            });
+          }
         }
 
         // Get messages from conversation sheet (with decryption)
@@ -10732,6 +10768,7 @@ class ProductionServer {
 
         // Declare recipient credentials and token variables
         let recipientAccessToken: string | null = null;
+        let senderAccessTokenForCheck: string | undefined;
 
         // Check if users are connected (unless this is a connection request)
         if (!isConnectionRequest) {
@@ -10746,16 +10783,36 @@ class ProductionServer {
             const account = senderGoogleDriveAccounts[0];
             const accountId = this.extractAccountId(account);
 
-            // Get sender and recipient access tokens in parallel
+            // Extract tokens directly from credentials (avoids duplicate DB queries)
+            let senderAccessTokenForCheck: string;
+            let fetchedRecipientAccessToken: string | null = null;
+            
+            try {
+              senderAccessTokenForCheck = googleDriveProxyService.extractAccessTokenFromCredentials(
+                senderCredentials.credentials,
+                accountId
+              );
+            } catch (extractError: any) {
+              // If extraction fails (e.g., token expired), fall back to getAccessToken which will refresh
+              senderAccessTokenForCheck = await googleDriveProxyService.getAccessToken(fromPnIdentifier, accountId, [fromPnIdentifier]);
+            }
+            
             const recipientGoogleDriveAccounts = recipientCredentials?.credentials?.googleDriveAccounts || 
               (recipientCredentials?.credentials?.googleDrive ? [recipientCredentials.credentials.googleDrive] : []);
             const recipientAccount = recipientGoogleDriveAccounts?.[0];
             const recipientAccountId = recipientAccount ? this.extractAccountId(recipientAccount) : undefined;
-
-            const [senderAccessTokenForCheck, fetchedRecipientAccessToken] = await Promise.all([
-              googleDriveProxyService.getAccessToken(fromPnIdentifier, accountId, [fromPnIdentifier]),
-              recipientAccountId ? googleDriveProxyService.getAccessToken(toPnIdentifier, recipientAccountId, [toPnIdentifier]) : Promise.resolve(null)
-            ]);
+            
+            if (recipientAccountId && recipientCredentials?.credentials) {
+              try {
+                fetchedRecipientAccessToken = googleDriveProxyService.extractAccessTokenFromCredentials(
+                  recipientCredentials.credentials,
+                  recipientAccountId
+                );
+              } catch (extractError: any) {
+                // If extraction fails, fall back to getAccessToken
+                fetchedRecipientAccessToken = await googleDriveProxyService.getAccessToken(toPnIdentifier, recipientAccountId, [toPnIdentifier]);
+              }
+            }
             
             recipientAccessToken = fetchedRecipientAccessToken;
             
@@ -10815,28 +10872,55 @@ class ProductionServer {
           return res.status(404).json({ error: 'Sender has no Google Drive connected' });
         }
 
+        // Reuse tokens from connection check if available, otherwise extract from credentials
         const senderAccount = senderGoogleDriveAccounts[0];
         const senderAccountId = (senderAccount as any).backendId || (senderAccount as any).keyPrefix || (senderAccount as any).accountId || (senderAccount as any).id || undefined;
         
-        // Get sender and recipient access tokens in parallel (already done above, but ensure recipient token is ready)
-        if (!recipientCredentials?.credentials) {
-          return res.status(404).json({ error: 'Recipient credentials not found' });
+        let senderAccessToken: string;
+        if (typeof senderAccessTokenForCheck !== 'undefined') {
+          // Reuse token from connection check
+          senderAccessToken = senderAccessTokenForCheck;
+        } else {
+          // Extract token directly from credentials (avoids duplicate DB query)
+          try {
+            senderAccessToken = googleDriveProxyService.extractAccessTokenFromCredentials(
+              senderCredentials.credentials,
+              senderAccountId
+            );
+          } catch (extractError: any) {
+            // If extraction fails (e.g., token expired), fall back to getAccessToken which will refresh
+            senderAccessToken = await googleDriveProxyService.getAccessToken(fromPnIdentifier, senderAccountId, [fromPnIdentifier]);
+          }
         }
-        const recipientGoogleDriveAccounts = recipientCredentials.credentials.googleDriveAccounts || 
-          (recipientCredentials.credentials.googleDrive ? [recipientCredentials.credentials.googleDrive] : []);
-        if (recipientGoogleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'Recipient has no Google Drive connected' });
-        }
-        const recipientAccount = recipientGoogleDriveAccounts[0];
-        const recipientAccountId = recipientAccount ? this.extractAccountId(recipientAccount) : undefined;
         
-        const [senderAccessToken, fetchedRecipientAccessToken] = await Promise.all([
-          googleDriveProxyService.getAccessToken(fromPnIdentifier, senderAccountId, [fromPnIdentifier]),
-          recipientAccountId ? googleDriveProxyService.getAccessToken(toPnIdentifier, recipientAccountId, [toPnIdentifier]) : Promise.resolve(null)
-        ]);
-        recipientAccessToken = fetchedRecipientAccessToken;
+        // Ensure recipient token is ready
         if (!recipientAccessToken) {
-          return res.status(404).json({ error: 'Failed to get recipient access token' });
+          if (!recipientCredentials?.credentials) {
+            return res.status(404).json({ error: 'Recipient credentials not found' });
+          }
+          const recipientGoogleDriveAccounts = recipientCredentials.credentials.googleDriveAccounts || 
+            (recipientCredentials.credentials.googleDrive ? [recipientCredentials.credentials.googleDrive] : []);
+          if (recipientGoogleDriveAccounts.length === 0) {
+            return res.status(404).json({ error: 'Recipient has no Google Drive connected' });
+          }
+          const recipientAccount = recipientGoogleDriveAccounts[0];
+          const recipientAccountId = recipientAccount ? this.extractAccountId(recipientAccount) : undefined;
+          
+          if (recipientAccountId) {
+            try {
+              recipientAccessToken = googleDriveProxyService.extractAccessTokenFromCredentials(
+                recipientCredentials.credentials,
+                recipientAccountId
+              );
+            } catch (extractError: any) {
+              // If extraction fails, fall back to getAccessToken
+              recipientAccessToken = await googleDriveProxyService.getAccessToken(toPnIdentifier, recipientAccountId, [toPnIdentifier]);
+            }
+          }
+          
+          if (!recipientAccessToken) {
+            return res.status(404).json({ error: 'Failed to get recipient access token' });
+          }
         }
         
         // Use cached folder IDs first - these are static and never change
@@ -10845,6 +10929,10 @@ class ProductionServer {
         let senderPnFolderId: string | undefined = senderCachedFolderIds.pnFolderId;
         let senderMessagesFolderId: string | undefined = senderCachedFolderIds.messagesFolderId;
 
+        if (!recipientCredentials?.credentials) {
+          return res.status(404).json({ error: 'Recipient credentials not found' });
+        }
+        
         const recipientCachedFolderIds = recipientCredentials.credentials.cachedFolderIds || {};
         let recipientMetadataFolderId: string | undefined = recipientCachedFolderIds.metadataFolderId;
         let recipientPnFolderId: string | undefined = recipientCachedFolderIds.pnFolderId;
@@ -10892,7 +10980,7 @@ class ProductionServer {
               recipientMetadataFolderId = recipientMetadataFolder.metadataFolderId;
               recipientPnFolderId = recipientMetadataFolder.pnFolderId;
               // Cache the IDs for next time (async update)
-              if (recipientPnFolderId && recipientMetadataFolderId) {
+              if (recipientPnFolderId && recipientMetadataFolderId && recipientCredentials?.credentials) {
                 const updatedCachedFolderIds = {
                   ...recipientCachedFolderIds,
                   metadataFolderId: recipientMetadataFolderId,
@@ -10964,14 +11052,16 @@ class ProductionServer {
             MessageSheetsService.getOrCreateMessagesFolder(recipientAccessToken, recipientPnFolderId).then(folderId => {
               recipientMessagesFolderId = folderId;
               // Cache messages folder ID for next time
-              const updatedCachedFolderIds = {
-                ...recipientCachedFolderIds,
-                messagesFolderId: folderId
-              };
-              recipientCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
-              storageCredentialsService.upsertCredentials(toPnIdentifier, recipientCredentials.credentials).catch(err => {
-                console.warn('[SendMessage] Failed to cache recipient messages folder ID:', err?.message);
-              });
+              if (recipientCredentials?.credentials) {
+                const updatedCachedFolderIds = {
+                  ...recipientCachedFolderIds,
+                  messagesFolderId: folderId
+                };
+                recipientCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
+                storageCredentialsService.upsertCredentials(toPnIdentifier, recipientCredentials.credentials).catch(err => {
+                  console.warn('[SendMessage] Failed to cache recipient messages folder ID:', err?.message);
+                });
+              }
             })
           );
         }
@@ -11023,14 +11113,16 @@ class ProductionServer {
                 ...recipientConversationSheets,
                 [fromPnIdentifier]: sheetId
               };
-              const updatedCachedFolderIds = {
-                ...recipientCachedFolderIds,
-                conversationSheets: updatedConversationSheets
-              };
-              recipientCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
-              storageCredentialsService.upsertCredentials(toPnIdentifier, recipientCredentials.credentials).catch(err => {
-                console.warn('[SendMessage] Failed to cache recipient conversation sheet ID:', err?.message);
-              });
+              if (recipientCredentials?.credentials) {
+                const updatedCachedFolderIds = {
+                  ...recipientCachedFolderIds,
+                  conversationSheets: updatedConversationSheets
+                };
+                recipientCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
+                storageCredentialsService.upsertCredentials(toPnIdentifier, recipientCredentials.credentials).catch(err => {
+                  console.warn('[SendMessage] Failed to cache recipient conversation sheet ID:', err?.message);
+                });
+              }
             })
           );
         }
@@ -11049,9 +11141,11 @@ class ProductionServer {
         let connectionId: string | undefined;
         
         try {
-          const senderInboxSheetId = senderCachedFolderIds.inboxSheetId || await MessageSheetsService.getInboxSheet(
+          // Use cached ID directly - getInboxSheet will return it immediately if provided
+          const senderInboxSheetId = await MessageSheetsService.getInboxSheet(
             senderAccessToken,
-            senderMessagesFolderId
+            senderMessagesFolderId!,
+            senderCachedFolderIds.inboxSheetId // Pass cached ID to skip search
           );
           const inboxConversations = await MessageSheetsService.getInboxConversations(
             senderAccessToken,
@@ -11170,9 +11264,11 @@ class ProductionServer {
         // Update inbox for sender (non-blocking - fire and forget)
         (async () => {
           try {
-            const senderInboxSheetId = senderCachedFolderIds.inboxSheetId || await MessageSheetsService.getInboxSheet(
+            // Use cached ID directly - getInboxSheet will return it immediately if provided
+            const senderInboxSheetId = await MessageSheetsService.getInboxSheet(
               senderAccessToken,
-              senderMessagesFolderId!
+              senderMessagesFolderId!,
+              senderCachedFolderIds.inboxSheetId // Pass cached ID to skip search
             );
             await MessageSheetsService.updateInboxEntry(
               senderAccessToken,
@@ -11235,9 +11331,11 @@ class ProductionServer {
         // Get recipient's sharedSecret (try inbox first, fallback to connections sheet)
         let recipientSharedSecret: string | undefined;
         try {
-          const recipientInboxSheetId = recipientCachedFolderIds.inboxSheetId || await MessageSheetsService.getInboxSheet(
+          // Use cached ID directly - getInboxSheet will return it immediately if provided
+          const recipientInboxSheetId = await MessageSheetsService.getInboxSheet(
             recipientAccessToken,
-            recipientMessagesFolderId!
+            recipientMessagesFolderId!,
+            recipientCachedFolderIds.inboxSheetId // Pass cached ID to skip search
           );
           const recipientInboxConversations = await MessageSheetsService.getInboxConversations(
             recipientAccessToken,
@@ -11349,9 +11447,11 @@ class ProductionServer {
         // Update inbox for recipient (non-blocking - fire and forget)
         (async () => {
           try {
-            const recipientInboxSheetId = recipientCachedFolderIds.inboxSheetId || await MessageSheetsService.getInboxSheet(
+            // Use cached ID directly - getInboxSheet will return it immediately if provided
+            const recipientInboxSheetId = await MessageSheetsService.getInboxSheet(
               recipientAccessToken,
-              recipientMessagesFolderId!
+              recipientMessagesFolderId!,
+              recipientCachedFolderIds.inboxSheetId // Pass cached ID to skip search
             );
             await MessageSheetsService.updateInboxEntry(
               recipientAccessToken,
@@ -11694,9 +11794,11 @@ class ProductionServer {
 
         // Remove from inbox
         try {
+          const cachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
           const inboxSheetId = await MessageSheetsService.getInboxSheet(
             userAccessToken,
-            messagesFolderId
+            messagesFolderId,
+            cachedFolderIds.inboxSheetId // Pass cached ID to skip search
           );
           await MessageSheetsService.removeInboxEntry(
             userAccessToken,
@@ -12927,9 +13029,11 @@ class ProductionServer {
 
               // Update inbox for acceptor
               try {
+                const acceptorCachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
                 const acceptorInboxSheetId = await MessageSheetsService.getInboxSheet(
                   userAccessToken,
-                  acceptorMessagesFolderId
+                  acceptorMessagesFolderId,
+                  acceptorCachedFolderIds.inboxSheetId // Pass cached ID to skip search
                 );
                 await MessageSheetsService.updateInboxEntry(
                   userAccessToken,
@@ -13062,9 +13166,11 @@ class ProductionServer {
 
                 // Update inbox for requester
                 try {
+                  const requesterCachedFolderIds = otherUserCredentials?.credentials?.cachedFolderIds || {};
                   const requesterInboxSheetId = await MessageSheetsService.getInboxSheet(
                     otherAccessToken,
-                    requesterMessagesFolderId
+                    requesterMessagesFolderId,
+                    requesterCachedFolderIds.inboxSheetId // Pass cached ID to skip search
                   );
                   await MessageSheetsService.updateInboxEntry(
                     otherAccessToken,

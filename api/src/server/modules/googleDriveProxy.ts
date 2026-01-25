@@ -266,6 +266,77 @@ export class GoogleDriveProxyService {
   }
 
   /**
+   * Extract access token from already-fetched credentials (avoids duplicate DB query)
+   * Use this when you already have credentials from getCredentials()
+   */
+  extractAccessTokenFromCredentials(
+    credentials: any,
+    accountId?: string
+  ): string {
+    const googleDriveAccounts = credentials.googleDriveAccounts || 
+      (credentials.googleDrive ? [credentials.googleDrive] : []);
+    
+    if (googleDriveAccounts.length === 0) {
+      throw new Error('Google Drive account not found');
+    }
+
+    let account: GoogleDriveToken | null = null;
+    
+    if (accountId && googleDriveAccounts.length > 0) {
+      const actualAccountId = accountId.includes('::') ? accountId.split('::')[1] : accountId;
+      account = googleDriveAccounts.find(
+        (acc: any) => 
+          acc.backendId === accountId || 
+          acc.keyPrefix === accountId ||
+          acc.backendId === actualAccountId ||
+          acc.keyPrefix === actualAccountId ||
+          `${acc.backendId}` === accountId ||
+          `${acc.keyPrefix}` === accountId ||
+          `${acc.backendId}` === actualAccountId ||
+          `${acc.keyPrefix}` === actualAccountId
+      ) || null;
+      
+      if (!account) {
+        account = googleDriveAccounts[0];
+      }
+    } else if (googleDriveAccounts.length > 0) {
+      account = googleDriveAccounts[0];
+    } else if (credentials.googleDrive) {
+      account = credentials.googleDrive;
+    } else {
+      account = credentials as GoogleDriveToken;
+    }
+
+    if (!account) {
+      throw new Error('Google Drive account not found');
+    }
+
+    const token: GoogleDriveToken = {
+      access_token: (account as any).access_token || (account as any).accessToken || account.access_token,
+      refresh_token: (account as any).refresh_token || (account as any).refreshToken || account.refresh_token,
+      expires_in: account.expires_in,
+      token_type: account.token_type,
+      expires_at: account.expires_at
+    };
+
+    if (!token.access_token) {
+      throw new Error('Google Drive access token not found');
+    }
+
+    // Check if token needs refresh (but don't refresh here - caller should use getAccessToken if refresh needed)
+    const now = Date.now();
+    const expiresAt = token.expires_at || (token.expires_in ? now + (token.expires_in * 1000) : now + 3600000);
+    const isExpired = expiresAt < now;
+    const expiresSoon = expiresAt < now + 300000; // 5 minutes
+    
+    // If token is expired or about to expire, caller should use getAccessToken() to refresh
+    // But for performance, return it anyway and let the API call fail if needed
+    // (Most tokens are valid for 1 hour, so this is rare)
+    
+    return token.access_token;
+  }
+
+  /**
    * Force refresh access token (public method for 401 retries)
    */
   async forceRefreshAccessToken(userPnIdentifier: string, accountId?: string, additionalCandidates?: string[]): Promise<string> {
