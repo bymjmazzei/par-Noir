@@ -10148,37 +10148,46 @@ class ProductionServer {
           }
         }
 
-        // Fallback: Look up folders (slower path)
-        const pnFolderName = `par Noir - ${pnIdentifier}`;
-        const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const foldersResponse = await fetch(
-          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
-          { headers: { 'Authorization': `Bearer ${userAccessToken}` } }
-        );
+        // Fallback: Use cached folder IDs if available, only search if missing
+        let messagesFolderId: string | undefined = cachedFolderIds.messagesFolderId;
+        let metadataFolderId: string | undefined = cachedFolderIds.metadataFolderId;
+        let pnFolderId: string | undefined = cachedFolderIds.pnFolderId;
 
-        if (!foldersResponse.ok) {
-          return res.json({ conversations: [] });
+        // Only search if cache is missing
+        if (!messagesFolderId || !metadataFolderId || !pnFolderId) {
+          // Get metadata folder (includes pnFolderId)
+          const metadataFolder = await this.getMetadataFolder(userAccessToken, pnIdentifier);
+          if (!metadataFolder) {
+            console.warn('[GetConversations] Metadata folder not found, returning empty conversations');
+            return res.json({ conversations: [], threads: [] });
+          }
+          metadataFolderId = metadataFolder.metadataFolderId;
+          pnFolderId = metadataFolder.pnFolderId;
+
+          // Get or create messages folder if not cached
+          if (!messagesFolderId && pnFolderId) {
+            messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+              userAccessToken,
+              pnFolderId
+            );
+          }
+
+          // Cache folder IDs for next time (async, don't wait)
+          const updatedCached = {
+            ...cachedFolderIds,
+            messagesFolderId: messagesFolderId || cachedFolderIds.messagesFolderId,
+            metadataFolderId,
+            pnFolderId
+          };
+          userCredentials.credentials.cachedFolderIds = updatedCached;
+          storageCredentialsService.upsertCredentials(pnIdentifier, userCredentials.credentials).catch(err => {
+            console.warn('[GetConversations] Failed to cache folder IDs:', err?.message);
+          });
         }
 
-        const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
-        const pnFolder = foldersData.files?.[0];
-        if (!pnFolder) {
-          return res.json({ conversations: [] });
-        }
-
-        // Get or create messages folder
-        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-          userAccessToken,
-          pnFolder.id
-        );
-
-        // Get metadata folder for connection lookup
-        const metadataFolder = await this.getMetadataFolder(userAccessToken, pnIdentifier);
-        if (!metadataFolder) {
-          console.warn('[GetConversations] Metadata folder not found, returning empty conversations');
+        if (!messagesFolderId || !metadataFolderId) {
           return res.json({ conversations: [], threads: [] });
         }
-        const metadataFolderId = metadataFolder.metadataFolderId;
 
         // Get inbox sheet and cache the ID
         let inboxConversations: Array<{
@@ -10709,34 +10718,32 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Declare recipient credentials and token variables outside the if block
-        let recipientCredentials: any = null;
+        // Get sender's and recipient's credentials in parallel (reused throughout)
+        const [senderCredentials, fetchedRecipientCredentials] = await Promise.all([
+          storageCredentialsService.getCredentials(fromPnIdentifier),
+          storageCredentialsService.getCredentials(toPnIdentifier)
+        ]);
+        
+        const recipientCredentials = fetchedRecipientCredentials;
+
+        if (!senderCredentials?.credentials) {
+          return res.status(404).json({ error: 'Sender credentials not found' });
+        }
+
+        // Declare recipient credentials and token variables
         let recipientAccessToken: string | null = null;
 
         // Check if users are connected (unless this is a connection request)
         if (!isConnectionRequest) {
           try {
-            
-            // Get sender's and recipient's credentials in parallel
-            const [senderCredentials, fetchedRecipientCredentials] = await Promise.all([
-              storageCredentialsService.getCredentials(fromPnIdentifier),
-              storageCredentialsService.getCredentials(toPnIdentifier)
-            ]);
-            
-            recipientCredentials = fetchedRecipientCredentials;
-
-            if (!senderCredentials?.credentials) {
-              return res.status(403).json({ error: 'Only connections can message each other' });
-            }
-
-            const googleDriveAccounts = senderCredentials.credentials.googleDriveAccounts || 
+            const senderGoogleDriveAccounts = senderCredentials.credentials.googleDriveAccounts || 
               (senderCredentials.credentials.googleDrive ? [senderCredentials.credentials.googleDrive] : []);
             
-            if (googleDriveAccounts.length === 0) {
+            if (senderGoogleDriveAccounts.length === 0) {
               return res.status(403).json({ error: 'Only connections can message each other' });
             }
 
-            const account = googleDriveAccounts[0];
+            const account = senderGoogleDriveAccounts[0];
             const accountId = this.extractAccountId(account);
 
             // Get sender and recipient access tokens in parallel
@@ -10745,39 +10752,39 @@ class ProductionServer {
             const recipientAccount = recipientGoogleDriveAccounts?.[0];
             const recipientAccountId = recipientAccount ? this.extractAccountId(recipientAccount) : undefined;
 
-            const [senderAccessToken, fetchedRecipientAccessToken] = await Promise.all([
+            const [senderAccessTokenForCheck, fetchedRecipientAccessToken] = await Promise.all([
               googleDriveProxyService.getAccessToken(fromPnIdentifier, accountId, [fromPnIdentifier]),
               recipientAccountId ? googleDriveProxyService.getAccessToken(toPnIdentifier, recipientAccountId, [toPnIdentifier]) : Promise.resolve(null)
             ]);
             
             recipientAccessToken = fetchedRecipientAccessToken;
             
-            // Find metadata folder
-            const folderSearchQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-            const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id)&pageSize=1`;
-            const folderResponse = await fetch(folderSearchUrl, {
-              headers: { 'Authorization': `Bearer ${senderAccessToken}` }
-            });
+            // Use cached metadata folder ID if available (fast path)
+            const senderCachedFolderIds = senderCredentials.credentials.cachedFolderIds || {};
+            let metadataFolderId: string | undefined = senderCachedFolderIds.metadataFolderId;
+            
+            if (!metadataFolderId) {
+              // Fallback: get metadata folder (slower)
+              const metadataFolder = await this.getMetadataFolder(senderAccessTokenForCheck, fromPnIdentifier);
+              if (metadataFolder) {
+                metadataFolderId = metadataFolder.metadataFolderId;
+              }
+            }
+            
+            if (metadataFolderId) {
+              // Check if connected
+              const areConnected = await ConnectionsService.areConnected(
+                senderAccessTokenForCheck,
+                metadataFolderId,
+                fromPnIdentifier,
+                toPnIdentifier
+              );
 
-            if (folderResponse.ok) {
-              const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
-              if (folderData.files && folderData.files.length > 0) {
-                const metadataFolderId = folderData.files[0].id;
-                
-                // Check if connected
-                const areConnected = await ConnectionsService.areConnected(
-                  senderAccessToken,
-                  metadataFolderId,
-                  fromPnIdentifier,
-                  toPnIdentifier
-                );
-
-                if (!areConnected) {
-                  return res.status(403).json({ 
-                    error: 'Only connections can message each other',
-                    requiresConnection: true
-                  });
-                }
+              if (!areConnected) {
+                return res.status(403).json({ 
+                  error: 'Only connections can message each other',
+                  requiresConnection: true
+                });
               }
             }
           } catch (connectionCheckError: any) {
@@ -10796,8 +10803,7 @@ class ProductionServer {
         const timestamp = new Date().toISOString();
         const threadId = [fromPnIdentifier, toPnIdentifier].sort().join('_');
 
-        // Get sender's credentials
-        const senderCredentials = await storageCredentialsService.getCredentials(fromPnIdentifier);
+        // Sender credentials already fetched above in connection check - reuse them
         if (!senderCredentials?.credentials) {
           return res.status(404).json({ error: 'Sender credentials not found' });
         }
