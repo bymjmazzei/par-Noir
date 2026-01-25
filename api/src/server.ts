@@ -4678,8 +4678,24 @@ class ProductionServer {
                   
                   // Initialize inbox sheet for fast conversation loading
                   try {
-                    await MessageSheetsService.getOrCreateInboxSheet(accessToken, messagesFolderId);
+                    const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(accessToken, messagesFolderId);
                     console.log(`[StorageCredentials PUT] Initialized inbox sheet for identityId: ${sanitizedIdentityId}`);
+                    
+                    // Cache folder IDs for fast future access
+                    const cachedFolderIds = {
+                      inboxSheetId,
+                      messagesFolderId,
+                      metadataFolderId,
+                      ...(credentials.cachedFolderIds || {})
+                    };
+                    credentials.cachedFolderIds = cachedFolderIds;
+                    // Update credentials with cached folder IDs
+                    try {
+                      await storageCredentialsService.upsertCredentials(pnIdentifier, credentials);
+                      console.log(`[StorageCredentials PUT] Cached folder IDs for identityId: ${sanitizedIdentityId}`);
+                    } catch (cacheErr: any) {
+                      console.warn(`[StorageCredentials PUT] Failed to cache folder IDs:`, cacheErr?.message);
+                    }
                   } catch (inboxError: any) {
                     console.warn(`[StorageCredentials PUT] Failed to initialize inbox sheet:`, inboxError?.message || inboxError);
                   }
@@ -10080,10 +10096,84 @@ class ProductionServer {
         }
 
         const account = googleDriveAccounts[0];
-                const accountId = this.extractAccountId(account);
+        const accountId = this.extractAccountId(account);
         const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
-        // Find user's pN folder
+        // Check for cached folder IDs in credentials (fast path)
+        const cachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
+        let inboxSheetId: string | undefined = cachedFolderIds.inboxSheetId;
+        let messagesFolderId: string | undefined = cachedFolderIds.messagesFolderId;
+        let metadataFolderId: string | undefined = cachedFolderIds.metadataFolderId;
+
+        // If we have cached inbox sheet ID, use it directly (fastest path)
+        if (inboxSheetId) {
+          try {
+            const inboxConversations = await MessageSheetsService.getInboxConversations(
+              userAccessToken,
+              inboxSheetId
+            );
+            
+            // Get connections sheet once for shared secrets
+            let connectionsMap: Map<string, { sharedSecret?: string }> = new Map();
+            if (metadataFolderId) {
+              try {
+                const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+                const connectionsSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
+                  userAccessToken,
+                  metadataFolderId
+                );
+                const fullMap = await ConnectionsSheetsService.getConnectionsMap(
+                  userAccessToken,
+                  connectionsSpreadsheetId
+                );
+                fullMap.forEach((c, id) => connectionsMap.set(id, { sharedSecret: c.sharedSecret }));
+              } catch (error) {
+                console.warn('[GetConversations] Failed to get connections map:', error);
+              }
+            }
+
+            // Enrich from inbox + connection map (no folder lookups)
+            const enrichedConversations = inboxConversations.map((conv) => {
+              let sharedSecret: string | undefined;
+              const connection = conv.connectionId ? connectionsMap.get(conv.connectionId) : undefined;
+              if (connection?.sharedSecret) {
+                sharedSecret = connection.sharedSecret;
+              }
+              const lastMessage = conv.lastMessagePreview ? {
+                messageId: '',
+                fromPnIdentifier: '',
+                toPnIdentifier: conv.participantPnIdentifier,
+                content: conv.lastMessagePreview,
+                timestamp: conv.lastMessageAt,
+                read: false,
+                encrypted: false
+              } : undefined;
+
+              return {
+                otherUserPnIdentifier: conv.participantPnIdentifier,
+                participantPnIdentifier: conv.participantPnIdentifier,
+                spreadsheetId: conv.spreadsheetId,
+                connectionId: conv.connectionId,
+                sharedSecret,
+                lastMessageAt: conv.lastMessageAt,
+                lastMessagePreview: conv.lastMessagePreview,
+                lastMessage
+              };
+            });
+
+            const threads = enrichedConversations.map(conv => ({
+              participantPnIdentifier: conv.participantPnIdentifier,
+              lastMessageAt: conv.lastMessageAt
+            }));
+
+            return res.json({ conversations: enrichedConversations, threads });
+          } catch (inboxError: any) {
+            console.warn('[GetConversations] Cached inbox sheet failed, falling back to lookup:', inboxError?.message);
+            // Fall through to lookup path
+          }
+        }
+
+        // Fallback: Look up folders (slower path)
         const pnFolderName = `par Noir - ${pnIdentifier}`;
         const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
         const foldersResponse = await fetch(
@@ -10102,7 +10192,7 @@ class ProductionServer {
         }
 
         // Get or create messages folder
-        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+        messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
           userAccessToken,
           pnFolder.id
         );
@@ -10113,9 +10203,9 @@ class ProductionServer {
           console.warn('[GetConversations] Metadata folder not found, returning empty conversations');
           return res.json({ conversations: [], threads: [] });
         }
-        const metadataFolderId = metadataFolder.metadataFolderId;
+        metadataFolderId = metadataFolder.metadataFolderId;
 
-        // Get or create inbox sheet
+        // Get inbox sheet and cache the ID
         let inboxConversations: Array<{
           participantPnIdentifier: string;
           spreadsheetId: string;
@@ -10125,17 +10215,34 @@ class ProductionServer {
         }> = [];
 
         try {
-          const inboxSheetId = await MessageSheetsService.getInboxSheet(
+          inboxSheetId = await MessageSheetsService.getInboxSheet(
             userAccessToken,
             messagesFolderId
           );
+          
+          // Cache folder IDs for next time (async, don't wait)
+          const existingCached = userCredentials.credentials.cachedFolderIds || {};
+          if (!existingCached.inboxSheetId || !existingCached.messagesFolderId || !existingCached.metadataFolderId) {
+            const updatedCredentials = {
+              ...userCredentials.credentials,
+              cachedFolderIds: {
+                inboxSheetId,
+                messagesFolderId,
+                metadataFolderId,
+                ...existingCached
+              }
+            };
+            storageCredentialsService.upsertCredentials(pnIdentifier, updatedCredentials).catch(err => {
+              console.warn('[GetConversations] Failed to cache folder IDs:', err?.message);
+            });
+          }
+          
           inboxConversations = await MessageSheetsService.getInboxConversations(
             userAccessToken,
             inboxSheetId
           );
         } catch (inboxError: any) {
           console.warn('[GetConversations] Failed to read inbox, falling back to file listing:', inboxError?.message);
-          // Fallback to old method if inbox fails
           const conversations = await MessageSheetsService.getConversations(
             userAccessToken,
             messagesFolderId
@@ -10143,7 +10250,7 @@ class ProductionServer {
           inboxConversations = conversations.map(conv => ({
             participantPnIdentifier: conv.otherUserPnIdentifier,
             spreadsheetId: conv.spreadsheetId,
-            connectionId: '', // Will be looked up below
+            connectionId: '',
             lastMessageAt: conv.lastMessageAt
           }));
         }
@@ -10433,26 +10540,8 @@ class ProductionServer {
         }
 
         const account = googleDriveAccounts[0];
-                const accountId = this.extractAccountId(account);
+        const accountId = this.extractAccountId(account);
         const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
-
-        // Find user's pN folder
-        const pnFolderName = `par Noir - ${pnIdentifier}`;
-        const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const foldersResponse = await fetch(
-          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
-          { headers: { 'Authorization': `Bearer ${userAccessToken}` } }
-        );
-
-        if (!foldersResponse.ok) {
-          return res.json({ messages: [] });
-        }
-
-        const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
-        const pnFolder = foldersData.files?.[0];
-        if (!pnFolder) {
-          return res.json({ messages: [] });
-        }
 
         // Normalize participantPnIdentifier to ensure consistent format
         const normalizedParticipantPnIdentifier = participantPnIdentifier.startsWith('pn-') 
@@ -10465,8 +10554,8 @@ class ProductionServer {
         let conversationSheetId: string;
 
         if (connectionId && sharedSecret && spreadsheetId) {
-          // Optimized path: use provided connection info (POST body preferred to avoid URL encoding)
-          console.log('[GetConversation] Using provided connection info (optimized path)');
+          // Fully optimized path: use provided connection info, skip ALL folder lookups
+          console.log('[GetConversation] Using fully optimized path (no folder lookups)');
           finalConnectionId = connectionId;
           conversationSheetId = spreadsheetId;
 
@@ -10479,9 +10568,28 @@ class ProductionServer {
               error_description: 'Failed to decrypt provided shared secret'
             });
           }
+          // Skip all folder lookups - we have spreadsheetId, just need access token for Sheets API
         } else {
           // Fallback path: look up connection info (for backward compatibility)
           console.log('[GetConversation] Looking up connection (fallback path)');
+          
+          // Find user's pN folder
+          const pnFolderName = `par Noir - ${pnIdentifier}`;
+          const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+          const foldersResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
+            { headers: { 'Authorization': `Bearer ${userAccessToken}` } }
+          );
+
+          if (!foldersResponse.ok) {
+            return res.json({ messages: [] });
+          }
+
+          const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
+          const pnFolder = foldersData.files?.[0];
+          if (!pnFolder) {
+            return res.json({ messages: [] });
+          }
           
           // Get or create messages folder
           const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
