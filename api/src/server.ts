@@ -4615,12 +4615,15 @@ class ProductionServer {
           return res.status(400).json({ error: 'Missing identityId parameter' });
         }
 
+        // Normalize to pnIdentifier format
+        const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
+
         if (!credentials) {
           return res.status(400).json({ error: 'Missing credentials in request body' });
         }
 
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-        const record = await storageCredentialsService.upsertCredentials(identityId, credentials, cid);
+        const record = await storageCredentialsService.upsertCredentials(pnIdentifier, credentials, cid);
         
         // SECURITY: Use sanitized identityId in logs
         console.log(`[StorageCredentials PUT] Successfully saved credentials for identityId: ${sanitizedIdentityId}`);
@@ -4642,12 +4645,12 @@ class ProductionServer {
               const account = googleDriveAccounts[0];
               const accountId = this.extractAccountId(account);
               
-              // Get access token
-              const accessToken = await googleDriveProxyService.getAccessToken(identityId, accountId, [identityId]);
+              // Get access token - use normalized pnIdentifier
+              const accessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
               
               // Initialize folder structure (creates pN folder and _metadata folder if they don't exist)
               console.log(`[StorageCredentials PUT] Initializing folder structure for identityId: ${sanitizedIdentityId}`);
-              const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, identityId);
+              const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnIdentifier);
               
               // Get pN folder ID for messages folder creation
               const normalizedPn = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
@@ -4939,8 +4942,11 @@ class ProductionServer {
           return res.status(400).json({ error: 'Missing identityId parameter' });
         }
 
+        // Normalize to pnIdentifier format
+        const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
+
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-        let record = await storageCredentialsService.getCredentials(identityId);
+        let record = await storageCredentialsService.getCredentials(pnIdentifier);
 
         if (!record) {
           return res.status(404).json({ error: 'No storage credentials found for identity' });
@@ -4957,7 +4963,7 @@ class ProductionServer {
             const hasRefresh = !!((account as any)?.refresh_token || (account as any)?.refreshToken);
             if (hasRefresh) {
               try {
-                await googleDriveProxyService.getAccessToken(identityId, accountId, [identityId]);
+                await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
               } catch {
                 // Leave token as-is on refresh failure (e.g. revoked). Client will get 401 and may reconnect.
               }
