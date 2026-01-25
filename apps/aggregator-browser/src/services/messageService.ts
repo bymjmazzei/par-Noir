@@ -102,25 +102,36 @@ export async function getMessageThreads(userPnIdentifier: string): Promise<Messa
 }
 
 /**
- * Get messages in a thread with a specific user
+ * Get messages in a conversation with a specific user
  */
-export async function getThreadMessages(
+export async function getConversationMessages(
   userPnIdentifier: string,
   participantPnIdentifier: string
 ): Promise<Message[]> {
   const response = await fetch(
-    `${API_ENDPOINT}/api/messages/thread?userPnIdentifier=${userPnIdentifier}&participantPnIdentifier=${participantPnIdentifier}`,
+    `${API_ENDPOINT}/api/messages/conversation?userPnIdentifier=${userPnIdentifier}&participantPnIdentifier=${participantPnIdentifier}`,
     {
       headers: getAuthHeaders()
     }
   );
 
   if (!response.ok) {
-    throw new Error('Failed to load thread messages');
+    throw new Error('Failed to load conversation messages');
   }
 
   const result = await response.json();
   return result.messages || [];
+}
+
+/**
+ * @deprecated Use getConversationMessages instead
+ * Get messages in a thread with a specific user (backward compatibility)
+ */
+export async function getThreadMessages(
+  userPnIdentifier: string,
+  participantPnIdentifier: string
+): Promise<Message[]> {
+  return getConversationMessages(userPnIdentifier, participantPnIdentifier);
 }
 
 /**

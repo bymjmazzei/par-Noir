@@ -10136,91 +10136,6 @@ class ProductionServer {
       }
     });
 
-    // GET /api/messages/threads - Alias for conversations (backward compatibility)
-    this.app.get('/api/messages/threads', async (req, res) => {
-      try {
-        const userPnIdentifier = req.query.userPnIdentifier as string;
-        if (!userPnIdentifier) {
-          return res.status(400).json({ error: 'userPnIdentifier is required' });
-        }
-
-        const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
-        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-
-        // Use pn identifier directly (already normalized)
-        const pnIdentifier = userPnIdentifier;
-
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.json({ threads: [] });
-        }
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          return res.json({ threads: [] });
-        }
-
-        const account = googleDriveAccounts[0];
-                const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
-
-        // Find user's pN folder
-        const pnFolderName = `par Noir - ${pnIdentifier}`;
-        const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const foldersResponse = await fetch(
-          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
-          { headers: { 'Authorization': `Bearer ${userAccessToken}` } }
-        );
-
-        if (!foldersResponse.ok) {
-          return res.json({ threads: [] });
-        }
-
-        const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
-        const pnFolder = foldersData.files?.[0];
-        if (!pnFolder) {
-          return res.json({ threads: [] });
-        }
-
-        // Get or create messages folder
-        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-          userAccessToken,
-          pnFolder.id
-        );
-
-        // Get all conversations
-        const conversations = await MessageSheetsService.getConversations(
-          userAccessToken,
-          messagesFolderId
-        );
-
-        // Format conversations for response (backward compatibility with threads)
-        // Filter out conversations with invalid otherUserPnIdentifier
-        const validConversations = conversations.filter(conv => {
-          if (!conv.otherUserPnIdentifier) {
-            console.warn('[GetThreads] Filtering out conversation with undefined otherUserPnIdentifier:', conv);
-            return false;
-          }
-          return true;
-        });
-        const threads = validConversations.map(conv => ({
-          participantPnIdentifier: conv.otherUserPnIdentifier!,
-          lastMessageAt: conv.lastMessageAt
-        }));
-
-        return res.json({ threads });
-      } catch (error: any) {
-        console.error('Error getting message threads:', error);
-        return res.status(500).json({
-          error: 'Failed to get message threads',
-          error_description: error.message || 'Failed to get message threads'
-        });
-      }
-    });
 
     this.app.get('/api/messages/requests', async (req, res) => {
       try {
@@ -10397,8 +10312,9 @@ class ProductionServer {
       }
     });
 
-    this.app.get('/api/messages/thread', async (req, res) => {
-      console.log('[GetThread] Endpoint called', { 
+    // GET /api/messages/conversation - Get messages in a specific conversation
+    this.app.get('/api/messages/conversation', async (req, res) => {
+      console.log('[GetConversation] Endpoint called', { 
         userPnIdentifier: req.query.userPnIdentifier, 
         participantPnIdentifier: req.query.participantPnIdentifier 
       });
@@ -10409,7 +10325,7 @@ class ProductionServer {
         const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
 
         if (!userPnIdentifier || !participantPnIdentifier) {
-          console.error('[GetThread] Missing required parameters');
+          console.error('[GetConversation] Missing required parameters');
           return res.status(400).json({ error: 'userPnIdentifier and participantPnIdentifier are required' });
         }
 
@@ -10464,13 +10380,13 @@ class ProductionServer {
         // Get user's metadata folder for connection lookup
         const metadataFolder = await this.getMetadataFolder(userAccessToken, pnIdentifier);
         if (!metadataFolder) {
-          console.error('[GetThread] Metadata folder not found for', pnIdentifier);
+          console.error('[GetConversation] Metadata folder not found for', pnIdentifier);
           return res.json({ messages: [], total: 0 });
         }
         const metadataFolderId = metadataFolder.metadataFolderId;
 
         // Look up connection to get shared secret
-        console.log('[GetThread] Looking up connection');
+        console.log('[GetConversation] Looking up connection');
         const { ConnectionsService } = await import('./server/modules/connectionsService');
         const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
         
@@ -10503,16 +10419,16 @@ class ProductionServer {
           });
         }
 
-        console.log('[GetThread] Getting connections sheet');
+        console.log('[GetConversation] Getting connections sheet');
         // Get connection to retrieve shared secret - use Sheets directly
         const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
         const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
           userAccessToken,
           metadataFolderId
         );
-        console.log('[GetThread] Connections sheet ID:', spreadsheetId);
+        console.log('[GetConversation] Connections sheet ID:', spreadsheetId);
         
-        console.log('[GetThread] Fetching all connections');
+        console.log('[GetConversation] Fetching all connections');
         // Get all connections to find the one with the matching connectionId
         const connectionsResult = await ConnectionsSheetsService.getConnections(
           userAccessToken,
@@ -10523,24 +10439,24 @@ class ProductionServer {
             // No status filter - get all connections
           }
         );
-        console.log('[GetThread] Found', connectionsResult.connections.length, 'connections');
+        console.log('[GetConversation] Found', connectionsResult.connections.length, 'connections');
         
         const connection = connectionsResult.connections.find(
           c => c.connectionId === connectionStatus.connectionId
         );
         if (!connection) {
-          console.error('[GetThread] Connection not found in sheet, connectionId:', connectionStatus.connectionId);
+          console.error('[GetConversation] Connection not found in sheet, connectionId:', connectionStatus.connectionId);
           return res.status(500).json({
             error: 'Connection not found',
             error_description: `Connection ${connectionStatus.connectionId} not found in connections sheet`
           });
         }
 
-        console.log('[GetThread] Found connection, checking shared secret');
+        console.log('[GetConversation] Found connection, checking shared secret');
         // Get shared secret from connection - generate if missing (for backwards compatibility)
         let sharedSecret = connection.sharedSecret;
         if (!sharedSecret) {
-          console.log(`[GetThread] Connection ${connectionStatus.connectionId} missing shared secret, generating one`);
+          console.log(`[GetConversation] Connection ${connectionStatus.connectionId} missing shared secret, generating one`);
           const crypto = await import('crypto');
           const rawSecret = crypto.randomBytes(32).toString('base64');
           sharedSecret = MetadataEncryption.encryptField(rawSecret);
@@ -10554,23 +10470,23 @@ class ProductionServer {
             connection.acceptedAt,
             sharedSecret
           );
-          console.log(`[GetThread] Generated and stored shared secret for connection ${connectionStatus.connectionId}`);
+          console.log(`[GetConversation] Generated and stored shared secret for connection ${connectionStatus.connectionId}`);
         }
 
-        console.log('[GetThread] Decrypting shared secret');
+        console.log('[GetConversation] Decrypting shared secret');
         // Decrypt shared secret
         const decryptedSharedSecret = MetadataEncryption.decryptField(sharedSecret);
         if (!decryptedSharedSecret) {
-          console.error(`[GetThread] Failed to decrypt shared secret for connection ${connectionStatus.connectionId}`);
+          console.error(`[GetConversation] Failed to decrypt shared secret for connection ${connectionStatus.connectionId}`);
           return res.status(500).json({
             error: 'Failed to decrypt shared secret',
             error_description: 'Failed to decrypt shared secret'
           });
         }
-        console.log('[GetThread] Successfully decrypted shared secret');
+        console.log('[GetConversation] Successfully decrypted shared secret');
 
         // Get or create conversation sheet (use normalized participantPnIdentifier)
-        console.log('[GetThread] Getting conversation sheet');
+        console.log('[GetConversation] Getting conversation sheet');
         const conversationSheetId = await MessageSheetsService.getConversationSheet(
           userAccessToken,
           messagesFolderId,
@@ -10578,7 +10494,7 @@ class ProductionServer {
         );
 
         // Get messages from conversation sheet (with decryption)
-        console.log('[GetThread] Fetching messages from sheet');
+        console.log('[GetConversation] Fetching messages from sheet');
         const result = await MessageSheetsService.getMessages(
           userAccessToken,
           conversationSheetId,
@@ -10592,11 +10508,11 @@ class ProductionServer {
           msg.toPnIdentifier = normalizedParticipantPnIdentifier;
         });
 
-        console.log('[GetThread] Returning', result.messages.length, 'messages');
+        console.log('[GetConversation] Returning', result.messages.length, 'messages');
         return res.json({ messages: result.messages, total: result.total });
       } catch (error: any) {
-        console.error('[GetThread] ERROR:', error);
-        console.error('[GetThread] ERROR stack:', error?.stack);
+        console.error('[GetConversation] ERROR:', error);
+        console.error('[GetConversation] ERROR stack:', error?.stack);
         return res.status(500).json({
           error: 'Failed to get thread messages',
           error_description: error.message || 'Failed to get thread messages'

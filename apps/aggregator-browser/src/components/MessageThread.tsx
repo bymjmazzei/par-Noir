@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Send, Image as ImageIcon, Paperclip, MoreVertical, Trash2 } from 'lucide-react';
 import { Message } from '../services/messageService';
 import { useUserState } from '../contexts/UserStateContext';
-import { getThreadMessages, sendMessage, markAsRead, deleteConversation } from '../services/messageService';
+import { getConversationMessages, sendMessage, markAsRead, deleteConversation } from '../services/messageService';
 import { useToast } from '../hooks/useToast';
 import { ToastContainer } from './Toast';
 
@@ -51,7 +51,7 @@ export function MessageThread({ participantPnIdentifier, participantName, onBack
       }
       
       try {
-        const threadMessages = await getThreadMessages(userState.pnIdentifier!, participantPnIdentifier);
+        const conversationMessages = await getConversationMessages(userState.pnIdentifier!, participantPnIdentifier);
         // Reset error count on success
         errorCountRef.current = 0;
         
@@ -72,7 +72,7 @@ export function MessageThread({ participantPnIdentifier, participantName, onBack
         setMessages(allMessages);
 
         // Mark unread messages as read
-        const unreadMessages = threadMessages.filter(m => !m.read && m.toPnIdentifier === userState.pnIdentifier);
+        const unreadMessages = conversationMessages.filter(m => !m.read && m.toPnIdentifier === userState.pnIdentifier);
         for (const message of unreadMessages) {
           try {
             await markAsRead(message.messageId, userState.pnIdentifier!, participantPnIdentifier);
