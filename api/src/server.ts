@@ -10394,7 +10394,7 @@ class ProductionServer {
         const normalizedParticipantPnIdentifier = participantPnIdentifier.startsWith('pn-') 
           ? participantPnIdentifier 
           : `pn-${participantPnIdentifier}`;
-        console.log('[GetThread] Checking connection between', pnIdentifier, 'and', normalizedParticipantPnIdentifier);
+        console.log('[GetConversation] Checking connection between', pnIdentifier, 'and', normalizedParticipantPnIdentifier);
         
         // Ensure both identifiers are normalized before checking connection
         const normalizedUserPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
@@ -10405,9 +10405,9 @@ class ProductionServer {
           normalizedParticipantPnIdentifier
         );
 
-        console.log('[GetThread] Connection status:', JSON.stringify(connectionStatus));
+        console.log('[GetConversation] Connection status:', JSON.stringify(connectionStatus));
         if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
-          console.error('[GetThread] Connection not found or not connected', {
+          console.error('[GetConversation] Connection not found or not connected', {
             connectionId: connectionStatus.connectionId,
             status: connectionStatus.status,
             userPnIdentifier: pnIdentifier,
