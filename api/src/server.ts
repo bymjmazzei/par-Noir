@@ -5509,14 +5509,14 @@ class ProductionServer {
               if (googleDriveAccounts.length > 0) {
                 const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-                const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+                const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
                 const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const userMetadataFolderId = _g.metadataFolderId;
 
                 // Record activity for liker
                 await ActivityLedgerService.recordActivity(
                   userAccessToken,
                   userMetadataFolderId,
-                  userCredentials.identityId,
+                  pnIdentifier,
                   'like',
                   {
                     targetType: 'file',
@@ -5537,14 +5537,14 @@ class ProductionServer {
               if (ownerGoogleDriveAccounts.length > 0) {
                 const ownerAccount = ownerGoogleDriveAccounts[0];
                 const ownerAccountId = (ownerAccount as any).backendId || (ownerAccount as any).keyPrefix || (ownerAccount as any).accountId || (ownerAccount as any).id || undefined;
-                const ownerAccessToken = await googleDriveProxyService.getAccessToken(ownerCredentials.identityId, ownerAccountId, [ownerCredentials.identityId]);
+                const ownerAccessToken = await googleDriveProxyService.getAccessToken(ownerPnIdentifier, ownerAccountId, [ownerPnIdentifier]);
                 const _g = await this.getMetadataFolder(ownerAccessToken, ownerPnIdentifier); if (!_g) return this.driveNotInitialized(res); const ownerMetadataFolderId = _g.metadataFolderId;
 
                 // Record activity for file owner
                 await ActivityLedgerService.recordActivity(
                   ownerAccessToken,
                   ownerMetadataFolderId,
-                  ownerCredentials.identityId,
+                  ownerPnIdentifier,
                   'like',
                   {
                     targetType: 'file',
@@ -5831,7 +5831,7 @@ class ProductionServer {
               if (googleDriveAccounts.length > 0) {
                 const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-                const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+                const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
                 const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const userMetadataFolderId = _g.metadataFolderId;
 
                 // Record activity for disliker (optional - may not want to track dislikes in activity)
@@ -5978,14 +5978,14 @@ class ProductionServer {
               if (googleDriveAccounts.length > 0) {
                 const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-                const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+                const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
                 const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const userMetadataFolderId = _g.metadataFolderId;
 
                 // Record activity for commenter
                 await ActivityLedgerService.recordActivity(
                   userAccessToken,
                   userMetadataFolderId,
-                  userCredentials.identityId,
+                  pnIdentifier,
                   'comment',
                   {
                     targetType: 'file',
@@ -6006,14 +6006,14 @@ class ProductionServer {
               if (ownerGoogleDriveAccounts.length > 0) {
                 const ownerAccount = ownerGoogleDriveAccounts[0];
                 const ownerAccountId = (ownerAccount as any).backendId || (ownerAccount as any).keyPrefix || (ownerAccount as any).accountId || (ownerAccount as any).id || undefined;
-                const ownerAccessToken = await googleDriveProxyService.getAccessToken(ownerCredentials.identityId, ownerAccountId, [ownerCredentials.identityId]);
+                const ownerAccessToken = await googleDriveProxyService.getAccessToken(ownerPnIdentifier, ownerAccountId, [ownerPnIdentifier]);
                 const _g = await this.getMetadataFolder(ownerAccessToken, ownerPnIdentifier); if (!_g) return this.driveNotInitialized(res); const ownerMetadataFolderId = _g.metadataFolderId;
 
                 // Record activity for file owner
                 await ActivityLedgerService.recordActivity(
                   ownerAccessToken,
                   ownerMetadataFolderId,
-                  ownerCredentials.identityId,
+                  ownerPnIdentifier,
                   'comment',
                   {
                     targetType: 'file',
@@ -6357,14 +6357,14 @@ class ProductionServer {
               if (googleDriveAccounts.length > 0) {
                 const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-                const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+                const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
                 const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const userMetadataFolderId = _g.metadataFolderId;
 
                 // Record activity for sharer
                 await ActivityLedgerService.recordActivity(
                   userAccessToken,
                   userMetadataFolderId,
-                  userCredentials.identityId,
+                  pnIdentifier,
                   'share',
                   {
                     targetType: 'file',
@@ -6385,14 +6385,14 @@ class ProductionServer {
               if (ownerGoogleDriveAccounts.length > 0) {
                 const ownerAccount = ownerGoogleDriveAccounts[0];
                 const ownerAccountId = (ownerAccount as any).backendId || (ownerAccount as any).keyPrefix || (ownerAccount as any).accountId || (ownerAccount as any).id || undefined;
-                const ownerAccessToken = await googleDriveProxyService.getAccessToken(ownerCredentials.identityId, ownerAccountId, [ownerCredentials.identityId]);
+                const ownerAccessToken = await googleDriveProxyService.getAccessToken(ownerPnIdentifier, ownerAccountId, [ownerPnIdentifier]);
                 const _g = await this.getMetadataFolder(ownerAccessToken, ownerPnIdentifier); if (!_g) return this.driveNotInitialized(res); const ownerMetadataFolderId = _g.metadataFolderId;
 
                 // Record activity for file owner
                 await ActivityLedgerService.recordActivity(
                   ownerAccessToken,
                   ownerMetadataFolderId,
-                  ownerCredentials.identityId,
+                  ownerPnIdentifier,
                   'share',
                   {
                     targetType: 'file',
@@ -10067,7 +10067,7 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
         // Find user's pN folder
         const pnFolderName = `par Noir - ${pnIdentifier}`;
@@ -10160,7 +10160,7 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
         // Find user's pN folder
         const pnFolderName = `par Noir - ${pnIdentifier}`;
@@ -10262,7 +10262,7 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
         // Find user's pN folder
         const pnFolderName = `par Noir - ${pnIdentifier}`;
@@ -10429,7 +10429,7 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
         // Find user's pN folder
         const pnFolderName = `par Noir - ${pnIdentifier}`;
@@ -10630,7 +10630,7 @@ class ProductionServer {
 
             const account = googleDriveAccounts[0];
             const accountId = this.extractAccountId(account);
-            const senderAccessToken = await googleDriveProxyService.getAccessToken(senderCredentials.identityId, accountId, [senderCredentials.identityId]);
+            const senderAccessToken = await googleDriveProxyService.getAccessToken(fromPnIdentifier, accountId, [fromPnIdentifier]);
             
             // Find metadata folder
             const folderSearchQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -10691,7 +10691,7 @@ class ProductionServer {
 
         const senderAccount = senderGoogleDriveAccounts[0];
         const senderAccountId = (senderAccount as any).backendId || (senderAccount as any).keyPrefix || (senderAccount as any).accountId || (senderAccount as any).id || undefined;
-        const senderAccessToken = await googleDriveProxyService.getAccessToken(senderCredentials.identityId, senderAccountId, [senderCredentials.identityId]);
+        const senderAccessToken = await googleDriveProxyService.getAccessToken(fromPnIdentifier, senderAccountId, [fromPnIdentifier]);
         
         // Get sender's metadata folder with proper error handling
         let senderMetadataFolderId: string;
@@ -10894,7 +10894,7 @@ class ProductionServer {
 
         const recipientAccount = recipientGoogleDriveAccounts[0];
         const recipientAccountId = (recipientAccount as any).backendId || (recipientAccount as any).keyPrefix || (recipientAccount as any).accountId || (recipientAccount as any).id || undefined;
-        const recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientCredentials.identityId, recipientAccountId, [recipientCredentials.identityId]);
+        const recipientAccessToken = await googleDriveProxyService.getAccessToken(toPnIdentifier, recipientAccountId, [toPnIdentifier]);
         
         // Get recipient's metadata folder with proper error handling
         let recipientMetadataFolderId: string;
@@ -11191,7 +11191,7 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
         // Find user's pN folder
         const pnFolderName = `par Noir - ${pnIdentifier}`;
@@ -11299,7 +11299,7 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
         // Get metadata folder
         let metadataFolderId: string;
@@ -11409,7 +11409,7 @@ class ProductionServer {
               if (participantGoogleDriveAccounts.length > 0) {
                 const participantAccount = participantGoogleDriveAccounts[0];
                 const participantAccountId = (participantAccount as any).backendId || (participantAccount as any).keyPrefix || (participantAccount as any).accountId || (participantAccount as any).id || undefined;
-                const participantAccessToken = await googleDriveProxyService.getAccessToken(participantCredentials.identityId, participantAccountId, [participantCredentials.identityId]);
+                const participantAccessToken = await googleDriveProxyService.getAccessToken(normalizedParticipantPnIdentifier, participantAccountId, [normalizedParticipantPnIdentifier]);
                 
                 try {
                   const participantMetadataFolder = await this.getMetadataFolder(participantAccessToken, normalizedParticipantPnIdentifier);
@@ -12070,7 +12070,7 @@ class ProductionServer {
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
         // Use normalized pn identifier for access token retrieval
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
         // Get metadata folder
         let metadataFolderId: string;
@@ -12190,7 +12190,7 @@ class ProductionServer {
               if (otherGoogleDriveAccounts.length > 0) {
                 const otherAccount = otherGoogleDriveAccounts[0];
                 const otherAccountId = (otherAccount as any).backendId || (otherAccount as any).keyPrefix || (otherAccount as any).accountId || (otherAccount as any).id || undefined;
-                const otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherAccountId, [otherUserCredentials.identityId]);
+                const otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserPnIdentifier, otherAccountId, [otherUserPnIdentifier]);
                 const otherMetadataFolder = await this.getMetadataFolder(otherAccessToken, otherUserPnIdentifier);
                 if (otherMetadataFolder) {
                   // Use normalized pn-identifiers (pnIdentifier was normalized at start of function)
@@ -12304,7 +12304,7 @@ class ProductionServer {
 
         const otherAccount = otherGoogleDriveAccounts[0];
         const otherAccountId = (otherAccount as any).backendId || (otherAccount as any).keyPrefix || (otherAccount as any).accountId || (otherAccount as any).id || undefined;
-        const otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherAccountId, [otherUserCredentials.identityId]);
+        const otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserPnIdentifier, otherAccountId, [otherUserPnIdentifier]);
         
         const otherMetadataFolder = await this.getMetadataFolder(otherAccessToken, otherUserPnIdentifier);
         if (!otherMetadataFolder) {
@@ -12435,7 +12435,7 @@ class ProductionServer {
             if (otherGoogleDriveAccounts.length > 0) {
               const otherAccount = otherGoogleDriveAccounts[0];
               const otherAccountId = (otherAccount as any).backendId || (otherAccount as any).keyPrefix || (otherAccount as any).accountId || (otherAccount as any).id || undefined;
-              otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherAccountId, [otherUserCredentials.identityId]);
+              otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserPnIdentifier, otherAccountId, [otherUserPnIdentifier]);
               
               try {
                 const _g = await this.getMetadataFolder(otherAccessToken, otherUserPnIdentifier);
@@ -12741,7 +12741,7 @@ class ProductionServer {
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
         // Use normalized pn identifier for access token retrieval
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
         // Get metadata folder
         let metadataFolderId: string;
@@ -12824,12 +12824,12 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
-        // Get metadata folder - use identityId from credentials
+        // Get metadata folder - use pnIdentifier
         let metadataFolderId: string;
         try {
-          const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId);
+          const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier);
           if (!_g) {
             // Folders actually missing - this is the only case for DRIVE_NOT_INITIALIZED
             return this.driveNotInitialized(res);
@@ -12916,8 +12916,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
         // Normalize targetId if it's a user (not a feed)
         const normalizedTargetId = targetTypeStr === 'user' && targetId
@@ -12968,8 +12968,8 @@ class ProductionServer {
               if (targetGoogleDriveAccounts.length > 0) {
                 const targetAccount = targetGoogleDriveAccounts[0];
                 const targetAccountId = (targetAccount as any).backendId || (targetAccount as any).keyPrefix || (targetAccount as any).accountId || (targetAccount as any).id || undefined;
-                const targetAccessToken = await googleDriveProxyService.getAccessToken(targetCredentials.identityId, targetAccountId, [targetCredentials.identityId]);
-                const _g = await this.getMetadataFolder(targetAccessToken, targetCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const targetMetadataFolderId = _g.metadataFolderId;
+                const targetAccessToken = await googleDriveProxyService.getAccessToken(normalizedTargetId, targetAccountId, [normalizedTargetId]);
+                const _g = await this.getMetadataFolder(targetAccessToken, normalizedTargetId); if (!_g) return this.driveNotInitialized(res); const targetMetadataFolderId = _g.metadataFolderId;
 
                 // Get or create followers sheet (paid feeds only)
                 const followersSheetId = await ConnectionsSheetsService.getFollowersSheet(
@@ -13053,8 +13053,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
         // Get following sheet
         const followingSheetId = await ConnectionsSheetsService.getFollowingSheet(
@@ -13087,8 +13087,8 @@ class ProductionServer {
               if (targetGoogleDriveAccounts.length > 0) {
                 const targetAccount = targetGoogleDriveAccounts[0];
                 const targetAccountId = (targetAccount as any).backendId || (targetAccount as any).keyPrefix || (targetAccount as any).accountId || (targetAccount as any).id || undefined;
-                const targetAccessToken = await googleDriveProxyService.getAccessToken(targetCredentials.identityId, targetAccountId, [targetCredentials.identityId]);
-                const _g = await this.getMetadataFolder(targetAccessToken, targetCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const targetMetadataFolderId = _g.metadataFolderId;
+                const targetAccessToken = await googleDriveProxyService.getAccessToken(normalizedTargetId, targetAccountId, [normalizedTargetId]);
+                const _g = await this.getMetadataFolder(targetAccessToken, normalizedTargetId); if (!_g) return this.driveNotInitialized(res); const targetMetadataFolderId = _g.metadataFolderId;
 
                 // Get followers sheet
                 const followersSheetId = await ConnectionsSheetsService.getFollowersSheet(
@@ -13148,8 +13148,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
         // Check if followers sheet exists (only for paid feeds)
         try {
@@ -13206,8 +13206,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
         // Get following sheet
         const followingSheetId = await ConnectionsSheetsService.getFollowingSheet(
@@ -13260,8 +13260,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
         const followingSheetId = await ConnectionsSheetsService.getFollowingSheet(
           userAccessToken,
@@ -13311,8 +13311,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
         const followingSheetId = await ConnectionsSheetsService.getFollowingSheet(
           userAccessToken,
@@ -13372,13 +13372,13 @@ class ProductionServer {
         const account = googleDriveAccounts[0];
         // Try backendId first, then keyPrefix, then accountId/id for backward compatibility
                 const accountId = this.extractAccountId(account);
-        // Use the identityId from credentials (the actual stored identifier)
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        // Use pnIdentifier (the standardized identifier from request)
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
         // Get metadata folder
         let metadataFolderId: string;
         try {
-          const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId);
+          const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier);
           if (!_g) {
             // Folders actually missing - this is the only case for DRIVE_NOT_INITIALIZED
             return this.driveNotInitialized(res);
@@ -13476,7 +13476,7 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
         // Get metadata folder
         let metadataFolderId: string;
@@ -13553,7 +13553,7 @@ class ProductionServer {
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
         // Use normalized pn identifier for access token retrieval
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
         // Get or create metadata folder
         let metadataFolderId: string;
@@ -13668,7 +13668,7 @@ class ProductionServer {
         const otherUserAccountId = (otherUserAccount as any).backendId || (otherUserAccount as any).keyPrefix || (otherUserAccount as any).accountId || (otherUserAccount as any).id || undefined;
         let otherUserAccessToken: string;
         try {
-          otherUserAccessToken = await googleDriveProxyService.getAccessToken(otherUserCredentials.identityId, otherUserAccountId, [otherUserCredentials.identityId]);
+          otherUserAccessToken = await googleDriveProxyService.getAccessToken(otherUserPnIdentifier, otherUserAccountId, [otherUserPnIdentifier]);
         } catch (error: any) {
           console.error(`[RemoveConnection] Failed to get other user's access token:`, error.message);
           return res.json({ success: true, warning: 'Connection removed from your list, but could not get other user\'s access token' });
@@ -14772,13 +14772,13 @@ class ProductionServer {
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
         const userAccessToken = await googleDriveProxyService.getAccessToken(
-          userCredentials.identityId,
+          pnIdentifier,
           accountId,
-          [userCredentials.identityId]
+          [pnIdentifier]
         );
 
         // Get metadata folder using helper method
-        const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
+        const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
         // Get query parameters
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
@@ -14842,7 +14842,7 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
         const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
         const limit = parseInt(req.query.limit as string) || 50;
@@ -14906,8 +14906,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
         const count = await NotificationService.getUnreadCount(userAccessToken, metadataFolderId);
 
@@ -14956,10 +14956,10 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
-        const success = await NotificationService.markAsRead(userAccessToken, metadataFolderId, userCredentials.identityId, notificationId);
+        const success = await NotificationService.markAsRead(userAccessToken, metadataFolderId, pnIdentifier, notificationId);
 
         if (!success) {
           return res.status(404).json({
@@ -15012,10 +15012,10 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
-        const count = await NotificationService.markAllAsRead(userAccessToken, metadataFolderId, userCredentials.identityId);
+        const count = await NotificationService.markAllAsRead(userAccessToken, metadataFolderId, pnIdentifier);
 
         return res.json({ success: true, markedRead: count });
       } catch (error: any) {
@@ -15062,10 +15062,10 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
-        const success = await NotificationService.deleteNotification(userAccessToken, metadataFolderId, userCredentials.identityId, notificationId);
+        const success = await NotificationService.deleteNotification(userAccessToken, metadataFolderId, pnIdentifier, notificationId);
 
         if (!success) {
           return res.status(404).json({
@@ -15142,10 +15142,10 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
         const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
-        const preferences = await NotificationService.getPreferences(userAccessToken, metadataFolderId, userCredentials.identityId);
+        const preferences = await NotificationService.getPreferences(userAccessToken, metadataFolderId, pnIdentifier);
 
         return res.json(preferences);
       } catch (error: any) {
@@ -15191,8 +15191,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userCredentials.identityId, accountId, [userCredentials.identityId]);
-        const _g = await this.getMetadataFolder(userAccessToken, userCredentials.identityId); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        const _g = await this.getMetadataFolder(userAccessToken, pnIdentifier); if (!_g) return this.driveNotInitialized(res); const metadataFolderId = _g.metadataFolderId;
 
         const { user_did, ...preferencesUpdate } = req.body;
         const preferences = await NotificationService.updatePreferences(
