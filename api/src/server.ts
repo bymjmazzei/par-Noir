@@ -13482,7 +13482,7 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
                 const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedUserPnIdentifier, accountId, [normalizedUserPnIdentifier]);
 
         // Get metadata folder
         let metadataFolderId: string;
