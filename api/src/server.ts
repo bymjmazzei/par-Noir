@@ -12715,6 +12715,7 @@ class ProductionServer {
               // System messages don't need encryption - use empty connectionId and sharedSecret
               const systemMessageId = crypto.randomUUID();
               const now = new Date().toISOString();
+              const systemMessageContent = `${acceptorDisplayName} accepted ${requesterDisplayName}'s connection request`;
               await MessageSheetsService.appendMessage(
                 userAccessToken,
                 acceptorConversationSheetId,
@@ -12722,13 +12723,34 @@ class ProductionServer {
                   messageId: systemMessageId,
                   fromPnIdentifier: 'system',
                   toPnIdentifier: userCredentials.identityId,
-                  content: `${acceptorDisplayName} accepted ${requesterDisplayName}'s connection request`,
+                  content: systemMessageContent,
                   timestamp: now,
                   read: false
                 },
                 connectionId, // Use the connection ID
                 sharedSecret || '' // Use the shared secret if available
               );
+
+              // Update inbox for acceptor
+              try {
+                const acceptorInboxSheetId = await MessageSheetsService.getInboxSheet(
+                  userAccessToken,
+                  acceptorMessagesFolderId
+                );
+                await MessageSheetsService.updateInboxEntry(
+                  userAccessToken,
+                  acceptorInboxSheetId,
+                  otherUserPnIdentifier,
+                  acceptorConversationSheetId,
+                  connectionId,
+                  now,
+                  systemMessageContent,
+                  sharedSecret // Encrypted shared secret
+                );
+                console.log('[AcceptConnection] Updated acceptor inbox');
+              } catch (inboxError: any) {
+                console.warn('[AcceptConnection] Failed to update acceptor inbox:', inboxError?.message);
+              }
             }
           }
 
@@ -12828,6 +12850,7 @@ class ProductionServer {
                 // Message: "user b accepted user a's connection request" (acceptor accepted requester's request)
                 const systemMessageId2 = crypto.randomUUID();
                 const now2 = new Date().toISOString();
+                const systemMessageContent2 = `${acceptorDisplayName} accepted ${requesterDisplayName}'s connection request`;
                 await MessageSheetsService.appendMessage(
                   otherAccessToken,
                   requesterConversationSheetId,
@@ -12835,13 +12858,34 @@ class ProductionServer {
                     messageId: systemMessageId2,
                     fromPnIdentifier: 'system',
                     toPnIdentifier: otherUserCredentials.identityId,
-                    content: `${acceptorDisplayName} accepted ${requesterDisplayName}'s connection request`,
+                    content: systemMessageContent2,
                     timestamp: now2,
                     read: false
                   },
                   connectionId, // Use the connection ID
                   sharedSecret || '' // Use the shared secret if available
                 );
+
+                // Update inbox for requester
+                try {
+                  const requesterInboxSheetId = await MessageSheetsService.getInboxSheet(
+                    otherAccessToken,
+                    requesterMessagesFolderId
+                  );
+                  await MessageSheetsService.updateInboxEntry(
+                    otherAccessToken,
+                    requesterInboxSheetId,
+                    pnIdentifier,
+                    requesterConversationSheetId,
+                    connectionId,
+                    now2,
+                    systemMessageContent2,
+                    sharedSecret // Encrypted shared secret
+                  );
+                  console.log('[AcceptConnection] Updated requester inbox');
+                } catch (inboxError: any) {
+                  console.warn('[AcceptConnection] Failed to update requester inbox:', inboxError?.message);
+                }
               }
             }
           }
