@@ -11791,10 +11791,10 @@ class ProductionServer {
           id: (requesterAccount as any).id,
           usingAccountId: requesterAccountId
         });
-        // Use the identityId from credentials (the actual stored identifier)
+        // Use requesterPnIdentifier (the pn identifier from request)
         let requesterAccessToken: string;
         try {
-          requesterAccessToken = await googleDriveProxyService.getAccessToken(requesterCredentials.identityId, requesterAccountId, [requesterCredentials.identityId]);
+          requesterAccessToken = await googleDriveProxyService.getAccessToken(requesterPnIdentifier, requesterAccountId, [requesterPnIdentifier]);
         } catch (error: any) {
           console.error('[ConnectionRequest] Failed to get requester access token:', error);
           console.error('[ConnectionRequest] Requester details:', {
@@ -11816,7 +11816,7 @@ class ProductionServer {
         try {
           // Create refresh function for retry on 401 - force refresh
           const refreshTokenFn = async () => {
-            return await googleDriveProxyService.forceRefreshAccessToken(requesterCredentials.identityId, requesterAccountId, [requesterCredentials.identityId]);
+            return await googleDriveProxyService.forceRefreshAccessToken(requesterPnIdentifier, requesterAccountId, [requesterPnIdentifier]);
           };
           
           // Use normalized requesterPnIdentifier
@@ -11867,10 +11867,10 @@ class ProductionServer {
           id: (recipientAccount as any).id,
           usingAccountId: recipientAccountId
         });
-        // Use the identityId from credentials (the actual stored identifier)
+        // Use recipientPnIdentifier (the pn identifier from request)
         let recipientAccessToken: string;
         try {
-          recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientCredentials.identityId, recipientAccountId, [recipientCredentials.identityId]);
+          recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientPnIdentifier, recipientAccountId, [recipientPnIdentifier]);
         } catch (error: any) {
           console.error('[ConnectionRequest] Failed to get recipient access token:', error);
           console.error('[ConnectionRequest] Recipient details:', {
@@ -11892,7 +11892,7 @@ class ProductionServer {
         try {
           // Create refresh function for retry on 401 - force refresh
           const refreshTokenFn = async () => {
-            return await googleDriveProxyService.forceRefreshAccessToken(recipientCredentials.identityId, recipientAccountId, [recipientCredentials.identityId]);
+            return await googleDriveProxyService.forceRefreshAccessToken(recipientPnIdentifier, recipientAccountId, [recipientPnIdentifier]);
           };
           
           // Use normalized recipientPnIdentifier
