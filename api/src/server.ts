@@ -4673,8 +4673,16 @@ class ProductionServer {
               if (pnFolderId) {
                 try {
                   const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
-                  await MessageSheetsService.getOrCreateMessagesFolder(accessToken, pnFolderId);
+                  const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(accessToken, pnFolderId);
                   console.log(`[StorageCredentials PUT] Initialized messages folder for identityId: ${sanitizedIdentityId}`);
+                  
+                  // Initialize inbox sheet for fast conversation loading
+                  try {
+                    await MessageSheetsService.getOrCreateInboxSheet(accessToken, messagesFolderId);
+                    console.log(`[StorageCredentials PUT] Initialized inbox sheet for identityId: ${sanitizedIdentityId}`);
+                  } catch (inboxError: any) {
+                    console.warn(`[StorageCredentials PUT] Failed to initialize inbox sheet:`, inboxError?.message || inboxError);
+                  }
                 } catch (msgFolderError: any) {
                   console.warn(`[StorageCredentials PUT] Failed to initialize messages folder:`, msgFolderError?.message || msgFolderError);
                 }
@@ -10099,143 +10107,128 @@ class ProductionServer {
           pnFolder.id
         );
 
-        // Get all conversations
-        const conversations = await MessageSheetsService.getConversations(
-          userAccessToken,
-          messagesFolderId
-        );
-
-        // Format conversations for response (backward compatibility with threads)
-        // Filter out conversations with invalid otherUserPnIdentifier
-        const validConversations = conversations.filter(conv => {
-          if (!conv.otherUserPnIdentifier) {
-            console.warn('[GetConversations] Filtering out conversation with undefined otherUserPnIdentifier:', conv);
-            return false;
-          }
-          return true;
-        });
-
-        // Sort by lastMessageAt descending (most recent first) - already sorted by Drive API but ensure it
-        validConversations.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
-
-        // Get last message for top 5 conversations in parallel
-        const topConversations = validConversations.slice(0, 5);
-        const { ConnectionsService } = await import('./server/modules/connectionsService');
-        const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
-        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-        
         // Get metadata folder for connection lookup
         const metadataFolder = await this.getMetadataFolder(userAccessToken, pnIdentifier);
         if (!metadataFolder) {
-          console.warn('[GetConversations] Metadata folder not found, skipping lastMessage retrieval');
+          console.warn('[GetConversations] Metadata folder not found, returning empty conversations');
+          return res.json({ conversations: [], threads: [] });
         }
-        const metadataFolderId = metadataFolder?.metadataFolderId;
-        // Get spreadsheetId separately using getConnectionsSheet
-        let spreadsheetId: string | undefined;
-        if (metadataFolderId) {
-          try {
-            spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-              userAccessToken,
-              metadataFolderId
-            );
-          } catch (error) {
-            console.warn('[GetConversations] Failed to get connections sheet:', error);
-          }
+        const metadataFolderId = metadataFolder.metadataFolderId;
+
+        // Get or create inbox sheet
+        let inboxConversations: Array<{
+          participantPnIdentifier: string;
+          spreadsheetId: string;
+          connectionId: string;
+          lastMessageAt: string;
+          lastMessagePreview?: string;
+        }> = [];
+
+        try {
+          const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+            userAccessToken,
+            messagesFolderId
+          );
+          inboxConversations = await MessageSheetsService.getInboxConversations(
+            userAccessToken,
+            inboxSheetId
+          );
+        } catch (inboxError: any) {
+          console.warn('[GetConversations] Failed to read inbox, falling back to file listing:', inboxError?.message);
+          // Fallback to old method if inbox fails
+          const conversations = await MessageSheetsService.getConversations(
+            userAccessToken,
+            messagesFolderId
+          );
+          inboxConversations = conversations.map(conv => ({
+            participantPnIdentifier: conv.otherUserPnIdentifier,
+            spreadsheetId: conv.spreadsheetId,
+            connectionId: '', // Will be looked up below
+            lastMessageAt: conv.lastMessageAt
+          }));
         }
 
-        const conversationsWithLastMessage = await Promise.all(
-          topConversations.map(async (conv) => {
+        // Get connections sheet for shared secret lookup
+        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+        const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
+        let connectionsSpreadsheetId: string | undefined;
+        try {
+          connectionsSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
+            userAccessToken,
+            metadataFolderId
+          );
+        } catch (error) {
+          console.warn('[GetConversations] Failed to get connections sheet:', error);
+        }
+
+        // Enrich conversations with shared secrets and last messages
+        const enrichedConversations = await Promise.all(
+          inboxConversations.map(async (conv) => {
+            let sharedSecret: string | undefined;
             let lastMessage = null;
-            
+
             try {
-              if (!metadataFolderId || !spreadsheetId) {
-                return { ...conv, lastMessage: null };
-              }
-
-              // Normalize participantPnIdentifier
-              const normalizedParticipantPnIdentifier = conv.otherUserPnIdentifier.startsWith('pn-') 
-                ? conv.otherUserPnIdentifier 
-                : `pn-${conv.otherUserPnIdentifier}`;
-
-              // Get connection status to find connectionId
-              const connectionStatus = await ConnectionsService.getConnectionStatus(
-                userAccessToken,
-                metadataFolderId,
-                pnIdentifier,
-                normalizedParticipantPnIdentifier
-              );
-
-              if (!connectionStatus || connectionStatus.status !== 'connected' || !connectionStatus.connectionId) {
-                return { ...conv, lastMessage: null };
-              }
-
               // Get connection to retrieve shared secret
-              if (!spreadsheetId) {
-                return { ...conv, lastMessage: null };
-              }
-              const connection = await ConnectionsSheetsService.getConnectionById(
-                userAccessToken,
-                spreadsheetId,
-                connectionStatus.connectionId
-              );
+              if (connectionsSpreadsheetId && conv.connectionId) {
+                const connection = await ConnectionsSheetsService.getConnectionById(
+                  userAccessToken,
+                  connectionsSpreadsheetId,
+                  conv.connectionId
+                );
 
-              if (!connection || !connection.sharedSecret) {
-                return { ...conv, lastMessage: null };
-              }
+                if (connection?.sharedSecret) {
+                  // Return encrypted shared secret (frontend will decrypt)
+                  sharedSecret = connection.sharedSecret;
 
-              // Decrypt shared secret
-              const decryptedSharedSecret = MetadataEncryption.decryptField(connection.sharedSecret);
-              if (!decryptedSharedSecret) {
-                return { ...conv, lastMessage: null };
-              }
+                  // Get last message for preview (only for top 5)
+                  const index = inboxConversations.indexOf(conv);
+                  if (index < 5) {
+                    try {
+                      const decryptedSharedSecret = MetadataEncryption.decryptField(connection.sharedSecret);
+                      if (decryptedSharedSecret) {
+                        const messagesResult = await MessageSheetsService.getMessages(
+                          userAccessToken,
+                          conv.spreadsheetId,
+                          conv.connectionId,
+                          decryptedSharedSecret,
+                          { limit: 1, offset: 0 }
+                        );
 
-              // Get last message (limit 1, offset 0)
-              const messagesResult = await MessageSheetsService.getMessages(
-                userAccessToken,
-                conv.spreadsheetId,
-                connectionStatus.connectionId,
-                decryptedSharedSecret,
-                { limit: 1, offset: 0 }
-              );
-
-              if (messagesResult.messages.length > 0) {
-                lastMessage = messagesResult.messages[0];
+                        if (messagesResult.messages.length > 0) {
+                          lastMessage = messagesResult.messages[0];
+                        }
+                      }
+                    } catch (msgError: any) {
+                      // Silently fail - lastMessage is optional
+                      console.warn(`[GetConversations] Failed to get last message for ${conv.participantPnIdentifier}:`, msgError?.message);
+                    }
+                  }
+                }
               }
             } catch (error: any) {
-              // Silently fail - lastMessage is optional
-              console.warn(`[GetConversations] Failed to get last message for conversation ${conv.otherUserPnIdentifier}:`, error.message);
+              // Silently fail - shared secret lookup is optional
+              console.warn(`[GetConversations] Failed to get shared secret for ${conv.participantPnIdentifier}:`, error?.message);
             }
 
             return {
-              ...conv,
-              lastMessage
+              otherUserPnIdentifier: conv.participantPnIdentifier,
+              participantPnIdentifier: conv.participantPnIdentifier,
+              spreadsheetId: conv.spreadsheetId,
+              connectionId: conv.connectionId,
+              sharedSecret: sharedSecret, // Encrypted, for frontend to cache
+              lastMessageAt: conv.lastMessageAt,
+              lastMessagePreview: conv.lastMessagePreview,
+              lastMessage: lastMessage || undefined
             };
           })
         );
 
-        // Combine top conversations with lastMessage and remaining conversations without
-        const conversationsWithParticipant = [
-          ...conversationsWithLastMessage.map(conv => ({
-            otherUserPnIdentifier: conv.otherUserPnIdentifier,
-            participantPnIdentifier: conv.otherUserPnIdentifier,
-            spreadsheetId: conv.spreadsheetId,
-            lastMessageAt: conv.lastMessageAt,
-            lastMessage: conv.lastMessage || undefined
-          })),
-          ...validConversations.slice(5).map(conv => ({
-            otherUserPnIdentifier: conv.otherUserPnIdentifier,
-            participantPnIdentifier: conv.otherUserPnIdentifier,
-            spreadsheetId: conv.spreadsheetId,
-            lastMessageAt: conv.lastMessageAt
-          }))
-        ];
-        
-        const threads = validConversations.map(conv => ({
-          participantPnIdentifier: conv.otherUserPnIdentifier!,
+        const threads = enrichedConversations.map(conv => ({
+          participantPnIdentifier: conv.participantPnIdentifier,
           lastMessageAt: conv.lastMessageAt
         }));
 
-        return res.json({ conversations: conversationsWithParticipant, threads }); // Return both for compatibility
+        return res.json({ conversations: enrichedConversations, threads }); // Return both for compatibility
       } catch (error: any) {
         console.error('Error getting message conversations:', error);
         return res.status(500).json({
@@ -10425,13 +10418,19 @@ class ProductionServer {
     this.app.get('/api/messages/conversation', async (req, res) => {
       console.log('[GetConversation] Endpoint called', { 
         userPnIdentifier: req.query.userPnIdentifier, 
-        participantPnIdentifier: req.query.participantPnIdentifier 
+        participantPnIdentifier: req.query.participantPnIdentifier,
+        hasConnectionId: !!req.query.connectionId,
+        hasSharedSecret: !!req.query.sharedSecret,
+        hasSpreadsheetId: !!req.query.spreadsheetId
       });
       try {
         const userPnIdentifier = req.query.userPnIdentifier as string;
         const participantPnIdentifier = req.query.participantPnIdentifier as string;
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
         const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+        const connectionId = req.query.connectionId as string | undefined;
+        const sharedSecret = req.query.sharedSecret as string | undefined; // Encrypted
+        const spreadsheetId = req.query.spreadsheetId as string | undefined;
 
         if (!userPnIdentifier || !participantPnIdentifier) {
           console.error('[GetConversation] Missing required parameters');
@@ -10480,118 +10479,143 @@ class ProductionServer {
           return res.json({ messages: [] });
         }
 
-        // Get or create messages folder
-        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-          userAccessToken,
-          pnFolder.id
-        );
-
-        // Get user's metadata folder for connection lookup
-        const metadataFolder = await this.getMetadataFolder(userAccessToken, pnIdentifier);
-        if (!metadataFolder) {
-          console.error('[GetConversation] Metadata folder not found for', pnIdentifier);
-          return res.json({ messages: [], total: 0 });
-        }
-        const metadataFolderId = metadataFolder.metadataFolderId;
-
-        // Look up connection to get shared secret
-        console.log('[GetConversation] Looking up connection');
-        const { ConnectionsService } = await import('./server/modules/connectionsService');
-        const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
-        
         // Normalize participantPnIdentifier to ensure consistent format
         const normalizedParticipantPnIdentifier = participantPnIdentifier.startsWith('pn-') 
           ? participantPnIdentifier 
           : `pn-${participantPnIdentifier}`;
-        console.log('[GetConversation] Checking connection between', pnIdentifier, 'and', normalizedParticipantPnIdentifier);
-        
-        // Ensure both identifiers are normalized before checking connection
-        const normalizedUserPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-        const connectionStatus = await ConnectionsService.getConnectionStatus(
-          userAccessToken,
-          metadataFolderId,
-          normalizedUserPnIdentifier,
-          normalizedParticipantPnIdentifier
-        );
 
-        console.log('[GetConversation] Connection status:', JSON.stringify(connectionStatus));
-        if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
-          console.error('[GetConversation] Connection not found or not connected', {
-            connectionId: connectionStatus.connectionId,
-            status: connectionStatus.status,
-            userPnIdentifier: pnIdentifier,
-            participantPnIdentifier: normalizedParticipantPnIdentifier
-          });
-          return res.status(403).json({
-            error: 'Connection not found. Users must be connected to view messages.',
-            error_description: `Connection not found. Status: ${connectionStatus.status || 'not_connected'}`
-          });
-        }
+        // If connectionId and sharedSecret are provided, skip lookups (optimized path)
+        let finalConnectionId: string;
+        let decryptedSharedSecret: string;
+        let conversationSheetId: string;
 
-        console.log('[GetConversation] Getting connections sheet');
-        // Get connection to retrieve shared secret - use Sheets directly
-        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-        const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-          userAccessToken,
-          metadataFolderId
-        );
-        console.log('[GetConversation] Connections sheet ID:', spreadsheetId);
-        
-        console.log('[GetConversation] Fetching connection by ID');
-        // Get connection directly by connectionId (more efficient than loading all connections)
-        const connection = await ConnectionsSheetsService.getConnectionById(
-          userAccessToken,
-          spreadsheetId,
-          connectionStatus.connectionId
-        );
-        if (!connection) {
-          console.error('[GetConversation] Connection not found in sheet, connectionId:', connectionStatus.connectionId);
-          return res.status(500).json({
-            error: 'Connection not found',
-            error_description: `Connection ${connectionStatus.connectionId} not found in connections sheet`
-          });
-        }
+        if (connectionId && sharedSecret && spreadsheetId) {
+          // Optimized path: use provided connection info
+          console.log('[GetConversation] Using provided connection info (optimized path)');
+          finalConnectionId = connectionId;
+          conversationSheetId = spreadsheetId;
 
-        console.log('[GetConversation] Found connection, checking shared secret');
-        // Get shared secret from connection - generate if missing (for backwards compatibility)
-        let sharedSecret = connection.sharedSecret;
-        if (!sharedSecret) {
-          console.log(`[GetConversation] Connection ${connectionStatus.connectionId} missing shared secret, generating one`);
-          const crypto = await import('crypto');
-          const rawSecret = crypto.randomBytes(32).toString('base64');
-          sharedSecret = MetadataEncryption.encryptField(rawSecret);
+          // Decrypt provided shared secret
+          const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
+          decryptedSharedSecret = MetadataEncryption.decryptField(sharedSecret);
+          if (!decryptedSharedSecret) {
+            console.error('[GetConversation] Failed to decrypt provided shared secret');
+            return res.status(500).json({
+              error: 'Failed to decrypt shared secret',
+              error_description: 'Failed to decrypt provided shared secret'
+            });
+          }
+        } else {
+          // Fallback path: look up connection info (for backward compatibility)
+          console.log('[GetConversation] Looking up connection (fallback path)');
           
-          // Update connection with shared secret
-          await ConnectionsSheetsService.updateConnectionStatus(
+          // Get or create messages folder
+          const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
             userAccessToken,
-            spreadsheetId,
-            connectionStatus.connectionId,
-            connection.status,
-            connection.acceptedAt,
-            sharedSecret
+            pnFolder.id
           );
-          console.log(`[GetConversation] Generated and stored shared secret for connection ${connectionStatus.connectionId}`);
-        }
 
-        console.log('[GetConversation] Decrypting shared secret');
-        // Decrypt shared secret
-        const decryptedSharedSecret = MetadataEncryption.decryptField(sharedSecret);
-        if (!decryptedSharedSecret) {
-          console.error(`[GetConversation] Failed to decrypt shared secret for connection ${connectionStatus.connectionId}`);
-          return res.status(500).json({
-            error: 'Failed to decrypt shared secret',
-            error_description: 'Failed to decrypt shared secret'
-          });
-        }
-        console.log('[GetConversation] Successfully decrypted shared secret');
+          // Get user's metadata folder for connection lookup
+          const metadataFolder = await this.getMetadataFolder(userAccessToken, pnIdentifier);
+          if (!metadataFolder) {
+            console.error('[GetConversation] Metadata folder not found for', pnIdentifier);
+            return res.json({ messages: [], total: 0 });
+          }
+          const metadataFolderId = metadataFolder.metadataFolderId;
 
-        // Get or create conversation sheet (use normalized participantPnIdentifier)
-        console.log('[GetConversation] Getting conversation sheet');
-        const conversationSheetId = await MessageSheetsService.getConversationSheet(
-          userAccessToken,
-          messagesFolderId,
-          normalizedParticipantPnIdentifier
-        );
+          const { ConnectionsService } = await import('./server/modules/connectionsService');
+          const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
+          
+          // Ensure both identifiers are normalized before checking connection
+          const normalizedUserPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+          const connectionStatus = await ConnectionsService.getConnectionStatus(
+            userAccessToken,
+            metadataFolderId,
+            normalizedUserPnIdentifier,
+            normalizedParticipantPnIdentifier
+          );
+
+          console.log('[GetConversation] Connection status:', JSON.stringify(connectionStatus));
+          if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
+            console.error('[GetConversation] Connection not found or not connected', {
+              connectionId: connectionStatus.connectionId,
+              status: connectionStatus.status,
+              userPnIdentifier: pnIdentifier,
+              participantPnIdentifier: normalizedParticipantPnIdentifier
+            });
+            return res.status(403).json({
+              error: 'Connection not found. Users must be connected to view messages.',
+              error_description: `Connection not found. Status: ${connectionStatus.status || 'not_connected'}`
+            });
+          }
+
+          console.log('[GetConversation] Getting connections sheet');
+          // Get connection to retrieve shared secret - use Sheets directly
+          const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+          const connectionsSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
+            userAccessToken,
+            metadataFolderId
+          );
+          console.log('[GetConversation] Connections sheet ID:', connectionsSpreadsheetId);
+          
+          console.log('[GetConversation] Fetching connection by ID');
+          // Get connection directly by connectionId (more efficient than loading all connections)
+          const connection = await ConnectionsSheetsService.getConnectionById(
+            userAccessToken,
+            connectionsSpreadsheetId,
+            connectionStatus.connectionId
+          );
+          if (!connection) {
+            console.error('[GetConversation] Connection not found in sheet, connectionId:', connectionStatus.connectionId);
+            return res.status(500).json({
+              error: 'Connection not found',
+              error_description: `Connection ${connectionStatus.connectionId} not found in connections sheet`
+            });
+          }
+
+          console.log('[GetConversation] Found connection, checking shared secret');
+          // Get shared secret from connection - generate if missing (for backwards compatibility)
+          let connectionSharedSecret = connection.sharedSecret;
+          if (!connectionSharedSecret) {
+            console.log(`[GetConversation] Connection ${connectionStatus.connectionId} missing shared secret, generating one`);
+            const crypto = await import('crypto');
+            const rawSecret = crypto.randomBytes(32).toString('base64');
+            connectionSharedSecret = MetadataEncryption.encryptField(rawSecret);
+            
+            // Update connection with shared secret
+            await ConnectionsSheetsService.updateConnectionStatus(
+              userAccessToken,
+              connectionsSpreadsheetId,
+              connectionStatus.connectionId,
+              connection.status,
+              connection.acceptedAt,
+              connectionSharedSecret
+            );
+            console.log(`[GetConversation] Generated and stored shared secret for connection ${connectionStatus.connectionId}`);
+          }
+
+          console.log('[GetConversation] Decrypting shared secret');
+          // Decrypt shared secret
+          decryptedSharedSecret = MetadataEncryption.decryptField(connectionSharedSecret);
+          if (!decryptedSharedSecret) {
+            console.error(`[GetConversation] Failed to decrypt shared secret for connection ${connectionStatus.connectionId}`);
+            return res.status(500).json({
+              error: 'Failed to decrypt shared secret',
+              error_description: 'Failed to decrypt shared secret'
+            });
+          }
+          console.log('[GetConversation] Successfully decrypted shared secret');
+
+          finalConnectionId = connectionStatus.connectionId;
+
+          // Get or create conversation sheet (use normalized participantPnIdentifier)
+          console.log('[GetConversation] Getting conversation sheet');
+          conversationSheetId = await MessageSheetsService.getConversationSheet(
+            userAccessToken,
+            messagesFolderId,
+            normalizedParticipantPnIdentifier
+          );
+        }
 
         // Get messages from conversation sheet (with decryption)
         // Default to last 10 messages for initial load
@@ -10601,7 +10625,7 @@ class ProductionServer {
         const result = await MessageSheetsService.getMessages(
           userAccessToken,
           conversationSheetId,
-          connectionStatus.connectionId,
+          finalConnectionId,
           decryptedSharedSecret,
           { limit: messageLimit, offset: messageOffset }
         );
@@ -10898,6 +10922,27 @@ class ProductionServer {
         );
         console.log('[SendMessage] Message appended to sender\'s sheet successfully');
 
+        // Update inbox for sender
+        try {
+          const senderInboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+            senderAccessToken,
+            senderMessagesFolderId
+          );
+          await MessageSheetsService.updateInboxEntry(
+            senderAccessToken,
+            senderInboxSheetId,
+            toPnIdentifier,
+            senderConversationSheetId,
+            connectionStatus.connectionId,
+            timestamp,
+            content.substring(0, 100) // Preview first 100 chars
+          );
+          console.log('[SendMessage] Updated sender inbox');
+        } catch (inboxError: any) {
+          // Log but don't fail - inbox update is non-critical
+          console.warn('[SendMessage] Failed to update sender inbox:', inboxError?.message);
+        }
+
         // Record activity for sender FIRST
         await ActivityLedgerService.recordActivity(
           senderAccessToken,
@@ -11079,6 +11124,27 @@ class ProductionServer {
           recipientDecryptedSharedSecret
         );
         console.log('[SendMessage] Message appended to recipient\'s sheet successfully');
+
+        // Update inbox for recipient
+        try {
+          const recipientInboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+            recipientAccessToken,
+            recipientMessagesFolderId
+          );
+          await MessageSheetsService.updateInboxEntry(
+            recipientAccessToken,
+            recipientInboxSheetId,
+            fromPnIdentifier,
+            recipientConversationSheetId,
+            connectionStatus.connectionId,
+            timestamp,
+            content.substring(0, 100) // Preview first 100 chars
+          );
+          console.log('[SendMessage] Updated recipient inbox');
+        } catch (inboxError: any) {
+          // Log but don't fail - inbox update is non-critical
+          console.warn('[SendMessage] Failed to update recipient inbox:', inboxError?.message);
+        }
 
         // Record activity for recipient FIRST
         await ActivityLedgerService.recordActivity(
@@ -11390,6 +11456,23 @@ class ProductionServer {
           messagesFolderId,
           normalizedParticipantPnIdentifier
         );
+
+        // Remove from inbox
+        try {
+          const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+            userAccessToken,
+            messagesFolderId
+          );
+          await MessageSheetsService.removeInboxEntry(
+            userAccessToken,
+            inboxSheetId,
+            normalizedParticipantPnIdentifier
+          );
+          console.log('[DeleteConversation] Removed from inbox');
+        } catch (inboxError: any) {
+          // Log but don't fail - inbox removal is non-critical
+          console.warn('[DeleteConversation] Failed to remove from inbox:', inboxError?.message);
+        }
 
         // Get connection ID to remove from connections sheet
         // Wrap in try-catch to ensure conversation deletion succeeds even if connection removal fails

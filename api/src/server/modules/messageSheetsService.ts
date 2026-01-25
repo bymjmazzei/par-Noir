@@ -19,6 +19,7 @@ export interface Message {
 
 export class MessageSheetsService {
   private static readonly MESSAGES_FOLDER_NAME = 'par-noir-messages';
+  private static readonly INBOX_SHEET_NAME = 'Inbox';
 
   /**
    * Normalize identifier to pn-identifier format (for legacy data compatibility only)
@@ -27,6 +28,108 @@ export class MessageSheetsService {
   private static normalizeToPnIdentifier(pnIdentifier: string): string {
     // For legacy data compatibility - check if already normalized
     return pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+  }
+
+  /**
+   * Get or create Inbox sheet in messages folder
+   * Maintains conversation metadata for fast inbox loading
+   */
+  static async getOrCreateInboxSheet(
+    accessToken: string,
+    messagesFolderId: string
+  ): Promise<string> {
+    try {
+      const auth = new google.auth.OAuth2();
+      auth.setCredentials({ access_token: accessToken });
+      const drive = google.drive({ version: 'v3', auth });
+      const sheets = google.sheets({ version: 'v4', auth });
+
+      // Search for existing Inbox sheet
+      const fileQuery = `name='${this.INBOX_SHEET_NAME}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+      const searchResponse = await drive.files.list({
+        q: fileQuery,
+        fields: 'files(id,name)',
+        pageSize: 1
+      });
+
+      if (searchResponse.data.files && searchResponse.data.files.length > 0) {
+        const spreadsheetId = searchResponse.data.files[0].id!;
+        console.log(`[MessageSheetsService] Found existing Inbox sheet: ${spreadsheetId}`);
+        
+        // Ensure headers are set (for existing sheets that might not have them)
+        try {
+          await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: 'Inbox!A1:E1'
+          });
+        } catch {
+          // Headers missing, set them up
+          await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: 'Inbox!A1:E1',
+            valueInputOption: 'RAW',
+            requestBody: {
+              values: [['participantPnIdentifier', 'spreadsheetId', 'connectionId', 'lastMessageAt', 'lastMessagePreview']]
+            }
+          });
+        }
+        
+        return spreadsheetId;
+      }
+
+      // Create new Inbox sheet
+      console.log(`[MessageSheetsService] Creating new Inbox sheet in ${messagesFolderId}`);
+      const spreadsheet = await sheets.spreadsheets.create({
+        requestBody: {
+          properties: {
+            title: this.INBOX_SHEET_NAME
+          },
+          sheets: [
+            {
+              properties: {
+                title: 'Inbox',
+                gridProperties: {
+                  rowCount: 10000,
+                  columnCount: 5
+                }
+              }
+            }
+          ]
+        }
+      });
+
+      const spreadsheetId = spreadsheet.data.spreadsheetId;
+      if (!spreadsheetId) {
+        throw new Error('Failed to create Inbox sheet: no ID returned');
+      }
+
+      // Move to messages folder
+      await drive.files.update({
+        fileId: spreadsheetId,
+        addParents: messagesFolderId,
+        fields: 'id, parents'
+      });
+
+      // Set up headers
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Inbox!A1:E1',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [['participantPnIdentifier', 'spreadsheetId', 'connectionId', 'lastMessageAt', 'lastMessagePreview']]
+        }
+      });
+
+      console.log(`[MessageSheetsService] Created Inbox sheet: ${spreadsheetId}`);
+      return spreadsheetId;
+    } catch (error: any) {
+      console.error('[MessageSheetsService] Error in getOrCreateInboxSheet:', {
+        messagesFolderId,
+        error: error?.message,
+        status: error?.response?.status
+      });
+      throw error;
+    }
   }
 
   /**
@@ -323,6 +426,7 @@ export class MessageSheetsService {
   /**
    * Get messages from conversation sheet
    * Decrypts message content using connection's shared secret
+   * Optimized to read only needed rows from Sheets API
    */
   static async getMessages(
     accessToken: string,
@@ -338,31 +442,52 @@ export class MessageSheetsService {
     auth.setCredentials({ access_token: accessToken });
     const sheets = google.sheets({ version: 'v4', auth });
 
-    // Get all rows to determine total count (needed for pagination)
-    // We still need to read all rows to get total, but we'll only process the ones we need
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: 'Messages!A2:F'
-    });
-
-    const allRows = response.data.values || [];
-    const total = allRows.length;
-
     // Default to last 10 messages if no limit specified (for initial load)
     const limit = options?.limit || 10;
     const offset = options?.offset || 0;
 
-    // Calculate which rows to process
+    // Get total row count efficiently
+    // Strategy: Read just column A to count rows (lightweight), then read only needed rows
+    let total = 0;
+    try {
+      // Read column A to count rows (much faster than reading all columns)
+      const countResponse = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'Messages!A2:A' // Just column A, starting from row 2 (skip header)
+      });
+      total = (countResponse.data.values || []).length;
+    } catch (error: any) {
+      // Fallback: if column A read fails, read all rows (slower but works)
+      console.warn('[MessageSheetsService] Failed to get row count from column A, reading all rows:', error?.message);
+      const fullResponse = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'Messages!A2:F'
+      });
+      total = (fullResponse.data.values || []).length;
+    }
+
+    // Calculate which rows to read from Sheets API
     // Messages are stored oldest to newest in sheet, but we want newest first
-    // So we need to read from the end of the array
-    const startIndex = Math.max(0, total - limit - offset);
-    const endIndex = total - offset;
-    const rowsToProcess = allRows.slice(startIndex, endIndex);
+    // So we need to read from the end
+    const startRow = Math.max(2, total + 2 - limit - offset); // +2 because header is row 1, data starts at row 2
+    const endRow = total + 2 - offset; // +2 for same reason
+
+    // Read only the rows we need
+    let rowsToProcess: any[][] = [];
+    if (startRow <= endRow && startRow >= 2) {
+      const range = `Messages!A${startRow}:F${endRow}`;
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range
+      });
+      rowsToProcess = response.data.values || [];
+    }
 
     // Parse and decrypt only the messages we need
     const { MessageEncryption } = await import('../utils/messageEncryption');
     const messages: Message[] = rowsToProcess.map((row, relativeIndex) => {
-      const actualIndex = startIndex + relativeIndex;
+      // Calculate actual index based on which rows we read
+      const actualIndex = startRow - 2 + relativeIndex; // -2 because data starts at row 2
       const encryptedContent = row[1] || '';
       let decryptedContent = '';
       
@@ -523,6 +648,207 @@ export class MessageSheetsService {
     }
 
     return conversations;
+  }
+
+  /**
+   * Update inbox entry (upsert) - maintains conversation metadata
+   * Sorts by lastMessageAt descending
+   */
+  static async updateInboxEntry(
+    accessToken: string,
+    inboxSheetId: string,
+    participantPnIdentifier: string,
+    spreadsheetId: string,
+    connectionId: string,
+    lastMessageAt: string,
+    lastMessagePreview?: string
+  ): Promise<void> {
+    try {
+      const auth = new google.auth.OAuth2();
+      auth.setCredentials({ access_token: accessToken });
+      const sheets = google.sheets({ version: 'v4', auth });
+
+      // Read all rows to find existing entry
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: inboxSheetId,
+        range: 'Inbox!A2:E'
+      });
+
+      const rows = response.data.values || [];
+      const rowIndex = rows.findIndex(row => row[0] === participantPnIdentifier);
+
+      const newRow = [
+        participantPnIdentifier,
+        spreadsheetId,
+        connectionId,
+        lastMessageAt,
+        lastMessagePreview || ''
+      ];
+
+      if (rowIndex !== -1) {
+        // Update existing row (rowIndex + 2 because of header and 0-based index)
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: inboxSheetId,
+          range: `Inbox!A${rowIndex + 2}:E${rowIndex + 2}`,
+          valueInputOption: 'RAW',
+          requestBody: {
+            values: [newRow]
+          }
+        });
+      } else {
+        // Append new row
+        await sheets.spreadsheets.values.append({
+          spreadsheetId: inboxSheetId,
+          range: 'Inbox!A:E',
+          valueInputOption: 'RAW',
+          requestBody: {
+            values: [newRow]
+          }
+        });
+      }
+
+      // Re-sort by lastMessageAt descending (most recent first)
+      // Read all rows again after update
+      const allRowsResponse = await sheets.spreadsheets.values.get({
+        spreadsheetId: inboxSheetId,
+        range: 'Inbox!A2:E'
+      });
+
+      const allRows = allRowsResponse.data.values || [];
+      if (allRows.length > 1) {
+        // Sort by lastMessageAt (column D, index 3) descending
+        allRows.sort((a, b) => {
+          const dateA = new Date(a[3] || '').getTime();
+          const dateB = new Date(b[3] || '').getTime();
+          return dateB - dateA; // Descending
+        });
+
+        // Clear and rewrite all rows (maintains sort order)
+        // First clear existing data (keep header)
+        await sheets.spreadsheets.values.clear({
+          spreadsheetId: inboxSheetId,
+          range: 'Inbox!A2:E'
+        });
+
+        // Write sorted rows
+        if (allRows.length > 0) {
+          await sheets.spreadsheets.values.update({
+            spreadsheetId: inboxSheetId,
+            range: 'Inbox!A2:E',
+            valueInputOption: 'RAW',
+            requestBody: {
+              values: allRows
+            }
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error('[MessageSheetsService] Error updating inbox entry:', {
+        inboxSheetId,
+        participantPnIdentifier,
+        error: error?.message,
+        status: error?.response?.status
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Remove inbox entry for a conversation
+   */
+  static async removeInboxEntry(
+    accessToken: string,
+    inboxSheetId: string,
+    participantPnIdentifier: string
+  ): Promise<void> {
+    try {
+      const auth = new google.auth.OAuth2();
+      auth.setCredentials({ access_token: accessToken });
+      const sheets = google.sheets({ version: 'v4', auth });
+
+      // Read all rows to find entry
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: inboxSheetId,
+        range: 'Inbox!A2:E'
+      });
+
+      const rows = response.data.values || [];
+      const rowIndex = rows.findIndex(row => row[0] === participantPnIdentifier);
+
+      if (rowIndex !== -1) {
+        // Delete row (rowIndex + 2 because of header and 0-based index)
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: inboxSheetId,
+          requestBody: {
+            requests: [{
+              deleteDimension: {
+                range: {
+                  sheetId: 0, // First sheet
+                  dimension: 'ROWS',
+                  startIndex: rowIndex + 1, // +1 because header is row 0, data starts at row 1
+                  endIndex: rowIndex + 2
+                }
+              }
+            }]
+          }
+        });
+        console.log(`[MessageSheetsService] Removed inbox entry for ${participantPnIdentifier}`);
+      } else {
+        console.warn(`[MessageSheetsService] Inbox entry not found for ${participantPnIdentifier}`);
+      }
+    } catch (error: any) {
+      console.error('[MessageSheetsService] Error removing inbox entry:', {
+        inboxSheetId,
+        participantPnIdentifier,
+        error: error?.message,
+        status: error?.response?.status
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get all conversations from inbox sheet
+   */
+  static async getInboxConversations(
+    accessToken: string,
+    inboxSheetId: string
+  ): Promise<Array<{
+    participantPnIdentifier: string;
+    spreadsheetId: string;
+    connectionId: string;
+    lastMessageAt: string;
+    lastMessagePreview?: string;
+  }>> {
+    try {
+      const auth = new google.auth.OAuth2();
+      auth.setCredentials({ access_token: accessToken });
+      const sheets = google.sheets({ version: 'v4', auth });
+
+      // Read all rows (already sorted by lastMessageAt descending)
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: inboxSheetId,
+        range: 'Inbox!A2:E'
+      });
+
+      const rows = response.data.values || [];
+      const conversations = rows.map(row => ({
+        participantPnIdentifier: row[0] || '',
+        spreadsheetId: row[1] || '',
+        connectionId: row[2] || '',
+        lastMessageAt: row[3] || new Date().toISOString(),
+        lastMessagePreview: row[4] || undefined
+      })).filter(conv => conv.participantPnIdentifier && conv.spreadsheetId && conv.connectionId);
+
+      return conversations;
+    } catch (error: any) {
+      console.error('[MessageSheetsService] Error reading inbox conversations:', {
+        inboxSheetId,
+        error: error?.message,
+        status: error?.response?.status
+      });
+      throw error;
+    }
   }
 
   /**

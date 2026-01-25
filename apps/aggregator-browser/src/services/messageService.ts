@@ -47,6 +47,10 @@ export interface MessageThread {
   lastMessage?: Message;
   unreadCount: number;
   messages: Message[];
+  // Inbox optimization fields
+  spreadsheetId?: string;
+  connectionId?: string;
+  sharedSecret?: string; // Encrypted, for caching
 }
 
 /**
@@ -93,7 +97,11 @@ export async function getMessageThreads(userPnIdentifier: string): Promise<Messa
       participantName: conv.participantName,
       lastMessage: conv.lastMessage,
       unreadCount: conv.unreadCount || 0,
-      messages: []
+      messages: [],
+      // Inbox optimization fields
+      spreadsheetId: conv.spreadsheetId,
+      connectionId: conv.connectionId,
+      sharedSecret: conv.sharedSecret // Encrypted, for caching
     }));
   } catch (error) {
     console.error('Failed to get message threads:', error);
@@ -103,12 +111,18 @@ export async function getMessageThreads(userPnIdentifier: string): Promise<Messa
 
 /**
  * Get messages in a conversation with a specific user
+ * @param connectionId - Optional: connectionId from inbox (optimized path)
+ * @param sharedSecret - Optional: encrypted sharedSecret from inbox (optimized path)
+ * @param spreadsheetId - Optional: spreadsheetId from inbox (optimized path)
  */
 export async function getConversationMessages(
   userPnIdentifier: string,
   participantPnIdentifier: string,
   limit?: number,
-  offset?: number
+  offset?: number,
+  connectionId?: string,
+  sharedSecret?: string,
+  spreadsheetId?: string
 ): Promise<{ messages: Message[]; total: number }> {
   const params = new URLSearchParams({
     userPnIdentifier,
@@ -116,6 +130,10 @@ export async function getConversationMessages(
   });
   if (limit !== undefined) params.append('limit', limit.toString());
   if (offset !== undefined) params.append('offset', offset.toString());
+  // Add optimization parameters if provided
+  if (connectionId) params.append('connectionId', connectionId);
+  if (sharedSecret) params.append('sharedSecret', sharedSecret);
+  if (spreadsheetId) params.append('spreadsheetId', spreadsheetId);
   
   const response = await fetch(
     `${API_ENDPOINT}/api/messages/conversation?${params.toString()}`,

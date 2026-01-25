@@ -12,7 +12,7 @@ import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
 
 interface MessageListProps {
-  onThreadSelect: (participantPnIdentifier: string, participantName?: string, preloadedMessages?: Message[]) => void;
+  onThreadSelect: (participantPnIdentifier: string, participantName?: string, preloadedMessages?: Message[], connectionId?: string, sharedSecret?: string, spreadsheetId?: string) => void;
 }
 
 export function MessageList({ onThreadSelect }: MessageListProps) {
@@ -304,7 +304,14 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
                   <button
                     onClick={() => {
                       const preloaded = preloadedMessages.get(thread.participantPnIdentifier);
-                      onThreadSelect(thread.participantPnIdentifier, thread.participantName, preloaded);
+                      onThreadSelect(
+                        thread.participantPnIdentifier, 
+                        thread.participantName, 
+                        preloaded,
+                        thread.connectionId,
+                        thread.sharedSecret,
+                        thread.spreadsheetId
+                      );
                     }}
                     className="w-full p-4 hover:bg-neutral-800 transition-colors text-left"
                   >

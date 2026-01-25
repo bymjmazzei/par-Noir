@@ -16,9 +16,13 @@ interface MessageThreadProps {
   participantName?: string;
   preloadedMessages?: Message[];
   onBack: () => void;
+  // Inbox optimization fields
+  connectionId?: string;
+  sharedSecret?: string; // Encrypted
+  spreadsheetId?: string;
 }
 
-export function MessageThread({ participantPnIdentifier, participantName, preloadedMessages, onBack }: MessageThreadProps) {
+export function MessageThread({ participantPnIdentifier, participantName, preloadedMessages, onBack, connectionId, sharedSecret, spreadsheetId }: MessageThreadProps) {
   const { userState } = useUserState();
   const { error: showError, toasts, removeToast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -66,7 +70,7 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
         if (isInitial && preloadedMessages && preloadedMessages.length > 0) {
           result = { messages: preloadedMessages, total: preloadedMessages.length };
           // Still fetch in background to get latest messages
-          getConversationMessages(userState.pnIdentifier!, participantPnIdentifier, limit, 0)
+          getConversationMessages(userState.pnIdentifier!, participantPnIdentifier, limit, 0, connectionId, sharedSecret, spreadsheetId)
             .then(latestResult => {
               setTotalMessages(latestResult.total);
               const reversedMessages = [...latestResult.messages].reverse();
@@ -83,7 +87,7 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
               // Ignore errors - we already have preloaded messages
             });
         } else {
-          result = await getConversationMessages(userState.pnIdentifier!, participantPnIdentifier, limit, offset);
+          result = await getConversationMessages(userState.pnIdentifier!, participantPnIdentifier, limit, offset, connectionId, sharedSecret, spreadsheetId);
         }
         
         // Reset error count on success
@@ -206,7 +210,7 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
           
           setLoadingMore(true);
           try {
-            const result = await getConversationMessages(userState.pnIdentifier!, participantPnIdentifier, limit, offset);
+            const result = await getConversationMessages(userState.pnIdentifier!, participantPnIdentifier, limit, offset, connectionId, sharedSecret, spreadsheetId);
             const reversedMessages = [...result.messages].reverse();
             
             // Preserve scroll position

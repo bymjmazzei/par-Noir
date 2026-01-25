@@ -31,6 +31,9 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
     participantPnIdentifier: string;
     participantName?: string;
     preloadedMessages?: any[];
+    connectionId?: string;
+    sharedSecret?: string;
+    spreadsheetId?: string;
   } | null>(initialThread);
   const [showActivityLedger, setShowActivityLedger] = useState(false);
   const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
@@ -51,6 +54,9 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
         participantName={selectedThread.participantName}
         preloadedMessages={selectedThread.preloadedMessages}
         onBack={() => setSelectedThread(null)}
+        connectionId={selectedThread.connectionId}
+        sharedSecret={selectedThread.sharedSecret}
+        spreadsheetId={selectedThread.spreadsheetId}
       />
     );
   }
@@ -138,8 +144,8 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
       <div className="flex-1 overflow-hidden">
         {activeTab === 'messages' ? (
           <MessageList
-            onThreadSelect={(participantPnIdentifier, participantName, preloadedMessages) => {
-              setSelectedThread({ participantPnIdentifier, participantName, preloadedMessages });
+            onThreadSelect={(participantPnIdentifier, participantName, preloadedMessages, connectionId, sharedSecret, spreadsheetId) => {
+              setSelectedThread({ participantPnIdentifier, participantName, preloadedMessages, connectionId, sharedSecret, spreadsheetId });
             }}
           />
         ) : (
