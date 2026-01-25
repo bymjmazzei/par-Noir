@@ -10166,7 +10166,7 @@ class ProductionServer {
         }
 
         // Get or create messages folder
-        messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
           userAccessToken,
           pnFolder.id
         );
@@ -10177,7 +10177,7 @@ class ProductionServer {
           console.warn('[GetConversations] Metadata folder not found, returning empty conversations');
           return res.json({ conversations: [], threads: [] });
         }
-        metadataFolderId = metadataFolder.metadataFolderId;
+        const metadataFolderId = metadataFolder.metadataFolderId;
 
         // Get inbox sheet and cache the ID
         let inboxConversations: Array<{
@@ -10186,6 +10186,7 @@ class ProductionServer {
           connectionId: string;
           lastMessageAt: string;
           lastMessagePreview?: string;
+          sharedSecret?: string; // Encrypted shared secret
         }> = [];
 
         try {
@@ -10225,7 +10226,9 @@ class ProductionServer {
             participantPnIdentifier: conv.otherUserPnIdentifier,
             spreadsheetId: conv.spreadsheetId,
             connectionId: '',
-            lastMessageAt: conv.lastMessageAt
+            lastMessageAt: conv.lastMessageAt,
+            lastMessagePreview: undefined,
+            sharedSecret: undefined // Not available in fallback path
           }));
         }
 
