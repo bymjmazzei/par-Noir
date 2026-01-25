@@ -10099,13 +10099,11 @@ class ProductionServer {
         const accountId = this.extractAccountId(account);
         const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
 
-        // Check for cached folder IDs in credentials (fast path)
+        // Check for cached inbox sheet ID in credentials (fastest path)
         const cachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
         let inboxSheetId: string | undefined = cachedFolderIds.inboxSheetId;
-        let messagesFolderId: string | undefined = cachedFolderIds.messagesFolderId;
-        let metadataFolderId: string | undefined = cachedFolderIds.metadataFolderId;
 
-        // If we have cached inbox sheet ID, use it directly (fastest path)
+        // If we have cached inbox sheet ID, use it directly (fastest path - no folder lookups!)
         if (inboxSheetId) {
           try {
             const inboxConversations = await MessageSheetsService.getInboxConversations(
@@ -10113,32 +10111,8 @@ class ProductionServer {
               inboxSheetId
             );
             
-            // Get connections sheet once for shared secrets
-            let connectionsMap: Map<string, { sharedSecret?: string }> = new Map();
-            if (metadataFolderId) {
-              try {
-                const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-                const connectionsSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-                  userAccessToken,
-                  metadataFolderId
-                );
-                const fullMap = await ConnectionsSheetsService.getConnectionsMap(
-                  userAccessToken,
-                  connectionsSpreadsheetId
-                );
-                fullMap.forEach((c, id) => connectionsMap.set(id, { sharedSecret: c.sharedSecret }));
-              } catch (error) {
-                console.warn('[GetConversations] Failed to get connections map:', error);
-              }
-            }
-
-            // Enrich from inbox + connection map (no folder lookups)
+            // Inbox already contains sharedSecret - no connections lookup needed!
             const enrichedConversations = inboxConversations.map((conv) => {
-              let sharedSecret: string | undefined;
-              const connection = conv.connectionId ? connectionsMap.get(conv.connectionId) : undefined;
-              if (connection?.sharedSecret) {
-                sharedSecret = connection.sharedSecret;
-              }
               const lastMessage = conv.lastMessagePreview ? {
                 messageId: '',
                 fromPnIdentifier: '',
@@ -10154,7 +10128,7 @@ class ProductionServer {
                 participantPnIdentifier: conv.participantPnIdentifier,
                 spreadsheetId: conv.spreadsheetId,
                 connectionId: conv.connectionId,
-                sharedSecret,
+                sharedSecret: conv.sharedSecret, // Already in inbox - no lookup needed!
                 lastMessageAt: conv.lastMessageAt,
                 lastMessagePreview: conv.lastMessagePreview,
                 lastMessage
@@ -10255,30 +10229,8 @@ class ProductionServer {
           }));
         }
 
-        // Get connections sheet once and build map (single read for all lookups)
-        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-        let connectionsMap: Map<string, { sharedSecret?: string }> = new Map();
-        try {
-          const connectionsSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-            userAccessToken,
-            metadataFolderId
-          );
-          const fullMap = await ConnectionsSheetsService.getConnectionsMap(
-            userAccessToken,
-            connectionsSpreadsheetId
-          );
-          fullMap.forEach((c, id) => connectionsMap.set(id, { sharedSecret: c.sharedSecret }));
-        } catch (error) {
-          console.warn('[GetConversations] Failed to get connections map:', error);
-        }
-
-        // Enrich from inbox + connection map only (no per-conversation API calls)
+        // Inbox already contains sharedSecret - no connections lookup needed!
         const enrichedConversations = inboxConversations.map((conv) => {
-          let sharedSecret: string | undefined;
-          const connection = conv.connectionId ? connectionsMap.get(conv.connectionId) : undefined;
-          if (connection?.sharedSecret) {
-            sharedSecret = connection.sharedSecret;
-          }
           // Use lastMessagePreview from inbox; no getMessages calls for list
           const lastMessage = conv.lastMessagePreview ? {
             messageId: '',
@@ -10295,7 +10247,7 @@ class ProductionServer {
             participantPnIdentifier: conv.participantPnIdentifier,
             spreadsheetId: conv.spreadsheetId,
             connectionId: conv.connectionId,
-            sharedSecret,
+            sharedSecret: conv.sharedSecret, // Already in inbox - no lookup needed!
             lastMessageAt: conv.lastMessageAt,
             lastMessagePreview: conv.lastMessagePreview,
             lastMessage
@@ -11019,7 +10971,8 @@ class ProductionServer {
             senderConversationSheetId,
             connectionStatus.connectionId,
             timestamp,
-            content.substring(0, 100) // Preview first 100 chars
+            content.substring(0, 100), // Preview first 100 chars
+            sharedSecret // Encrypted shared secret
           );
           console.log('[SendMessage] Updated sender inbox');
         } catch (inboxError: any) {
@@ -11222,7 +11175,8 @@ class ProductionServer {
             recipientConversationSheetId,
             connectionStatus.connectionId,
             timestamp,
-            content.substring(0, 100) // Preview first 100 chars
+            content.substring(0, 100), // Preview first 100 chars
+            recipientSharedSecret // Encrypted shared secret
           );
           console.log('[SendMessage] Updated recipient inbox');
         } catch (inboxError: any) {

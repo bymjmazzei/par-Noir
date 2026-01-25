@@ -60,16 +60,16 @@ export class MessageSheetsService {
         try {
           await sheets.spreadsheets.values.get({
             spreadsheetId,
-            range: 'Inbox!A1:E1'
+            range: 'Inbox!A1:F1'
           });
         } catch {
           // Headers missing, set them up
           await sheets.spreadsheets.values.update({
             spreadsheetId,
-            range: 'Inbox!A1:E1',
+            range: 'Inbox!A1:F1',
             valueInputOption: 'RAW',
             requestBody: {
-              values: [['participantPnIdentifier', 'spreadsheetId', 'connectionId', 'lastMessageAt', 'lastMessagePreview']]
+              values: [['participantPnIdentifier', 'spreadsheetId', 'connectionId', 'lastMessageAt', 'lastMessagePreview', 'sharedSecret']]
             }
           });
         }
@@ -120,16 +120,16 @@ export class MessageSheetsService {
         try {
           await sheets.spreadsheets.values.get({
             spreadsheetId,
-            range: 'Inbox!A1:E1'
+            range: 'Inbox!A1:F1'
           });
         } catch {
           // Headers missing, set them up
           await sheets.spreadsheets.values.update({
             spreadsheetId,
-            range: 'Inbox!A1:E1',
+            range: 'Inbox!A1:F1',
             valueInputOption: 'RAW',
             requestBody: {
-              values: [['participantPnIdentifier', 'spreadsheetId', 'connectionId', 'lastMessageAt', 'lastMessagePreview']]
+              values: [['participantPnIdentifier', 'spreadsheetId', 'connectionId', 'lastMessageAt', 'lastMessagePreview', 'sharedSecret']]
             }
           });
         }
@@ -150,7 +150,7 @@ export class MessageSheetsService {
                 title: 'Inbox',
                 gridProperties: {
                   rowCount: 10000,
-                  columnCount: 5
+                  columnCount: 6
                 }
               }
             }
@@ -713,6 +713,7 @@ export class MessageSheetsService {
   /**
    * Update inbox entry (upsert) - maintains conversation metadata
    * Sorts by lastMessageAt descending
+   * Stores sharedSecret (encrypted) so no connection lookup needed
    */
   static async updateInboxEntry(
     accessToken: string,
@@ -721,17 +722,18 @@ export class MessageSheetsService {
     spreadsheetId: string,
     connectionId: string,
     lastMessageAt: string,
-    lastMessagePreview?: string
+    lastMessagePreview?: string,
+    sharedSecret?: string // Encrypted shared secret
   ): Promise<void> {
     try {
       const auth = new google.auth.OAuth2();
       auth.setCredentials({ access_token: accessToken });
       const sheets = google.sheets({ version: 'v4', auth });
 
-      // Read all rows to find existing entry
+      // Read all rows to find existing entry (include sharedSecret column)
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId: inboxSheetId,
-        range: 'Inbox!A2:E'
+        range: 'Inbox!A2:F'
       });
 
       const rows = response.data.values || [];
@@ -742,14 +744,15 @@ export class MessageSheetsService {
         spreadsheetId,
         connectionId,
         lastMessageAt,
-        lastMessagePreview || ''
+        lastMessagePreview || '',
+        sharedSecret || '' // Encrypted shared secret
       ];
 
       if (rowIndex !== -1) {
         // Update existing row (rowIndex + 2 because of header and 0-based index)
         await sheets.spreadsheets.values.update({
           spreadsheetId: inboxSheetId,
-          range: `Inbox!A${rowIndex + 2}:E${rowIndex + 2}`,
+          range: `Inbox!A${rowIndex + 2}:F${rowIndex + 2}`,
           valueInputOption: 'RAW',
           requestBody: {
             values: [newRow]
@@ -759,7 +762,7 @@ export class MessageSheetsService {
         // Append new row
         await sheets.spreadsheets.values.append({
           spreadsheetId: inboxSheetId,
-          range: 'Inbox!A:E',
+          range: 'Inbox!A:F',
           valueInputOption: 'RAW',
           requestBody: {
             values: [newRow]
@@ -771,7 +774,7 @@ export class MessageSheetsService {
       // Read all rows again after update
       const allRowsResponse = await sheets.spreadsheets.values.get({
         spreadsheetId: inboxSheetId,
-        range: 'Inbox!A2:E'
+        range: 'Inbox!A2:F'
       });
 
       const allRows = allRowsResponse.data.values || [];
@@ -787,14 +790,14 @@ export class MessageSheetsService {
         // First clear existing data (keep header)
         await sheets.spreadsheets.values.clear({
           spreadsheetId: inboxSheetId,
-          range: 'Inbox!A2:E'
+          range: 'Inbox!A2:F'
         });
 
         // Write sorted rows
         if (allRows.length > 0) {
           await sheets.spreadsheets.values.update({
             spreadsheetId: inboxSheetId,
-            range: 'Inbox!A2:E',
+            range: 'Inbox!A2:F',
             valueInputOption: 'RAW',
             requestBody: {
               values: allRows
@@ -879,6 +882,7 @@ export class MessageSheetsService {
     connectionId: string;
     lastMessageAt: string;
     lastMessagePreview?: string;
+    sharedSecret?: string; // Encrypted shared secret
   }>> {
     try {
       const auth = new google.auth.OAuth2();
@@ -888,7 +892,7 @@ export class MessageSheetsService {
       // Read all rows (already sorted by lastMessageAt descending)
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId: inboxSheetId,
-        range: 'Inbox!A2:E'
+        range: 'Inbox!A2:F'
       });
 
       const rows = response.data.values || [];
@@ -897,7 +901,8 @@ export class MessageSheetsService {
         spreadsheetId: row[1] || '',
         connectionId: row[2] || '',
         lastMessageAt: row[3] || new Date().toISOString(),
-        lastMessagePreview: row[4] || undefined
+        lastMessagePreview: row[4] || undefined,
+        sharedSecret: row[5] || undefined // Encrypted shared secret
       })).filter(conv => conv.participantPnIdentifier && conv.spreadsheetId && conv.connectionId);
 
       return conversations;
