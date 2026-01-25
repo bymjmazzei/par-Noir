@@ -10939,6 +10939,9 @@ class ProductionServer {
 
         console.log(`[SendMessage] Using connectionId: ${connectionStatus.connectionId}, hasSharedSecret: ${!!decryptedSharedSecret}`);
 
+        // Store connectionId for use in async inbox update
+        const connectionId = connectionStatus.connectionId;
+
         // Create message object
         const message: any = {
           messageId,
@@ -10951,37 +10954,39 @@ class ProductionServer {
         };
 
         // Append message to sender's conversation sheet (with encryption)
-        console.log('[SendMessage] Appending message to sender\'s sheet', { senderConversationSheetId, messageId, connectionId: connectionStatus.connectionId });
+        console.log('[SendMessage] Appending message to sender\'s sheet', { senderConversationSheetId, messageId, connectionId });
         await MessageSheetsService.appendMessage(
           senderAccessToken,
           senderConversationSheetId,
           message,
-          connectionStatus.connectionId,
+          connectionId,
           decryptedSharedSecret
         );
         console.log('[SendMessage] Message appended to sender\'s sheet successfully');
 
-        // Update inbox for sender
-        try {
-          const senderInboxSheetId = await MessageSheetsService.getInboxSheet(
-            senderAccessToken,
-            senderMessagesFolderId
-          );
-          await MessageSheetsService.updateInboxEntry(
-            senderAccessToken,
-            senderInboxSheetId,
-            toPnIdentifier,
-            senderConversationSheetId,
-            connectionStatus.connectionId,
-            timestamp,
-            content.substring(0, 100), // Preview first 100 chars
-            sharedSecret // Encrypted shared secret
-          );
-          console.log('[SendMessage] Updated sender inbox');
-        } catch (inboxError: any) {
-          // Log but don't fail - inbox update is non-critical
-          console.warn('[SendMessage] Failed to update sender inbox:', inboxError?.message);
-        }
+        // Update inbox for sender (non-blocking - fire and forget)
+        (async () => {
+          try {
+            const senderInboxSheetId = await MessageSheetsService.getInboxSheet(
+              senderAccessToken,
+              senderMessagesFolderId
+            );
+            await MessageSheetsService.updateInboxEntry(
+              senderAccessToken,
+              senderInboxSheetId,
+              toPnIdentifier,
+              senderConversationSheetId,
+              connectionId,
+              timestamp,
+              content.substring(0, 100), // Preview first 100 chars
+              sharedSecret || '' // Encrypted shared secret
+            );
+            console.log('[SendMessage] Updated sender inbox');
+          } catch (inboxError: any) {
+            // Log but don't fail - inbox update is non-critical
+            console.warn('[SendMessage] Failed to update sender inbox:', inboxError?.message);
+          }
+        })();
 
         // Record activity for sender FIRST
         await ActivityLedgerService.recordActivity(
@@ -11160,32 +11165,34 @@ class ProductionServer {
           recipientAccessToken,
           recipientConversationSheetId,
           message,
-          connectionStatus.connectionId,
+          connectionId,
           recipientDecryptedSharedSecret
         );
         console.log('[SendMessage] Message appended to recipient\'s sheet successfully');
 
-        // Update inbox for recipient
-        try {
-          const recipientInboxSheetId = await MessageSheetsService.getInboxSheet(
-            recipientAccessToken,
-            recipientMessagesFolderId
-          );
-          await MessageSheetsService.updateInboxEntry(
-            recipientAccessToken,
-            recipientInboxSheetId,
-            fromPnIdentifier,
-            recipientConversationSheetId,
-            connectionStatus.connectionId,
-            timestamp,
-            content.substring(0, 100), // Preview first 100 chars
-            recipientSharedSecret // Encrypted shared secret
-          );
-          console.log('[SendMessage] Updated recipient inbox');
-        } catch (inboxError: any) {
-          // Log but don't fail - inbox update is non-critical
-          console.warn('[SendMessage] Failed to update recipient inbox:', inboxError?.message);
-        }
+        // Update inbox for recipient (non-blocking - fire and forget)
+        (async () => {
+          try {
+            const recipientInboxSheetId = await MessageSheetsService.getInboxSheet(
+              recipientAccessToken,
+              recipientMessagesFolderId
+            );
+            await MessageSheetsService.updateInboxEntry(
+              recipientAccessToken,
+              recipientInboxSheetId,
+              fromPnIdentifier,
+              recipientConversationSheetId,
+              connectionId,
+              timestamp,
+              content.substring(0, 100), // Preview first 100 chars
+              recipientSharedSecret || '' // Encrypted shared secret
+            );
+            console.log('[SendMessage] Updated recipient inbox');
+          } catch (inboxError: any) {
+            // Log but don't fail - inbox update is non-critical
+            console.warn('[SendMessage] Failed to update recipient inbox:', inboxError?.message);
+          }
+        })();
 
         // Record activity for recipient FIRST
         await ActivityLedgerService.recordActivity(
