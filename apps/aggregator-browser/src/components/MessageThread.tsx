@@ -56,7 +56,7 @@ export function MessageThread({ participantPnIdentifier, participantName, onBack
         errorCountRef.current = 0;
         
         // Reverse messages to show oldest first (chat order) - API returns newest first
-        const reversedMessages = [...threadMessages].reverse();
+        const reversedMessages = [...conversationMessages].reverse();
         
         // Preserve optimistic (temporary) messages - merge with fetched messages
         const tempMessages = messages.filter(msg => msg.messageId.startsWith('temp-'));
