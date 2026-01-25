@@ -11832,7 +11832,24 @@ class ProductionServer {
           usingAccountId: requesterAccountId
         });
         // Use the identityId from credentials (the actual stored identifier)
-        const requesterAccessToken = await googleDriveProxyService.getAccessToken(requesterCredentials.identityId, requesterAccountId, [requesterCredentials.identityId]);
+        let requesterAccessToken: string;
+        try {
+          requesterAccessToken = await googleDriveProxyService.getAccessToken(requesterCredentials.identityId, requesterAccountId, [requesterCredentials.identityId]);
+        } catch (error: any) {
+          console.error('[ConnectionRequest] Failed to get requester access token:', error);
+          console.error('[ConnectionRequest] Requester details:', {
+            identityId: requesterCredentials.identityId,
+            accountId: requesterAccountId,
+            hasCredentials: !!requesterCredentials.credentials,
+            hasGoogleDriveAccounts: !!requesterCredentials.credentials?.googleDriveAccounts,
+            googleDriveAccountsCount: requesterCredentials.credentials?.googleDriveAccounts?.length || 0
+          });
+          return res.status(500).json({
+            error: 'Failed to send connection request',
+            error_description: error.message || 'Invalid Credentials',
+            details: 'Failed to get requester Google Drive access token. Please ensure your Google Drive is connected in the dashboard.'
+          });
+        }
 
         // Get or create requester's metadata folder
         let requesterMetadataFolderId: string;
@@ -11896,7 +11913,24 @@ class ProductionServer {
           usingAccountId: recipientAccountId
         });
         // Use the identityId from credentials (the actual stored identifier)
-        const recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientCredentials.identityId, recipientAccountId, [recipientCredentials.identityId]);
+        let recipientAccessToken: string;
+        try {
+          recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientCredentials.identityId, recipientAccountId, [recipientCredentials.identityId]);
+        } catch (error: any) {
+          console.error('[ConnectionRequest] Failed to get recipient access token:', error);
+          console.error('[ConnectionRequest] Recipient details:', {
+            identityId: recipientCredentials.identityId,
+            accountId: recipientAccountId,
+            hasCredentials: !!recipientCredentials.credentials,
+            hasGoogleDriveAccounts: !!recipientCredentials.credentials?.googleDriveAccounts,
+            googleDriveAccountsCount: recipientCredentials.credentials?.googleDriveAccounts?.length || 0
+          });
+          return res.status(500).json({
+            error: 'Failed to send connection request',
+            error_description: error.message || 'Invalid Credentials',
+            details: 'Failed to get recipient Google Drive access token. Please ensure the recipient has Google Drive connected in the dashboard.'
+          });
+        }
 
         // Get recipient's metadata folder
         let recipientMetadataFolderId: string;
