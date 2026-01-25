@@ -10474,8 +10474,10 @@ class ProductionServer {
         const { ConnectionsService } = await import('./server/modules/connectionsService');
         const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
         
-        // Use participantPnIdentifier directly (already normalized)
-        const normalizedParticipantPnIdentifier = participantPnIdentifier;
+        // Normalize participantPnIdentifier to ensure consistent format
+        const normalizedParticipantPnIdentifier = participantPnIdentifier.startsWith('pn-') 
+          ? participantPnIdentifier 
+          : `pn-${participantPnIdentifier}`;
         console.log('[GetThread] Checking connection between', pnIdentifier, 'and', normalizedParticipantPnIdentifier);
         
         const connectionStatus = await ConnectionsService.getConnectionStatus(
@@ -10485,12 +10487,17 @@ class ProductionServer {
           normalizedParticipantPnIdentifier
         );
 
-        console.log('[GetThread] Connection status:', connectionStatus);
+        console.log('[GetThread] Connection status:', JSON.stringify(connectionStatus));
         if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
-          console.error('[GetThread] Connection not found or not connected');
+          console.error('[GetThread] Connection not found or not connected', {
+            connectionId: connectionStatus.connectionId,
+            status: connectionStatus.status,
+            userPnIdentifier: pnIdentifier,
+            participantPnIdentifier: normalizedParticipantPnIdentifier
+          });
           return res.status(403).json({
             error: 'Connection not found. Users must be connected to view messages.',
-            error_description: `Connection not found. Status: ${connectionStatus.status}`
+            error_description: `Connection not found. Status: ${connectionStatus.status || 'not_connected'}`
           });
         }
 
