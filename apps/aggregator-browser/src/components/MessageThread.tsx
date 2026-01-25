@@ -484,7 +484,8 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
                 </div>
               </div>
             );
-          })
+          })}
+          </>
         )}
         <div ref={messagesEndRef} />
       </div>
