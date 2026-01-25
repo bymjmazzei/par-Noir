@@ -485,6 +485,25 @@ export class ConnectionsSheetsService {
   }
 
   /**
+   * Get all connections as a map keyed by connectionId.
+   * Single sheet read; use when looking up multiple connections (e.g. inbox enrichment).
+   */
+  static async getConnectionsMap(
+    accessToken: string,
+    spreadsheetId: string
+  ): Promise<Map<string, Connection>> {
+    const { connections } = await this.getConnections(accessToken, spreadsheetId, {
+      limit: 999999,
+      offset: 0
+    });
+    const map = new Map<string, Connection>();
+    for (const c of connections) {
+      map.set(c.connectionId, c);
+    }
+    return map;
+  }
+
+  /**
    * Get a specific connection by connectionId
    * More efficient than getConnections when you only need one connection
    */

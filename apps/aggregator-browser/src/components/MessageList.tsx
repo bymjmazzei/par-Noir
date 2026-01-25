@@ -49,24 +49,28 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
         // Preload last 10 messages for top 3-5 conversations (background, non-blocking)
         if (threadsData.length > 0 && userState.pnIdentifier) {
           const topConversations = threadsData.slice(0, 5).filter(t => t.participantPnIdentifier);
-          // Preload in background without blocking UI
           Promise.all(
             topConversations.map(async (thread) => {
               try {
-                const messages = await getConversationMessages(userState.pnIdentifier!, thread.participantPnIdentifier);
+                const result = await getConversationMessages(
+                  userState.pnIdentifier!,
+                  thread.participantPnIdentifier,
+                  10,
+                  0,
+                  thread.connectionId,
+                  thread.sharedSecret,
+                  thread.spreadsheetId
+                );
                 setPreloadedMessages(prev => {
                   const next = new Map(prev);
-                  next.set(thread.participantPnIdentifier, messages);
+                  next.set(thread.participantPnIdentifier, result.messages);
                   return next;
                 });
               } catch (error) {
-                // Silently fail - preloading is optional
                 console.warn(`Failed to preload messages for ${thread.participantPnIdentifier}:`, error);
               }
             })
-          ).catch(() => {
-            // Ignore errors - preloading is optional
-          });
+          ).catch(() => {});
         }
         
         // Combine message requests and connection requests

@@ -114,6 +114,7 @@ export async function getMessageThreads(userPnIdentifier: string): Promise<Messa
  * @param connectionId - Optional: connectionId from inbox (optimized path)
  * @param sharedSecret - Optional: encrypted sharedSecret from inbox (optimized path)
  * @param spreadsheetId - Optional: spreadsheetId from inbox (optimized path)
+ * Uses POST with body when cached credentials provided (avoids URL length/encoding issues).
  */
 export async function getConversationMessages(
   userPnIdentifier: string,
@@ -124,23 +125,30 @@ export async function getConversationMessages(
   sharedSecret?: string,
   spreadsheetId?: string
 ): Promise<{ messages: Message[]; total: number }> {
-  const params = new URLSearchParams({
+  const hasCached = !!(connectionId && sharedSecret && spreadsheetId);
+  const body = {
     userPnIdentifier,
-    participantPnIdentifier
-  });
-  if (limit !== undefined) params.append('limit', limit.toString());
-  if (offset !== undefined) params.append('offset', offset.toString());
-  // Add optimization parameters if provided
-  if (connectionId) params.append('connectionId', connectionId);
-  if (sharedSecret) params.append('sharedSecret', sharedSecret);
-  if (spreadsheetId) params.append('spreadsheetId', spreadsheetId);
-  
-  const response = await fetch(
-    `${API_ENDPOINT}/api/messages/conversation?${params.toString()}`,
-    {
-      headers: getAuthHeaders()
-    }
-  );
+    participantPnIdentifier,
+    ...(limit != null && { limit }),
+    ...(offset != null && { offset }),
+    ...(hasCached && { connectionId, sharedSecret, spreadsheetId })
+  };
+
+  const response = hasCached
+    ? await fetch(`${API_ENDPOINT}/api/messages/conversation`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(body)
+      })
+    : await fetch(
+        `${API_ENDPOINT}/api/messages/conversation?${new URLSearchParams({
+          userPnIdentifier,
+          participantPnIdentifier,
+          ...(limit != null && { limit: String(limit) }),
+          ...(offset != null && { offset: String(offset) })
+        }).toString()}`,
+        { headers: getAuthHeaders() }
+      );
 
   if (!response.ok) {
     throw new Error('Failed to load conversation messages');

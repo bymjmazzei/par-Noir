@@ -10148,80 +10148,52 @@ class ProductionServer {
           }));
         }
 
-        // Get connections sheet for shared secret lookup
+        // Get connections sheet once and build map (single read for all lookups)
         const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-        const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
-        let connectionsSpreadsheetId: string | undefined;
+        let connectionsMap: Map<string, { sharedSecret?: string }> = new Map();
         try {
-          connectionsSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
+          const connectionsSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
             userAccessToken,
             metadataFolderId
           );
+          const fullMap = await ConnectionsSheetsService.getConnectionsMap(
+            userAccessToken,
+            connectionsSpreadsheetId
+          );
+          fullMap.forEach((c, id) => connectionsMap.set(id, { sharedSecret: c.sharedSecret }));
         } catch (error) {
-          console.warn('[GetConversations] Failed to get connections sheet:', error);
+          console.warn('[GetConversations] Failed to get connections map:', error);
         }
 
-        // Enrich conversations with shared secrets and last messages
-        const enrichedConversations = await Promise.all(
-          inboxConversations.map(async (conv) => {
-            let sharedSecret: string | undefined;
-            let lastMessage = null;
+        // Enrich from inbox + connection map only (no per-conversation API calls)
+        const enrichedConversations = inboxConversations.map((conv) => {
+          let sharedSecret: string | undefined;
+          const connection = conv.connectionId ? connectionsMap.get(conv.connectionId) : undefined;
+          if (connection?.sharedSecret) {
+            sharedSecret = connection.sharedSecret;
+          }
+          // Use lastMessagePreview from inbox; no getMessages calls for list
+          const lastMessage = conv.lastMessagePreview ? {
+            messageId: '',
+            fromPnIdentifier: '',
+            toPnIdentifier: conv.participantPnIdentifier,
+            content: conv.lastMessagePreview,
+            timestamp: conv.lastMessageAt,
+            read: false,
+            encrypted: false
+          } : undefined;
 
-            try {
-              // Get connection to retrieve shared secret
-              if (connectionsSpreadsheetId && conv.connectionId) {
-                const connection = await ConnectionsSheetsService.getConnectionById(
-                  userAccessToken,
-                  connectionsSpreadsheetId,
-                  conv.connectionId
-                );
-
-                if (connection?.sharedSecret) {
-                  // Return encrypted shared secret (frontend will decrypt)
-                  sharedSecret = connection.sharedSecret;
-
-                  // Get last message for preview (only for top 5)
-                  const index = inboxConversations.indexOf(conv);
-                  if (index < 5) {
-                    try {
-                      const decryptedSharedSecret = MetadataEncryption.decryptField(connection.sharedSecret);
-                      if (decryptedSharedSecret) {
-                        const messagesResult = await MessageSheetsService.getMessages(
-                          userAccessToken,
-                          conv.spreadsheetId,
-                          conv.connectionId,
-                          decryptedSharedSecret,
-                          { limit: 1, offset: 0 }
-                        );
-
-                        if (messagesResult.messages.length > 0) {
-                          lastMessage = messagesResult.messages[0];
-                        }
-                      }
-                    } catch (msgError: any) {
-                      // Silently fail - lastMessage is optional
-                      console.warn(`[GetConversations] Failed to get last message for ${conv.participantPnIdentifier}:`, msgError?.message);
-                    }
-                  }
-                }
-              }
-            } catch (error: any) {
-              // Silently fail - shared secret lookup is optional
-              console.warn(`[GetConversations] Failed to get shared secret for ${conv.participantPnIdentifier}:`, error?.message);
-            }
-
-            return {
-              otherUserPnIdentifier: conv.participantPnIdentifier,
-              participantPnIdentifier: conv.participantPnIdentifier,
-              spreadsheetId: conv.spreadsheetId,
-              connectionId: conv.connectionId,
-              sharedSecret: sharedSecret, // Encrypted, for frontend to cache
-              lastMessageAt: conv.lastMessageAt,
-              lastMessagePreview: conv.lastMessagePreview,
-              lastMessage: lastMessage || undefined
-            };
-          })
-        );
+          return {
+            otherUserPnIdentifier: conv.participantPnIdentifier,
+            participantPnIdentifier: conv.participantPnIdentifier,
+            spreadsheetId: conv.spreadsheetId,
+            connectionId: conv.connectionId,
+            sharedSecret,
+            lastMessageAt: conv.lastMessageAt,
+            lastMessagePreview: conv.lastMessagePreview,
+            lastMessage
+          };
+        });
 
         const threads = enrichedConversations.map(conv => ({
           participantPnIdentifier: conv.participantPnIdentifier,
@@ -10414,23 +10386,26 @@ class ProductionServer {
       }
     });
 
-    // GET /api/messages/conversation - Get messages in a specific conversation
-    this.app.get('/api/messages/conversation', async (req, res) => {
+    // GET & POST /api/messages/conversation - Get messages in a specific conversation
+    // POST with body used when passing cached credentials (avoids URL length / encoding issues)
+    const conversationHandler = async (req: express.Request, res: express.Response) => {
+      const src = req.method === 'POST' ? (req.body as Record<string, unknown>) : req.query as Record<string, unknown>;
       console.log('[GetConversation] Endpoint called', { 
-        userPnIdentifier: req.query.userPnIdentifier, 
-        participantPnIdentifier: req.query.participantPnIdentifier,
-        hasConnectionId: !!req.query.connectionId,
-        hasSharedSecret: !!req.query.sharedSecret,
-        hasSpreadsheetId: !!req.query.spreadsheetId
+        userPnIdentifier: src.userPnIdentifier, 
+        participantPnIdentifier: src.participantPnIdentifier,
+        hasConnectionId: !!src.connectionId,
+        hasSharedSecret: !!src.sharedSecret,
+        hasSpreadsheetId: !!src.spreadsheetId,
+        method: req.method
       });
       try {
-        const userPnIdentifier = req.query.userPnIdentifier as string;
-        const participantPnIdentifier = req.query.participantPnIdentifier as string;
-        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
-        const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
-        const connectionId = req.query.connectionId as string | undefined;
-        const sharedSecret = req.query.sharedSecret as string | undefined; // Encrypted
-        const spreadsheetId = req.query.spreadsheetId as string | undefined;
+        const userPnIdentifier = src.userPnIdentifier as string;
+        const participantPnIdentifier = src.participantPnIdentifier as string;
+        const limit = src.limit != null ? parseInt(String(src.limit), 10) : 50;
+        const offset = src.offset != null ? parseInt(String(src.offset), 10) : 0;
+        const connectionId = src.connectionId as string | undefined;
+        const sharedSecret = src.sharedSecret as string | undefined; // Encrypted
+        const spreadsheetId = src.spreadsheetId as string | undefined;
 
         if (!userPnIdentifier || !participantPnIdentifier) {
           console.error('[GetConversation] Missing required parameters');
@@ -10490,16 +10465,15 @@ class ProductionServer {
         let conversationSheetId: string;
 
         if (connectionId && sharedSecret && spreadsheetId) {
-          // Optimized path: use provided connection info
+          // Optimized path: use provided connection info (POST body preferred to avoid URL encoding)
           console.log('[GetConversation] Using provided connection info (optimized path)');
           finalConnectionId = connectionId;
           conversationSheetId = spreadsheetId;
 
-          // Decrypt provided shared secret
           const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
           decryptedSharedSecret = MetadataEncryption.decryptField(sharedSecret);
-          if (!decryptedSharedSecret) {
-            console.error('[GetConversation] Failed to decrypt provided shared secret');
+          if (!decryptedSharedSecret || MetadataEncryption.isEncrypted(decryptedSharedSecret)) {
+            console.error('[GetConversation] Failed to decrypt provided shared secret (empty or still encrypted)');
             return res.status(500).json({
               error: 'Failed to decrypt shared secret',
               error_description: 'Failed to decrypt provided shared secret'
@@ -10645,7 +10619,9 @@ class ProductionServer {
           error_description: error.message || 'Failed to get thread messages'
         });
       }
-    });
+    };
+    this.app.get('/api/messages/conversation', conversationHandler);
+    this.app.post('/api/messages/conversation', conversationHandler);
 
     this.app.post('/api/messages/send', async (req, res) => {
         console.log('[SendMessage] Endpoint called', { 
