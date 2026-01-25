@@ -31,8 +31,68 @@ export class MessageSheetsService {
   }
 
   /**
+   * Get existing Inbox sheet in messages folder (does not create)
+   * Throws error if inbox sheet doesn't exist
+   */
+  static async getInboxSheet(
+    accessToken: string,
+    messagesFolderId: string
+  ): Promise<string> {
+    try {
+      const auth = new google.auth.OAuth2();
+      auth.setCredentials({ access_token: accessToken });
+      const drive = google.drive({ version: 'v3', auth });
+      const sheets = google.sheets({ version: 'v4', auth });
+
+      // Search for existing Inbox sheet
+      const fileQuery = `name='${this.INBOX_SHEET_NAME}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+      const searchResponse = await drive.files.list({
+        q: fileQuery,
+        fields: 'files(id,name)',
+        pageSize: 1
+      });
+
+      if (searchResponse.data.files && searchResponse.data.files.length > 0) {
+        const spreadsheetId = searchResponse.data.files[0].id!;
+        console.log(`[MessageSheetsService] Found existing Inbox sheet: ${spreadsheetId}`);
+        
+        // Ensure headers are set (for existing sheets that might not have them)
+        try {
+          await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: 'Inbox!A1:E1'
+          });
+        } catch {
+          // Headers missing, set them up
+          await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: 'Inbox!A1:E1',
+            valueInputOption: 'RAW',
+            requestBody: {
+              values: [['participantPnIdentifier', 'spreadsheetId', 'connectionId', 'lastMessageAt', 'lastMessagePreview']]
+            }
+          });
+        }
+        
+        return spreadsheetId;
+      }
+
+      // Inbox sheet doesn't exist - throw error
+      throw new Error('Inbox sheet not found. Please reconnect your Google Drive in the dashboard to initialize it.');
+    } catch (error: any) {
+      console.error('[MessageSheetsService] Error in getInboxSheet:', {
+        messagesFolderId,
+        error: error?.message,
+        status: error?.response?.status
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Get or create Inbox sheet in messages folder
    * Maintains conversation metadata for fast inbox loading
+   * ONLY use this during drive initialization - all other code should use getInboxSheet()
    */
   static async getOrCreateInboxSheet(
     accessToken: string,

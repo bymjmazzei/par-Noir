@@ -10125,7 +10125,7 @@ class ProductionServer {
         }> = [];
 
         try {
-          const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+          const inboxSheetId = await MessageSheetsService.getInboxSheet(
             userAccessToken,
             messagesFolderId
           );
@@ -10924,7 +10924,7 @@ class ProductionServer {
 
         // Update inbox for sender
         try {
-          const senderInboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+          const senderInboxSheetId = await MessageSheetsService.getInboxSheet(
             senderAccessToken,
             senderMessagesFolderId
           );
@@ -11127,7 +11127,7 @@ class ProductionServer {
 
         // Update inbox for recipient
         try {
-          const recipientInboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+          const recipientInboxSheetId = await MessageSheetsService.getInboxSheet(
             recipientAccessToken,
             recipientMessagesFolderId
           );
@@ -11459,7 +11459,7 @@ class ProductionServer {
 
         // Remove from inbox
         try {
-          const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+          const inboxSheetId = await MessageSheetsService.getInboxSheet(
             userAccessToken,
             messagesFolderId
           );
