@@ -5275,6 +5275,23 @@ class ProductionServer {
           await this.initializeContentClassFolders(token, metadataFolderId, pnIdentifier, accountId);
           await this.initializeIndexFiles(token, metadataFolderId, pnIdentifier, accountId);
           
+          // Initialize preferences.json (for fast filtering) and preferences.xlsx (for history)
+          const { PreferencesService } = await import('./server/modules/preferencesService');
+          try {
+            const now = new Date().toISOString();
+            const existingPreferences = await PreferencesService.getPreferencesFile(accessToken, metadataFolderId, pnIdentifier);
+            if (!existingPreferences) {
+              await PreferencesService.updatePreferencesFile(accessToken, metadataFolderId, pnIdentifier, {
+                identifier: pnIdentifier,
+                updatedAt: now,
+                tagPreferences: []
+              }, pnIdentifier, accountId);
+              console.log(`[StorageInitialize POST] Initialized preferences.json for identityId: ${sanitizedIdentityId}`);
+            }
+          } catch (prefJsonError: any) {
+            console.warn(`[StorageInitialize POST] Failed to initialize preferences.json:`, prefJsonError?.message || prefJsonError);
+          }
+          
           // Initialize all metadata Sheets files
           const { PreferencesSheetsService } = await import('./server/modules/preferencesSheetsService');
           const { NotificationsSheetsService } = await import('./server/modules/notificationsSheetsService');
@@ -5299,7 +5316,19 @@ class ProductionServer {
             }
           };
           
-          await initSheet(PreferencesSheetsService, 'getPreferencesSheet', 'createPreferencesSheet', 'preferences.xlsx');
+          // Initialize preferences.xlsx (for interaction history logging)
+          try {
+            await PreferencesSheetsService.getPreferencesSheet(token, metadataFolderId, pnIdentifier, accountId);
+          } catch (prefSheetError: any) {
+            if (prefSheetError?.message?.includes('not found')) {
+              await PreferencesSheetsService.createPreferencesSheet(token, metadataFolderId, pnIdentifier, accountId);
+              console.log(`[StorageInitialize POST] Created preferences.xlsx`);
+            } else {
+              throw prefSheetError;
+            }
+          }
+          console.log(`[StorageInitialize POST] Initialized preferences.xlsx for identityId: ${sanitizedIdentityId}`);
+          
           await initSheet(NotificationsSheetsService, 'getNotificationsSheet', 'createNotificationsSheet', 'notifications.xlsx');
           await initSheet(ActivityLedgerSheetsService, 'getActivityLedgerSheet', 'createActivityLedgerSheet', 'activity_ledger.xlsx');
           await initSheet(ConnectionsSheetsService, 'getConnectionsSheet', 'createConnectionsSheet', 'connections.xlsx');
