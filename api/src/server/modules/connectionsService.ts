@@ -177,8 +177,7 @@ export class ConnectionsService {
     // Build token objects from accessToken strings (backward compatibility)
     const requesterToken: GoogleDriveToken = { access_token: requesterAccessToken };
     const recipientToken: GoogleDriveToken = { access_token: recipientAccessToken };
-    try {
-      const connectionId = this.generateConnectionId(requesterPnIdentifier, recipientPnIdentifier);
+    const connectionId = this.generateConnectionId(requesterPnIdentifier, recipientPnIdentifier);
       const now = new Date().toISOString();
 
       // Get or create connections sheets for both users
@@ -279,103 +278,6 @@ export class ConnectionsService {
         status: 'pending_sent',
         createdAt: now
       };
-    } catch (error) {
-      console.error('Error sending connection request via sheets, falling back to JSON:', error);
-      // Fallback to JSON for backward compatibility
-      return this.sendConnectionRequestJSON(
-        requesterAccessToken,
-        requesterMetadataFolder,
-        requesterPnIdentifier,
-        recipientAccessToken,
-        recipientMetadataFolder,
-        recipientPnIdentifier,
-        requesterAccountId,
-        recipientAccountId
-      );
-    }
-  }
-
-  /**
-   * Fallback method using JSON (for backward compatibility)
-   */
-  private static async sendConnectionRequestJSON(
-    requesterAccessToken: string,
-    requesterMetadataFolder: string,
-    requesterPnIdentifier: string,
-    recipientAccessToken: string,
-    recipientMetadataFolder: string,
-    recipientPnIdentifier: string,
-    requesterAccountId?: string,
-    recipientAccountId?: string
-  ): Promise<Connection> {
-    // Use pn identifiers directly (already normalized)
-
-    const connectionId = this.generateConnectionId(requesterPnIdentifier, recipientPnIdentifier);
-    const now = new Date().toISOString();
-
-    // Update requester's connections file
-    let requesterFile = await this.getConnectionsFile(requesterAccessToken, requesterMetadataFolder, requesterPnIdentifier, requesterAccountId);
-    if (!requesterFile) {
-      requesterFile = {
-        identifier: requesterPnIdentifier,
-        updatedAt: now,
-        connections: [],
-        blocked: []
-      };
-    }
-
-    // Normalize identifier if it exists (for legacy data compatibility)
-    requesterFile.identifier = requesterFile.identifier?.startsWith('pn-') ? requesterFile.identifier : this.normalizeToPnIdentifier(requesterFile.identifier || requesterPnIdentifier);
-
-    // Normalize when filtering (handles legacy data)
-    requesterFile.connections = requesterFile.connections.filter(c => {
-      const normalizedCUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : this.normalizeToPnIdentifier(c.userPnIdentifier);
-      return normalizedCUserPnIdentifier !== recipientPnIdentifier;
-    });
-    requesterFile.connections.push({
-      connectionId,
-      userPnIdentifier: recipientPnIdentifier,
-      status: 'pending_sent',
-      createdAt: now
-    });
-    requesterFile.updatedAt = now;
-    await this.updateConnectionsFile(requesterAccessToken, requesterMetadataFolder, requesterPnIdentifier, requesterFile, requesterPnIdentifier, requesterAccountId);
-
-    // Update recipient's connections file
-    let recipientFile = await this.getConnectionsFile(recipientAccessToken, recipientMetadataFolder, recipientPnIdentifier, recipientAccountId);
-    if (!recipientFile) {
-      recipientFile = {
-        identifier: recipientPnIdentifier,
-        updatedAt: now,
-        connections: [],
-        blocked: []
-      };
-    }
-
-    // Normalize identifier if it exists (for legacy data compatibility)
-    recipientFile.identifier = recipientFile.identifier?.startsWith('pn-') ? recipientFile.identifier : this.normalizeToPnIdentifier(recipientFile.identifier || recipientPnIdentifier);
-
-    // Normalize when filtering (handles legacy data)
-    recipientFile.connections = recipientFile.connections.filter(c => {
-      const normalizedCUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : this.normalizeToPnIdentifier(c.userPnIdentifier);
-      return normalizedCUserPnIdentifier !== requesterPnIdentifier;
-    });
-    
-    recipientFile.connections.push({
-      connectionId,
-      userPnIdentifier: requesterPnIdentifier,
-      status: 'pending_received',
-      createdAt: now
-    });
-    recipientFile.updatedAt = now;
-    await this.updateConnectionsFile(recipientAccessToken, recipientMetadataFolder, recipientPnIdentifier, recipientFile, recipientPnIdentifier, recipientAccountId);
-
-    return {
-      connectionId,
-      userPnIdentifier: recipientPnIdentifier,
-      status: 'pending_sent',
-      createdAt: now
-    };
   }
 
   /**
@@ -392,9 +294,8 @@ export class ConnectionsService {
   ): Promise<string> {
     // Build token object from accessToken string (backward compatibility)
     const token: GoogleDriveToken = { access_token: acceptorAccessToken };
-    try {
-      // Get or create connections sheet
-      const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
+    // Get or create connections sheet
+    const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
         token,
         acceptorMetadataFolder,
         acceptorPnIdentifier,
@@ -491,91 +392,6 @@ export class ConnectionsService {
 
       // Return the shared secret so the API endpoint can sync it to the other user
       return sharedSecret;
-    } catch (error) {
-      console.error('Error accepting connection request via sheets, falling back to JSON:', error);
-      // Fallback to JSON for backward compatibility
-      return await this.acceptConnectionRequestJSON(
-        acceptorAccessToken,
-        acceptorMetadataFolder,
-        acceptorPnIdentifier,
-        connectionId,
-        accountId
-      );
-    }
-  }
-
-  /**
-   * Fallback method using JSON (for backward compatibility)
-   */
-  private static async acceptConnectionRequestJSON(
-    acceptorAccessToken: string,
-    acceptorMetadataFolder: string,
-    acceptorPnIdentifier: string,
-    connectionId: string,
-    accountId?: string
-  ): Promise<string> {
-    const acceptorFile = await this.getConnectionsFile(acceptorAccessToken, acceptorMetadataFolder, acceptorPnIdentifier, accountId);
-    if (!acceptorFile) {
-      throw new Error('Connections file not found');
-    }
-
-    // Find all connections with this ID (in case of mutual requests)
-    const allMatchingConnections = acceptorFile.connections.filter(c => c.connectionId === connectionId);
-    
-    // Prioritize pending_received, but also allow pending_sent (mutual request)
-    let connection = allMatchingConnections.find(c => c.status === 'pending_received');
-    if (!connection && allMatchingConnections.length > 0) {
-      connection = allMatchingConnections.find(c => c.status === 'pending_sent');
-    }
-
-    if (!connection) {
-      const statuses = allMatchingConnections.map(c => c.status).join(', ');
-      throw new Error(`Connection request not found or not in acceptable status. Found connections with statuses: ${statuses || 'none'}`);
-    }
-
-    // Allow accepting if it's pending_received or pending_sent (mutual request)
-    if (connection.status !== 'pending_received' && connection.status !== 'pending_sent') {
-      if (connection.status === 'accepted') {
-        // Already accepted, return existing shared secret or generate one
-        if (connection.sharedSecret) {
-          return connection.sharedSecret;
-        }
-        // Generate shared secret for existing accepted connection
-        const crypto = await import('crypto');
-        const { MetadataEncryption } = await import('../utils/metadataEncryption');
-        const rawSecret = crypto.randomBytes(32).toString('base64');
-        const sharedSecret = MetadataEncryption.encryptField(rawSecret);
-        connection.sharedSecret = sharedSecret;
-        acceptorFile.updatedAt = new Date().toISOString();
-        await this.updateConnectionsFile(acceptorAccessToken, acceptorMetadataFolder, acceptorPnIdentifier, acceptorFile, acceptorPnIdentifier, accountId);
-        return sharedSecret;
-      }
-      throw new Error(`Connection request is not in acceptable status. Current status: ${connection.status}. Only pending_received or pending_sent connections can be accepted.`);
-    }
-
-    // Normalize connection.userPnIdentifier when reading (handles legacy data)
-    const otherUserPnIdentifier = this.normalizeToPnIdentifier(connection.userPnIdentifier);
-    connection.userPnIdentifier = otherUserPnIdentifier;
-    const now = new Date().toISOString();
-
-    // Generate shared secret
-    const crypto = await import('crypto');
-    const { MetadataEncryption } = await import('../utils/metadataEncryption');
-    const rawSecret = crypto.randomBytes(32).toString('base64');
-    const sharedSecret = MetadataEncryption.encryptField(rawSecret);
-
-    // Update acceptor's file
-    connection.status = 'accepted';
-    connection.acceptedAt = now;
-    connection.sharedSecret = sharedSecret;
-    acceptorFile.updatedAt = now;
-
-    await this.updateConnectionsFile(acceptorAccessToken, acceptorMetadataFolder, acceptorPnIdentifier, acceptorFile, acceptorPnIdentifier, accountId);
-    
-    return sharedSecret;
-
-    // Note: The other user's file should also be updated, but that requires their access token
-    // This will be handled by the API endpoint that has access to both users' tokens
   }
 
   /**
@@ -597,9 +413,8 @@ export class ConnectionsService {
     // Build token object from accessToken string (backward compatibility)
     const token: GoogleDriveToken = { access_token: otherUserAccessToken };
 
-    try {
-      // Get or create connections sheet
-      const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
+    // Get or create connections sheet
+    const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
         token,
         otherUserMetadataFolder,
         otherUserPnIdentifier,
@@ -651,124 +466,6 @@ export class ConnectionsService {
         newStatus === 'accepted' ? now : undefined,
         sharedSecret
       );
-    } catch (error) {
-      console.error('Error updating other user connection via sheets, falling back to JSON:', error);
-      // Fallback to JSON for backward compatibility
-      await this.updateOtherUserConnectionStatusJSON(
-        otherUserAccessToken,
-        otherUserMetadataFolder,
-        otherUserPnIdentifier,
-        connectionId,
-        newStatus,
-        normalizedAcceptorPnIdentifier,
-        accountId
-      );
-    }
-  }
-
-  /**
-   * Fallback method using JSON (for backward compatibility)
-   */
-  private static async updateOtherUserConnectionStatusJSON(
-    otherUserAccessToken: string,
-    otherUserMetadataFolder: string,
-    otherUserPnIdentifier: string,
-    connectionId: string,
-    newStatus: 'accepted' | 'blocked',
-    acceptorPnIdentifier?: string,
-    accountId?: string
-  ): Promise<void> {
-    // Use pn identifiers directly (already normalized)
-    const normalizedAcceptorPnIdentifier = acceptorPnIdentifier;
-
-    const otherUserFile = await this.getConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserPnIdentifier, accountId);
-    if (!otherUserFile) {
-      console.log(`[updateOtherUserConnectionStatus] Connections file not found for ${otherUserPnIdentifier}, creating new file`);
-      // Create new file with the connection
-      if (newStatus === 'accepted' && normalizedAcceptorPnIdentifier) {
-        const now = new Date().toISOString();
-        const newFile: ConnectionsFile = {
-          identifier: otherUserPnIdentifier,
-          updatedAt: now,
-          connections: [{
-            connectionId,
-            userPnIdentifier: normalizedAcceptorPnIdentifier,
-            status: 'accepted',
-            createdAt: now,
-            acceptedAt: now
-          }],
-          blocked: []
-        };
-        await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserPnIdentifier, newFile, otherUserPnIdentifier, accountId);
-        console.log(`[updateOtherUserConnectionStatus] Created new connections file for ${otherUserPnIdentifier} with accepted connection to ${normalizedAcceptorPnIdentifier}`);
-        return;
-      }
-      return; // Can't create connection without acceptorPnIdentifier
-    }
-
-    // Normalize identifier if it exists (for legacy data compatibility)
-    otherUserFile.identifier = otherUserFile.identifier?.startsWith('pn-') ? otherUserFile.identifier : this.normalizeToPnIdentifier(otherUserFile.identifier || otherUserPnIdentifier);
-
-    const connection = otherUserFile.connections.find(c => c.connectionId === connectionId);
-    if (!connection) {
-      console.log(`[updateOtherUserConnectionStatus] Connection ${connectionId} not found in ${otherUserPnIdentifier}'s file`);
-        console.log(`[updateOtherUserConnectionStatus] Available connections:`, otherUserFile.connections.map(c => ({
-          connectionId: c.connectionId,
-          userPnIdentifier: c.userPnIdentifier,
-          status: c.status
-        })));
-      
-      // If accepting and we have acceptorPnIdentifier, create the connection
-      if (newStatus === 'accepted' && normalizedAcceptorPnIdentifier) {
-        console.log(`[updateOtherUserConnectionStatus] Creating missing connection in ${otherUserPnIdentifier}'s file`);
-        const now = new Date().toISOString();
-        otherUserFile.connections.push({
-          connectionId,
-          userPnIdentifier: normalizedAcceptorPnIdentifier,
-          status: 'accepted',
-          createdAt: now,
-          acceptedAt: now
-        });
-        otherUserFile.updatedAt = now;
-        await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserPnIdentifier, otherUserFile, otherUserPnIdentifier, accountId);
-        console.log(`[updateOtherUserConnectionStatus] Successfully created connection in ${otherUserPnIdentifier}'s file`);
-        return;
-      }
-      
-      console.warn(`[updateOtherUserConnectionStatus] Connection not found and cannot create (missing acceptorPnIdentifier or wrong status)`);
-      return; // Connection not found in their file
-    }
-
-    // Normalize connection.userPnIdentifier when reading (handles legacy data)
-    const normalizedConnectionUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-') ? connection.userPnIdentifier : this.normalizeToPnIdentifier(connection.userPnIdentifier);
-    connection.userPnIdentifier = normalizedConnectionUserPnIdentifier;
-
-    console.log(`[updateOtherUserConnectionStatus] Found connection in ${otherUserPnIdentifier}'s file:`, {
-      connectionId: connection.connectionId,
-      userPnIdentifier: normalizedConnectionUserPnIdentifier,
-      currentStatus: connection.status,
-      newStatus
-    });
-
-    const now = new Date().toISOString();
-
-    if (newStatus === 'accepted') {
-      connection.status = 'accepted';
-      connection.acceptedAt = now;
-    } else if (newStatus === 'blocked') {
-      connection.status = 'blocked';
-      // Normalize blocked entries when checking and adding (handles legacy data)
-      const normalizedBlocked = otherUserFile.blocked.map(b => this.normalizeToPnIdentifier(b));
-      if (!normalizedBlocked.includes(normalizedConnectionUserPnIdentifier)) {
-        otherUserFile.blocked.push(normalizedConnectionUserPnIdentifier);
-      }
-      // Update blocked array with normalized values
-      otherUserFile.blocked = normalizedBlocked;
-    }
-
-    otherUserFile.updatedAt = now;
-    await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserPnIdentifier, otherUserFile, otherUserPnIdentifier, accountId);
-    console.log(`[updateOtherUserConnectionStatus] Successfully updated connection status to ${newStatus} in ${otherUserPnIdentifier}'s file`);
   }
 
   /**
