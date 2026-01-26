@@ -84,7 +84,7 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
         <h2 className="text-white text-lg font-semibold">{getViewTitle(activeView)}</h2>
         
         {/* Icons on the right */}
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 pr-16">
           <button 
             onClick={() => setActiveView('messages')} 
             className={`p-2 rounded transition-colors ${
