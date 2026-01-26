@@ -11088,7 +11088,9 @@ class ProductionServer {
         const pnIdentifier = userPnIdentifier;
 
         // Get user's credentials
+        const credentialsStart = Date.now();
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        console.log(`[GetConversation] getCredentials took ${Date.now() - credentialsStart}ms`);
         if (!userCredentials?.credentials) {
           return res.json({ messages: [] });
         }
