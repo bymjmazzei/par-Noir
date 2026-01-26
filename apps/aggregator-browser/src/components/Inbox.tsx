@@ -59,16 +59,37 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
     );
   }
 
+  const getViewTitle = (view: typeof activeView): string => {
+    switch (view) {
+      case 'messages':
+        return 'Inbox';
+      case 'notifications':
+        return 'Notifications';
+      case 'requests':
+        return 'Requests';
+      case 'activity':
+        return 'Activity Ledger';
+      case 'connections':
+        return 'Connections';
+      default:
+        return 'Inbox';
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-neutral-900" style={{ paddingBottom: '64px' }}>
       {/* Header with Icon Navigation */}
       <div className="flex items-center justify-between p-4 border-b border-neutral-700">
-        <div className="flex items-center space-x-2 flex-1">
+        {/* Title on the left */}
+        <h2 className="text-white text-lg font-semibold">{getViewTitle(activeView)}</h2>
+        
+        {/* Icons on the right */}
+        <div className="flex items-center space-x-2">
           <button 
             onClick={() => setActiveView('messages')} 
-            className={`p-2 rounded transition-colors relative ${
+            className={`p-2 rounded transition-colors ${
               activeView === 'messages'
-                ? 'bg-neutral-800 text-blue-400'
+                ? 'text-blue-400'
                 : 'hover:bg-neutral-800 text-white'
             }`}
             aria-label="Messages"
@@ -78,9 +99,9 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
           </button>
           <button 
             onClick={() => setActiveView('notifications')} 
-            className={`p-2 rounded transition-colors relative ${
+            className={`p-2 rounded transition-colors ${
               activeView === 'notifications'
-                ? 'bg-neutral-800 text-blue-400'
+                ? 'text-blue-400'
                 : 'hover:bg-neutral-800 text-white'
             }`}
             aria-label="Notifications"
@@ -90,9 +111,9 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
           </button>
           <button 
             onClick={() => setActiveView('requests')} 
-            className={`p-2 rounded transition-colors relative ${
+            className={`p-2 rounded transition-colors ${
               activeView === 'requests'
-                ? 'bg-neutral-800 text-blue-400'
+                ? 'text-blue-400'
                 : 'hover:bg-neutral-800 text-white'
             }`}
             aria-label="Requests"
@@ -104,9 +125,9 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
             <>
               <button 
                 onClick={() => setActiveView('activity')} 
-                className={`p-2 rounded transition-colors relative ${
+                className={`p-2 rounded transition-colors ${
                   activeView === 'activity'
-                    ? 'bg-neutral-800 text-blue-400'
+                    ? 'text-blue-400'
                     : 'hover:bg-neutral-800 text-white'
                 }`}
                 aria-label="Activity Ledger"
@@ -116,9 +137,9 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
               </button>
               <button 
                 onClick={() => setActiveView('connections')} 
-                className={`p-2 rounded transition-colors relative ${
+                className={`p-2 rounded transition-colors ${
                   activeView === 'connections'
-                    ? 'bg-neutral-800 text-blue-400'
+                    ? 'text-blue-400'
                     : 'hover:bg-neutral-800 text-white'
                 }`}
                 aria-label="Connections"
