@@ -559,10 +559,13 @@ export class MessageSheetsService {
       const range = `Messages!A2:F${endRow}`;
       
       try {
+        const sheetsApiStart = Date.now();
+        console.log(`[MessageSheetsService] Reading range ${range} from sheet ${spreadsheetId.substring(0, 10)}...`);
         const response = await sheets.spreadsheets.values.get({
           spreadsheetId,
           range
         });
+        console.log(`[MessageSheetsService] Sheets API call took ${Date.now() - sheetsApiStart}ms, got ${(response.data.values || []).length} rows`);
         rowsToProcess = response.data.values || [];
         
         // Only count if explicitly requested (for pagination UI)
@@ -643,6 +646,7 @@ export class MessageSheetsService {
     }
 
     // Parse and decrypt only the messages we need
+    const decryptStart = Date.now();
     const { MessageEncryption } = await import('../utils/messageEncryption');
     const messages: Message[] = rowsToProcess.map((row, relativeIndex) => {
       // Messages are stored newest first (row 2 is newest), so index is just offset + relativeIndex
@@ -704,6 +708,7 @@ export class MessageSheetsService {
         readAt: row[5] || undefined
       };
     });
+    console.log(`[MessageSheetsService] Decryption of ${rowsToProcess.length} messages took ${Date.now() - decryptStart}ms`);
 
     // Messages are already sorted newest first (stored that way), no need to sort
 
