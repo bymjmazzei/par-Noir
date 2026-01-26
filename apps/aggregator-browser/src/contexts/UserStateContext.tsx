@@ -523,13 +523,17 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         const { getMessageThreads } = await import('../services/messageService');
         const threads = await getMessageThreads(pnIdentifier);
         
-        // Extract only participantPnIdentifier and lastMessageAt for cache
-        // (no sensitive data like sharedSecret, no preview)
+        // Extract participantPnIdentifier, lastMessageAt, and conversation credentials for cache
+        // (encrypted sharedSecret is safe to cache - it's encrypted with AES-256-GCM server-side)
         const inboxEntries = threads
           .filter(thread => thread.participantPnIdentifier)
           .map(thread => ({
             participantPnIdentifier: thread.participantPnIdentifier,
-            lastMessageAt: thread.lastMessage?.timestamp || new Date().toISOString()
+            lastMessageAt: thread.lastMessage?.timestamp || new Date().toISOString(),
+            // Store conversation credentials for optimized API path (skips folder lookups)
+            spreadsheetId: thread.spreadsheetId,
+            connectionId: thread.connectionId,
+            sharedSecret: thread.sharedSecret // Encrypted, safe to cache
           }))
           .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
         

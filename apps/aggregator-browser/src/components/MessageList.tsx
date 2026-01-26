@@ -51,7 +51,10 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
         },
         unreadCount: 0, // Will be updated from API
         messages: [],
-        // No sensitive data in cache
+        // Include cached credentials for fast conversation loading
+        spreadsheetId: entry.spreadsheetId,
+        connectionId: entry.connectionId,
+        sharedSecret: entry.sharedSecret // Encrypted, safe to cache
       }));
       setThreads(cachedThreads);
       setLoading(false); // Show instantly, no loading spinner
@@ -82,12 +85,16 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
         }));
         setThreads(threadsWithoutPreview);
         
-        // Update cache with latest data
+        // Update cache with latest data (including conversation credentials for fast loading)
         const inboxEntries = threadsData
           .filter(thread => thread.participantPnIdentifier)
           .map(thread => ({
             participantPnIdentifier: thread.participantPnIdentifier,
-            lastMessageAt: thread.lastMessage?.timestamp || new Date().toISOString()
+            lastMessageAt: thread.lastMessage?.timestamp || new Date().toISOString(),
+            // Store conversation credentials for optimized API path
+            spreadsheetId: thread.spreadsheetId,
+            connectionId: thread.connectionId,
+            sharedSecret: thread.sharedSecret // Encrypted, safe to cache
           }))
           .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
         inboxCacheService.set(userState.pnIdentifier!, inboxEntries);
@@ -327,14 +334,14 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
                 <div key={thread.participantPnIdentifier} className="relative">
                   <button
                     onClick={() => {
-                      // No preloaded messages, no cached credentials - fetch on open
+                      // Use cached credentials for optimized API path (skips folder lookups)
                       onThreadSelect(
                         thread.participantPnIdentifier, 
                         thread.participantName, 
                         undefined, // No preloaded messages
-                        undefined, // connectionId - fetch on open
-                        undefined, // sharedSecret - fetch on open
-                        undefined  // spreadsheetId - fetch on open
+                        thread.connectionId, // Use cached connectionId
+                        thread.sharedSecret, // Use cached encrypted sharedSecret
+                        thread.spreadsheetId // Use cached spreadsheetId
                       );
                     }}
                     className="w-full p-4 hover:bg-neutral-800 transition-colors text-left"
