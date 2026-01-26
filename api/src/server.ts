@@ -12226,25 +12226,126 @@ class ProductionServer {
           ? this.extractAccountId(recipientCredentials.credentials.googleDriveAccounts[0])
           : undefined;
         
+        // Helper function to append message with retry (recreates sheet if deleted)
+        const appendMessageWithRetry = async (
+          token: GoogleDriveToken,
+          spreadsheetId: string | undefined,
+          messagesFolderId: string,
+          otherUserPnIdentifier: string,
+          userPnIdentifier: string,
+          accountId: string | undefined,
+          message: any,
+          connectionId: string,
+          sharedSecret: string,
+          cachedSheetIdKey: string,
+          credentials: any,
+          cachedFolderIds: any
+        ): Promise<string> => {
+          let currentSheetId = spreadsheetId;
+          
+          try {
+            if (!currentSheetId) {
+              throw new Error('No spreadsheet ID provided');
+            }
+            await MessageSheetsService.appendMessage(
+              token,
+              currentSheetId,
+              message,
+              connectionId,
+              sharedSecret,
+              userPnIdentifier,
+              accountId
+            );
+            return currentSheetId;
+          } catch (appendError: any) {
+            // If spreadsheet not found, it was deleted - recreate it
+            if (appendError?.message?.includes('Spreadsheet not found') || appendError?.response?.status === 404) {
+              console.warn(`[SendMessage] Spreadsheet ${currentSheetId} not found (deleted), recreating conversation sheet for ${otherUserPnIdentifier}`);
+              
+              // Clear cached ID
+              const updatedConversationSheets = { ...(cachedFolderIds.conversationSheets || {}) };
+              delete updatedConversationSheets[cachedSheetIdKey];
+              const updatedCachedFolderIds = {
+                ...cachedFolderIds,
+                conversationSheets: updatedConversationSheets
+              };
+              credentials.cachedFolderIds = updatedCachedFolderIds;
+              await storageCredentialsService.upsertCredentials(userPnIdentifier, credentials).catch(() => {});
+              
+              // Create new conversation sheet
+              currentSheetId = await MessageSheetsService.createConversationSheet(
+                token,
+                messagesFolderId,
+                otherUserPnIdentifier,
+                userPnIdentifier,
+                accountId
+              );
+              
+              // Cache new sheet ID
+              const newConversationSheets = {
+                ...updatedConversationSheets,
+                [cachedSheetIdKey]: currentSheetId
+              };
+              const newCachedFolderIds = {
+                ...updatedCachedFolderIds,
+                conversationSheets: newConversationSheets
+              };
+              credentials.cachedFolderIds = newCachedFolderIds;
+              await storageCredentialsService.upsertCredentials(userPnIdentifier, credentials).catch(() => {});
+              
+              // Retry append with new sheet
+              await MessageSheetsService.appendMessage(
+                token,
+                currentSheetId,
+                message,
+                connectionId,
+                sharedSecret,
+                userPnIdentifier,
+                accountId
+              );
+              
+              console.log(`[SendMessage] Recreated and appended to conversation sheet ${currentSheetId} for ${otherUserPnIdentifier}`);
+              return currentSheetId;
+            } else {
+              // Re-throw other errors
+              throw appendError;
+            }
+          }
+        };
+        
         await Promise.all([
-          MessageSheetsService.appendMessage(
+          appendMessageWithRetry(
             senderToken,
-            senderConversationSheetId!,
+            senderConversationSheetId,
+            senderMessagesFolderId!,
+            toPnIdentifier,
+            fromPnIdentifier,
+            senderAccountId,
             message,
             connectionId,
             decryptedSharedSecret,
-            fromPnIdentifier,
-            senderAccountId
-          ),
-          MessageSheetsService.appendMessage(
+            toPnIdentifier,
+            senderCredentials.credentials,
+            senderCachedFolderIds
+          ).then(newSheetId => {
+            senderConversationSheetId = newSheetId;
+          }),
+          appendMessageWithRetry(
             recipientToken,
-            recipientConversationSheetId!,
+            recipientConversationSheetId,
+            recipientMessagesFolderId!,
+            fromPnIdentifier,
+            toPnIdentifier,
+            recipientAccountIdForSend,
             message,
             connectionId,
             recipientDecryptedSharedSecret,
-            toPnIdentifier,
-            recipientAccountIdForSend
-          )
+            fromPnIdentifier,
+            recipientCredentials?.credentials,
+            recipientCachedFolderIds
+          ).then(newSheetId => {
+            recipientConversationSheetId = newSheetId;
+          })
         ]);
         console.log('[SendMessage] Messages appended to both sheets successfully');
         // Note: Inbox updates are already handled above in parallel
