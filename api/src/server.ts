@@ -12726,15 +12726,30 @@ class ProductionServer {
           accountId
         );
 
+        // Clear cached conversation sheet ID (sheet was deleted)
+        const cachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
+        const conversationSheets = cachedFolderIds.conversationSheets || {};
+        if (conversationSheets[normalizedParticipantPnIdentifier]) {
+          delete conversationSheets[normalizedParticipantPnIdentifier];
+          const updatedCachedFolderIds = {
+            ...cachedFolderIds,
+            conversationSheets
+          };
+          userCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
+          await storageCredentialsService.upsertCredentials(pnIdentifier, userCredentials.credentials).catch(err => {
+            console.warn('[DeleteConversation] Failed to clear cached conversation sheet ID:', err?.message);
+          });
+          console.log('[DeleteConversation] Cleared cached conversation sheet ID');
+        }
+
         // Remove from inbox
         try {
-          const cachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
           const inboxSheetId = await MessageSheetsService.getInboxSheet(
             token,
             messagesFolderId,
             pnIdentifier,
             accountId,
-            cachedFolderIds.inboxSheetId // Pass cached ID to skip search
+            updatedCachedFolderIds.inboxSheetId // Pass cached ID to skip search
           );
           await MessageSheetsService.removeInboxEntry(
             token,
