@@ -547,7 +547,7 @@ export class ConnectionsService {
         const sharedSecret = MetadataEncryption.encryptField(rawSecret);
         connection.sharedSecret = sharedSecret;
         acceptorFile.updatedAt = new Date().toISOString();
-        await this.updateConnectionsFile(acceptorAccessToken, acceptorMetadataFolder, acceptorPnIdentifier, acceptorFile);
+        await this.updateConnectionsFile(acceptorAccessToken, acceptorMetadataFolder, acceptorPnIdentifier, acceptorFile, acceptorPnIdentifier, accountId);
         return sharedSecret;
       }
       throw new Error(`Connection request is not in acceptable status. Current status: ${connection.status}. Only pending_received or pending_sent connections can be accepted.`);
@@ -570,7 +570,7 @@ export class ConnectionsService {
     connection.sharedSecret = sharedSecret;
     acceptorFile.updatedAt = now;
 
-    await this.updateConnectionsFile(acceptorAccessToken, acceptorMetadataFolder, acceptorPnIdentifier, acceptorFile);
+    await this.updateConnectionsFile(acceptorAccessToken, acceptorMetadataFolder, acceptorPnIdentifier, acceptorFile, acceptorPnIdentifier, accountId);
     
     return sharedSecret;
 
@@ -660,7 +660,8 @@ export class ConnectionsService {
         otherUserPnIdentifier,
         connectionId,
         newStatus,
-        normalizedAcceptorPnIdentifier
+        normalizedAcceptorPnIdentifier,
+        accountId
       );
     }
   }
@@ -674,12 +675,13 @@ export class ConnectionsService {
     otherUserPnIdentifier: string,
     connectionId: string,
     newStatus: 'accepted' | 'blocked',
-    acceptorPnIdentifier?: string
+    acceptorPnIdentifier?: string,
+    accountId?: string
   ): Promise<void> {
     // Use pn identifiers directly (already normalized)
     const normalizedAcceptorPnIdentifier = acceptorPnIdentifier;
 
-    const otherUserFile = await this.getConnectionsFile(otherUserAccessToken, otherUserMetadataFolder);
+    const otherUserFile = await this.getConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserPnIdentifier, accountId);
     if (!otherUserFile) {
       console.log(`[updateOtherUserConnectionStatus] Connections file not found for ${otherUserPnIdentifier}, creating new file`);
       // Create new file with the connection
@@ -697,7 +699,7 @@ export class ConnectionsService {
           }],
           blocked: []
         };
-        await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserPnIdentifier, newFile);
+        await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserPnIdentifier, newFile, otherUserPnIdentifier, accountId);
         console.log(`[updateOtherUserConnectionStatus] Created new connections file for ${otherUserPnIdentifier} with accepted connection to ${normalizedAcceptorPnIdentifier}`);
         return;
       }
@@ -728,7 +730,7 @@ export class ConnectionsService {
           acceptedAt: now
         });
         otherUserFile.updatedAt = now;
-        await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserPnIdentifier, otherUserFile);
+        await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserPnIdentifier, otherUserFile, otherUserPnIdentifier, accountId);
         console.log(`[updateOtherUserConnectionStatus] Successfully created connection in ${otherUserPnIdentifier}'s file`);
         return;
       }
@@ -765,7 +767,7 @@ export class ConnectionsService {
     }
 
     otherUserFile.updatedAt = now;
-    await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserPnIdentifier, otherUserFile);
+    await this.updateConnectionsFile(otherUserAccessToken, otherUserMetadataFolder, otherUserPnIdentifier, otherUserFile, otherUserPnIdentifier, accountId);
     console.log(`[updateOtherUserConnectionStatus] Successfully updated connection status to ${newStatus} in ${otherUserPnIdentifier}'s file`);
   }
 
@@ -776,10 +778,11 @@ export class ConnectionsService {
     userAccessToken: string,
     userMetadataFolder: string,
     userPnIdentifier: string,
-    connectionId: string
+    connectionId: string,
+    accountId?: string
   ): Promise<void> {
     // Use pn identifier directly (already normalized)
-    const connectionsFile = await this.getConnectionsFile(userAccessToken, userMetadataFolder);
+    const connectionsFile = await this.getConnectionsFile(userAccessToken, userMetadataFolder, userPnIdentifier, accountId);
     if (!connectionsFile) {
       return;
     }
@@ -790,7 +793,7 @@ export class ConnectionsService {
     connectionsFile.connections = connectionsFile.connections.filter(c => c.connectionId !== connectionId);
     connectionsFile.updatedAt = new Date().toISOString();
 
-    await this.updateConnectionsFile(userAccessToken, userMetadataFolder, userPnIdentifier, connectionsFile);
+    await this.updateConnectionsFile(userAccessToken, userMetadataFolder, userPnIdentifier, connectionsFile, userPnIdentifier, accountId);
   }
 
   /**

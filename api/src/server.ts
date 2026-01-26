@@ -13346,7 +13346,7 @@ class ProductionServer {
         }
 
         // Get connection to find other user
-        const connectionsFile = await ConnectionsService.getConnectionsFile(userAccessToken, metadataFolderId);
+        const connectionsFile = await ConnectionsService.getConnectionsFile(userAccessToken, metadataFolderId, pnIdentifier, accountId);
         if (!connectionsFile) {
           console.error(`[AcceptConnection] Connections file not found for user: ${pnIdentifier}`);
           return res.status(404).json({ error: 'Connection request not found' });
@@ -13460,7 +13460,8 @@ class ProductionServer {
                     connectionId,
                     'accepted',
                     pnIdentifier, // Use normalized pn-identifier from start of function
-                    sharedSecret
+                    sharedSecret,
+                    otherAccountId
                   );
                 }
               }
@@ -13513,7 +13514,8 @@ class ProductionServer {
           token.access_token,
           metadataFolderId,
           pnIdentifier, // Use normalized pn-identifier
-          connectionId
+          connectionId,
+          accountId
         );
 
         if (!sharedSecret) {
@@ -14146,7 +14148,8 @@ class ProductionServer {
           userAccessToken,
           metadataFolderId,
           userPnIdentifier,
-          connectionId
+          connectionId,
+          accountId
         );
 
         return res.json({ success: true });
