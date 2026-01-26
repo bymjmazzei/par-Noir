@@ -11060,6 +11060,7 @@ class ProductionServer {
         method: req.method
       });
       try {
+        const requestStart = Date.now();
         const userPnIdentifier = src.userPnIdentifier as string;
         const participantPnIdentifier = src.participantPnIdentifier as string;
         const limit = src.limit != null ? parseInt(String(src.limit), 10) : 50;
@@ -11067,6 +11068,12 @@ class ProductionServer {
         const connectionId = src.connectionId as string | undefined;
         const sharedSecret = src.sharedSecret as string | undefined; // Encrypted
         const spreadsheetId = src.spreadsheetId as string | undefined;
+        console.log('[GetConversation] Request received', {
+          hasConnectionId: !!connectionId,
+          hasSharedSecret: !!sharedSecret,
+          hasSpreadsheetId: !!spreadsheetId,
+          method: req.method
+        });
 
         if (!userPnIdentifier || !participantPnIdentifier) {
           console.error('[GetConversation] Missing required parameters');
@@ -11116,12 +11123,19 @@ class ProductionServer {
 
         if (connectionId && sharedSecret && spreadsheetId) {
           // Fully optimized path: use provided connection info, skip ALL folder lookups
-          console.log('[GetConversation] Using fully optimized path (no folder lookups)');
+          const optimizedPathStart = Date.now();
+          console.log('[GetConversation] ✅ Using fully optimized path (no folder lookups)', {
+            connectionId: connectionId.substring(0, 10) + '...',
+            hasSharedSecret: !!sharedSecret,
+            spreadsheetId: spreadsheetId.substring(0, 10) + '...'
+          });
           finalConnectionId = connectionId;
           conversationSheetId = spreadsheetId;
 
           const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
+          const decryptStart = Date.now();
           decryptedSharedSecret = MetadataEncryption.decryptField(sharedSecret);
+          console.log(`[GetConversation] Decryption took ${Date.now() - decryptStart}ms`);
           if (!decryptedSharedSecret || MetadataEncryption.isEncrypted(decryptedSharedSecret)) {
             console.error('[GetConversation] Failed to decrypt provided shared secret (empty or still encrypted)');
             return res.status(500).json({
@@ -11129,6 +11143,7 @@ class ProductionServer {
               error_description: 'Failed to decrypt provided shared secret'
             });
           }
+          console.log(`[GetConversation] Optimized path setup took ${Date.now() - optimizedPathStart}ms`);
           // Skip all folder lookups - we have spreadsheetId, just need access token for Sheets API
         } else {
           // Fallback path: Try inbox first (fast path), then fall back to connections sheet
@@ -11364,6 +11379,7 @@ class ProductionServer {
         // Default to last 10 messages for initial load
         const messageLimit = limit || 10;
         const messageOffset = offset || 0;
+        const fetchStart = Date.now();
         console.log('[GetConversation] Fetching messages from sheet', { limit: messageLimit, offset: messageOffset });
         const result = await MessageSheetsService.getMessages(
           token,
@@ -11378,13 +11394,14 @@ class ProductionServer {
             includeTotal: false // Skip counting for initial loads (faster!)
           }
         );
+        console.log(`[GetConversation] getMessages took ${Date.now() - fetchStart}ms`);
 
         // Set toPnIdentifier for all messages (use normalized)
         result.messages.forEach(msg => {
           msg.toPnIdentifier = normalizedParticipantPnIdentifier;
         });
 
-        console.log('[GetConversation] Returning', result.messages.length, 'messages');
+        console.log(`[GetConversation] ✅ Returning ${result.messages.length} messages (total time: ${Date.now() - requestStart}ms)`);
         return res.json({ messages: result.messages, total: result.total });
       } catch (error: any) {
         console.error('[GetConversation] ERROR:', error);
