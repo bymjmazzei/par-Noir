@@ -48,11 +48,11 @@ export class MessageEncryption {
   /**
    * Encrypt message content using connection's shared secret
    */
-  static encryptMessage(
+  static async encryptMessage(
     content: string,
     connectionId: string,
     sharedSecret: string
-  ): string {
+  ): Promise<string> {
     if (!content || content === '') {
       return '';
     }
@@ -66,8 +66,8 @@ export class MessageEncryption {
       const salt = crypto.randomBytes(16);
       const iv = crypto.randomBytes(12); // 12 bytes for GCM
 
-      // Derive encryption key
-      const key = this.deriveKey(connectionId, sharedSecret, salt);
+      // Derive encryption key (async)
+      const key = await this.deriveKey(connectionId, sharedSecret, salt);
 
       // Encrypt message
       const cipher = crypto.createCipheriv(this.algorithm, key, iv);

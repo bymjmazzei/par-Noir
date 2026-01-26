@@ -443,7 +443,7 @@ export class MessageSheetsService {
         encryptedContent = message.content;
       } else {
         const { MessageEncryption } = await import('../utils/messageEncryption');
-        encryptedContent = MessageEncryption.encryptMessage(
+        encryptedContent = await MessageEncryption.encryptMessage(
           message.content,
           connectionId,
           sharedSecret
