@@ -11,30 +11,32 @@ interface EncryptedMessagePayload {
   iv: string;
   authTag: string;
   ciphertext: string;
+  iterations?: number; // Optional: iteration count (100k for new messages, missing for legacy 1M messages)
 }
 
 export class MessageEncryption {
   private static readonly algorithm = 'aes-256-gcm';
-  private static readonly pbkdf2Iterations = 1000000; // 1M iterations (military-grade)
+  private static readonly pbkdf2IterationsNew = 100000; // 100k iterations for new messages (10x faster, still secure)
+  private static readonly pbkdf2IterationsLegacy = 1000000; // 1M iterations for backward compatibility with old messages
   private static readonly pbkdf2KeyLength = 32; // 256 bits for AES-256
   private static readonly pbkdf2Digest = 'sha512'; // SHA-512 (military-grade)
 
   /**
    * Derive encryption key from connectionId and shared secret (async for parallel processing)
    */
-  private static async deriveKey(connectionId: string, sharedSecret: string, salt: Buffer): Promise<Buffer> {
+  private static async deriveKey(connectionId: string, sharedSecret: string, salt: Buffer, iterations: number): Promise<Buffer> {
     // Combine connectionId and sharedSecret
     const keyMaterial = `${connectionId}:${sharedSecret}`;
     
     // Hash the key material with SHA-256
     const hashedMaterial = crypto.createHash('sha256').update(keyMaterial).digest();
     
-    // Derive key using PBKDF2 (1M iterations, SHA-512) - async for parallel processing
+    // Derive key using PBKDF2 (iterations specified, SHA-512) - async for parallel processing
     return new Promise((resolve, reject) => {
       crypto.pbkdf2(
         hashedMaterial,
         salt,
-        this.pbkdf2Iterations,
+        iterations,
         this.pbkdf2KeyLength,
         this.pbkdf2Digest,
         (err, derivedKey) => {
@@ -66,8 +68,8 @@ export class MessageEncryption {
       const salt = crypto.randomBytes(16);
       const iv = crypto.randomBytes(12); // 12 bytes for GCM
 
-      // Derive encryption key (async)
-      const key = await this.deriveKey(connectionId, sharedSecret, salt);
+      // Derive encryption key (async) - use 100k iterations for new messages (10x faster)
+      const key = await this.deriveKey(connectionId, sharedSecret, salt, this.pbkdf2IterationsNew);
 
       // Encrypt message
       const cipher = crypto.createCipheriv(this.algorithm, key, iv);
@@ -77,12 +79,13 @@ export class MessageEncryption {
       ]);
       const authTag = cipher.getAuthTag();
 
-      // Create payload
+      // Create payload - store iterations for backward compatibility detection
       const payload: EncryptedMessagePayload = {
         salt: salt.toString('base64'),
         iv: iv.toString('base64'),
         authTag: authTag.toString('base64'),
-        ciphertext: ciphertext.toString('base64')
+        ciphertext: ciphertext.toString('base64'),
+        iterations: this.pbkdf2IterationsNew // Store iteration count for decryption
       };
 
       // Return as base64-encoded JSON for easy storage in spreadsheet cells
@@ -120,8 +123,11 @@ export class MessageEncryption {
       const authTag = Buffer.from(payload.authTag, 'base64');
       const ciphertext = Buffer.from(payload.ciphertext, 'base64');
 
+      // Determine iterations: use stored value if present (new messages), otherwise default to 1M (legacy)
+      const iterations = payload.iterations ?? this.pbkdf2IterationsLegacy;
+
       // Derive decryption key (async - allows parallel processing)
-      const key = await this.deriveKey(connectionId, sharedSecret, salt);
+      const key = await this.deriveKey(connectionId, sharedSecret, salt, iterations);
 
       // Decrypt message
       const decipher = crypto.createDecipheriv(this.algorithm, key, iv);
