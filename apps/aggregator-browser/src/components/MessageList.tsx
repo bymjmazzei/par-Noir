@@ -3,26 +3,64 @@
  * List of message threads and requests
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, MoreVertical, Trash2 } from 'lucide-react';
 import { MessageThread as MessageThreadType, Message } from '../services/messageService';
 import { getMessageThreads, deleteConversation } from '../services/messageService';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
 import { inboxCacheService } from '../services/inboxCacheService';
+import { getUserProfile } from '../services/profileService';
 
 interface MessageListProps {
   onThreadSelect: (participantPnIdentifier: string, participantName?: string, preloadedMessages?: Message[], connectionId?: string, sharedSecret?: string, spreadsheetId?: string) => void;
 }
 
 export function MessageList({ onThreadSelect }: MessageListProps) {
-  const { userState } = useUserState();
+  const { userState, getDisplayName, setUserDisplayName } = useUserState();
   const { success, error: showError } = useToast();
   const [threads, setThreads] = useState<MessageThreadType[]>([]);
   const [loading, setLoading] = useState(true);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ participantPnIdentifier: string; participantName?: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const loadingDisplayNamesRef = useRef<Set<string>>(new Set());
+
+  // Load display names for participants
+  const loadDisplayNames = async (participantPnIdentifiers: string[]) => {
+    const toLoad = participantPnIdentifiers.filter(
+      pnId => 
+        pnId && 
+        !loadingDisplayNamesRef.current.has(pnId) &&
+        getDisplayName(pnId) === pnId // Only load if we don't have a display name
+    );
+    
+    if (toLoad.length === 0) return;
+    
+    toLoad.forEach(pnId => loadingDisplayNamesRef.current.add(pnId));
+    
+    try {
+      const profilePromises = toLoad.map(async (pnId) => {
+        try {
+          const profile = await getUserProfile(pnId);
+          if (profile.displayName) {
+            setUserDisplayName(pnId, profile.displayName);
+          }
+          return { pnId, displayName: profile.displayName };
+        } catch (error) {
+          console.debug('Failed to load display name for', pnId, error);
+          return { pnId, displayName: undefined };
+        } finally {
+          loadingDisplayNamesRef.current.delete(pnId);
+        }
+      });
+      
+      await Promise.all(profilePromises);
+    } catch (error) {
+      console.error('Failed to load display names:', error);
+      toLoad.forEach(pnId => loadingDisplayNamesRef.current.delete(pnId));
+    }
+  };
 
   // Load threads and requests
   useEffect(() => {
@@ -54,6 +92,12 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
       }));
       setThreads(cachedThreads);
       setLoading(false); // Show instantly, no loading spinner
+      
+      // Load display names for cached participants
+      const participantIds = cachedInbox
+        .map(entry => entry.participantPnIdentifier)
+        .filter(Boolean) as string[];
+      loadDisplayNames(participantIds);
     } else {
       setLoading(true); // Only show loading if no cache
     }
@@ -76,6 +120,12 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
           } : undefined
         }));
         setThreads(threadsWithoutPreview);
+        
+        // Load display names for all participants
+        const participantIds = threadsData
+          .map(thread => thread.participantPnIdentifier)
+          .filter(Boolean) as string[];
+        loadDisplayNames(participantIds);
         
         // Update cache with latest data (including conversation credentials for fast loading)
         const inboxEntries = threadsData
@@ -219,13 +269,21 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
                     <div className="flex items-center space-x-3 flex-1 min-w-0">
                       <div className="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center flex-shrink-0">
                         <span className="text-blue-400 font-semibold">
-                          {(thread.participantName || thread.participantPnIdentifier || '?').charAt(0).toUpperCase()}
+                          {(() => {
+                            const displayName = getDisplayName(thread.participantPnIdentifier);
+                            return (displayName || thread.participantPnIdentifier || '?').charAt(0).toUpperCase();
+                          })()}
                         </span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center space-x-2">
                           <h3 className="text-white font-medium truncate">
-                            {thread.participantName || (thread.participantPnIdentifier || 'Unknown').substring(0, 16) + '...'}
+                            {(() => {
+                              const displayName = getDisplayName(thread.participantPnIdentifier);
+                              return displayName !== thread.participantPnIdentifier 
+                                ? displayName 
+                                : (thread.participantPnIdentifier || 'Unknown').substring(0, 16) + '...';
+                            })()}
                           </h3>
                           {thread.unreadCount > 0 && (
                             <span className="px-2 py-0.5 bg-blue-500 text-white text-xs rounded-full">
