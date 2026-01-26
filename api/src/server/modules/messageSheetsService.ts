@@ -646,68 +646,73 @@ export class MessageSheetsService {
     }
 
     // Parse and decrypt only the messages we need
+    // CRITICAL: Decrypt messages in parallel to avoid sequential PBKDF2 delays
     const decryptStart = Date.now();
     const { MessageEncryption } = await import('../utils/messageEncryption');
-    const messages: Message[] = rowsToProcess.map((row, relativeIndex) => {
-      // Messages are stored newest first (row 2 is newest), so index is just offset + relativeIndex
-      const actualIndex = offset + relativeIndex;
-      const encryptedContent = row[1] || '';
-      let decryptedContent = '';
-      
-      // Check if content is encrypted or plain text
-      const isEncrypted = MessageEncryption.isEncrypted(encryptedContent);
-      
-      if (isEncrypted && sharedSecret && sharedSecret !== '') {
-        try {
-          // Decrypt message content
-          decryptedContent = MessageEncryption.decryptMessage(
-            encryptedContent,
-            connectionId,
-            sharedSecret
-          );
-        } catch (decryptError: any) {
-          // Log detailed error for debugging
-          console.error(`[MessageSheetsService] Failed to decrypt message ${row[3] || actualIndex}:`, {
-            error: decryptError?.message || 'Unknown error',
-            connectionId,
-            hasSharedSecret: !!sharedSecret,
-            encryptedContentLength: encryptedContent.length,
-            encryptedContentPreview: encryptedContent.substring(0, 50),
-            messageId: row[3] || actualIndex,
-            fromPnIdentifier: row[0] || ''
-          });
-          // If decryption fails, this message was likely encrypted with a different connectionId/sharedSecret
-          // (e.g., from before reconnection). Skip it rather than showing an error message.
-          // Return null to filter it out, or show a generic message
-          decryptedContent = '[Message from previous connection - cannot decrypt]';
-        }
-      } else {
-        // Plain text message (system messages or old messages without encryption)
-        // Only treat as plain text if it doesn't look like encrypted JSON
-        if (MessageEncryption.isEncrypted(encryptedContent)) {
-          // This is encrypted but we don't have a shared secret
-          console.warn(`[MessageSheetsService] Encrypted message found but no shared secret available for message ${row[3] || actualIndex}`);
-          decryptedContent = '[Message requires connection to decrypt. Please reconnect with this user.]';
+    
+    // Process all messages in parallel (each has its own salt, so PBKDF2 runs independently)
+    const messages: Message[] = await Promise.all(
+      rowsToProcess.map(async (row, relativeIndex) => {
+        // Messages are stored newest first (row 2 is newest), so index is just offset + relativeIndex
+        const actualIndex = offset + relativeIndex;
+        const encryptedContent = row[1] || '';
+        let decryptedContent = '';
+        
+        // Check if content is encrypted or plain text
+        const isEncrypted = MessageEncryption.isEncrypted(encryptedContent);
+        
+        if (isEncrypted && sharedSecret && sharedSecret !== '') {
+          try {
+            // Decrypt message content (PBKDF2 runs in parallel for all messages via Promise.all)
+            decryptedContent = await MessageEncryption.decryptMessage(
+              encryptedContent,
+              connectionId,
+              sharedSecret
+            );
+          } catch (decryptError: any) {
+            // Log detailed error for debugging
+            console.error(`[MessageSheetsService] Failed to decrypt message ${row[3] || actualIndex}:`, {
+              error: decryptError?.message || 'Unknown error',
+              connectionId,
+              hasSharedSecret: !!sharedSecret,
+              encryptedContentLength: encryptedContent.length,
+              encryptedContentPreview: encryptedContent.substring(0, 50),
+              messageId: row[3] || actualIndex,
+              fromPnIdentifier: row[0] || ''
+            });
+            // If decryption fails, this message was likely encrypted with a different connectionId/sharedSecret
+            // (e.g., from before reconnection). Skip it rather than showing an error message.
+            // Return null to filter it out, or show a generic message
+            decryptedContent = '[Message from previous connection - cannot decrypt]';
+          }
         } else {
-          decryptedContent = encryptedContent;
+          // Plain text message (system messages or old messages without encryption)
+          // Only treat as plain text if it doesn't look like encrypted JSON
+          if (MessageEncryption.isEncrypted(encryptedContent)) {
+            // This is encrypted but we don't have a shared secret
+            console.warn(`[MessageSheetsService] Encrypted message found but no shared secret available for message ${row[3] || actualIndex}`);
+            decryptedContent = '[Message requires connection to decrypt. Please reconnect with this user.]';
+          } else {
+            decryptedContent = encryptedContent;
+          }
         }
-      }
-      
-      // Use pn identifier directly (normalization only for legacy data compatibility)
-      const fromPnIdentifier = row[0] || '';
-      // Normalize only if needed for legacy data compatibility
-      const normalizedFromPnIdentifier = fromPnIdentifier.startsWith('pn-') ? fromPnIdentifier : this.normalizeToPnIdentifier(fromPnIdentifier);
-      
-      return {
-        messageId: row[3] || `msg-${actualIndex}`,
-        fromPnIdentifier: normalizedFromPnIdentifier,
-        toPnIdentifier: '', // Will be set by caller based on conversation
-        content: decryptedContent,
-        timestamp: row[2] || new Date().toISOString(),
-        read: row[4] === 'true',
-        readAt: row[5] || undefined
-      };
-    });
+        
+        // Use pn identifier directly (normalization only for legacy data compatibility)
+        const fromPnIdentifier = row[0] || '';
+        // Normalize only if needed for legacy data compatibility
+        const normalizedFromPnIdentifier = fromPnIdentifier.startsWith('pn-') ? fromPnIdentifier : this.normalizeToPnIdentifier(fromPnIdentifier);
+        
+        return {
+          messageId: row[3] || `msg-${actualIndex}`,
+          fromPnIdentifier: normalizedFromPnIdentifier,
+          toPnIdentifier: '', // Will be set by caller based on conversation
+          content: decryptedContent,
+          timestamp: row[2] || new Date().toISOString(),
+          read: row[4] === 'true',
+          readAt: row[5] || undefined
+        };
+      })
+    );
     console.log(`[MessageSheetsService] Decryption of ${rowsToProcess.length} messages took ${Date.now() - decryptStart}ms`);
 
     // Messages are already sorted newest first (stored that way), no need to sort

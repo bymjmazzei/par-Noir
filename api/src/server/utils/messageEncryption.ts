@@ -20,23 +20,29 @@ export class MessageEncryption {
   private static readonly pbkdf2Digest = 'sha512'; // SHA-512 (military-grade)
 
   /**
-   * Derive encryption key from connectionId and shared secret
+   * Derive encryption key from connectionId and shared secret (async for parallel processing)
    */
-  private static deriveKey(connectionId: string, sharedSecret: string, salt: Buffer): Buffer {
+  private static async deriveKey(connectionId: string, sharedSecret: string, salt: Buffer): Promise<Buffer> {
     // Combine connectionId and sharedSecret
     const keyMaterial = `${connectionId}:${sharedSecret}`;
     
     // Hash the key material with SHA-256
     const hashedMaterial = crypto.createHash('sha256').update(keyMaterial).digest();
     
-    // Derive key using PBKDF2 (1M iterations, SHA-512)
-    return crypto.pbkdf2Sync(
-      hashedMaterial,
-      salt,
-      this.pbkdf2Iterations,
-      this.pbkdf2KeyLength,
-      this.pbkdf2Digest
-    );
+    // Derive key using PBKDF2 (1M iterations, SHA-512) - async for parallel processing
+    return new Promise((resolve, reject) => {
+      crypto.pbkdf2(
+        hashedMaterial,
+        salt,
+        this.pbkdf2Iterations,
+        this.pbkdf2KeyLength,
+        this.pbkdf2Digest,
+        (err, derivedKey) => {
+          if (err) reject(err);
+          else resolve(derivedKey);
+        }
+      );
+    });
   }
 
   /**
@@ -88,13 +94,13 @@ export class MessageEncryption {
   }
 
   /**
-   * Decrypt message content using connection's shared secret
+   * Decrypt message content using connection's shared secret (async for parallel processing)
    */
-  static decryptMessage(
+  static async decryptMessage(
     encryptedContent: string,
     connectionId: string,
     sharedSecret: string
-  ): string {
+  ): Promise<string> {
     if (!encryptedContent || encryptedContent === '') {
       return '';
     }
@@ -114,8 +120,8 @@ export class MessageEncryption {
       const authTag = Buffer.from(payload.authTag, 'base64');
       const ciphertext = Buffer.from(payload.ciphertext, 'base64');
 
-      // Derive decryption key
-      const key = this.deriveKey(connectionId, sharedSecret, salt);
+      // Derive decryption key (async - allows parallel processing)
+      const key = await this.deriveKey(connectionId, sharedSecret, salt);
 
       // Decrypt message
       const decipher = crypto.createDecipheriv(this.algorithm, key, iv);
