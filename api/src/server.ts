@@ -12228,7 +12228,7 @@ class ProductionServer {
         
         // Helper function to append message with retry (recreates sheet if deleted)
         const appendMessageWithRetry = async (
-          token: GoogleDriveToken,
+          token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
           spreadsheetId: string | undefined,
           messagesFolderId: string,
           otherUserPnIdentifier: string,
@@ -12729,9 +12729,10 @@ class ProductionServer {
         // Clear cached conversation sheet ID (sheet was deleted)
         const cachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
         const conversationSheets = cachedFolderIds.conversationSheets || {};
+        let updatedCachedFolderIds = cachedFolderIds;
         if (conversationSheets[normalizedParticipantPnIdentifier]) {
           delete conversationSheets[normalizedParticipantPnIdentifier];
-          const updatedCachedFolderIds = {
+          updatedCachedFolderIds = {
             ...cachedFolderIds,
             conversationSheets
           };
