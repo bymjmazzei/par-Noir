@@ -125,6 +125,11 @@ export class MessageEncryption {
 
       // Determine iterations: use stored value if present (new messages), otherwise default to 1M (legacy)
       const iterations = payload.iterations ?? this.pbkdf2IterationsLegacy;
+      
+      // Log iteration count for debugging (only log occasionally to avoid spam)
+      if (Math.random() < 0.1) { // Log ~10% of the time
+        console.log(`[MessageEncryption] Decrypting with ${iterations === this.pbkdf2IterationsNew ? '100k (new)' : iterations === this.pbkdf2IterationsLegacy ? '1M (legacy)' : `${iterations} (custom)`} iterations`);
+      }
 
       // Derive decryption key (async - allows parallel processing)
       const key = await this.deriveKey(connectionId, sharedSecret, salt, iterations);

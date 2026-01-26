@@ -650,6 +650,9 @@ export class MessageSheetsService {
     const decryptStart = Date.now();
     const { MessageEncryption } = await import('../utils/messageEncryption');
     
+    // Track iteration counts for debugging
+    const iterationCounts: { [key: number]: number } = {};
+    
     // Process all messages in parallel (each has its own salt, so PBKDF2 runs independently)
     const messages: Message[] = await Promise.all(
       rowsToProcess.map(async (row, relativeIndex) => {
@@ -663,6 +666,16 @@ export class MessageSheetsService {
         
         if (isEncrypted && sharedSecret && sharedSecret !== '') {
           try {
+            // Check iteration count before decryption (for debugging)
+            try {
+              const payloadJson = Buffer.from(encryptedContent, 'base64').toString('utf8');
+              const payload = JSON.parse(payloadJson);
+              const iterations = payload.iterations ?? 1000000; // Default to 1M for legacy
+              iterationCounts[iterations] = (iterationCounts[iterations] || 0) + 1;
+            } catch {
+              // Ignore parsing errors
+            }
+            
             // Decrypt message content (PBKDF2 runs in parallel for all messages via Promise.all)
             decryptedContent = await MessageEncryption.decryptMessage(
               encryptedContent,
@@ -713,7 +726,11 @@ export class MessageSheetsService {
         };
       })
     );
-    console.log(`[MessageSheetsService] Decryption of ${rowsToProcess.length} messages took ${Date.now() - decryptStart}ms`);
+    const decryptionTime = Date.now() - decryptStart;
+    const iterationSummary = Object.entries(iterationCounts)
+      .map(([iterations, count]) => `${count} msg(s) @ ${iterations === '100000' ? '100k' : iterations === '1000000' ? '1M' : iterations} iter`)
+      .join(', ');
+    console.log(`[MessageSheetsService] Decryption of ${rowsToProcess.length} messages took ${decryptionTime}ms${iterationSummary ? ` (${iterationSummary})` : ''}`);
 
     // Messages are already sorted newest first (stored that way), no need to sort
 
