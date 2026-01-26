@@ -6,6 +6,8 @@
  * Stored in Google Drive (decentralized) - users own their data
  */
 
+import { GoogleDriveToken } from './googleOAuth2Helper';
+
 export interface ZKPDataPoint {
   dataPointId: string;
   proofType: 'age_verification' | 'identity_verification' | 'location_verification' | 'document_verification';
@@ -37,18 +39,26 @@ export class ZKPDataPointsService {
    */
   static async getZKPDataPointsFile(
     accessToken: string,
-    metadataFolderId: string
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<Record<string, ZKPDataPoint> | null> {
     try {
+      const token: GoogleDriveToken = { access_token: accessToken };
+      const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
       const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
       const spreadsheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(
-        accessToken,
-        metadataFolderId
+        token,
+        metadataFolderId,
+        normalizedUserPnIdentifier,
+        accountId
       );
       
       const dataPoints = await ZKPDataPointsSheetsService.getZKPDataPoints(
-        accessToken,
-        spreadsheetId
+        token,
+        spreadsheetId,
+        normalizedUserPnIdentifier,
+        accountId
       );
       
       return Object.keys(dataPoints).length > 0 ? dataPoints : null;
@@ -64,7 +74,9 @@ export class ZKPDataPointsService {
    */
   static async getAvailableDataPoints(
     accessToken: string,
-    metadataFolderId: string
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<Array<{
     dataPointId: string;
     proofType: string;
@@ -72,7 +84,7 @@ export class ZKPDataPointsService {
     expiresAt?: string;
     verificationLevel: string;
   }>> {
-    const dataPoints = await this.getZKPDataPointsFile(accessToken, metadataFolderId);
+    const dataPoints = await this.getZKPDataPointsFile(accessToken, metadataFolderId, userPnIdentifier, accountId);
     
     if (!dataPoints) {
       return [];
@@ -95,19 +107,27 @@ export class ZKPDataPointsService {
   static async getDataPointProof(
     accessToken: string,
     metadataFolderId: string,
-    dataPointId: string
+    dataPointId: string,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<ZKPDataPoint | null> {
     try {
+      const token: GoogleDriveToken = { access_token: accessToken };
+      const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
       const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
       const spreadsheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(
-        accessToken,
-        metadataFolderId
+        token,
+        metadataFolderId,
+        normalizedUserPnIdentifier,
+        accountId
       );
       
       const dataPoint = await ZKPDataPointsSheetsService.getZKPDataPoint(
-        accessToken,
+        token,
         spreadsheetId,
-        dataPointId
+        dataPointId,
+        normalizedUserPnIdentifier,
+        accountId
       );
       
       if (!dataPoint) {
@@ -284,19 +304,27 @@ export class ZKPDataPointsService {
     accessToken: string,
     metadataFolderId: string,
     identifier: string,
-    dataPoint: ZKPDataPoint
+    dataPoint: ZKPDataPoint,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<void> {
     try {
+      const token: GoogleDriveToken = { access_token: accessToken };
+      const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
       const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
       const spreadsheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(
-        accessToken,
-        metadataFolderId
+        token,
+        metadataFolderId,
+        normalizedUserPnIdentifier,
+        accountId
       );
       
       await ZKPDataPointsSheetsService.addZKPDataPoint(
-        accessToken,
+        token,
         spreadsheetId,
-        dataPoint
+        dataPoint,
+        normalizedUserPnIdentifier,
+        accountId
       );
       
       console.log('Successfully stored ZKP data point in sheets:', dataPoint.dataPointId);

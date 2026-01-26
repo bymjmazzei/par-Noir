@@ -4,6 +4,7 @@
  */
 
 import { google } from 'googleapis';
+import type { OAuth2Client } from 'google-auth-library';
 
 // Import at function level to avoid circular dependency
 let googleDriveProxyService: any;
@@ -27,7 +28,7 @@ export class GoogleOAuth2Helper {
     token: GoogleDriveToken,
     userPnIdentifier: string,
     accountId?: string
-  ): google.auth.OAuth2Client {
+  ): OAuth2Client {
     const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
     

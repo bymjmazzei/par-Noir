@@ -5,6 +5,7 @@
  */
 
 import { ConnectionsSheetsService } from './connectionsSheetsService';
+import { GoogleDriveToken } from './googleOAuth2Helper';
 
 export interface Connection {
   connectionId: string;
@@ -36,22 +37,35 @@ export class ConnectionsService {
    * Get connections file from user's Google Drive (connections.xlsx / Sheets)
    */
   static async getConnectionsFile(
-    accessToken: string,
-    metadataFolderId: string
+    token: GoogleDriveToken | string,
+    metadataFolderId: string,
+    userPnIdentifier?: string,
+    accountId?: string
   ): Promise<ConnectionsFile | null> {
-    return ConnectionsSheetsService.getConnectionsFile(accessToken, metadataFolderId);
+    const tokenObj: GoogleDriveToken = typeof token === 'string' ? { access_token: token } : token;
+    if (!userPnIdentifier) {
+      // Backward compatibility - try to get from token if available
+      throw new Error('userPnIdentifier is required');
+    }
+    return ConnectionsSheetsService.getConnectionsFile(tokenObj, metadataFolderId, userPnIdentifier, accountId);
   }
 
   /**
    * Create or update connections file (connections.xlsx / Sheets)
    */
   static async updateConnectionsFile(
-    accessToken: string,
+    token: GoogleDriveToken | string,
     metadataFolderId: string,
     identifier: string,
-    connectionsData: ConnectionsFile
+    connectionsData: ConnectionsFile,
+    userPnIdentifier?: string,
+    accountId?: string
   ): Promise<void> {
-    await ConnectionsSheetsService.updateConnectionsFile(accessToken, metadataFolderId, identifier, connectionsData);
+    const tokenObj: GoogleDriveToken = typeof token === 'string' ? { access_token: token } : token;
+    if (!userPnIdentifier) {
+      throw new Error('userPnIdentifier is required');
+    }
+    await ConnectionsSheetsService.updateConnectionsFile(tokenObj, metadataFolderId, identifier, connectionsData, userPnIdentifier, accountId);
   }
 
   /**
@@ -74,20 +88,27 @@ export class ConnectionsService {
     user1AccessToken: string,
     user1MetadataFolder: string,
     user1PnIdentifier: string,
-    user2PnIdentifier: string
+    user2PnIdentifier: string,
+    accountId?: string
   ): Promise<{ status: 'not_connected' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked'; connectionId?: string }> {
     // Use pn identifiers directly (already normalized)
+    // Build token object from accessToken string (backward compatibility)
+    const token: GoogleDriveToken = { access_token: user1AccessToken };
     try {
       // Get or create connections sheet
       const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-        user1AccessToken,
-        user1MetadataFolder
+        token,
+        user1MetadataFolder,
+        user1PnIdentifier,
+        accountId
       );
 
       // Get all connections
       const result = await ConnectionsSheetsService.getConnections(
-        user1AccessToken,
-        spreadsheetId
+        token,
+        spreadsheetId,
+        user1PnIdentifier,
+        accountId
       );
 
       // Find connection with user2 (normalize when comparing - handles legacy data)
@@ -111,7 +132,7 @@ export class ConnectionsService {
       };
     } catch (error) {
       console.error('Error getting connection status from sheets:', error);
-      const connectionsFile = await this.getConnectionsFile(user1AccessToken, user1MetadataFolder);
+      const connectionsFile = await this.getConnectionsFile(user1AccessToken, user1MetadataFolder, user1PnIdentifier, accountId);
       if (!connectionsFile) {
         return { status: 'not_connected' };
       }
@@ -148,29 +169,40 @@ export class ConnectionsService {
     requesterPnIdentifier: string,
     recipientAccessToken: string,
     recipientMetadataFolder: string,
-    recipientPnIdentifier: string
+    recipientPnIdentifier: string,
+    requesterAccountId?: string,
+    recipientAccountId?: string
   ): Promise<Connection> {
     // Use pn identifiers directly (already normalized)
+    // Build token objects from accessToken strings (backward compatibility)
+    const requesterToken: GoogleDriveToken = { access_token: requesterAccessToken };
+    const recipientToken: GoogleDriveToken = { access_token: recipientAccessToken };
     try {
       const connectionId = this.generateConnectionId(requesterPnIdentifier, recipientPnIdentifier);
       const now = new Date().toISOString();
 
       // Get or create connections sheets for both users
       const requesterSheetId = await ConnectionsSheetsService.getConnectionsSheet(
-        requesterAccessToken,
-        requesterMetadataFolder
+        requesterToken,
+        requesterMetadataFolder,
+        requesterPnIdentifier,
+        requesterAccountId
       );
 
       const recipientSheetId = await ConnectionsSheetsService.getConnectionsSheet(
-        recipientAccessToken,
-        recipientMetadataFolder
+        recipientToken,
+        recipientMetadataFolder,
+        recipientPnIdentifier,
+        recipientAccountId
       );
 
       // Remove existing connections if any (by checking if connection exists)
       try {
         const existingRequester = await ConnectionsSheetsService.getConnections(
-          requesterAccessToken,
-          requesterSheetId
+          requesterToken,
+          requesterSheetId,
+          requesterPnIdentifier,
+          requesterAccountId
         );
         const existingReq = existingRequester.connections.find(c => {
           const normalizedCUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : this.normalizeToPnIdentifier(c.userPnIdentifier);
@@ -178,9 +210,11 @@ export class ConnectionsService {
         });
         if (existingReq) {
           await ConnectionsSheetsService.removeConnection(
-            requesterAccessToken,
+            requesterToken,
             requesterSheetId,
-            existingReq.connectionId
+            existingReq.connectionId,
+            requesterPnIdentifier,
+            requesterAccountId
           );
         }
       } catch (error) {
@@ -189,8 +223,10 @@ export class ConnectionsService {
 
       try {
         const existingRecipient = await ConnectionsSheetsService.getConnections(
-          recipientAccessToken,
-          recipientSheetId
+          recipientToken,
+          recipientSheetId,
+          recipientPnIdentifier,
+          recipientAccountId
         );
         const existingRec = existingRecipient.connections.find(c => {
           const normalizedCUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : this.normalizeToPnIdentifier(c.userPnIdentifier);
@@ -198,9 +234,11 @@ export class ConnectionsService {
         });
         if (existingRec) {
           await ConnectionsSheetsService.removeConnection(
-            recipientAccessToken,
+            recipientToken,
             recipientSheetId,
-            existingRec.connectionId
+            existingRec.connectionId,
+            recipientPnIdentifier,
+            recipientAccountId
           );
         }
       } catch (error) {
@@ -209,26 +247,30 @@ export class ConnectionsService {
 
       // Add connection request to requester's sheet
       await ConnectionsSheetsService.addConnection(
-        requesterAccessToken,
+        requesterToken,
         requesterSheetId,
         {
           connectionId,
           userPnIdentifier: recipientPnIdentifier,
           status: 'pending_sent',
           createdAt: now
-        }
+        },
+        requesterPnIdentifier,
+        requesterAccountId
       );
 
       // Add connection request to recipient's sheet
       await ConnectionsSheetsService.addConnection(
-        recipientAccessToken,
+        recipientToken,
         recipientSheetId,
         {
           connectionId,
           userPnIdentifier: requesterPnIdentifier,
           status: 'pending_received',
           createdAt: now
-        }
+        },
+        recipientPnIdentifier,
+        recipientAccountId
       );
 
       return {
@@ -341,19 +383,26 @@ export class ConnectionsService {
     acceptorAccessToken: string,
     acceptorMetadataFolder: string,
     acceptorPnIdentifier: string,
-    connectionId: string
+    connectionId: string,
+    accountId?: string
   ): Promise<string> {
+    // Build token object from accessToken string (backward compatibility)
+    const token: GoogleDriveToken = { access_token: acceptorAccessToken };
     try {
       // Get or create connections sheet
       const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-        acceptorAccessToken,
-        acceptorMetadataFolder
+        token,
+        acceptorMetadataFolder,
+        acceptorPnIdentifier,
+        accountId
       );
 
       // Get all connections
       const allConnections = await ConnectionsSheetsService.getConnections(
-        acceptorAccessToken,
-        spreadsheetId
+        token,
+        spreadsheetId,
+        acceptorPnIdentifier,
+        accountId
       );
 
       // Find all connections with this ID (in case of mutual requests)
@@ -383,10 +432,12 @@ export class ConnectionsService {
             
             // Update with shared secret
             await ConnectionsSheetsService.updateConnectionStatus(
-              acceptorAccessToken,
+              token,
               spreadsheetId,
               connectionId,
               'accepted',
+              acceptorPnIdentifier,
+              accountId,
               connection.acceptedAt || new Date().toISOString(),
               sharedSecret
             );
@@ -424,10 +475,12 @@ export class ConnectionsService {
 
       // Update connection status and shared secret in Sheets
       await ConnectionsSheetsService.updateConnectionStatus(
-        acceptorAccessToken,
+        token,
         spreadsheetId,
         connectionId,
         'accepted',
+        acceptorPnIdentifier,
+        accountId,
         now,
         sharedSecret
       );
@@ -441,7 +494,8 @@ export class ConnectionsService {
         acceptorAccessToken,
         acceptorMetadataFolder,
         acceptorPnIdentifier,
-        connectionId
+        connectionId,
+        accountId
       );
     }
   }
@@ -453,9 +507,10 @@ export class ConnectionsService {
     acceptorAccessToken: string,
     acceptorMetadataFolder: string,
     acceptorPnIdentifier: string,
-    connectionId: string
+    connectionId: string,
+    accountId?: string
   ): Promise<string> {
-    const acceptorFile = await this.getConnectionsFile(acceptorAccessToken, acceptorMetadataFolder);
+    const acceptorFile = await this.getConnectionsFile(acceptorAccessToken, acceptorMetadataFolder, acceptorPnIdentifier, accountId);
     if (!acceptorFile) {
       throw new Error('Connections file not found');
     }
@@ -530,22 +585,29 @@ export class ConnectionsService {
     connectionId: string,
     newStatus: 'accepted' | 'blocked',
     acceptorPnIdentifier?: string, // The pn identifier of the user who accepted (to create connection if missing)
-    sharedSecret?: string // Encrypted shared secret to store in connection
+    sharedSecret?: string, // Encrypted shared secret to store in connection
+    accountId?: string
   ): Promise<void> {
     // Use pn identifiers directly (already normalized)
     const normalizedAcceptorPnIdentifier = acceptorPnIdentifier;
+    // Build token object from accessToken string (backward compatibility)
+    const token: GoogleDriveToken = { access_token: otherUserAccessToken };
 
     try {
       // Get or create connections sheet
       const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-        otherUserAccessToken,
-        otherUserMetadataFolder
+        token,
+        otherUserMetadataFolder,
+        otherUserPnIdentifier,
+        accountId
       );
 
       // Get all connections to find the one to update
       const allConnections = await ConnectionsSheetsService.getConnections(
-        otherUserAccessToken,
-        spreadsheetId
+        token,
+        spreadsheetId,
+        otherUserPnIdentifier,
+        accountId
       );
 
       // Find connection by ID
@@ -555,7 +617,7 @@ export class ConnectionsService {
         // Connection doesn't exist - create it if accepting
         if (newStatus === 'accepted' && normalizedAcceptorPnIdentifier) {
         await ConnectionsSheetsService.addConnection(
-          otherUserAccessToken,
+          token,
           spreadsheetId,
           {
             connectionId,
@@ -564,7 +626,9 @@ export class ConnectionsService {
             createdAt: new Date().toISOString(),
             acceptedAt: new Date().toISOString(),
             sharedSecret: sharedSecret
-          }
+          },
+          otherUserPnIdentifier,
+          accountId
         );
           return;
         }
@@ -574,10 +638,12 @@ export class ConnectionsService {
       // Update connection status and shared secret
       const now = new Date().toISOString();
       await ConnectionsSheetsService.updateConnectionStatus(
-        otherUserAccessToken,
+        token,
         spreadsheetId,
         connectionId,
         newStatus,
+        otherUserPnIdentifier,
+        accountId,
         newStatus === 'accepted' ? now : undefined,
         sharedSecret
       );
@@ -729,19 +795,27 @@ export class ConnectionsService {
    */
   static async getConnections(
     accessToken: string,
-    metadataFolderId: string
+    metadataFolderId: string,
+    userPnIdentifier?: string,
+    accountId?: string
   ): Promise<Connection[]> {
+    // Build token object from accessToken string (backward compatibility)
+    const token: GoogleDriveToken = { access_token: accessToken };
     try {
       // Get or create connections sheet
       const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-        accessToken,
-        metadataFolderId
+        token,
+        metadataFolderId,
+        userPnIdentifier || '',
+        accountId
       );
 
       // Get accepted connections
       const result = await ConnectionsSheetsService.getConnections(
-        accessToken,
+        token,
         spreadsheetId,
+        userPnIdentifier || '',
+        accountId,
         { status: 'accepted' }
       );
 
@@ -749,7 +823,7 @@ export class ConnectionsService {
     } catch (error) {
       console.error('Error getting connections from sheets, falling back to JSON:', error);
       // Fallback to JSON for backward compatibility
-      const connectionsFile = await this.getConnectionsFile(accessToken, metadataFolderId);
+      const connectionsFile = await this.getConnectionsFile(accessToken, metadataFolderId, userPnIdentifier, accountId);
       if (!connectionsFile) {
         return [];
       }
@@ -764,26 +838,36 @@ export class ConnectionsService {
    */
   static async getPendingRequests(
     accessToken: string,
-    metadataFolderId: string
+    metadataFolderId: string,
+    userPnIdentifier?: string,
+    accountId?: string
   ): Promise<{ sent: Connection[]; received: Connection[] }> {
+    // Build token object from accessToken string (backward compatibility)
+    const token: GoogleDriveToken = { access_token: accessToken };
     try {
       // Get or create connections sheet
       const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-        accessToken,
-        metadataFolderId
+        token,
+        metadataFolderId,
+        userPnIdentifier || '',
+        accountId
       );
 
       // Get pending sent
       const sentResult = await ConnectionsSheetsService.getConnections(
-        accessToken,
+        token,
         spreadsheetId,
+        userPnIdentifier || '',
+        accountId,
         { status: 'pending_sent' }
       );
 
       // Get pending received
       const receivedResult = await ConnectionsSheetsService.getConnections(
-        accessToken,
+        token,
         spreadsheetId,
+        userPnIdentifier || '',
+        accountId,
         { status: 'pending_received' }
       );
 
@@ -794,7 +878,7 @@ export class ConnectionsService {
     } catch (error) {
       console.error('Error getting pending requests from sheets, falling back to JSON:', error);
       // Fallback to JSON for backward compatibility
-      const connectionsFile = await this.getConnectionsFile(accessToken, metadataFolderId);
+      const connectionsFile = await this.getConnectionsFile(accessToken, metadataFolderId, userPnIdentifier, accountId);
       if (!connectionsFile) {
         return { sent: [], received: [] };
       }

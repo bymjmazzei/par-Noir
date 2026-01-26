@@ -8,6 +8,7 @@
 
 import crypto from 'crypto';
 import { NotificationsSheetsService, Notification as SheetsNotification } from './notificationsSheetsService';
+import { GoogleDriveToken } from './googleOAuth2Helper';
 
 export interface Notification {
   notification_id: string;
@@ -62,19 +63,29 @@ export class NotificationService {
    */
   static async getNotificationsFile(
     accessToken: string,
-    metadataFolderId: string
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<NotificationsFile | null> {
     try {
+      // Convert accessToken string to token object
+      const token: GoogleDriveToken = { access_token: accessToken };
+      const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
+      
       const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
-        accessToken,
-        metadataFolderId
+        token,
+        metadataFolderId,
+        normalizedUserPnIdentifier,
+        accountId
       );
       const { notifications } = await NotificationsSheetsService.getNotifications(
-        accessToken,
+        token,
         spreadsheetId,
+        normalizedUserPnIdentifier,
+        accountId,
         { limit: 999999, offset: 0 }
       );
-      const metadata = await NotificationsSheetsService.getMetadata(accessToken, spreadsheetId);
+      const metadata = await NotificationsSheetsService.getMetadata(token, spreadsheetId, normalizedUserPnIdentifier, accountId);
       const updatedAt = metadata?.updatedAt ?? (notifications[0]?.created_at ?? new Date().toISOString());
       const preferences = metadata?.preferences as NotificationPreferences | undefined;
       // Normalize identifier when reading (handles legacy data)
@@ -99,25 +110,36 @@ export class NotificationService {
     accessToken: string,
     metadataFolderId: string,
     identifier: string,
-    notificationsData: NotificationsFile
+    notificationsData: NotificationsFile,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<void> {
+    // Convert accessToken string to token object
+    const token: GoogleDriveToken = { access_token: accessToken };
     // Normalize identifier before writing
     const normalizedIdentifier = this.normalizeToPnIdentifier(identifier);
+    const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
     const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
-      accessToken,
-      metadataFolderId
+      token,
+      metadataFolderId,
+      normalizedUserPnIdentifier,
+      accountId
     );
     await NotificationsSheetsService.setAllNotifications(
-      accessToken,
+      token,
       spreadsheetId,
-      notificationsData.notifications
+      notificationsData.notifications,
+      normalizedUserPnIdentifier,
+      accountId
     );
     await NotificationsSheetsService.setMetadata(
-      accessToken,
+      token,
       spreadsheetId,
       notificationsData.updatedAt,
       (notificationsData.preferences ?? null) as Record<string, unknown> | null,
-      normalizedIdentifier
+      normalizedIdentifier,
+      normalizedUserPnIdentifier,
+      accountId
     );
   }
 
@@ -162,10 +184,15 @@ export class NotificationService {
       const notificationId = crypto.randomUUID();
       const now = new Date().toISOString();
 
+      // Convert accessToken string to token object
+      const token: GoogleDriveToken = { access_token: accessToken };
+
       // Get or create notifications sheet
       const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
-        accessToken,
-        metadataFolderId
+        token,
+        metadataFolderId,
+        normalizedUserPnIdentifier,
+        undefined // accountId not available in this context
       );
 
       // Create notification entry
@@ -181,7 +208,7 @@ export class NotificationService {
       };
 
       // Append to sheet
-      await NotificationsSheetsService.appendNotification(accessToken, spreadsheetId, newNotification);
+      await NotificationsSheetsService.appendNotification(token, spreadsheetId, newNotification, normalizedUserPnIdentifier, undefined);
 
       return newNotification;
     } catch (error) {
@@ -203,6 +230,8 @@ export class NotificationService {
   static async getUserNotifications(
     accessToken: string,
     metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId?: string,
     options?: {
       limit?: number;
       offset?: number;
@@ -211,19 +240,31 @@ export class NotificationService {
     }
   ): Promise<{ notifications: Notification[]; total: number }> {
     try {
+      // Convert accessToken string to token object
+      const token: GoogleDriveToken = { access_token: accessToken };
+      const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
+      
       // Get or create notifications sheet
       const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
-        accessToken,
-        metadataFolderId
+        token,
+        metadataFolderId,
+        normalizedUserPnIdentifier,
+        accountId
       );
 
       // Get notifications from sheet
-      const result = await NotificationsSheetsService.getNotifications(accessToken, spreadsheetId, {
-        limit: options?.limit,
-        offset: options?.offset,
-        unreadOnly: options?.unreadOnly,
-        type: options?.type
-      });
+      const result = await NotificationsSheetsService.getNotifications(
+        token,
+        spreadsheetId,
+        normalizedUserPnIdentifier,
+        accountId,
+        {
+          limit: options?.limit,
+          offset: options?.offset,
+          unreadOnly: options?.unreadOnly,
+          type: options?.type
+        }
+      );
 
       return result;
     } catch (error) {
@@ -245,17 +286,24 @@ export class NotificationService {
     accessToken: string,
     metadataFolderId: string,
     userPnIdentifier: string,
-    notificationId: string
+    notificationId: string,
+    accountId?: string
   ): Promise<boolean> {
     try {
+      // Convert accessToken string to token object
+      const token: GoogleDriveToken = { access_token: accessToken };
+      const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
+      
       // Get or create notifications sheet
       const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
-        accessToken,
-        metadataFolderId
+        token,
+        metadataFolderId,
+        normalizedUserPnIdentifier,
+        accountId
       );
 
       // Mark as read in sheet
-      return await NotificationsSheetsService.markAsRead(accessToken, spreadsheetId, notificationId);
+      return await NotificationsSheetsService.markAsRead(token, spreadsheetId, notificationId, normalizedUserPnIdentifier, accountId);
     } catch (error) {
       console.error('[NotificationService] Error marking notification as read via sheets:', error);
       console.error('[NotificationService] Error details:', {
@@ -275,17 +323,24 @@ export class NotificationService {
   static async markAllAsRead(
     accessToken: string,
     metadataFolderId: string,
-    userPnIdentifier: string
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<number> {
     try {
+      // Convert accessToken string to token object
+      const token: GoogleDriveToken = { access_token: accessToken };
+      const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
+      
       // Get or create notifications sheet
       const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
-        accessToken,
-        metadataFolderId
+        token,
+        metadataFolderId,
+        normalizedUserPnIdentifier,
+        accountId
       );
 
       // Mark all as read in sheet
-      return await NotificationsSheetsService.markAllAsRead(accessToken, spreadsheetId, userPnIdentifier);
+      return await NotificationsSheetsService.markAllAsRead(token, spreadsheetId, normalizedUserPnIdentifier, accountId);
     } catch (error) {
       console.error('[NotificationService] Error marking all notifications as read via sheets:', error);
       console.error('[NotificationService] Error details:', {
@@ -305,9 +360,11 @@ export class NotificationService {
     accessToken: string,
     metadataFolderId: string,
     userPnIdentifier: string,
-    notificationId: string
+    notificationId: string,
+    accountId?: string
   ): Promise<boolean> {
-    const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
+    const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
+    const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId, normalizedUserPnIdentifier, accountId);
     if (!notificationsFile) {
       return false;
     }
@@ -319,7 +376,7 @@ export class NotificationService {
 
     if (notificationsFile.notifications.length < initialLength) {
       notificationsFile.updatedAt = new Date().toISOString();
-      await this.updateNotificationsFile(accessToken, metadataFolderId, userPnIdentifier, notificationsFile);
+      await this.updateNotificationsFile(accessToken, metadataFolderId, normalizedUserPnIdentifier, notificationsFile, normalizedUserPnIdentifier, accountId);
       return true;
     }
 
@@ -331,20 +388,34 @@ export class NotificationService {
    */
   static async getUnreadCount(
     accessToken: string,
-    metadataFolderId: string
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<number> {
     try {
+      // Convert accessToken string to token object
+      const token: GoogleDriveToken = { access_token: accessToken };
+      const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
+      
       // Get or create notifications sheet
       const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
-        accessToken,
-        metadataFolderId
+        token,
+        metadataFolderId,
+        normalizedUserPnIdentifier,
+        accountId
       );
 
       // Get unread notifications count
-      const result = await NotificationsSheetsService.getNotifications(accessToken, spreadsheetId, {
-        unreadOnly: true,
-        limit: 10000 // Get all unread to count them
-      });
+      const result = await NotificationsSheetsService.getNotifications(
+        token,
+        spreadsheetId,
+        normalizedUserPnIdentifier,
+        accountId,
+        {
+          unreadOnly: true,
+          limit: 10000 // Get all unread to count them
+        }
+      );
 
       return result.total;
     } catch (error) {
@@ -364,9 +435,10 @@ export class NotificationService {
   static async getPreferences(
     accessToken: string,
     metadataFolderId: string,
-    userPnIdentifier: string
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<NotificationPreferences> {
-    const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
+    const notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId, userPnIdentifier, accountId);
     
     if (!notificationsFile || !notificationsFile.preferences) {
       return this.getDefaultPreferences(userPnIdentifier);
@@ -382,9 +454,10 @@ export class NotificationService {
     accessToken: string,
     metadataFolderId: string,
     userPnIdentifier: string,
-    preferences: Partial<Omit<NotificationPreferences, 'user_pn_identifier'>>
+    preferences: Partial<Omit<NotificationPreferences, 'user_pn_identifier'>>,
+    accountId?: string
   ): Promise<NotificationPreferences> {
-    let notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId);
+    let notificationsFile = await this.getNotificationsFile(accessToken, metadataFolderId, userPnIdentifier, accountId);
     const now = new Date().toISOString();
 
     if (!notificationsFile) {
@@ -407,7 +480,7 @@ export class NotificationService {
     };
     notificationsFile.updatedAt = now;
 
-    await this.updateNotificationsFile(accessToken, metadataFolderId, userPnIdentifier, notificationsFile);
+    await this.updateNotificationsFile(accessToken, metadataFolderId, userPnIdentifier, notificationsFile, userPnIdentifier, accountId);
     return notificationsFile.preferences;
   }
 

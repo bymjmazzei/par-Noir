@@ -6,6 +6,7 @@
 
 import * as crypto from 'crypto';
 import { MessagingLedgerSheetsService, MessagingActivityEntry } from './messagingLedgerSheetsService';
+import { GoogleDriveToken } from './googleOAuth2Helper';
 
 // Re-export MessagingActivityEntry for backward compatibility
 export type { MessagingActivityEntry };
@@ -28,22 +29,30 @@ export class MessagingLedgerService {
    * Get messaging ledger file from user's Google Drive (uses Sheets)
    */
   static async getMessagingLedgerFile(
-    accessToken: string,
+    token: GoogleDriveToken | string,
     metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId?: string,
     identifier?: string
   ): Promise<MessagingLedgerFile | null> {
     try {
+      // Convert accessToken string to token object if needed (backward compatibility)
+      const tokenObj: GoogleDriveToken = typeof token === 'string' ? { access_token: token } : token;
 
       // Get or create Sheets file
       const spreadsheetId = await MessagingLedgerSheetsService.getMessagingLedgerSheet(
-        accessToken,
-        metadataFolderId
+        tokenObj,
+        metadataFolderId,
+        userPnIdentifier,
+        accountId
       );
 
       // Get all activities
       const { activities } = await MessagingLedgerSheetsService.getActivities(
-        accessToken,
-        spreadsheetId
+        tokenObj,
+        spreadsheetId,
+        userPnIdentifier,
+        accountId
       );
 
       // Normalize identifier if provided (handles legacy data)
@@ -66,20 +75,27 @@ export class MessagingLedgerService {
     accessToken: string,
     metadataFolderId: string,
     identifier: string,
-    ledgerData: MessagingLedgerFile
+    ledgerData: MessagingLedgerFile,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<void> {
+    // Convert accessToken string to token object
+    const token: GoogleDriveToken = { access_token: accessToken };
+    const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
 
     // Get or create Sheets file
     const spreadsheetId = await MessagingLedgerSheetsService.getMessagingLedgerSheet(
-      accessToken,
-      metadataFolderId
+      token,
+      metadataFolderId,
+      normalizedUserPnIdentifier,
+      accountId
     );
 
     // Append new activities (if any)
     // Note: This doesn't handle full replacement - activities are append-only in Sheets
     // If full replacement is needed, we'd need to clear and re-add, but that's not typical usage
     for (const activity of ledgerData.activities || []) {
-      await MessagingLedgerSheetsService.appendActivity(accessToken, spreadsheetId, activity);
+      await MessagingLedgerSheetsService.appendActivity(token, spreadsheetId, activity, normalizedUserPnIdentifier, accountId);
     }
   }
 
@@ -97,7 +113,8 @@ export class MessagingLedgerService {
       messageId?: string;
       threadId?: string;
       metadata?: any;
-    }
+    },
+    accountId?: string
   ): Promise<MessagingActivityEntry> {
     // Normalize all pn-identifiers (handles legacy data)
     const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
@@ -120,14 +137,19 @@ export class MessagingLedgerService {
       created_at: now
     };
 
+    // Convert accessToken string to token object
+    const token: GoogleDriveToken = { access_token: accessToken };
+
     // Get or create Sheets file
     const spreadsheetId = await MessagingLedgerSheetsService.getMessagingLedgerSheet(
-      accessToken,
-      metadataFolderId
+      token,
+      metadataFolderId,
+      normalizedUserPnIdentifier,
+      accountId
     );
 
     // Append activity (no 10,000 limit - Sheets can handle millions)
-    await MessagingLedgerSheetsService.appendActivity(accessToken, spreadsheetId, activity);
+    await MessagingLedgerSheetsService.appendActivity(token, spreadsheetId, activity, normalizedUserPnIdentifier, accountId);
 
     return activity;
   }
@@ -138,6 +160,8 @@ export class MessagingLedgerService {
   static async getUserMessagingActivities(
     accessToken: string,
     metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId?: string,
     options?: {
       limit?: number;
       offset?: number;
@@ -145,14 +169,19 @@ export class MessagingLedgerService {
       threadId?: string;
     }
   ): Promise<{ activities: MessagingActivityEntry[]; total: number }> {
+    // Convert accessToken string to token object
+    const token: GoogleDriveToken = { access_token: accessToken };
+    const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
 
     // Get or create Sheets file
     const spreadsheetId = await MessagingLedgerSheetsService.getMessagingLedgerSheet(
-      accessToken,
-      metadataFolderId
+      token,
+      metadataFolderId,
+      normalizedUserPnIdentifier,
+      accountId
     );
 
     // Get activities from Sheets
-    return await MessagingLedgerSheetsService.getActivities(accessToken, spreadsheetId, options);
+    return await MessagingLedgerSheetsService.getActivities(token, spreadsheetId, normalizedUserPnIdentifier, accountId, options);
   }
 }

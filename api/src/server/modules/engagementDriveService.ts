@@ -5,6 +5,7 @@
  */
 
 import { EngagementSheetsService, UserComment } from './engagementSheetsService';
+import { GoogleDriveToken } from './googleOAuth2Helper';
 
 // Re-export UserComment for backward compatibility
 export type { UserComment };
@@ -25,24 +26,32 @@ export class EngagementDriveService {
    * Get engagement file from user's Google Drive (uses Sheets)
    */
   static async getEngagementFile(
-    accessToken: string,
+    token: GoogleDriveToken | string,
     metadataFolderId: string,
-    userPnIdentifier?: string
+    userPnIdentifier?: string,
+    accountId?: string
   ): Promise<UserEngagement | null> {
+    // Convert accessToken string to token object if needed (backward compatibility)
+    const tokenObj: GoogleDriveToken = typeof token === 'string' ? { access_token: token } : token;
+    if (!userPnIdentifier) {
+      throw new Error('userPnIdentifier is required');
+    }
     try {
       // Get or create Sheets file
       const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
-        accessToken,
-        metadataFolderId
+        tokenObj,
+        metadataFolderId,
+        userPnIdentifier,
+        accountId
       );
 
       // Read from Sheets
       const [likes, dislikes, comments, shares, saves] = await Promise.all([
-        EngagementSheetsService.getLikes(accessToken, spreadsheetId),
-        EngagementSheetsService.getDislikes(accessToken, spreadsheetId),
-        EngagementSheetsService.getComments(accessToken, spreadsheetId),
-        EngagementSheetsService.getShares(accessToken, spreadsheetId),
-        EngagementSheetsService.getSaves(accessToken, spreadsheetId)
+        EngagementSheetsService.getLikes(tokenObj, spreadsheetId, userPnIdentifier, accountId),
+        EngagementSheetsService.getDislikes(tokenObj, spreadsheetId, userPnIdentifier, accountId),
+        EngagementSheetsService.getComments(tokenObj, spreadsheetId, userPnIdentifier, accountId),
+        EngagementSheetsService.getShares(tokenObj, spreadsheetId, userPnIdentifier, accountId),
+        EngagementSheetsService.getSaves(tokenObj, spreadsheetId, userPnIdentifier, accountId)
       ]);
 
       return {
@@ -67,17 +76,22 @@ export class EngagementDriveService {
     accessToken: string,
     metadataFolderId: string,
     userPnIdentifier: string,
-    engagement: Partial<UserEngagement>
+    engagement: Partial<UserEngagement>,
+    accountId?: string
   ): Promise<UserEngagement> {
+    // Convert accessToken string to token object
+    const token: GoogleDriveToken = { access_token: accessToken };
 
     // Get or create Sheets file
     const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
-      accessToken,
-      metadataFolderId
+      token,
+      metadataFolderId,
+      userPnIdentifier,
+      accountId
     );
 
     // Get existing engagement
-    const existing = await this.getEngagementFile(accessToken, metadataFolderId, userPnIdentifier);
+    const existing = await this.getEngagementFile(token, metadataFolderId, userPnIdentifier, accountId);
 
     // Update likes if provided
     if (engagement.likes !== undefined) {
@@ -87,21 +101,21 @@ export class EngagementDriveService {
       // Remove likes that are no longer present
       for (const fileId of currentLikes) {
         if (!newLikes.includes(fileId)) {
-          await EngagementSheetsService.removeLike(accessToken, spreadsheetId, fileId);
+          await EngagementSheetsService.removeLike(token, spreadsheetId, fileId, userPnIdentifier, accountId);
         }
       }
       
       // Add new likes
       for (const fileId of newLikes) {
         if (!currentLikes.includes(fileId)) {
-          await EngagementSheetsService.addLike(accessToken, spreadsheetId, fileId);
+          await EngagementSheetsService.addLike(token, spreadsheetId, fileId, userPnIdentifier, accountId);
         }
       }
     }
 
     // Similar logic for dislikes, shares, saves, comments...
     // For now, return the updated engagement
-    return await this.getEngagementFile(accessToken, metadataFolderId, userPnIdentifier) || {
+    return await this.getEngagementFile(token, metadataFolderId, userPnIdentifier, accountId) || {
       userPnIdentifier,
       updatedAt: new Date().toISOString(),
       likes: [],
@@ -119,33 +133,38 @@ export class EngagementDriveService {
     userPnIdentifier: string,
     fileId: string,
     accessToken: string,
-    metadataFolderId: string
+    metadataFolderId: string,
+    accountId?: string
   ): Promise<{ liked: boolean }> {
+    // Convert accessToken string to token object
+    const token: GoogleDriveToken = { access_token: accessToken };
 
     const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
-      accessToken,
-      metadataFolderId
+      token,
+      metadataFolderId,
+      userPnIdentifier,
+      accountId
     );
 
-    const likes = await EngagementSheetsService.getLikes(accessToken, spreadsheetId);
+    const likes = await EngagementSheetsService.getLikes(token, spreadsheetId, userPnIdentifier, accountId);
     const isLiked = likes.includes(fileId);
 
     if (isLiked) {
       // Unlike
-      await EngagementSheetsService.removeLike(accessToken, spreadsheetId, fileId);
+      await EngagementSheetsService.removeLike(token, spreadsheetId, fileId, userPnIdentifier, accountId);
       // Also remove from dislikes if present
-      const dislikes = await EngagementSheetsService.getDislikes(accessToken, spreadsheetId);
+      const dislikes = await EngagementSheetsService.getDislikes(token, spreadsheetId, userPnIdentifier, accountId);
       if (dislikes.includes(fileId)) {
-        await EngagementSheetsService.removeDislike(accessToken, spreadsheetId, fileId);
+        await EngagementSheetsService.removeDislike(token, spreadsheetId, fileId, userPnIdentifier, accountId);
       }
       return { liked: false };
     } else {
       // Like
-      await EngagementSheetsService.addLike(accessToken, spreadsheetId, fileId);
+      await EngagementSheetsService.addLike(token, spreadsheetId, fileId, userPnIdentifier, accountId);
       // Remove from dislikes if present
-      const dislikes = await EngagementSheetsService.getDislikes(accessToken, spreadsheetId);
+      const dislikes = await EngagementSheetsService.getDislikes(token, spreadsheetId, userPnIdentifier, accountId);
       if (dislikes.includes(fileId)) {
-        await EngagementSheetsService.removeDislike(accessToken, spreadsheetId, fileId);
+        await EngagementSheetsService.removeDislike(token, spreadsheetId, fileId, userPnIdentifier, accountId);
       }
       return { liked: true };
     }
@@ -158,28 +177,33 @@ export class EngagementDriveService {
     userPnIdentifier: string,
     fileId: string,
     accessToken: string,
-    metadataFolderId: string
+    metadataFolderId: string,
+    accountId?: string
   ): Promise<{ disliked: boolean }> {
+    // Convert accessToken string to token object
+    const token: GoogleDriveToken = { access_token: accessToken };
 
     const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
-      accessToken,
-      metadataFolderId
+      token,
+      metadataFolderId,
+      userPnIdentifier,
+      accountId
     );
 
-    const dislikes = await EngagementSheetsService.getDislikes(accessToken, spreadsheetId);
+    const dislikes = await EngagementSheetsService.getDislikes(token, spreadsheetId, userPnIdentifier, accountId);
     const isDisliked = dislikes.includes(fileId);
 
     if (isDisliked) {
       // Remove dislike
-      await EngagementSheetsService.removeDislike(accessToken, spreadsheetId, fileId);
+      await EngagementSheetsService.removeDislike(token, spreadsheetId, fileId, userPnIdentifier, accountId);
       return { disliked: false };
     } else {
       // Dislike
-      await EngagementSheetsService.addDislike(accessToken, spreadsheetId, fileId);
+      await EngagementSheetsService.addDislike(token, spreadsheetId, fileId, userPnIdentifier, accountId);
       // Remove from likes if present
-      const likes = await EngagementSheetsService.getLikes(accessToken, spreadsheetId);
+      const likes = await EngagementSheetsService.getLikes(token, spreadsheetId, userPnIdentifier, accountId);
       if (likes.includes(fileId)) {
-        await EngagementSheetsService.removeLike(accessToken, spreadsheetId, fileId);
+        await EngagementSheetsService.removeLike(token, spreadsheetId, fileId, userPnIdentifier, accountId);
       }
       return { disliked: true };
     }
@@ -191,15 +215,21 @@ export class EngagementDriveService {
   static async isLiked(
     fileId: string,
     accessToken: string,
-    metadataFolderId: string
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<boolean> {
+    // Convert accessToken string to token object
+    const token: GoogleDriveToken = { access_token: accessToken };
 
     const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
-      accessToken,
-      metadataFolderId
+      token,
+      metadataFolderId,
+      userPnIdentifier,
+      accountId
     );
 
-    const likes = await EngagementSheetsService.getLikes(accessToken, spreadsheetId);
+    const likes = await EngagementSheetsService.getLikes(token, spreadsheetId, userPnIdentifier, accountId);
     return likes.includes(fileId);
   }
 
@@ -209,15 +239,21 @@ export class EngagementDriveService {
   static async isDisliked(
     fileId: string,
     accessToken: string,
-    metadataFolderId: string
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<boolean> {
+    // Convert accessToken string to token object
+    const token: GoogleDriveToken = { access_token: accessToken };
 
     const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
-      accessToken,
-      metadataFolderId
+      token,
+      metadataFolderId,
+      userPnIdentifier,
+      accountId
     );
 
-    const dislikes = await EngagementSheetsService.getDislikes(accessToken, spreadsheetId);
+    const dislikes = await EngagementSheetsService.getDislikes(token, spreadsheetId, userPnIdentifier, accountId);
     return dislikes.includes(fileId);
   }
 
@@ -229,12 +265,17 @@ export class EngagementDriveService {
     fileId: string,
     comment: Omit<UserComment, 'fileId'>,
     accessToken: string,
-    metadataFolderId: string
+    metadataFolderId: string,
+    accountId?: string
   ): Promise<UserComment> {
+    // Convert accessToken string to token object
+    const token: GoogleDriveToken = { access_token: accessToken };
 
     const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
-      accessToken,
-      metadataFolderId
+      token,
+      metadataFolderId,
+      userPnIdentifier,
+      accountId
     );
 
     const newComment: UserComment = {
@@ -242,7 +283,7 @@ export class EngagementDriveService {
       ...comment
     };
 
-    await EngagementSheetsService.addComment(accessToken, spreadsheetId, newComment);
+    await EngagementSheetsService.addComment(token, spreadsheetId, newComment, userPnIdentifier, accountId);
 
     return newComment;
   }
@@ -253,9 +294,12 @@ export class EngagementDriveService {
   static async getUserEngagement(
     accessToken: string,
     metadataFolderId: string,
-    userPnIdentifier?: string
+    userPnIdentifier?: string,
+    accountId?: string
   ): Promise<UserEngagement | null> {
-    return await this.getEngagementFile(accessToken, metadataFolderId, userPnIdentifier);
+    // Convert accessToken string to token object
+    const token: GoogleDriveToken = typeof accessToken === 'string' ? { access_token: accessToken } : accessToken;
+    return await this.getEngagementFile(token, metadataFolderId, userPnIdentifier, accountId);
   }
 }
 

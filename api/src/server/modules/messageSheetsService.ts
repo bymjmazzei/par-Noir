@@ -1023,7 +1023,7 @@ export class MessageSheetsService {
       if (!otherUserFileResponse.data.files || otherUserFileResponse.data.files.length === 0) {
         // Other user's file doesn't exist, create empty conversation sheet
         console.log(`[MessageSheetsService] Other user's conversation file not found, creating empty sheet`);
-        return await this.createConversationSheet(userAccessToken, userMessagesFolderId, otherUserPnIdentifier);
+        return await this.createConversationSheet(userToken, userMessagesFolderId, otherUserPnIdentifier, userPnIdentifier, userAccountId);
       }
 
       const otherUserSheetId = otherUserFileResponse.data.files[0].id!;

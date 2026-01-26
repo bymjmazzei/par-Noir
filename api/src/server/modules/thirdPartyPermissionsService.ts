@@ -11,6 +11,8 @@
  * - To serve a ZKP proof for X: (X in tool's dataPoints) AND (zkp-data-points has a row for X via ZKPDataPointsService).
  */
 
+import { GoogleDriveToken } from './googleOAuth2Helper';
+
 export interface ThirdPartyPermission {
   toolId: string;
   toolName: string;
@@ -38,18 +40,26 @@ export class ThirdPartyPermissionsService {
    */
   static async getPermissionsFile(
     accessToken: string,
-    metadataFolderId: string
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<Record<string, ThirdPartyPermission> | null> {
     try {
+      const token: GoogleDriveToken = { access_token: accessToken };
+      const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
       const { ThirdPartyPermissionsSheetsService } = await import('./thirdPartyPermissionsSheetsService');
       const spreadsheetId = await ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(
-        accessToken,
-        metadataFolderId
+        token,
+        metadataFolderId,
+        normalizedUserPnIdentifier,
+        accountId
       );
       
       const permissions = await ThirdPartyPermissionsSheetsService.getPermissions(
-        accessToken,
-        spreadsheetId
+        token,
+        spreadsheetId,
+        normalizedUserPnIdentifier,
+        accountId
       );
       
       return Object.keys(permissions).length > 0 ? permissions : null;
@@ -64,9 +74,11 @@ export class ThirdPartyPermissionsService {
    */
   static async getPermissions(
     accessToken: string,
-    metadataFolderId: string
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<Record<string, ThirdPartyPermission>> {
-    const permissions = await this.getPermissionsFile(accessToken, metadataFolderId);
+    const permissions = await this.getPermissionsFile(accessToken, metadataFolderId, userPnIdentifier, accountId);
     return permissions || {};
   }
 
@@ -77,21 +89,29 @@ export class ThirdPartyPermissionsService {
     accessToken: string,
     metadataFolderId: string,
     identifier: string,
-    permissions: Record<string, ThirdPartyPermission>
+    permissions: Record<string, ThirdPartyPermission>,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<void> {
     try {
+      const token: GoogleDriveToken = { access_token: accessToken };
+      const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
       const { ThirdPartyPermissionsSheetsService } = await import('./thirdPartyPermissionsSheetsService');
       const spreadsheetId = await ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(
-        accessToken,
-        metadataFolderId
+        token,
+        metadataFolderId,
+        normalizedUserPnIdentifier,
+        accountId
       );
       
       // Store each permission
       for (const permission of Object.values(permissions)) {
         await ThirdPartyPermissionsSheetsService.addPermission(
-          accessToken,
+          token,
           spreadsheetId,
-          permission
+          permission,
+          normalizedUserPnIdentifier,
+          accountId
         );
       }
       

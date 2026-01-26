@@ -919,10 +919,14 @@ export class GoogleDriveProxyService {
 
           // Delete spreadsheet metadata file
           try {
+            // Build token object from accessToken
+            const token: { access_token: string } = { access_token: accessToken };
             const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
-              accessToken,
+              token,
               metadataFolderId,
-              fileId
+              fileId,
+              userPnIdentifier,
+              accountId
             );
             
             if (spreadsheetId) {
@@ -1100,16 +1104,27 @@ export class GoogleDriveProxyService {
       // Try spreadsheet metadata file
       const { CompanionMetadataSheets } = await import('./companionMetadataSheets');
       try {
+        // Build token object from accessToken
+        const token: { access_token: string } = { access_token: accessToken };
+        // For readCompanionMetadata, we need userPnIdentifier - extract from pnIdentifier parameter
+        // pnIdentifier is the owner of the file, so use it for metadata access
+        const userPnIdentifierForMetadata = pnIdentifier || '';
+        const accountIdForMetadata = accountId;
+        
         const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
-          accessToken,
+          token,
           metadataFolderId,
-          fileId
+          fileId,
+          userPnIdentifierForMetadata,
+          accountIdForMetadata
         );
         
         if (spreadsheetId) {
           const spreadsheetMetadata = await CompanionMetadataSheets.readMetadata(
-            accessToken,
-            spreadsheetId
+            token,
+            spreadsheetId,
+            userPnIdentifierForMetadata,
+            accountIdForMetadata
           );
           
           if (spreadsheetMetadata?.mainFileId) {

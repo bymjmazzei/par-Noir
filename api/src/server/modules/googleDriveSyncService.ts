@@ -317,7 +317,10 @@ export class GoogleDriveSyncService {
           let indexData: any = null;
           try {
             const { IndexSheetsService } = await import('./indexSheetsService');
-            const { files } = await IndexSheetsService.getFiles(accessToken, sheetsIndexFiles[0].id, {
+            // Build token object from accessToken
+            const token: { access_token: string } = { access_token: accessToken };
+            // pnIdentifier is extracted from folder name above
+            const { files } = await IndexSheetsService.getFiles(token, sheetsIndexFiles[0].id, pnIdentifier || '', undefined, {
               visibility: 'public'
             });
             indexData = {

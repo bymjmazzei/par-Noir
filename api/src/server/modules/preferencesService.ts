@@ -6,6 +6,7 @@
  */
 
 import crypto from 'crypto';
+import { GoogleDriveToken } from './googleOAuth2Helper';
 
 export interface UserTagPreference {
   tagId: string;
@@ -148,7 +149,9 @@ export class PreferencesService {
     accessToken: string,
     metadataFolderId: string,
     identifier: string,
-    preferences: Partial<UserPreferences>
+    preferences: Partial<UserPreferences>,
+    userPnIdentifier: string,
+    accountId?: string
   ): Promise<UserPreferences> {
     // Get existing preferences or create new (may use cache)
     let existingPreferences = await this.getPreferencesFile(accessToken, metadataFolderId, identifier);
@@ -194,20 +197,27 @@ export class PreferencesService {
             identifier,
             existingPreferences,
             updatedPreferences,
-            preferences
+            preferences,
+            userPnIdentifier,
+            accountId
           );
           
           // Update "Current" sheet in preferences.xlsx with current preferences state
           try {
+            const token: GoogleDriveToken = { access_token: accessToken };
             const { PreferencesSheetsService } = await import('./preferencesSheetsService');
             const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
-              accessToken,
-              metadataFolderId
+              token,
+              metadataFolderId,
+              userPnIdentifier,
+              accountId
             );
             await PreferencesSheetsService.updateCurrentPreferences(
-              accessToken,
+              token,
               spreadsheetId,
-              updatedPreferences
+              updatedPreferences,
+              userPnIdentifier,
+              accountId
             );
           } catch (sheetError) {
             // Log error but don't fail the preference update
@@ -262,20 +272,27 @@ export class PreferencesService {
         identifier,
         existingPreferences,
         updatedPreferences,
-        preferences
+        preferences,
+        userPnIdentifier,
+        accountId
       );
       
       // Update "Current" sheet in preferences.xlsx with current preferences state
       try {
+        const token: GoogleDriveToken = { access_token: accessToken };
         const { PreferencesSheetsService } = await import('./preferencesSheetsService');
         const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
-          accessToken,
-          metadataFolderId
+          token,
+          metadataFolderId,
+          userPnIdentifier,
+          accountId
         );
         await PreferencesSheetsService.updateCurrentPreferences(
-          accessToken,
+          token,
           spreadsheetId,
-          updatedPreferences
+          updatedPreferences,
+          userPnIdentifier,
+          accountId
         );
       } catch (sheetError) {
         // Log error but don't fail the preference update
@@ -305,13 +322,18 @@ export class PreferencesService {
     userPnIdentifier: string,
     existingPreferences: UserPreferences | null,
     updatedPreferences: UserPreferences,
-    changedPreferences: Partial<UserPreferences>
+    changedPreferences: Partial<UserPreferences>,
+    normalizedUserPnIdentifier: string,
+    accountId?: string
   ): Promise<void> {
     try {
+      const token: GoogleDriveToken = { access_token: accessToken };
       const { PreferencesSheetsService } = await import('./preferencesSheetsService');
       const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
-        accessToken,
-        metadataFolderId
+        token,
+        metadataFolderId,
+        normalizedUserPnIdentifier,
+        accountId
       );
 
       const now = new Date().toISOString();
@@ -319,7 +341,7 @@ export class PreferencesService {
       // Log each changed field as a separate interaction
       if (changedPreferences.displayName !== undefined) {
         const interactionId = crypto.randomUUID();
-        await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
+        await PreferencesSheetsService.appendPreferenceInteraction(token, spreadsheetId, {
           interaction_id: interactionId,
           user_pn_identifier: userPnIdentifier,
           preference_type: 'display_name',
@@ -327,12 +349,12 @@ export class PreferencesService {
           previous_value: existingPreferences?.displayName ? JSON.stringify(existingPreferences.displayName) : undefined,
           new_value: JSON.stringify(updatedPreferences.displayName),
           created_at: now
-        });
+        }, normalizedUserPnIdentifier, accountId);
       }
 
       if (changedPreferences.profileImageFileId !== undefined) {
         const interactionId = crypto.randomUUID();
-        await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
+        await PreferencesSheetsService.appendPreferenceInteraction(token, spreadsheetId, {
           interaction_id: interactionId,
           user_pn_identifier: userPnIdentifier,
           preference_type: 'profile_image',
@@ -340,12 +362,12 @@ export class PreferencesService {
           previous_value: existingPreferences?.profileImageFileId ? JSON.stringify(existingPreferences.profileImageFileId) : undefined,
           new_value: JSON.stringify(updatedPreferences.profileImageFileId),
           created_at: now
-        });
+        }, normalizedUserPnIdentifier, accountId);
       }
 
       if (changedPreferences.curatedFeedPreferences !== undefined) {
         const interactionId = crypto.randomUUID();
-        await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
+        await PreferencesSheetsService.appendPreferenceInteraction(token, spreadsheetId, {
           interaction_id: interactionId,
           user_pn_identifier: userPnIdentifier,
           preference_type: 'curated_feed_preferences',
@@ -353,12 +375,12 @@ export class PreferencesService {
           previous_value: existingPreferences?.curatedFeedPreferences ? JSON.stringify(existingPreferences.curatedFeedPreferences) : undefined,
           new_value: JSON.stringify(updatedPreferences.curatedFeedPreferences),
           created_at: now
-        });
+        }, normalizedUserPnIdentifier, accountId);
       }
 
       if (changedPreferences.subscribedFeedIds !== undefined) {
         const interactionId = crypto.randomUUID();
-        await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
+        await PreferencesSheetsService.appendPreferenceInteraction(token, spreadsheetId, {
           interaction_id: interactionId,
           user_pn_identifier: userPnIdentifier,
           preference_type: 'subscribed_feed_ids',
@@ -366,7 +388,7 @@ export class PreferencesService {
           previous_value: existingPreferences?.subscribedFeedIds ? JSON.stringify(existingPreferences.subscribedFeedIds) : undefined,
           new_value: JSON.stringify(updatedPreferences.subscribedFeedIds),
           created_at: now
-        });
+        }, normalizedUserPnIdentifier, accountId);
       }
 
       // Note: blockedCategories, subscribedSubjects, blockedSubjects are not in UserPreferences interface
@@ -374,7 +396,7 @@ export class PreferencesService {
 
       if (changedPreferences.mePageSortOrder !== undefined) {
         const interactionId = crypto.randomUUID();
-        await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
+        await PreferencesSheetsService.appendPreferenceInteraction(token, spreadsheetId, {
           interaction_id: interactionId,
           user_pn_identifier: userPnIdentifier,
           preference_type: 'me_page_sort_order',
@@ -382,7 +404,7 @@ export class PreferencesService {
           previous_value: existingPreferences?.mePageSortOrder ? JSON.stringify(existingPreferences.mePageSortOrder) : undefined,
           new_value: JSON.stringify(updatedPreferences.mePageSortOrder),
           created_at: now
-        });
+        }, normalizedUserPnIdentifier, accountId);
       }
 
       // Note: tagPreferences are logged separately in addTagPreference and removeTagPreference
@@ -407,7 +429,8 @@ export class PreferencesService {
       sourceFileId?: string;
       confidence?: number;
       metadata?: UserTagPreference['metadata'];
-    }
+    },
+    accountId?: string
   ): Promise<void> {
     // Use userPnIdentifier for cache lookup
     const existingPreferences = await this.getPreferencesFile(accessToken, metadataFolderId, userPnIdentifier);
@@ -441,14 +464,18 @@ export class PreferencesService {
 
     // Log tag preference interaction to sheet
     try {
+      const token: GoogleDriveToken = { access_token: accessToken };
+      const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
       const { PreferencesSheetsService } = await import('./preferencesSheetsService');
       const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
-        accessToken,
-        metadataFolderId
+        token,
+        metadataFolderId,
+        normalizedUserPnIdentifier,
+        accountId
       );
 
       const interactionId = crypto.randomUUID();
-      await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
+      await PreferencesSheetsService.appendPreferenceInteraction(token, spreadsheetId, {
         interaction_id: interactionId,
         user_pn_identifier: userPnIdentifier,
         preference_type: 'tag_preference',
@@ -460,15 +487,16 @@ export class PreferencesService {
         question_id: options?.metadata?.questionId, // For curation cards
         metadata: options?.metadata ? JSON.stringify(options.metadata) : undefined,
         created_at: now
-      });
+      }, normalizedUserPnIdentifier, accountId);
     } catch (error) {
       // Log error but don't fail the preference update
       console.warn('[PreferencesService] Failed to log tag preference interaction:', error);
     }
 
+    const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
     await this.updatePreferencesFile(accessToken, metadataFolderId, userPnIdentifier, {
       tagPreferences
-    });
+    }, normalizedUserPnIdentifier, accountId);
   }
 
   /**
@@ -479,7 +507,8 @@ export class PreferencesService {
     accessToken: string,
     metadataFolderId: string,
     userPnIdentifier: string, // Actually the pnIdentifier
-    tagId: string
+    tagId: string,
+    accountId?: string
   ): Promise<void> {
     // Use userPnIdentifier for cache lookup
     const existingPreferences = await this.getPreferencesFile(accessToken, metadataFolderId, userPnIdentifier);
@@ -499,15 +528,19 @@ export class PreferencesService {
     // Log tag preference removal to sheet
     if (existingTagPreference) {
       try {
+        const token: GoogleDriveToken = { access_token: accessToken };
+        const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
         const { PreferencesSheetsService } = await import('./preferencesSheetsService');
         const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
-          accessToken,
-          metadataFolderId
+          token,
+          metadataFolderId,
+          normalizedUserPnIdentifier,
+          accountId
         );
 
         const interactionId = crypto.randomUUID();
         const now = new Date().toISOString();
-        await PreferencesSheetsService.appendPreferenceInteraction(accessToken, spreadsheetId, {
+        await PreferencesSheetsService.appendPreferenceInteraction(token, spreadsheetId, {
           interaction_id: interactionId,
           user_pn_identifier: userPnIdentifier,
           preference_type: 'tag_preference',
@@ -519,16 +552,17 @@ export class PreferencesService {
           question_id: existingTagPreference.metadata?.questionId,
           metadata: existingTagPreference.metadata ? JSON.stringify(existingTagPreference.metadata) : undefined,
           created_at: now
-        });
+        }, normalizedUserPnIdentifier, accountId);
       } catch (error) {
         // Log error but don't fail the preference update
         console.warn('[PreferencesService] Failed to log tag preference removal:', error);
       }
     }
 
+    const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
     await this.updatePreferencesFile(accessToken, metadataFolderId, userPnIdentifier, {
       tagPreferences
-    });
+    }, normalizedUserPnIdentifier, accountId);
   }
 
   /**
