@@ -51,7 +51,7 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
         },
         unreadCount: 0, // Will be updated from API
         messages: [],
-        // Include cached credentials for fast conversation loading
+        // Include cached credentials for fast conversation loading (critical for optimization!)
         spreadsheetId: entry.spreadsheetId,
         connectionId: entry.connectionId,
         sharedSecret: entry.sharedSecret // Encrypted, safe to cache
@@ -335,6 +335,12 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
                   <button
                     onClick={() => {
                       // Use cached credentials for optimized API path (skips folder lookups)
+                      console.log('[MessageList] Opening conversation with credentials', {
+                        participantPnIdentifier: thread.participantPnIdentifier,
+                        hasConnectionId: !!thread.connectionId,
+                        hasSharedSecret: !!thread.sharedSecret,
+                        hasSpreadsheetId: !!thread.spreadsheetId
+                      });
                       onThreadSelect(
                         thread.participantPnIdentifier, 
                         thread.participantName, 

@@ -126,7 +126,25 @@ export async function getConversationMessages(
   sharedSecret?: string,
   spreadsheetId?: string
 ): Promise<{ messages: Message[]; total: number }> {
-  const hasCached = !!(connectionId && sharedSecret && spreadsheetId);
+  // Check if all credentials are present and non-empty (required for optimized path)
+  // Must have all three: connectionId, sharedSecret, and spreadsheetId
+  const hasCached = !!(connectionId && 
+                       sharedSecret && 
+                       spreadsheetId && 
+                       connectionId.trim() !== '' && 
+                       sharedSecret.trim() !== '' && 
+                       spreadsheetId.trim() !== '');
+  
+  if (hasCached) {
+    console.log('[getConversationMessages] ✅ Using optimized path with cached credentials');
+  } else {
+    console.warn('[getConversationMessages] ⚠️ Using fallback path (missing credentials)', {
+      connectionId: connectionId ? `${connectionId.substring(0, 10)}...` : 'missing',
+      hasSharedSecret: !!sharedSecret,
+      spreadsheetId: spreadsheetId ? `${spreadsheetId.substring(0, 10)}...` : 'missing'
+    });
+  }
+  
   const body = {
     userPnIdentifier,
     participantPnIdentifier,
