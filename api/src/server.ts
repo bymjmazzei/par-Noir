@@ -12652,7 +12652,7 @@ class ProductionServer {
         // Wrap in try-catch to ensure conversation deletion succeeds even if connection removal fails
         let connectionId: string | undefined;
         try {
-          const connectionsFile = await ConnectionsService.getConnectionsFile(token.access_token, metadataFolderId);
+          const connectionsFile = await ConnectionsService.getConnectionsFile(token.access_token, metadataFolderId, pnIdentifier);
           if (connectionsFile) {
             // Normalize when searching (handles legacy data)
             const connection = connectionsFile.connections.find(c => {

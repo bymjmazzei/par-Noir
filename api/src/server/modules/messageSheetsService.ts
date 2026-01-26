@@ -968,14 +968,30 @@ export class MessageSheetsService {
       const rowIndex = rows.findIndex(row => row[0] === participantPnIdentifier);
 
       if (rowIndex !== -1) {
-        // Delete row (rowIndex + 2 because of header and 0-based index)
+        // Get the actual sheet ID for the "Inbox" sheet
+        const spreadsheet = await sheets.spreadsheets.get({
+          spreadsheetId: inboxSheetId,
+          fields: 'sheets.properties'
+        });
+
+        const inboxSheet = spreadsheet.data.sheets?.find(
+          sheet => sheet.properties?.title === 'Inbox'
+        );
+
+        if (!inboxSheet?.properties?.sheetId) {
+          throw new Error('Inbox sheet not found in spreadsheet');
+        }
+
+        const actualSheetId = inboxSheet.properties.sheetId;
+
+        // Delete row (rowIndex + 1 because we're using 0-based index and skipping header)
         await sheets.spreadsheets.batchUpdate({
           spreadsheetId: inboxSheetId,
           requestBody: {
             requests: [{
               deleteDimension: {
                 range: {
-                  sheetId: 0, // First sheet
+                  sheetId: actualSheetId,
                   dimension: 'ROWS',
                   startIndex: rowIndex + 1, // +1 because header is row 0, data starts at row 1
                   endIndex: rowIndex + 2
