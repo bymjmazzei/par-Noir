@@ -521,48 +521,94 @@ export class MessageSheetsService {
     const limit = options?.limit || 10;
     const offset = options?.offset || 0;
 
-    // Get total row count efficiently
-    // Strategy: Read just column A to count rows (lightweight), then read only needed rows
+    // Optimized: Read all needed rows in a single API call when possible
+    // For small limits (like 1 for inbox preview), just read the last N rows directly
+    // For larger limits, we still need to count first to know where to start
     let total = 0;
-    try {
-      // Read column A to count rows (much faster than reading all columns)
-      const countResponse = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: 'Messages!A2:A' // Just column A, starting from row 2 (skip header)
-      });
-      total = (countResponse.data.values || []).length;
-    } catch (error: any) {
-      // Fallback: if column A read fails, read all rows (slower but works)
-      console.warn('[MessageSheetsService] Failed to get row count from column A, reading all rows:', error?.message);
-      const fullResponse = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: 'Messages!A2:F'
-      });
-      total = (fullResponse.data.values || []).length;
-    }
-
-    // Calculate which rows to read from Sheets API
-    // Messages are stored oldest to newest in sheet, but we want newest first
-    // So we need to read from the end
-    const startRow = Math.max(2, total + 2 - limit - offset); // +2 because header is row 1, data starts at row 2
-    const endRow = total + 2 - offset; // +2 for same reason
-
-    // Read only the rows we need
     let rowsToProcess: any[][] = [];
-    if (startRow <= endRow && startRow >= 2) {
-      const range = `Messages!A${startRow}:F${endRow}`;
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range
-      });
-      rowsToProcess = response.data.values || [];
+    
+    if (limit <= 50 && offset === 0) {
+      // Optimized path for small limits: Read last N rows directly (single API call)
+      // Read more rows than needed to ensure we get enough, then take the last N
+      const rowsToRead = Math.max(limit + 10, 100); // Read extra to account for empty rows
+      const range = `Messages!A2:F${rowsToRead + 1}`; // +1 because row 1 is header
+      
+      try {
+        const response = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range
+        });
+        rowsToProcess = response.data.values || [];
+        total = rowsToProcess.length;
+        
+        // Take only the last 'limit' rows (newest messages)
+        if (rowsToProcess.length > limit) {
+          rowsToProcess = rowsToProcess.slice(-limit);
+        }
+      } catch (error: any) {
+        // Fallback: if range read fails, try reading all rows
+        console.warn('[MessageSheetsService] Failed to read message range, reading all rows:', error?.message);
+        const fullResponse = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: 'Messages!A2:F'
+        });
+        rowsToProcess = fullResponse.data.values || [];
+        total = rowsToProcess.length;
+        
+        // Take only the last 'limit' rows
+        if (rowsToProcess.length > limit) {
+          rowsToProcess = rowsToProcess.slice(-limit);
+        }
+      }
+    } else {
+      // For larger limits or offsets, use the two-call approach (count then read)
+      try {
+        // Read column A to count rows (lightweight)
+        const countResponse = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: 'Messages!A2:A'
+        });
+        total = (countResponse.data.values || []).length;
+      } catch (error: any) {
+        // Fallback: read all rows to count
+        console.warn('[MessageSheetsService] Failed to get row count, reading all rows:', error?.message);
+        const fullResponse = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: 'Messages!A2:F'
+        });
+        rowsToProcess = fullResponse.data.values || [];
+        total = rowsToProcess.length;
+      }
+
+      // Calculate which rows to read
+      if (rowsToProcess.length === 0) {
+        const startRow = Math.max(2, total + 2 - limit - offset);
+        const endRow = total + 2 - offset;
+
+        // Read only the rows we need
+        if (startRow <= endRow && startRow >= 2) {
+          const range = `Messages!A${startRow}:F${endRow}`;
+          const response = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range
+          });
+          rowsToProcess = response.data.values || [];
+        }
+      } else {
+        // Already have rows from fallback, apply offset/limit
+        if (offset > 0) {
+          rowsToProcess = rowsToProcess.slice(offset, offset + limit);
+        } else if (rowsToProcess.length > limit) {
+          rowsToProcess = rowsToProcess.slice(-limit);
+        }
+      }
     }
 
     // Parse and decrypt only the messages we need
     const { MessageEncryption } = await import('../utils/messageEncryption');
     const messages: Message[] = rowsToProcess.map((row, relativeIndex) => {
-      // Calculate actual index based on which rows we read
-      const actualIndex = startRow - 2 + relativeIndex; // -2 because data starts at row 2
+      // Calculate actual index (for small limits, we read from the end, so index is approximate)
+      const actualIndex = total - rowsToProcess.length + relativeIndex;
       const encryptedContent = row[1] || '';
       let decryptedContent = '';
       
