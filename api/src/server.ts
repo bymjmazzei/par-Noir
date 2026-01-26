@@ -11168,13 +11168,15 @@ class ProductionServer {
           // Try to get data from inbox first (fastest path - inbox has everything we need!)
           if (messagesFolderId && inboxSheetId) {
             try {
-              const inboxConversations = await MessageSheetsService.getInboxConversations(
+              // OPTIMIZED: Read only first 50 rows instead of entire sheet
+              const inboxEntry = await MessageSheetsService.getInboxConversationByParticipant(
                 token,
                 inboxSheetId,
+                normalizedParticipantPnIdentifier,
                 pnIdentifier,
-                accountId
+                accountId,
+                50 // Only read first 50 most recent conversations
               );
-              const inboxEntry = inboxConversations.find(conv => conv.participantPnIdentifier === normalizedParticipantPnIdentifier);
               
               if (inboxEntry?.sharedSecret && inboxEntry?.connectionId && inboxEntry?.spreadsheetId) {
                 // Found in inbox! Use it (fast path)
@@ -11370,7 +11372,11 @@ class ProductionServer {
           decryptedSharedSecret,
           pnIdentifier,
           accountId,
-          { limit: messageLimit, offset: messageOffset }
+          { 
+            limit: messageLimit, 
+            offset: messageOffset,
+            includeTotal: false // Skip counting for initial loads (faster!)
+          }
         );
 
         // Set toPnIdentifier for all messages (use normalized)

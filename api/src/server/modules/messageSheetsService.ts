@@ -537,6 +537,7 @@ export class MessageSheetsService {
     options?: {
       limit?: number;
       offset?: number;
+      includeTotal?: boolean; // Only count if needed (for pagination UI)
     }
   ): Promise<{ messages: Message[]; total: number }> {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
@@ -564,12 +565,9 @@ export class MessageSheetsService {
         });
         rowsToProcess = response.data.values || [];
         
-        // If we got fewer rows than requested, that's the total
-        // Otherwise, we need to count for accurate total (only if needed for pagination)
-        if (rowsToProcess.length < limit) {
-          total = rowsToProcess.length;
-        } else {
-          // Need accurate total - read column A to count (lightweight, only if we got full limit)
+        // Only count if explicitly requested (for pagination UI)
+        if (options?.includeTotal) {
+          // Need accurate total - read column A to count (lightweight)
           try {
             const countResponse = await sheets.spreadsheets.values.get({
               spreadsheetId,
@@ -580,6 +578,11 @@ export class MessageSheetsService {
             // If count fails, use approximate total
             total = rowsToProcess.length;
           }
+        } else {
+          // Don't count - use approximate total (faster!)
+          // If we got fewer rows than requested, that's the total
+          // Otherwise, use the number of rows we got as approximate total
+          total = rowsToProcess.length;
         }
       } catch (error: any) {
         console.warn('[MessageSheetsService] Failed to read message range, reading all rows:', error?.message);
@@ -1009,6 +1012,67 @@ export class MessageSheetsService {
     } catch (error: any) {
       console.error('[MessageSheetsService] Error reading inbox conversations:', {
         inboxSheetId,
+        error: error?.message,
+        status: error?.response?.status
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get single conversation from inbox by participant (optimized - reads only first N rows)
+   * Assumes inbox is sorted by lastMessageAt descending (newest first)
+   * This is much faster than reading the entire inbox sheet when you only need one conversation
+   */
+  static async getInboxConversationByParticipant(
+    token: GoogleDriveToken,
+    inboxSheetId: string,
+    participantPnIdentifier: string,
+    userPnIdentifier: string,
+    accountId?: string,
+    maxRowsToRead: number = 50 // Only read first 50 rows (most recent conversations)
+  ): Promise<{
+    participantPnIdentifier: string;
+    spreadsheetId: string;
+    connectionId: string;
+    lastMessageAt: string;
+    lastMessagePreview?: string;
+    sharedSecret?: string;
+  } | null> {
+    try {
+      const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+      const sheets = google.sheets({ version: 'v4', auth });
+
+      // Read only first N rows (most recent conversations are at top)
+      const endRow = maxRowsToRead + 1; // +1 for header
+      const range = `Inbox!A2:F${endRow}`;
+      
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: inboxSheetId,
+        range
+      });
+
+      const rows = response.data.values || [];
+      
+      // Find matching conversation (should be in first N rows if recent)
+      for (const row of rows) {
+        if (row[0] === participantPnIdentifier) {
+          return {
+            participantPnIdentifier: row[0] || '',
+            spreadsheetId: row[1] || '',
+            connectionId: row[2] || '',
+            lastMessageAt: row[3] || new Date().toISOString(),
+            lastMessagePreview: row[4] || undefined,
+            sharedSecret: row[5] || undefined
+          };
+        }
+      }
+      
+      return null; // Not found in first N rows
+    } catch (error: any) {
+      console.error('[MessageSheetsService] Error reading inbox conversation by participant:', {
+        inboxSheetId,
+        participantPnIdentifier,
         error: error?.message,
         status: error?.response?.status
       });
