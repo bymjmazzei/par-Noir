@@ -3,6 +3,14 @@
  * Simplified production-ready server implementation
  */
 
+// CRITICAL: Increase thread pool size for parallel PBKDF2 operations
+// Default is 4, which limits parallel crypto operations (e.g., message decryption)
+// Setting to 16 allows up to 16 PBKDF2 operations to run in parallel
+// This must be set BEFORE importing any modules that use crypto
+if (!process.env.UV_THREADPOOL_SIZE) {
+  process.env.UV_THREADPOOL_SIZE = '16';
+}
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
