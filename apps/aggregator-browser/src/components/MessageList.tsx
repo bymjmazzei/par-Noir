@@ -5,11 +5,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { MessageCircle, UserPlus, Check, X, Clock, MoreVertical, Trash2 } from 'lucide-react';
-import { MessageThread as MessageThreadType, MessageRequest, Message, getConversationMessages } from '../services/messageService';
+import { MessageThread as MessageThreadType, MessageRequest, Message } from '../services/messageService';
 import { getMessageThreads, getMessageRequests, respondToRequest, deleteConversation } from '../services/messageService';
 import { getPendingRequests as getConnectionPendingRequests, acceptConnectionRequest, rejectConnectionRequest } from '../services/connectionService';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
+import { inboxCacheService } from '../services/inboxCacheService';
 
 interface MessageListProps {
   onThreadSelect: (participantPnIdentifier: string, participantName?: string, preloadedMessages?: Message[], connectionId?: string, sharedSecret?: string, spreadsheetId?: string) => void;
@@ -26,52 +27,70 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ participantPnIdentifier: string; participantName?: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [preloadedMessages, setPreloadedMessages] = useState<Map<string, Message[]>>(new Map());
 
   // Load threads and requests
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
 
+    // Load from cache instantly (no API call)
+    const cachedInbox = inboxCacheService.get(userState.pnIdentifier);
+    if (cachedInbox && cachedInbox.length > 0) {
+      // Convert cached entries to MessageThread format for display
+      // Create minimal lastMessage object with timestamp for date display (no content preview)
+      const cachedThreads: MessageThreadType[] = cachedInbox.map(entry => ({
+        participantPnIdentifier: entry.participantPnIdentifier,
+        participantName: undefined,
+        lastMessage: {
+          messageId: '',
+          fromPnIdentifier: '',
+          toPnIdentifier: entry.participantPnIdentifier,
+          content: '', // No preview
+          timestamp: entry.lastMessageAt,
+          read: false,
+          encrypted: false
+        },
+        unreadCount: 0, // Will be updated from API
+        messages: [],
+        // No sensitive data in cache
+      }));
+      setThreads(cachedThreads);
+      setLoading(false); // Show instantly, no loading spinner
+    } else {
+      setLoading(true); // Only show loading if no cache
+    }
+
     const loadData = async (isInitial = false) => {
-      // Only show loading spinner on initial load
-      if (isInitial) {
-        setLoading(true);
-      }
-      
       try {
         const [threadsData, requestsData, connectionRequests] = await Promise.all([
           getMessageThreads(userState.pnIdentifier!),
           getMessageRequests(userState.pnIdentifier!),
           getConnectionPendingRequests(userState.pnIdentifier!)
         ]);
-        setThreads(threadsData);
         
-        // Preload last 10 messages for top 3-5 conversations (background, non-blocking)
-        if (threadsData.length > 0 && userState.pnIdentifier) {
-          const topConversations = threadsData.slice(0, 5).filter(t => t.participantPnIdentifier);
-          Promise.all(
-            topConversations.map(async (thread) => {
-              try {
-                const result = await getConversationMessages(
-                  userState.pnIdentifier!,
-                  thread.participantPnIdentifier,
-                  10,
-                  0,
-                  thread.connectionId,
-                  thread.sharedSecret,
-                  thread.spreadsheetId
-                );
-                setPreloadedMessages(prev => {
-                  const next = new Map(prev);
-                  next.set(thread.participantPnIdentifier, result.messages);
-                  return next;
-                });
-              } catch (error) {
-                console.warn(`Failed to preload messages for ${thread.participantPnIdentifier}:`, error);
-              }
-            })
-          ).catch(() => {});
-        }
+        // Update threads (keep timestamp but remove preview content)
+        const threadsWithoutPreview = threadsData.map(thread => ({
+          ...thread,
+          lastMessage: thread.lastMessage ? {
+            messageId: '',
+            fromPnIdentifier: '',
+            toPnIdentifier: thread.participantPnIdentifier,
+            content: '', // No preview
+            timestamp: thread.lastMessage.timestamp,
+            read: false,
+            encrypted: false
+          } : undefined
+        }));
+        setThreads(threadsWithoutPreview);
+        
+        // Update cache with latest data
+        const inboxEntries = threadsData
+          .filter(thread => thread.participantPnIdentifier)
+          .map(thread => ({
+            participantPnIdentifier: thread.participantPnIdentifier,
+            lastMessageAt: thread.lastMessage?.timestamp || new Date().toISOString()
+          }))
+          .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+        inboxCacheService.set(userState.pnIdentifier!, inboxEntries);
         
         // Combine message requests and connection requests
         const messageRequests = requestsData.filter(r => r.status === 'pending');
@@ -102,7 +121,7 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
       }
     };
 
-    // Initial load
+    // Initial load from API (background refresh)
     loadData(true);
 
     // Poll for updates - only when tab is visible
@@ -308,14 +327,14 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
                 <div key={thread.participantPnIdentifier} className="relative">
                   <button
                     onClick={() => {
-                      const preloaded = preloadedMessages.get(thread.participantPnIdentifier);
+                      // No preloaded messages, no cached credentials - fetch on open
                       onThreadSelect(
                         thread.participantPnIdentifier, 
                         thread.participantName, 
-                        preloaded,
-                        thread.connectionId,
-                        thread.sharedSecret,
-                        thread.spreadsheetId
+                        undefined, // No preloaded messages
+                        undefined, // connectionId - fetch on open
+                        undefined, // sharedSecret - fetch on open
+                        undefined  // spreadsheetId - fetch on open
                       );
                     }}
                     className="w-full p-4 hover:bg-neutral-800 transition-colors text-left"
@@ -328,7 +347,7 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
                           </span>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center space-x-2 mb-1">
+                          <div className="flex items-center space-x-2">
                             <h3 className="text-white font-medium truncate">
                               {thread.participantName || (thread.participantPnIdentifier || 'Unknown').substring(0, 16) + '...'}
                             </h3>
@@ -338,11 +357,6 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
                               </span>
                             )}
                           </div>
-                          {thread.lastMessage && (
-                            <p className="text-neutral-400 text-sm truncate">
-                              {thread.lastMessage.content}
-                            </p>
-                          )}
                         </div>
                       </div>
                       <div className="flex items-center space-x-2 flex-shrink-0">

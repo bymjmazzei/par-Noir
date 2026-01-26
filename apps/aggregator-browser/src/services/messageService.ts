@@ -5,6 +5,7 @@
 
 import { PNOAuthService } from './pnOAuthService';
 import { API_ENDPOINT } from '../config/api';
+import { inboxCacheService } from './inboxCacheService';
 
 // Helper function to get auth headers
 function getAuthHeaders(): HeadersInit {
@@ -222,7 +223,27 @@ export async function sendMessage(
     }
 
     const result = await response.json();
-    return result.message;
+    const message = result.message;
+    
+    // Refresh inbox cache after successful send (non-blocking)
+    // This updates the lastMessageAt timestamp for the conversation
+    getMessageThreads(fromPnIdentifier)
+      .then(threads => {
+        const inboxEntries = threads
+          .filter(thread => thread.participantPnIdentifier)
+          .map(thread => ({
+            participantPnIdentifier: thread.participantPnIdentifier,
+            lastMessageAt: thread.lastMessage?.timestamp || new Date().toISOString()
+          }))
+          .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+        inboxCacheService.set(fromPnIdentifier, inboxEntries);
+      })
+      .catch(error => {
+        // Silently fail - cache refresh is non-critical
+        console.warn('[messageService] Failed to refresh inbox cache after send:', error);
+      });
+    
+    return message;
   } catch (error) {
     console.error('Failed to send message:', error);
     throw error;

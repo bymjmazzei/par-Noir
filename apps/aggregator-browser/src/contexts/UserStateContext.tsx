@@ -6,6 +6,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Feed } from '../types/aggregator';
 import { accountsCacheService } from '../services/accountsCacheService';
+import { inboxCacheService } from '../services/inboxCacheService';
 import { TagNormalizationService } from '../services/tagNormalizationService';
 import { API_ENDPOINT } from '../config/api';
 
@@ -516,27 +517,41 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       pnIdentifier
     }));
 
-    // Preload top 5 conversations in background (non-blocking)
-    // This improves perceived performance when user opens inbox
-    const preloadConversations = async () => {
+    // Load inbox and cache it for instant inbox display
+    const loadAndCacheInbox = async () => {
       try {
         const { getMessageThreads } = await import('../services/messageService');
-        await getMessageThreads(pnIdentifier);
-        // Store in cache for instant inbox display
-        // The conversations will be cached by the messageService
+        const threads = await getMessageThreads(pnIdentifier);
+        
+        // Extract only participantPnIdentifier and lastMessageAt for cache
+        // (no sensitive data like sharedSecret, no preview)
+        const inboxEntries = threads
+          .filter(thread => thread.participantPnIdentifier)
+          .map(thread => ({
+            participantPnIdentifier: thread.participantPnIdentifier,
+            lastMessageAt: thread.lastMessage?.timestamp || new Date().toISOString()
+          }))
+          .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+        
+        // Cache in localStorage for instant inbox loading
+        inboxCacheService.set(pnIdentifier, inboxEntries);
       } catch (error) {
-        // Silently fail - preloading is optional
-        console.warn('[UserStateContext] Failed to preload conversations:', error);
+        // Silently fail - cache loading is optional
+        console.warn('[UserStateContext] Failed to load and cache inbox:', error);
       }
     };
     
-    // Start preloading in background (don't await)
-    preloadConversations();
+    // Start loading in background (don't await)
+    loadAndCacheInbox();
   };
 
   const setLocked = () => {
     // Clear accounts cache on logout
     accountsCacheService.clearAll();
+    // Clear inbox cache on logout
+    if (userState.pnIdentifier) {
+      inboxCacheService.clear(userState.pnIdentifier);
+    }
     setUserState(prev => ({
       ...prev,
       isUnlocked: false,
