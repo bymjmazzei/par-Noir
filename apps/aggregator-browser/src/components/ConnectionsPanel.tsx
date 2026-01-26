@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Users, UserPlus, UserMinus, Check, X as XIcon } from 'lucide-react';
+import { Users, UserPlus, UserMinus } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { getUserProfile } from '../services/profileService';
 import { PNOAuthService } from '../services/pnOAuthService';
@@ -32,8 +32,6 @@ interface Following {
 }
 
 interface ConnectionsPanelProps {
-  isOpen: boolean;
-  onClose: () => void;
   userPnIdentifier: string;
   onCreatorClick?: (creatorId: string) => void;
 }
@@ -53,7 +51,7 @@ function getAuthHeaders(): HeadersInit {
   return headers;
 }
 
-export function ConnectionsPanel({ isOpen, onClose, userPnIdentifier, onCreatorClick }: ConnectionsPanelProps) {
+export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: ConnectionsPanelProps) {
   const { userState } = useUserState();
   const [activeTab, setActiveTab] = useState<'connections' | 'followers' | 'following'>('connections');
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -67,10 +65,10 @@ export function ConnectionsPanel({ isOpen, onClose, userPnIdentifier, onCreatorC
   const [processingConnections, setProcessingConnections] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (isOpen && userPnIdentifier) {
+    if (userPnIdentifier) {
       loadData();
     }
-  }, [isOpen, userPnIdentifier, activeTab]);
+  }, [userPnIdentifier, activeTab]);
 
   const loadData = async () => {
     setLoading(true);
@@ -299,39 +297,22 @@ export function ConnectionsPanel({ isOpen, onClose, userPnIdentifier, onCreatorC
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
-        onClick={onClose}
-      />
-
-      {/* Panel */}
-      <div className="fixed right-0 top-0 bottom-0 w-full sm:w-96 bg-neutral-900 z-50 shadow-2xl flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-neutral-700">
-          <div className="flex items-center space-x-3">
-            <Users className="h-5 w-5 text-white" />
-            <h2 className="text-white text-lg font-semibold">
-              Connections
-              {pendingRequests.received.length > 0 && (
-                <span className="ml-2 px-2 py-0.5 bg-blue-500 text-white text-xs rounded-full">
-                  {pendingRequests.received.length}
-                </span>
-              )}
-            </h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-neutral-800 rounded transition-colors"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5 text-white" />
-          </button>
+    <div className="h-full flex flex-col bg-neutral-900">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-neutral-700">
+        <div className="flex items-center space-x-3">
+          <Users className="h-5 w-5 text-white" />
+          <h2 className="text-white text-lg font-semibold">
+            Connections
+            {pendingRequests.received.length > 0 && (
+              <span className="ml-2 px-2 py-0.5 bg-blue-500 text-white text-xs rounded-full">
+                {pendingRequests.received.length}
+              </span>
+            )}
+          </h2>
         </div>
+      </div>
 
         {/* Tabs */}
         <div className="flex border-b border-neutral-700">
@@ -557,7 +538,6 @@ export function ConnectionsPanel({ isOpen, onClose, userPnIdentifier, onCreatorC
             </div>
           )}
         </div>
-      </div>
-    </>
+    </div>
   );
 }

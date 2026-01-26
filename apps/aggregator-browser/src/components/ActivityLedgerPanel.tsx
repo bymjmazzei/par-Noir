@@ -4,13 +4,11 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Heart, MessageCircle, Share2, UserPlus, UserCheck, Bell, Eye } from 'lucide-react';
+import { Heart, MessageCircle, Share2, UserPlus, UserCheck, Bell, Eye } from 'lucide-react';
 import { ActivityLedgerService, ActivityEntry } from '../services/activityLedgerService';
 import { formatTimestamp } from '../utils/formatTimestamp';
 
 interface ActivityLedgerPanelProps {
-  isOpen: boolean;
-  onClose: () => void;
   userPnIdentifier: string;
 }
 
@@ -57,7 +55,7 @@ function getActivityDescription(activity: ActivityEntry): string {
   }
 }
 
-export function ActivityLedgerPanel({ isOpen, onClose, userPnIdentifier }: ActivityLedgerPanelProps) {
+export function ActivityLedgerPanel({ userPnIdentifier }: ActivityLedgerPanelProps) {
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,10 +98,10 @@ export function ActivityLedgerPanel({ isOpen, onClose, userPnIdentifier }: Activ
   };
 
   useEffect(() => {
-    if (isOpen && userPnIdentifier) {
+    if (userPnIdentifier) {
       loadActivities(true);
     }
-  }, [isOpen, userPnIdentifier]);
+  }, [userPnIdentifier]);
 
   const handleScroll = () => {
     if (!scrollContainerRef.current || loading || !hasMore) return;
@@ -114,40 +112,19 @@ export function ActivityLedgerPanel({ isOpen, onClose, userPnIdentifier }: Activ
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
-        onClick={onClose}
-      />
+    <div className="h-full flex flex-col bg-neutral-900">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-neutral-700">
+        <h2 className="text-white text-lg font-semibold">Activity Ledger</h2>
+      </div>
 
-      {/* Panel */}
+      {/* Content */}
       <div
-        className={`fixed left-0 top-0 bottom-0 w-full sm:w-96 bg-neutral-900 z-50 shadow-2xl transform transition-transform duration-300 ease-in-out ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-neutral-700">
-          <h2 className="text-white text-lg font-semibold">Activity Ledger</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-neutral-800 rounded transition-colors"
-            aria-label="Close activity ledger"
-          >
-            <X className="h-5 w-5 text-white" />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div
-          ref={scrollContainerRef}
-          onScroll={handleScroll}
-          className="h-[calc(100vh-64px)] overflow-y-auto"
-        >
           {error && (
             <div className="p-4 text-red-400 text-sm">
               {error}
@@ -200,7 +177,6 @@ export function ActivityLedgerPanel({ isOpen, onClose, userPnIdentifier }: Activ
             </div>
           )}
         </div>
-      </div>
-    </>
+    </div>
   );
 }
