@@ -10988,7 +10988,7 @@ class ProductionServer {
         // Get inbox sheet to read conversations with sharedSecret (optimized path)
         const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
         
-        // Get all conversations from inbox sheet (includes sharedSecret - no connection lookup needed!)
+        // Get all conversations from inbox sheet (includes sharedSecret and lastMessagePreview - no additional API calls needed!)
         const inboxConversations = await MessageSheetsService.getInboxConversations(
           token,
           inboxSheetId,
@@ -10996,54 +10996,35 @@ class ProductionServer {
           accountId
         );
 
-        // Process all conversations in parallel (optimized)
-        const messagePromises = inboxConversations.map(async (conversation) => {
-          try {
-            const participantPnIdentifier = conversation.participantPnIdentifier;
-            if (!participantPnIdentifier) {
+        // Use lastMessagePreview directly from inbox sheet - no need to call getMessages for each conversation!
+        // This eliminates N Sheets API calls (where N = number of conversations)
+        const allMessages = inboxConversations
+          .filter(conversation => {
+            // Only include conversations with required data
+            if (!conversation.participantPnIdentifier) {
               console.warn(`[Inbox] Conversation missing participantPnIdentifier, skipping`);
-              return null;
+              return false;
             }
-
-            // Use sharedSecret from inbox (already available - no connection lookup needed!)
-            let decryptedSharedSecret: string | undefined;
-            if (conversation.sharedSecret) {
-              decryptedSharedSecret = MetadataEncryption.decryptField(conversation.sharedSecret);
-              if (!decryptedSharedSecret) {
-                console.warn(`[Inbox] Failed to decrypt shared secret for ${participantPnIdentifier}, will read as plain text`);
-              }
-            } else {
-              console.warn(`[Inbox] Conversation missing shared secret for ${participantPnIdentifier}, will read as plain text`);
+            if (!conversation.lastMessagePreview && !conversation.lastMessageAt) {
+              // Skip conversations with no messages
+              return false;
             }
+            return true;
+          })
+          .map(conversation => {
+            // Construct Message object from inbox sheet preview data
+            return {
+              messageId: '', // Preview doesn't have messageId
+              fromPnIdentifier: '', // Preview doesn't have fromPnIdentifier
+              toPnIdentifier: conversation.participantPnIdentifier,
+              content: conversation.lastMessagePreview || '',
+              timestamp: conversation.lastMessageAt || new Date().toISOString(),
+              read: false, // Preview doesn't track read status
+              encrypted: false // Preview is already decrypted
+            };
+          });
 
-            // Get messages using conversation sheet ID from inbox (already available)
-            const result = await MessageSheetsService.getMessages(
-              token,
-              conversation.spreadsheetId, // Use spreadsheetId from inbox
-              conversation.connectionId, // Use connectionId from inbox
-              decryptedSharedSecret || '', // Empty string allows plain text reading
-              pnIdentifier,
-              accountId,
-              { limit: 1, offset: 0 }
-            );
-            
-            if (result.messages.length > 0) {
-              const msg = result.messages[0];
-              msg.toPnIdentifier = participantPnIdentifier;
-              return msg;
-            }
-            return null;
-          } catch (error) {
-            console.error(`[Inbox] Failed to get messages for conversation ${conversation.participantPnIdentifier}:`, error);
-            return null;
-          }
-        });
-
-        // Wait for all conversations to load in parallel
-        const messageResults = await Promise.all(messagePromises);
-        const allMessages = messageResults.filter((msg): msg is any => msg !== null);
-
-        // Sort by timestamp descending
+        // Sort by timestamp descending (most recent first)
         allMessages.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
         return res.json({ messages: allMessages });
@@ -11158,6 +11139,31 @@ class ProductionServer {
           let metadataFolderId: string | undefined = cachedFolderIds.metadataFolderId;
           let pnFolderId: string | undefined = cachedFolderIds.pnFolderId;
           let inboxSheetId: string | undefined = cachedFolderIds.inboxSheetId;
+
+          // ALWAYS try inbox first - it has everything we need (spreadsheetId, connectionId, sharedSecret)
+          // If inboxSheetId is not cached, try to get it from messagesFolderId
+          if (!inboxSheetId && messagesFolderId) {
+            try {
+              inboxSheetId = await MessageSheetsService.getInboxSheet(
+                token,
+                messagesFolderId,
+                pnIdentifier,
+                accountId,
+                undefined // No cached ID available
+              );
+              // Cache it for next time
+              const updatedCachedFolderIds = {
+                ...cachedFolderIds,
+                inboxSheetId
+              };
+              userCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
+              storageCredentialsService.upsertCredentials(pnIdentifier, userCredentials.credentials).catch(err => {
+                console.warn('[GetConversation] Failed to cache inboxSheetId:', err?.message);
+              });
+            } catch (error) {
+              console.warn('[GetConversation] Failed to get inbox sheet:', error);
+            }
+          }
 
           // Try to get data from inbox first (fastest path - inbox has everything we need!)
           if (messagesFolderId && inboxSheetId) {

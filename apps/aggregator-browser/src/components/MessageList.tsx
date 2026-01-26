@@ -106,11 +106,12 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
     loadData(true);
 
     // Poll for updates - only when tab is visible
+    // Increased interval to 30 seconds to reduce unnecessary API calls
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         loadData(false);
       }
-    }, 10000);
+    }, 30000); // 30 seconds - reduced frequency to minimize API calls
     
     return () => clearInterval(interval);
   }, [userState.isUnlocked, userState.pnIdentifier]);

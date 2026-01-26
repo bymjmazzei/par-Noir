@@ -66,26 +66,12 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
         const offset = loadMore ? currentOffsetRef.current : 0;
         
         // Use preloaded messages if available (only on initial load)
+        // Trust preloaded data - polling will handle updates, no need for immediate background refresh
         let result: { messages: Message[]; total: number };
         if (isInitial && preloadedMessages && preloadedMessages.length > 0) {
           result = { messages: preloadedMessages, total: preloadedMessages.length };
-          // Still fetch in background to get latest messages
-          getConversationMessages(userState.pnIdentifier!, participantPnIdentifier, limit, 0, connectionId, sharedSecret, spreadsheetId)
-            .then(latestResult => {
-              setTotalMessages(latestResult.total);
-              const reversedMessages = [...latestResult.messages].reverse();
-              const tempMessages = messages.filter(msg => msg.messageId.startsWith('temp-'));
-              const existingMessageIds = new Set(reversedMessages.map(m => m.messageId));
-              const preservedTempMessages = tempMessages.filter(msg => !existingMessageIds.has(msg.messageId));
-              const allMessages = [...reversedMessages, ...preservedTempMessages];
-              allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-              setMessages(allMessages);
-              currentOffsetRef.current = reversedMessages.length;
-              setHasMore(reversedMessages.length < latestResult.total);
-            })
-            .catch(() => {
-              // Ignore errors - we already have preloaded messages
-            });
+          // Don't make background API call - let polling handle updates
+          // This eliminates one unnecessary API call per conversation open
         } else {
           result = await getConversationMessages(userState.pnIdentifier!, participantPnIdentifier, limit, offset, connectionId, sharedSecret, spreadsheetId);
         }
@@ -163,13 +149,14 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
       currentOffsetRef.current = reversedMessages.length;
       setHasMore(reversedMessages.length < preloadedMessages.length);
       setLoading(false);
-      // Fetch latest in background
-      loadMessages(false, false);
+      // Don't fetch in background - let polling handle updates
+      // This eliminates one unnecessary API call per conversation open
     } else {
       loadMessages(true, false);
     }
 
     // Poll for new messages - only when tab is visible, with exponential backoff on errors
+    // Increased interval to 30 seconds to reduce unnecessary API calls
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible' && !isPollingRef.current) {
         // Stop polling if too many consecutive errors
@@ -179,7 +166,7 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
         }
         loadMessages(false, false);
       }
-    }, 15000); // 15 seconds instead of 5
+    }, 30000); // 30 seconds - reduced frequency to minimize API calls
     
     return () => clearInterval(interval);
   }, [userState.isUnlocked, userState.pnIdentifier, participantPnIdentifier, preloadedMessages]);
