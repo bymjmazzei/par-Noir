@@ -10957,101 +10957,69 @@ class ProductionServer {
           accountId
         );
 
-        // Get all conversations
-        const conversations = await MessageSheetsService.getConversations(
+        // Get inbox sheet to read conversations with sharedSecret (optimized path)
+        const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
+        const inboxSheetId = await MessageSheetsService.getInboxSheet(
           token,
           messagesFolderId,
           pnIdentifier,
           accountId
         );
-
-        // Get latest message from each conversation
-        const { ConnectionsService } = await import('./server/modules/connectionsService');
-        const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
         
-        // Get user's metadata folder for connection lookup
-        const metadataFolder = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!metadataFolder) {
-          return res.json({ messages: [] });
-        }
-        const metadataFolderId = metadataFolder.metadataFolderId;
+        // Get all conversations from inbox sheet (includes sharedSecret - no connection lookup needed!)
+        const inboxConversations = await MessageSheetsService.getInboxConversations(
+          token,
+          inboxSheetId,
+          pnIdentifier,
+          accountId
+        );
 
-        const allMessages: any[] = [];
-        for (const conversation of conversations) {
+        // Process all conversations in parallel (optimized)
+        const messagePromises = inboxConversations.map(async (conversation) => {
           try {
-            // Validate and normalize otherUserPnIdentifier (getConversations already normalizes, but normalize again to be safe)
-            if (!conversation.otherUserPnIdentifier) {
-              console.warn(`[Inbox] Conversation missing otherUserPnIdentifier, skipping:`, conversation);
-              continue;
-            }
-            // Use pn identifier directly (already normalized)
-            // Look up connection to get shared secret
-            const connectionStatus = await ConnectionsService.getConnectionStatus(
-              token.access_token,
-              metadataFolderId,
-              pnIdentifier,
-              conversation.otherUserPnIdentifier
-            );
-
-            if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
-              console.warn(`[Inbox] Connection not found for ${conversation.otherUserPnIdentifier}, skipping`);
-              continue;
+            const participantPnIdentifier = conversation.participantPnIdentifier;
+            if (!participantPnIdentifier) {
+              console.warn(`[Inbox] Conversation missing participantPnIdentifier, skipping`);
+              return null;
             }
 
-            // Get connection to retrieve shared secret
-            const connectionsFile = await ConnectionsService.getConnectionsFile(
-              token.access_token,
-              metadataFolderId
-            );
-            if (!connectionsFile) {
-              console.warn(`[Inbox] Connections file not found, skipping ${conversation.otherUserPnIdentifier}`);
-              continue;
-            }
-
-            const connection = connectionsFile.connections.find(
-              c => c.connectionId === connectionStatus.connectionId
-            );
-            if (!connection) {
-              console.warn(`[Inbox] Connection not found for ${conversation.otherUserPnIdentifier}, skipping`);
-              continue;
-            }
-
-            // Allow reading messages even if shared secret is missing (will read as plain text)
+            // Use sharedSecret from inbox (already available - no connection lookup needed!)
             let decryptedSharedSecret: string | undefined;
-            if (connection.sharedSecret) {
-              decryptedSharedSecret = MetadataEncryption.decryptField(connection.sharedSecret);
+            if (conversation.sharedSecret) {
+              decryptedSharedSecret = MetadataEncryption.decryptField(conversation.sharedSecret);
               if (!decryptedSharedSecret) {
-                console.warn(`[Inbox] Failed to decrypt shared secret for ${conversation.otherUserPnIdentifier}, will read as plain text`);
+                console.warn(`[Inbox] Failed to decrypt shared secret for ${participantPnIdentifier}, will read as plain text`);
               }
             } else {
-              console.warn(`[Inbox] Connection missing shared secret for ${conversation.otherUserPnIdentifier}, will read as plain text`);
+              console.warn(`[Inbox] Conversation missing shared secret for ${participantPnIdentifier}, will read as plain text`);
             }
 
-            const conversationSheetId = await MessageSheetsService.getConversationSheet(
-              token,
-              messagesFolderId,
-              conversation.otherUserPnIdentifier,
-              pnIdentifier,
-              accountId
-            );
+            // Get messages using conversation sheet ID from inbox (already available)
             const result = await MessageSheetsService.getMessages(
               token,
-              conversationSheetId,
-              connectionStatus.connectionId,
+              conversation.spreadsheetId, // Use spreadsheetId from inbox
+              conversation.connectionId, // Use connectionId from inbox
               decryptedSharedSecret || '', // Empty string allows plain text reading
               pnIdentifier,
               accountId,
               { limit: 1, offset: 0 }
             );
+            
             if (result.messages.length > 0) {
               const msg = result.messages[0];
-              msg.toPnIdentifier = conversation.otherUserPnIdentifier;
-              allMessages.push(msg);
+              msg.toPnIdentifier = participantPnIdentifier;
+              return msg;
             }
+            return null;
           } catch (error) {
-            console.error(`Failed to get messages for conversation ${conversation.otherUserPnIdentifier}:`, error);
+            console.error(`[Inbox] Failed to get messages for conversation ${conversation.participantPnIdentifier}:`, error);
+            return null;
           }
-        }
+        });
+
+        // Wait for all conversations to load in parallel
+        const messageResults = await Promise.all(messagePromises);
+        const allMessages = messageResults.filter((msg): msg is any => msg !== null);
 
         // Sort by timestamp descending
         allMessages.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -11924,35 +11892,93 @@ class ProductionServer {
           mediaFileId
         };
 
-        // Update inbox for sender (non-blocking - fire and forget)
-        (async () => {
+        // Get inbox sheet IDs in parallel (optimized)
+        const recipientAccountIdForInbox = recipientCredentials?.credentials?.googleDriveAccounts?.[0] 
+          ? this.extractAccountId(recipientCredentials.credentials.googleDriveAccounts[0])
+          : undefined;
+        
+        const [senderInboxSheetId, recipientInboxSheetId] = await Promise.all([
+          MessageSheetsService.getInboxSheet(
+            senderToken,
+            senderMessagesFolderId!,
+            fromPnIdentifier,
+            senderAccountId,
+            senderCachedFolderIds.inboxSheetId // Pass cached ID to skip search
+          ),
+          recipientToken ? MessageSheetsService.getInboxSheet(
+            recipientToken,
+            recipientMessagesFolderId!,
+            toPnIdentifier,
+            recipientAccountIdForInbox,
+            recipientCachedFolderIds.inboxSheetId // Pass cached ID to skip search
+          ) : Promise.resolve('')
+        ]);
+
+        // Get recipient's sharedSecret from inbox (optimized path - inbox already has it)
+        let recipientSharedSecret: string | undefined;
+        if (recipientToken && recipientInboxSheetId) {
           try {
-            // Use cached ID directly - getInboxSheet will return it immediately if provided
-            const senderInboxSheetId = await MessageSheetsService.getInboxSheet(
-              senderToken,
-              senderMessagesFolderId!,
-              fromPnIdentifier,
-              senderAccountId,
-              senderCachedFolderIds.inboxSheetId // Pass cached ID to skip search
-            );
-            await MessageSheetsService.updateInboxEntry(
-              senderToken,
-              senderInboxSheetId,
+            const recipientInboxConversations = await MessageSheetsService.getInboxConversations(
+              recipientToken,
+              recipientInboxSheetId,
               toPnIdentifier,
-              senderConversationSheetId!,
-              connectionId,
-              timestamp,
-              fromPnIdentifier,
-              senderAccountId,
-              content.substring(0, 100), // Preview first 100 chars
-              sharedSecret || '' // Encrypted shared secret
+              recipientAccountIdForInbox
             );
-            console.log('[SendMessage] Updated sender inbox');
-          } catch (inboxError: any) {
-            // Log but don't fail - inbox update is non-critical
-            console.warn('[SendMessage] Failed to update sender inbox:', inboxError?.message);
+            const recipientInboxEntry = recipientInboxConversations.find(conv => conv.participantPnIdentifier === fromPnIdentifier);
+            if (recipientInboxEntry?.sharedSecret) {
+              recipientSharedSecret = recipientInboxEntry.sharedSecret;
+              console.log('[SendMessage] Using recipient sharedSecret from inbox cache (fast path)');
+            }
+          } catch (recipientInboxError: any) {
+            console.warn('[SendMessage] Failed to read recipient inbox for sharedSecret, will use connections sheet:', recipientInboxError?.message);
           }
-        })();
+        }
+
+        // Update both inboxes in parallel (non-blocking - fire and forget)
+        Promise.all([
+          (async () => {
+            try {
+              await MessageSheetsService.updateInboxEntry(
+                senderToken,
+                senderInboxSheetId,
+                toPnIdentifier,
+                senderConversationSheetId!,
+                connectionId,
+                timestamp,
+                fromPnIdentifier,
+                senderAccountId,
+                content.substring(0, 100), // Preview first 100 chars
+                sharedSecret || '' // Encrypted shared secret
+              );
+              console.log('[SendMessage] Updated sender inbox');
+            } catch (inboxError: any) {
+              // Log but don't fail - inbox update is non-critical
+              console.warn('[SendMessage] Failed to update sender inbox:', inboxError?.message);
+            }
+          })(),
+          recipientToken && recipientInboxSheetId ? (async () => {
+            try {
+              await MessageSheetsService.updateInboxEntry(
+                recipientToken,
+                recipientInboxSheetId,
+                fromPnIdentifier,
+                recipientConversationSheetId!,
+                connectionId,
+                timestamp,
+                toPnIdentifier,
+                recipientAccountIdForInbox,
+                content.substring(0, 100), // Preview first 100 chars
+                recipientSharedSecret || sharedSecret || '' // Encrypted shared secret
+              );
+              console.log('[SendMessage] Updated recipient inbox');
+            } catch (inboxError: any) {
+              // Log but don't fail - inbox update is non-critical
+              console.warn('[SendMessage] Failed to update recipient inbox:', inboxError?.message);
+            }
+          })() : Promise.resolve()
+        ]).catch(err => {
+          console.warn('[SendMessage] Error updating inboxes:', err?.message);
+        });
 
         // Record activity for sender (non-blocking - fire and forget)
         (async () => {
@@ -11995,39 +12021,8 @@ class ProductionServer {
           }
         })();
 
-        // Get recipient's sharedSecret (try inbox first, fallback to connections sheet)
-        let recipientSharedSecret: string | undefined;
-        try {
-          // Use cached ID directly - getInboxSheet will return it immediately if provided
-          if (!recipientToken) {
-            throw new Error('Recipient token not available');
-          }
-          const recipientAccountId = recipientCredentials?.credentials?.googleDriveAccounts?.[0] 
-            ? this.extractAccountId(recipientCredentials.credentials.googleDriveAccounts[0])
-            : undefined;
-          const recipientInboxSheetId = await MessageSheetsService.getInboxSheet(
-            recipientToken,
-            recipientMessagesFolderId!,
-            toPnIdentifier,
-            recipientAccountId,
-            recipientCachedFolderIds.inboxSheetId // Pass cached ID to skip search
-          );
-          const recipientInboxConversations = await MessageSheetsService.getInboxConversations(
-            recipientToken,
-            recipientInboxSheetId,
-            toPnIdentifier,
-            recipientAccountId
-          );
-          const recipientInboxEntry = recipientInboxConversations.find(conv => conv.participantPnIdentifier === fromPnIdentifier);
-          if (recipientInboxEntry?.sharedSecret) {
-            recipientSharedSecret = recipientInboxEntry.sharedSecret;
-            console.log('[SendMessage] Using recipient sharedSecret from inbox cache (fast path)');
-          }
-        } catch (recipientInboxError: any) {
-          console.warn('[SendMessage] Failed to read recipient inbox for sharedSecret, falling back to connections sheet:', recipientInboxError?.message);
-        }
-
         // Fallback: Get recipient's connection to retrieve shared secret - use Sheets directly
+        // (Only if inbox lookup didn't find it)
         if (!recipientSharedSecret) {
           if (!recipientMetadataFolderId) {
             return res.status(500).json({ error: 'Recipient metadata folder not found' });
@@ -12143,42 +12138,7 @@ class ProductionServer {
           )
         ]);
         console.log('[SendMessage] Messages appended to both sheets successfully');
-
-        // Update inbox for recipient (non-blocking - fire and forget)
-        (async () => {
-          try {
-            // Use cached ID directly - getInboxSheet will return it immediately if provided
-            if (!recipientToken) {
-              throw new Error('Recipient token not available');
-            }
-            const recipientAccountIdForUpdate = recipientCredentials?.credentials?.googleDriveAccounts?.[0] 
-              ? this.extractAccountId(recipientCredentials.credentials.googleDriveAccounts[0])
-              : undefined;
-            const recipientInboxSheetId = await MessageSheetsService.getInboxSheet(
-              recipientToken,
-              recipientMessagesFolderId!,
-              toPnIdentifier,
-              recipientAccountIdForUpdate,
-              recipientCachedFolderIds.inboxSheetId // Pass cached ID to skip search
-            );
-            await MessageSheetsService.updateInboxEntry(
-              recipientToken,
-              recipientInboxSheetId,
-              fromPnIdentifier,
-              recipientConversationSheetId!,
-              connectionId,
-              timestamp,
-              toPnIdentifier,
-              recipientAccountIdForUpdate,
-              content.substring(0, 100), // Preview first 100 chars
-              recipientSharedSecret || '' // Encrypted shared secret
-            );
-            console.log('[SendMessage] Updated recipient inbox');
-          } catch (inboxError: any) {
-            // Log but don't fail - inbox update is non-critical
-            console.warn('[SendMessage] Failed to update recipient inbox:', inboxError?.message);
-          }
-        })();
+        // Note: Inbox updates are already handled above in parallel
 
         // Record activity for recipient (non-blocking - fire and forget)
         (async () => {
