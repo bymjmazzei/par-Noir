@@ -5203,6 +5203,147 @@ class ProductionServer {
       }
     });
 
+    // POST /api/storage/initialize/:identityId - Re-initialize Google Drive folder structure
+    this.app.post('/api/storage/initialize/:identityId', async (req, res) => {
+      try {
+        const { identityId } = req.params;
+        if (!identityId) {
+          return res.status(400).json({ error: 'Missing identityId parameter' });
+        }
+
+        const sanitizedIdentityId = identityId.replace(/[^a-zA-Z0-9-]/g, '');
+        const pnIdentifier = sanitizedIdentityId.startsWith('pn-') ? sanitizedIdentityId : `pn-${sanitizedIdentityId}`;
+
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        
+        const credentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!credentials?.credentials) {
+          return res.status(404).json({ error: 'No storage credentials found for identity' });
+        }
+
+        const googleDriveAccounts = credentials.credentials.googleDriveAccounts || 
+          (credentials.credentials.googleDrive ? [credentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'No Google Drive accounts connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = this.extractAccountId(account);
+        
+        const token = {
+          access_token: account.access_token || account.accessToken,
+          refresh_token: account.refresh_token || account.refreshToken,
+          expires_at: account.expires_at,
+          expires_in: account.expires_in
+        };
+        const accessToken = token.access_token;
+
+        // Re-run the initialization process (extract the initialization logic)
+        console.log(`[StorageInitialize POST] Re-initializing folder structure for identityId: ${sanitizedIdentityId}`);
+        
+        try {
+          const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnIdentifier);
+          
+          const normalizedPn = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+          const pnFolderName = `par Noir - ${normalizedPn}`;
+          const pnFolderQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+          const pnFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderQuery)}&fields=files(id)&pageSize=1`;
+          const pnFolderResponse = await fetch(pnFolderUrl, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+          
+          let pnFolderId: string | null = null;
+          if (pnFolderResponse.ok) {
+            const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string }> };
+            if (pnFolderData.files && pnFolderData.files.length > 0) {
+              pnFolderId = pnFolderData.files[0].id;
+            }
+          }
+          
+          if (pnFolderId) {
+            try {
+              const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+              const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(token, pnFolderId, pnIdentifier, accountId);
+              await MessageSheetsService.getOrCreateInboxSheet(token, messagesFolderId, pnIdentifier, accountId);
+            } catch (msgError: any) {
+              console.warn(`[StorageInitialize POST] Failed to initialize messages folder:`, msgError?.message);
+            }
+          }
+          
+          await this.initializeContentClassFolders(token, metadataFolderId, pnIdentifier, accountId);
+          await this.initializeIndexFiles(token, metadataFolderId, pnIdentifier, accountId);
+          
+          // Initialize all metadata Sheets files
+          const { PreferencesSheetsService } = await import('./server/modules/preferencesSheetsService');
+          const { NotificationsSheetsService } = await import('./server/modules/notificationsSheetsService');
+          const { ActivityLedgerSheetsService } = await import('./server/modules/activityLedgerSheetsService');
+          const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+          const { EngagementSheetsService } = await import('./server/modules/engagementSheetsService');
+          const { MessagingLedgerSheetsService } = await import('./server/modules/messagingLedgerSheetsService');
+          const { ZKPDataPointsSheetsService } = await import('./server/modules/zkpDataPointsSheetsService');
+          const { ThirdPartyPermissionsSheetsService } = await import('./server/modules/thirdPartyPermissionsSheetsService');
+          
+          // Initialize each sheet (get or create)
+          const initSheet = async (service: any, getMethod: string, createMethod: string, name: string) => {
+            try {
+              await service[getMethod](token, metadataFolderId, pnIdentifier, accountId);
+            } catch (getError: any) {
+              if (getError?.message?.includes('not found')) {
+                await service[createMethod](token, metadataFolderId, pnIdentifier, accountId);
+                console.log(`[StorageInitialize POST] Created ${name}`);
+              } else {
+                throw getError;
+              }
+            }
+          };
+          
+          await initSheet(PreferencesSheetsService, 'getPreferencesSheet', 'createPreferencesSheet', 'preferences.xlsx');
+          await initSheet(NotificationsSheetsService, 'getNotificationsSheet', 'createNotificationsSheet', 'notifications.xlsx');
+          await initSheet(ActivityLedgerSheetsService, 'getActivityLedgerSheet', 'createActivityLedgerSheet', 'activity_ledger.xlsx');
+          await initSheet(ConnectionsSheetsService, 'getConnectionsSheet', 'createConnectionsSheet', 'connections.xlsx');
+          await initSheet(EngagementSheetsService, 'getEngagementSheet', 'createEngagementSheet', 'engagement.xlsx');
+          await initSheet(MessagingLedgerSheetsService, 'getMessagingLedgerSheet', 'createMessagingLedgerSheet', 'messaging_ledger.xlsx');
+          await initSheet(ZKPDataPointsSheetsService, 'getZKPDataPointsSheet', 'createZKPDataPointsSheet', 'zkp-data-points.xlsx');
+          await initSheet(ThirdPartyPermissionsSheetsService, 'getThirdPartyPermissionsSheet', 'createThirdPartyPermissionsSheet', 'third-party-permissions.xlsx');
+          
+          // Initialize followers/following sheets
+          try {
+            await ConnectionsSheetsService.getFollowersSheet(token, metadataFolderId, pnIdentifier, accountId);
+          } catch {
+            await ConnectionsSheetsService.createFollowersSheet(token, metadataFolderId, pnIdentifier, accountId);
+          }
+          try {
+            await ConnectionsSheetsService.getFollowingSheet(token, metadataFolderId, pnIdentifier, accountId);
+          } catch {
+            await ConnectionsSheetsService.createFollowingSheet(token, metadataFolderId, pnIdentifier, accountId);
+          }
+          
+          return res.json({
+            success: true,
+            message: 'Google Drive folder structure initialized successfully',
+            identityId: pnIdentifier,
+            metadataFolderId,
+            pnFolderId
+          });
+        } catch (initError: any) {
+          console.error(`[StorageInitialize POST] Failed to initialize:`, initError);
+          return res.status(500).json({
+            error: 'Failed to initialize Google Drive folder structure',
+            message: initError.message || String(initError),
+            details: 'Check Railway logs for more details'
+          });
+        }
+      } catch (error: any) {
+        console.error('Error in storage initialize endpoint:', error);
+        return res.status(500).json({
+          error: 'Failed to initialize storage',
+          message: error.message
+        });
+      }
+    });
+
     // GET /api/storage/owner-index/:identityId - Read owner file index from Sheets (merged: content-class + root)
     this.app.get('/api/storage/owner-index/:identityId', async (req, res) => {
       try {
