@@ -13022,7 +13022,9 @@ class ProductionServer {
             requesterPnIdentifier,
             recipientAccessToken,
             recipientMetadataFolderId,
-            recipientPnIdentifier
+            recipientPnIdentifier,
+            requesterAccountId,
+            recipientAccountId
           );
         } catch (connectionError: any) {
           console.error('[ConnectionRequest] Error in ConnectionsService.sendConnectionRequest:', connectionError);

@@ -288,7 +288,9 @@ export class ConnectionsService {
         requesterPnIdentifier,
         recipientAccessToken,
         recipientMetadataFolder,
-        recipientPnIdentifier
+        recipientPnIdentifier,
+        requesterAccountId,
+        recipientAccountId
       );
     }
   }
@@ -302,7 +304,9 @@ export class ConnectionsService {
     requesterPnIdentifier: string,
     recipientAccessToken: string,
     recipientMetadataFolder: string,
-    recipientPnIdentifier: string
+    recipientPnIdentifier: string,
+    requesterAccountId?: string,
+    recipientAccountId?: string
   ): Promise<Connection> {
     // Use pn identifiers directly (already normalized)
 
@@ -310,7 +314,7 @@ export class ConnectionsService {
     const now = new Date().toISOString();
 
     // Update requester's connections file
-    let requesterFile = await this.getConnectionsFile(requesterAccessToken, requesterMetadataFolder);
+    let requesterFile = await this.getConnectionsFile(requesterAccessToken, requesterMetadataFolder, requesterPnIdentifier, requesterAccountId);
     if (!requesterFile) {
       requesterFile = {
         identifier: requesterPnIdentifier,
@@ -335,10 +339,10 @@ export class ConnectionsService {
       createdAt: now
     });
     requesterFile.updatedAt = now;
-    await this.updateConnectionsFile(requesterAccessToken, requesterMetadataFolder, requesterPnIdentifier, requesterFile);
+    await this.updateConnectionsFile(requesterAccessToken, requesterMetadataFolder, requesterPnIdentifier, requesterFile, requesterPnIdentifier, requesterAccountId);
 
     // Update recipient's connections file
-    let recipientFile = await this.getConnectionsFile(recipientAccessToken, recipientMetadataFolder);
+    let recipientFile = await this.getConnectionsFile(recipientAccessToken, recipientMetadataFolder, recipientPnIdentifier, recipientAccountId);
     if (!recipientFile) {
       recipientFile = {
         identifier: recipientPnIdentifier,
@@ -364,7 +368,7 @@ export class ConnectionsService {
       createdAt: now
     });
     recipientFile.updatedAt = now;
-    await this.updateConnectionsFile(recipientAccessToken, recipientMetadataFolder, recipientPnIdentifier, recipientFile);
+    await this.updateConnectionsFile(recipientAccessToken, recipientMetadataFolder, recipientPnIdentifier, recipientFile, recipientPnIdentifier, recipientAccountId);
 
     return {
       connectionId,
