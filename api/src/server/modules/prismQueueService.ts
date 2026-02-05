@@ -159,3 +159,49 @@ export async function getQueueStats(): Promise<{ pending: number; approved: numb
   }
   return counts;
 }
+
+/**
+ * Seed demo flagged content from existing aggregator files (admin only).
+ * Adds up to `limit` public files to the queue that are not already queued.
+ */
+export async function seedDemoQueueItems(limit = 5): Promise<{ added: number; fileIds: string[] }> {
+  const db = getDatabasePool();
+
+  const existing = await db.query(
+    `SELECT file_id FROM prism_review_queue`
+  );
+  const alreadyQueued = new Set((existing.rows as { file_id: string }[]).map((r) => r.file_id));
+
+  const candidates: { file_id: string; pn_identifier: string }[] = [];
+
+  const tables = ['aggregator_media', 'aggregator_thoughts', 'aggregator_collections'] as const;
+  for (const table of tables) {
+    const r = await db.query(
+      `SELECT file_id, pn_identifier FROM ` + table + `
+       WHERE pn_identifier IS NOT NULL AND (metadata->>'isPublic')::text = 'true'
+       ORDER BY created_at DESC LIMIT 20`,
+      []
+    );
+    for (const row of (r.rows as { file_id: string; pn_identifier: string }[])) {
+      if (!alreadyQueued.has(row.file_id)) {
+        candidates.push(row);
+        alreadyQueued.add(row.file_id);
+      }
+    }
+  }
+
+  const toAdd = candidates.slice(0, limit);
+  const fileIds: string[] = [];
+
+  for (const { file_id, pn_identifier } of toAdd) {
+    await addToPrismQueue({
+      fileId: file_id,
+      ownerPnIdentifier: pn_identifier,
+      flagSource: 'bot',
+      reporterPnIdentifier: null,
+    });
+    fileIds.push(file_id);
+  }
+
+  return { added: fileIds.length, fileIds };
+}

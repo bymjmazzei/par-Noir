@@ -4,7 +4,7 @@
  */
 
 import { Request, Response } from 'express';
-import { getPendingQueueItems, submitVote, addToPrismQueue, getQueueStats } from './prismQueueService';
+import { getPendingQueueItems, submitVote, addToPrismQueue, getQueueStats, seedDemoQueueItems } from './prismQueueService';
 import { isPrismAdmin, isBootstrapMode } from './prismAdminService';
 import { getReputationScore, submitRayApplication } from './prismReputationService';
 
@@ -299,6 +299,40 @@ export function setupPrismRoutes(app: any): void {
     } catch (err: any) {
       console.error('[Prism] Admin check error:', err);
       return res.status(500).json({ error: err?.message || 'Failed to check admin' });
+    }
+  });
+
+  /**
+   * POST /api/prism/admin/seed-demo
+   * Seed demo flagged content from existing public aggregator files. Admin only.
+   * Query: ?limit=5 (optional, default 5)
+   */
+  app.post('/api/prism/admin/seed-demo', async (req: Request, res: Response) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader?.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      const token = authHeader.substring(7);
+      const { PNOAuthService } = await import('./pnOAuthService');
+      const payload = PNOAuthService.validateAccessToken(token);
+      if (!payload?.pnIdentifier || !isPrismAdmin(payload.pnIdentifier)) {
+        return res.status(403).json({ error: 'Admin required' });
+      }
+      const limit = Math.min(parseInt(String(req.query.limit || '5'), 10) || 5, 20);
+      const { added, fileIds } = await seedDemoQueueItems(limit);
+      return res.json({
+        success: true,
+        added,
+        fileIds,
+        message:
+          added > 0
+            ? `Added ${added} item(s) to the review queue`
+            : 'No public aggregator files found to add. Upload public content via the dashboard or browser first.',
+      });
+    } catch (err: any) {
+      console.error('[Prism] Seed demo error:', err);
+      return res.status(500).json({ error: err?.message || 'Failed to seed demo' });
     }
   });
 

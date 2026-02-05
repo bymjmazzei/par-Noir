@@ -9,7 +9,7 @@ import { Lock, Shield, Users, FileCheck, LogOut, ShieldCheck } from 'lucide-reac
 import { ApplyModal } from './components/ApplyModal';
 import { RayView } from './components/RayView';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { fetchAdminCheck, fetchAdminStats, fetchReputation, submitRayApply, ReputationResult } from './services/prismApi';
+import { fetchAdminCheck, fetchAdminStats, fetchReputation, submitRayApply, seedDemoQueue, ReputationResult } from './services/prismApi';
 import { getPrismOAuthUrl } from './utils/oauth';
 
 function LockedView({ onApplyOpen }: { onApplyOpen: () => void }) {
@@ -118,6 +118,23 @@ function UnlockedView() {
   const [reputation, setReputation] = useState<ReputationResult | null>(null);
   const [applyStatus, setApplyStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [applyError, setApplyError] = useState<string | null>(null);
+  const [seedStatus, setSeedStatus] = useState<string | null>(null);
+
+  const handleSeedDemo = async () => {
+    if (!session?.accessToken) return;
+    setSeedStatus('Seeding...');
+    try {
+      const r = await seedDemoQueue(session.accessToken, 5);
+      setSeedStatus(r.message);
+      if (r.added > 0 && stats !== null) {
+        fetchAdminStats(session.accessToken).then(setStats);
+      }
+      setTimeout(() => setSeedStatus(null), 5000);
+    } catch (e: any) {
+      setSeedStatus(e?.message || 'Seed failed');
+      setTimeout(() => setSeedStatus(null), 5000);
+    }
+  };
 
   const handleApply = async () => {
     if (!session?.accessToken) return;
@@ -210,19 +227,29 @@ function UnlockedView() {
           </div>
         )}
         {adminState?.isAdmin && stats !== null && (
-          <div className="grid grid-cols-3 gap-4 mb-8">
-            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">{stats.pending}</div>
-              <div className="text-xs text-neutral-500">Pending</div>
+          <div className="mb-8">
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold text-amber-400">{stats.pending}</div>
+                <div className="text-xs text-neutral-500">Pending</div>
+              </div>
+              <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold text-emerald-500">{stats.approved}</div>
+                <div className="text-xs text-neutral-500">Approved</div>
+              </div>
+              <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold text-red-500">{stats.denied}</div>
+                <div className="text-xs text-neutral-500">Denied</div>
+              </div>
             </div>
-            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold text-emerald-500">{stats.approved}</div>
-              <div className="text-xs text-neutral-500">Approved</div>
-            </div>
-            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold text-red-500">{stats.denied}</div>
-              <div className="text-xs text-neutral-500">Denied</div>
-            </div>
+            <button
+              type="button"
+              onClick={handleSeedDemo}
+              disabled={!!seedStatus}
+              className="px-4 py-2 text-sm bg-amber-900/50 text-amber-400 border border-amber-800 rounded-lg hover:bg-amber-800/50 disabled:opacity-60"
+            >
+              {seedStatus || 'Seed demo content'}
+            </button>
           </div>
         )}
         <div className="mb-6 text-center">
