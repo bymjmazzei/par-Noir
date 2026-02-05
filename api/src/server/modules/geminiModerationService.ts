@@ -45,10 +45,7 @@ export class GeminiModerationService {
       const base64 = await this.toBase64(content);
       const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-      const prompt = `Analyze this content for DMCA/copyright risk. 
-Check for: unauthorized use of copyrighted music, video, images, or text (e.g. commercial recordings, movie clips, TV shows, branded content used without permission, pirated material).
-Return JSON only: {"flagged": boolean, "reason": string, "confidence": number (0-1)}
-If content appears to be original, user-created, or properly licensed, set flagged to false.`;
+      const prompt = `Analyze this content for DMCA/copyright risk. Flag if copyrighted music, video, images, or text is detectable at any level—including background or incidental use (e.g. music playing while someone talks). Do not distinguish between primary and incidental use. Only allow content with no recognizable copyrighted material, original/creator-owned content, or properly licensed content. Return JSON only: {"flagged": boolean, "reason": string, "confidence": number (0-1)}. If content appears to be original, user-created, or properly licensed, set flagged to false.`;
 
       const result = await model.generateContent([
         { inlineData: { data: base64, mimeType } },
@@ -65,6 +62,45 @@ If content appears to be original, user-created, or properly licensed, set flagg
       };
     } catch (error) {
       console.error('❌ [GeminiModerationService] DMCA check error:', error);
+      return { flagged: false, confidence: 0, reason: 'Check unavailable' };
+    }
+  }
+
+  /**
+   * Check multiple sampled clips in one request (cost-effective for long media).
+   * If ANY clip appears to violate, returns flagged: true.
+   */
+  async checkDMCASampled(clips: { buffer: Buffer; mimeType: string }[]): Promise<DMCACheckResult> {
+    if (!this.isInitialized || !this.genAI || !clips.length) {
+      if (!clips.length) {
+        console.warn('⚠️ [GeminiModerationService] No clips to check; allowing content');
+      } else {
+        console.warn('⚠️ [GeminiModerationService] Service not initialized; allowing content');
+      }
+      return { flagged: false, confidence: 0 };
+    }
+
+    try {
+      const parts: Array<{ inlineData: { data: string; mimeType: string } } | { text: string }> = [];
+      for (const clip of clips) {
+        const base64 = clip.buffer.toString('base64');
+        parts.push({ inlineData: { data: base64, mimeType: clip.mimeType } });
+      }
+      const prompt = `These are ${clips.length} clips sampled from the same file. Analyze each for DMCA/copyright risk. Flag if copyrighted music, video, images, or text is detectable at any level—including background or incidental use. Do not distinguish between primary and incidental use. Only allow if no recognizable copyrighted material, original/creator-owned content, or properly licensed content. If ANY clip appears to violate, return flagged: true. Return JSON only: {"flagged": boolean, "reason": string, "confidence": number (0-1)}.`;
+      parts.push({ text: prompt });
+
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const result = await model.generateContent(parts);
+      const responseText = result.response.text();
+      const response = this.parseJSONResponse(responseText);
+
+      return {
+        flagged: response.flagged === true,
+        reason: typeof response.reason === 'string' ? response.reason : undefined,
+        confidence: typeof response.confidence === 'number' ? response.confidence : 0.8,
+      };
+    } catch (error) {
+      console.error('❌ [GeminiModerationService] DMCA sampled check error:', error);
       return { flagged: false, confidence: 0, reason: 'Check unavailable' };
     }
   }
