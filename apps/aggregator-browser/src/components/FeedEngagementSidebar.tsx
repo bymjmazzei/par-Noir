@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus, Edit, Send } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus, Edit, Send, Flag } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { Lock } from 'lucide-react';
@@ -28,6 +28,7 @@ interface FeedEngagementSidebarProps {
   onCreatorClick?: (creatorId: string) => void;
   onMessage?: (creatorId: string) => void;
   indexedFiles?: IndexedFile[]; // For loading profile images
+  onReportCopyright?: () => void;
 }
 
 // Format numbers: full numbers up to 999, then one decimal place (e.g., 20.1K, 5.1M)
@@ -54,7 +55,8 @@ export function FeedEngagementSidebar({
   isOwner = false,
   onCreatorClick,
   onMessage,
-  indexedFiles = []
+  indexedFiles = [],
+  onReportCopyright,
 }: FeedEngagementSidebarProps) {
   const { userState } = useUserState();
   const { success, error } = useToast();
@@ -357,6 +359,24 @@ export function FeedEngagementSidebar({
       )}
 
 
+
+      {/* Report Copyright - show for non-owners when unlocked */}
+      {onReportCopyright && !calculatedIsOwner && userState.isUnlocked && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            onReportCopyright();
+          }}
+          className="flex flex-col items-center space-y-1 group"
+          title="Report copyright"
+        >
+          <Flag
+            className="h-6 w-6 md:h-7 md:w-7 text-white/80 hover:text-amber-400 transition-colors"
+            style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+          />
+        </button>
+      )}
 
       {/* More Options */}
       {onMore && (

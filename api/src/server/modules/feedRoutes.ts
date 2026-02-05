@@ -84,6 +84,26 @@ export function setupFeedRoutes(app: any) {
 
       // If fileId is provided, add existing file to feed
       if (fileId) {
+        const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
+        const metadataService = AggregatorMetadataServiceDB.getInstance();
+        const fileEntry = await metadataService.getFileMetadata(fileId);
+
+        // DMCA gate: check content before adding to feed (private→indexed)
+        if (fileEntry) {
+          const { googleDriveProxyService } = await import('./googleDriveProxy');
+          const { runDMCACheck } = await import('./dmcaGate');
+          const ownerPn = fileEntry.pnIdentifier ?? '';
+          const driveFileId = String((fileEntry.metadata as any)?.backendFileId ?? fileId ?? '');
+          const mimeType = String((fileEntry.metadata as any)?.mimeType ?? 'application/octet-stream');
+          const dmcaResult = await runDMCACheck(googleDriveProxyService, ownerPn, driveFileId, mimeType);
+          if (!dmcaResult.passed) {
+            return res.status(403).json({
+              error: 'Content flagged for DMCA review',
+              message: dmcaResult.reason || 'This content has been flagged for copyright review.',
+            });
+          }
+        }
+
         const success = await FeedService.addPostToFeed(feedId, fileId, addedBy || tokenPayload.did);
         if (!success) {
           return res.status(500).json({ error: 'Failed to add file to feed' });
@@ -91,10 +111,6 @@ export function setupFeedRoutes(app: any) {
 
         // Update file metadata to include this feedId in feedIds array
         try {
-          const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-          const metadataService = AggregatorMetadataServiceDB.getInstance();
-          
-          // Get current metadata
           const currentEntry = await metadataService.getFileMetadata(fileId);
           if (currentEntry) {
             const currentFeedIds = (currentEntry.metadata as any).feedIds || [];

@@ -81,6 +81,7 @@ export function HomePage() {
     handleComment,
     handleLike,
     handleShare,
+    handleReportCopyright,
     handleCreatorClick,
     handleNextFeed,
     handlePreviousFeed,
@@ -293,6 +294,7 @@ export function HomePage() {
                 userState={userState}
                 onCreatorClick={(id) => setViewingCreatorId(id)}
                 onMessage={(id) => { setInitialThread({ participantPnIdentifier: id }); setShowInbox(true); setActiveBottomTab('messages'); }}
+                onReportCopyright={handleReportCopyright}
               />
               {viewMode === 'feed' && hasMore && <div id="feed-infinite-scroll-sentinel" data-feed-container="true" style={{ height: '1px', width: '100%' }} />}
               {viewMode === 'feed' && isLoadingMore && <div className="flex justify-center py-4"><p className="text-text-secondary text-sm">Loading more...</p></div>}

@@ -39,6 +39,7 @@ export interface MePageProps {
   setEditingFile: (f: IndexedFile | null) => void;
   onSave: ((file: IndexedFile) => void) | undefined;
   success: (msg: string) => void;
+  onReportCopyright?: (file: IndexedFile) => void;
 }
 
 export function MePage({
@@ -70,6 +71,7 @@ export function MePage({
   setEditingFile,
   onSave,
   success,
+  onReportCopyright,
 }: MePageProps) {
   const emptyStateCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null) || null;
   const emptyStateName = emptyStateCreatorId ? (getDisplayName(emptyStateCreatorId) || emptyStateCreatorId) : 'User';
@@ -134,6 +136,7 @@ export function MePage({
             mePageTab={mePageTab}
             onCreatorClick={handleCreatorClick}
             onMessage={handleMessage}
+            onReportCopyright={onReportCopyright}
             onEdit={isOwnIndex ? (file) => setEditingFile(file) : undefined}
             onSave={onSave}
           />

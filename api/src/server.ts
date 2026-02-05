@@ -32,8 +32,10 @@ const DEFAULT_ORIGINS = [
   'https://pn-parnoir.web.app',
   'https://par-noir-dashboard.web.app',
   'https://browse.parnoir.com',
+  'https://prism.parnoir.com',
   'http://localhost:3000',
-  'http://localhost:3001'
+  'http://localhost:3001',
+  'http://localhost:5174'
 ];
 
 const ENV_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean) || [];
@@ -3009,6 +3011,9 @@ class ProductionServer {
     const { setupFeedRoutes } = await import('./server/modules/feedRoutes');
     setupFeedRoutes(this.app);
 
+    const { setupPrismRoutes } = await import('./server/modules/prismRoutes');
+    setupPrismRoutes(this.app);
+
     // Widget Routes - Feed Widgets and Public Index
     const { setupWidgetRoutes } = await import('./server/modules/widgetRoutes');
     setupWidgetRoutes(this.app);
@@ -3285,6 +3290,21 @@ class ProductionServer {
             // Private files should NOT be in the database (they only exist in Google Drive + companion metadata)
             if (initialMetadata.isPublic === true) {
               try {
+                // DMCA gate: check content before indexing
+                const { runDMCACheck } = await import('./server/modules/dmcaGate');
+                const dmcaResult = await runDMCACheck(
+                  googleDriveProxyService,
+                  userIdentifier,
+                  fileId,
+                  (driveFile as any).mimeType || 'application/octet-stream',
+                  accountId
+                );
+                if (!dmcaResult.passed) {
+                  return res.status(403).json({
+                    error: 'Content flagged for DMCA review',
+                    message: dmcaResult.reason || 'This content has been flagged for copyright review and cannot be made public yet.',
+                  });
+                }
                 // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
                 await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
                 console.log(`[MetadataIndex] Created metadata entry for ${fileId}`);
@@ -4482,6 +4502,20 @@ class ProductionServer {
                   contentClass: determinedContentClass,
                   thumbnailFileId: metadataForType.thumbnailFileId
                 };
+
+                // DMCA gate: check content before indexing
+                const ownerPn = String(submitTokenPayload.pnIdentifier ?? '');
+                const driveFileId = String((current.metadata as any)?.backendFileId ?? actualFileId ?? '');
+                const mimeType = String((current.metadata as any)?.mimeType ?? 'application/octet-stream');
+                const { googleDriveProxyService: driveProxy } = await import('./server/modules/googleDriveProxy');
+                const { runDMCACheck } = await import('./server/modules/dmcaGate');
+                const dmcaResult = await runDMCACheck(driveProxy, ownerPn, driveFileId, mimeType, (req.query.accountId as string) || undefined);
+                if (!dmcaResult.passed) {
+                  return res.status(403).json({
+                    error: 'Content flagged for DMCA review',
+                    message: dmcaResult.reason || 'This content has been flagged for copyright review and cannot be made public yet.',
+                  });
+                }
                 
                 await service.submitMetadata(
                   publicMetadata as any,
@@ -5041,6 +5075,23 @@ class ProductionServer {
               } catch (msgError: any) {
                 console.warn(`[StorageCredentials PUT] Failed to initialize messaging_ledger.xlsx:`, msgError?.message || msgError);
               }
+
+              // Initialize prism_ledger.xlsx (reports, flagged content, Ray vote history)
+              try {
+                const { PrismLedgerSheetsService } = await import('./server/modules/prismLedgerSheetsService');
+                try {
+                  await PrismLedgerSheetsService.getPrismLedgerSheet(token, metadataFolderId, pnIdentifier, accountId);
+                } catch (prismSheetError: any) {
+                  if (prismSheetError?.message?.includes('not found')) {
+                    await PrismLedgerSheetsService.createPrismLedgerSheet(token, metadataFolderId, pnIdentifier, accountId);
+                  } else {
+                    throw prismSheetError;
+                  }
+                }
+                console.log(`[StorageCredentials PUT] Initialized prism_ledger.xlsx for identityId: ${sanitizedIdentityId}`);
+              } catch (prismError: any) {
+                console.warn(`[StorageCredentials PUT] Failed to initialize prism_ledger.xlsx:`, prismError?.message || prismError);
+              }
               
               // Note: public-file-index.xlsx and owner-file-index.xlsx are initialized in initializeIndexFiles() above (line 4846)
               // Note: preferences.xlsx is already initialized above (line 4879) - no need to initialize again
@@ -5307,6 +5358,7 @@ class ProductionServer {
           const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
           const { EngagementSheetsService } = await import('./server/modules/engagementSheetsService');
           const { MessagingLedgerSheetsService } = await import('./server/modules/messagingLedgerSheetsService');
+          const { PrismLedgerSheetsService } = await import('./server/modules/prismLedgerSheetsService');
           const { ZKPDataPointsSheetsService } = await import('./server/modules/zkpDataPointsSheetsService');
           const { ThirdPartyPermissionsSheetsService } = await import('./server/modules/thirdPartyPermissionsSheetsService');
           
@@ -5342,6 +5394,7 @@ class ProductionServer {
           await initSheet(ConnectionsSheetsService, 'getConnectionsSheet', 'createConnectionsSheet', 'connections.xlsx');
           await initSheet(EngagementSheetsService, 'getEngagementSheet', 'createEngagementSheet', 'engagement.xlsx');
           await initSheet(MessagingLedgerSheetsService, 'getMessagingLedgerSheet', 'createMessagingLedgerSheet', 'messaging_ledger.xlsx');
+          await initSheet(PrismLedgerSheetsService, 'getPrismLedgerSheet', 'createPrismLedgerSheet', 'prism_ledger.xlsx');
           await initSheet(ZKPDataPointsSheetsService, 'getZKPDataPointsSheet', 'createZKPDataPointsSheet', 'zkp-data-points.xlsx');
           await initSheet(ThirdPartyPermissionsSheetsService, 'getThirdPartyPermissionsSheet', 'createThirdPartyPermissionsSheet', 'third-party-permissions.xlsx');
           

@@ -8,6 +8,9 @@
         ],
         "browse": [
           "browse-parnoir"
+        ],
+        "prism": [
+          "prism-parnoir"
         ]
       }
     }

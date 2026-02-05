@@ -47,16 +47,18 @@ Google Drive Root
    - Contains 5 sheets: Likes, Dislikes, Comments, Shares, Saves
 5. **`messaging_ledger.xlsx`** - Messaging activity ledger (replaces old messaging_ledger.json)
    - Contains 1 sheet: Activities
-6. **`preferences.xlsx`** - Preference interaction log (hybrid: preferences.json maintains current state, preferences.xlsx logs all interactions)
+6. **`prism_ledger.xlsx`** - Prism DMCA ledger (reports, flagged content, Ray vote history)
+   - Contains 1 sheet: Activities
+7. **`preferences.xlsx`** - Preference interaction log (hybrid: preferences.json maintains current state, preferences.xlsx logs all interactions)
    - Contains 1 sheet: Interactions
    - Logs: tag preferences, curated feed preferences, display name changes, profile image changes, feed subscriptions, category/subject preferences, curation card interactions
-7. **`zkp-data-points.xlsx`** - Zero-knowledge proof data points (replaces old zkp-data-points.json)
+8. **`zkp-data-points.xlsx`** - Zero-knowledge proof data points (replaces old zkp-data-points.json)
    - Contains 1 sheet: Data Points
-8. **`third-party-permissions.xlsx`** - Third-party app permissions (replaces old third-party-permissions.json)
+9. **`third-party-permissions.xlsx`** - Third-party app permissions (replaces old third-party-permissions.json)
    - Contains 1 sheet: Permissions
-9. **`public-file-index.xlsx`** - Public file index (replaces old public-file-index.json)
+10. **`public-file-index.xlsx`** - Public file index (replaces old public-file-index.json)
    - Contains 1 sheet: Files (publicly readable)
-10. **`owner-file-index.xlsx`** - Owner file index (replaces old owner-file-index.json)
+11. **`owner-file-index.xlsx`** - Owner file index (replaces old owner-file-index.json)
     - Contains 1 sheet: Files (private)
 
 ### Content Class Folders (in `_metadata/`)
@@ -118,7 +120,7 @@ When a user authenticates with Google Drive, the following happens:
 5. **Create content class index files**: `{folder}-owner-index.xlsx` and `{folder}-public-index.xlsx` in each content class folder (e.g. `thoughts-owner-index.xlsx`, `thoughts-public-index.xlsx` in `thoughts/`)
 6. **Initialize metadata files**:
    - JSON files: `profile.json`, `preferences.json` (current state)
-   - Sheets files: `connections.xlsx`, `notifications.xlsx`, `activity_ledger.xlsx`, `engagement.xlsx`, `messaging_ledger.xlsx`, `preferences.xlsx` (interaction log), `zkp-data-points.xlsx`, `third-party-permissions.xlsx`, `public-file-index.xlsx`, `owner-file-index.xlsx`
+   - Sheets files: `connections.xlsx`, `notifications.xlsx`, `activity_ledger.xlsx`, `engagement.xlsx`, `messaging_ledger.xlsx`, `prism_ledger.xlsx`, `preferences.xlsx` (interaction log), `zkp-data-points.xlsx`, `third-party-permissions.xlsx`, `public-file-index.xlsx`, `owner-file-index.xlsx`
 
 ## Notes
 

@@ -673,6 +673,49 @@ export async function initializeDatabase(): Promise<void> {
     // Clean up expired refresh tokens periodically (via application logic)
     // The cleanup will happen in the service layer
 
+    // Prism DMCA review tables
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS prism_review_queue (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        file_id VARCHAR(255) NOT NULL,
+        owner_pn_identifier VARCHAR(255) NOT NULL,
+        flag_source VARCHAR(50) NOT NULL,
+        reporter_pn_identifier VARCHAR(255),
+        status VARCHAR(50) DEFAULT 'pending',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_prism_review_queue_status ON prism_review_queue(status)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_prism_review_queue_file_id ON prism_review_queue(file_id)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_prism_review_queue_created_at ON prism_review_queue(created_at DESC)`);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS prism_votes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        queue_item_id UUID NOT NULL REFERENCES prism_review_queue(id) ON DELETE CASCADE,
+        ray_pn_identifier VARCHAR(255) NOT NULL,
+        vote VARCHAR(20) NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        UNIQUE(queue_item_id, ray_pn_identifier)
+      )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_prism_votes_queue_item ON prism_votes(queue_item_id)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_prism_votes_ray ON prism_votes(ray_pn_identifier)`);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS prism_ray_applications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        pn_identifier VARCHAR(255) NOT NULL,
+        status VARCHAR(50) DEFAULT 'pending',
+        metadata JSONB,
+        applied_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        decided_at TIMESTAMP WITH TIME ZONE,
+        UNIQUE(pn_identifier)
+      )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_prism_ray_applications_status ON prism_ray_applications(status)`);
+
     // Run bot detection migration
     try {
       const fs = await import('fs');

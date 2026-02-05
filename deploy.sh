@@ -23,7 +23,17 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Deploy to Firebase (hosting only: id-dashboard + browse)
+# Build prism (prism target)
+export VITE_PN_CLIENT_ID="${VITE_PN_CLIENT_ID:-prism-app}"
+echo "📦 Building prism..."
+cd ../prism
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ prism build failed"
+    exit 1
+fi
+
+# Deploy to Firebase (hosting only: id-dashboard + browse + prism)
 echo "🔥 Deploying to Firebase..."
 cd ../..
 firebase deploy --only hosting

@@ -46,6 +46,7 @@ interface FullScreenFeedProps {
   };
   onCreatorClick?: (creatorId: string) => void;
   onMessage?: (creatorId: string) => void;
+  onReportCopyright?: (file: IndexedFile) => void;
   onSwipeLeft?: () => void; // Horizontal swipe left handler
   onSwipeRight?: () => void; // Horizontal swipe right handler
   mePageTab?: 'all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections'; // For Me page tab context
@@ -73,6 +74,7 @@ export function FullScreenFeed({
   userState,
   onCreatorClick,
   onMessage,
+  onReportCopyright,
   onSwipeLeft,
   onSwipeRight,
   mePageTab,
@@ -2607,6 +2609,7 @@ export function FullScreenFeed({
               ))}
               onCreatorClick={onCreatorClick}
               onMessage={onMessage}
+              onReportCopyright={onReportCopyright ? () => onReportCopyright(indexedFile) : undefined}
               indexedFiles={files}
             />
 

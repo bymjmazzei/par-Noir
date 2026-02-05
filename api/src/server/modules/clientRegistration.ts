@@ -38,6 +38,23 @@ clients.set('browser-app', {
   isActive: true
 });
 
+// Prism auditor app
+clients.set('prism-app', {
+  clientId: 'prism-app',
+  name: 'par Noir Prism',
+  description: 'Prism auditor program for DMCA content review',
+  redirectUris: [
+    'https://prism.parnoir.com/oauth-callback.html',
+    'https://prism.parnoir.com/',
+    'http://localhost:5174/oauth-callback.html',
+    'http://localhost:5174/'
+  ],
+  scopes: ['openid', 'profile'],
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+  isActive: true
+});
+
 export class ClientRegistrationService {
   /**
    * Register a new OAuth client

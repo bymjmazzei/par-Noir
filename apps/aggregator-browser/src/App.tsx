@@ -11,6 +11,7 @@ import { buildFeedRailItems } from './components/FeedRail';
 import { FeedBrowser } from './components/FeedBrowser';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { CommentModal } from './components/CommentModal';
+import { ReportCopyrightModal } from './components/ReportCopyrightModal';
 import { BrandedFeedPage } from './components/BrandedFeedPage';
 import { MediaViewer } from './components/MediaViewer';
 import { CreateFeedModal } from './components/CreateFeedModal';
@@ -49,6 +50,8 @@ import { useFeedFiltering } from './hooks/useFeedFiltering';
 import { useThumbnailsAndMedia } from './hooks/useThumbnailsAndMedia';
 import { useAuthAndSession } from './hooks/useAuthAndSession';
 import { useMePageData } from './hooks/useMePageData';
+import { reportCopyright } from './services/reportCopyrightService';
+import { PNOAuthService } from './services/pnOAuthService';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -713,6 +716,7 @@ function App() {
 
   // State for editing file metadata
   const [editingFile, setEditingFile] = useState<IndexedFile | null>(null);
+  const [reportingCopyrightFile, setReportingCopyrightFile] = useState<IndexedFile | null>(null);
   
   // Memoize callbacks for FeedEngagementSidebar to prevent re-renders
   const handleLike = useCallback((fileId: string) => {
@@ -742,6 +746,10 @@ function App() {
       showErrorToast('Failed to copy link. Please try again.');
     }
   }, [share, success, setParam, showErrorToast]);
+
+  const handleReportCopyright = useCallback((file: IndexedFile) => {
+    setReportingCopyrightFile(file);
+  }, []);
 
   const handleCreatorClick = useCallback((creatorId: string) => {
     setViewingCreatorId(creatorId);
@@ -864,6 +872,7 @@ function App() {
     handleComment,
     handleLike,
     handleShare,
+    handleReportCopyright,
     handleCreatorClick,
     handleNextFeed,
     handlePreviousFeed,
@@ -891,6 +900,19 @@ function App() {
   return (
     <>
       {/* Comment Modal - Render OUTSIDE all conditional views to ensure it works on all pages */}
+      {reportingCopyrightFile && (
+        <ReportCopyrightModal
+          isOpen={!!reportingCopyrightFile}
+          onClose={() => setReportingCopyrightFile(null)}
+          fileName={reportingCopyrightFile.metadata.name || reportingCopyrightFile.metadata.title}
+          onSubmit={async () => {
+            const token = await PNOAuthService.getValidAccessToken();
+            if (!token) throw new Error('Please sign in to report');
+            await reportCopyright(reportingCopyrightFile.metadata.fileId, token);
+            success('Report submitted. Content will be reviewed by Prism Rays.');
+          }}
+        />
+      )}
       {commentingFile && (
         <CommentModal
           key={commentingFile.metadata.fileId} // Force remount on file change
@@ -1009,6 +1031,7 @@ function App() {
           setShowInbox={setShowInbox}
           setActiveBottomTab={setActiveBottomTab}
           setEditingFile={setEditingFile}
+          onReportCopyright={handleReportCopyright}
           onSave={userState.isUnlocked && userState.pnIdentifier ? (file) => {
             const fileId = file.metadata.fileId;
             mePageData.setSavedFeedFileIds(prev => (prev.includes(fileId) ? prev : [...prev, fileId]));
