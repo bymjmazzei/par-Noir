@@ -5,84 +5,108 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, FileCheck, LogOut, ShieldCheck } from 'lucide-react';
+import { Lock, Shield, Users, FileCheck, LogOut, ShieldCheck } from 'lucide-react';
 import { ApplyModal } from './components/ApplyModal';
 import { RayView } from './components/RayView';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { fetchAdminCheck, fetchAdminStats, fetchReputation, submitRayApply, ReputationResult } from './services/prismApi';
+import { getPrismOAuthUrl } from './utils/oauth';
 
 function LockedView({ onApplyOpen }: { onApplyOpen: () => void }) {
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
-      {/* Header */}
-      <header className="border-b border-neutral-800 px-6 py-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-xl font-semibold tracking-tight">Prism</span>
-            <span className="text-neutral-500 text-sm">par Noir Auditor Program</span>
-          </div>
-        </div>
-      </header>
-
-      {/* Hero */}
-      <main className="max-w-2xl mx-auto px-6 py-16 md:py-24">
-        <div className="text-center space-y-8">
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
-            Content Auditors for par Noir
-          </h1>
-          <p className="text-lg text-neutral-400 leading-relaxed">
-            Prism is the par Noir auditor program. Rays review DMCA-flagged content
-            and reach consensus to approve or deny before content goes live.
-          </p>
-
-          <div className="grid gap-6 py-8 md:grid-cols-3 text-left">
-            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5">
-              <Shield className="h-8 w-8 text-neutral-400 mb-3" />
-              <h2 className="font-semibold mb-2">DMCA Review</h2>
-              <p className="text-sm text-neutral-400">
-                Content flagged by the DMCA bot or user reports is reviewed by Rays
-                before it can be indexed.
-              </p>
+    <div
+      className="min-h-screen text-white relative"
+      style={{
+        backgroundImage: 'url(/branding/Par-Noir-Background-Dark.png)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }}
+    >
+      <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
+      <div className="relative z-10">
+        {/* Header */}
+        <header className="border-b border-white/10 px-6 py-4 backdrop-blur-sm">
+          <div className="max-w-4xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <img
+                src="/branding/Par-Noir-Logo-White.png"
+                alt="par Noir"
+                className="h-8 object-contain"
+              />
+              <span className="text-xl font-semibold tracking-tight">Prism</span>
+              <span className="text-neutral-400 text-sm">Auditor Program</span>
             </div>
-            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5">
-              <Users className="h-8 w-8 text-neutral-400 mb-3" />
-              <h2 className="font-semibold mb-2">Consensus-Based</h2>
-              <p className="text-sm text-neutral-400">
-                Two Rays must agree to approve or deny. No single person controls
-                content visibility.
-              </p>
-            </div>
-            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-5">
-              <FileCheck className="h-8 w-8 text-neutral-400 mb-3" />
-              <h2 className="font-semibold mb-2">Simple Review</h2>
-              <p className="text-sm text-neutral-400">
-                Swipe left to deny, right to approve. Review content, reach
-                consensus, earn reputation.
-              </p>
-            </div>
-          </div>
-
-          <div className="pt-8 space-y-4">
             <button
               type="button"
-              onClick={onApplyOpen}
-              className="px-8 py-3 bg-white text-black font-medium rounded-lg hover:bg-neutral-200 transition-colors"
+              onClick={() => { window.location.href = getPrismOAuthUrl(); }}
+              className="p-2 text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+              title="Unlock pN"
             >
-              Apply to become a Ray
+              <Lock className="h-5 w-5" />
             </button>
-            <p className="text-sm text-neutral-500">
-              Applicants must meet reputation requirements and share required data
-              points for payment.
-            </p>
           </div>
-        </div>
-      </main>
+        </header>
 
-      <footer className="border-t border-neutral-800 mt-24 py-8 px-6">
-        <div className="max-w-4xl mx-auto text-center text-sm text-neutral-500">
-          Prism · par Noir infrastructure
-        </div>
-      </footer>
+        {/* Hero */}
+        <main className="max-w-2xl mx-auto px-6 py-16 md:py-24">
+          <div className="text-center space-y-8">
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
+              Content Auditors for par Noir
+            </h1>
+            <p className="text-lg text-neutral-300 leading-relaxed">
+              Prism is the par Noir auditor program. Rays review DMCA-flagged content
+              and reach consensus to approve or deny before content goes live.
+            </p>
+
+            <div className="grid gap-6 py-8 md:grid-cols-3 text-left">
+              <div className="bg-neutral-900/60 border border-white/10 rounded-lg p-5 backdrop-blur-sm">
+                <Shield className="h-8 w-8 text-neutral-400 mb-3" />
+                <h2 className="font-semibold mb-2">DMCA Review</h2>
+                <p className="text-sm text-neutral-400">
+                  Content flagged by the DMCA bot or user reports is reviewed by Rays
+                  before it can be indexed.
+                </p>
+              </div>
+              <div className="bg-neutral-900/60 border border-white/10 rounded-lg p-5 backdrop-blur-sm">
+                <Users className="h-8 w-8 text-neutral-400 mb-3" />
+                <h2 className="font-semibold mb-2">Consensus-Based</h2>
+                <p className="text-sm text-neutral-400">
+                  Two Rays must agree to approve or deny. No single person controls
+                  content visibility.
+                </p>
+              </div>
+              <div className="bg-neutral-900/60 border border-white/10 rounded-lg p-5 backdrop-blur-sm">
+                <FileCheck className="h-8 w-8 text-neutral-400 mb-3" />
+                <h2 className="font-semibold mb-2">Simple Review</h2>
+                <p className="text-sm text-neutral-400">
+                  Swipe left to deny, right to approve. Review content, reach
+                  consensus, earn reputation.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-4 space-y-4">
+              <button
+                type="button"
+                onClick={onApplyOpen}
+                className="px-8 py-3 border border-white/30 text-white font-medium rounded-lg hover:bg-white/10 transition-colors"
+              >
+                Apply to become a Ray
+              </button>
+              <p className="text-sm text-neutral-400">
+                Applicants must meet reputation requirements and share required data
+                points for payment.
+              </p>
+            </div>
+          </div>
+        </main>
+
+        <footer className="border-t border-white/10 mt-24 py-8 px-6 backdrop-blur-sm">
+          <div className="max-w-4xl mx-auto text-center text-sm text-neutral-400">
+            Prism · par Noir infrastructure
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }
@@ -128,6 +152,11 @@ function UnlockedView() {
       <header className="border-b border-neutral-800 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
+            <img
+              src="/branding/Par-Noir-Logo-White.png"
+              alt="par Noir"
+              className="h-7 object-contain"
+            />
             <span className="text-xl font-semibold tracking-tight">Prism</span>
             <span className="text-neutral-500 text-sm">par Noir Auditor Program</span>
             {adminState?.isAdmin && (
