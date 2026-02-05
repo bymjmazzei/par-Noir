@@ -47,8 +47,15 @@ export class GoogleDriveProxyService {
       throw new Error('Google Drive not connected. Please connect in the dashboard.');
     }
     
-    // CRITICAL: Only try the pn identifier - no fallback to DID or public key
+    // Try pn identifier first; also try additionalCandidates (e.g. legacy raw identity_id from DB)
     const identifierCandidates = [pnIdentifier];
+    if (additionalCandidates?.length) {
+      for (const c of additionalCandidates) {
+        if (c && c !== pnIdentifier && !identifierCandidates.includes(c)) {
+          identifierCandidates.push(c);
+        }
+      }
+    }
     
     console.log(`[GoogleDriveProxy] Using pn identifier only: ${pnIdentifier}`);
     
@@ -435,13 +442,17 @@ export class GoogleDriveProxyService {
     newAccessToken: string,
     expiryDate?: Date
   ): Promise<void> {
-    const pnIdentifier = userPnIdentifier?.startsWith('pn-') ? userPnIdentifier : userPnIdentifier;
-    
+    const pnIdentifier = userPnIdentifier?.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+
     if (!pnIdentifier || !pnIdentifier.startsWith('pn-')) {
       throw new Error('Invalid pn identifier');
     }
-    
+
     const identifierCandidates = [pnIdentifier];
+    const rawId = pnIdentifier.replace(/^pn-/, '');
+    if (rawId && rawId !== pnIdentifier) {
+      identifierCandidates.push(rawId);
+    }
     const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(identifierCandidates);
     
     if (!credentialsRecord) {

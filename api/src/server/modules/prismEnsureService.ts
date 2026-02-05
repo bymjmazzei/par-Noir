@@ -25,12 +25,24 @@ export interface EnsureAllResult {
   details: EnsureResult[];
 }
 
+function normalizePnId(id: string): string {
+  return id.startsWith('pn-') ? id : `pn-${id}`;
+}
+
 /**
  * Get metadata folder ID for a user. Returns null if folder structure not found.
+ * @param pnId - Normalized pn-{hash} identifier (folder is "par Noir - pn-{hash}")
  */
-async function getMetadataFolderId(identityId: string): Promise<string | null> {
-  const accessToken = await googleDriveProxyService.getAccessToken(identityId);
-  const pnFolderName = `par Noir - ${identityId}`;
+async function getMetadataFolderId(
+  pnId: string,
+  additionalCandidates?: string[]
+): Promise<string | null> {
+  const accessToken = await googleDriveProxyService.getAccessToken(
+    pnId,
+    undefined,
+    additionalCandidates
+  );
+  const pnFolderName = `par Noir - ${pnId}`;
   const pnFolderQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
 
   const pnRes = await fetch(
@@ -56,30 +68,38 @@ async function getMetadataFolderId(identityId: string): Promise<string | null> {
 /**
  * Ensure prism_ledger exists for one identity.
  * ONLY creates when getPrismLedgerSheet throws "Sheet not found" / "not found".
+ * @param rawIdentityId - identity_id from storage_credentials (may be pn-{hash} or raw hash)
  */
-export async function ensurePrismLedgerForIdentity(identityId: string): Promise<EnsureResult> {
+export async function ensurePrismLedgerForIdentity(rawIdentityId: string): Promise<EnsureResult> {
+  const pnId = normalizePnId(rawIdentityId);
+  const additionalCandidates = rawIdentityId !== pnId ? [rawIdentityId] : undefined;
+
   try {
-    const accessToken = await googleDriveProxyService.getAccessToken(identityId);
-    const metadataFolderId = await getMetadataFolderId(identityId);
+    const accessToken = await googleDriveProxyService.getAccessToken(
+      pnId,
+      undefined,
+      additionalCandidates
+    );
+    const metadataFolderId = await getMetadataFolderId(pnId, additionalCandidates);
     if (!metadataFolderId) {
-      return { identityId, created: false, skipped: false, error: 'Metadata folder not found' };
+      return { identityId: rawIdentityId, created: false, skipped: false, error: 'Metadata folder not found' };
     }
 
     const token = { access_token: accessToken };
 
     try {
-      await PrismLedgerSheetsService.getPrismLedgerSheet(token, metadataFolderId, identityId, undefined);
-      return { identityId, created: false, skipped: true };
+      await PrismLedgerSheetsService.getPrismLedgerSheet(token, metadataFolderId, pnId, undefined);
+      return { identityId: rawIdentityId, created: false, skipped: true };
     } catch (getErr: any) {
       const msg = getErr?.message || String(getErr);
       if (!msg.includes('not found') && !msg.includes('Sheet not found')) {
-        return { identityId, created: false, skipped: false, error: msg };
+        return { identityId: rawIdentityId, created: false, skipped: false, error: msg };
       }
-      await PrismLedgerSheetsService.createPrismLedgerSheet(token, metadataFolderId, identityId, undefined);
-      return { identityId, created: true, skipped: false };
+      await PrismLedgerSheetsService.createPrismLedgerSheet(token, metadataFolderId, pnId, undefined);
+      return { identityId: rawIdentityId, created: true, skipped: false };
     }
   } catch (err: any) {
-    return { identityId, created: false, skipped: false, error: err?.message || String(err) };
+    return { identityId: rawIdentityId, created: false, skipped: false, error: err?.message || String(err) };
   }
 }
 
