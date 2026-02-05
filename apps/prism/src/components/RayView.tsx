@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ThumbsDown, ThumbsUp, Loader2 } from 'lucide-react';
+import { ThumbsDown, ThumbsUp, Loader2, ImageOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchQueue, submitVote, fetchPreviewBlobUrl, PrismQueueItem } from '../services/prismApi';
 
@@ -15,6 +15,7 @@ export function RayView() {
   const [error, setError] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
   const [swiping, setSwiping] = useState<'left' | 'right' | null>(null);
 
   const loadQueue = useCallback(async () => {
@@ -40,9 +41,11 @@ export function RayView() {
   useEffect(() => {
     if (!session?.accessToken || items.length === 0 || index >= items.length) {
       setPreviewUrl(null);
+      setPreviewFailed(false);
       return;
     }
     const item = items[index];
+    setPreviewFailed(false);
     let url: string | null = null;
     fetchPreviewBlobUrl(
       item.owner_pn_identifier,
@@ -52,9 +55,13 @@ export function RayView() {
     )
       .then((u) => {
         setPreviewUrl(u);
+        setPreviewFailed(false);
         url = u;
       })
-      .catch(() => setPreviewUrl(null));
+      .catch(() => {
+        setPreviewUrl(null);
+        setPreviewFailed(true);
+      });
     return () => {
       if (url) URL.revokeObjectURL(url);
     };
@@ -134,6 +141,11 @@ export function RayView() {
             alt={item.name || item.file_id}
             className="w-full h-full object-contain"
           />
+        ) : previewFailed ? (
+          <div className="w-full h-full flex flex-col items-center justify-center text-neutral-500 gap-2">
+            <ImageOff className="h-12 w-12" />
+            <span className="text-sm">Preview unavailable</span>
+          </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center text-neutral-500">
             <Loader2 className="h-12 w-12 animate-spin" />

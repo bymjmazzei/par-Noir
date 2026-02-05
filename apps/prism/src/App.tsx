@@ -9,7 +9,7 @@ import { Lock, Shield, Users, FileCheck, LogOut, ShieldCheck } from 'lucide-reac
 import { ApplyModal } from './components/ApplyModal';
 import { RayView } from './components/RayView';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { fetchAdminCheck, fetchAdminStats, fetchReputation, submitRayApply, seedDemoQueue, ReputationResult } from './services/prismApi';
+import { fetchAdminCheck, fetchAdminStats, fetchReputation, submitRayApply, seedDemoQueue, ensurePrismLedgers, ReputationResult } from './services/prismApi';
 import { getPrismOAuthUrl } from './utils/oauth';
 
 function LockedView({ onApplyOpen }: { onApplyOpen: () => void }) {
@@ -119,6 +119,20 @@ function UnlockedView() {
   const [applyStatus, setApplyStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [applyError, setApplyError] = useState<string | null>(null);
   const [seedStatus, setSeedStatus] = useState<string | null>(null);
+  const [ensureStatus, setEnsureStatus] = useState<string | null>(null);
+
+  const handleEnsureLedgers = async () => {
+    if (!session?.accessToken) return;
+    setEnsureStatus('Running...');
+    try {
+      const r = await ensurePrismLedgers(session.accessToken);
+      setEnsureStatus(r.message);
+      setTimeout(() => setEnsureStatus(null), 8000);
+    } catch (e: any) {
+      setEnsureStatus(e?.message || 'Ensure failed');
+      setTimeout(() => setEnsureStatus(null), 5000);
+    }
+  };
 
   const handleSeedDemo = async () => {
     if (!session?.accessToken) return;
@@ -242,14 +256,24 @@ function UnlockedView() {
                 <div className="text-xs text-neutral-500">Denied</div>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handleSeedDemo}
-              disabled={!!seedStatus}
-              className="px-4 py-2 text-sm bg-amber-900/50 text-amber-400 border border-amber-800 rounded-lg hover:bg-amber-800/50 disabled:opacity-60"
-            >
-              {seedStatus || 'Seed demo content'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleEnsureLedgers}
+                disabled={!!ensureStatus}
+                className="px-4 py-2 text-sm bg-neutral-700 text-neutral-300 border border-neutral-600 rounded-lg hover:bg-neutral-600 disabled:opacity-60"
+              >
+                {ensureStatus || 'Ensure prism ledgers'}
+              </button>
+              <button
+                type="button"
+                onClick={handleSeedDemo}
+                disabled={!!seedStatus}
+                className="px-4 py-2 text-sm bg-amber-900/50 text-amber-400 border border-amber-800 rounded-lg hover:bg-amber-800/50 disabled:opacity-60"
+              >
+                {seedStatus || 'Seed demo content'}
+              </button>
+            </div>
           </div>
         )}
         <div className="mb-6 text-center">

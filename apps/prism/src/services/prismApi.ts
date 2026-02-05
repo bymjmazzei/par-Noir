@@ -60,6 +60,22 @@ export async function fetchAdminStats(accessToken: string): Promise<{ pending: n
   return res.json();
 }
 
+export async function ensurePrismLedgers(accessToken: string): Promise<{
+  processed: number;
+  created: number;
+  skipped: number;
+  errors: string[];
+  message: string;
+}> {
+  const res = await fetch(`${API_ENDPOINT}/api/prism/admin/ensure-prism-ledgers`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to ensure prism ledgers');
+  return data;
+}
+
 export async function seedDemoQueue(accessToken: string, limit = 5): Promise<{ added: number; fileIds: string[]; message: string }> {
   const res = await fetch(`${API_ENDPOINT}/api/prism/admin/seed-demo?limit=${limit}`, {
     method: 'POST',
