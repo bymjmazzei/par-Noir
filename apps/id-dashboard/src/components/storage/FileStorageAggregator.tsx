@@ -749,16 +749,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     const finalAccountsArray = Array.from(finalAccounts.values());
     
     // CRITICAL: HARD LIMIT - Only ONE account should exist per pN
-    // If we have more than 1, something is very wrong - keep only the most recent one
+    // Fix 2: When pruning 2→1, prefer account with refreshToken (can be refreshed) over one without
     if (finalAccountsArray.length > 1) {
       console.error(`🚨 [buildStorageCredentialPayload] CRITICAL: Cache has ${finalAccountsArray.length} accounts (expected max 1). Keeping only the most recent one.`);
-      // Sort by updatedAt or connectedAt, keep only the most recent
-      finalAccountsArray.sort((a, b) => {
-        const aTime = a.updatedAt || a.connectedAt || '';
-        const bTime = b.updatedAt || b.connectedAt || '';
+      const withRefresh = finalAccountsArray.filter((a) => !!(a.refreshToken?.trim?.() || (a as any).refresh_token));
+      const candidates = withRefresh.length > 0 ? withRefresh : finalAccountsArray;
+      candidates.sort((a, b) => {
+        const aTime = (a.updatedAt || a.connectedAt || '').toString();
+        const bTime = (b.updatedAt || b.connectedAt || '').toString();
         return bTime.localeCompare(aTime); // Most recent first
       });
-      finalAccountsArray.length = 1; // Keep only first (most recent)
+      finalAccountsArray.length = 0;
+      finalAccountsArray.push(candidates[0]);
       
       // Clear cache and repopulate with only the one account
       driveCredentialCacheRef.current.clear();
@@ -1747,7 +1749,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const disconnectedBackendIdsRef = React.useRef<Set<string>>(new Set());
   const DISCONNECT_BLOCK_DURATION_MS = 10000; // Block re-adding disconnected accounts for 10 seconds (reduced from 30s to not block unlock)
 
-  const hydrateStorageCredentialsFromAPI = React.useCallback(async () => {
+  const hydrateStorageCredentialsFromAPI = React.useCallback(async (forceRefresh?: boolean) => {
     if (hydrationInProgressRef.current) {
       return;
     }
@@ -1761,7 +1763,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     
     hydrationInProgressRef.current = true;
 
-    if (hydrationSuccessRef.current) {
+    if (hydrationSuccessRef.current && !forceRefresh) {
       hydrationInProgressRef.current = false;
       return;
     }
@@ -1800,18 +1802,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     let lastError: unknown = null;
 
     for (const candidateId of identityCandidates) {
-      if (hydrationSuccessRef.current) {
+      if (hydrationSuccessRef.current && !forceRefresh) {
         break;
       }
 
-      if (hydrationMissingCandidatesRef.current.has(candidateId)) {
+      if (hydrationMissingCandidatesRef.current.has(candidateId) && !forceRefresh) {
         continue;
       }
 
       const hasAttempted = hydrationAttemptedRef.current.has(candidateId);
+      if (forceRefresh) {
+        hydrationAttemptedRef.current.delete(candidateId);
+      }
       hydrationAttemptedRef.current.add(candidateId);
 
-      if (hasAttempted && !hydrationMissingCandidatesRef.current.has(candidateId)) {
+      if (hasAttempted && !hydrationMissingCandidatesRef.current.has(candidateId) && !forceRefresh) {
         continue;
       }
 
@@ -2252,6 +2257,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
 
         await hydrateStorageCredentialsFromAPI();
+
+        // Fix 1: Prefer API over metadata - API is source of truth (server can refresh tokens).
+        // If API returned accounts, skip loading from metadata to avoid overwriting fresh tokens with stale ones.
+        if (driveCredentialCacheRef.current.size > 0) {
+          console.log('[loadTokenFromMetadata] API has accounts - skipping metadata load (API is source of truth)');
+          hasRestoredFromMetadataRef.current = authenticatedUser.id;
+          return;
+        }
 
         const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
         const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
@@ -4388,6 +4401,38 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       window.removeEventListener('google-drive-token-expired', handleTokenExpired);
     };
   }, [activeBackendId, removeDriveAccount]);
+
+  // Fix 3: 401 recovery - register handler for GoogleDriveBackend to attempt rehydration before disconnect
+  useEffect(() => {
+    const attemptRecovery = async (backendId: string): Promise<boolean> => {
+      try {
+        console.log('🔄 [401Recovery] Attempting rehydration from API for backend:', backendId);
+        await hydrateStorageCredentialsFromAPI(true);
+        const hasAccount = driveCredentialCacheRef.current.has(backendId) &&
+          driveCredentialCacheRef.current.get(backendId)?.accessToken;
+        if (hasAccount) {
+          const credential = driveCredentialCacheRef.current.get(backendId)!;
+          const backend = aggregatorService?.getBackend(backendId) as { connect: (c: { token: string; refreshToken?: string; email?: string }) => Promise<void> } | null;
+          if (backend && credential.accessToken) {
+            await backend.connect({
+              token: credential.accessToken,
+              refreshToken: credential.refreshToken ?? undefined,
+              email: credential.email ?? undefined,
+            });
+            console.log('✅ [401Recovery] Applied fresh token from API to backend');
+            return true;
+          }
+        }
+      } catch (err) {
+        console.warn('⚠️ [401Recovery] Rehydration failed:', err);
+      }
+      return false;
+    };
+    (globalThis as any).__attemptGoogleDrive401Recovery = attemptRecovery;
+    return () => {
+      delete (globalThis as any).__attemptGoogleDrive401Recovery;
+    };
+  }, [hydrateStorageCredentialsFromAPI, aggregatorService]);
 
   // Helper function to exchange authorization code for tokens
   // Uses Google OAuth endpoint directly (client-side exchange)

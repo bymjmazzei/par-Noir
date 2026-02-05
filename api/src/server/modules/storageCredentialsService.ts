@@ -62,6 +62,26 @@ export class StorageCredentialsService {
     return decrypted.toString('utf8');
   }
 
+  /** Fix 4: Enforce single Drive account when returning credentials (handles legacy duplicates) */
+  private ensureSingleDriveAccount(credentials: any): any {
+    if (!credentials?.googleDriveAccounts || !Array.isArray(credentials.googleDriveAccounts)) {
+      return credentials;
+    }
+    const accounts = credentials.googleDriveAccounts;
+    if (accounts.length <= 1) {
+      return credentials;
+    }
+    const sorted = [...accounts].sort((a, b) => {
+      const aTime = (a?.updatedAt || a?.connectedAt || '').toString();
+      const bTime = (b?.updatedAt || b?.connectedAt || '').toString();
+      return bTime.localeCompare(aTime);
+    });
+    return {
+      ...credentials,
+      googleDriveAccounts: [sorted[0]],
+    };
+  }
+
   async upsertCredentials(identityId: string, credentials: any, cid?: string): Promise<StoredCredentialsRecord> {
     if (!identityId) {
       throw new Error('identityId is required');
@@ -201,6 +221,8 @@ export class StorageCredentialsService {
       return null;
     }
 
+    credentials = this.ensureSingleDriveAccount(credentials);
+
     return {
       identityId: row.identity_id,
       credentials,
@@ -263,6 +285,8 @@ export class StorageCredentialsService {
             console.warn(`⚠️ Failed to decrypt storage credentials for identity ${candidate}:`, error);
             continue; // Try next candidate
           }
+
+          credentials = this.ensureSingleDriveAccount(credentials);
 
           return {
             identityId: row.identity_id,

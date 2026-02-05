@@ -252,9 +252,28 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         }
       }
       
-      // If refresh failed or no refreshToken, clear token and force re-authentication
+      // Fix 3: Try 401 recovery via rehydration before disconnecting.
+      // FileStorageAggregator registers a recovery handler that fetches fresh tokens from API.
+      const attemptRecovery = (globalThis as any).__attemptGoogleDrive401Recovery as ((backendId: string) => Promise<boolean>) | undefined;
+      if (typeof attemptRecovery === 'function') {
+        try {
+          const recovered = await Promise.race([
+            attemptRecovery(this.backendId),
+            new Promise<boolean>((_, reject) =>
+              setTimeout(() => reject(new Error('401 recovery timeout')), 5000)
+            ),
+          ]);
+          if (recovered) {
+            console.log('✅ [GoogleDriveBackend] 401 recovered via API rehydration');
+            return false; // Caller can retry
+          }
+        } catch (recoveryErr) {
+          console.warn('⚠️ [GoogleDriveBackend] 401 recovery failed:', recoveryErr);
+        }
+      }
+
+      // If refresh and recovery failed, disconnect and force re-authentication
       this.disconnect();
-      // Trigger re-connect UI
       window.dispatchEvent(new CustomEvent('google-drive-token-expired', {
         detail: { message: 'Google Drive token expired. Please reconnect.' }
       }));
