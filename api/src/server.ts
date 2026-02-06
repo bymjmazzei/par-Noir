@@ -627,8 +627,11 @@ class ProductionServer {
     });
 
     // Body parsing - SECURITY FIX: Reduced limit to prevent DoS attacks
-    // Large files should be uploaded via multipart/form-data with separate validation
-    this.app.use(express.json({ limit: '10mb' }));
+    // Exception: POST /api/drive/files needs 100mb for video/encrypted uploads
+    this.app.use((req, res, next) => {
+      const limit = req.method === 'POST' && req.path === '/api/drive/files' ? '100mb' : '10mb';
+      return express.json({ limit })(req, res, next);
+    });
     this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
     // Request logging
