@@ -1,10 +1,10 @@
 /**
  * Ray View — Tinder-style swipe interface
- * Swipe left = deny, right = approve
+ * Swipe left = deny, right = approve, center = skip
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ThumbsDown, ThumbsUp, Loader2, ImageOff } from 'lucide-react';
+import { ThumbsDown, ThumbsUp, SkipForward, Loader2, ImageOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchQueue, submitVote, fetchPreviewBlobUrl, PrismQueueItem } from '../services/prismApi';
 
@@ -16,7 +16,7 @@ export function RayView() {
   const [index, setIndex] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
-  const [swiping, setSwiping] = useState<'left' | 'right' | null>(null);
+  const [swiping, setSwiping] = useState<'left' | 'right' | 'skip' | null>(null);
 
   const loadQueue = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -67,10 +67,11 @@ export function RayView() {
     };
   }, [session?.accessToken, items, index]);
 
-  const handleVote = async (vote: 'approve' | 'deny') => {
+  const handleVote = async (vote: 'approve' | 'deny' | 'skip') => {
     if (!session?.accessToken || items.length === 0 || index >= items.length) return;
     const item = items[index];
-    setSwiping(vote === 'approve' ? 'right' : 'left');
+    const swipeDir = vote === 'approve' ? 'right' : vote === 'deny' ? 'left' : 'skip';
+    setSwiping(swipeDir);
     try {
       await submitVote(session.accessToken, item.id, vote);
       setIndex((i) => i + 1);
@@ -133,6 +134,7 @@ export function RayView() {
           transition-transform duration-200
           ${swiping === 'left' ? '-translate-x-32 rotate-[-12deg] opacity-70' : ''}
           ${swiping === 'right' ? 'translate-x-32 rotate-[12deg] opacity-70' : ''}
+          ${swiping === 'skip' ? 'scale-95 opacity-70' : ''}
         `}
       >
         {previewUrl ? (
@@ -160,7 +162,7 @@ export function RayView() {
       </div>
 
       {/* Swipe buttons */}
-      <div className="flex gap-12 mt-8">
+      <div className="flex gap-8 mt-8 items-center">
         <button
           type="button"
           onClick={() => handleVote('deny')}
@@ -170,6 +172,17 @@ export function RayView() {
         >
           <ThumbsDown className="h-10 w-10 text-red-400" />
           <span className="text-sm text-red-400">Deny</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => handleVote('skip')}
+          disabled={!!swiping}
+          title="Skip if unsure; won't affect your reputation"
+          className="flex flex-col items-center gap-2 p-4 rounded-full bg-neutral-800/50 border border-neutral-700/50 hover:bg-neutral-700/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          aria-label="Skip"
+        >
+          <SkipForward className="h-10 w-10 text-neutral-400" />
+          <span className="text-sm text-neutral-400">Skip</span>
         </button>
         <button
           type="button"

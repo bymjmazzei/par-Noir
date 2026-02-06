@@ -206,7 +206,7 @@ async function getRayVotePerformance(
        COUNT(*)::int as total
      FROM prism_votes v
      JOIN prism_review_queue q ON q.id = v.queue_item_id
-     WHERE v.ray_pn_identifier = $1 AND q.status IN ('approved', 'denied')`,
+     WHERE v.ray_pn_identifier = $1 AND q.status IN ('approved', 'denied') AND v.vote IN ('approve', 'deny')`,
     [pn]
   );
   const row = r.rows[0] as { matched?: string; broke?: string; total?: string } | undefined;

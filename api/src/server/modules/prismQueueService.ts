@@ -2,11 +2,16 @@
  * Prism Queue Service
  * Manages the Prism review queue: add flagged content, fetch pending items, record votes
  * Used by DMCA bot (flag path) and user report flow
+ * Supports skip vote: 3 skips or tie (1-1) escalate to higher-rep Rays.
  */
 
 import { getDatabasePool } from '../utils/database';
 
+const PRISM_ESCALATED_MIN_REPUTATION = parseInt(process.env.PRISM_ESCALATED_MIN_REPUTATION || '75', 10);
+
 export type FlagSource = 'bot' | 'user_report';
+
+export type RayVote = 'approve' | 'deny' | 'skip';
 
 export interface PrismQueueItem {
   id: string;
@@ -17,6 +22,7 @@ export interface PrismQueueItem {
   status: string;
   created_at: string;
   updated_at: string;
+  min_required_reputation?: number | null;
 }
 
 export interface AddToQueueParams {
@@ -47,7 +53,7 @@ export async function addToPrismQueue(params: AddToQueueParams): Promise<string>
 export async function getPendingQueueItems(limit = 20): Promise<PrismQueueItem[]> {
   const db = getDatabasePool();
   const result = await db.query(
-    `SELECT id, file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status, created_at, updated_at
+    `SELECT id, file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status, created_at, updated_at, min_required_reputation
      FROM prism_review_queue
      WHERE status = 'pending'
      ORDER BY created_at ASC
@@ -58,12 +64,37 @@ export async function getPendingQueueItems(limit = 20): Promise<PrismQueueItem[]
 }
 
 /**
+ * Get pending queue items visible to a given Ray (reputation-filtered).
+ * Normal items: any Ray. Escalated items: only Rays with reputation >= min_required_reputation.
+ */
+export async function getPendingQueueItemsForRay(
+  rayPnIdentifier: string,
+  limit = 20
+): Promise<PrismQueueItem[]> {
+  const { getReputationScore } = await import('./prismReputationService');
+  const reputation = await getReputationScore(rayPnIdentifier);
+  const callerScore = reputation.score;
+
+  const db = getDatabasePool();
+  const result = await db.query(
+    `SELECT id, file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status, created_at, updated_at, min_required_reputation
+     FROM prism_review_queue
+     WHERE status = 'pending'
+       AND (min_required_reputation IS NULL OR min_required_reputation <= $1)
+     ORDER BY created_at ASC
+     LIMIT $2`,
+    [callerScore, limit]
+  );
+  return result.rows;
+}
+
+/**
  * Get single queue item by id
  */
 export async function getQueueItemById(id: string): Promise<PrismQueueItem | null> {
   const db = getDatabasePool();
   const result = await db.query(
-    `SELECT id, file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status, created_at, updated_at
+    `SELECT id, file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status, created_at, updated_at, min_required_reputation
      FROM prism_review_queue
      WHERE id = $1`,
     [id]
@@ -73,12 +104,13 @@ export async function getQueueItemById(id: string): Promise<PrismQueueItem | nul
 
 /**
  * Submit a Ray vote and check for consensus
- * In bootstrap mode, admin vote immediately resolves
+ * In bootstrap mode, admin approve/deny immediately resolves. Admin skip = no-op (escalation still applies).
+ * Vote types: approve, deny, skip. Skip is reputation-neutral; 3 skips escalate to higher-tier Rays.
  */
 export async function submitVote(
   queueItemId: string,
   rayPnIdentifier: string,
-  vote: 'approve' | 'deny'
+  vote: RayVote
 ): Promise<{ resolved: boolean; status?: string }> {
   const db = getDatabasePool();
   await db.query(
@@ -87,6 +119,12 @@ export async function submitVote(
      ON CONFLICT (queue_item_id, ray_pn_identifier) DO UPDATE SET vote = $3`,
     [queueItemId, rayPnIdentifier, vote]
   );
+
+  if (vote === 'skip') {
+    await checkEscalation(queueItemId);
+    return { resolved: false };
+  }
+
   return checkConsensusAndResolve(queueItemId, rayPnIdentifier, vote);
 }
 
@@ -114,7 +152,46 @@ export async function updateQueueItemStatus(queueItemId: string, status: 'approv
 }
 
 /**
+ * Set min_required_reputation for escalation (3 skips or tiebreaker)
+ */
+async function setQueueItemMinReputation(queueItemId: string, minRep: number): Promise<void> {
+  const db = getDatabasePool();
+  await db.query(
+    `UPDATE prism_review_queue SET min_required_reputation = $1, updated_at = NOW() WHERE id = $2`,
+    [minRep, queueItemId]
+  );
+}
+
+/**
+ * Check if 3 skips or tie (1 approve, 1 deny) → escalate by setting min_required_reputation
+ */
+async function checkEscalation(queueItemId: string): Promise<void> {
+  const votes = await getVotesForQueueItem(queueItemId);
+  const approveCount = votes.filter((v) => v.vote === 'approve').length;
+  const denyCount = votes.filter((v) => v.vote === 'deny').length;
+  const skipCount = votes.filter((v) => v.vote === 'skip').length;
+
+  const db = getDatabasePool();
+  const row = await db.query(
+    `SELECT min_required_reputation FROM prism_review_queue WHERE id = $1`,
+    [queueItemId]
+  );
+  const currentMinRep = (row.rows[0] as { min_required_reputation?: number | null })?.min_required_reputation;
+
+  if (currentMinRep != null) return; // Already escalated
+
+  if (skipCount >= 3) {
+    await setQueueItemMinReputation(queueItemId, PRISM_ESCALATED_MIN_REPUTATION);
+    return;
+  }
+  if (approveCount === 1 && denyCount === 1) {
+    await setQueueItemMinReputation(queueItemId, PRISM_ESCALATED_MIN_REPUTATION);
+  }
+}
+
+/**
  * Check consensus: 2+ matching votes = resolve. In bootstrap mode, 1 admin vote = resolve.
+ * Tie (1 approve, 1 deny) escalates to higher-tier Rays.
  */
 async function checkConsensusAndResolve(
   queueItemId: string,
@@ -122,7 +199,6 @@ async function checkConsensusAndResolve(
   vote: 'approve' | 'deny'
 ): Promise<{ resolved: boolean; status?: string }> {
   const { isPrismAdmin, isBootstrapMode } = await import('./prismAdminService');
-  const db = getDatabasePool();
 
   if (isBootstrapMode() && isPrismAdmin(voterPn)) {
     const status = vote === 'approve' ? 'approved' : 'denied';
@@ -141,6 +217,10 @@ async function checkConsensusAndResolve(
   if (denyCount >= 2) {
     await updateQueueItemStatus(queueItemId, 'denied');
     return { resolved: true, status: 'denied' };
+  }
+
+  if (approveCount === 1 && denyCount === 1) {
+    await checkEscalation(queueItemId); // Tiebreaker escalation
   }
   return { resolved: false };
 }

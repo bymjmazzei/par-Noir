@@ -4,7 +4,7 @@
  */
 
 import { Request, Response } from 'express';
-import { getPendingQueueItems, submitVote, addToPrismQueue, getQueueStats, seedDemoQueueItems } from './prismQueueService';
+import { getPendingQueueItems, getPendingQueueItemsForRay, submitVote, addToPrismQueue, getQueueStats, seedDemoQueueItems } from './prismQueueService';
 import { isPrismAdmin, isBootstrapMode } from './prismAdminService';
 import { getReputationScore, submitRayApplication } from './prismReputationService';
 import { ensurePrismLedgersForAllIdentities } from './prismEnsureService';
@@ -78,7 +78,7 @@ export function setupPrismRoutes(app: any): void {
       }
 
       const limit = Math.min(parseInt(String(req.query.limit || '20'), 10) || 20, 50);
-      const items = await getPendingQueueItems(limit);
+      const items = await getPendingQueueItemsForRay(payload.pnIdentifier, limit);
 
       const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
       const metadataService = AggregatorMetadataServiceDB.getInstance();
@@ -104,7 +104,7 @@ export function setupPrismRoutes(app: any): void {
 
   /**
    * POST /api/prism/vote
-   * Submit Ray vote (approve/deny)
+   * Submit Ray vote (approve/deny/skip)
    */
   app.post('/api/prism/vote', async (req: Request, res: Response) => {
     try {
@@ -120,7 +120,7 @@ export function setupPrismRoutes(app: any): void {
       }
 
       const { queueItemId, vote } = req.body;
-      if (!queueItemId || !vote || !['approve', 'deny'].includes(vote)) {
+      if (!queueItemId || !vote || !['approve', 'deny', 'skip'].includes(vote)) {
         return res.status(400).json({ error: 'Invalid queueItemId or vote' });
       }
 

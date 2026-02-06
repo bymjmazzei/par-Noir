@@ -31,7 +31,7 @@ export async function fetchQueue(accessToken: string): Promise<PrismQueueItem[]>
 export async function submitVote(
   accessToken: string,
   queueItemId: string,
-  vote: 'approve' | 'deny'
+  vote: 'approve' | 'deny' | 'skip'
 ): Promise<void> {
   const res = await fetch(`${API_ENDPOINT}/api/prism/vote`, {
     method: 'POST',

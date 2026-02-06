@@ -729,6 +729,18 @@ export async function initializeDatabase(): Promise<void> {
       console.debug('ℹ️ Bot detection migration error (may already be applied):', migrationError?.message);
     }
 
+    // Run prism min_required_reputation migration
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const migrationPath = path.join(__dirname, '../../migrations/add_prism_min_required_reputation.sql');
+      const migrationSQL = fs.readFileSync(migrationPath, 'utf-8');
+      await db.query(migrationSQL);
+      console.log('✅ Prism min_required_reputation migration executed');
+    } catch (migrationError: any) {
+      console.debug('ℹ️ Prism min_required_reputation migration error (may already be applied):', migrationError?.message);
+    }
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);
