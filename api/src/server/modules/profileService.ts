@@ -9,6 +9,7 @@ export interface UserProfile {
   displayName?: string;
   profileImageFileId?: string;
   updatedAt: string;
+  storageTier?: 'free' | 'feed' | 'self-hosted';
 }
 
 export class ProfileService {

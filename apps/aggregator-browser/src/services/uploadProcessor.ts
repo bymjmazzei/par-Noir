@@ -94,108 +94,141 @@ async function processFileUpload(
   const isImage = file.type.startsWith('image/');
   const isVideo = file.type.startsWith('video/');
   const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  const skipEncrypt = task.metadata?.encrypt === false && (isVideo || file.type.startsWith('audio/'));
 
   uploadQueueService.updateTaskProgress(task.id, 5);
-
-  // Step 1: Encrypt file and generate thumbnail in parallel
   uploadQueueService.updateTaskStatus(task.id, 'processing');
   uploadQueueService.updateTaskProgress(task.id, 10);
 
-  const fileArrayBuffer = await file.arrayBuffer();
-  const fileData = new Uint8Array(fileArrayBuffer);
-
-  // Parallel: Encrypt file + Generate thumbnail (if needed)
-  const [encrypted, thumbnailBlob] = await Promise.all([
-    workerManager.encrypt(fileData, session.did, publicKey),
-    isImage || isVideo
-      ? generateThumbnailForFile(file, isImage)
-      : Promise.resolve<Blob | null>(null)
-  ]);
-
-  uploadQueueService.updateTaskProgress(task.id, 40);
-
-  // Create encrypted file package
-  const packageData: EncryptedFilePackage = {
-    encrypted: encrypted.encrypted,
-    iv: encrypted.iv,
-    salt: encrypted.salt,
-    metadata: {
-      originalName: file.name,
-      originalSize: file.size,
-      originalMimeType: file.type,
-    },
-  };
-
-  // Generate share token
-  let shareToken: any = undefined;
-  try {
-    const encryptionService = getEncryptionService();
-    shareToken = await encryptionService.generateShareToken(packageData, {
-      id: session.did,
-      publicKey: publicKey
-    });
-  } catch (tokenError) {
-    console.warn('Share token generation failed:', tokenError);
-  }
-
-  uploadQueueService.updateTaskProgress(task.id, 50);
-
-  // Step 2: Upload file and thumbnail in parallel
-  uploadQueueService.updateTaskStatus(task.id, 'uploading');
-
-  const encryptedBlob = new Blob([JSON.stringify(packageData)], { type: 'application/json' });
-  const base64File = await blobToBase64(encryptedBlob);
-
-  const uploadPromises: Promise<any>[] = [
-    uploadFile(base64File, `${file.name}.encrypted`, accessToken, task.accountId)
-  ];
-
-  // Upload thumbnail if we have one
+  let fileId: string;
   let thumbnailFileId: string | undefined;
   let thumbnailShareToken: any = undefined;
-  if (thumbnailBlob) {
-    uploadPromises.push(
-      (async () => {
-        const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
-        const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
-        const encryptedThumbnail = await workerManager.encrypt(thumbnailData, session.did, publicKey);
-        
-        const thumbnailPackage: EncryptedFilePackage = {
-          encrypted: encryptedThumbnail.encrypted,
-          iv: encryptedThumbnail.iv,
-          salt: encryptedThumbnail.salt,
-          metadata: {
-            originalName: `thumb_${file.name}`,
-            originalSize: thumbnailBlob.size,
-            originalMimeType: 'image/jpeg',
-          },
-        };
+  let shareToken: any = undefined;
+  let mainFileIsEncrypted = true;
 
-        let token: any = undefined;
-        try {
-          const encryptionService = getEncryptionService();
-          token = await encryptionService.generateShareToken(thumbnailPackage, {
-            id: session.did,
-            publicKey: publicKey
-          });
-        } catch (tokenError) {
-          console.warn('Thumbnail share token generation failed:', tokenError);
-        }
+  if (skipEncrypt) {
+    // Unencrypted path for video/audio over tier limit
+    const fileArrayBuffer = await file.arrayBuffer();
+    const rawBase64 = await blobToBase64(new Blob([fileArrayBuffer], { type: file.type }));
+    uploadQueueService.updateTaskProgress(task.id, 40);
+    uploadQueueService.updateTaskStatus(task.id, 'uploading');
+    fileId = (await uploadFile(rawBase64, file.name, accessToken, task.accountId, {
+      encrypt: false,
+      mimeType: file.type,
+    })).id;
+    mainFileIsEncrypted = false;
 
-        const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
-        const uploadResult = await uploadFile(thumbnailBase64, `thumb_${file.name}.encrypted`, accessToken, task.accountId);
-        // Return both the upload result and the token so we can use both
-        return { uploadResult, thumbnailShareToken: token };
-      })()
-    );
-  }
+    const thumbnailBlob = isVideo ? await generateThumbnailForFile(file, false) : null;
+    if (thumbnailBlob) {
+      const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
+      const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
+      const encryptedThumbnail = await workerManager.encrypt(thumbnailData, session.did, publicKey);
+      const thumbnailPackage: EncryptedFilePackage = {
+        encrypted: encryptedThumbnail.encrypted,
+        iv: encryptedThumbnail.iv,
+        salt: encryptedThumbnail.salt,
+        metadata: {
+          originalName: `thumb_${file.name}`,
+          originalSize: thumbnailBlob.size,
+          originalMimeType: 'image/jpeg',
+        },
+      };
+      try {
+        const encryptionService = getEncryptionService();
+        thumbnailShareToken = await encryptionService.generateShareToken(thumbnailPackage, {
+          id: session.did,
+          publicKey: publicKey
+        });
+      } catch (tokenError) {
+        console.warn('Thumbnail share token generation failed:', tokenError);
+      }
+      const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
+      thumbnailFileId = (await uploadFile(thumbnailBase64, `thumb_${file.name}.encrypted`, accessToken, task.accountId)).id;
+    }
+  } else {
+    const fileArrayBuffer = await file.arrayBuffer();
+    const fileData = new Uint8Array(fileArrayBuffer);
 
-  const uploadResults = await Promise.all(uploadPromises);
-  const fileId = uploadResults[0]?.id;
-  if (uploadResults.length > 1) {
-    const thumbnailResult = uploadResults[1] as { uploadResult?: any; thumbnailShareToken?: any };
-    thumbnailFileId = thumbnailResult.uploadResult?.id;
-    thumbnailShareToken = thumbnailResult.thumbnailShareToken;
+    const [encrypted, thumbnailBlob] = await Promise.all([
+      workerManager.encrypt(fileData, session.did, publicKey),
+      isImage || isVideo
+        ? generateThumbnailForFile(file, isImage)
+        : Promise.resolve<Blob | null>(null)
+    ]);
+
+    uploadQueueService.updateTaskProgress(task.id, 40);
+
+    const packageData: EncryptedFilePackage = {
+      encrypted: encrypted.encrypted,
+      iv: encrypted.iv,
+      salt: encrypted.salt,
+      metadata: {
+        originalName: file.name,
+        originalSize: file.size,
+        originalMimeType: file.type,
+      },
+    };
+
+    try {
+      const encryptionService = getEncryptionService();
+      shareToken = await encryptionService.generateShareToken(packageData, {
+        id: session.did,
+        publicKey: publicKey
+      });
+    } catch (tokenError) {
+      console.warn('Share token generation failed:', tokenError);
+    }
+
+    uploadQueueService.updateTaskProgress(task.id, 50);
+    uploadQueueService.updateTaskStatus(task.id, 'uploading');
+
+    const encryptedBlob = new Blob([JSON.stringify(packageData)], { type: 'application/json' });
+    const base64File = await blobToBase64(encryptedBlob);
+
+    const uploadPromises: Promise<any>[] = [
+      uploadFile(base64File, `${file.name}.encrypted`, accessToken, task.accountId)
+    ];
+
+    if (thumbnailBlob) {
+      uploadPromises.push(
+        (async () => {
+          const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
+          const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
+          const encryptedThumbnail = await workerManager.encrypt(thumbnailData, session.did, publicKey);
+          const thumbnailPackage: EncryptedFilePackage = {
+            encrypted: encryptedThumbnail.encrypted,
+            iv: encryptedThumbnail.iv,
+            salt: encryptedThumbnail.salt,
+            metadata: {
+              originalName: `thumb_${file.name}`,
+              originalSize: thumbnailBlob.size,
+              originalMimeType: 'image/jpeg',
+            },
+          };
+          let token: any = undefined;
+          try {
+            const encryptionService = getEncryptionService();
+            token = await encryptionService.generateShareToken(thumbnailPackage, {
+              id: session.did,
+              publicKey: publicKey
+            });
+          } catch (tokenError) {
+            console.warn('Thumbnail share token generation failed:', tokenError);
+          }
+          const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
+          const uploadResult = await uploadFile(thumbnailBase64, `thumb_${file.name}.encrypted`, accessToken, task.accountId);
+          return { uploadResult, thumbnailShareToken: token };
+        })()
+      );
+    }
+
+    const uploadResults = await Promise.all(uploadPromises);
+    fileId = uploadResults[0]?.id ?? '';
+    if (uploadResults.length > 1) {
+      const thumbnailResult = uploadResults[1] as { uploadResult?: any; thumbnailShareToken?: any };
+      thumbnailFileId = thumbnailResult.uploadResult?.id;
+      thumbnailShareToken = thumbnailResult.thumbnailShareToken;
+    }
   }
 
   uploadQueueService.updateTaskProgress(task.id, 90);
@@ -237,7 +270,8 @@ async function processFileUpload(
         publicToken: publicTokenString, // Only set if public
         uploadDate: new Date().toISOString(),
         isNSFW: task.metadata?.isNSFW || false,
-        mainFileId: fileId, // Reference to main file for downloads
+        mainFileId: fileId,
+        mainFileIsEncrypted: mainFileIsEncrypted,
       }, accessToken);
       console.log('[UploadProcessor] Thumbnail metadata created successfully');
     } catch (metadataError: any) {
@@ -245,7 +279,7 @@ async function processFileUpload(
       throw new Error(`Failed to create thumbnail metadata: ${metadataError.message}`);
     }
   } else {
-    // Fallback: if no thumbnail, create metadata for main file (shouldn't happen for images/videos)
+    // Fallback: if no thumbnail, create metadata for main file (e.g. audio without thumb)
     await createMetadata(fileId, {
       name: file.name,
       description: task.metadata?.description || '',
@@ -253,7 +287,8 @@ async function processFileUpload(
       tags: task.metadata?.tags || [],
       fileType,
       isPublic: task.metadata?.isPublic || false,
-      publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
+      publicToken: mainFileIsEncrypted && shareToken ? JSON.stringify(shareToken) : undefined,
+      isEncrypted: mainFileIsEncrypted,
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,
     }, accessToken);
@@ -754,8 +789,18 @@ async function generateThumbnailForFile(file: File, isImage: boolean): Promise<B
 
 /**
  * Helper: Upload file to API
+ * @param encrypt - When false, uploads raw file (for video/audio over tier limit)
  */
-async function uploadFile(base64Data: string, fileName: string, accessToken: string, accountId: string): Promise<{ id: string }> {
+async function uploadFile(
+  base64Data: string,
+  fileName: string,
+  accessToken: string,
+  accountId: string,
+  options?: { encrypt?: boolean; mimeType?: string }
+): Promise<{ id: string }> {
+  const encrypt = options?.encrypt !== false;
+  const mimeType = options?.mimeType ?? 'application/json';
+
   const response = await fetch(`${API_ENDPOINT}/api/drive/files`, {
     method: 'POST',
     headers: {
@@ -765,8 +810,9 @@ async function uploadFile(base64Data: string, fileName: string, accessToken: str
     body: JSON.stringify({
       fileData: base64Data,
       fileName,
-      mimeType: 'application/json',
-      accountId
+      mimeType,
+      accountId,
+      encrypt
     })
   });
 

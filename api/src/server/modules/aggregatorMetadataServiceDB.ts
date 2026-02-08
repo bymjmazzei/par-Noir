@@ -1793,6 +1793,7 @@ export class AggregatorMetadataServiceDB {
       isThoughtThumbnail?: boolean; // Thumbnails inherit classification from source
       isPartOfCollection?: boolean; // Collection files inherit collection classification
       mainFileId?: string; // Reference to source file for thumbnails
+      isEncrypted?: boolean; // True if main file is encrypted; false for raw uploads over tier limit
     }
   ): Promise<PublicMetadata | null> {
     const db = getDatabasePool();
@@ -1861,6 +1862,7 @@ export class AggregatorMetadataServiceDB {
         ...(updates.isThoughtThumbnail !== undefined && { isThoughtThumbnail: updates.isThoughtThumbnail }),
         ...(updates.isPartOfCollection !== undefined && { isPartOfCollection: updates.isPartOfCollection }),
         ...(updates.mainFileId !== undefined && { mainFileId: updates.mainFileId }),
+        ...(updates.isEncrypted !== undefined && { isEncrypted: updates.isEncrypted }),
         // Handle publicToken: null = delete, string = set, undefined = preserve
         ...(updates.publicToken !== undefined ? (
           updates.publicToken === null 

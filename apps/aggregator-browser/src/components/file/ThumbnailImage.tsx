@@ -71,6 +71,7 @@ export interface ThumbnailImageProps {
   mimeType?: string;
   mainFileId?: string;
   isThumbnail?: boolean;
+  isEncrypted?: boolean; // When true, main file is encrypted; prefer over fileName.endsWith('.encrypted')
 }
 
 export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
@@ -81,10 +82,11 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
   className = 'w-full h-full object-cover',
   mainFileId,
   isThumbnail,
+  isEncrypted: isEncryptedProp,
 }) => {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
-  const isEncrypted = fileName.toLowerCase().endsWith('.encrypted');
+  const isEncrypted = isEncryptedProp !== undefined ? isEncryptedProp : fileName.toLowerCase().endsWith('.encrypted');
 
   useEffect(() => {
     let blobUrl: string | null = null;

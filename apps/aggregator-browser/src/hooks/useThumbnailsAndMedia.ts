@@ -8,6 +8,8 @@ import type { IndexedFile } from '../types/aggregator';
 import type { MediaDimensions } from '../utils/mediaScaling';
 import { decryptWithToken, type ShareToken } from '../utils/tokenDecryption';
 import { createThumbnailFromBlob, createVideoThumbnailFromBlob } from '../utils/thumbnailUtils';
+import { API_ENDPOINT } from '../config/api';
+import { PNOAuthService } from '../services/pnOAuthService';
 
 export interface UseThumbnailsAndMediaParams {
   mediaFiles: IndexedFile[];
@@ -161,17 +163,36 @@ export function useThumbnailsAndMedia({
       const isVideo =
         file.fileType === 'video' ||
         !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
-      if (!isVideo || !file.publicToken || videoBlobsRef.current.has(file.fileId)) continue;
+      if (!isVideo || videoBlobsRef.current.has(file.fileId)) continue;
+      const isUnencrypted = file.isEncrypted === false;
+      const hasToken = file.publicToken && typeof file.publicToken === 'string' && file.publicToken.trim().length > 0;
+      if (!isUnencrypted && !hasToken) continue;
       (async () => {
         try {
-          let token: ShareToken;
-          try {
-            token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
-          } catch {
-            return;
+          let videoBlob: Blob;
+          if (isUnencrypted) {
+            const ownerId = indexedFile.pnIdentifier || (file.creator as any)?.identifier?.value || (file as any).author?.did;
+            if (!ownerId) {
+              console.warn('Cannot pre-load unencrypted video: missing owner identifier');
+              return;
+            }
+            const session = PNOAuthService.loadSession();
+            const accessToken = session?.accessToken;
+            if (!accessToken) return;
+            const url = `${API_ENDPOINT}/api/drive/files/${file.fileId}?download=true&ownerPnIdentifier=${encodeURIComponent(ownerId)}`;
+            const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+            if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
+            videoBlob = await response.blob();
+          } else {
+            let token: ShareToken;
+            try {
+              token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
+            } catch {
+              return;
+            }
+            videoBlob = await decryptWithToken(token);
           }
-          const decryptedBlob = await decryptWithToken(token);
-          const videoUrl = URL.createObjectURL(decryptedBlob);
+          const videoUrl = URL.createObjectURL(videoBlob);
           setVideoBlobs((prev) => {
             const n = new Map(prev);
             n.set(file.fileId, videoUrl);

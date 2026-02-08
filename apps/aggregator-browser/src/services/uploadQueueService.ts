@@ -16,6 +16,8 @@ export interface UploadMetadata {
   tags?: string[];
   isPublic?: boolean;
   isNSFW?: boolean;
+  /** When false, upload raw file without encryption (for video/audio over tier limit) */
+  encrypt?: boolean;
   [key: string]: any;
 }
 

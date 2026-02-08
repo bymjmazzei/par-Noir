@@ -627,9 +627,9 @@ class ProductionServer {
     });
 
     // Body parsing - SECURITY FIX: Reduced limit to prevent DoS attacks
-    // Exception: POST /api/drive/files needs 100mb for video/encrypted uploads
+    // Exception: POST /api/drive/files needs 200mb for video/encrypted uploads (free tier 100MB raw)
     this.app.use((req, res, next) => {
-      const limit = req.method === 'POST' && req.path === '/api/drive/files' ? '100mb' : '10mb';
+      const limit = req.method === 'POST' && req.path === '/api/drive/files' ? '200mb' : '10mb';
       return express.json({ limit })(req, res, next);
     });
     this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -3090,7 +3090,12 @@ class ProductionServer {
           return res.status(404).json({ error: 'File not found in index' });
         }
 
-        return res.json({ metadata: metadata.metadata || metadata });
+        const meta = metadata.metadata || metadata;
+        const out: { metadata: any; pnIdentifier?: string } = { metadata: meta };
+        if ((metadata as any).pnIdentifier) {
+          out.pnIdentifier = (metadata as any).pnIdentifier;
+        }
+        return res.json(out);
       } catch (error: any) {
         console.error('Error getting metadata:', error);
         return res.status(500).json({
@@ -3133,7 +3138,8 @@ class ProductionServer {
           thumbnailFileId,
           isThoughtThumbnail, // Flag indicating this is a thumbnail of a thought
           isPartOfCollection, // Flag indicating this file is part of a collection
-          mainFileId // Reference to the source file (for thumbnails)
+          mainFileId, // Reference to the source file (for thumbnails)
+          isEncrypted // True if main file is encrypted; false for raw uploads over tier limit
         } = req.body;
 
         if (!fileId) {
@@ -3278,6 +3284,7 @@ class ProductionServer {
               ...(isPartOfCollection !== undefined && { isPartOfCollection }), // Collection files inherit collection classification
               ...(mainFileId && { mainFileId }), // Reference to source file for thumbnails
               ...(thumbnailFileId && { thumbnailFileId }), // Reference to thumbnail file
+              ...(isEncrypted !== undefined && { isEncrypted }),
               "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
               "@id": `https://parnoir.com/resource/${fileId}`,
               engagement: {
@@ -3416,6 +3423,7 @@ class ProductionServer {
               ...(isPartOfCollection !== undefined && { isPartOfCollection }), // Collection files inherit collection classification
               ...(mainFileId && { mainFileId }), // Reference to source file for thumbnails
               ...(thumbnailFileId && { thumbnailFileId }), // Reference to thumbnail file
+              ...(isEncrypted !== undefined && { isEncrypted }),
               "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
               "@id": `https://parnoir.com/resource/${fileId}`,
               engagement: {
@@ -7731,6 +7739,33 @@ class ProductionServer {
       }
     });
 
+    // GET /api/users/:userPnIdentifier/storage-tier - Get encryption limit (derived from feed creator tier)
+    this.app.get('/api/users/:userPnIdentifier/storage-tier', async (req, res) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const payload = PNOAuthService.validateAccessToken(token);
+        if (!payload?.pnIdentifier) {
+          return res.status(401).json({ error: 'Invalid token' });
+        }
+        const { userPnIdentifier } = req.params;
+        const id = userPnIdentifier === 'me' ? payload.pnIdentifier : userPnIdentifier;
+        if (id !== payload.pnIdentifier && id !== payload.did) {
+          return res.status(403).json({ error: 'Can only request your own storage tier' });
+        }
+        const { getStorageTier } = await import('./server/modules/storageTierService');
+        const result = await getStorageTier(payload.pnIdentifier, payload.did);
+        return res.json(result);
+      } catch (err: any) {
+        console.error('[StorageTier] Error:', err);
+        return res.status(500).json({ error: err?.message || 'Failed to get storage tier' });
+      }
+    });
+
     // GET /api/users/:userPnIdentifier/subscriptions - Get user's subscriptions
     this.app.get('/api/users/:userPnIdentifier/subscriptions', async (req, res) => {
       try {
@@ -8591,15 +8626,34 @@ class ProductionServer {
         
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
-        // Expect multipart/form-data with 'file' and optional 'fileName', 'mimeType', 'parents', 'accountId'
-        // For now, accept JSON with base64 file data (simpler for initial implementation)
-        const { fileData, fileName, mimeType, parents, accountId } = req.body;
+        // Expect JSON with fileData (base64), fileName, mimeType, parents, accountId, encrypt (optional)
+        const { fileData, fileName, mimeType, parents, accountId, encrypt = true } = req.body;
         
         if (!fileData || !fileName) {
           return res.status(400).json({
             error: 'Missing required fields',
             error_description: 'fileData and fileName are required'
           });
+        }
+
+        // When encrypt: true, enforce tier limit (parse EncryptedFilePackage for originalSize)
+        if (encrypt !== false) {
+          try {
+            const { getStorageTier } = await import('./server/modules/storageTierService');
+            const { encryptedLimitBytes } = await getStorageTier(pnIdentifier, tokenPayload.did);
+            const decoded = Buffer.from(fileData, 'base64');
+            const parsed = JSON.parse(decoded.toString('utf8')) as { metadata?: { originalSize?: number } };
+            const rawSize = parsed?.metadata?.originalSize;
+            if (typeof rawSize === 'number' && rawSize > encryptedLimitBytes) {
+              return res.status(403).json({
+                error: 'Encryption limit exceeded',
+                error_description: `File size (${Math.round(rawSize / 1024 / 1024)} MB) exceeds your encryption limit. Upload unencrypted or upgrade your tier.`,
+                encryptedLimitBytes
+              });
+            }
+          } catch (parseErr) {
+            // Non-JSON or missing metadata: allow (backward compat)
+          }
         }
 
         // CRITICAL: Only use pn identifier - no fallback to DID or public key
@@ -8954,11 +9008,52 @@ class ProductionServer {
         const thumbnail = req.query.thumbnail === 'true';
         const download = req.query.download === 'true';
         const accountId = req.query.accountId as string | undefined;
-        
+        const ownerPnIdentifier = req.query.ownerPnIdentifier as string | undefined;
+
+        // When ownerPnIdentifier is present: fetch from owner's Drive (for public feed items from other creators)
+        let effectiveUserIdentifier = userIdentifier;
+        let effectiveIdentifierCandidates = identifierCandidates;
+        if (ownerPnIdentifier && ownerPnIdentifier !== pnIdentifier) {
+          try {
+            const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+            const metadataService = AggregatorMetadataServiceDB.getInstance();
+            const fileEntry = await metadataService.getFileMetadata(fileId);
+            if (!fileEntry || !fileEntry.metadata) {
+              return res.status(404).json({
+                error: 'File not found',
+                error_description: 'File not found in metadata index'
+              });
+            }
+            const meta = fileEntry.metadata as { isPublic?: boolean; fileId?: string };
+            if (meta.isPublic !== true) {
+              return res.status(403).json({
+                error: 'Forbidden',
+                error_description: 'File is not public'
+              });
+            }
+            if (meta.fileId && meta.fileId !== fileId) {
+              return res.status(400).json({
+                error: 'Bad request',
+                error_description: 'File ID mismatch'
+              });
+            }
+            // Resolve owner pn identifier (may need pn- prefix)
+            const resolvedOwner = ownerPnIdentifier.startsWith('pn-') ? ownerPnIdentifier : `pn-${ownerPnIdentifier}`;
+            effectiveUserIdentifier = resolvedOwner;
+            effectiveIdentifierCandidates = [resolvedOwner];
+          } catch (lookupError: any) {
+            console.error('[DriveFiles] ownerPnIdentifier lookup failed:', lookupError?.message || lookupError);
+            return res.status(500).json({
+              error: 'Failed to resolve owner',
+              error_description: lookupError?.message || 'Failed to resolve file owner'
+            });
+          }
+        }
+
         if (thumbnail) {
           try {
             // Proxy thumbnail request through API server with authentication
-            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+            const accessToken = await googleDriveProxyService.getAccessToken(effectiveUserIdentifier, accountId, effectiveIdentifierCandidates);
             const thumbnailUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/thumbnail?alt=media`;
             
             console.log(`[DriveFiles] Fetching thumbnail for file ${fileId} with accountId ${accountId}`);
@@ -8985,7 +9080,7 @@ class ProductionServer {
               console.log(`[DriveFiles] Thumbnail not available (likely encrypted file), downloading full file for client-side thumbnail generation`);
               
               try {
-                const fileBlob = await googleDriveProxyService.downloadFile(userIdentifier, fileId, accountId, identifierCandidates);
+                const fileBlob = await googleDriveProxyService.downloadFile(effectiveUserIdentifier, fileId, accountId, effectiveIdentifierCandidates);
                 const arrayBuffer = await fileBlob.arrayBuffer();
                 const buffer = Buffer.from(arrayBuffer);
                 
@@ -9017,7 +9112,7 @@ class ProductionServer {
             });
           }
         } else if (download) {
-          const blob = await googleDriveProxyService.downloadFile(userIdentifier, fileId, accountId);
+          const blob = await googleDriveProxyService.downloadFile(effectiveUserIdentifier, fileId, accountId, effectiveIdentifierCandidates);
           const arrayBuffer = await blob.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
           
@@ -9025,7 +9120,7 @@ class ProductionServer {
           res.setHeader('Content-Disposition', `attachment; filename="${fileId}"`);
           return res.send(buffer);
         } else {
-          const metadata = await googleDriveProxyService.getFileMetadata(userIdentifier, fileId, accountId);
+          const metadata = await googleDriveProxyService.getFileMetadata(effectiveUserIdentifier, fileId, accountId);
           return res.json({ file: metadata });
         }
       } catch (error: any) {

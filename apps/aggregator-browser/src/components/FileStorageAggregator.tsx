@@ -557,6 +557,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [collectionFileOrder, setCollectionFileOrder] = useState<Map<string, number>>(new Map());
   const [showCollectionMetadataModal, setShowCollectionMetadataModal] = useState(false);
   const [pendingCollectionData, setPendingCollectionData] = useState<{ accountId: string; fileIds: string[] } | null>(null);
+  const [showUnencryptedAlert, setShowUnencryptedAlert] = useState(false);
+  const [pendingUnencryptedUpload, setPendingUnencryptedUpload] = useState<{ file: File; accountId: string; limitMb: number } | null>(null);
   const fileInputRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
@@ -2703,57 +2705,93 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     return { thumbnailFileIds, thumbnailTokens };
   };
 
+  const addUploadTask = (file: File, accountId: string, encrypt: boolean) => {
+    const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    const taskType = isPDF ? 'pdf' : 'file';
+    uploadQueueService.addTask({
+      type: taskType,
+      file,
+      accountId,
+      metadata: {
+        title: file.name,
+        description: '',
+        keywords: [],
+        tags: [],
+        isPublic: false,
+        isNSFW: false,
+        encrypt,
+      },
+      onComplete: () => {
+        console.log('✅ [Upload] File upload completed');
+      },
+      onError: (err) => {
+        console.error('❌ [Upload] File upload failed:', err);
+        setError(`Upload failed: ${err.message}`);
+      },
+    });
+  };
+
   const handleUploadForAccount = async (accountId: string, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    
-    if (!file) {
-      return;
-    }
-    
+    if (!file) return;
+
     if (!authenticatedUser?.id) {
       setError('Please unlock your pN to upload files');
       return;
     }
-
-    // Clear any previous errors
     setError(null);
 
-    // Determine file type
-      const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    const taskType = isPDF ? 'pdf' : 'file';
+    const isVideo = file.type.startsWith('video/');
+    const isAudio = file.type.startsWith('audio/');
 
-    // Add task to upload queue (non-blocking)
-    const taskId = uploadQueueService.addTask({
-      type: taskType,
+    if (isVideo || isAudio) {
+      try {
+        const accessToken = await PNOAuthService.getValidAccessToken();
+        if (!accessToken) {
+          setError('No valid access token');
+          return;
+        }
+        const pnId = userState.pnIdentifier || authenticatedUser.id;
+        const res = await fetch(`${API_ENDPOINT}/api/users/${pnId}/storage-tier`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!res.ok) {
+          addUploadTask(file, accountId, true);
+          if (event.target) event.target.value = '';
+          return;
+        }
+        const { encryptedLimitBytes } = await res.json();
+        if (file.size > encryptedLimitBytes) {
+          setPendingUnencryptedUpload({
             file,
             accountId,
-                metadata: {
-        title: file.name,
-            description: '',
-            keywords: [],
-            tags: [],
-        isPublic: false,
-            isNSFW: false,
-      },
-      onComplete: (result) => {
-        console.log('✅ [Upload] File upload completed:', result);
-        // File list will be refreshed automatically by the upload queue listener
-      },
-      onError: (error) => {
-        console.error('❌ [Upload] File upload failed:', error);
-        setError(`Upload failed: ${error.message}`);
-      },
-    });
-
-    console.log('📤 [Upload] File queued for upload:', { fileName: file.name, taskId });
-
-    // Optimistic UI: Show file immediately (if we have a way to display pending uploads)
-    // The status circle will show the progress
-
-    // Reset file input
-    if (event.target) {
-      event.target.value = '';
+            limitMb: Math.round(encryptedLimitBytes / 1024 / 1024),
+          });
+          setShowUnencryptedAlert(true);
+          if (event.target) event.target.value = '';
+          return;
+        }
+      } catch {
+        addUploadTask(file, accountId, true);
+        if (event.target) event.target.value = '';
+        return;
+      }
     }
+
+    addUploadTask(file, accountId, true);
+    if (event.target) event.target.value = '';
+  };
+
+  const handleUnencryptedUploadConfirm = () => {
+    if (!pendingUnencryptedUpload) return;
+    addUploadTask(pendingUnencryptedUpload.file, pendingUnencryptedUpload.accountId, false);
+    setPendingUnencryptedUpload(null);
+    setShowUnencryptedAlert(false);
+  };
+
+  const handleUnencryptedUploadCancel = () => {
+    setPendingUnencryptedUpload(null);
+    setShowUnencryptedAlert(false);
   };
 
   return (
@@ -2782,6 +2820,35 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             Dismiss
           </button>
         </div>
+      )}
+
+      {/* Unencrypted upload alert modal */}
+      {showUnencryptedAlert && pendingUnencryptedUpload && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="bg-neutral-900 border border-neutral-700 rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold text-white mb-2">Encryption limit exceeded</h3>
+            <p className="text-neutral-400 text-sm mb-4">
+              This file exceeds your encryption limit ({pendingUnencryptedUpload.limitMb} MB). It will be stored unencrypted. Only your Google account will have access. Upgrade to a paid tier to encrypt larger files.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={handleUnencryptedUploadCancel}
+                className="px-4 py-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleUnencryptedUploadConfirm}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+              >
+                Upload unencrypted
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* File List - One section per account */}

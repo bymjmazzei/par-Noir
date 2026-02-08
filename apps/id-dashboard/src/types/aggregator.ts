@@ -113,6 +113,9 @@ export interface PublicMetadata {
     blocked?: string[];
     updatedAt?: string;
   };
+  thumbnailFileId?: string;
+  mainFileId?: string;
+  isEncrypted?: boolean; // True if main file is encrypted; false for raw uploads over tier limit
   // Content Rating & Moderation Fields
   contentRating?: ContentRating;
   reportCount?: number;

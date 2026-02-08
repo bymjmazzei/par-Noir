@@ -64,9 +64,11 @@ export function CollectionFeed({
           
           if (response.ok) {
             const data = await response.json();
+            const meta = data.metadata || data;
+            const withOwner = data.pnIdentifier ? { ...meta, pnIdentifier: data.pnIdentifier } : meta;
             setFileMetadata(prev => {
               const newMap = new Map(prev);
-              newMap.set(fileId, data.metadata || data);
+              newMap.set(fileId, withOwner);
               return newMap;
             });
           }
@@ -290,10 +292,14 @@ export function CollectionFeed({
           }
         }
       } else if (isVideo) {
-        // Load video
+        // Load video (use ownerPnIdentifier when file is from another user, e.g. unencrypted)
         let videoUrl = `${API_ENDPOINT}/api/drive/files/${fileId}?download=true`;
         if (accountIdToUse) {
           videoUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
+        }
+        const ownerId = metadata.pnIdentifier || (metadata.creator as any)?.identifier?.value || (metadata as any).author?.did;
+        if (ownerId) {
+          videoUrl += `&ownerPnIdentifier=${encodeURIComponent(ownerId)}`;
         }
         
         const response = await fetch(videoUrl, {
