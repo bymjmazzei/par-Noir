@@ -11,6 +11,9 @@
         ],
         "prism": [
           "prism-parnoir"
+        ],
+        "licensing": [
+          "licensing-parnoir"
         ]
       }
     }

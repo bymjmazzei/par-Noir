@@ -33,7 +33,16 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Deploy to Firebase (hosting only: id-dashboard + browse + prism)
+# Build licensing-portal (licensing target)
+echo "📦 Building licensing-portal..."
+cd ../licensing-portal
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ licensing-portal build failed"
+    exit 1
+fi
+
+# Deploy to Firebase (hosting only: id-dashboard + browse + prism + licensing)
 echo "🔥 Deploying to Firebase..."
 cd ../..
 firebase deploy --only hosting
