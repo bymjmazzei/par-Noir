@@ -58,30 +58,42 @@ function LockedView({ onApplyOpen }: { onApplyOpen: () => void }) {
               and reach consensus to approve or deny before content goes live.
             </p>
 
-            <div className="grid gap-6 py-8 md:grid-cols-3 text-left">
-              <div className="bg-neutral-900/60 border border-white/10 rounded-lg p-5 backdrop-blur-sm">
-                <Shield className="h-8 w-8 text-neutral-400 mb-3" />
-                <h2 className="font-semibold mb-2">DMCA Review</h2>
-                <p className="text-sm text-neutral-400">
-                  Content flagged by the DMCA bot or user reports is reviewed by Rays
-                  before it can be indexed.
-                </p>
+            <div className="grid gap-4 py-8 md:grid-cols-3 text-left">
+              <div className="bg-neutral-900/60 border border-white/10 rounded-lg p-4 backdrop-blur-sm flex items-center gap-3">
+                <div className="flex-shrink-0 w-10">
+                  <Shield className="h-8 w-8 text-neutral-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-semibold mb-1">DMCA Review</h2>
+                  <p className="text-sm text-neutral-400 leading-snug">
+                    Content flagged by the DMCA bot or user reports is reviewed by Rays
+                    before it can be indexed.
+                  </p>
+                </div>
               </div>
-              <div className="bg-neutral-900/60 border border-white/10 rounded-lg p-5 backdrop-blur-sm">
-                <Users className="h-8 w-8 text-neutral-400 mb-3" />
-                <h2 className="font-semibold mb-2">Consensus-Based</h2>
-                <p className="text-sm text-neutral-400">
-                  Two Rays must agree to approve or deny. No single person controls
-                  content visibility.
-                </p>
+              <div className="bg-neutral-900/60 border border-white/10 rounded-lg p-4 backdrop-blur-sm flex items-center gap-3">
+                <div className="flex-shrink-0 w-10">
+                  <Users className="h-8 w-8 text-neutral-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-semibold mb-1">Consensus-Based</h2>
+                  <p className="text-sm text-neutral-400 leading-snug">
+                    Two Rays must agree to approve or deny. No single person controls
+                    content visibility.
+                  </p>
+                </div>
               </div>
-              <div className="bg-neutral-900/60 border border-white/10 rounded-lg p-5 backdrop-blur-sm">
-                <FileCheck className="h-8 w-8 text-neutral-400 mb-3" />
-                <h2 className="font-semibold mb-2">Simple Review</h2>
-                <p className="text-sm text-neutral-400">
-                  Swipe left to deny, right to approve. Review content, reach
-                  consensus, earn reputation.
-                </p>
+              <div className="bg-neutral-900/60 border border-white/10 rounded-lg p-4 backdrop-blur-sm flex items-center gap-3">
+                <div className="flex-shrink-0 w-10">
+                  <FileCheck className="h-8 w-8 text-neutral-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-semibold mb-1">Simple Review</h2>
+                  <p className="text-sm text-neutral-400 leading-snug">
+                    Swipe left to deny, right to approve. Review content, reach
+                    consensus, earn reputation.
+                  </p>
+                </div>
               </div>
             </div>
 
