@@ -13,6 +13,7 @@ export function useExportState() {
   const [showTransferReceiver, setShowTransferReceiver] = useState(false);
   const [showTermsOfService, setShowTermsOfService] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showDmcaPolicy, setShowDmcaPolicy] = useState(false);
   const [showTransferSetupModal, setShowTransferSetupModal] = useState(false);
   const [transferUrl, setTransferUrl] = useState('');
   const [showDelegationModal, setShowDelegationModal] = useState(false);
@@ -43,6 +44,8 @@ export function useExportState() {
     setShowTermsOfService,
     showPrivacyPolicy,
     setShowPrivacyPolicy,
+    showDmcaPolicy,
+    setShowDmcaPolicy,
     showTransferSetupModal,
     setShowTransferSetupModal,
     transferUrl,

@@ -88,19 +88,45 @@ export function setupFeedRoutes(app: any) {
         const metadataService = AggregatorMetadataServiceDB.getInstance();
         const fileEntry = await metadataService.getFileMetadata(fileId);
 
-        // DMCA gate: check content before adding to feed (private→indexed)
+        // Repeat infringer and DMCA gate
         if (fileEntry) {
-          const { googleDriveProxyService } = await import('./googleDriveProxy');
-          const { runDMCACheck } = await import('./dmcaGate');
           const ownerPn = fileEntry.pnIdentifier ?? '';
-          const driveFileId = String((fileEntry.metadata as any)?.backendFileId ?? fileId ?? '');
-          const mimeType = String((fileEntry.metadata as any)?.mimeType ?? 'application/octet-stream');
-          const dmcaResult = await runDMCACheck(googleDriveProxyService, ownerPn, driveFileId, mimeType);
-          if (!dmcaResult.passed) {
+          const { isRepeatInfringer } = await import('./repeatInfringerService');
+          if (await isRepeatInfringer(ownerPn)) {
             return res.status(403).json({
-              error: 'Content flagged for DMCA review',
-              message: dmcaResult.reason || 'This content has been flagged for copyright review.',
+              error: 'Account restricted',
+              message: 'Your account is restricted due to repeated copyright issues. Contact support if you believe this is an error.',
             });
+          }
+          const { isFileApprovedByPrism, addToPrismQueue } = await import('./prismQueueService');
+          const alreadyApproved = await isFileApprovedByPrism(fileId);
+          if (!alreadyApproved) {
+            const { googleDriveProxyService } = await import('./googleDriveProxy');
+            const { runDMCACheck } = await import('./dmcaGate');
+            const driveFileId = String((fileEntry.metadata as any)?.backendFileId ?? fileId ?? '');
+            const mimeType = String((fileEntry.metadata as any)?.mimeType ?? 'application/octet-stream');
+            const dmcaResult = await runDMCACheck(googleDriveProxyService, ownerPn, driveFileId, mimeType);
+            if (!dmcaResult.passed) {
+              const queueItemId = await addToPrismQueue({
+                fileId,
+                ownerPnIdentifier: ownerPn,
+                flagSource: 'bot',
+                reporterPnIdentifier: null,
+              });
+              const { addContentNotice } = await import('./contentNoticesService');
+              await addContentNotice({
+                ownerPnIdentifier: ownerPn,
+                fileId,
+                type: 'pending_review',
+                source: 'bot',
+              });
+              return res.status(202).json({
+                status: 'pending_review',
+                error: 'Content flagged for DMCA review',
+                message: dmcaResult.reason || 'This content has been flagged for copyright review and is pending human review.',
+                queueItemId: queueItemId || undefined,
+              });
+            }
           }
         }
 

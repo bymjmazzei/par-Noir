@@ -103,6 +103,18 @@ export async function getQueueItemById(id: string): Promise<PrismQueueItem | nul
 }
 
 /**
+ * Check if a file was already approved by Prism (Rays). Used to allow retry after human approval.
+ */
+export async function isFileApprovedByPrism(fileId: string): Promise<boolean> {
+  const db = getDatabasePool();
+  const result = await db.query(
+    `SELECT 1 FROM prism_review_queue WHERE file_id = $1 AND status = 'approved' LIMIT 1`,
+    [fileId]
+  );
+  return (result.rows.length ?? 0) > 0;
+}
+
+/**
  * Submit a Ray vote and check for consensus
  * In bootstrap mode, admin approve/deny immediately resolves. Admin skip = no-op (escalation still applies).
  * Vote types: approve, deny, skip. Skip is reputation-neutral; 3 skips escalate to higher-tier Rays.

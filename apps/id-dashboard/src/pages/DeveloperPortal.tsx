@@ -11,9 +11,10 @@ import {
   CheckCircle, Shield, Copy, ExternalLink, Loader, AlertCircle, UserPlus
 } from 'lucide-react';
 import { FeedDelegationModal } from '../components/feeds/FeedDelegationModal';
+import { ContentNoticesSection } from '../components/ContentNoticesSection';
 
 interface DeveloperPortalProps {
-  authenticatedUser: { id: string; publicKey?: string; nickname?: string } | null;
+  authenticatedUser: { id: string; publicKey?: string; nickname?: string; accessToken?: string } | null;
 }
 
 export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedUser }) => {
@@ -176,6 +177,9 @@ export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedU
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {authenticatedUser && (
+          <ContentNoticesSection accessToken={(authenticatedUser as { accessToken?: string }).accessToken} />
+        )}
         {/* Feed Services Section */}
         <section className="mb-12">
           <div className="flex items-center justify-between mb-6">

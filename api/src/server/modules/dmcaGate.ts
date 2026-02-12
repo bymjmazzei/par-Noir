@@ -3,6 +3,10 @@
  * Runs DMCA check before content is indexed (private→indexed)
  * Fetches file via Google Drive proxy, runs Gemini check.
  * Video/audio: samples clips for cost-effective check. Images: full check.
+ *
+ * Fail policy: DMCA_GATE_FAIL_MODE=open|closed (default: open).
+ * - open: On error or sampling failure, allow content (availability over strictness).
+ * - closed: On error or sampling failure, treat as flagged (content goes to Prism queue for human review).
  */
 
 import { getGeminiModerationService } from './geminiModerationService';
@@ -18,6 +22,7 @@ interface DriveProxyLike {
 }
 
 const FALLBACK_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const FAIL_MODE = (process.env.DMCA_GATE_FAIL_MODE || 'open').toLowerCase();
 
 function isVideoOrAudio(mimeType: string): boolean {
   const base = (mimeType || '').split(';')[0].trim().toLowerCase();
@@ -60,7 +65,10 @@ export async function runDMCACheck(
         }
         return { passed: true };
       }
-      console.warn('[DMCA Gate] Sampling failed for large video/audio; allowing (fail open)');
+      console.warn('[DMCA Gate] Sampling failed for large video/audio;', FAIL_MODE === 'closed' ? 'fail closed (pending review)' : 'allowing (fail open)');
+      if (FAIL_MODE === 'closed') {
+        return { passed: false, reason: 'Check failed; content pending human review.' };
+      }
       return { passed: true };
     }
 
@@ -70,8 +78,11 @@ export async function runDMCACheck(
     }
     return { passed: true };
   } catch (err) {
-    console.warn('[DMCA Gate] Check failed, allowing content:', (err as Error)?.message);
-    return { passed: true }; // Fail open
+    console.warn('[DMCA Gate] Check failed:', (err as Error)?.message, FAIL_MODE === 'closed' ? '(fail closed)' : '(allowing)');
+    if (FAIL_MODE === 'closed') {
+      return { passed: false, reason: 'Check failed; content pending human review.' };
+    }
+    return { passed: true };
   }
   return { passed: true };
 }

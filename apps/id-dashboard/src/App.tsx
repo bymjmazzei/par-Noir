@@ -47,6 +47,7 @@ import { DeveloperPortal } from './pages/DeveloperPortal';
 import TransferReceiver from './pages/TransferReceiver';
 import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import DmcaPolicy from './pages/DmcaPolicy';
 import { MainDashboard } from './components/app/MainDashboard';
 import { DelegationModal } from './components/DelegationModal';
 import { IdentityVerificationModal } from './components/IdentityVerificationModal';
@@ -495,6 +496,8 @@ function App() {
     setShowTermsOfService,
     showPrivacyPolicy,
     setShowPrivacyPolicy,
+    showDmcaPolicy,
+    setShowDmcaPolicy,
     showTransferSetupModal,
     setShowTransferSetupModal,
     transferUrl,
@@ -983,6 +986,8 @@ function App() {
       setShowTermsOfService(true);
     } else if (pathname === '/privacy') {
       setShowPrivacyPolicy(true);
+    } else if (pathname === '/dmca') {
+      setShowDmcaPolicy(true);
     }
   }, []);
 
@@ -6566,6 +6571,11 @@ This invitation expires in 24 hours.`;
           <PrivacyPolicy />
         )}
 
+        {/* DMCA Policy */}
+        {showDmcaPolicy && (
+          <DmcaPolicy onClose={() => setShowDmcaPolicy(false)} />
+        )}
+
         {/* Data Collection Modal */}
                       {showDataPointInputModal && currentDataPoint && (
                 <DataPointInputModal
@@ -6627,6 +6637,17 @@ This invitation expires in 24 hours.`;
               rel="noopener noreferrer"
             >
               Privacy Policy
+            </a>
+            <span className="text-text-secondary">•</span>
+            <a 
+              href="/dmca" 
+              className="text-text-secondary hover:text-primary transition-colors"
+              onClick={(e) => {
+                e.preventDefault();
+                setShowDmcaPolicy(true);
+              }}
+            >
+              DMCA
             </a>
           </div>
         </div>

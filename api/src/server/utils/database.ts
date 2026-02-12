@@ -716,6 +716,60 @@ export async function initializeDatabase(): Promise<void> {
     `);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_prism_ray_applications_status ON prism_ray_applications(status)`);
 
+    // Content notices (DMCA/index removal notices for content owners - in-app only)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS content_notices (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        owner_pn_identifier VARCHAR(255) NOT NULL,
+        file_id VARCHAR(255) NOT NULL,
+        type VARCHAR(50) NOT NULL,
+        reason TEXT,
+        source VARCHAR(50) NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_content_notices_owner ON content_notices(owner_pn_identifier)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_content_notices_created_at ON content_notices(created_at DESC)`);
+
+    // DMCA takedown requests (from claimants)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS dmca_takedown_requests (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        claimant_name VARCHAR(255) NOT NULL,
+        claimant_email VARCHAR(255) NOT NULL,
+        copyrighted_work_description TEXT NOT NULL,
+        infringing_content_ref VARCHAR(1024) NOT NULL,
+        good_faith_statement TEXT NOT NULL,
+        signature VARCHAR(512) NOT NULL,
+        status VARCHAR(50) DEFAULT 'pending',
+        processed_at TIMESTAMP WITH TIME ZONE,
+        processed_by VARCHAR(255),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_dmca_takedown_requests_status ON dmca_takedown_requests(status)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_dmca_takedown_requests_created_at ON dmca_takedown_requests(created_at DESC)`);
+
+    // DMCA counter-notices (from content owners)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS dmca_counter_notices (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        content_notice_id UUID REFERENCES content_notices(id) ON DELETE SET NULL,
+        dmca_takedown_request_id UUID REFERENCES dmca_takedown_requests(id) ON DELETE SET NULL,
+        owner_pn_identifier VARCHAR(255) NOT NULL,
+        file_id VARCHAR(255) NOT NULL,
+        statement TEXT NOT NULL,
+        signature VARCHAR(512) NOT NULL,
+        status VARCHAR(50) DEFAULT 'pending',
+        forwarded_at TIMESTAMP WITH TIME ZONE,
+        restore_after TIMESTAMP WITH TIME ZONE,
+        restored_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_dmca_counter_notices_status ON dmca_counter_notices(status)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_dmca_counter_notices_restore_after ON dmca_counter_notices(restore_after)`);
+
     // Run bot detection migration
     try {
       const fs = await import('fs');

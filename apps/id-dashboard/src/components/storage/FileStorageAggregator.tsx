@@ -3786,6 +3786,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 throw error;
               }
 
+              // 202 = content pending copyright review (DMCA bot flagged; human review will decide)
+              if (res.status === 202) {
+                const data = await res.json().catch(() => ({}));
+                setSuccessMessage(data.message || "Content is under copyright review. You'll be notified when it's decided. Check Services for status.");
+                throw new Error('PENDING_REVIEW');
+              }
+
+              // 403 = e.g. account restricted (repeat infringer) or other denial
+              if (res.status === 403) {
+                const data = await res.json().catch(() => ({}));
+                const msg = data.message || data.error || 'Request denied';
+                setError(msg);
+                throw new Error(msg);
+              }
+
               if (!res.ok) {
                 const errorText = await res.text().catch(() => res.statusText);
                 throw new Error(`PUT failed: ${res.status} - ${errorText}`);
@@ -3810,8 +3825,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           const putData = await putResponse.json().catch(() => ({}));
           console.log('✅ [Phase 3] PUT endpoint updated isPublic successfully', putData);
         } else {
+          const reason = putResult.reason as Error | undefined;
+          if (reason?.message === 'PENDING_REVIEW') {
+            // Content is pending copyright review; success message already set; do not continue to Drive index update
+            await loadFileMetadata([file]);
+            return;
+          }
           console.error('❌ [Phase 3] Failed to update isPublic via PUT endpoint (non-critical):', putResult.reason);
-          // Non-critical - POST should have handled it, but log for debugging
         }
 
         // CRITICAL: Update Google Drive public index file when making file public
@@ -3939,6 +3959,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update file visibility';
+      if (errorMessage === 'PENDING_REVIEW') {
+        // Success message already set; do not overwrite with error
+        return;
+      }
       console.error('Failed to toggle public status:', err);
       setError(errorMessage);
     }

@@ -4,7 +4,7 @@
  */
 
 import { Request, Response } from 'express';
-import { getPendingQueueItems, getPendingQueueItemsForRay, submitVote, addToPrismQueue, getQueueStats, seedDemoQueueItems } from './prismQueueService';
+import { getPendingQueueItems, getPendingQueueItemsForRay, submitVote, addToPrismQueue, getQueueStats, seedDemoQueueItems, getQueueItemById } from './prismQueueService';
 import { isPrismAdmin, isBootstrapMode } from './prismAdminService';
 import { getReputationScore, submitRayApplication } from './prismReputationService';
 import { ensurePrismLedgersForAllIdentities } from './prismEnsureService';
@@ -125,6 +125,13 @@ export function setupPrismRoutes(app: any): void {
       }
 
       const result = await submitVote(queueItemId, payload.pnIdentifier, vote);
+      if (result.resolved && result.status === 'denied') {
+        const item = await getQueueItemById(queueItemId);
+        if (item) {
+          const { executeTakedown } = await import('./dmcaTakedownService');
+          await executeTakedown(item.file_id, 'Prism review: content denied (copyright).', 'prism_denied');
+        }
+      }
       return res.json({ success: true, resolved: result.resolved, status: result.status });
     } catch (err: any) {
       console.error('[Prism] Vote error:', err);

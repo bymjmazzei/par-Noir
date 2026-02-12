@@ -252,9 +252,15 @@ export class FeedService {
       body: JSON.stringify({ fileId, addedBy })
     });
 
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 202) {
+      throw new Error(data.message || "Content is under copyright review. You'll be notified when it's decided.");
+    }
+    if (response.status === 403) {
+      throw new Error(data.message || data.error || 'Your account is restricted due to repeated copyright issues. Contact support if you believe this is an error.');
+    }
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to add post to feed' }));
-      throw new Error(error.error || 'Failed to add post to feed');
+      throw new Error(data.error || 'Failed to add post to feed');
     }
   }
 

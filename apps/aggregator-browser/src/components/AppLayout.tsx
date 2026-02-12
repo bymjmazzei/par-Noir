@@ -9,6 +9,7 @@ import { UploadStatusCircle } from './UploadStatusCircle';
 import { UploadQueueOverlay } from './UploadQueueOverlay';
 import { ToastContainer } from './Toast';
 import { BottomNav } from './BottomNav';
+import { ContentNoticesBanner } from './ContentNoticesBanner';
 import type { AppContext } from '../hooks/useAppContext';
 import type { Feed } from '../types/aggregator';
 import type { Toast } from './Toast';
@@ -70,6 +71,7 @@ export function AppLayout({
         availableContexts={userState.isUnlocked ? availableContexts : []}
         onContextChange={(c) => setActiveContext(c)}
       />
+      <ContentNoticesBanner isUnlocked={userState.isUnlocked} />
       {children}
       <ToastContainer toasts={toasts} onClose={removeToast} />
       <BottomNav

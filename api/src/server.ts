@@ -3017,6 +3017,175 @@ class ProductionServer {
     const { setupPrismRoutes } = await import('./server/modules/prismRoutes');
     setupPrismRoutes(this.app);
 
+    // Content notices (DMCA / index removal - in-app only)
+    this.app.get('/api/content-notices', async (req, res) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const payload = PNOAuthService.validateAccessToken(token);
+        if (!payload?.pnIdentifier) {
+          return res.status(401).json({ error: 'Invalid token' });
+        }
+        const limit = Math.min(parseInt(String(req.query.limit || '50'), 10) || 50, 100);
+        const offset = parseInt(String(req.query.offset || '0'), 10) || 0;
+        const { getContentNoticesForOwner } = await import('./server/modules/contentNoticesService');
+        const notices = await getContentNoticesForOwner(payload.pnIdentifier, limit, offset);
+        return res.json({
+          notices: notices.map((n) => ({
+            id: n.id,
+            fileId: n.file_id,
+            type: n.type,
+            reason: n.reason ?? undefined,
+            source: n.source,
+            createdAt: n.created_at,
+          })),
+        });
+      } catch (err: any) {
+        console.error('[Content notices] Error:', err);
+        return res.status(500).json({ error: err?.message || 'Failed to get content notices' });
+      }
+    });
+
+    // POST /api/dmca/counter-notice - Submit counter-notice (auth required; content owner only)
+    this.app.post('/api/dmca/counter-notice', express.json(), async (req, res) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const payload = PNOAuthService.validateAccessToken(token);
+        if (!payload?.pnIdentifier) {
+          return res.status(401).json({ error: 'Invalid token' });
+        }
+        const body = req.body || {};
+        const contentNoticeId = body.contentNoticeId ? String(body.contentNoticeId).trim() : null;
+        const dmcaTakedownRequestId = body.dmcaTakedownRequestId ? String(body.dmcaTakedownRequestId).trim() : null;
+        const statement = String(body.statement ?? '').trim();
+        const signature = String(body.signature ?? '').trim();
+        if (!contentNoticeId && !dmcaTakedownRequestId) {
+          return res.status(400).json({ error: 'Provide contentNoticeId or dmcaTakedownRequestId' });
+        }
+        if (!statement || !signature) {
+          return res.status(400).json({ error: 'statement and signature required' });
+        }
+        const { createCounterNotice } = await import('./server/modules/dmcaCounterNoticesService');
+        const result = await createCounterNotice(payload.pnIdentifier, {
+          contentNoticeId: contentNoticeId || undefined,
+          dmcaTakedownRequestId: dmcaTakedownRequestId || undefined,
+          statement,
+          signature,
+        });
+        if ('error' in result) {
+          return res.status(400).json({ error: result.error });
+        }
+        return res.status(200).json({ success: true, id: result.id, restoreAfter: result.restoreAfter });
+      } catch (err: any) {
+        console.error('[DMCA Counter-Notice] Error:', err);
+        return res.status(500).json({ error: err?.message || 'Failed to submit counter-notice' });
+      }
+    });
+
+    // POST /api/dmca/counter-notices/process-restores - Admin: restore content after counter-notice window
+    this.app.post('/api/dmca/counter-notices/process-restores', express.json(), async (req, res) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const { isPrismAdmin } = await import('./server/modules/prismAdminService');
+        const payload = PNOAuthService.validateAccessToken(token);
+        if (!payload?.pnIdentifier || !isPrismAdmin(payload.pnIdentifier)) {
+          return res.status(403).json({ error: 'Admin only' });
+        }
+        const {
+          getCounterNoticesEligibleForRestore,
+          markCounterNoticeRestored,
+        } = await import('./server/modules/dmcaCounterNoticesService');
+        const { restoreContent } = await import('./server/modules/dmcaTakedownService');
+        const eligible = await getCounterNoticesEligibleForRestore();
+        const restored: string[] = [];
+        const failed: { id: string; error: string }[] = [];
+        for (const cn of eligible) {
+          const result = await restoreContent(cn.file_id);
+          if (result.ok) {
+            await markCounterNoticeRestored(cn.id);
+            restored.push(cn.id);
+          } else {
+            failed.push({ id: cn.id, error: result.error ?? 'Unknown' });
+          }
+        }
+        return res.json({ success: true, restored: restored.length, restoredIds: restored, failed });
+      } catch (err: any) {
+        console.error('[DMCA Process Restores] Error:', err);
+        return res.status(500).json({ error: err?.message || 'Failed to process restores' });
+      }
+    });
+
+    // PUT /api/dmca/counter-notices/:id/forward - Admin: mark counter-notice as forwarded to claimant
+    this.app.put('/api/dmca/counter-notices/:id/forward', express.json(), async (req, res) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const { isPrismAdmin } = await import('./server/modules/prismAdminService');
+        const payload = PNOAuthService.validateAccessToken(token);
+        if (!payload?.pnIdentifier || !isPrismAdmin(payload.pnIdentifier)) {
+          return res.status(403).json({ error: 'Admin only' });
+        }
+        const id = req.params.id;
+        if (!id) return res.status(400).json({ error: 'Missing id' });
+        const { markCounterNoticeForwarded } = await import('./server/modules/dmcaCounterNoticesService');
+        await markCounterNoticeForwarded(id);
+        return res.json({ success: true });
+      } catch (err: any) {
+        console.error('[DMCA Forward] Error:', err);
+        return res.status(500).json({ error: err?.message || 'Failed to mark forwarded' });
+      }
+    });
+
+    // POST /api/dmca/takedown - Submit DMCA takedown notice (no auth; public form)
+    this.app.post('/api/dmca/takedown', express.json(), async (req, res) => {
+      try {
+        const body = req.body || {};
+        const claimant_name = String(body.claimant_name ?? '').trim();
+        const claimant_email = String(body.claimant_email ?? '').trim();
+        const copyrighted_work_description = String(body.copyrighted_work_description ?? '').trim();
+        const infringing_content_ref = String(body.infringing_content_ref ?? '').trim();
+        const good_faith_statement = String(body.good_faith_statement ?? '').trim();
+        const signature = String(body.signature ?? '').trim();
+        if (!claimant_name || !claimant_email || !copyrighted_work_description || !infringing_content_ref || !good_faith_statement || !signature) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            required: ['claimant_name', 'claimant_email', 'copyrighted_work_description', 'infringing_content_ref', 'good_faith_statement', 'signature'],
+          });
+        }
+        const { createTakedownRequest } = await import('./server/modules/dmcaTakedownRequestsService');
+        const id = await createTakedownRequest({
+          claimant_name,
+          claimant_email,
+          copyrighted_work_description,
+          infringing_content_ref,
+          good_faith_statement,
+          signature,
+        });
+        return res.status(200).json({ success: true, id });
+      } catch (err: any) {
+        console.error('[DMCA Takedown] Submit error:', err);
+        return res.status(500).json({ error: err?.message || 'Failed to submit takedown notice' });
+      }
+    });
+
     // Widget Routes - Feed Widgets and Public Index
     const { setupWidgetRoutes } = await import('./server/modules/widgetRoutes');
     setupWidgetRoutes(this.app);
@@ -3300,20 +3469,47 @@ class ProductionServer {
             // Private files should NOT be in the database (they only exist in Google Drive + companion metadata)
             if (initialMetadata.isPublic === true) {
               try {
-                // DMCA gate: check content before indexing
-                const { runDMCACheck } = await import('./server/modules/dmcaGate');
-                const dmcaResult = await runDMCACheck(
-                  googleDriveProxyService,
-                  userIdentifier,
-                  fileId,
-                  (driveFile as any).mimeType || 'application/octet-stream',
-                  accountId
-                );
-                if (!dmcaResult.passed) {
+                // Repeat infringer: block making new content public
+                const { isRepeatInfringer } = await import('./server/modules/repeatInfringerService');
+                if (await isRepeatInfringer(userIdentifier)) {
                   return res.status(403).json({
-                    error: 'Content flagged for DMCA review',
-                    message: dmcaResult.reason || 'This content has been flagged for copyright review and cannot be made public yet.',
+                    error: 'Account restricted',
+                    message: 'Your account is restricted due to repeated copyright issues. Contact support if you believe this is an error.',
                   });
+                }
+                // DMCA gate: check content before indexing (skip if Prism already approved this file)
+                const { isFileApprovedByPrism, addToPrismQueue } = await import('./server/modules/prismQueueService');
+                const alreadyApproved = await isFileApprovedByPrism(fileId);
+                if (!alreadyApproved) {
+                  const { runDMCACheck } = await import('./server/modules/dmcaGate');
+                  const dmcaResult = await runDMCACheck(
+                    googleDriveProxyService,
+                    userIdentifier,
+                    fileId,
+                    (driveFile as any).mimeType || 'application/octet-stream',
+                    accountId
+                  );
+                  if (!dmcaResult.passed) {
+                    const queueItemId = await addToPrismQueue({
+                      fileId,
+                      ownerPnIdentifier: userIdentifier,
+                      flagSource: 'bot',
+                      reporterPnIdentifier: null,
+                    });
+                    const { addContentNotice } = await import('./server/modules/contentNoticesService');
+                    await addContentNotice({
+                      ownerPnIdentifier: userIdentifier,
+                      fileId,
+                      type: 'pending_review',
+                      source: 'bot',
+                    });
+                    return res.status(202).json({
+                      status: 'pending_review',
+                      error: 'Content flagged for DMCA review',
+                      message: dmcaResult.reason || 'This content has been flagged for copyright review and is pending human review.',
+                      queueItemId: queueItemId || undefined,
+                    });
+                  }
                 }
                 // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
                 await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
@@ -4514,20 +4710,46 @@ class ProductionServer {
                   thumbnailFileId: metadataForType.thumbnailFileId
                 };
 
-                // DMCA gate: check content before indexing
+                // Repeat infringer: block making new content public
                 const ownerPn = String(submitTokenPayload.pnIdentifier ?? '');
-                const driveFileId = String((current.metadata as any)?.backendFileId ?? actualFileId ?? '');
-                const mimeType = String((current.metadata as any)?.mimeType ?? 'application/octet-stream');
-                const { googleDriveProxyService: driveProxy } = await import('./server/modules/googleDriveProxy');
-                const { runDMCACheck } = await import('./server/modules/dmcaGate');
-                const dmcaResult = await runDMCACheck(driveProxy, ownerPn, driveFileId, mimeType, (req.query.accountId as string) || undefined);
-                if (!dmcaResult.passed) {
+                const { isRepeatInfringer } = await import('./server/modules/repeatInfringerService');
+                if (await isRepeatInfringer(ownerPn)) {
                   return res.status(403).json({
-                    error: 'Content flagged for DMCA review',
-                    message: dmcaResult.reason || 'This content has been flagged for copyright review and cannot be made public yet.',
+                    error: 'Account restricted',
+                    message: 'Your account is restricted due to repeated copyright issues. Contact support if you believe this is an error.',
                   });
                 }
-                
+                // DMCA gate: check content before indexing (skip if Prism already approved this file)
+                const driveFileId = String((current.metadata as any)?.backendFileId ?? actualFileId ?? '');
+                const mimeType = String((current.metadata as any)?.mimeType ?? 'application/octet-stream');
+                const { isFileApprovedByPrism, addToPrismQueue } = await import('./server/modules/prismQueueService');
+                const alreadyApproved = await isFileApprovedByPrism(fileId);
+                if (!alreadyApproved) {
+                  const { googleDriveProxyService: driveProxy } = await import('./server/modules/googleDriveProxy');
+                  const { runDMCACheck } = await import('./server/modules/dmcaGate');
+                  const dmcaResult = await runDMCACheck(driveProxy, ownerPn, driveFileId, mimeType, (req.query.accountId as string) || undefined);
+                  if (!dmcaResult.passed) {
+                    const queueItemId = await addToPrismQueue({
+                      fileId,
+                      ownerPnIdentifier: ownerPn,
+                      flagSource: 'bot',
+                      reporterPnIdentifier: null,
+                    });
+                    const { addContentNotice } = await import('./server/modules/contentNoticesService');
+                    await addContentNotice({
+                      ownerPnIdentifier: ownerPn,
+                      fileId,
+                      type: 'pending_review',
+                      source: 'bot',
+                    });
+                    return res.status(202).json({
+                      status: 'pending_review',
+                      error: 'Content flagged for DMCA review',
+                      message: dmcaResult.reason || 'This content has been flagged for copyright review and is pending human review.',
+                      queueItemId: queueItemId || undefined,
+                    });
+                  }
+                }
                 await service.submitMetadata(
                   publicMetadata as any,
                   submitTokenPayload.pnIdentifier,
