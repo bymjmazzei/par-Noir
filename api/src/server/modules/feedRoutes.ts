@@ -95,7 +95,7 @@ export function setupFeedRoutes(app: any) {
           if (await isRepeatInfringer(ownerPn)) {
             return res.status(403).json({
               error: 'Account restricted',
-              message: 'Your account is restricted due to repeated copyright issues. Contact support if you believe this is an error.',
+              message: 'Your account is temporarily restricted from making new content public due to repeated copyright issues. This restriction will be lifted automatically after the timeout period.',
             });
           }
           const { isFileApprovedByPrism, addToPrismQueue } = await import('./prismQueueService');

@@ -2117,6 +2117,56 @@ class ProductionServer {
         fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/src/server.ts:1606',message:'Submitting metadata',data:{fileId:validatedMetadata.fileId,isPublic:validatedMetadata.isPublic,pnIdentifier},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
 
+        // When making content public, run repeat-infringer (timeout), Prism bypass, and DMCA gate
+        if (validatedMetadata.isPublic === true) {
+          if (!pnIdentifier) {
+            return res.status(400).json({
+              error: 'Missing pnIdentifier',
+              message: 'pnIdentifier is required when submitting public metadata.',
+              requestId
+            });
+          }
+          const { isRepeatInfringer } = await import('./server/modules/repeatInfringerService');
+          if (await isRepeatInfringer(pnIdentifier)) {
+            return res.status(403).json({
+              error: 'Account restricted',
+              message: 'Your account is temporarily restricted from making new content public due to repeated copyright issues. This restriction will be lifted automatically after the timeout period.',
+              requestId
+            });
+          }
+          const { isFileApprovedByPrism, addToPrismQueue } = await import('./server/modules/prismQueueService');
+          const alreadyApproved = await isFileApprovedByPrism(validatedMetadata.fileId);
+          if (!alreadyApproved) {
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            const { runDMCACheck } = await import('./server/modules/dmcaGate');
+            const driveFileId = validatedMetadata.backendFileId || validatedMetadata.fileId;
+            const mimeType = (validatedMetadata as any).mimeType || 'application/octet-stream';
+            const dmcaResult = await runDMCACheck(googleDriveProxyService, pnIdentifier, driveFileId, mimeType, undefined);
+            if (!dmcaResult.passed) {
+              const queueItemId = await addToPrismQueue({
+                fileId: validatedMetadata.fileId,
+                ownerPnIdentifier: pnIdentifier,
+                flagSource: 'bot',
+                reporterPnIdentifier: null,
+              });
+              const { addContentNotice } = await import('./server/modules/contentNoticesService');
+              await addContentNotice({
+                ownerPnIdentifier: pnIdentifier,
+                fileId: validatedMetadata.fileId,
+                type: 'pending_review',
+                source: 'bot',
+              });
+              return res.status(202).json({
+                status: 'pending_review',
+                error: 'Content flagged for DMCA review',
+                message: dmcaResult.reason || 'This content has been flagged for copyright review and is pending human review.',
+                queueItemId: queueItemId || undefined,
+                requestId
+              });
+            }
+          }
+        }
+
         // Submit metadata to central index
         await service.submitMetadata(validatedMetadata, pnIdentifier);
 
@@ -3154,6 +3204,48 @@ class ProductionServer {
       }
     });
 
+    // POST /api/dmca/takedown/:id/process - Admin: accept claimant takedown and execute (remove from index)
+    this.app.post('/api/dmca/takedown/:id/process', express.json(), async (req, res) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const { isPrismAdmin } = await import('./server/modules/prismAdminService');
+        const payload = PNOAuthService.validateAccessToken(token);
+        if (!payload?.pnIdentifier || !isPrismAdmin(payload.pnIdentifier)) {
+          return res.status(403).json({ error: 'Admin only' });
+        }
+        const id = req.params.id;
+        if (!id) return res.status(400).json({ error: 'Missing id' });
+        const { getById, markProcessed, resolveInfringingRefToFileId } = await import('./server/modules/dmcaTakedownRequestsService');
+        const request = await getById(id);
+        if (!request) return res.status(404).json({ error: 'Takedown request not found' });
+        if (request.status !== 'pending') {
+          return res.status(400).json({ error: 'Request already processed', status: request.status });
+        }
+        const fileId = resolveInfringingRefToFileId(request.infringing_content_ref);
+        if (!fileId) return res.status(400).json({ error: 'Invalid infringing_content_ref' });
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const metadataService = AggregatorMetadataServiceDB.getInstance();
+        const entry = await metadataService.getFileMetadata(fileId);
+        if (!entry) return res.status(400).json({ error: 'File not found in index', fileId });
+        const { executeTakedown } = await import('./server/modules/dmcaTakedownService');
+        const result = await executeTakedown(fileId, 'DMCA takedown notice (claimant request).', 'dmca_notice');
+        if (!result.ok) {
+          return res.status(500).json({ error: result.error || 'Takedown execution failed' });
+        }
+        const updated = await markProcessed(id, payload.pnIdentifier);
+        if (!updated) return res.status(500).json({ error: 'Failed to mark request as processed' });
+        return res.json({ success: true, fileId });
+      } catch (err: any) {
+        console.error('[DMCA Takedown Process] Error:', err);
+        return res.status(500).json({ error: err?.message || 'Failed to process takedown' });
+      }
+    });
+
     // POST /api/dmca/takedown - Submit DMCA takedown notice (no auth; public form)
     this.app.post('/api/dmca/takedown', express.json(), async (req, res) => {
       try {
@@ -3474,7 +3566,7 @@ class ProductionServer {
                 if (await isRepeatInfringer(userIdentifier)) {
                   return res.status(403).json({
                     error: 'Account restricted',
-                    message: 'Your account is restricted due to repeated copyright issues. Contact support if you believe this is an error.',
+                    message: 'Your account is temporarily restricted from making new content public due to repeated copyright issues. This restriction will be lifted automatically after the timeout period.',
                   });
                 }
                 // DMCA gate: check content before indexing (skip if Prism already approved this file)
@@ -3634,6 +3726,43 @@ class ProductionServer {
             // Private files should NOT be in the database (they only exist in Google Drive + companion metadata)
             if (minimalMetadata.isPublic === true) {
               try {
+                const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+                // Repeat infringer (timeout) and DMCA gate - same as initial-metadata path
+                const { isRepeatInfringer } = await import('./server/modules/repeatInfringerService');
+                if (await isRepeatInfringer(userIdentifier)) {
+                  return res.status(403).json({
+                    error: 'Account restricted',
+                    message: 'Your account is temporarily restricted from making new content public due to repeated copyright issues. This restriction will be lifted automatically after the timeout period.',
+                  });
+                }
+                const { isFileApprovedByPrism, addToPrismQueue } = await import('./server/modules/prismQueueService');
+                const alreadyApproved = await isFileApprovedByPrism(fileId);
+                if (!alreadyApproved) {
+                  const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+                  const { runDMCACheck } = await import('./server/modules/dmcaGate');
+                  const dmcaResult = await runDMCACheck(googleDriveProxyService, userIdentifier, fileId, 'application/octet-stream', (req.query.accountId as string) || undefined);
+                  if (!dmcaResult.passed) {
+                    const queueItemId = await addToPrismQueue({
+                      fileId,
+                      ownerPnIdentifier: userIdentifier,
+                      flagSource: 'bot',
+                      reporterPnIdentifier: null,
+                    });
+                    const { addContentNotice } = await import('./server/modules/contentNoticesService');
+                    await addContentNotice({
+                      ownerPnIdentifier: userIdentifier,
+                      fileId,
+                      type: 'pending_review',
+                      source: 'bot',
+                    });
+                    return res.status(202).json({
+                      status: 'pending_review',
+                      error: 'Content flagged for DMCA review',
+                      message: dmcaResult.reason || 'This content has been flagged for copyright review and is pending human review.',
+                      queueItemId: queueItemId || undefined,
+                    });
+                  }
+                }
                 // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
                 await service.submitMetadata(minimalMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
                 console.log(`[MetadataIndex] Created minimal metadata entry for ${fileId}`);
@@ -4716,7 +4845,7 @@ class ProductionServer {
                 if (await isRepeatInfringer(ownerPn)) {
                   return res.status(403).json({
                     error: 'Account restricted',
-                    message: 'Your account is restricted due to repeated copyright issues. Contact support if you believe this is an error.',
+                    message: 'Your account is temporarily restricted from making new content public due to repeated copyright issues. This restriction will be lifted automatically after the timeout period.',
                   });
                 }
                 // DMCA gate: check content before indexing (skip if Prism already approved this file)

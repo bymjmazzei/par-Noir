@@ -716,6 +716,18 @@ export async function initializeDatabase(): Promise<void> {
     `);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_prism_ray_applications_status ON prism_ray_applications(status)`);
 
+    // Repeat infringer timeouts (temporary restriction only; no permanent removal)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS repeat_infringer_timeouts (
+        owner_pn_identifier VARCHAR(255) PRIMARY KEY,
+        timeout_until TIMESTAMP WITH TIME ZONE NOT NULL,
+        offense_number INT NOT NULL DEFAULT 1,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_repeat_infringer_timeouts_timeout_until ON repeat_infringer_timeouts(timeout_until)`);
+
     // Content notices (DMCA/index removal notices for content owners - in-app only)
     await db.query(`
       CREATE TABLE IF NOT EXISTS content_notices (
