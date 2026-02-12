@@ -1,0 +1,99 @@
+/**
+ * Mobile-first responsive styles for demo templates (link-in-bio + one-page).
+ * Import in DemoLayout so all demo routes get these rules.
+ */
+
+/* Prevent horizontal overflow on all demo pages */
+.demo-page-root {
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.demo-page-root *,
+.demo-page-root *::before,
+.demo-page-root *::after {
+  box-sizing: inherit;
+}
+
+/* Products: wrapping grid so all products visible without horizontal scroll */
+.demo-products-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: 1rem;
+  padding-bottom: 1rem;
+}
+
+@media (min-width: 600px) {
+  .demo-products-grid {
+    gap: 1.25rem;
+  }
+}
+
+@media (min-width: 900px) {
+  .demo-products-grid {
+    gap: 1.5rem;
+  }
+}
+
+/* Product card fills grid cell */
+.demo-products-grid .demo-product-card {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Media grid: single column on very small screens */
+.demo-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr));
+  gap: 1rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+@media (min-width: 400px) {
+  .demo-media-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 1.25rem;
+  }
+}
+
+/* Section padding: tighter on mobile */
+.demo-section {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 480px) {
+  .demo-section {
+    padding-left: var(--flyer-spacing, 1.5rem);
+    padding-right: var(--flyer-spacing, 1.5rem);
+  }
+}
+
+@media (min-width: 768px) {
+  .demo-section {
+    padding-left: var(--flyer-spacing, 2rem);
+    padding-right: var(--flyer-spacing, 2rem);
+  }
+}
+
+/* Link in bio 2: stack email form on mobile */
+.linkbio2-email-form {
+  width: 100%;
+}
+
+@media (max-width: 480px) {
+  .linkbio2-email-form {
+    flex-direction: column;
+  }
+
+  .linkbio2-email-form input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .linkbio2-email-form button {
+    width: 100%;
+  }
+}

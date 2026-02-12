@@ -1,0 +1,41 @@
+/**
+ * Flyer-style design tokens. Mobile-first: spacing scales up from small screens.
+ */
+:root {
+  --flyer-heading-font: 'Bebas Neue', 'Oswald', system-ui, sans-serif;
+  --flyer-body-font: 'Oswald', system-ui, sans-serif;
+  --flyer-heading-size: clamp(2rem, 8vw, 4rem);
+  --flyer-heading-size-sm: clamp(1.25rem, 5vw, 2.25rem);
+  --flyer-cta-size: 1rem;
+  --flyer-link-size: 0.9375rem;
+  --flyer-accent: #ff3366;
+  --flyer-accent-alt: #00d4aa;
+  --flyer-bg-dark: #0a0a0a;
+  --flyer-bg-block: rgba(0, 0, 0, 0.75);
+  --flyer-text: #ffffff;
+  --flyer-text-muted: rgba(255, 255, 255, 0.9);
+  --flyer-spacing: 1rem;
+  --flyer-spacing-lg: 1.5rem;
+  --flyer-spacing-xl: 2rem;
+  --flyer-border-thick: 2px;
+  --flyer-radius: 4px;
+}
+
+@media (min-width: 480px) {
+  :root {
+    --flyer-cta-size: 1.0625rem;
+    --flyer-link-size: 1rem;
+    --flyer-spacing: 1.25rem;
+    --flyer-spacing-lg: 2rem;
+    --flyer-spacing-xl: 2.5rem;
+    --flyer-border-thick: 3px;
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --flyer-spacing: 2rem;
+    --flyer-spacing-lg: 3rem;
+    --flyer-spacing-xl: 4rem;
+  }
+}
