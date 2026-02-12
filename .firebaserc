@@ -6,6 +6,9 @@
         "par-noir-dashboard": [
           "par-noir-dashboard"
         ],
+        "demos": [
+          "demos-parnoir"
+        ],
         "browse": [
           "browse-parnoir"
         ],
