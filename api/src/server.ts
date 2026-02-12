@@ -7748,7 +7748,68 @@ class ProductionServer {
             throw insertError; // Re-throw if it's a different error
           }
         }
-        
+
+        // Update aggregator metadata engagement.views (best-effort; do not fail response)
+        try {
+          const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+          await AggregatorMetadataServiceDB.getInstance().updateEngagement(fileId, 'view', userPnIdentifier);
+        } catch (engagementError: any) {
+          console.warn('[file-views] Failed to update aggregator metadata engagement:', engagementError?.message || engagementError);
+        }
+
+        // Update creator's companion metadata Sheets (source of truth; best-effort)
+        try {
+          const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+          const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
+          const fileMetadata = await AggregatorMetadataServiceDB.getInstance().getFileMetadata(fileId);
+          if (fileMetadata) {
+            const ownerDid = fileMetadata.pnIdentifier || (fileMetadata.metadata as any).creator?.['@id'] || (fileMetadata.metadata as any).author?.did;
+            if (ownerDid) {
+              const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+              const credentialsRecord = await storageCredentialsService.getCredentials(ownerDid);
+              const credentials = credentialsRecord?.credentials;
+              const googleDriveAccounts = credentials?.googleDriveAccounts || (credentials?.googleDrive ? [credentials.googleDrive] : []);
+              if (googleDriveAccounts.length > 0) {
+                const account = googleDriveAccounts[0];
+                const accountId = this.extractAccountId(account);
+                const token = {
+                  access_token: account.access_token || account.accessToken,
+                  refresh_token: account.refresh_token || account.refreshToken,
+                  expires_at: account.expires_at,
+                  expires_in: account.expires_in
+                };
+                const folderSearchQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id)&pageSize=1`;
+                const folderResponse = await fetch(folderSearchUrl, {
+                  headers: { Authorization: `Bearer ${token.access_token}` }
+                });
+                if (folderResponse.ok) {
+                  const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+                  if (folderData.files && folderData.files.length > 0) {
+                    const metadataFolderId = folderData.files[0].id;
+                    const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
+                      token,
+                      metadataFolderId,
+                      fileId,
+                      ownerDid,
+                      accountId
+                    );
+                    if (spreadsheetId) {
+                      await CompanionMetadataSheets.appendView(token, spreadsheetId, {
+                        fileId,
+                        viewerPnIdentifier: userPnIdentifier,
+                        timestamp: new Date().toISOString()
+                      }, ownerDid, accountId);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (sheetError: any) {
+          console.warn('[file-views] Failed to update creator companion metadata sheet for view:', sheetError?.message || sheetError);
+        }
+
         return res.json({ success: true });
       } catch (error: any) {
         console.error('Error recording file view (non-fatal):', error);
