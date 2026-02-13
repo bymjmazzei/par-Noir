@@ -73,7 +73,7 @@ export function CollectionFeed({
             });
           }
         } catch (err) {
-          console.error(`Failed to load metadata for ${fileId}:`, err);
+          if (import.meta.env.DEV) console.error(`Failed to load metadata for ${fileId}:`, err);
         }
       }
     };
@@ -206,7 +206,7 @@ export function CollectionFeed({
               }
             }
           } catch (thumbnailErr) {
-            console.warn(`Failed to load thought thumbnail for ${fileId}, falling back to text rendering:`, thumbnailErr);
+            if (import.meta.env.DEV) console.warn(`Failed to load thought thumbnail for ${fileId}, falling back to text rendering:`, thumbnailErr);
           }
         }
         
@@ -224,7 +224,7 @@ export function CollectionFeed({
                 data: thoughtData.textPost || thoughtData.thought || thoughtData
               };
             } catch (err) {
-              console.error('Failed to decrypt thought:', err);
+              if (import.meta.env.DEV) console.error('Failed to decrypt thought:', err);
               setError(prev => {
                 const newMap = new Map(prev);
                 newMap.set(fileId, 'Failed to load thought');
@@ -361,7 +361,7 @@ export function CollectionFeed({
         loadedFilesRef.current.add(fileId);
       }
     } catch (err: any) {
-      console.error(`Failed to load content for ${fileId}:`, err);
+      if (import.meta.env.DEV) console.error(`Failed to load content for ${fileId}:`, err);
       setError(prev => {
         const newMap = new Map(prev);
         newMap.set(fileId, err.message || 'Failed to load');
@@ -404,7 +404,7 @@ export function CollectionFeed({
       const videoElement = videoRefs.current.get(fileId);
       if (videoElement) {
         videoElement.play().catch(err => {
-          console.warn('Failed to auto-play video:', err);
+          if (import.meta.env.DEV) console.warn('Failed to auto-play video:', err);
         });
       }
     }
@@ -552,7 +552,7 @@ export function CollectionFeed({
               loading="eager"
               decoding="async"
               onError={(e) => {
-                console.error(`[CollectionFeed] Background image failed to load for ${fileId}:`, e);
+                if (import.meta.env.DEV) console.error(`[CollectionFeed] Background image failed to load for ${fileId}:`, e);
               }}
             />
           </div>
@@ -581,7 +581,7 @@ export function CollectionFeed({
                 });
               }}
               onError={(e) => {
-                console.error(`[CollectionFeed] Image failed to load for ${fileId}:`, e);
+                if (import.meta.env.DEV) console.error(`[CollectionFeed] Image failed to load for ${fileId}:`, e);
               }}
               loading="eager"
               decoding="sync"
@@ -658,11 +658,13 @@ export function CollectionFeed({
   // #endregion
 
   // #region agent log
-  console.log('[CollectionFeed] RENDERING - Component is being used!', {
-    collectionFileIds: collectionFileIds.length,
-    viewportHeightCSS,
-    windowInnerHeight: typeof window !== 'undefined' ? window.innerHeight : 0
-  });
+  if (import.meta.env.DEV) {
+    console.log('[CollectionFeed] RENDERING - Component is being used!', {
+      collectionFileIds: collectionFileIds.length,
+      viewportHeightCSS,
+      windowInnerHeight: typeof window !== 'undefined' ? window.innerHeight : 0
+    });
+  }
   // #endregion
 
   return (
@@ -674,7 +676,7 @@ export function CollectionFeed({
           verticalSwipeRef.current = el;
         }
         // #region agent log
-        if (el) {
+        if (el && import.meta.env.DEV) {
           const computedHeight = window.getComputedStyle(el).height;
           const computedBottom = window.getComputedStyle(el).bottom;
           const computedPosition = window.getComputedStyle(el).position;

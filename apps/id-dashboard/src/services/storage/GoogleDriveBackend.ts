@@ -644,7 +644,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       
       if (validFolders.length === 0) {
         console.error(`❌ [getOrCreateFolder] No valid pN folders found! Search returned ${searchData.files.length} folder(s) but all were invalid.`);
-          console.error(`❌ [getOrCreateFolder] Expected folder name: "par Noir - ${pnIdentifier}"`);
+          console.error(`❌ [getOrCreateFolder] Expected folder name: "par Noir - ${(pnIdentifier || '').substring(0, 8)}..."`);
           console.error(`❌ [getOrCreateFolder] This may indicate a mismatch between old and new pN identifiers. Clearing cache.`);
           // Clear cache for this identifier to force fresh search next time
           if (pnIdentifier) {

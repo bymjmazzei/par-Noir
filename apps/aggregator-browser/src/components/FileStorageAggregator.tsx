@@ -112,7 +112,7 @@ async function uploadThumbnail(
   accountId: string
 ): Promise<string | undefined> {
   try {
-    console.log('🖼️ [Upload] Generating thumbnail...');
+    if (import.meta.env.DEV) console.log('🖼️ [Upload] Generating thumbnail...');
     
     // Encrypt thumbnail
     const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
@@ -170,15 +170,15 @@ async function uploadThumbnail(
       const thumbnailResult = await thumbnailResponse.json();
       const thumbnailFileId = thumbnailResult.file?.id;
       if (thumbnailFileId) {
-        console.log('✅ [Upload] Thumbnail uploaded:', thumbnailFileId);
+        if (import.meta.env.DEV) console.log('✅ [Upload] Thumbnail uploaded:', thumbnailFileId);
         return thumbnailFileId;
       }
     }
     
-    console.warn('⚠️ [Upload] Thumbnail upload failed, continuing without thumbnail');
+    if (import.meta.env.DEV) console.warn('⚠️ [Upload] Thumbnail upload failed, continuing without thumbnail');
     return undefined;
   } catch (error: any) {
-    console.error('❌ [Upload] Thumbnail generation/upload failed:', error);
+    if (import.meta.env.DEV) console.error('❌ [Upload] Thumbnail generation/upload failed:', error);
     return undefined;
   }
 }
@@ -244,7 +244,7 @@ const FileViewerModal: React.FC<{ file: DriveFile; fileMetadataMap: Map<string, 
           }
         }
       } catch (err) {
-        console.error('[FileViewerModal] Failed to load thought title:', err);
+        if (import.meta.env.DEV) console.error('[FileViewerModal] Failed to load thought title:', err);
       } finally {
         setIsLoadingTitle(false);
       }
@@ -324,7 +324,7 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
       try {
         // Skip loading files that are still uploading
         if (file.id.startsWith('uploading_')) {
-          console.log('[FileViewer] Skipping load for uploading file:', file.id);
+          if (import.meta.env.DEV) console.log('[FileViewer] Skipping load for uploading file:', file.id);
           setLoading(false);
           setError(false);
           return;
@@ -347,7 +347,7 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
 
         if (!response.ok) {
           const errorText = await response.text().catch(() => 'Unknown error');
-          console.error(`[FileViewer] Failed to load file: ${response.status} - ${errorText}`);
+          if (import.meta.env.DEV) console.error(`[FileViewer] Failed to load file: ${response.status} - ${errorText}`);
           setError(true);
           setLoading(false);
           return;
@@ -433,7 +433,7 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
           setFileUrl(url);
         }
       } catch (err) {
-        console.error('[FileViewer] Failed to load file:', err);
+        if (import.meta.env.DEV) console.error('[FileViewer] Failed to load file:', err);
         setError(true);
       } finally {
         setLoading(false);
@@ -684,7 +684,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           uploadQueueService.removeListener('taskProgress', handleTaskProgress);
         }
       } catch (error) {
-        console.warn('[FileStorageAggregator] Error removing upload queue listeners:', error);
+        if (import.meta.env.DEV) console.warn('[FileStorageAggregator] Error removing upload queue listeners:', error);
       }
     };
   }, []); // Empty deps - only subscribe once
@@ -737,10 +737,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           displayName: file.name.replace(/\.encrypted$/i, '')
         }));
         
-        console.log(`[FileStorageAggregator] Loaded ${allFiles.length} files from API, checking for folders...`);
+        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Loaded ${allFiles.length} files from API, checking for folders...`);
         const folders = allFiles.filter((f: DriveFile) => f.mimeType === 'application/vnd.google-apps.folder');
-        console.log(`[FileStorageAggregator] Found ${folders.length} folders:`, folders.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
-        console.log(`[FileStorageAggregator] All files:`, allFiles.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
+        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Found ${folders.length} folders:`, folders.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
+        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] All files:`, allFiles.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
         
         // Separate thumbnails and main files
         const thumbnails = allFiles.filter((file: DriveFile) => {
@@ -813,7 +813,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return name.endsWith('.thought-collection.encrypted');
         });
         
-        console.log(`[FileStorageAggregator] Found ${thoughtCollectionFiles.length} thought-collection files (will be excluded)`);
+        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Found ${thoughtCollectionFiles.length} thought-collection files (will be excluded)`);
         
         // Map thought thumbnails to thought files and load metadata to check if they're part of collections
         const thoughtThumbnailEntries = await Promise.all(
@@ -844,15 +844,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 try {
                   const mainMetadata = await loadFileMetadata(actualMainFileId);
                   mainFileType = mainMetadata?.fileType;
-                  console.log(`[FileStorageAggregator] Loaded main file metadata for thumbnail ${thumb.id}: mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
+                  if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Loaded main file metadata for thumbnail ${thumb.id}: mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
                 } catch (err) {
-                  console.warn(`[FileStorageAggregator] Failed to load main file metadata for ${actualMainFileId}:`, err);
+                  if (import.meta.env.DEV) console.warn(`[FileStorageAggregator] Failed to load main file metadata for ${actualMainFileId}:`, err);
                 }
               }
               
-              console.log(`[FileStorageAggregator] Thumbnail ${thumb.id} (${thumb.name}): fileType=${fileType}, isPartOfCollection=${isPartOfCollection}, mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
+              if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Thumbnail ${thumb.id} (${thumb.name}): fileType=${fileType}, isPartOfCollection=${isPartOfCollection}, mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
             } catch (err) {
-              console.warn(`[FileStorageAggregator] Failed to load thumbnail metadata for ${thumb.id}:`, err);
+              if (import.meta.env.DEV) console.warn(`[FileStorageAggregator] Failed to load thumbnail metadata for ${thumb.id}:`, err);
             }
             
             // Clean display name: remove thumb_ prefix and file extension
@@ -884,7 +884,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             try {
               const metadata = await loadFileMetadata(file.id);
               const isThoughtCollection = metadata?.isThoughtCollection === true;
-              console.log(`[FileStorageAggregator] Loaded collection metadata for ${file.id}:`, {
+              if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Loaded collection metadata for ${file.id}:`, {
                 name: metadata?.name || metadata?.title,
                 isThoughtCollection: isThoughtCollection,
                 metadataIsThoughtCollection: metadata?.isThoughtCollection,
@@ -898,7 +898,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 displayName: metadata?.name || metadata?.title || file.name.replace(/\.encrypted$/i, '').replace(/\.collection$/i, '')
               };
             } catch (err) {
-              console.warn(`[FileStorageAggregator] Failed to load metadata for collection ${file.id}:`, err);
+              if (import.meta.env.DEV) console.warn(`[FileStorageAggregator] Failed to load metadata for collection ${file.id}:`, err);
               return {
                 ...file,
                 fileType: 'collection',
@@ -935,28 +935,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             });
             if (allAreThoughtThumbnails && collectionData.collectionFileIds.length > 0) {
               shouldTreatAsThoughtCollection = true;
-              console.log(`[FileStorageAggregator] Collection ${collectionFile.id} detected as thought collection (fallback: all ${collectionData.collectionFileIds.length} files are thought thumbnails)`);
+              if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Collection ${collectionFile.id} detected as thought collection (fallback: all ${collectionData.collectionFileIds.length} files are thought thumbnails)`);
             }
           }
           
           if (!shouldTreatAsThoughtCollection) {
-            console.log(`[FileStorageAggregator] Skipping collection ${collectionFile.id} - not a thought collection (isThoughtCollection: ${isThoughtCollection})`);
+            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Skipping collection ${collectionFile.id} - not a thought collection (isThoughtCollection: ${isThoughtCollection})`);
             return; // Skip regular collections - their files should still be visible
           }
           
-          console.log(`[FileStorageAggregator] Processing thought collection ${collectionFile.id} with ${collectionData.collectionFileIds.length} files`);
+          if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Processing thought collection ${collectionFile.id} with ${collectionData.collectionFileIds.length} files`);
           // Check each fileId in the collection - EXCLUDE ALL OF THEM from individual display
           collectionData.collectionFileIds.forEach((fileId: string) => {
             // ALWAYS add the fileId to thumbnailIdsInCollections (for multi-page thoughts, collections use thumbnail fileIds)
             // This ensures the thumbnail itself is excluded
             thumbnailIdsInCollections.add(fileId);
-            console.log(`[FileStorageAggregator] Marking thumbnail ${fileId} as part of thought collection (direct exclusion)`);
+            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Marking thumbnail ${fileId} as part of thought collection (direct exclusion)`);
             
             // Try to find the corresponding thought thumbnail entry to get the mainFileId
             const thoughtThumbnail = thoughtThumbnailEntries.find((entry: any) => entry.id === fileId);
             if (thoughtThumbnail?.mainFileId) {
               thoughtFilesInCollections.add(thoughtThumbnail.mainFileId);
-              console.log(`[FileStorageAggregator] Marking thought file ${thoughtThumbnail.mainFileId} as part of thought collection (via thumbnail ${fileId})`);
+              if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Marking thought file ${thoughtThumbnail.mainFileId} as part of thought collection (via thumbnail ${fileId})`);
             } else {
               // If we can't find it in thoughtThumbnailEntries, check if it's a thought file directly
               const fileInCollection = allFiles.find((f: DriveFile) => f.id === fileId);
@@ -964,14 +964,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const fileName = fileInCollection.name.toLowerCase();
                 if (fileName.startsWith('thought-') && (fileName.endsWith('.thought.encrypted') || fileName.endsWith('.png.encrypted'))) {
                   thoughtFilesInCollections.add(fileId);
-                  console.log(`[FileStorageAggregator] Marking thought file ${fileId} as part of thought collection (direct file match)`);
+                  if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Marking thought file ${fileId} as part of thought collection (direct file match)`);
                 }
               }
             }
           });
         });
         
-        console.log(`[FileStorageAggregator] Filtering: ${thoughtThumbnailEntries.length} total thought thumbnails, ${thumbnailIdsInCollections.size} in collections, ${thoughtFilesInCollections.size} thought files in collections`);
+        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Filtering: ${thoughtThumbnailEntries.length} total thought thumbnails, ${thumbnailIdsInCollections.size} in collections, ${thoughtFilesInCollections.size} thought files in collections`);
         
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
@@ -997,12 +997,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                                      thumbnailIdsInCollections.has(entry.id) || 
                                      thoughtFilesInCollections.has(entry.mainFileId);
           if (isCollectionThought) {
-            console.log(`[FileStorageAggregator] Filtering out thought thumbnail ${entry.id} (name: ${entry.name}, fileType: ${fileType}, mainFileId: ${entry.mainFileId}, mainFileType: ${mainFileType}, isPageThumbnail: ${isPageThumbnail}) - collection thought`);
+            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Filtering out thought thumbnail ${entry.id} (name: ${entry.name}, fileType: ${fileType}, mainFileId: ${entry.mainFileId}, mainFileType: ${mainFileType}, isPageThumbnail: ${isPageThumbnail}) - collection thought`);
           }
           return !isCollectionThought;
         });
         
-        console.log(`[FileStorageAggregator] After filtering: ${filteredThoughtThumbnailEntries.length} thought thumbnails will be displayed`);
+        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] After filtering: ${filteredThoughtThumbnailEntries.length} thought thumbnails will be displayed`);
         const collectionFileIds = new Set(collectionFiles.map((f: any) => f.id));
         const mediaFiles = thumbnailEntries.concat(filteredThoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
           allFiles.filter((file: DriveFile) => {
@@ -1035,7 +1035,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           
           // Exclude thought-collection files by extension (they should never appear individually)
           if (name.endsWith('.thought-collection.encrypted')) {
-            console.log(`[FileStorageAggregator] Filtering out thought-collection file ${file.id} by extension`);
+            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Filtering out thought-collection file ${file.id} by extension`);
             return false;
           }
           
@@ -1082,10 +1082,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           displayName: file.name.replace(/\.encrypted$/i, '')
         }));
         
-        console.log(`[FileStorageAggregator] Loaded ${allFiles.length} files from API, checking for folders...`);
+        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Loaded ${allFiles.length} files from API, checking for folders...`);
         const folders = allFiles.filter((f: DriveFile) => f.mimeType === 'application/vnd.google-apps.folder');
-        console.log(`[FileStorageAggregator] Found ${folders.length} folders:`, folders.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
-        console.log(`[FileStorageAggregator] All files:`, allFiles.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
+        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Found ${folders.length} folders:`, folders.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
+        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] All files:`, allFiles.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
         
         // Separate thumbnails and main files
         const thumbnails = allFiles.filter((file: DriveFile) => {
@@ -1158,7 +1158,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return name.endsWith('.thought-collection.encrypted');
         });
         
-        console.log(`[FileStorageAggregator] Found ${thoughtCollectionFiles.length} thought-collection files (will be excluded)`);
+        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Found ${thoughtCollectionFiles.length} thought-collection files (will be excluded)`);
         
         // Map thought thumbnails to thought files and load metadata to check if they're part of collections
         const thoughtThumbnailEntries = await Promise.all(
@@ -1189,15 +1189,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 try {
                   const mainMetadata = await loadFileMetadata(actualMainFileId);
                   mainFileType = mainMetadata?.fileType;
-                  console.log(`[FileStorageAggregator] Loaded main file metadata for thumbnail ${thumb.id}: mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
+                  if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Loaded main file metadata for thumbnail ${thumb.id}: mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
                 } catch (err) {
-                  console.warn(`[FileStorageAggregator] Failed to load main file metadata for ${actualMainFileId}:`, err);
+                  if (import.meta.env.DEV) console.warn(`[FileStorageAggregator] Failed to load main file metadata for ${actualMainFileId}:`, err);
                 }
               }
               
-              console.log(`[FileStorageAggregator] Thumbnail ${thumb.id} (${thumb.name}): fileType=${fileType}, isPartOfCollection=${isPartOfCollection}, mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
+              if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Thumbnail ${thumb.id} (${thumb.name}): fileType=${fileType}, isPartOfCollection=${isPartOfCollection}, mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
             } catch (err) {
-              console.warn(`[FileStorageAggregator] Failed to load thumbnail metadata for ${thumb.id}:`, err);
+              if (import.meta.env.DEV) console.warn(`[FileStorageAggregator] Failed to load thumbnail metadata for ${thumb.id}:`, err);
             }
             
             // Clean display name: remove thumb_ prefix and file extension
@@ -1229,7 +1229,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             try {
               const metadata = await loadFileMetadata(file.id);
               const isThoughtCollection = metadata?.isThoughtCollection === true;
-              console.log(`[FileStorageAggregator] Loaded collection metadata for ${file.id}:`, {
+              if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Loaded collection metadata for ${file.id}:`, {
                 name: metadata?.name || metadata?.title,
                 isThoughtCollection: isThoughtCollection,
                 metadataIsThoughtCollection: metadata?.isThoughtCollection,
@@ -1243,7 +1243,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 displayName: metadata?.name || metadata?.title || file.name.replace(/\.encrypted$/i, '').replace(/\.collection$/i, '')
               };
             } catch (err) {
-              console.warn(`[FileStorageAggregator] Failed to load metadata for collection ${file.id}:`, err);
+              if (import.meta.env.DEV) console.warn(`[FileStorageAggregator] Failed to load metadata for collection ${file.id}:`, err);
               return {
                 ...file,
                 fileType: 'collection',
@@ -1280,28 +1280,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             });
             if (allAreThoughtThumbnails && collectionData.collectionFileIds.length > 0) {
               shouldTreatAsThoughtCollection = true;
-              console.log(`[FileStorageAggregator] Collection ${collectionFile.id} detected as thought collection (fallback: all ${collectionData.collectionFileIds.length} files are thought thumbnails)`);
+              if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Collection ${collectionFile.id} detected as thought collection (fallback: all ${collectionData.collectionFileIds.length} files are thought thumbnails)`);
             }
           }
           
           if (!shouldTreatAsThoughtCollection) {
-            console.log(`[FileStorageAggregator] Skipping collection ${collectionFile.id} - not a thought collection (isThoughtCollection: ${isThoughtCollection})`);
+            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Skipping collection ${collectionFile.id} - not a thought collection (isThoughtCollection: ${isThoughtCollection})`);
             return; // Skip regular collections - their files should still be visible
           }
           
-          console.log(`[FileStorageAggregator] Processing thought collection ${collectionFile.id} with ${collectionData.collectionFileIds.length} files`);
+          if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Processing thought collection ${collectionFile.id} with ${collectionData.collectionFileIds.length} files`);
           // Check each fileId in the collection - EXCLUDE ALL OF THEM from individual display
           collectionData.collectionFileIds.forEach((fileId: string) => {
             // ALWAYS add the fileId to thumbnailIdsInCollections (for multi-page thoughts, collections use thumbnail fileIds)
             // This ensures the thumbnail itself is excluded
             thumbnailIdsInCollections.add(fileId);
-            console.log(`[FileStorageAggregator] Marking thumbnail ${fileId} as part of thought collection (direct exclusion)`);
+            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Marking thumbnail ${fileId} as part of thought collection (direct exclusion)`);
             
             // Try to find the corresponding thought thumbnail entry to get the mainFileId
             const thoughtThumbnail = thoughtThumbnailEntries.find((entry: any) => entry.id === fileId);
             if (thoughtThumbnail?.mainFileId) {
               thoughtFilesInCollections.add(thoughtThumbnail.mainFileId);
-              console.log(`[FileStorageAggregator] Marking thought file ${thoughtThumbnail.mainFileId} as part of thought collection (via thumbnail ${fileId})`);
+              if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Marking thought file ${thoughtThumbnail.mainFileId} as part of thought collection (via thumbnail ${fileId})`);
             } else {
               // If we can't find it in thoughtThumbnailEntries, check if it's a thought file directly
               const fileInCollection = allFiles.find((f: DriveFile) => f.id === fileId);
@@ -1309,14 +1309,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const fileName = fileInCollection.name.toLowerCase();
                 if (fileName.startsWith('thought-') && (fileName.endsWith('.thought.encrypted') || fileName.endsWith('.png.encrypted'))) {
                   thoughtFilesInCollections.add(fileId);
-                  console.log(`[FileStorageAggregator] Marking thought file ${fileId} as part of thought collection (direct file match)`);
+                  if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Marking thought file ${fileId} as part of thought collection (direct file match)`);
                 }
               }
             }
           });
         });
         
-        console.log(`[FileStorageAggregator] Filtering: ${thoughtThumbnailEntries.length} total thought thumbnails, ${thumbnailIdsInCollections.size} in collections, ${thoughtFilesInCollections.size} thought files in collections`);
+        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Filtering: ${thoughtThumbnailEntries.length} total thought thumbnails, ${thumbnailIdsInCollections.size} in collections, ${thoughtFilesInCollections.size} thought files in collections`);
         
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
@@ -1342,12 +1342,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                                      thumbnailIdsInCollections.has(entry.id) || 
                                      thoughtFilesInCollections.has(entry.mainFileId);
           if (isCollectionThought) {
-            console.log(`[FileStorageAggregator] Filtering out thought thumbnail ${entry.id} (name: ${entry.name}, fileType: ${fileType}, mainFileId: ${entry.mainFileId}, mainFileType: ${mainFileType}, isPageThumbnail: ${isPageThumbnail}) - collection thought`);
+            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Filtering out thought thumbnail ${entry.id} (name: ${entry.name}, fileType: ${fileType}, mainFileId: ${entry.mainFileId}, mainFileType: ${mainFileType}, isPageThumbnail: ${isPageThumbnail}) - collection thought`);
           }
           return !isCollectionThought;
         });
         
-        console.log(`[FileStorageAggregator] After filtering: ${filteredThoughtThumbnailEntries.length} thought thumbnails will be displayed`);
+        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] After filtering: ${filteredThoughtThumbnailEntries.length} thought thumbnails will be displayed`);
         const collectionFileIds = new Set(collectionFiles.map((f: any) => f.id));
         const mediaFiles = thumbnailEntries.concat(filteredThoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
           allFiles.filter((file: DriveFile) => {
@@ -1380,7 +1380,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           
           // Exclude thought-collection files by extension (they should never appear individually)
           if (name.endsWith('.thought-collection.encrypted')) {
-            console.log(`[FileStorageAggregator] Filtering out thought-collection file ${file.id} by extension`);
+            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Filtering out thought-collection file ${file.id} by extension`);
             return false;
           }
           
@@ -1417,11 +1417,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         setError(null); // Clear any previous errors
       } else {
         const errorText = await response.text().catch(() => 'Unknown error');
-        console.error(`[FileStorageAggregator] Request failed (${response.status}):`, errorText);
+        if (import.meta.env.DEV) console.error(`[FileStorageAggregator] Request failed (${response.status}):`, errorText);
         throw new Error(`Failed to load files: ${response.statusText} - ${errorText}`);
       }
     } catch (err: any) {
-      console.error('[FileStorageAggregator] Failed to load files:', err);
+      if (import.meta.env.DEV) console.error('[FileStorageAggregator] Failed to load files:', err);
       // Only set error if it's a real error, not just empty files
       if (err.message && !err.message.includes('No valid access token')) {
         setError(err.message || 'Failed to load files');
@@ -1442,7 +1442,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               await loadFilesForAccount(account.accountId);
             } catch (err) {
               // Log error but continue loading other accounts
-              console.error(`[FileStorageAggregator] Failed to load files for account ${account.accountId}:`, err);
+              if (import.meta.env.DEV) console.error(`[FileStorageAggregator] Failed to load files for account ${account.accountId}:`, err);
             }
           }
         } finally {
@@ -1460,7 +1460,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
     // Skip download for files that are still uploading
     if (file.id.startsWith('uploading_') || (file as any).isUploading) {
-      console.log('[FileStorageAggregator] Cannot download file that is still uploading');
+      if (import.meta.env.DEV) console.log('[FileStorageAggregator] Cannot download file that is still uploading');
       return;
     }
 
@@ -1523,7 +1523,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
     } catch (err: any) {
       setError(err.message || 'Failed to download file');
-      console.error('[FileStorageAggregator] Download error:', err);
+      if (import.meta.env.DEV) console.error('[FileStorageAggregator] Download error:', err);
     }
   };
 
@@ -1584,7 +1584,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         const finalMetadata = metadata.metadata || metadata;
         
         // Debug logging for collections to check isThoughtCollection flag
-        if (finalMetadata?.fileType === 'collection') {
+        if (finalMetadata?.fileType === 'collection' && import.meta.env.DEV) {
           console.log(`[FileStorageAggregator] loadFileMetadata for collection ${fileId}:`, {
             rawResponse: metadata,
             finalMetadata: finalMetadata,
@@ -1606,7 +1606,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         return null;
       }
     } catch (err) {
-      console.error('[FileStorageAggregator] Failed to load metadata:', err);
+      if (import.meta.env.DEV) console.error('[FileStorageAggregator] Failed to load metadata:', err);
     }
     return null;
   };
@@ -1656,7 +1656,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
       }
     } catch (err) {
-      console.error('[FileStorageAggregator] Failed to load indexers:', err);
+      if (import.meta.env.DEV) console.error('[FileStorageAggregator] Failed to load indexers:', err);
       setIndexerError('Failed to load third-party indexers');
     } finally {
       setIsLoadingIndexers(false);
@@ -1795,7 +1795,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         metadata: formData
       },
       onComplete: (result) => {
-        console.log('✅ [Metadata] Metadata updated:', result);
+        if (import.meta.env.DEV) console.log('✅ [Metadata] Metadata updated:', result);
         // Update with actual result
         if (result?.metadata) {
           setFileMetadataMap(prev => {
@@ -1812,7 +1812,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
       },
       onError: (error) => {
-        console.error('❌ [Metadata] Failed to update metadata:', error);
+        if (import.meta.env.DEV) console.error('❌ [Metadata] Failed to update metadata:', error);
         setError(error.message || 'Failed to update metadata');
         // Rollback optimistic update
         if (existingMetadata) {
@@ -1990,7 +1990,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
       },
       onComplete: (result) => {
-        console.log('✅ [ShareSettings] Share settings updated:', result);
+        if (import.meta.env.DEV) console.log('✅ [ShareSettings] Share settings updated:', result);
         // Reload metadata and files if making public
         if (result?.isPublic && accountId) {
           loadFileMetadata(fileId).then(() => {
@@ -2003,7 +2003,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
       },
       onError: (error) => {
-        console.error('❌ [ShareSettings] Failed to update share settings:', error);
+        if (import.meta.env.DEV) console.error('❌ [ShareSettings] Failed to update share settings:', error);
         setError(error.message || 'Failed to update sharing settings');
         // Rollback optimistic update on error
         if (existingMetadata) {
@@ -2074,14 +2074,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         isThoughtCollection: isCollection ? isThoughtCollection : undefined
       },
       onComplete: (result) => {
-        console.log('✅ [Delete] File deleted:', result);
+        if (import.meta.env.DEV) console.log('✅ [Delete] File deleted:', result);
         // Reload files to ensure consistency
         setTimeout(() => {
           loadFilesForAccount(accountId);
         }, 500);
       },
       onError: (error) => {
-        console.error('❌ [Delete] Failed to delete file:', error);
+        if (import.meta.env.DEV) console.error('❌ [Delete] Failed to delete file:', error);
         setError(error.message || 'Failed to delete file');
         // Reload files to restore UI state on error
         loadFilesForAccount(accountId);
@@ -2129,7 +2129,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         accountId
       },
       onComplete: (result) => {
-        console.log('✅ [BulkDelete] Files deleted:', result);
+        if (import.meta.env.DEV) console.log('✅ [BulkDelete] Files deleted:', result);
         const deletedCount = result?.deletedCount || 0;
         const totalFiles = result?.totalFiles || fileCount;
         if (deletedCount < totalFiles) {
@@ -2142,7 +2142,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }, 500);
       },
       onError: (error) => {
-        console.error('❌ [BulkDelete] Failed to delete files:', error);
+        if (import.meta.env.DEV) console.error('❌ [BulkDelete] Failed to delete files:', error);
         setError(error.message || 'Failed to delete files');
         // Reload files to restore UI state on error
         loadFilesForAccount(accountId);
@@ -2200,7 +2200,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         metadata: metadata
       },
       onComplete: (result) => {
-        console.log('✅ [Collection] Collection created:', result);
+        if (import.meta.env.DEV) console.log('✅ [Collection] Collection created:', result);
         // Reload files
         if (accountId && result?.fileId) {
           setTimeout(() => {
@@ -2209,7 +2209,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
       },
       onError: (error) => {
-        console.error('❌ [Collection] Failed to create collection:', error);
+        if (import.meta.env.DEV) console.error('❌ [Collection] Failed to create collection:', error);
         setError(error.message || 'Failed to create collection');
         // Re-enter collection mode on error (could show undo toast instead)
         setPendingCollectionData(collectionDataSnapshot);
@@ -2320,7 +2320,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
     } catch (err: any) {
       setError(err.message || 'Failed to set top post');
-      console.error('[FileStorageAggregator] Set top post error:', err);
+      if (import.meta.env.DEV) console.error('[FileStorageAggregator] Set top post error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -2331,7 +2331,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     if (openMenuFor) {
       // Load metadata for the file when menu opens
       loadFileMetadata(openMenuFor).catch(err => {
-        console.warn('[FileStorageAggregator] Failed to load metadata for menu:', err);
+        if (import.meta.env.DEV) console.warn('[FileStorageAggregator] Failed to load metadata for menu:', err);
       });
     }
   }, [openMenuFor]);
@@ -2595,7 +2595,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       
       return undefined;
     } catch (error: any) {
-      console.error('[Upload] Thumbnail generation/upload failed:', error);
+      if (import.meta.env.DEV) console.error('[Upload] Thumbnail generation/upload failed:', error);
       return undefined;
     }
   };
@@ -2621,7 +2621,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     const thumbnailTokens: Record<string, string> = {};
     const baseFileName = pdfFile.name.replace(/\.pdf$/i, '');
     
-    console.log(`[PDF Upload] Processing ${numPages} pages...`);
+    if (import.meta.env.DEV) console.log(`[PDF Upload] Processing ${numPages} pages...`);
     
     for (let pageNum = 1; pageNum <= numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
@@ -2677,7 +2677,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           
           // Store token for later use in collection
           thumbnailTokens[thumbnailFileId] = JSON.stringify(thumbnailShareToken);
-          console.log(`[PDF Upload] Stored token for thumbnail ${thumbnailFileId} (page ${pageNum}/${numPages})`);
+          if (import.meta.env.DEV) console.log(`[PDF Upload] Stored token for thumbnail ${thumbnailFileId} (page ${pageNum}/${numPages})`);
           
           // Create metadata for thumbnail
           await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${thumbnailFileId}?accountId=${accountId}`, {
@@ -2694,11 +2694,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             })
           });
         } catch (err) {
-          console.warn(`[PDF Upload] Failed to process thumbnail for page ${pageNum}:`, err);
+          if (import.meta.env.DEV) console.warn(`[PDF Upload] Failed to process thumbnail for page ${pageNum}:`, err);
         }
         
         thumbnailFileIds.push(thumbnailFileId);
-        console.log(`[PDF Upload] Processed page ${pageNum}/${numPages}`);
+        if (import.meta.env.DEV) console.log(`[PDF Upload] Processed page ${pageNum}/${numPages}`);
       }
     }
     
@@ -2722,10 +2722,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         encrypt,
       },
       onComplete: () => {
-        console.log('✅ [Upload] File upload completed');
+        if (import.meta.env.DEV) console.log('✅ [Upload] File upload completed');
       },
       onError: (err) => {
-        console.error('❌ [Upload] File upload failed:', err);
+        if (import.meta.env.DEV) console.error('❌ [Upload] File upload failed:', err);
         setError(`Upload failed: ${err.message}`);
       },
     });
@@ -2956,7 +2956,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                               if (input) {
                                 input.click();
                               } else {
-                                console.error('[FileStorageAggregator] File input not found for account:', account.accountId);
+                                if (import.meta.env.DEV) console.error('[FileStorageAggregator] File input not found for account:', account.accountId);
                                 setError('File input not initialized. Please refresh the page.');
                               }
                               setShowAddMenuFor(null);

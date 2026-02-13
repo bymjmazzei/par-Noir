@@ -608,7 +608,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       for (const [backendId, credential] of driveCredentialCacheRef.current.entries()) {
         const cachedEmail = credential.email?.toLowerCase();
         if (cachedEmail === normalizedEmail) {
-          console.log(`✅ [resolveIdentifiersForEmail] Found existing account in cache for ${normalizedEmail}: ${backendId}`);
+          console.log(`✅ [resolveIdentifiersForEmail] Found existing account in cache for [REDACTED]: ${(backendId || '').substring(0, 8)}...`);
           // Check if this backendId is already in driveAccounts
           const accountInState = driveAccounts.find(acc => acc.backendId === backendId);
           if (accountInState) {
@@ -625,7 +625,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         return accountEmail?.toLowerCase() === normalizedEmail;
       });
       if (existing) {
-        console.log(`✅ [resolveIdentifiersForEmail] Found existing account in state for ${normalizedEmail}: ${existing.backendId}`);
+        console.log(`✅ [resolveIdentifiersForEmail] Found existing account in state for [REDACTED]: ${(existing.backendId || '').substring(0, 8)}...`);
         return { backendId: existing.backendId, keyPrefix: existing.keyPrefix, isNew: false };
       }
       
@@ -637,7 +637,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             if (registeredBackendId.startsWith('google_drive::')) {
               const backendEmail = (backend as any).getEmail?.()?.toLowerCase();
               if (backendEmail === normalizedEmail) {
-                console.log(`✅ [resolveIdentifiersForEmail] Found existing backend in aggregatorService for ${normalizedEmail}: ${registeredBackendId}`);
+                console.log(`✅ [resolveIdentifiersForEmail] Found existing backend in aggregatorService for [REDACTED]: ${(registeredBackendId || '').substring(0, 16)}...`);
                 // Find keyPrefix from cache or state
                 const cachedCredential = driveCredentialCacheRef.current.get(registeredBackendId);
                 const stateAccount = driveAccounts.find(acc => acc.backendId === registeredBackendId);
@@ -655,7 +655,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     // SECURITY: Do NOT use email in backendId - use random identifier instead
     // This prevents email from being exposed in localStorage keys
     // Only create new identifier if NO existing account found ANYWHERE
-    console.log(`🆕 [resolveIdentifiersForEmail] No existing account found for ${normalizedEmail || 'no email'}, creating new identifier`);
+    console.log(`🆕 [resolveIdentifiersForEmail] No existing account found for [REDACTED], creating new identifier`);
     const uniqueSuffix =
       typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID().split('-')[0]
@@ -1507,7 +1507,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       for (const [existingBackendId, credential] of driveCredentialCacheRef.current.entries()) {
         const existingEmail = credential.email?.toLowerCase();
         if (existingEmail === normalizedEmail && existingBackendId !== params.backendId) {
-          console.log(`🔄 [upsertDriveAccount] Found existing account for email ${normalizedEmail}, using existing backendId: ${existingBackendId} instead of ${params.backendId}`);
+          console.log(`🔄 [upsertDriveAccount] Found existing account for [REDACTED], using existing backendId: ${(existingBackendId || '').substring(0, 8)}... instead of ${(params.backendId || '').substring(0, 8)}...`);
           // Use the existing backendId instead of creating a new one
           params.backendId = existingBackendId;
           params.keyPrefix = credential.keyPrefix;
@@ -1519,7 +1519,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       for (const account of driveAccounts) {
         const accountEmail = userEmails.get(account.backendId);
         if (accountEmail?.toLowerCase() === normalizedEmail && account.backendId !== params.backendId) {
-          console.log(`🔄 [upsertDriveAccount] Found existing account in state for email ${normalizedEmail}, using existing backendId: ${account.backendId} instead of ${params.backendId}`);
+          console.log(`🔄 [upsertDriveAccount] Found existing account in state for [REDACTED], using existing backendId: ${(account.backendId || '').substring(0, 8)}... instead of ${(params.backendId || '').substring(0, 8)}...`);
           params.backendId = account.backendId;
           params.keyPrefix = account.keyPrefix;
           break;
@@ -1530,7 +1530,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       const lockKey = normalizedEmail;
       const existingLock = upsertLocksRef.current.get(lockKey);
       if (existingLock) {
-        console.log(`⏳ [upsertDriveAccount] Waiting for existing upsert to complete for email: ${normalizedEmail}`);
+        console.log(`⏳ [upsertDriveAccount] Waiting for existing upsert to complete for [REDACTED]`);
         return existingLock;
       }
     }
@@ -1547,7 +1547,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           for (const [existingBackendId, credential] of driveCredentialCacheRef.current.entries()) {
             const existingEmail = credential.email?.toLowerCase();
             if (existingEmail === normalizedEmail && existingBackendId !== params.backendId) {
-              console.log(`🔄 [upsertDriveAccount] Found existing account during backend creation, switching to: ${existingBackendId}`);
+              console.log(`🔄 [upsertDriveAccount] Found existing account during backend creation, switching to: ${(existingBackendId || '').substring(0, 8)}...`);
               params.backendId = existingBackendId;
               params.keyPrefix = credential.keyPrefix;
               break;
@@ -1563,7 +1563,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               if (registeredBackendId !== params.backendId) {
                 const registeredEmail = (registeredBackend as any).getEmail?.()?.toLowerCase();
                 if (registeredEmail === normalizedEmail) {
-                  console.log(`🔄 [upsertDriveAccount] Found registered backend with same email, using: ${registeredBackendId}`);
+                  console.log(`🔄 [upsertDriveAccount] Found registered backend with same email, using: ${(registeredBackendId || '').substring(0, 16)}...`);
                   backend = registeredBackend as GoogleDriveBackend;
                   params.backendId = registeredBackendId;
                   break;
@@ -1995,7 +1995,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         for (const account of deduplicatedAccounts) {
           const email = account?.email || null;
           if (email && currentCacheEmails.has(email.toLowerCase())) {
-            console.log(`⏭️ [StorageCredentials] Skipping hydration for ${email} - already in cache`);
+            console.log(`⏭️ [StorageCredentials] Skipping hydration for [REDACTED] - already in cache`);
             continue;
           }
           accountsToHydrate.push(account);
@@ -2017,7 +2017,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               if (backend instanceof GoogleDriveBackend) {
                 const backendEmail = backend.getEmail()?.toLowerCase();
                 if (backendEmail === accountEmail) {
-                  console.log(`⏭️ [StorageCredentials] SKIPPING hydration: Account with email ${accountEmail} already exists in aggregatorService (backendId: ${backendId})`);
+                  console.log(`⏭️ [StorageCredentials] SKIPPING hydration: Account with email [REDACTED] already exists in aggregatorService (backendId: ${(backendId || '').substring(0, 8)}...)`);
                   accountExists = true;
                   break;
                 }
@@ -2589,16 +2589,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                   passcode: credentials.passcode,
                   publicKey: publicKey
                 });
-                console.log(`✅ [Metadata] Generated pN identifier (VolumeIdGenerator): ${pnIdentifier}`);
-                console.log(`📁 [Metadata] Expected folder: "par Noir - ${pnIdentifier}"`);
+                console.log(`✅ [Metadata] Generated pN identifier (VolumeIdGenerator): ${(pnIdentifier || '').substring(0, 8)}...`);
+                console.log(`📁 [Metadata] Expected folder: "par Noir - ${(pnIdentifier || '').substring(0, 8)}..."`);
                 
                 // Also log fallback for comparison
                 if (pnIdentifierRef.current) {
                   // pnIdentifierRef.current already includes 'pn-' prefix, don't add it again
                   const fallbackId = pnIdentifierRef.current.startsWith('pn-') ? pnIdentifierRef.current : `pn-${pnIdentifierRef.current}`;
                   if (fallbackId !== pnIdentifier) {
-                    console.warn(`⚠️ [Metadata] Identifier mismatch! Correct: ${pnIdentifier}, Fallback: ${fallbackId}`);
-                    console.warn(`⚠️ [Metadata] Using CORRECT identifier: ${pnIdentifier}`);
+                    console.warn(`⚠️ [Metadata] Identifier mismatch! Correct: ${(pnIdentifier || '').substring(0, 8)}..., Fallback: ${(fallbackId || '').substring(0, 8)}...`);
+                    console.warn(`⚠️ [Metadata] Using CORRECT identifier: ${(pnIdentifier || '').substring(0, 8)}...`);
                   }
                 }
               } else {
@@ -2957,21 +2957,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             passcode,
             publicKey
           });
-          console.log(`✅ [loadFiles] Generated pN identifier (VolumeIdGenerator): ${currentPnIdentifier}`);
-          console.log(`📁 [loadFiles] Expected folder name: "par Noir - ${currentPnIdentifier}"`);
+          console.log(`✅ [loadFiles] Generated pN identifier (VolumeIdGenerator): ${(currentPnIdentifier || '').substring(0, 8)}...`);
+          console.log(`📁 [loadFiles] Expected folder name: "par Noir - ${(currentPnIdentifier || '').substring(0, 8)}..."`);
           
           // Also log the fallback identifier for comparison
           if (pnIdentifierRef.current) {
             // pnIdentifierRef.current already includes 'pn-' prefix, don't add it again
             const fallbackId = pnIdentifierRef.current.startsWith('pn-') ? pnIdentifierRef.current : `pn-${pnIdentifierRef.current}`;
-            console.log(`ℹ️ [loadFiles] Fallback identifier (did:publicKey): ${fallbackId}`);
+            console.log(`ℹ️ [loadFiles] Fallback identifier (did:publicKey): ${(fallbackId || '').substring(0, 8)}...`);
             if (fallbackId !== currentPnIdentifier) {
-              console.warn(`⚠️ [loadFiles] Identifier mismatch! VolumeIdGenerator: ${currentPnIdentifier}, Fallback: ${fallbackId}`);
-              console.warn(`⚠️ [loadFiles] Using VolumeIdGenerator identifier (${currentPnIdentifier}) - this is the correct one`);
+              console.warn(`⚠️ [loadFiles] Identifier mismatch! VolumeIdGenerator: ${(currentPnIdentifier || '').substring(0, 8)}..., Fallback: ${(fallbackId || '').substring(0, 8)}...`);
+              console.warn(`⚠️ [loadFiles] Using VolumeIdGenerator identifier (${(currentPnIdentifier || '').substring(0, 8)}...) - this is the correct one`);
             }
           }
         } else {
-          console.log(`⚠️ [loadFiles] Cannot generate pN identifier (missing: ${!pnName ? 'pnName ' : ''}${!publicKey ? 'publicKey ' : ''}${!passcode ? 'passcode' : ''}) - backend will search for folders directly`);
+          console.log(`⚠️ [loadFiles] Cannot generate pN identifier (missing credentials) - backend will search for folders directly`);
         }
       } catch (err) {
         console.warn('⚠️ [loadFiles] Failed to generate pN identifier:', err);
@@ -3277,7 +3277,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
           // Log orphaned entries found and clean them up
           if (orphanedEntries.length > 0) {
-            console.warn(`⚠️ [loadFiles] Found ${orphanedEntries.length} orphaned file(s) in owner index for ${backendId}`, {
+            console.warn(`⚠️ [loadFiles] Found ${orphanedEntries.length} orphaned file(s) in owner index for ${(backendId || '').substring(0, 8)}...`, {
               orphanedFiles: orphanedEntries.map(e => ({
                 fileId: e.googleDriveFileId,
                 fileName: e.fileName || e.originalName
@@ -3711,7 +3711,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               passcode: credentials.passcode,
               publicKey: publicKey
             });
-            console.log('📁 [Phase 3] Generated pN identifier (standardized):', metadataPnIdentifier);
+            console.log('📁 [Phase 3] Generated pN identifier (standardized):', (metadataPnIdentifier || '').substring(0, 8) + '...');
           } else {
             // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
             console.warn('⚠️ [Phase 3] Cannot generate standardized pN identifier - credentials required:', {
@@ -4285,7 +4285,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               if (key.includes('_token') || key.includes('_email') || key.includes('_refresh')) {
                 localStorage.removeItem(key);
                 cleanedKeys++;
-                console.log(`[Security] Removed localStorage key containing email: ${key}`);
+                console.log(`[Security] Removed localStorage key containing email pattern`);
               }
             } catch (e) {
               console.warn(`[Security] Failed to remove key ${key}:`, e);
@@ -4776,7 +4776,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       // Remove account from state FIRST (before updating API/metadata)
       // This ensures buildStorageCredentialPayload() excludes the removed account
       removeDriveAccount(backendId);
-      console.log(`✅ [handleDisconnect] Account ${backendId} removed from dashboard state and blocked for ${DISCONNECT_BLOCK_DURATION_MS}ms`);
+      console.log(`✅ [handleDisconnect] Account ${(backendId || '').substring(0, 8)}... removed from dashboard state and blocked for ${DISCONNECT_BLOCK_DURATION_MS}ms`);
       
       // Remove account from encrypted metadata storage
       // This prevents it from being restored after lock/unlock
@@ -4850,7 +4850,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                   updatedCredentials
                 );
                 
-                console.log(`✅ [handleDisconnect] Removed account ${accountEmail} from encrypted metadata`);
+                console.log(`✅ [handleDisconnect] Removed account [REDACTED] from encrypted metadata`);
               }
             }
           } else {
@@ -5160,17 +5160,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             passcode: credentials.passcode,
             publicKey
           });
-          console.log(`✅ [Upload] Generated pN identifier (VolumeIdGenerator): ${pnIdentifier}`);
-          console.log(`📁 [Upload] Will use folder: "par Noir - ${pnIdentifier}"`);
+          console.log(`✅ [Upload] Generated pN identifier (VolumeIdGenerator): ${(pnIdentifier || '').substring(0, 8)}...`);
+          console.log(`📁 [Upload] Will use folder: "par Noir - ${(pnIdentifier || '').substring(0, 8)}..."`);
           
           // Also log the fallback identifier for comparison
           if (pnIdentifierRef.current) {
             // pnIdentifierRef.current already includes 'pn-' prefix, don't add it again
             const fallbackId = pnIdentifierRef.current.startsWith('pn-') ? pnIdentifierRef.current : `pn-${pnIdentifierRef.current}`;
-            console.log(`ℹ️ [Upload] Fallback identifier (did:publicKey): ${fallbackId}`);
+            console.log(`ℹ️ [Upload] Fallback identifier (did:publicKey): ${(fallbackId || '').substring(0, 8)}...`);
             if (fallbackId !== pnIdentifier) {
-              console.warn(`⚠️ [Upload] Identifier mismatch! VolumeIdGenerator: ${pnIdentifier}, Fallback: ${fallbackId}`);
-              console.warn(`⚠️ [Upload] Using VolumeIdGenerator identifier (${pnIdentifier}) - this is the CORRECT one`);
+              console.warn(`⚠️ [Upload] Identifier mismatch! VolumeIdGenerator: ${(pnIdentifier || '').substring(0, 8)}..., Fallback: ${(fallbackId || '').substring(0, 8)}...`);
+              console.warn(`⚠️ [Upload] Using VolumeIdGenerator identifier (${(pnIdentifier || '').substring(0, 8)}...) - this is the CORRECT one`);
             }
           }
         } else {
@@ -6370,7 +6370,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             passcode: credentials.passcode,
             publicKey: resolvedAuth.publicKey
           });
-          console.log('[DesktopUnlock] Generated pN identifier (standardized):', pnIdentifier);
+          console.log('[DesktopUnlock] Generated pN identifier (standardized):', (pnIdentifier || '').substring(0, 8) + '...');
         } else {
           console.warn('[DesktopUnlock] Cannot generate standardized pN identifier - credentials required');
         }

@@ -55,7 +55,7 @@ export function useThumbnailsAndMedia({
             try {
               URL.revokeObjectURL(thumbnailUrl);
             } catch (err) {
-              console.warn(`Failed to revoke thumbnail URL for ${fileId}:`, err);
+              if (import.meta.env.DEV) console.warn(`Failed to revoke thumbnail URL for ${fileId}:`, err);
             }
           }
           newMap.delete(fileId);
@@ -91,7 +91,7 @@ export function useThumbnailsAndMedia({
           hasThumbnailFile ||
           isThumbnailFile
         ) {
-          if (hasValidToken === false && (isImage || isVideo)) {
+          if (hasValidToken === false && (isImage || isVideo) && import.meta.env.DEV) {
             console.warn(`⚠️ [Feed] Skipping ${file.fileId} - missing or invalid publicToken`);
           }
           continue;
@@ -107,7 +107,7 @@ export function useThumbnailsAndMedia({
             token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
             if (!token || !token.shareKey || !token.shareEncrypted) throw new Error('Invalid token structure');
           } catch (e) {
-            console.error(`❌ [Feed] Failed to parse/validate token for ${file.fileId}:`, e);
+            if (import.meta.env.DEV) console.error(`❌ [Feed] Failed to parse/validate token for ${file.fileId}:`, e);
             const n = new Set(generatingThumbnailsRef.current);
             n.delete(file.fileId);
             generatingThumbnailsRef.current = n;
@@ -125,7 +125,7 @@ export function useThumbnailsAndMedia({
             return n;
           });
         } catch (err) {
-          console.warn(`Failed to generate thumbnail for ${file.fileId}:`, err);
+          if (import.meta.env.DEV) console.warn(`Failed to generate thumbnail for ${file.fileId}:`, err);
         } finally {
           const n = new Set(generatingThumbnailsRef.current);
           n.delete(file.fileId);
@@ -173,7 +173,7 @@ export function useThumbnailsAndMedia({
           if (isUnencrypted) {
             const ownerId = indexedFile.pnIdentifier || (file.creator as any)?.identifier?.value || (file as any).author?.did;
             if (!ownerId) {
-              console.warn('Cannot pre-load unencrypted video: missing owner identifier');
+              if (import.meta.env.DEV) console.warn('Cannot pre-load unencrypted video: missing owner identifier');
               return;
             }
             const session = PNOAuthService.loadSession();
@@ -199,7 +199,7 @@ export function useThumbnailsAndMedia({
             return n;
           });
         } catch (err) {
-          console.warn('Failed to pre-load video for feed:', err);
+          if (import.meta.env.DEV) console.warn('Failed to pre-load video for feed:', err);
         }
       })();
     }

@@ -20,6 +20,7 @@ import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import crypto from 'crypto';
 import { determineFileType, getFileTypeFromMime, determineContentClass } from './server/utils/fileTypeUtils';
+import { safeClientErrorMessage } from './server/utils/safeError';
 
 // Environment configuration
 const PORT = process.env.PORT || 3001;
@@ -1672,7 +1673,7 @@ class ProductionServer {
         console.error('❌ [GET /api/third-party/indexers] Error:', error);
         res.status(500).json({
           error: 'Failed to load third-party indexers',
-          message: error.message
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
     });
@@ -1698,7 +1699,7 @@ class ProductionServer {
         console.error('❌ [PUT /api/third-party/access] Error:', error);
         res.status(500).json({
           error: 'Failed to update third-party access',
-          message: error.message
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
     });
@@ -1731,7 +1732,7 @@ class ProductionServer {
         console.error('❌ [GET /api/third-party/files/:fileId/index-visibility] Error:', error);
         res.status(500).json({
           error: 'Failed to load file indexing visibility',
-          message: error.message
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
     });
@@ -1786,7 +1787,7 @@ class ProductionServer {
         console.error('❌ [PUT /api/third-party/files/:fileId/index-visibility] Error:', error);
         res.status(500).json({
           error: 'Failed to update file indexing visibility',
-          message: error.message
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
     });
@@ -1918,7 +1919,7 @@ class ProductionServer {
         console.error('❌ [GET /api/aggregator/metadata-index] Error:', error);
         return res.status(500).json({ 
           error: 'Failed to fetch metadata index',
-          message: error.message 
+          message: safeClientErrorMessage(error, NODE_ENV === 'production') 
         });
       }
     });
@@ -1980,7 +1981,7 @@ class ProductionServer {
         console.error('❌ [GET /api/aggregator/nsfw-index] Error:', error);
         return res.status(500).json({ 
           error: 'Failed to fetch NSFW metadata index',
-          message: error.message 
+          message: safeClientErrorMessage(error, NODE_ENV === 'production') 
         });
       }
     });
@@ -2037,7 +2038,7 @@ class ProductionServer {
         console.error('❌ [GET /api/aggregator/my-files] Error:', error);
         return res.status(500).json({ 
           error: 'Failed to fetch user files',
-          message: error.message 
+          message: safeClientErrorMessage(error, NODE_ENV === 'production') 
         });
       }
     });
@@ -2284,7 +2285,7 @@ class ProductionServer {
         console.error(`❌ [${requestId}] Request body:`, JSON.stringify(req.body, null, 2));
         return res.status(500).json({ 
           error: 'Failed to submit metadata',
-          message: error?.message || 'Unknown error',
+          message: safeClientErrorMessage(error, NODE_ENV === 'production'),
           requestId,
           stack: NODE_ENV === 'development' ? error?.stack : undefined
         });
@@ -2309,7 +2310,7 @@ class ProductionServer {
         console.error('[CleanupOrphaned] Error stack:', error?.stack);
         return res.status(500).json({
           error: 'Failed to cleanup orphaned metadata',
-          message: error?.message || String(error),
+          message: safeClientErrorMessage(error, NODE_ENV === 'production'),
           errorType: error?.constructor?.name,
           stack: error?.stack
         });
@@ -2334,7 +2335,7 @@ class ProductionServer {
         console.error('Error in cleanup-tables endpoint:', error);
         return res.status(500).json({ 
           error: 'Failed to cleanup database',
-          message: error?.message || String(error)
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
     });
@@ -2363,7 +2364,7 @@ class ProductionServer {
         console.error('Error removing all metadata for user:', error);
         return res.status(500).json({
           error: 'Failed to remove user metadata',
-          error_description: error.message || 'Failed to remove user metadata'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to remove user metadata'
         });
       }
     });
@@ -2611,7 +2612,7 @@ class ProductionServer {
         console.error('Error removing aggregator metadata:', error);
         return res.status(500).json({ 
           error: 'Failed to remove metadata',
-          message: error.message 
+          message: safeClientErrorMessage(error, NODE_ENV === 'production') 
         });
       }
     });
@@ -2705,7 +2706,7 @@ class ProductionServer {
         console.error('Error in debug endpoint:', error);
         return res.status(500).json({ 
           error: 'Failed to fetch debug info',
-          message: error.message 
+          message: safeClientErrorMessage(error, NODE_ENV === 'production') 
         });
       }
     });
@@ -2723,7 +2724,7 @@ class ProductionServer {
         console.error('Error invalidating cache:', error);
         return res.status(500).json({ 
           error: 'Failed to invalidate cache',
-          message: error.message 
+          message: safeClientErrorMessage(error, NODE_ENV === 'production') 
         });
       }
     });
@@ -2812,7 +2813,7 @@ class ProductionServer {
         console.error('Error in fix-feeds endpoint:', error);
         return res.status(500).json({ 
           error: 'Failed to run diagnostic',
-          message: error.message,
+          message: safeClientErrorMessage(error, NODE_ENV === 'production'),
           stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
       }
@@ -2918,7 +2919,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('❌ Companion check error:', error);
-        return res.status(500).json({ error: 'Failed to check companion metadata', message: error.message });
+        return res.status(500).json({ error: 'Failed to check companion metadata', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -2964,7 +2965,7 @@ class ProductionServer {
         console.error('Error inspecting file metadata:', error);
         return res.status(500).json({ 
           error: 'Failed to inspect file metadata',
-          message: error.message 
+          message: safeClientErrorMessage(error, NODE_ENV === 'production') 
         });
       }
     });
@@ -2982,7 +2983,7 @@ class ProductionServer {
         console.error('Error fetching aggregator stats:', error);
         res.status(500).json({ 
           error: 'Failed to fetch stats',
-          message: error.message 
+          message: safeClientErrorMessage(error, NODE_ENV === 'production') 
         });
       }
     });
@@ -3046,7 +3047,7 @@ class ProductionServer {
         console.error('❌ [GET /api/search] Error:', error);
         return res.status(500).json({
           error: 'Search failed',
-          message: error.message,
+          message: safeClientErrorMessage(error, NODE_ENV === 'production'),
           files: [],
           total: 0,
           hasMore: false
@@ -3361,7 +3362,7 @@ class ProductionServer {
         console.error('Error getting metadata:', error);
         return res.status(500).json({
           error: 'Failed to get metadata',
-          message: error.message
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
     });
@@ -4985,7 +4986,7 @@ class ProductionServer {
         console.error('Error updating metadata:', error);
         return res.status(500).json({ 
           error: 'Failed to update metadata',
-          message: error.message 
+          message: safeClientErrorMessage(error, NODE_ENV === 'production') 
         });
       }
     });
@@ -5559,7 +5560,7 @@ class ProductionServer {
         console.error('Error saving storage credentials:', error);
         return res.status(500).json({
           error: 'Failed to save storage credentials',
-          message: error.message
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
     });
@@ -5619,7 +5620,7 @@ class ProductionServer {
         console.error('Error retrieving storage credentials:', error);
         return res.status(500).json({
           error: 'Failed to retrieve storage credentials',
-          message: error.message
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
     });
@@ -5791,7 +5792,7 @@ class ProductionServer {
         console.error('Error in storage initialize endpoint:', error);
         return res.status(500).json({
           error: 'Failed to initialize storage',
-          message: error.message
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
     });
@@ -5864,7 +5865,7 @@ class ProductionServer {
         console.error('[OwnerIndex] Error:', error?.message || error);
         return res.status(500).json({
           error: 'Failed to read owner index',
-          message: error?.message || String(error)
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
     });
@@ -5911,7 +5912,7 @@ class ProductionServer {
         return res.json({ ok: true });
       } catch (error: any) {
         console.error('[OwnerIndex POST] Error:', error?.message || error);
-        return res.status(500).json({ error: 'Failed to update owner index', message: error?.message || String(error) });
+        return res.status(500).json({ error: 'Failed to update owner index', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -5981,7 +5982,7 @@ class ProductionServer {
         console.error('[PublicIndex] Error:', error?.message || error);
         return res.status(500).json({
           error: 'Failed to read public index',
-          message: error?.message || String(error)
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
     });
@@ -6028,7 +6029,7 @@ class ProductionServer {
         return res.json({ ok: true });
       } catch (error: any) {
         console.error('[PublicIndex POST] Error:', error?.message || error);
-        return res.status(500).json({ error: 'Failed to update public index', message: error?.message || String(error) });
+        return res.status(500).json({ error: 'Failed to update public index', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -6212,7 +6213,7 @@ class ProductionServer {
         console.error('Error listing storage accounts:', error);
         return res.status(500).json({
           error: 'Failed to list storage accounts',
-          message: error.message
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
     });
@@ -6253,7 +6254,7 @@ class ProductionServer {
         console.error('Error updating engagement:', error);
         return res.status(500).json({ 
           error: 'Failed to update engagement',
-          message: error.message 
+          message: safeClientErrorMessage(error, NODE_ENV === 'production') 
         });
       }
     });
@@ -6569,7 +6570,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error toggling like:', error);
-        return res.status(500).json({ error: 'Failed to toggle like', message: error.message });
+        return res.status(500).json({ error: 'Failed to toggle like', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -6624,7 +6625,7 @@ class ProductionServer {
         return res.json({ liked });
       } catch (error: any) {
         console.error('Error checking like:', error);
-        return res.status(500).json({ error: 'Failed to check like', message: error.message });
+        return res.status(500).json({ error: 'Failed to check like', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -6789,7 +6790,7 @@ class ProductionServer {
         console.error('Failed to toggle dislike:', error);
         return res.status(500).json({
           error: 'Failed to toggle dislike',
-          message: error.message 
+          message: safeClientErrorMessage(error, NODE_ENV === 'production') 
         });
       }
     });
@@ -6810,7 +6811,7 @@ class ProductionServer {
         return res.json({ disliked });
       } catch (error: any) {
         console.error('Error checking dislike:', error);
-        return res.status(500).json({ error: 'Failed to check dislike', message: error.message });
+        return res.status(500).json({ error: 'Failed to check dislike', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -7099,7 +7100,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error adding comment:', error);
-        return res.status(500).json({ error: 'Failed to add comment', message: error.message });
+        return res.status(500).json({ error: 'Failed to add comment', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -7123,7 +7124,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error liking comment:', error);
-        return res.status(500).json({ error: 'Failed to like comment', message: error.message });
+        return res.status(500).json({ error: 'Failed to like comment', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -7142,7 +7143,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error getting comments:', error);
-        return res.status(500).json({ error: 'Failed to get comments', message: error.message });
+        return res.status(500).json({ error: 'Failed to get comments', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -7160,7 +7161,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error deleting comments:', error);
-        return res.status(500).json({ error: 'Failed to delete comments', message: error.message });
+        return res.status(500).json({ error: 'Failed to delete comments', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -7230,7 +7231,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error getting recommendations:', error);
-        res.status(500).json({ error: 'Failed to get recommendations', message: error.message });
+        res.status(500).json({ error: 'Failed to get recommendations', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -7278,7 +7279,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error getting user engagement:', error);
-        return res.status(500).json({ error: 'Failed to get user engagement', message: error.message });
+        return res.status(500).json({ error: 'Failed to get user engagement', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -7498,7 +7499,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error recording share:', error);
-        return res.status(500).json({ error: 'Failed to record share', message: error.message });
+        return res.status(500).json({ error: 'Failed to record share', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -7629,7 +7630,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error toggling save:', error);
-        return res.status(500).json({ error: 'Failed to toggle save', message: error.message });
+        return res.status(500).json({ error: 'Failed to toggle save', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -7647,7 +7648,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error getting engagement stats:', error);
-        return res.status(500).json({ error: 'Failed to get engagement stats', message: error.message });
+        return res.status(500).json({ error: 'Failed to get engagement stats', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -7683,7 +7684,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error getting bulk engagement stats:', error);
-        return res.status(500).json({ error: 'Failed to get bulk engagement stats', message: error.message });
+        return res.status(500).json({ error: 'Failed to get bulk engagement stats', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -7697,7 +7698,7 @@ class ProductionServer {
         return res.json(metrics);
       } catch (error: any) {
         console.error('Error getting engagement metrics:', error);
-        return res.status(500).json({ error: 'Failed to get engagement metrics', message: error.message });
+        return res.status(500).json({ error: 'Failed to get engagement metrics', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -7711,7 +7712,7 @@ class ProductionServer {
         return res.json(metrics);
       } catch (error: any) {
         console.error('Error getting monetization metrics:', error);
-        return res.status(500).json({ error: 'Failed to get monetization metrics', message: error.message });
+        return res.status(500).json({ error: 'Failed to get monetization metrics', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -7833,7 +7834,7 @@ class ProductionServer {
         return res.json({ success: true, message: 'Verification status synced' });
       } catch (error: any) {
         console.error('Error syncing verification status:', error);
-        return res.status(500).json({ error: 'Failed to sync verification status', message: error.message });
+        return res.status(500).json({ error: 'Failed to sync verification status', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -7935,7 +7936,7 @@ class ProductionServer {
         return res.status(201).json(feed);
       } catch (error: any) {
         console.error('Error creating feed:', error);
-        return res.status(500).json({ error: 'Failed to create feed', message: error.message });
+        return res.status(500).json({ error: 'Failed to create feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -7979,7 +7980,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error getting saved feed:', error);
-        return res.status(500).json({ error: 'Failed to get saved feed', message: error.message });
+        return res.status(500).json({ error: 'Failed to get saved feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8006,7 +8007,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error listing feeds:', error);
-        return res.status(500).json({ error: 'Failed to list feeds', message: error.message });
+        return res.status(500).json({ error: 'Failed to list feeds', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8025,7 +8026,7 @@ class ProductionServer {
         return res.json(feed);
       } catch (error: any) {
         console.error('Error getting feed:', error);
-        return res.status(500).json({ error: 'Failed to get feed', message: error.message });
+        return res.status(500).json({ error: 'Failed to get feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8060,7 +8061,7 @@ class ProductionServer {
         return res.json(feed);
       } catch (error: any) {
         console.error('Error updating feed:', error);
-        return res.status(500).json({ error: 'Failed to update feed', message: error.message });
+        return res.status(500).json({ error: 'Failed to update feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8084,7 +8085,7 @@ class ProductionServer {
         return res.json({ success: true, message: 'Feed deleted' });
       } catch (error: any) {
         console.error('Error deleting feed:', error);
-        return res.status(500).json({ error: 'Failed to delete feed', message: error.message });
+        return res.status(500).json({ error: 'Failed to delete feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8123,7 +8124,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error subscribing to feed:', error);
-        return res.status(500).json({ error: 'Failed to subscribe to feed', message: error.message });
+        return res.status(500).json({ error: 'Failed to subscribe to feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8147,7 +8148,7 @@ class ProductionServer {
         return res.json({ success: true, message: 'Unsubscribed from feed' });
       } catch (error: any) {
         console.error('Error unsubscribing from feed:', error);
-        return res.status(500).json({ error: 'Failed to unsubscribe from feed', message: error.message });
+        return res.status(500).json({ error: 'Failed to unsubscribe from feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8193,7 +8194,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error getting user subscriptions:', error);
-        return res.status(500).json({ error: 'Failed to get subscriptions', message: error.message });
+        return res.status(500).json({ error: 'Failed to get subscriptions', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8215,7 +8216,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error getting feed subscribers:', error);
-        return res.status(500).json({ error: 'Failed to get subscribers', message: error.message });
+        return res.status(500).json({ error: 'Failed to get subscribers', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8234,7 +8235,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error getting creator subscriber index:', error);
-        return res.status(500).json({ error: 'Failed to get subscriber index', message: error.message });
+        return res.status(500).json({ error: 'Failed to get subscriber index', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8335,7 +8336,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error saving to feed:', error);
-        return res.status(500).json({ error: 'Failed to save to feed', message: error.message });
+        return res.status(500).json({ error: 'Failed to save to feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8371,7 +8372,7 @@ class ProductionServer {
         return res.json({ success: true, message: 'File removed from saved feed' });
       } catch (error: any) {
         console.error('Error removing from saved feed:', error);
-        return res.status(500).json({ error: 'Failed to remove from saved feed', message: error.message });
+        return res.status(500).json({ error: 'Failed to remove from saved feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8395,7 +8396,7 @@ class ProductionServer {
         return res.json(result);
       } catch (error: any) {
         console.error('Error discovering feeds:', error);
-        return res.status(500).json({ error: 'Failed to discover feeds', message: error.message });
+        return res.status(500).json({ error: 'Failed to discover feeds', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8411,7 +8412,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error getting feed categories:', error);
-        return res.status(500).json({ error: 'Failed to get categories', message: error.message });
+        return res.status(500).json({ error: 'Failed to get categories', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8433,7 +8434,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error getting trending feeds:', error);
-        return res.status(500).json({ error: 'Failed to get trending feeds', message: error.message });
+        return res.status(500).json({ error: 'Failed to get trending feeds', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8459,7 +8460,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Error getting recommended feeds:', error);
-        return res.status(500).json({ error: 'Failed to get recommended feeds', message: error.message });
+        return res.status(500).json({ error: 'Failed to get recommended feeds', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8486,7 +8487,7 @@ class ProductionServer {
         console.error('Error getting curated feed:', error);
         return res.status(500).json({ 
           error: 'Failed to get curated feed',
-          message: error.message 
+          message: safeClientErrorMessage(error, NODE_ENV === 'production') 
         });
       }
     });
@@ -8592,7 +8593,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('❌ Sync visibility error:', error);
-        return res.status(500).json({ error: 'Failed to sync visibility', message: error.message });
+        return res.status(500).json({ error: 'Failed to sync visibility', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
     });
 
@@ -8627,21 +8628,12 @@ class ProductionServer {
 
         const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
         const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
-        
-        console.log('[Google OAuth Token Exchange] Client ID:', clientId);
-        console.log('[Google OAuth Token Exchange] Client secret length:', clientSecret?.length || 0);
-        console.log('[Google OAuth Token Exchange] Client secret first 4 chars:', clientSecret ? clientSecret.substring(0, 4) + '...' : 'MISSING');
-        
+
         if (!clientSecret || clientSecret.trim() === '') {
           console.error('⚠️ GOOGLE_DRIVE_CLIENT_SECRET not configured or empty');
           return res.status(500).json({
             error: 'OAuth configuration error',
-            message: 'Google OAuth client secret not configured on server. Please set GOOGLE_DRIVE_CLIENT_SECRET environment variable in Railway.',
-            details: {
-              hasClientSecret: !!clientSecret,
-              clientSecretLength: clientSecret?.length || 0,
-              clientId: clientId
-            }
+            message: 'Google OAuth client secret not configured on server. Please set GOOGLE_DRIVE_CLIENT_SECRET environment variable in Railway.'
           });
         }
         if (!clientId || typeof clientId !== 'string' || clientId.trim() === '') {
@@ -8731,7 +8723,7 @@ class ProductionServer {
         console.error('Error exchanging Google OAuth code:', error);
         return res.status(500).json({
           error: 'Failed to exchange authorization code',
-          message: error.message
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
     });
@@ -8843,7 +8835,7 @@ class ProductionServer {
         console.error('Error refreshing Google OAuth token:', error);
         return res.status(500).json({
           error: 'Failed to refresh access token',
-          message: error.message,
+          message: safeClientErrorMessage(error, NODE_ENV === 'production'),
         });
       }
     });
@@ -8998,7 +8990,7 @@ class ProductionServer {
         console.error('Error listing Google Drive files:', error);
         return res.status(500).json({
           error: 'Failed to list files',
-          error_description: error.message || 'Failed to list Google Drive files'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to list Google Drive files'
         });
       }
     });
@@ -9156,7 +9148,7 @@ class ProductionServer {
         console.error('Error uploading file to Google Drive:', error);
         return res.status(500).json({
           error: 'Failed to upload file',
-          error_description: error.message || 'Failed to upload file to Google Drive'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to upload file to Google Drive'
         });
       }
     });
@@ -9372,7 +9364,7 @@ class ProductionServer {
         console.error('Error creating folder:', error);
         return res.status(500).json({
           error: 'Failed to create folder',
-          error_description: error.message || 'Failed to create folder in Google Drive'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to create folder in Google Drive'
         });
       }
     });
@@ -9520,7 +9512,7 @@ class ProductionServer {
             console.error('[DriveFiles] Error fetching thumbnail:', error);
             return res.status(500).json({
               error: 'Failed to fetch thumbnail',
-              error_description: error.message || 'Failed to fetch thumbnail from Google Drive'
+              error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to fetch thumbnail from Google Drive'
             });
           }
         } else if (download) {
@@ -9539,7 +9531,7 @@ class ProductionServer {
         console.error('Error accessing Google Drive file:', error);
         return res.status(500).json({
           error: 'Failed to access file',
-          error_description: error.message || 'Failed to access Google Drive file'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to access Google Drive file'
         });
       }
     });
@@ -9810,7 +9802,7 @@ class ProductionServer {
         console.error('Error updating Google Drive file:', error);
         return res.status(500).json({
           error: 'Failed to update file',
-          error_description: error.message || 'Failed to update Google Drive file'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to update Google Drive file'
         });
       }
     });
@@ -10268,7 +10260,7 @@ class ProductionServer {
         console.error('OAuth authentication error:', error);
         return res.status(500).json({
           error: 'server_error',
-          error_description: error.message || 'Authentication failed'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Authentication failed'
         });
       }
     });
@@ -10457,7 +10449,7 @@ class ProductionServer {
         console.error('Token exchange error:', error);
         return res.status(500).json({
           error: 'server_error',
-          error_description: error.message || 'Token exchange failed'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Token exchange failed'
         });
       }
     });
@@ -10488,7 +10480,7 @@ class ProductionServer {
         console.error('Token refresh error:', error);
         return res.status(500).json({
           error: 'server_error',
-          error_description: error.message || 'Token refresh failed'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Token refresh failed'
         });
       }
     });
@@ -10698,7 +10690,7 @@ class ProductionServer {
         console.error('Error getting ZKP data points:', error);
         return res.status(500).json({
           error: 'server_error',
-          error_description: error.message || 'Failed to retrieve ZKP data points'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to retrieve ZKP data points'
         });
       }
     });
@@ -10833,7 +10825,7 @@ class ProductionServer {
         console.error('Userinfo error:', error);
         return res.status(500).json({
           error: 'server_error',
-          error_description: error.message || 'Failed to retrieve user info'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to retrieve user info'
         });
       }
     });
@@ -11131,7 +11123,7 @@ class ProductionServer {
         console.error('Client registration error:', error);
         return res.status(500).json({
           error: 'server_error',
-          error_description: error.message || 'Failed to register client'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to register client'
         });
       }
     });
@@ -11156,7 +11148,7 @@ class ProductionServer {
         console.error('Get client error:', error);
         return res.status(500).json({
           error: 'server_error',
-          error_description: error.message || 'Failed to get client'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get client'
         });
       }
     });
@@ -11191,7 +11183,7 @@ class ProductionServer {
         console.error('Token revocation error:', error);
         return res.status(500).json({
           error: 'server_error',
-          error_description: error.message || 'Token revocation failed'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Token revocation failed'
         });
       }
     });
@@ -11441,7 +11433,7 @@ class ProductionServer {
         }
         return res.status(500).json({
           error: 'Failed to get message conversations',
-          error_description: error.message || 'Failed to get message conversations'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get message conversations'
         });
       }
     });
@@ -11459,7 +11451,7 @@ class ProductionServer {
         console.error('Error getting message requests:', error);
         return res.status(500).json({
           error: 'Failed to get message requests',
-          error_description: error.message || 'Failed to get message requests'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get message requests'
         });
       }
     });
@@ -11613,7 +11605,7 @@ class ProductionServer {
         }
         return res.status(500).json({
           error: 'Failed to get inbox messages',
-          error_description: error.message || 'Failed to get inbox messages'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get inbox messages'
         });
       }
     });
@@ -11991,7 +11983,7 @@ class ProductionServer {
         }
         return res.status(500).json({
           error: 'Failed to get thread messages',
-          error_description: error.message || 'Failed to get thread messages'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get thread messages'
         });
       }
     };
@@ -12988,7 +12980,7 @@ class ProductionServer {
         console.error('[SendMessage] Error details:', {
           fromPnIdentifier: reqFromPnIdentifier,
           toPnIdentifier: reqToPnIdentifier,
-          message: error?.message,
+          message: safeClientErrorMessage(error, NODE_ENV === 'production'),
           name: error?.name,
           code: error?.code
         });
@@ -13004,7 +12996,7 @@ class ProductionServer {
         }
         return res.status(500).json({
           error: 'Failed to send message',
-          error_description: error.message || 'Failed to send message',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to send message',
           details: error?.stack ? 'Check server logs for details' : undefined
         });
       }
@@ -13032,7 +13024,7 @@ class ProductionServer {
         console.error('Error sending message request:', error);
         return res.status(500).json({
           error: 'Failed to send message request',
-          error_description: error.message || 'Failed to send message request'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to send message request'
         });
       }
     });
@@ -13050,7 +13042,7 @@ class ProductionServer {
         console.error('Error responding to message request:', error);
         return res.status(500).json({
           error: 'Failed to respond to message request',
-          error_description: error.message || 'Failed to respond to message request'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to respond to message request'
         });
       }
     });
@@ -13160,7 +13152,7 @@ class ProductionServer {
         }
         return res.status(500).json({
           error: 'Failed to mark message as read',
-          error_description: error.message || 'Failed to mark message as read'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to mark message as read'
         });
       }
     });
@@ -13178,7 +13170,7 @@ class ProductionServer {
         console.error('Error deleting message:', error);
         return res.status(500).json({
           error: 'Failed to delete message',
-          error_description: error.message || 'Failed to delete message'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to delete message'
         });
       }
     });
@@ -13247,7 +13239,7 @@ class ProductionServer {
           }
           return res.status(500).json({ 
             error: 'Failed to access Google Drive', 
-            error_description: error.message || 'Drive API error'
+            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Drive API error'
           });
         }
 
@@ -13457,7 +13449,7 @@ class ProductionServer {
         }
         return res.status(500).json({
           error: 'Failed to delete conversation',
-          error_description: error.message || 'Failed to delete conversation'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to delete conversation'
         });
       }
     });
@@ -13530,7 +13522,7 @@ class ProductionServer {
         console.error('Error updating profile image:', error);
         return res.status(500).json({
           error: 'Failed to update profile image',
-          error_description: error.message || 'Failed to update profile image'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to update profile image'
         });
       }
     });
@@ -13615,7 +13607,7 @@ class ProductionServer {
         console.error('Error updating display name:', error);
         return res.status(500).json({
           error: 'Failed to update display name',
-          error_description: error.message || 'Failed to update display name'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to update display name'
         });
       }
     });
@@ -13735,7 +13727,7 @@ class ProductionServer {
         console.error('Error getting profile:', error);
         return res.status(500).json({
           error: 'Failed to get profile',
-          error_description: error.message || 'Failed to get profile'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get profile'
         });
       }
     });
@@ -13807,7 +13799,7 @@ class ProductionServer {
           });
           return res.status(500).json({
             error: 'Failed to send connection request',
-            error_description: error.message || 'Invalid Credentials',
+            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Invalid Credentials',
             details: 'Failed to get requester Google Drive access token. Please ensure your Google Drive is connected in the dashboard.'
           });
         }
@@ -13839,12 +13831,12 @@ class ProductionServer {
             return res.status(401).json({
               error: 'Google Drive authentication failed',
               code: 'DRIVE_AUTH_FAILED',
-              message: error.message || `Google Drive API returned ${error?.response?.status || 'unknown error'}`
+              message: safeClientErrorMessage(error, NODE_ENV === 'production') || `Google Drive API returned ${error?.response?.status || 'unknown error'}`
             });
           }
           return res.status(500).json({ 
             error: 'Failed to access Google Drive', 
-            error_description: error.message || 'Drive API error'
+            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Drive API error'
           });
         }
 
@@ -13891,7 +13883,7 @@ class ProductionServer {
           });
           return res.status(500).json({
             error: 'Failed to send connection request',
-            error_description: error.message || 'Invalid Credentials',
+            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Invalid Credentials',
             details: 'Failed to get recipient Google Drive access token. Please ensure the recipient has Google Drive connected in the dashboard.'
           });
         }
@@ -13923,12 +13915,12 @@ class ProductionServer {
             return res.status(401).json({
               error: 'Google Drive authentication failed',
               code: 'DRIVE_AUTH_FAILED',
-              message: error.message || `Google Drive API returned ${error?.response?.status || 'unknown error'}`
+              message: safeClientErrorMessage(error, NODE_ENV === 'production') || `Google Drive API returned ${error?.response?.status || 'unknown error'}`
             });
           }
           return res.status(500).json({ 
             error: 'Failed to access Google Drive', 
-            error_description: error.message || 'Drive API error'
+            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Drive API error'
           });
         }
 
@@ -14051,7 +14043,7 @@ class ProductionServer {
         console.error('Error stack:', error.stack);
         return res.status(500).json({
           error: 'Failed to send connection request',
-          error_description: error.message || 'Failed to send connection request',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to send connection request',
           details: error.stack ? error.stack.substring(0, 500) : undefined
         });
       }
@@ -14113,13 +14105,13 @@ class ProductionServer {
             return res.status(401).json({
               error: 'Google Drive authentication failed',
               code: 'DRIVE_AUTH_FAILED',
-              message: error.message
+              message: safeClientErrorMessage(error, NODE_ENV === 'production')
             });
           }
           console.error('Error getting metadata folder:', error);
           return res.status(500).json({ 
             error: 'Failed to access Google Drive', 
-            error_description: error.message || 'Drive API error'
+            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Drive API error'
           });
         }
 
@@ -14849,7 +14841,7 @@ class ProductionServer {
         console.error('Error accepting connection request:', error);
         return res.status(500).json({
           error: 'Failed to accept connection request',
-          error_description: error.message || 'Failed to accept connection request'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to accept connection request'
         });
       }
     });
@@ -14910,13 +14902,13 @@ class ProductionServer {
             return res.status(401).json({
               error: 'Google Drive authentication failed',
               code: 'DRIVE_AUTH_FAILED',
-              message: error.message
+              message: safeClientErrorMessage(error, NODE_ENV === 'production')
             });
           }
           console.error('Error getting metadata folder:', error);
           return res.status(500).json({ 
             error: 'Failed to access Google Drive', 
-            error_description: error.message || 'Drive API error'
+            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Drive API error'
           });
         }
 
@@ -14935,7 +14927,7 @@ class ProductionServer {
         console.error('Error rejecting connection request:', error);
         return res.status(500).json({
           error: 'Failed to reject connection request',
-          error_description: error.message || 'Failed to reject connection request'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to reject connection request'
         });
       }
     });
@@ -15002,14 +14994,14 @@ class ProductionServer {
             return res.status(401).json({
               error: 'Google Drive authentication failed',
               code: 'DRIVE_AUTH_FAILED',
-              message: error.message
+              message: safeClientErrorMessage(error, NODE_ENV === 'production')
             });
           }
           // Other Drive API errors
           console.error('[GetConnections] Drive API error:', error);
           return res.status(500).json({
             error: 'Failed to access Google Drive',
-            error_description: error.message || 'Drive API error'
+            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Drive API error'
           });
         }
 
@@ -15036,7 +15028,7 @@ class ProductionServer {
         console.error('Error getting connections:', error);
         return res.status(500).json({
           error: 'Failed to get connections',
-          error_description: error.message || 'Failed to get connections'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get connections'
         });
       }
     });
@@ -15206,7 +15198,7 @@ class ProductionServer {
         console.error('Error following:', error);
         return res.status(500).json({
           error: 'Failed to follow',
-          error_description: error.message || 'Failed to follow'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to follow'
         });
       }
     });
@@ -15332,7 +15324,7 @@ class ProductionServer {
         console.error('Error unfollowing:', error);
         return res.status(500).json({
           error: 'Failed to unfollow',
-          error_description: error.message || 'Failed to unfollow'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to unfollow'
         });
       }
     });
@@ -15404,7 +15396,7 @@ class ProductionServer {
         console.error('Error getting followers:', error);
         return res.status(500).json({
           error: 'Failed to get followers',
-          error_description: error.message || 'Failed to get followers'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get followers'
         });
       }
     });
@@ -15475,7 +15467,7 @@ class ProductionServer {
         console.error('Error getting following:', error);
         return res.status(500).json({
           error: 'Failed to get following',
-          error_description: error.message || 'Failed to get following'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get following'
         });
       }
     });
@@ -15541,7 +15533,7 @@ class ProductionServer {
         console.error('Error getting followed feeds:', error);
         return res.status(500).json({
           error: 'Failed to get followed feeds',
-          error_description: error.message || 'Failed to get followed feeds'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get followed feeds'
         });
       }
     });
@@ -15607,7 +15599,7 @@ class ProductionServer {
         console.error('Error getting followed users:', error);
         return res.status(500).json({
           error: 'Failed to get followed users',
-          error_description: error.message || 'Failed to get followed users'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get followed users'
         });
       }
     });
@@ -15672,13 +15664,13 @@ class ProductionServer {
             return res.status(401).json({
               error: 'Google Drive authentication failed',
               code: 'DRIVE_AUTH_FAILED',
-              message: error.message
+              message: safeClientErrorMessage(error, NODE_ENV === 'production')
             });
           }
           console.error('Error getting metadata folder:', error);
           return res.status(500).json({
             error: 'Failed to access Google Drive',
-            error_description: error.message || 'Drive API error'
+            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Drive API error'
           });
         }
 
@@ -15728,7 +15720,7 @@ class ProductionServer {
         }
         return res.status(500).json({
           error: 'Failed to get pending requests',
-          error_description: error.message || 'Failed to get pending requests'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get pending requests'
         });
       }
     });
@@ -15793,13 +15785,13 @@ class ProductionServer {
             return res.status(401).json({
               error: 'Google Drive authentication failed',
               code: 'DRIVE_AUTH_FAILED',
-              message: error.message
+              message: safeClientErrorMessage(error, NODE_ENV === 'production')
             });
           }
           console.error('Error getting metadata folder:', error);
           return res.status(500).json({
             error: 'Failed to access Google Drive',
-            error_description: error.message || 'Drive API error'
+            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Drive API error'
           });
         }
 
@@ -15815,7 +15807,7 @@ class ProductionServer {
         console.error('Error getting connection status:', error);
         return res.status(500).json({
           error: 'Failed to get connection status',
-          error_description: error.message || 'Failed to get connection status'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get connection status'
         });
       }
     });
@@ -15870,7 +15862,7 @@ class ProductionServer {
           metadataFolderId = _g.metadataFolderId;
         } catch (error: any) {
           console.error('Error getting/creating metadata folder:', error);
-          return res.status(500).json({ error: 'Failed to get or create metadata folder', error_description: error.message });
+          return res.status(500).json({ error: 'Failed to get or create metadata folder', error_description: safeClientErrorMessage(error, NODE_ENV === 'production') });
         }
 
         // Get connection to find the other user's pn identifier before removing
@@ -15889,7 +15881,7 @@ class ProductionServer {
           console.error(`[RemoveConnection] Failed to get connections sheet:`, error.message);
           return res.status(500).json({
             error: 'Failed to access connections sheet',
-            error_description: error.message || 'Connections sheet not found. Please ensure Google Drive is initialized.'
+            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Connections sheet not found. Please ensure Google Drive is initialized.'
           });
         }
         
@@ -16042,7 +16034,7 @@ class ProductionServer {
         console.error('Error removing connection:', error);
         return res.status(500).json({
           error: 'Failed to remove connection',
-          error_description: error.message || 'Failed to remove connection'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to remove connection'
         });
       }
     });
@@ -16138,7 +16130,7 @@ class ProductionServer {
         console.error('Error saving preferences:', error);
         return res.status(500).json({
           error: 'Failed to save preferences',
-          error_description: error.message || 'Failed to save preferences'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to save preferences'
         });
       }
     });
@@ -16210,7 +16202,7 @@ class ProductionServer {
         console.error('Error getting ZKP data points:', error);
         return res.status(500).json({
           error: 'Failed to get ZKP data points',
-          error_description: error.message || 'Failed to get ZKP data points'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get ZKP data points'
         });
       }
     });
@@ -16325,7 +16317,7 @@ class ProductionServer {
         console.error('Error getting ZKP data point:', error);
         return res.status(500).json({
           error: 'Failed to get ZKP data point',
-          error_description: error.message || 'Failed to get ZKP data point'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get ZKP data point'
         });
       }
     });
@@ -16418,7 +16410,7 @@ class ProductionServer {
         console.error('Error getting third-party permissions:', error);
         return res.status(500).json({
           error: 'Failed to get third-party permissions',
-          error_description: error.message || 'Failed to get third-party permissions'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get third-party permissions'
         });
       }
     });
@@ -16518,7 +16510,7 @@ class ProductionServer {
         console.error('Error storing third-party permission:', error);
         return res.status(500).json({
           error: 'Failed to store third-party permission',
-          error_description: error.message || 'Failed to store third-party permission'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to store third-party permission'
         });
       }
     });
@@ -16619,7 +16611,7 @@ class ProductionServer {
         console.error('Error verifying ZKP proof:', error);
         return res.status(500).json({
           error: 'Failed to verify ZKP proof',
-          error_description: error.message || 'Failed to verify ZKP proof'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to verify ZKP proof'
         });
       }
     });
@@ -16691,7 +16683,7 @@ class ProductionServer {
         console.error('Error storing ZKP data point:', error);
         return res.status(500).json({
           error: 'Failed to store ZKP data point',
-          error_description: error.message || 'Failed to store ZKP data point'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to store ZKP data point'
         });
       }
     });
@@ -16787,7 +16779,7 @@ class ProductionServer {
         console.error('Error getting preferences:', error);
         return res.status(500).json({
           error: 'Failed to get preferences',
-          error_description: error.message || 'Failed to get preferences'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get preferences'
         });
       }
     });
@@ -16895,7 +16887,7 @@ class ProductionServer {
         console.error('Error saving tag preference:', error);
         return res.status(500).json({
           error: 'Failed to save tag preference',
-          error_description: error.message || 'Failed to save tag preference'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to save tag preference'
         });
       }
     });
@@ -16982,7 +16974,7 @@ class ProductionServer {
         console.error('Error getting tag preferences:', error);
         return res.status(500).json({
           error: 'Failed to get tag preferences',
-          error_description: error.message || 'Failed to get tag preferences'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get tag preferences'
         });
       }
     });
@@ -17078,7 +17070,7 @@ class ProductionServer {
         console.error('Error removing tag preference:', error);
         return res.status(500).json({
           error: 'Failed to remove tag preference',
-          error_description: error.message || 'Failed to remove tag preference'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to remove tag preference'
         });
       }
     });
@@ -17157,7 +17149,7 @@ class ProductionServer {
         console.error('Error getting activity ledger:', error);
         return res.status(500).json({
           error: 'Failed to get activity ledger',
-          error_description: error.message || 'Failed to get activity ledger'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get activity ledger'
         });
       }
     });
@@ -17231,7 +17223,7 @@ class ProductionServer {
         console.error('Failed to get notifications:', error);
         return res.status(500).json({
           error: 'server_error',
-          error_description: error.message || 'Failed to get notifications'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get notifications'
         });
       }
     });
@@ -17291,7 +17283,7 @@ class ProductionServer {
         console.error('Failed to get unread count:', error);
         return res.status(500).json({
           error: 'server_error',
-          error_description: error.message || 'Failed to get unread count'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get unread count'
         });
       }
     });
@@ -17359,7 +17351,7 @@ class ProductionServer {
         console.error('Failed to mark notification as read:', error);
         return res.status(500).json({
           error: 'server_error',
-          error_description: error.message || 'Failed to mark notification as read'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to mark notification as read'
         });
       }
     });
@@ -17419,7 +17411,7 @@ class ProductionServer {
         console.error('Failed to mark all notifications as read:', error);
         return res.status(500).json({
           error: 'server_error',
-          error_description: error.message || 'Failed to mark all notifications as read'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to mark all notifications as read'
         });
       }
     });
@@ -17487,7 +17479,7 @@ class ProductionServer {
         console.error('Failed to delete notification:', error);
         return res.status(500).json({
           error: 'server_error',
-          error_description: error.message || 'Failed to delete notification'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to delete notification'
         });
       }
     });
@@ -17571,7 +17563,7 @@ class ProductionServer {
         console.error('Failed to get notification preferences:', error);
         return res.status(500).json({
           error: 'server_error',
-          error_description: error.message || 'Failed to get notification preferences'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get notification preferences'
         });
       }
     });
@@ -17637,7 +17629,7 @@ class ProductionServer {
         console.error('Failed to update notification preferences:', error);
         return res.status(500).json({
           error: 'server_error',
-          error_description: error.message || 'Failed to update notification preferences'
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to update notification preferences'
         });
       }
     });

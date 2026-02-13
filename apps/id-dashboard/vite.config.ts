@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   worker: {
     format: 'es',
@@ -108,9 +108,9 @@ export default defineConfig({
     },
     terserOptions: {
       compress: {
-        drop_console: false,
+        drop_console: mode === 'production',
         drop_debugger: true,
-        pure_funcs: ['console.log', 'console.info', 'console.debug'],
+        ...(mode !== 'production' ? { pure_funcs: ['console.log', 'console.info', 'console.debug'] } : {}),
         passes: 2,
       },
       mangle: {
@@ -157,4 +157,4 @@ export default defineConfig({
     // Skip TypeScript checking during build
     logOverride: { 'this-is-undefined-in-esm': 'silent' }
   }
-})
+}))

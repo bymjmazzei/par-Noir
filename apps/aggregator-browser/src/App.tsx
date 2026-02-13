@@ -196,10 +196,12 @@ function App() {
         setFeeds(result.feeds);
       } catch (error: any) {
         // Don't log 429 errors as errors - they're handled gracefully
-        if (error?.message?.includes('429') || error?.status === 429) {
-          console.warn('Rate limited when loading feeds, using empty list');
-        } else {
-        console.error('Failed to load feeds:', error);
+        if (import.meta.env.DEV) {
+          if (error?.message?.includes('429') || error?.status === 429) {
+            console.warn('Rate limited when loading feeds, using empty list');
+          } else {
+            console.error('Failed to load feeds:', error);
+          }
         }
         // Continue with empty feeds - UI will show default feeds
         setFeeds([]);
@@ -218,7 +220,7 @@ function App() {
       // Optionally switch to the new feed
       setActiveFeedId(feed.feedId);
     } catch (error) {
-      console.error('Failed to reload feeds:', error);
+      if (import.meta.env.DEV) console.error('Failed to reload feeds:', error);
     }
   };
 
@@ -235,7 +237,7 @@ function App() {
             }
           });
         } catch (error) {
-          console.error('Failed to load subscriptions:', error);
+          if (import.meta.env.DEV) console.error('Failed to load subscriptions:', error);
         }
       }
     };
@@ -264,8 +266,7 @@ function App() {
         for (let i = 0; i < newFileIds.length; i += batchSize) {
           const batch = newFileIds.slice(i, i + batchSize);
           loadBulkEngagementStatsRef.current(batch).catch(error => {
-            // If request fails, remove from loaded set so we can retry
-            console.warn('Failed to load engagement stats, will retry:', error);
+            if (import.meta.env.DEV) console.warn('Failed to load engagement stats, will retry:', error);
             batch.forEach(id => loadedEngagementFileIdsRef.current.delete(id));
           });
         }
@@ -582,7 +583,7 @@ function App() {
             
             if (isVideo && videoElement && videoBlobs.has(fileId)) {
               videoElement.play().catch(err => {
-                console.warn('Failed to auto-play video:', err);
+                if (import.meta.env.DEV) console.warn('Failed to auto-play video:', err);
               });
               setVideoPlaying(prev => {
                 const newMap = new Map(prev);

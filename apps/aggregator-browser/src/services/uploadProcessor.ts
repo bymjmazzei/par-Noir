@@ -71,7 +71,7 @@ export async function processUploadTask(task: UploadTask): Promise<void> {
     uploadQueueService.updateTaskStatus(task.id, 'completed');
     uploadQueueService.notifyTaskFinished(task.id);
   } catch (error: any) {
-    console.error(`[UploadProcessor] Task ${task.id} failed:`, error);
+    if (import.meta.env.DEV) console.error(`[UploadProcessor] Task ${task.id} failed:`, error);
     uploadQueueService.updateTaskStatus(task.id, 'failed', error?.message || 'Upload failed');
     uploadQueueService.notifyTaskFinished(task.id);
   }
@@ -140,7 +140,7 @@ async function processFileUpload(
           publicKey: publicKey
         });
       } catch (tokenError) {
-        console.warn('Thumbnail share token generation failed:', tokenError);
+        if (import.meta.env.DEV) console.warn('Thumbnail share token generation failed:', tokenError);
       }
       const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
       thumbnailFileId = (await uploadFile(thumbnailBase64, `thumb_${file.name}.encrypted`, accessToken, task.accountId)).id;
@@ -176,7 +176,7 @@ async function processFileUpload(
         publicKey: publicKey
       });
     } catch (tokenError) {
-      console.warn('Share token generation failed:', tokenError);
+      if (import.meta.env.DEV) console.warn('Share token generation failed:', tokenError);
     }
 
     uploadQueueService.updateTaskProgress(task.id, 50);
@@ -213,7 +213,7 @@ async function processFileUpload(
               publicKey: publicKey
             });
           } catch (tokenError) {
-            console.warn('Thumbnail share token generation failed:', tokenError);
+            if (import.meta.env.DEV) console.warn('Thumbnail share token generation failed:', tokenError);
           }
           const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
           const uploadResult = await uploadFile(thumbnailBase64, `thumb_${file.name}.encrypted`, accessToken, task.accountId);
@@ -249,9 +249,9 @@ async function processFileUpload(
     // Only store publicToken if file is public (security: private files shouldn't have share tokens on server)
     const isPublic = task.metadata?.isPublic || false;
     const publicTokenString = (isPublic && thumbnailShareToken) ? JSON.stringify(thumbnailShareToken) : undefined;
-    if (!publicTokenString && isPublic) {
+    if (!publicTokenString && isPublic && import.meta.env.DEV) {
       console.warn('[UploadProcessor] Warning: Public file metadata created without publicToken - thumbnail will not be decryptable in public feed');
-    } else if (publicTokenString) {
+    } else if (publicTokenString && import.meta.env.DEV) {
       console.log('[UploadProcessor] Creating thumbnail metadata with publicToken:', {
         thumbnailFileId,
         hasPublicToken: !!publicTokenString,
@@ -273,9 +273,9 @@ async function processFileUpload(
         mainFileId: fileId,
         mainFileIsEncrypted: mainFileIsEncrypted,
       }, accessToken);
-      console.log('[UploadProcessor] Thumbnail metadata created successfully');
+      if (import.meta.env.DEV) console.log('[UploadProcessor] Thumbnail metadata created successfully');
     } catch (metadataError: any) {
-      console.error('[UploadProcessor] Failed to create thumbnail metadata:', metadataError);
+      if (import.meta.env.DEV) console.error('[UploadProcessor] Failed to create thumbnail metadata:', metadataError);
       throw new Error(`Failed to create thumbnail metadata: ${metadataError.message}`);
     }
   } else {
@@ -362,7 +362,7 @@ async function processTextPostUpload(
       publicKey: publicKey
     });
   } catch (tokenError) {
-    console.warn('Share token generation failed:', tokenError);
+    if (import.meta.env.DEV) console.warn('Share token generation failed:', tokenError);
   }
 
   uploadQueueService.updateTaskProgress(task.id, 50);
@@ -397,7 +397,7 @@ async function processTextPostUpload(
       publicKey: publicKey
     });
   } catch (tokenError) {
-    console.warn('Thumbnail share token generation failed:', tokenError);
+    if (import.meta.env.DEV) console.warn('Thumbnail share token generation failed:', tokenError);
   }
 
   const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
@@ -537,7 +537,7 @@ async function processMultiPageUpload(
       publicKey: publicKey
     });
   } catch (tokenError) {
-    console.warn('Share token generation failed:', tokenError);
+    if (import.meta.env.DEV) console.warn('Share token generation failed:', tokenError);
   }
 
   uploadQueueService.updateTaskStatus(task.id, 'uploading');
@@ -568,7 +568,7 @@ async function processMultiPageUpload(
         publicKey: publicKey
       });
     } catch (tokenError) {
-      console.warn(`Thumbnail share token generation failed for page ${index + 1}:`, tokenError);
+      if (import.meta.env.DEV) console.warn(`Thumbnail share token generation failed for page ${index + 1}:`, tokenError);
     }
 
     const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
@@ -619,7 +619,7 @@ async function processMultiPageUpload(
         publicKey: publicKey
       });
     } catch (tokenError) {
-      console.warn('Collection thumbnail share token generation failed:', tokenError);
+      if (import.meta.env.DEV) console.warn('Collection thumbnail share token generation failed:', tokenError);
     }
 
     const collectionThumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(collectionThumbnailPackage)], { type: 'application/json' }));
@@ -657,7 +657,7 @@ async function processMultiPageUpload(
       textPost: thoughtCollectionData.textPost,
       thought: thoughtCollectionData.textPost,
     }, accessToken);
-    console.log(`[UploadProcessor] Created collection metadata for collection thumbnail ${collectionThumbnailFileId} with ${thumbnailResults.length} pages`);
+    if (import.meta.env.DEV) console.log(`[UploadProcessor] Created collection metadata for collection thumbnail ${collectionThumbnailFileId} with ${thumbnailResults.length} pages`);
   }
   
   // Page thumbnails are just visual proxies - NO metadata entries
@@ -726,7 +726,7 @@ async function processPDFUpload(
       publicKey: publicKey
     });
   } catch (tokenError) {
-    console.warn('Share token generation failed:', tokenError);
+    if (import.meta.env.DEV) console.warn('Share token generation failed:', tokenError);
   }
 
   uploadQueueService.updateTaskStatus(task.id, 'uploading');
@@ -846,7 +846,7 @@ async function createMetadata(fileId: string, metadata: any, accessToken: string
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Unknown error');
-    console.error(`[createMetadata] Failed to create metadata for ${fileId}:`, response.status, errorText);
+    if (import.meta.env.DEV) console.error(`[createMetadata] Failed to create metadata for ${fileId}:`, response.status, errorText);
     throw new Error(`Failed to create metadata: ${response.status} ${errorText}`);
   }
 }
@@ -871,7 +871,7 @@ uploadQueueService.on('taskReady', (task: UploadTask) => {
   // Only handle upload task types (background tasks are handled by backgroundTaskProcessor)
   if (task.type === 'file' || task.type === 'textPost' || task.type === 'multiPage' || task.type === 'pdf') {
     processUploadTask(task).catch(error => {
-      console.error('[UploadProcessor] Error processing task:', error);
+      if (import.meta.env.DEV) console.error('[UploadProcessor] Error processing task:', error);
     });
   }
 });

@@ -86,7 +86,7 @@ export class FeedService {
 
     if (response.status === 429) {
       // Rate limited - return empty result instead of throwing
-      console.warn('Rate limited (429) when listing feeds, returning empty result');
+      if (import.meta.env.DEV) console.warn('Rate limited (429) when listing feeds, returning empty result');
       return { feeds: [], total: 0 };
     }
 

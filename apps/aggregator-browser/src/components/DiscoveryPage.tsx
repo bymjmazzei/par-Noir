@@ -33,7 +33,9 @@ export function DiscoveryPage({
   onFeedClick,
   onCreatorClick
 }: DiscoveryPageProps) {
-  console.log('[DiscoveryPage] Component rendering with files:', files.length, 'externalThumbnails:', externalThumbnails?.size || 0);
+  if (import.meta.env.DEV) {
+    console.log('[DiscoveryPage] Component rendering with files:', files.length, 'externalThumbnails:', externalThumbnails?.size || 0);
+  }
   const { userState, getDisplayName, setUserDisplayName } = useUserState();
   const [activeTopFeed, setActiveTopFeed] = useState<TopFeedOption>('all');
   const [selectedNiche, setSelectedNiche] = useState<NicheFeedOption>(null);
@@ -63,7 +65,9 @@ export function DiscoveryPage({
 
   // Load thumbnails for all thumbnail files in the feed (same logic as FullScreenFeed)
   useEffect(() => {
-    console.log('[DiscoveryPage] Thumbnail loading useEffect triggered, files:', files.length);
+    if (import.meta.env.DEV) {
+      console.log('[DiscoveryPage] Thumbnail loading useEffect triggered, files:', files.length);
+    }
     const loadThumbnails = async () => {
       // Process ALL files to find thumbnail files
       const thumbnailFiles = files.filter((indexedFile) => {
@@ -71,22 +75,22 @@ export function DiscoveryPage({
         return fileName.startsWith('thumb_');
       });
 
-      console.log(`[DiscoveryPage] Found ${thumbnailFiles.length} thumbnail files out of ${files.length} total files`);
-      
-      // Log all file names for debugging
-      if (files.length > 0) {
-        console.log('[DiscoveryPage] All file names:', files.map(f => ({
-          fileId: f.metadata.fileId,
-          fileName: f.metadata.name || f.metadata.title,
-          fileType: f.metadata.fileType
-        })));
-      }
-      if (thumbnailFiles.length > 0) {
-        console.log('[DiscoveryPage] Thumbnail files:', thumbnailFiles.map(f => ({
-          fileId: f.metadata.fileId,
-          fileName: f.metadata.name || f.metadata.title,
-          hasPublicToken: !!(f.publicToken || f.metadata.publicToken)
-        })));
+      if (import.meta.env.DEV) {
+        console.log(`[DiscoveryPage] Found ${thumbnailFiles.length} thumbnail files out of ${files.length} total files`);
+        if (files.length > 0) {
+          console.log('[DiscoveryPage] All file names:', files.map(f => ({
+            fileId: f.metadata.fileId,
+            fileName: f.metadata.name || f.metadata.title,
+            fileType: f.metadata.fileType
+          })));
+        }
+        if (thumbnailFiles.length > 0) {
+          console.log('[DiscoveryPage] Thumbnail files:', thumbnailFiles.map(f => ({
+            fileId: f.metadata.fileId,
+            fileName: f.metadata.name || f.metadata.title,
+            hasPublicToken: !!(f.publicToken || f.metadata.publicToken)
+          })));
+        }
       }
 
       // Load each thumbnail file
@@ -97,11 +101,11 @@ export function DiscoveryPage({
         
         // Skip if already processed, in external thumbnails, or in current thumbnails state
         if (processedThumbnailsRef.current.has(fileId)) {
-          console.log(`[DiscoveryPage] Skipping ${fileId} - already processed`);
+          if (import.meta.env.DEV) console.log(`[DiscoveryPage] Skipping ${fileId} - already processed`);
           return;
         }
         if (externalThumbnails && externalThumbnails.has(fileId)) {
-          console.log(`[DiscoveryPage] Skipping ${fileId} - already in externalThumbnails`);
+          if (import.meta.env.DEV) console.log(`[DiscoveryPage] Skipping ${fileId} - already in externalThumbnails`);
           processedThumbnailsRef.current.add(fileId);
           return;
         }
@@ -117,7 +121,7 @@ export function DiscoveryPage({
         });
         
         if (alreadyInState) {
-          console.log(`[DiscoveryPage] Skipping ${fileId} - already in thumbnails state`);
+          if (import.meta.env.DEV) console.log(`[DiscoveryPage] Skipping ${fileId} - already in thumbnails state`);
           processedThumbnailsRef.current.add(fileId);
           return;
         }
@@ -125,18 +129,18 @@ export function DiscoveryPage({
         // Get publicToken (REQUIRED - no fallback)
         const publicToken = indexedFile.publicToken || file.publicToken;
         if (!publicToken) {
-          console.warn(`[DiscoveryPage] Thumbnail ${fileId} (${fileName}) has no publicToken - cannot decrypt`);
+          if (import.meta.env.DEV) console.warn(`[DiscoveryPage] Thumbnail ${fileId} (${fileName}) has no publicToken - cannot decrypt`);
           return;
         }
 
         try {
-          console.log(`[DiscoveryPage] Loading thumbnail for ${fileId} (${fileName})`);
+          if (import.meta.env.DEV) console.log(`[DiscoveryPage] Loading thumbnail for ${fileId} (${fileName})`);
           // Parse publicToken
           let token: ShareToken;
           try {
             token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
           } catch (e) {
-            console.warn(`[DiscoveryPage] Failed to parse token for thumbnail ${fileId}:`, e);
+            if (import.meta.env.DEV) console.warn(`[DiscoveryPage] Failed to parse token for thumbnail ${fileId}:`, e);
             return;
           }
           
@@ -146,7 +150,7 @@ export function DiscoveryPage({
           const decryptedBlob = await decryptWithToken(token);
           const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
           
-          console.log(`[DiscoveryPage] Successfully loaded thumbnail for ${fileId} (${fileName}), blob URL: ${thumbnailUrlObj.substring(0, 50)}...`);
+          if (import.meta.env.DEV) console.log(`[DiscoveryPage] Successfully loaded thumbnail for ${fileId} (${fileName}), blob URL: ${thumbnailUrlObj.substring(0, 50)}...`);
           
           // Track this blob URL for cleanup
           createdBlobUrlsRef.current.add(thumbnailUrlObj);
@@ -160,7 +164,7 @@ export function DiscoveryPage({
             return newMap;
           });
         } catch (err) {
-          console.error(`[DiscoveryPage] Failed to decrypt thumbnail for ${fileId} (${fileName}):`, err);
+          if (import.meta.env.DEV) console.error(`[DiscoveryPage] Failed to decrypt thumbnail for ${fileId} (${fileName}):`, err);
         }
       }));
     };
@@ -487,7 +491,7 @@ export function DiscoveryPage({
                     return newMap;
                   });
                 } catch (err) {
-                  console.error(`[DiscoveryPage] Failed to immediately load thumbnail for ${thumbnailFileId}:`, err);
+                  if (import.meta.env.DEV) console.error(`[DiscoveryPage] Failed to immediately load thumbnail for ${thumbnailFileId}:`, err);
                 }
               })();
             }
