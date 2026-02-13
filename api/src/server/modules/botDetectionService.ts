@@ -25,21 +25,29 @@ export class BotDetectionService {
   static async calculateBotScore(userPnIdentifier: string): Promise<BotScoreResult> {
     const db = getDatabasePool();
     
-    // Get engagement patterns from last 7 days
+    // Get engagement patterns from last 7 days (window LAG in CTE so AVG is valid)
     const engagementPattern = await db.query(`
+      WITH with_lag AS (
+        SELECT 
+          file_id,
+          created_at,
+          type,
+          EXTRACT(EPOCH FROM (
+            created_at - LAG(created_at) OVER (ORDER BY created_at)
+          )) AS time_between
+        FROM engagement
+        WHERE user_did = $1
+        AND created_at > NOW() - INTERVAL '7 days'
+      )
       SELECT 
-        COUNT(*) as total_actions,
-        COUNT(DISTINCT file_id) as unique_files,
-        COUNT(DISTINCT DATE(created_at)) as active_days,
-        AVG(EXTRACT(EPOCH FROM (
-          created_at - LAG(created_at) OVER (ORDER BY created_at)
-        ))) as avg_time_between,
-        MIN(created_at) as first_action,
-        MAX(created_at) as last_action,
-        COUNT(DISTINCT type) as action_types
-      FROM engagement
-      WHERE user_did = $1
-      AND created_at > NOW() - INTERVAL '7 days'
+        COUNT(*) AS total_actions,
+        COUNT(DISTINCT file_id) AS unique_files,
+        COUNT(DISTINCT DATE(created_at)) AS active_days,
+        AVG(time_between) AS avg_time_between,
+        MIN(created_at) AS first_action,
+        MAX(created_at) AS last_action,
+        COUNT(DISTINCT type) AS action_types
+      FROM with_lag
     `, [userPnIdentifier]);
 
     if (engagementPattern.rows.length === 0) {
