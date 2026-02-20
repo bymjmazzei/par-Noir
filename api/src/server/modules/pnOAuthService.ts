@@ -105,11 +105,9 @@ export class PNOAuthService {
     // Normalize redirect URI (remove trailing slash) for consistent comparison
     const normalizedRedirectUri = params.redirectUri.replace(/\/$/, '');
     
-    console.log('[OAuth] Generating authorization code:');
-    console.log('  Client ID:', params.clientId);
-    console.log('  Redirect URI (normalized):', normalizedRedirectUri);
-    console.log('  DID:', params.did);
-    console.log('  pN Identifier:', params.pnIdentifier || 'not provided');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[OAuth] Generating authorization code:', { clientId: params.clientId, pnIdSuffix: params.pnIdentifier ? params.pnIdentifier.slice(-8) : 'none' });
+    }
     
     authorizationCodes.set(code, {
       code,
@@ -277,12 +275,9 @@ export class PNOAuthService {
         // STANDARDIZED: Format: pn-{12-char-hex}
         const pnIdentifier = `pn-${shortHash}`;
         
-        console.log('[OAuth] pN identifier derivation (VolumeIdGenerator):');
-        console.log('  pnName:', pnName);
-        console.log('  PublicKey:', publicKeyToUse.substring(0, 50) + '...');
-        console.log('  Combined:', `${pnName}:***:${publicKeyToUse.substring(0, 20)}...`);
-        console.log('  Hash:', hash);
-        console.log('  pN Identifier:', pnIdentifier);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[OAuth] pN identifier derived (VolumeIdGenerator):', pnIdentifier);
+        }
         
         return pnIdentifier;
       }
@@ -295,12 +290,9 @@ export class PNOAuthService {
       const shortHash = hash.substring(0, 12);
       const pnIdentifier = `pn-${shortHash}`; // Add prefix for consistency
       
-      console.log('[OAuth] pN identifier derivation (fallback - did:publicKey):');
-      console.log('  DID:', did);
-      console.log('  PublicKey:', publicKeyToUse.substring(0, 50) + '...');
-      console.log('  Combined:', combined);
-      console.log('  Hash:', hash);
-      console.log('  pN Identifier:', pnIdentifier);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[OAuth] pN identifier derived (fallback):', pnIdentifier);
+      }
       
       return pnIdentifier;
     } catch (error) {

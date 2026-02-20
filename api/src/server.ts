@@ -34,6 +34,7 @@ const DEFAULT_ORIGINS = [
   'https://par-noir-dashboard.web.app',
   'https://browse.parnoir.com',
   'https://prism.parnoir.com',
+  'https://licensing.parnoir.com',
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:5174'
@@ -10060,10 +10061,7 @@ class ProductionServer {
           });
         }
 
-        console.log('[OAuth Auth] Received authentication request:');
-        console.log('  Full DID:', did);
-        console.log('  Full PublicKey:', public_key);
-        console.log('  PublicKey length:', public_key.length);
+        // SECURITY: No sensitive data in logs — pn name, passcode, DID, public key must never appear in plain text
 
         // SECURITY FIX: Client now sends pn_identifier directly (derived client-side)
         // Fallback to derivation for backward compatibility if not provided
@@ -10081,11 +10079,13 @@ class ProductionServer {
             const hash = crypto.createHash('sha256').update(utf8Bytes).digest('hex');
             const shortHash = hash.substring(0, 12);
             pnIdentifier = `pn-${shortHash}`;
-            console.log('[OAuth Auth] Derived pN identifier server-side (fallback):', pnIdentifier);
+            if (process.env.NODE_ENV === 'development') {
+              console.log('[OAuth Auth] Derived pN identifier server-side (fallback):', pnIdentifier);
+            }
           } catch (error) {
             console.error('[OAuth Auth] Failed to derive pN identifier:', error);
           }
-        } else if (pnIdentifier) {
+        } else if (pnIdentifier && process.env.NODE_ENV === 'development') {
           console.log('[OAuth Auth] Using pN identifier from client:', pnIdentifier);
         }
 
