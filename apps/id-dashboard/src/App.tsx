@@ -52,7 +52,6 @@ import { MainDashboard } from './components/app/MainDashboard';
 import { DelegationModal } from './components/DelegationModal';
 import { IdentityVerificationModal } from './components/IdentityVerificationModal';
 import { FileStorageAggregator } from './components/storage/FileStorageAggregator';
-import { GoogleDriveDemo } from './components/storage/GoogleDriveDemo';
 import { ExportAuthModal } from './components/modals/ExportAuthModal';
 import { ExportOptionsModal } from './components/modals/ExportOptionsModal';
 import { TransferSetupModal } from './components/modals/TransferSetupModal';
