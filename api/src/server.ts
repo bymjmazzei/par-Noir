@@ -1628,21 +1628,23 @@ class ProductionServer {
       });
     });
 
-    // Debug endpoint to check OAuth configuration (without exposing secrets)
-    this.app.get('/api/debug/oauth-config', (req, res) => {
-      const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
-      const hasClientSecret = !!process.env.GOOGLE_DRIVE_CLIENT_SECRET;
-      const clientSecretLength = process.env.GOOGLE_DRIVE_CLIENT_SECRET?.length || 0;
-      
-      res.json({
-        hasClientId: !!clientId,
-        clientId: clientId,
-        hasClientSecret: hasClientSecret,
-        clientSecretLength: clientSecretLength,
-        clientSecretFirstChars: process.env.GOOGLE_DRIVE_CLIENT_SECRET ? process.env.GOOGLE_DRIVE_CLIENT_SECRET.substring(0, 4) + '...' : 'MISSING',
-        environment: NODE_ENV
+    // Debug endpoint to check OAuth configuration (dev only - not exposed in production)
+    if (NODE_ENV === 'development') {
+      this.app.get('/api/debug/oauth-config', (req, res) => {
+        const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
+        const hasClientSecret = !!process.env.GOOGLE_DRIVE_CLIENT_SECRET;
+        const clientSecretLength = process.env.GOOGLE_DRIVE_CLIENT_SECRET?.length || 0;
+
+        res.json({
+          hasClientId: !!clientId,
+          clientId: clientId,
+          hasClientSecret: hasClientSecret,
+          clientSecretLength: clientSecretLength,
+          clientSecretFirstChars: process.env.GOOGLE_DRIVE_CLIENT_SECRET ? process.env.GOOGLE_DRIVE_CLIENT_SECRET.substring(0, 4) + '...' : 'MISSING',
+          environment: NODE_ENV
+        });
       });
-    });
+    }
 
     // Third-party indexers catalog
     this.app.get('/api/third-party/indexers', async (req, res) => {

@@ -138,20 +138,24 @@ export class PNOAuthService {
     // Check if this code was already exchanged (idempotency)
     const existingExchange = codeToTokenMap.get(params.code);
     if (existingExchange && existingExchange.expiresAt > Date.now()) {
-      console.log('[OAuth] Code already exchanged, returning cached token (idempotent)');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[OAuth] Code already exchanged, returning cached token (idempotent)');
+      }
       return existingExchange.token;
     }
-    
+
     const authCode = authorizationCodes.get(params.code);
-    
+
     if (!authCode) {
       // Code not found - might have been already used
       // Check if it was recently exchanged (within last 30 seconds)
       if (existingExchange) {
-        console.log('[OAuth] Code was already exchanged, returning cached token');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[OAuth] Code was already exchanged, returning cached token');
+        }
         return existingExchange.token;
       }
-      console.error('[OAuth] Code not found:', params.code.substring(0, 20) + '...');
+      console.error('[OAuth] Code not found:', params.code.substring(0, 8) + '...');
       return null;
     }
 
@@ -165,12 +169,14 @@ export class PNOAuthService {
     // Normalize redirect URIs for comparison (remove trailing slashes)
     const storedRedirectUri = authCode.redirectUri.replace(/\/$/, '');
     const providedRedirectUri = params.redirectUri.replace(/\/$/, '');
-    
-    console.log('[OAuth] Comparing redirect URIs:');
-    console.log('  Stored:', storedRedirectUri);
-    console.log('  Provided:', providedRedirectUri);
-    console.log('  Match:', storedRedirectUri === providedRedirectUri);
-    console.log('  Client ID match:', authCode.clientId === params.clientId);
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[OAuth] Comparing redirect URIs:');
+      console.log('  Stored:', storedRedirectUri);
+      console.log('  Provided:', providedRedirectUri);
+      console.log('  Match:', storedRedirectUri === providedRedirectUri);
+      console.log('  Client ID match:', authCode.clientId === params.clientId);
+    }
 
     // Verify client ID and redirect URI match
     if (authCode.clientId !== params.clientId || storedRedirectUri !== providedRedirectUri) {
