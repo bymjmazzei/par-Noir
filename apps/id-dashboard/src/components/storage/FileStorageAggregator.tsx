@@ -20,6 +20,7 @@ import { LICENSE_TYPES } from '../../constants/licenses';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../../constants/feedCategories';
 import { ReportContentModal } from './ReportContentModal';
 import { API_ENDPOINT } from '../../config/api';
+import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 
 const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
 const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
@@ -2380,32 +2381,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   useEffect(() => {
     const resolveAuth = async () => {
       // Always log - this is critical debugging
-      console.log('🔍 [FileStorageAggregator] Resolving auth...');
+      if (import.meta.env.DEV) {
+        console.log('🔍 [FileStorageAggregator] Resolving auth...');
+      }
       // pnName is secret - not logged
-      console.log('🔍 [FileStorageAggregator] authenticatedUser prop received');
-      
+      if (import.meta.env.DEV) {
+        console.log('🔍 [FileStorageAggregator] authenticatedUser prop received');
+      }
+
       // Try prop first
       if (authenticatedUser) {
-        // Safely get keys without breaking if object has getters
-        try {
-          // pnName is secret - not logged
-          console.log('🔍 [FileStorageAggregator] authenticatedUser keys:', Object.keys(authenticatedUser).filter(k => k !== 'pnName' && k !== 'passcode'));
-          // pnName and passcode are secrets - not logged
-          const sanitizedUser = { ...authenticatedUser };
-          delete (sanitizedUser as any).pnName;
-          delete (sanitizedUser as any).passcode;
-          console.log('🔍 [FileStorageAggregator] authenticatedUser structure:', {
-            id: authenticatedUser.id,
-            // SECURITY: pnName is secret - not logged
-            // hasPnName: !!authenticatedUser.pnName, // REMOVED - pnName is secret
-            publicKey: authenticatedUser.publicKey,
-            nickname: authenticatedUser.nickname,
-            username: (authenticatedUser as any).username,
-            name: (authenticatedUser as any).name,
-            sanitizedObject: JSON.stringify(sanitizedUser, null, 2)
-          });
-        } catch (e) {
-          console.warn('🔍 [FileStorageAggregator] Could not inspect authenticatedUser:', e);
+        if (import.meta.env.DEV) {
+          try {
+            const safeKeys = Object.keys(authenticatedUser).filter(k => k !== 'pnName' && k !== 'passcode');
+            console.log('🔍 [FileStorageAggregator] authenticatedUser keys:', safeKeys);
+            console.log('🔍 [FileStorageAggregator] authenticatedUser structure:', {
+              hasId: !!authenticatedUser.id,
+              hasPublicKey: !!authenticatedUser.publicKey,
+              hasNickname: !!authenticatedUser.nickname,
+            });
+          } catch (e) {
+            console.warn('🔍 [FileStorageAggregator] Could not inspect authenticatedUser:', e);
+          }
         }
         
         // SECURITY: Get pnName from SecureCredentialManager ONLY (secrets)
@@ -2425,26 +2422,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           }
         }
         
-        console.log('🔍 [FileStorageAggregator] Extracted from prop:', { 
-          pnName, 
-          publicKey, 
-          hasId: !!authenticatedUser.id,
-          idValue: authenticatedUser.id,
-          idType: typeof authenticatedUser.id,
-          hasPnName: !!authenticatedUser.pnName,
-          hasUsername: !!(authenticatedUser as any).username,
-          hasName: !!(authenticatedUser as any).name,
-          hasPublicKey: !!authenticatedUser.publicKey
-        });
+        if (import.meta.env.DEV) {
+          console.log('🔍 [FileStorageAggregator] Extracted from prop:', { hasPnName: !!pnName, hasPublicKey: !!publicKey, hasId: !!authenticatedUser.id });
+        }
         
         let passcode: string | null = null;
         try {
           // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
           const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
           passcode = getPasscodeFromSecureStorage(sessionId);
-          console.log('🔍 [FileStorageAggregator] Passcode from SecureCredentialManager:', passcode ? 'found' : 'not found');
+          if (import.meta.env.DEV) {
+            console.log('🔍 [FileStorageAggregator] Passcode from SecureCredentialManager:', passcode ? 'found' : 'not found');
+          }
         } catch (e) {
-          console.warn('🔍 [FileStorageAggregator] SecureCredentialManager not available');
+          if (import.meta.env.DEV) {
+            console.warn('🔍 [FileStorageAggregator] SecureCredentialManager not available');
+          }
         }
         
         const authToken = authenticatedUser?.authToken;
@@ -2456,7 +2449,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             SecureCredentialManager.setCredentials(sessionId, pnName, passcode);
           }
           
-          console.log('✅ [FileStorageAggregator] Auth resolved from prop:', { hasPnName: !!pnName, publicKey: publicKey.substring(0, 20) + '...' });
+          if (import.meta.env.DEV) {
+            console.log('✅ [FileStorageAggregator] Auth resolved from prop:', { hasPnName: !!pnName, hasPublicKey: !!publicKey });
+          }
           // SECURITY: Only store public data in resolvedAuth (no secrets)
           setResolvedAuth({
             publicKey,
@@ -2465,27 +2460,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           setError(null);
           return;
         } else {
-          console.warn('⚠️ [FileStorageAggregator] Missing credentials from prop:', { 
-            pnName, 
-            publicKey,
-            hasPnName: !!pnName, 
-            hasPublicKey: !!publicKey,
-            authenticatedUserKeys: Object.keys(authenticatedUser || {})
-          });
+          if (import.meta.env.DEV) {
+            console.warn('⚠️ [FileStorageAggregator] Missing credentials from prop:', { hasPnName: !!pnName, hasPublicKey: !!publicKey, authenticatedUserKeys: Object.keys(authenticatedUser || {}) });
+          }
         }
       } else {
-        console.log('⚠️ [FileStorageAggregator] No authenticatedUser prop');
+        if (import.meta.env.DEV) {
+          console.log('⚠️ [FileStorageAggregator] No authenticatedUser prop');
+        }
       }
       
       // Fallback: Try to load from storage
       try {
-        console.log('🔍 [FileStorageAggregator] Trying storage fallback...');
+        if (import.meta.env.DEV) {
+          console.log('🔍 [FileStorageAggregator] Trying storage fallback...');
+        }
         const { SecureStorage } = await import('../../utils/storage');
         const storage = new SecureStorage();
         await storage.init(); // Initialize database first
         const session = await storage.getCurrentSession();
-        
-        console.log('🔍 [FileStorageAggregator] Session from storage:', session);
         
         if (session) {
           const pnName = (session as any).pnName || (session as any).username || (session as any).name;
@@ -2493,7 +2486,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             (session.id && session.id.startsWith('did:key:') ? session.id : session.id);
           const sessionAuthToken = (session as any).authToken;
           
-          console.log('🔍 [FileStorageAggregator] Extracted from storage:', { hasPnName: !!pnName, publicKey: publicKey.substring(0, 20) + '...', sessionKeys: Object.keys(session) });
+          if (import.meta.env.DEV) {
+            console.log('🔍 [FileStorageAggregator] Extracted from storage:', { hasPnName: !!pnName, hasPublicKey: !!publicKey, sessionKeys: Object.keys(session) });
+          }
           
           let passcode: string | null = null;
           try {
@@ -2511,7 +2506,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               SecureCredentialManager.setCredentials(sessionId, pnName, passcode);
             }
             
-            console.log('✅ [FileStorageAggregator] Auth resolved from storage');
+            if (import.meta.env.DEV) {
+              console.log('✅ [FileStorageAggregator] Auth resolved from storage');
+            }
             // SECURITY: Only store public data in resolvedAuth (no secrets)
             setResolvedAuth({
               publicKey,
@@ -2519,10 +2516,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             });
             setError(null);
           } else {
-            console.warn('⚠️ [FileStorageAggregator] Missing credentials from storage:', { hasPnName: !!pnName, hasPublicKey: !!publicKey });
+            if (import.meta.env.DEV) {
+              console.warn('⚠️ [FileStorageAggregator] Missing credentials from storage:', { hasPnName: !!pnName, hasPublicKey: !!publicKey });
+            }
           }
         } else {
-          console.warn('⚠️ [FileStorageAggregator] No session found in storage');
+          if (import.meta.env.DEV) {
+            console.warn('⚠️ [FileStorageAggregator] No session found in storage');
+          }
         }
       } catch (err) {
         console.error('❌ [FileStorageAggregator] Error loading from storage:', err);
@@ -4458,10 +4459,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, [hydrateStorageCredentialsFromAPI, aggregatorService]);
 
   // Helper function to exchange authorization code for tokens
-  // Uses Google OAuth endpoint directly (client-side exchange)
+  // Uses Google OAuth endpoint directly (client-side exchange) or API fallback
   const exchangeCodeForTokens = async (code: string, redirectUri: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> => {
-    const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || 
-      '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
+    const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || (await getGoogleDriveClientId());
+    if (!clientId || clientId.trim() === '') {
+      throw new Error('Google Drive client ID not configured. Set VITE_GOOGLE_DRIVE_CLIENT_ID or configure GOOGLE_DRIVE_CLIENT_ID on the API.');
+    }
     const clientSecret = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_SECRET;
     
     // If we have client secret, use it (should be in backend, but allowing frontend for now)
@@ -4551,16 +4554,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setIsLoading(true);
       setError(null);
 
-      // OAuth flow - authorization code flow for refresh tokens
-      const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || 
-        '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
+      const clientId = await getGoogleDriveClientId();
+      if (!clientId || clientId.trim() === '') {
+        setError('Google Drive OAuth not configured. Set VITE_GOOGLE_DRIVE_CLIENT_ID or configure GOOGLE_DRIVE_CLIENT_ID on the API.');
+        return;
+      }
       // Use oauth-callback.html as redirect URI (must match Google Cloud Console settings)
       const redirectUri = `${window.location.origin}/oauth-callback.html`;
       const scope = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
-      
-      // Debug: Log the exact redirect URI being used
-      console.log('[Google OAuth] Redirect URI:', redirectUri);
-      console.log('[Google OAuth] Client ID:', clientId);
       
       // Use authorization code flow to get refresh tokens
       const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
@@ -4570,8 +4571,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         `scope=${encodeURIComponent(scope)}&` +
         `prompt=consent` +
         `&access_type=offline`; // Required for refresh token
-      
-      console.log('[Google OAuth] Full auth URL:', authUrl);
 
       const popup = window.open(
         authUrl,

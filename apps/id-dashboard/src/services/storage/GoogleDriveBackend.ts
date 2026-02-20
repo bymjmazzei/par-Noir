@@ -10,6 +10,7 @@ import {
   StorageBackendConfig
 } from '../../types/aggregator';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
+import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 
 export class GoogleDriveBackend extends AbstractStorageBackend {
   private token: string | null = null;
@@ -291,10 +292,9 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     }
 
     this.refreshPromise = (async () => {
-      console.debug(
-        '🔁 [GoogleDriveBackend] Refresh access token',
-        this.apiEndpoint ? 'via API endpoint' : 'directly with Google'
-      );
+      if (import.meta.env.DEV) {
+        console.debug('🔁 [GoogleDriveBackend] Refresh access token', this.apiEndpoint ? 'via API endpoint' : 'directly with Google');
+      }
 
       if (this.apiEndpoint) {
         try {
@@ -355,14 +355,17 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
 
           return tokenData.access_token || null;
         } catch (apiError) {
-          console.error('⚠️ [GoogleDriveBackend] Failed to refresh token via API endpoint:', apiError);
+          if (import.meta.env.DEV) {
+            console.error('⚠️ [GoogleDriveBackend] Failed to refresh token via API endpoint:', apiError);
+          }
         }
       }
 
       try {
-        const clientId =
-          import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID ||
-          '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
+        const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || (await getGoogleDriveClientId());
+        if (!clientId || clientId.trim() === '') {
+          throw new Error('Google Drive client ID not configured. Set VITE_GOOGLE_DRIVE_CLIENT_ID or configure GOOGLE_DRIVE_CLIENT_ID on the API.');
+        }
         const clientSecret = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_SECRET;
 
         const params = new URLSearchParams({
@@ -455,7 +458,9 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       
       // If token was refreshed (wasHandled = false), retry the request once
       if (!wasHandled && retryCount === 0 && this.token) {
-        console.log('🔄 [GoogleDriveBackend] Retrying request after token refresh...');
+        if (import.meta.env.DEV) {
+          console.log('🔄 [GoogleDriveBackend] Retrying request after token refresh...');
+        }
         return this.makeRequest(url, options, retryCount + 1);
       }
       
