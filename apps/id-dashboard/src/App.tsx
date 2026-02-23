@@ -601,12 +601,9 @@ function App() {
     }
   };
 
-  // Handle direct download export (requires verification)
+  // Handle direct download export (always requires verification - never use cached creds)
   const handleDownloadExport = async () => {
-    const creds = exportAuthData.pnName && exportAuthData.passcode
-      ? exportAuthData
-      : SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
-    if (!creds?.pnName || !creds?.passcode) {
+    if (!exportAuthData.pnName || !exportAuthData.passcode) {
       setPendingExportAction('download');
       setShowExportOptionsModal(false);
       setShowExportAuthModal(true);
@@ -676,12 +673,9 @@ function App() {
     }
   };
 
-  // Handle export to NFC (physical key with card UID binding)
+  // Handle export to NFC (always requires verification - never use cached creds)
   const handleExportToNfc = async () => {
-    const creds = exportAuthData.pnName && exportAuthData.passcode
-      ? exportAuthData
-      : SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
-    if (!creds?.pnName || !creds?.passcode) {
+    if (!exportAuthData.pnName || !exportAuthData.passcode) {
       setPendingExportAction('nfc');
       setShowExportOptionsModal(false);
       setShowExportAuthModal(true);
@@ -715,12 +709,9 @@ function App() {
     }
   };
 
-  // Handle export to USB (physical key with UID binding)
+  // Handle export to USB (always requires verification - never use cached creds)
   const handleExportToUsb = async () => {
-    const creds = exportAuthData.pnName && exportAuthData.passcode
-      ? exportAuthData
-      : SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
-    if (!creds?.pnName || !creds?.passcode) {
+    if (!exportAuthData.pnName || !exportAuthData.passcode) {
       setPendingExportAction('usb');
       setShowExportOptionsModal(false);
       setShowExportAuthModal(true);
