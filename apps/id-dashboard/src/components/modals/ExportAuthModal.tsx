@@ -10,6 +10,8 @@ interface ExportAuthModalProps {
   showExportPasscode: boolean;
   setShowExportPasscode: (show: boolean) => void;
   onAuth: () => void;
+  /** Shown when auth is for a specific export type */
+  purpose?: 'download' | 'usb' | 'nfc';
 }
 
 export function ExportAuthModal({
@@ -21,7 +23,8 @@ export function ExportAuthModal({
   setShowExportPnName,
   showExportPasscode,
   setShowExportPasscode,
-  onAuth
+  onAuth,
+  purpose
 }: ExportAuthModalProps) {
   if (!isOpen) return null;
 
@@ -36,7 +39,9 @@ export function ExportAuthModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full text-text-primary">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold">Verify Identity</h2>
+          <h2 className="text-xl font-semibold">
+            {purpose === 'download' ? 'Enter credentials for download' : purpose === 'usb' ? 'Enter credentials for USB export' : purpose === 'nfc' ? 'Enter credentials for NFC export' : 'Verify Identity'}
+          </h2>
           <button 
             onClick={handleClose}
             className="text-gray-500 hover:text-gray-700"

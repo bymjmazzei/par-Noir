@@ -499,6 +499,8 @@ function App() {
     setShowExportToNfcModal,
     identityForNfcExport,
     setIdentityForNfcExport,
+    pendingExportAction,
+    setPendingExportAction,
     exportAuthData,
     setExportAuthData,
     showExportPasscode,
@@ -542,12 +544,12 @@ function App() {
   
 
   
-  // Enhanced export with authentication and transfer options
+  // Open export options directly (auth happens when user picks an option that needs it)
   const handleExportData = async () => {
-    setShowExportAuthModal(true);
+    setShowExportOptionsModal(true);
   };
 
-    // Handle export authentication using the same logic as unlock
+  // Handle export authentication (shown when user picks USB/NFC and we don't have creds)
   const handleExportAuth = async () => {
     try {
       if (!authenticatedUser || !selectedDID) {
@@ -578,18 +580,38 @@ function App() {
         exportAuthData.pnName
       );
 
-      // Authentication successful, show export options
+      // Authentication successful
       setShowExportAuthModal(false);
-      setShowExportOptionsModal(true);
-      
+      setExportAuthData(exportAuthData); // ensure state is updated
+      if (pendingExportAction === 'download') {
+        setPendingExportAction(null);
+        handleDownloadExport();
+      } else if (pendingExportAction === 'usb') {
+        setPendingExportAction(null);
+        handleExportToUsb();
+      } else if (pendingExportAction === 'nfc') {
+        setPendingExportAction(null);
+        handleExportToNfc();
+      } else {
+        setShowExportOptionsModal(true);
+      }
     } catch (error: any) {
       setError(error.message || 'Authentication failed');
       setTimeout(() => setError(null), 9000);
     }
   };
 
-  // Handle direct download export
+  // Handle direct download export (requires verification)
   const handleDownloadExport = async () => {
+    const creds = exportAuthData.pnName && exportAuthData.passcode
+      ? exportAuthData
+      : SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
+    if (!creds?.pnName || !creds?.passcode) {
+      setPendingExportAction('download');
+      setShowExportOptionsModal(false);
+      setShowExportAuthModal(true);
+      return;
+    }
     try {
       await storage.init();
       
@@ -645,6 +667,7 @@ function App() {
       URL.revokeObjectURL(url);
       
       setShowExportOptionsModal(false);
+      setShowExportAuthModal(false);
       showSuccessMessage('pN file downloaded successfully');
       
     } catch (error: any) {
@@ -655,6 +678,15 @@ function App() {
 
   // Handle export to NFC (physical key with card UID binding)
   const handleExportToNfc = async () => {
+    const creds = exportAuthData.pnName && exportAuthData.passcode
+      ? exportAuthData
+      : SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
+    if (!creds?.pnName || !creds?.passcode) {
+      setPendingExportAction('nfc');
+      setShowExportOptionsModal(false);
+      setShowExportAuthModal(true);
+      return;
+    }
     try {
       if (!authenticatedUser || !selectedDID) {
         throw new Error('No identity is currently unlocked.');
@@ -675,6 +707,7 @@ function App() {
         salt: (identityToExport as any).salt,
         publicKey: currentIdentity.publicKey ?? (identityToExport as any).publicKey,
       });
+      setShowExportOptionsModal(false);
       setShowExportToNfcModal(true);
     } catch (error: any) {
       setError(error.message || 'Failed to prepare NFC export');
@@ -684,6 +717,15 @@ function App() {
 
   // Handle export to USB (physical key with UID binding)
   const handleExportToUsb = async () => {
+    const creds = exportAuthData.pnName && exportAuthData.passcode
+      ? exportAuthData
+      : SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
+    if (!creds?.pnName || !creds?.passcode) {
+      setPendingExportAction('usb');
+      setShowExportOptionsModal(false);
+      setShowExportAuthModal(true);
+      return;
+    }
     try {
       if (!authenticatedUser || !selectedDID) {
         throw new Error('No identity is currently unlocked.');
@@ -704,6 +746,7 @@ function App() {
         salt: (identityToExport as any).salt,
         publicKey: currentIdentity.publicKey ?? (identityToExport as any).publicKey,
       });
+      setShowExportOptionsModal(false);
       setShowExportToUsbModal(true);
     } catch (error: any) {
       setError(error.message || 'Failed to prepare USB export');
@@ -6671,7 +6714,11 @@ This invitation expires in 24 hours.`;
         {/* Export Authentication Modal */}
         <ExportAuthModal
           isOpen={showExportAuthModal}
-          onClose={() => setShowExportAuthModal(false)}
+          onClose={() => {
+            setShowExportAuthModal(false);
+            setPendingExportAction(null);
+            setShowExportOptionsModal(true);
+          }}
           exportAuthData={exportAuthData}
           setExportAuthData={setExportAuthData}
           showExportPnName={showExportPnName}
@@ -6679,6 +6726,7 @@ This invitation expires in 24 hours.`;
           showExportPasscode={showExportPasscode}
           setShowExportPasscode={setShowExportPasscode}
           onAuth={handleExportAuth}
+          purpose={pendingExportAction === 'download' ? 'download' : pendingExportAction === 'usb' ? 'usb' : pendingExportAction === 'nfc' ? 'nfc' : undefined}
         />
 
         {/* Export Options Modal */}
