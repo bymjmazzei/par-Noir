@@ -5,6 +5,10 @@ export function useExportState() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showExportAuthModal, setShowExportAuthModal] = useState(false);
   const [showExportOptionsModal, setShowExportOptionsModal] = useState(false);
+  const [showExportToUsbModal, setShowExportToUsbModal] = useState(false);
+  const [identityForUsbExport, setIdentityForUsbExport] = useState<{ encryptedData: string; iv: string; salt: string; publicKey?: string } | null>(null);
+  const [showExportToNfcModal, setShowExportToNfcModal] = useState(false);
+  const [identityForNfcExport, setIdentityForNfcExport] = useState<{ encryptedData: string; iv: string; salt: string; publicKey?: string } | null>(null);
   const [exportAuthData, setExportAuthData] = useState({ pnName: '', passcode: '' });
   const [showExportPasscode, setShowExportPasscode] = useState(false);
   const [showExportPnName, setShowExportPnName] = useState(false);
@@ -30,6 +34,14 @@ export function useExportState() {
     setShowExportAuthModal,
     showExportOptionsModal,
     setShowExportOptionsModal,
+    showExportToUsbModal,
+    setShowExportToUsbModal,
+    identityForUsbExport,
+    setIdentityForUsbExport,
+    showExportToNfcModal,
+    setShowExportToNfcModal,
+    identityForNfcExport,
+    setIdentityForNfcExport,
     exportAuthData,
     setExportAuthData,
     showExportPasscode,

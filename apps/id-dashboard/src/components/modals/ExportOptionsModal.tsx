@@ -1,5 +1,7 @@
 import React from 'react';
-import { FileText, Smartphone } from 'lucide-react';
+import { FileText, Smartphone, Usb, CreditCard } from 'lucide-react';
+
+const hasNfcSupport = typeof window !== 'undefined' && 'NDEFReader' in window;
 
 interface ExportOptionsModalProps {
   isOpen: boolean;
@@ -9,6 +11,8 @@ interface ExportOptionsModalProps {
   setShowExportPnName: (show: boolean) => void;
   setShowExportPasscode: (show: boolean) => void;
   onDownloadExport: () => void;
+  onExportToUsb?: () => void;
+  onExportToNfc?: () => void;
   onTransfer: () => void;
 }
 
@@ -20,6 +24,8 @@ export function ExportOptionsModal({
   setShowExportPnName,
   setShowExportPasscode,
   onDownloadExport,
+  onExportToUsb,
+  onExportToNfc,
   onTransfer
 }: ExportOptionsModalProps) {
   if (!isOpen) return null;
@@ -63,6 +69,40 @@ export function ExportOptionsModal({
               </div>
             </div>
           </button>
+
+          {onExportToUsb && (
+            <button
+              onClick={onExportToUsb}
+              className="w-full p-4 border border-border rounded-lg hover:bg-secondary transition-colors text-left"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                  <Usb className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <div className="font-medium">Export to USB</div>
+                  <div className="text-sm text-text-secondary">Bind to passcode-protected drive</div>
+                </div>
+              </div>
+            </button>
+          )}
+
+          {onExportToNfc && hasNfcSupport && (
+            <button
+              onClick={onExportToNfc}
+              className="w-full p-4 border border-border rounded-lg hover:bg-secondary transition-colors text-left"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                  <CreditCard className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <div className="font-medium">Export to NFC</div>
+                  <div className="text-sm text-text-secondary">Bind to NFC card/fob</div>
+                </div>
+              </div>
+            </button>
+          )}
           
           <button
             onClick={onTransfer}

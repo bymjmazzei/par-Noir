@@ -26,6 +26,8 @@ export function useCustodianState() {
 
   // New state for sending invitations
   const [showDeviceInfoModal, setShowDeviceInfoModal] = useState(false);
+  const [showUnlockFromUsbModal, setShowUnlockFromUsbModal] = useState(false);
+  const [showUnlockFromNfcModal, setShowUnlockFromNfcModal] = useState(false);
   const [showSendInvitationModal, setShowSendInvitationModal] = useState(false);
   const [selectedCustodianForInvitation, setSelectedCustodianForInvitation] = useState<any>(null);
 
@@ -133,6 +135,10 @@ export function useCustodianState() {
     // Device info and invitations
     showDeviceInfoModal,
     setShowDeviceInfoModal,
+    showUnlockFromUsbModal,
+    setShowUnlockFromUsbModal,
+    showUnlockFromNfcModal,
+    setShowUnlockFromNfcModal,
     showSendInvitationModal,
     setShowSendInvitationModal,
     selectedCustodianForInvitation,

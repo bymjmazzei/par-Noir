@@ -54,6 +54,10 @@ import { IdentityVerificationModal } from './components/IdentityVerificationModa
 import { FileStorageAggregator } from './components/storage/FileStorageAggregator';
 import { ExportAuthModal } from './components/modals/ExportAuthModal';
 import { ExportOptionsModal } from './components/modals/ExportOptionsModal';
+import { ExportToUsbModal } from './components/modals/ExportToUsbModal';
+import { ExportToNfcModal } from './components/modals/ExportToNfcModal';
+import { UnlockFromUsbModal } from './components/unlock/UnlockFromUsbModal';
+import { UnlockFromNfcModal } from './components/unlock/UnlockFromNfcModal';
 import { TransferSetupModal } from './components/modals/TransferSetupModal';
 import { DeviceInfoModal } from './components/modals/DeviceInfoModal';
 import { RecoveryModal } from './components/modals/RecoveryModal';
@@ -397,6 +401,10 @@ function App() {
   const {
     showDeviceInfoModal,
     setShowDeviceInfoModal,
+    showUnlockFromUsbModal,
+    setShowUnlockFromUsbModal,
+    showUnlockFromNfcModal,
+    setShowUnlockFromNfcModal,
     showSendInvitationModal,
     setShowSendInvitationModal,
     selectedCustodianForInvitation,
@@ -483,6 +491,14 @@ function App() {
     setShowExportAuthModal,
     showExportOptionsModal,
     setShowExportOptionsModal,
+    showExportToUsbModal,
+    setShowExportToUsbModal,
+    identityForUsbExport,
+    setIdentityForUsbExport,
+    showExportToNfcModal,
+    setShowExportToNfcModal,
+    identityForNfcExport,
+    setIdentityForNfcExport,
     exportAuthData,
     setExportAuthData,
     showExportPasscode,
@@ -633,6 +649,64 @@ function App() {
       
     } catch (error: any) {
       setError(error.message || 'Download failed');
+      setTimeout(() => setError(null), 9000);
+    }
+  };
+
+  // Handle export to NFC (physical key with card UID binding)
+  const handleExportToNfc = async () => {
+    try {
+      if (!authenticatedUser || !selectedDID) {
+        throw new Error('No identity is currently unlocked.');
+      }
+      const identityKey = authenticatedUser.publicKey || selectedDID?.publicKey || selectedDID?.id;
+      const simpleStorage = SimpleStorage.getInstance();
+      const currentIdentity = await simpleStorage.getIdentity(identityKey);
+      if (!currentIdentity) {
+        throw new Error('Identity not found in storage.');
+      }
+      const identityToExport = currentIdentity.encryptedData;
+      if (!identityToExport?.encryptedData && !(identityToExport as any)?.encrypted) {
+        throw new Error('Invalid encrypted data structure');
+      }
+      setIdentityForNfcExport({
+        encryptedData: (identityToExport as any).encryptedData ?? (identityToExport as any).encrypted,
+        iv: (identityToExport as any).iv,
+        salt: (identityToExport as any).salt,
+        publicKey: currentIdentity.publicKey ?? (identityToExport as any).publicKey,
+      });
+      setShowExportToNfcModal(true);
+    } catch (error: any) {
+      setError(error.message || 'Failed to prepare NFC export');
+      setTimeout(() => setError(null), 9000);
+    }
+  };
+
+  // Handle export to USB (physical key with UID binding)
+  const handleExportToUsb = async () => {
+    try {
+      if (!authenticatedUser || !selectedDID) {
+        throw new Error('No identity is currently unlocked.');
+      }
+      const identityKey = authenticatedUser.publicKey || selectedDID?.publicKey || selectedDID?.id;
+      const simpleStorage = SimpleStorage.getInstance();
+      const currentIdentity = await simpleStorage.getIdentity(identityKey);
+      if (!currentIdentity) {
+        throw new Error('Identity not found in storage.');
+      }
+      const identityToExport = currentIdentity.encryptedData;
+      if (!identityToExport?.encryptedData && !(identityToExport as any)?.encrypted) {
+        throw new Error('Invalid encrypted data structure');
+      }
+      setIdentityForUsbExport({
+        encryptedData: (identityToExport as any).encryptedData ?? (identityToExport as any).encrypted,
+        iv: (identityToExport as any).iv,
+        salt: (identityToExport as any).salt,
+        publicKey: currentIdentity.publicKey ?? (identityToExport as any).publicKey,
+      });
+      setShowExportToUsbModal(true);
+    } catch (error: any) {
+      setError(error.message || 'Failed to prepare USB export');
       setTimeout(() => setError(null), 9000);
     }
   };
@@ -2324,6 +2398,50 @@ function App() {
   };
 
 
+
+  const handleUnlockFromUsb = async (result: import('./components/unlock/UnlockFromUsbModal').UnlockFromUsbResult) => {
+    const { authSession, identityToUnlock, identityData, publicKey, nickname, pnName, identityId } = result;
+    await storage.storeSession(authSession);
+
+    const data = identityData as Record<string, unknown>;
+    const didInfo: DIDInfo = {
+      id: identityId,
+      pnName,
+      nickname,
+      email: (data.email as string) || '',
+      phone: (data.phone as string) || '',
+      recoveryEmail: (data.recoveryEmail as string) || '',
+      recoveryPhone: (data.recoveryPhone as string) || '',
+      createdAt: (data.createdAt as string) || new Date().toISOString(),
+      status: (data.status as string) || 'active',
+      custodiansRequired: (data.custodiansRequired as boolean) ?? true,
+      custodiansSetup: (data.custodiansSetup as boolean) ?? false
+    };
+
+    try {
+      const simpleStorage = SimpleStorage.getInstance();
+      const simpleIdentity: SimpleIdentity = {
+        id: publicKey,
+        nickname,
+        pnName,
+        publicKey,
+        encryptedData: identityToUnlock,
+        createdAt: new Date().toISOString(),
+        lastAccessed: new Date().toISOString()
+      };
+      await simpleStorage.storeIdentity(simpleIdentity);
+    } catch (err) {
+      logError('Failed to store ID file from USB unlock:', err);
+    }
+
+    setDids(prev => [...prev, didInfo]);
+    setSelectedDID(didInfo);
+    setAuthenticatedUser({ ...authSession, nickname });
+    setMainForm({ pnName: '', passcode: '', uploadFile: null });
+    setShowMainPNName(false);
+    setShowMainPasscode(false);
+    showSuccessMessage('pN unlocked from USB successfully!');
+  };
 
   const handleMainFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -5007,6 +5125,28 @@ This invitation expires in 24 hours.`;
                       </div>
                     </div>
                   )}
+
+                  {/* Physical key unlock options */}
+                  <div className="flex gap-3">
+                    {typeof window !== 'undefined' && 'showDirectoryPicker' in window && (
+                      <button
+                        type="button"
+                        onClick={() => setShowUnlockFromUsbModal(true)}
+                        className="flex-1 py-2 px-3 border border-border rounded-md hover:bg-secondary text-sm text-text-primary flex items-center justify-center gap-2"
+                      >
+                        <span>Read from USB</span>
+                      </button>
+                    )}
+                    {typeof window !== 'undefined' && 'NDEFReader' in window && (
+                      <button
+                        type="button"
+                        onClick={() => setShowUnlockFromNfcModal(true)}
+                        className="flex-1 py-2 px-3 border border-border rounded-md hover:bg-secondary text-sm text-text-primary flex items-center justify-center gap-2"
+                      >
+                        <span>Tap NFC card</span>
+                      </button>
+                    )}
+                  </div>
                   
                   {/* pN Name input - auto-filled if identity selected */}
                   <div>
@@ -6454,6 +6594,28 @@ This invitation expires in 24 hours.`;
           />
         </Suspense>
 
+        {/* Unlock from USB Modal */}
+        <UnlockFromUsbModal
+          isOpen={showUnlockFromUsbModal}
+          onClose={() => setShowUnlockFromUsbModal(false)}
+          onUnlock={handleUnlockFromUsb}
+          onError={(msg) => {
+            setError(msg);
+            setTimeout(() => setError(null), 9000);
+          }}
+        />
+
+        {/* Unlock from NFC Modal */}
+        <UnlockFromNfcModal
+          isOpen={showUnlockFromNfcModal}
+          onClose={() => setShowUnlockFromNfcModal(false)}
+          onUnlock={handleUnlockFromUsb as (r: import('./components/unlock/UnlockFromNfcModal').UnlockFromNfcResult) => Promise<void>}
+          onError={(msg) => {
+            setError(msg);
+            setTimeout(() => setError(null), 9000);
+          }}
+        />
+
         {/* Device Info Modal */}
         <DeviceInfoModal
           isOpen={showDeviceInfoModal}
@@ -6478,6 +6640,8 @@ This invitation expires in 24 hours.`;
             setShowAddCustodianModal(true);
           }}
           onExportID={handleExportData}
+          onExportToUsb={handleExportToUsb}
+          onExportToNfc={handleExportToNfc}
           onExportRecoveryKey={() => {
             setShowOnboardingWizard(false);
             setShowRecoveryKeyModal(true);
@@ -6526,10 +6690,68 @@ This invitation expires in 24 hours.`;
           setShowExportPnName={setShowExportPnName}
           setShowExportPasscode={setShowExportPasscode}
           onDownloadExport={handleDownloadExport}
+          onExportToUsb={handleExportToUsb}
+          onExportToNfc={handleExportToNfc}
           onTransfer={handleTransfer}
         />
 
+        {showExportToUsbModal && identityForUsbExport && (() => {
+          const creds = exportAuthData.pnName && exportAuthData.passcode
+            ? exportAuthData
+            : SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
+          const pnName = creds?.pnName || exportAuthData.pnName;
+          const passcode = creds?.passcode || exportAuthData.passcode;
+          if (!pnName || !passcode) return null;
+          return (
+            <ExportToUsbModal
+              isOpen={showExportToUsbModal}
+              onClose={() => {
+                setShowExportToUsbModal(false);
+                setIdentityForUsbExport(null);
+              }}
+              identityToExport={identityForUsbExport}
+              pnName={pnName}
+              passcode={passcode}
+              onSuccess={() => {
+                setShowExportOptionsModal(false);
+                showSuccessMessage('pN exported to USB successfully');
+              }}
+              onError={(msg) => {
+                setError(msg);
+                setTimeout(() => setError(null), 9000);
+              }}
+            />
+          );
+        })()}
 
+        {showExportToNfcModal && identityForNfcExport && (() => {
+          const creds = exportAuthData.pnName && exportAuthData.passcode
+            ? exportAuthData
+            : SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
+          const pnName = creds?.pnName || exportAuthData.pnName;
+          const passcode = creds?.passcode || exportAuthData.passcode;
+          if (!pnName || !passcode) return null;
+          return (
+            <ExportToNfcModal
+              isOpen={showExportToNfcModal}
+              onClose={() => {
+                setShowExportToNfcModal(false);
+                setIdentityForNfcExport(null);
+              }}
+              identityToExport={identityForNfcExport}
+              pnName={pnName}
+              passcode={passcode}
+              onSuccess={() => {
+                setShowExportOptionsModal(false);
+                showSuccessMessage('pN exported to NFC card successfully');
+              }}
+              onError={(msg) => {
+                setError(msg);
+                setTimeout(() => setError(null), 9000);
+              }}
+            />
+          );
+        })()}
 
         {/* Transfer Setup Modal */}
         <TransferSetupModal

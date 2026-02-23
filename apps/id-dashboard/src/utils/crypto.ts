@@ -358,6 +358,73 @@ export class IdentityCrypto {
   }
 
   /**
+   * Encrypt data with physical key binding (UID).
+   * Key derivation includes uid: pnName:passcode:uid
+   * Used for USB (generated UID) or NFC (card UID) binding.
+   */
+  static async encryptDataWithBinding(
+    data: string,
+    pnName: string,
+    passcode: string,
+    uid: string
+  ): Promise<EncryptedData> {
+    return await this.encryptWithBinding(data, pnName, passcode, uid);
+  }
+
+  /**
+   * Decrypt data with physical key binding (UID).
+   * Requires the same UID that was used during encryption.
+   */
+  static async decryptDataWithBinding(
+    encryptedData: EncryptedData,
+    pnName: string,
+    passcode: string,
+    uid: string
+  ): Promise<string> {
+    return await this.decryptWithBinding(encryptedData, pnName, passcode, uid);
+  }
+
+  /**
+   * Build AuthSession from decrypted identity (used after decryptDataWithBinding).
+   * Verifies pnName, sets credentials in SecureCredentialManager.
+   */
+  static async buildAuthSessionFromDecrypted(
+    identity: { id: string; username: string; nickname?: string; [key: string]: unknown },
+    publicKey: string,
+    pnName: string,
+    passcode: string
+  ): Promise<AuthSession> {
+    const { SecureCredentialManager } = await import('./secureCredentialManager');
+    const { MemorySecurity } = await import('./security/memorySecurity');
+
+    if (identity.username !== pnName) {
+      throw new Error('Authentication failed: username mismatch');
+    }
+
+    const resolvedPnName = identity.pnName || identity.username || identity.nickname || pnName || identity.id;
+    SecureCredentialManager.setCredentials(identity.id, resolvedPnName, passcode, 15 * 60 * 1000);
+
+    const token = await this.generateAuthToken(identity.id, identity.username);
+    const encoder = new TextEncoder();
+    const digestData = encoder.encode(`${resolvedPnName}::${publicKey}::${passcode}`);
+    const digestBuffer = await window.crypto.subtle.digest('SHA-256', digestData);
+    const authToken = Array.from(new Uint8Array(digestBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+
+    const passcodeBuffer = encoder.encode(passcode);
+    MemorySecurity.zeroize(passcodeBuffer);
+
+    return {
+      id: identity.id,
+      nickname: identity.nickname || resolvedPnName,
+      accessToken: token,
+      expiresIn: this.TOKEN_EXPIRY,
+      authenticatedAt: new Date().toISOString(),
+      publicKey,
+      authToken,
+    };
+  }
+
+  /**
    * Generate authentication token
    */
   private static async generateAuthToken(did: string, username: string): Promise<string> {
@@ -383,6 +450,67 @@ export class IdentityCrypto {
       return `${headerB64}.${payloadB64}.${signature}`;
     } catch (error) {
       throw new Error(`Failed to generate auth token: ${error}`);
+    }
+  }
+
+  /**
+   * Encrypt data with physical key binding (UID).
+   */
+  private static async encryptWithBinding(
+    data: string,
+    pnName: string,
+    passcode: string,
+    uid: string
+  ): Promise<EncryptedData> {
+    try {
+      const salt = this.generateSalt();
+      const key = await this.deriveKey(pnName, passcode, salt, uid);
+      const iv = this.generateIV();
+
+      const encoder = new TextEncoder();
+      const dataBuffer = encoder.encode(data);
+
+      const encryptedBuffer = await window.crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        dataBuffer
+      );
+
+      return {
+        encrypted: this.arrayBufferToBase64(encryptedBuffer),
+        iv: this.arrayBufferToBase64(iv),
+        salt
+      };
+    } catch (error) {
+      throw new Error(`Failed to encrypt data with binding: ${error}`);
+    }
+  }
+
+  /**
+   * Decrypt data with physical key binding (UID).
+   */
+  private static async decryptWithBinding(
+    encryptedData: EncryptedData,
+    pnName: string,
+    passcode: string,
+    uid: string
+  ): Promise<string> {
+    try {
+      const key = await this.deriveKey(pnName, passcode, encryptedData.salt, uid);
+
+      const iv = this.base64ToArrayBuffer(encryptedData.iv);
+      const data = this.base64ToArrayBuffer(encryptedData.encrypted);
+
+      const decryptedBuffer = await window.crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        data
+      );
+
+      const decoder = new TextDecoder();
+      return decoder.decode(decryptedBuffer);
+    } catch (error) {
+      throw new Error(`Failed to decrypt data with binding: ${error}`);
     }
   }
 
@@ -526,18 +654,24 @@ export class IdentityCrypto {
   }
 
   /**
-   * Derive encryption key from pnName and passcode
+   * Derive encryption key from pnName and passcode (and optional UID for physical key binding)
    * SECURITY: Both pnName and passcode are SECRETS and must be combined for key derivation
    * 
    * @param pnName - pN name (SECRET #1)
    * @param passcode - Passcode (SECRET #2)
    * @param salt - Salt for key derivation
+   * @param uid - Optional UID for physical key binding (USB or NFC card UID)
    */
-  private static async deriveKey(pnName: string, passcode: string, salt: string): Promise<CryptoKey> {
+  private static async deriveKey(
+    pnName: string,
+    passcode: string,
+    salt: string,
+    uid?: string
+  ): Promise<CryptoKey> {
     try {
       // SECURITY: Combine both secrets for key derivation
-      // Format: "pnName:passcode" (same as VolumeIdGenerator pattern)
-      const keyMaterial = `${pnName}:${passcode}`;
+      // Format: "pnName:passcode" or "pnName:passcode:uid" when binding
+      const keyMaterial = uid ? `${pnName}:${passcode}:${uid}` : `${pnName}:${passcode}`;
       
       const encoder = new TextEncoder();
       const keyMaterialBuffer = encoder.encode(keyMaterial);

@@ -12,7 +12,9 @@ import {
   Settings,
   CheckCircle,
   SkipForward,
-  HelpCircle
+  HelpCircle,
+  Usb,
+  CreditCard
 } from 'lucide-react';
 
 interface OnboardingWizardProps {
@@ -23,9 +25,13 @@ interface OnboardingWizardProps {
   onUpdateNickname?: (nickname: string) => void;
   onSetupCustodians?: () => void;
   onExportID?: () => void;
+  onExportToUsb?: () => void;
+  onExportToNfc?: () => void;
   onExportRecoveryKey?: () => void;
   onNavigateToSection?: (section: string) => void;
 }
+
+const hasNfcSupport = typeof window !== 'undefined' && 'NDEFReader' in window;
 
 interface WizardStep {
   id: string;
@@ -45,6 +51,8 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
   onUpdateNickname,
   onSetupCustodians,
   onExportID,
+  onExportToUsb,
+  onExportToNfc,
   onExportRecoveryKey,
   onNavigateToSection
 }) => {
@@ -69,6 +77,30 @@ Here you can:
 • Sync your identity across multiple devices
 
 This wizard will guide you through each important feature step by step. You can skip any step or come back to it later.`
+    },
+    {
+      id: 'export-id',
+      title: 'Export Your pN',
+      description: 'Create a secure backup of your identity. Choose Download for a portable file, or use a physical key (USB or NFC card) for extra security.',
+      icon: <Download className="w-8 h-8 text-orange-600" />,
+      action: () => {
+        if (onExportID) {
+          onExportID();
+          setCompletedSteps(prev => new Set([...prev, 'export-id']));
+        }
+      },
+      infoContent: `Exporting your identity creates an encrypted backup that you can store safely.
+
+Options:
+• Download - Save a portable pN file to your device (works everywhere)
+• Export to USB - Bind to a passcode-protected USB drive (uncopyable)
+• Export to NFC - Bind to an NFC card or fob (requires Chrome on Android)
+
+Security features:
+• The export file is encrypted with your pN name and passcode
+• Physical keys (USB/NFC) bind the pN to that specific device - it cannot be copied
+
+Important: Keep your backup safe! It's your lifeline if you need to restore your identity on a new device.`
     },
     {
       id: 'nickname',
@@ -117,33 +149,6 @@ Security features:
 • Recovery requires approval from multiple custodians
 
 This is crucial for protecting your identity - without custodians, you could permanently lose access if something happens to your device.`
-    },
-    {
-      id: 'export-id',
-      title: 'Export Your Identity',
-      description: 'Create a secure backup of your identity that you can store safely.',
-      icon: <Download className="w-8 h-8 text-orange-600" />,
-      action: () => {
-        if (onExportID) {
-          onExportID();
-          setCompletedSteps(prev => new Set([...prev, 'export-id']));
-        }
-      },
-      infoContent: `Exporting your identity creates an encrypted backup file that contains all your identity data.
-
-What's included in the export:
-• Your encrypted DID document
-• Your nickname and metadata
-• Recovery custodian information
-• Privacy settings and preferences
-
-Security features:
-• The export file is encrypted with your passcode
-• Only you can decrypt and use the backup
-• Store it in a secure location (password manager, safe, etc.)
-• You can import it on other devices if needed
-
-Important: Keep this backup safe! It's your lifeline if you need to restore your identity on a new device.`
     },
     {
       id: 'recovery-key',
@@ -434,15 +439,56 @@ You can always return to this wizard or access any feature from the main dashboa
                 <div className="space-y-4">
                   <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4">
                     <p className="text-sm text-green-800 dark:text-green-300">
-                      <strong>Backup your identity:</strong> This creates an encrypted file that you can use to restore your identity on other devices.
+                      <strong>Backup your identity:</strong> Create an encrypted backup. Download for a portable file, or use a physical key for extra security.
                     </p>
                   </div>
-                  <button
-                    onClick={handleStepAction}
-                    className="w-full bg-orange-600 text-white py-2 px-4 rounded-md hover:bg-orange-700 transition-colors"
-                  >
-                    Export Identity
-                  </button>
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => {
+                        if (onExportID) {
+                          onExportID();
+                          setCompletedSteps(prev => new Set([...prev, 'export-id']));
+                        }
+                      }}
+                      className="w-full flex items-center gap-3 p-3 border border-border rounded-lg hover:bg-secondary transition-colors text-left"
+                    >
+                      <Download className="w-6 h-6 text-orange-600 flex-shrink-0" />
+                      <div>
+                        <div className="font-medium text-text-primary">Download</div>
+                        <div className="text-sm text-text-secondary">Save portable pN file to your device</div>
+                      </div>
+                    </button>
+                    {onExportToUsb && (
+                      <button
+                        onClick={() => {
+                          onExportToUsb();
+                          setCompletedSteps(prev => new Set([...prev, 'export-id']));
+                        }}
+                        className="w-full flex items-center gap-3 p-3 border border-border rounded-lg hover:bg-secondary transition-colors text-left"
+                      >
+                        <Usb className="w-6 h-6 text-orange-600 flex-shrink-0" />
+                        <div>
+                          <div className="font-medium text-text-primary">Export to USB</div>
+                          <div className="text-sm text-text-secondary">Bind to passcode-protected drive</div>
+                        </div>
+                      </button>
+                    )}
+                    {onExportToNfc && hasNfcSupport && (
+                      <button
+                        onClick={() => {
+                          onExportToNfc();
+                          setCompletedSteps(prev => new Set([...prev, 'export-id']));
+                        }}
+                        className="w-full flex items-center gap-3 p-3 border border-border rounded-lg hover:bg-secondary transition-colors text-left"
+                      >
+                        <CreditCard className="w-6 h-6 text-orange-600 flex-shrink-0" />
+                        <div>
+                          <div className="font-medium text-text-primary">Export to NFC</div>
+                          <div className="text-sm text-text-secondary">Tap card or fob to write</div>
+                        </div>
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
