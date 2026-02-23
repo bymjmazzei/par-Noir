@@ -12,8 +12,6 @@ interface ExportToNfcModalProps {
   isOpen: boolean;
   onClose: () => void;
   identityToExport: { encryptedData: string; iv: string; salt: string; publicKey?: string };
-  pnName: string;
-  passcode: string;
   onSuccess: () => void;
   onError: (message: string) => void;
 }
@@ -22,22 +20,38 @@ export function ExportToNfcModal({
   isOpen,
   onClose,
   identityToExport,
-  pnName,
-  passcode,
   onSuccess,
   onError,
 }: ExportToNfcModalProps) {
-  const [step, setStep] = useState<'scan' | 'writing'>('scan');
+  const [step, setStep] = useState<'verify' | 'scan' | 'writing'>('verify');
+  const [pnName, setPnName] = useState('');
+  const [passcode, setPasscode] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const handleClose = () => {
-    setStep('scan');
+    setStep('verify');
+    setPnName('');
+    setPasscode('');
     setError(null);
     onClose();
   };
 
+  const handleConfirmVerify = () => {
+    setError(null);
+    if (!pnName || !passcode) {
+      setError('Enter your pN name and passcode to authorize the export');
+      return;
+    }
+    setStep('scan');
+  };
+
   const handleWriteToNfc = async () => {
     setError(null);
+
+    if (!pnName || !passcode) {
+      setError('Enter your pN name and passcode first');
+      return;
+    }
 
     if (!hasNfcSupport) {
       setError('NFC export requires Chrome on Android. Use Download or USB instead.');
@@ -51,7 +65,7 @@ export function ExportToNfcModal({
     }
 
     try {
-      setStep('scan');
+      setStep('writing');
 
       const ndef = new NDEFReader();
 
@@ -114,8 +128,6 @@ export function ExportToNfcModal({
         identities: [identityRecord],
       });
 
-      setStep('writing');
-
       const encoder = new TextEncoder();
       const ndefMessage = {
         records: [
@@ -168,6 +180,40 @@ export function ExportToNfcModal({
             <p className="text-sm text-text-secondary">
               NFC export requires Chrome on Android. Use Download or USB instead.
             </p>
+          </div>
+        )}
+
+        {step === 'verify' && (
+          <div className="space-y-4">
+            <p className="text-sm text-text-secondary">
+              Verify your identity to authorize writing your pN to the NFC card.
+            </p>
+            <div>
+              <label className="block text-sm font-medium mb-2">pN Name</label>
+              <input
+                type="text"
+                value={pnName}
+                onChange={(e) => setPnName(e.target.value)}
+                placeholder="Enter your pN name"
+                className="w-full px-3 py-2 border border-border rounded-md bg-input-bg text-text-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Passcode</label>
+              <input
+                type="password"
+                value={passcode}
+                onChange={(e) => setPasscode(e.target.value)}
+                placeholder="Enter your passcode"
+                className="w-full px-3 py-2 border border-border rounded-md bg-input-bg text-text-primary"
+              />
+            </div>
+            <button
+              onClick={handleConfirmVerify}
+              className="w-full bg-orange-600 text-white py-2 px-4 rounded-md hover:bg-orange-700 transition-colors"
+            >
+              Continue
+            </button>
           </div>
         )}
 

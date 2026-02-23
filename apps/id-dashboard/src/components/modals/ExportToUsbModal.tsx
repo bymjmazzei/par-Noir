@@ -15,8 +15,7 @@ interface ExportToUsbModalProps {
   isOpen: boolean;
   onClose: () => void;
   identityToExport: { encryptedData: string; iv: string; salt: string; publicKey?: string };
-  pnName: string;
-  passcode: string;
+  /** Used only to verify - collect pN + passcode as the last step before write */
   onSuccess: () => void;
   onError: (message: string) => void;
 }
@@ -25,20 +24,22 @@ export function ExportToUsbModal({
   isOpen,
   onClose,
   identityToExport,
-  pnName,
-  passcode,
   onSuccess,
   onError,
 }: ExportToUsbModalProps) {
-  const [step, setStep] = useState<'drive' | 'passcode' | 'writing'>('drive');
+  const [step, setStep] = useState<'drive' | 'passcode' | 'verify' | 'writing'>('drive');
   const [drivePasscode, setDrivePasscode] = useState('');
   const [confirmDrivePasscode, setConfirmDrivePasscode] = useState('');
+  const [pnName, setPnName] = useState('');
+  const [passcode, setPasscode] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const handleClose = () => {
     setStep('drive');
     setDrivePasscode('');
     setConfirmDrivePasscode('');
+    setPnName('');
+    setPasscode('');
     setError(null);
     onClose();
   };
@@ -63,16 +64,24 @@ export function ExportToUsbModal({
     }
   };
 
-  const handleWriteToDrive = async () => {
+  const handleConfirmDrivePasscode = () => {
     setError(null);
-
     if (!drivePasscode || drivePasscode !== confirmDrivePasscode) {
       setError('Passcodes do not match');
       return;
     }
-
     if (drivePasscode.length < 6) {
       setError('Drive passcode must be at least 6 characters');
+      return;
+    }
+    setStep('verify');
+  };
+
+  const handleWriteToDrive = async () => {
+    setError(null);
+
+    if (!pnName || !passcode) {
+      setError('Enter your pN name and passcode to authorize the export');
       return;
     }
 
@@ -133,7 +142,7 @@ export function ExportToUsbModal({
       onSuccess();
     } catch (err: any) {
       setError(err.message || 'Failed to write to drive');
-      setStep('passcode');
+      setStep('verify');
     }
   };
 
@@ -210,6 +219,40 @@ export function ExportToUsbModal({
                 value={confirmDrivePasscode}
                 onChange={(e) => setConfirmDrivePasscode(e.target.value)}
                 placeholder="Confirm passcode"
+                className="w-full px-3 py-2 border border-border rounded-md bg-input-bg text-text-primary"
+              />
+            </div>
+            <button
+              onClick={handleConfirmDrivePasscode}
+              className="w-full bg-orange-600 text-white py-2 px-4 rounded-md hover:bg-orange-700 transition-colors"
+            >
+              Continue
+            </button>
+          </div>
+        )}
+
+        {step === 'verify' && (
+          <div className="space-y-4">
+            <p className="text-sm text-text-secondary">
+              Verify your identity to authorize writing your pN to this drive.
+            </p>
+            <div>
+              <label className="block text-sm font-medium mb-2">pN Name</label>
+              <input
+                type="text"
+                value={pnName}
+                onChange={(e) => setPnName(e.target.value)}
+                placeholder="Enter your pN name"
+                className="w-full px-3 py-2 border border-border rounded-md bg-input-bg text-text-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Passcode</label>
+              <input
+                type="password"
+                value={passcode}
+                onChange={(e) => setPasscode(e.target.value)}
+                placeholder="Enter your passcode"
                 className="w-full px-3 py-2 border border-border rounded-md bg-input-bg text-text-primary"
               />
             </div>
