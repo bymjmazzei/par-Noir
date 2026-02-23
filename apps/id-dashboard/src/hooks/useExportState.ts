@@ -11,6 +11,9 @@ export function useExportState() {
   const [identityForNfcExport, setIdentityForNfcExport] = useState<{ encryptedData: string; iv: string; salt: string; publicKey?: string } | null>(null);
   const [pendingExportAction, setPendingExportAction] = useState<'download' | 'usb' | 'nfc' | null>(null);
   const [exportAuthData, setExportAuthData] = useState({ pnName: '', passcode: '' });
+  /** Creds captured at USB modal open - avoids timing/closure issues with exportAuthData */
+  const [usbExportCreds, setUsbExportCreds] = useState<{ pnName: string; passcode: string } | null>(null);
+  const [nfcExportCreds, setNfcExportCreds] = useState<{ pnName: string; passcode: string } | null>(null);
   const [showExportPasscode, setShowExportPasscode] = useState(false);
   const [showExportPnName, setShowExportPnName] = useState(false);
 
@@ -47,6 +50,10 @@ export function useExportState() {
     setPendingExportAction,
     exportAuthData,
     setExportAuthData,
+    usbExportCreds,
+    setUsbExportCreds,
+    nfcExportCreds,
+    setNfcExportCreds,
     showExportPasscode,
     setShowExportPasscode,
     showExportPnName,

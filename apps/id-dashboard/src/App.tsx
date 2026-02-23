@@ -503,6 +503,10 @@ function App() {
     setPendingExportAction,
     exportAuthData,
     setExportAuthData,
+    usbExportCreds,
+    setUsbExportCreds,
+    nfcExportCreds,
+    setNfcExportCreds,
     showExportPasscode,
     setShowExportPasscode,
     showExportPnName,
@@ -681,6 +685,7 @@ function App() {
       setShowExportAuthModal(true);
       return;
     }
+    setNfcExportCreds({ pnName: exportAuthData.pnName, passcode: exportAuthData.passcode });
     try {
       if (!authenticatedUser || !selectedDID) {
         throw new Error('No identity is currently unlocked.');
@@ -717,6 +722,8 @@ function App() {
       setShowExportAuthModal(true);
       return;
     }
+    // Capture creds now so modal gets them regardless of state timing
+    setUsbExportCreds({ pnName: exportAuthData.pnName, passcode: exportAuthData.passcode });
     try {
       if (!authenticatedUser || !selectedDID) {
         throw new Error('No identity is currently unlocked.');
@@ -6734,23 +6741,17 @@ This invitation expires in 24 hours.`;
           onTransfer={handleTransfer}
         />
 
-        {showExportToUsbModal && identityForUsbExport && (() => {
-          const creds = exportAuthData.pnName && exportAuthData.passcode
-            ? exportAuthData
-            : SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
-          const pnName = creds?.pnName || exportAuthData.pnName;
-          const passcode = creds?.passcode || exportAuthData.passcode;
-          if (!pnName || !passcode) return null;
-          return (
+        {showExportToUsbModal && identityForUsbExport && usbExportCreds && (
             <ExportToUsbModal
               isOpen={showExportToUsbModal}
               onClose={() => {
                 setShowExportToUsbModal(false);
                 setIdentityForUsbExport(null);
+                setUsbExportCreds(null);
               }}
               identityToExport={identityForUsbExport}
-              pnName={pnName}
-              passcode={passcode}
+              pnName={usbExportCreds.pnName}
+              passcode={usbExportCreds.passcode}
               onSuccess={() => {
                 setShowExportOptionsModal(false);
                 showSuccessMessage('pN exported to USB successfully');
@@ -6760,26 +6761,19 @@ This invitation expires in 24 hours.`;
                 setTimeout(() => setError(null), 9000);
               }}
             />
-          );
-        })()}
+        )}
 
-        {showExportToNfcModal && identityForNfcExport && (() => {
-          const creds = exportAuthData.pnName && exportAuthData.passcode
-            ? exportAuthData
-            : SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
-          const pnName = creds?.pnName || exportAuthData.pnName;
-          const passcode = creds?.passcode || exportAuthData.passcode;
-          if (!pnName || !passcode) return null;
-          return (
+        {showExportToNfcModal && identityForNfcExport && nfcExportCreds && (
             <ExportToNfcModal
               isOpen={showExportToNfcModal}
               onClose={() => {
                 setShowExportToNfcModal(false);
                 setIdentityForNfcExport(null);
+                setNfcExportCreds(null);
               }}
               identityToExport={identityForNfcExport}
-              pnName={pnName}
-              passcode={passcode}
+              pnName={nfcExportCreds.pnName}
+              passcode={nfcExportCreds.passcode}
               onSuccess={() => {
                 setShowExportOptionsModal(false);
                 showSuccessMessage('pN exported to NFC card successfully');
@@ -6789,8 +6783,7 @@ This invitation expires in 24 hours.`;
                 setTimeout(() => setError(null), 9000);
               }}
             />
-          );
-        })()}
+        )}
 
         {/* Transfer Setup Modal */}
         <TransferSetupModal
