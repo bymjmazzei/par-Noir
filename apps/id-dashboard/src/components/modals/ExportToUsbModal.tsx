@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
-import { Usb, AlertTriangle } from 'lucide-react';
+import { Usb } from 'lucide-react';
 import { IdentityCrypto, EncryptedData } from '../../utils/crypto';
 import {
   generateUid,
   uidToBase64,
-  encryptForDrive,
+  encryptUidForDrive,
 } from '../../utils/physicalKeyCrypto';
 
-const hasFileSystemAccess =
-  typeof window !== 'undefined' &&
-  'showDirectoryPicker' in window;
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 interface ExportToUsbModalProps {
   isOpen: boolean;
@@ -27,7 +32,7 @@ export function ExportToUsbModal({
   onSuccess,
   onError,
 }: ExportToUsbModalProps) {
-  const [step, setStep] = useState<'drive' | 'passcode' | 'verify' | 'writing'>('drive');
+  const [step, setStep] = useState<'passcode' | 'verify' | 'writing'>('passcode');
   const [drivePasscode, setDrivePasscode] = useState('');
   const [confirmDrivePasscode, setConfirmDrivePasscode] = useState('');
   const [pnName, setPnName] = useState('');
@@ -35,33 +40,13 @@ export function ExportToUsbModal({
   const [error, setError] = useState<string | null>(null);
 
   const handleClose = () => {
-    setStep('drive');
+    setStep('passcode');
     setDrivePasscode('');
     setConfirmDrivePasscode('');
     setPnName('');
     setPasscode('');
     setError(null);
     onClose();
-  };
-
-  const handleSelectDrive = async () => {
-    setError(null);
-    if (!hasFileSystemAccess) {
-      setError('USB export requires Chrome or Edge on desktop. Use Download instead.');
-      return;
-    }
-
-    try {
-      const dirHandle = await (window as any).showDirectoryPicker({
-        mode: 'readwrite',
-      });
-
-      setStep('passcode');
-      (window as any).__exportUsbDirHandle = dirHandle;
-    } catch (err: any) {
-      if (err.name === 'AbortError') return;
-      setError(err.message || 'Failed to select drive');
-    }
   };
 
   const handleConfirmDrivePasscode = () => {
@@ -77,17 +62,11 @@ export function ExportToUsbModal({
     setStep('verify');
   };
 
-  const handleWriteToDrive = async () => {
+  const handleDownload = async () => {
     setError(null);
 
     if (!pnName || !passcode) {
       setError('Enter your pN name and passcode to authorize the export');
-      return;
-    }
-
-    const dirHandle = (window as any).__exportUsbDirHandle;
-    if (!dirHandle) {
-      setError('No drive selected. Please try again.');
       return;
     }
 
@@ -118,30 +97,23 @@ export function ExportToUsbModal({
 
       const identityRecord = { ...boundEncrypted } as Record<string, string>;
       if (identityToExport.publicKey) identityRecord.publicKey = identityToExport.publicKey;
-      const boundPnBlob = JSON.stringify({
+      // Payload file: no uid in binding (binary system; uid is in key file)
+      const payloadBlob = JSON.stringify({
         version: '1.0',
         timestamp: new Date().toISOString(),
-        binding: { type: 'usb', uid: uidBase64 },
+        binding: { type: 'usb' },
         identities: [identityRecord],
       });
 
-      const container = await encryptForDrive(uid, boundPnBlob, drivePasscode);
+      const keyFileBase64 = await encryptUidForDrive(uidBase64, drivePasscode);
 
-      const parnoirDir = await dirHandle.getDirectoryHandle('.parnoir', {
-        create: true,
-      });
-      const fileHandle = await parnoirDir.getFileHandle('identity.enc', {
-        create: true,
-      });
-      const writable = await fileHandle.createWritable();
-      await writable.write(container);
-      await writable.close();
+      downloadBlob(new Blob([payloadBlob], { type: 'application/json' }), 'parnoir-payload.enc');
+      downloadBlob(new Blob([keyFileBase64], { type: 'text/plain' }), 'parnoir-key.enc');
 
-      delete (window as any).__exportUsbDirHandle;
       handleClose();
       onSuccess();
     } catch (err: any) {
-      setError(err.message || 'Failed to write to drive');
+      setError(err.message || 'Failed to prepare download');
       setStep('verify');
     }
   };
@@ -165,38 +137,10 @@ export function ExportToUsbModal({
           </button>
         </div>
 
-        {!hasFileSystemAccess && (
-          <div className="mb-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex gap-3">
-            <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-text-secondary">
-              USB export requires Chrome or Edge on desktop. Use Download for a
-              portable file instead.
-            </p>
-          </div>
-        )}
-
-        {step === 'drive' && (
-          <div className="space-y-4">
-            <p className="text-sm text-text-secondary">
-              Select the USB drive or folder where you want to save your pN. A
-              hidden folder <code className="text-xs">.parnoir</code> will be
-              created with your encrypted identity.
-            </p>
-            <button
-              onClick={handleSelectDrive}
-              disabled={!hasFileSystemAccess}
-              className="w-full bg-orange-600 text-white py-2 px-4 rounded-md hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Select Drive or Folder
-            </button>
-          </div>
-        )}
-
         {step === 'passcode' && (
           <div className="space-y-4">
             <p className="text-sm text-text-secondary">
-              Set a passcode to protect the data on this drive. You will need
-              this passcode to unlock when reading from USB.
+              You will get two files: a payload file and a key file. Both are needed to unlock. Store them on the same or different USBs. Set a passcode to protect the key file; you will need it when unlocking.
             </p>
             <div>
               <label className="block text-sm font-medium mb-2">
@@ -234,7 +178,7 @@ export function ExportToUsbModal({
         {step === 'verify' && (
           <div className="space-y-4">
             <p className="text-sm text-text-secondary">
-              Verify your identity to authorize writing your pN to this drive.
+              Verify your identity to authorize downloading the two files.
             </p>
             <div>
               <label className="block text-sm font-medium mb-2">pN Name</label>
@@ -257,10 +201,10 @@ export function ExportToUsbModal({
               />
             </div>
             <button
-              onClick={handleWriteToDrive}
+              onClick={handleDownload}
               className="w-full bg-orange-600 text-white py-2 px-4 rounded-md hover:bg-orange-700 transition-colors"
             >
-              Write to Drive
+              Download both files
             </button>
           </div>
         )}
@@ -268,7 +212,7 @@ export function ExportToUsbModal({
         {step === 'writing' && (
           <div className="text-center py-8">
             <div className="animate-pulse text-text-secondary">
-              Writing to drive...
+              Preparing download...
             </div>
           </div>
         )}

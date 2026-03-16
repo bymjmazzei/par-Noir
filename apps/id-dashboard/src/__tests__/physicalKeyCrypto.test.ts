@@ -11,6 +11,8 @@ import {
   base64ToUid,
   encryptForDrive,
   decryptFromDrive,
+  encryptUidForDrive,
+  decryptUidFromDrive,
 } from '../utils/physicalKeyCrypto';
 
 describe('physicalKeyCrypto', () => {
@@ -83,6 +85,64 @@ describe('physicalKeyCrypto', () => {
         return;
       }
       await expect(decryptFromDrive(encrypted, 'wrong-passcode')).rejects.toThrow();
+    });
+  });
+
+  describe('encryptUidForDrive / decryptUidFromDrive', () => {
+    it('roundtrips UID base64 string', async () => {
+      const uid = generateUid();
+      const uidBase64 = uidToBase64(uid);
+      const drivePasscode = 'key-file-passcode';
+
+      let encrypted: string;
+      try {
+        encrypted = await encryptUidForDrive(uidBase64, drivePasscode);
+      } catch {
+        return;
+      }
+      expect(typeof encrypted).toBe('string');
+      expect(encrypted.length).toBeGreaterThan(0);
+
+      const decrypted = await decryptUidFromDrive(encrypted, drivePasscode);
+      expect(decrypted).toBe(uidBase64);
+    });
+
+    it('decryptUidFromDrive fails with wrong passcode', async () => {
+      const uidBase64 = uidToBase64(generateUid());
+      let encrypted: string;
+      try {
+        encrypted = await encryptUidForDrive(uidBase64, 'correct');
+      } catch {
+        return;
+      }
+      await expect(decryptUidFromDrive(encrypted, 'wrong')).rejects.toThrow();
+    });
+  });
+
+  describe('binary system: payload without uid + key file', () => {
+    it('payload blob has no uid in binding; key file holds uid', async () => {
+      const uid = generateUid();
+      const uidBase64 = uidToBase64(uid);
+      const payloadBlob = JSON.stringify({
+        version: '1.0',
+        timestamp: new Date().toISOString(),
+        binding: { type: 'usb' },
+        identities: [{ encrypted: 'x', iv: 'y', salt: 'z' }],
+      });
+      const drivePasscode = 'drive123';
+
+      let keyFileEnc: string;
+      try {
+        keyFileEnc = await encryptUidForDrive(uidBase64, drivePasscode);
+      } catch {
+        return;
+      }
+      const parsedPayload = JSON.parse(payloadBlob);
+      expect(parsedPayload.binding.uid).toBeUndefined();
+      expect(parsedPayload.binding.type).toBe('usb');
+
+      const uidFromKey = await decryptUidFromDrive(keyFileEnc, drivePasscode);
+      expect(uidFromKey).toBe(uidBase64);
     });
   });
 });
