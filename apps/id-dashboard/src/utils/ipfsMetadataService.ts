@@ -1,6 +1,7 @@
 // Client-side IPFS service for pN metadata
 // Uses secure IPFS HTTP client instead of vulnerable Pinata SDK
 
+import { integrationsEnv } from '../config/integrationsEnv';
 import { ipfsService } from './ipfsService';
 
 export interface PNMetadata {
@@ -33,9 +34,9 @@ export class IPFSMetadataService {
 
     try {
       // Initialize IPFS service with validated environment variables
-      const apiKey = process.env.REACT_APP_PINATA_API_KEY;
-      const secretKey = process.env.REACT_APP_PINATA_SECRET_KEY;
-      const gatewayUrl = process.env.REACT_APP_IPFS_GATEWAY_URL || 'https://gateway.pinata.cloud';
+      const apiKey = integrationsEnv.PINATA_API_KEY;
+      const secretKey = integrationsEnv.PINATA_SECRET_KEY || integrationsEnv.PINATA_SECRET_API_KEY;
+      const gatewayUrl = integrationsEnv.IPFS_GATEWAY_URL || 'https://gateway.pinata.cloud';
 
       // Validate API keys
       if (!apiKey || !secretKey) {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { integrationsEnv } from '../config/integrationsEnv';
 import { IntegrationConfigManager } from '../utils/integrationConfig';
 
 interface IntegrationDebuggerProps {
@@ -31,25 +32,24 @@ export const IntegrationDebugger: React.FC<IntegrationDebuggerProps> = ({
         validation: IntegrationConfigManager.validateConfig(),
       },
       environment: {
-        REACT_APP_IPFS_PROJECT_ID: process.env.REACT_APP_IPFS_PROJECT_ID,
-        REACT_APP_IPFS_PROJECT_SECRET: process.env.REACT_APP_IPFS_PROJECT_SECRET,
-        REACT_APP_SENDGRID_API_KEY: process.env.REACT_APP_SENDGRID_API_KEY,
-        REACT_APP_TWILIO_ACCOUNT_SID: process.env.REACT_APP_TWILIO_ACCOUNT_SID,
-        REACT_APP_COINBASE_COMMERCE_API_KEY: process.env.REACT_APP_COINBASE_COMMERCE_API_KEY,
+        VITE_IPFS_PROJECT_ID: integrationsEnv.IPFS_PROJECT_ID ? '[set]' : '[unset]',
+        VITE_IPFS_PROJECT_SECRET: integrationsEnv.IPFS_PROJECT_SECRET ? '[set]' : '[unset]',
+        VITE_SENDGRID_API_KEY: integrationsEnv.SENDGRID_API_KEY ? '[set]' : '[unset]',
+        VITE_TWILIO_ACCOUNT_SID: integrationsEnv.TWILIO_ACCOUNT_SID ? '[set]' : '[unset]',
+        VITE_COINBASE_COMMERCE_API_KEY: integrationsEnv.COINBASE_COMMERCE_API_KEY ? '[set]' : '[unset]',
       },
       window: {
-        REACT_APP_IPFS_PROJECT_ID: (window as any).REACT_APP_IPFS_PROJECT_ID,
-        REACT_APP_IPFS_PROJECT_SECRET: (window as any).REACT_APP_IPFS_PROJECT_SECRET,
-        REACT_APP_SENDGRID_API_KEY: (window as any).REACT_APP_SENDGRID_API_KEY,
-        REACT_APP_TWILIO_ACCOUNT_SID: (window as any).REACT_APP_TWILIO_ACCOUNT_SID,
-        REACT_APP_COINBASE_COMMERCE_API_KEY: (window as any).REACT_APP_COINBASE_COMMERCE_API_KEY,
+        VITE_IPFS_PROJECT_ID: (window as any).VITE_IPFS_PROJECT_ID ? '[set]' : '[unset]',
+        VITE_SENDGRID_API_KEY: (window as any).VITE_SENDGRID_API_KEY ? '[set]' : '[unset]',
+        VITE_TWILIO_ACCOUNT_SID: (window as any).VITE_TWILIO_ACCOUNT_SID ? '[set]' : '[unset]',
+        VITE_COINBASE_COMMERCE_API_KEY: (window as any).VITE_COINBASE_COMMERCE_API_KEY ? '[set]' : '[unset]',
       },
       configManagerEnv: {
-        IPFS_PROJECT_ID: IntegrationConfigManager.getEnvVar('REACT_APP_IPFS_PROJECT_ID'),
-        IPFS_PROJECT_SECRET: IntegrationConfigManager.getEnvVar('REACT_APP_IPFS_PROJECT_SECRET'),
-        SENDGRID_API_KEY: IntegrationConfigManager.getEnvVar('REACT_APP_SENDGRID_API_KEY'),
-        TWILIO_ACCOUNT_SID: IntegrationConfigManager.getEnvVar('REACT_APP_TWILIO_ACCOUNT_SID'),
-        COINBASE_COMMERCE_API_KEY: IntegrationConfigManager.getEnvVar('REACT_APP_COINBASE_COMMERCE_API_KEY'),
+        IPFS_PROJECT_ID: IntegrationConfigManager.getEnvVar('VITE_IPFS_PROJECT_ID') ? '[set]' : '[unset]',
+        IPFS_PROJECT_SECRET: IntegrationConfigManager.getEnvVar('VITE_IPFS_PROJECT_SECRET') ? '[set]' : '[unset]',
+        SENDGRID_API_KEY: IntegrationConfigManager.getEnvVar('VITE_SENDGRID_API_KEY') ? '[set]' : '[unset]',
+        TWILIO_ACCOUNT_SID: IntegrationConfigManager.getEnvVar('VITE_TWILIO_ACCOUNT_SID') ? '[set]' : '[unset]',
+        COINBASE_COMMERCE_API_KEY: IntegrationConfigManager.getEnvVar('VITE_COINBASE_COMMERCE_API_KEY') ? '[set]' : '[unset]',
       }
     };
     setDebugInfo(info);
@@ -171,7 +171,7 @@ export const IntegrationDebugger: React.FC<IntegrationDebuggerProps> = ({
               </div>
 
               <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4">
-                <h3 className="font-semibold mb-2">Environment Variables (process.env)</h3>
+                <h3 className="font-semibold mb-2">Environment Variables (VITE_*)</h3>
                 <pre className="text-xs overflow-x-auto">
                   {JSON.stringify(debugInfo.environment, null, 2)}
                 </pre>

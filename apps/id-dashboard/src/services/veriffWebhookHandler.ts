@@ -1,6 +1,8 @@
 // Veriff Webhook Handler
 // Handles callbacks from Veriff after verification completion
 
+import { integrationsEnv } from '../config/integrationsEnv';
+
 export interface VeriffWebhookEvent {
   id: string;
   status: 'SUCCESS' | 'FAILED' | 'REVIEW';
@@ -67,7 +69,7 @@ export class VeriffWebhookHandler {
   private webhookSecret: string;
 
   constructor() {
-    this.webhookSecret = process.env.REACT_APP_VERIFF_WEBHOOK_SECRET || process.env.VERIFF_WEBHOOK_SECRET || '';
+    this.webhookSecret = integrationsEnv.VERIFF_WEBHOOK_SECRET || '';
   }
 
   static getInstance(): VeriffWebhookHandler {

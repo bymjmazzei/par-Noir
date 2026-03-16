@@ -27,10 +27,12 @@ export function getDatabasePool(): Pool {
                         dbUrl.includes('neon.tech') ||
                         dbUrl.includes('render.com');
 
+    // Pool max defaults to 20; can be increased via DATABASE_POOL_MAX if load testing shows exhaustion
+    const poolMax = parseInt(process.env.DATABASE_POOL_MAX || '20', 10) || 20;
     const config: PoolConfig = {
       connectionString: dbUrl,
       ssl: requiresSSL ? { rejectUnauthorized: false } : false,
-      max: 20, // Maximum number of clients in the pool
+      max: poolMax,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 30000, // Increased to 30 seconds for Railway network latency
     };

@@ -986,12 +986,10 @@ export function setupFeedRoutes(app: any) {
         return res.status(400).json({ error: 'pN identifier not found in token' });
       }
 
-      // Fetch feed tokens owned by this pN
+      // Fetch feed tokens owned by this pN (safe metadata only; never return pn name or passcode)
       const result = await db.query(`
         SELECT 
           ft.feed_id,
-          ft.encrypted_pn_name,
-          ft.encrypted_passcode,
           ft.public_key,
           f.feed_name,
           f.sub_pn_identifier
@@ -1001,13 +999,10 @@ export function setupFeedRoutes(app: any) {
         AND f.status = 'active'
       `, [pnIdentifier]);
 
-      // Decrypt tokens (they're base64 encoded)
       const feedTokens = result.rows.map(row => ({
         feedId: row.feed_id,
         feedName: row.feed_name,
         subPnIdentifier: row.sub_pn_identifier,
-        pnName: Buffer.from(row.encrypted_pn_name, 'base64').toString('utf8'),
-        passcode: Buffer.from(row.encrypted_passcode, 'base64').toString('utf8'),
         publicKey: row.public_key
       }));
 

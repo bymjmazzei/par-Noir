@@ -1,5 +1,6 @@
 // SMS service using Twilio
 import twilio from 'twilio';
+import { integrationsEnv } from '../config/integrationsEnv';
 
 export interface SMSConfig {
   accountSid: string;
@@ -173,7 +174,7 @@ export class SMSService {
 
 // Create SMS service instance with environment variables
 export const smsService = new SMSService({
-  accountSid: process.env.REACT_APP_TWILIO_ACCOUNT_SID || '',
-  authToken: process.env.REACT_APP_TWILIO_AUTH_TOKEN || '',
-  fromNumber: process.env.REACT_APP_TWILIO_FROM_NUMBER || ''
+  accountSid: integrationsEnv.TWILIO_ACCOUNT_SID || '',
+  authToken: integrationsEnv.TWILIO_AUTH_TOKEN || '',
+  fromNumber: integrationsEnv.TWILIO_FROM_NUMBER || ''
 });

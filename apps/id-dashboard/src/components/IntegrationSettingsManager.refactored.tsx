@@ -1,6 +1,7 @@
 import React, { useState, useEffect , useCallback} from 'react';
 import { IntegrationTester } from '../utils/integrationTester';
 import { IntegrationConfigManager } from '../utils/integrationConfig';
+import { integrationsEnv } from '../config/integrationsEnv';
 import {
   IntegrationHeader,
   IntegrationCard,
@@ -51,21 +52,21 @@ export const IntegrationSettingsManager: React.FC = React.memo(({ isOpen, onClos
         apiKeys: {
           IPFS_PROJECT_ID: {
             label: 'Project ID',
-            value: IntegrationConfigManager.getApiKey('ipfs', 'IPFS_PROJECT_ID') || process.env.REACT_APP_IPFS_PROJECT_ID || '',
+            value: IntegrationConfigManager.getApiKey('ipfs', 'IPFS_PROJECT_ID') || integrationsEnv.IPFS_PROJECT_ID || '',
             type: 'text',
             required: true,
             description: 'Your Infura IPFS project ID'
           },
           IPFS_PROJECT_SECRET: {
             label: 'Project Secret',
-            value: IntegrationConfigManager.getApiKey('ipfs', 'IPFS_PROJECT_SECRET') || process.env.REACT_APP_IPFS_PROJECT_SECRET || '',
+            value: IntegrationConfigManager.getApiKey('ipfs', 'IPFS_PROJECT_SECRET') || integrationsEnv.IPFS_PROJECT_SECRET || '',
             type: 'password',
             required: true,
             description: 'Your Infura IPFS project secret'
           },
           IPFS_URL: {
             label: 'IPFS URL',
-            value: IntegrationConfigManager.getApiKey('ipfs', 'IPFS_URL') || process.env.REACT_APP_IPFS_URL || 'https://ipfs.infura.io:5001',
+            value: IntegrationConfigManager.getApiKey('ipfs', 'IPFS_URL') || integrationsEnv.IPFS_URL || 'https://ipfs.infura.io:5001',
             type: 'url',
             required: true,
             description: 'IPFS gateway URL'
@@ -82,14 +83,14 @@ export const IntegrationSettingsManager: React.FC = React.memo(({ isOpen, onClos
         apiKeys: {
           SENDGRID_API_KEY: {
             label: 'API Key',
-            value: IntegrationConfigManager.getApiKey('sendgrid', 'SENDGRID_API_KEY') || process.env.REACT_APP_SENDGRID_API_KEY || '',
+            value: IntegrationConfigManager.getApiKey('sendgrid', 'SENDGRID_API_KEY') || integrationsEnv.SENDGRID_API_KEY || '',
             type: 'password',
             required: true,
             description: 'Your SendGrid API key'
           },
           FROM_EMAIL: {
             label: 'From Email',
-            value: IntegrationConfigManager.getApiKey('sendgrid', 'FROM_EMAIL') || process.env.REACT_APP_FROM_EMAIL || '',
+            value: IntegrationConfigManager.getApiKey('sendgrid', 'FROM_EMAIL') || integrationsEnv.FROM_EMAIL || '',
             type: 'text',
             required: true,
             description: 'Sender email address'
@@ -106,21 +107,21 @@ export const IntegrationSettingsManager: React.FC = React.memo(({ isOpen, onClos
         apiKeys: {
           TWILIO_ACCOUNT_SID: {
             label: 'Account SID',
-            value: IntegrationConfigManager.getApiKey('twilio', 'TWILIO_ACCOUNT_SID') || process.env.REACT_APP_TWILIO_ACCOUNT_SID || '',
+            value: IntegrationConfigManager.getApiKey('twilio', 'TWILIO_ACCOUNT_SID') || integrationsEnv.TWILIO_ACCOUNT_SID || '',
             type: 'text',
             required: true,
             description: 'Your Twilio Account SID'
           },
           TWILIO_AUTH_TOKEN: {
             label: 'Auth Token',
-            value: IntegrationConfigManager.getApiKey('twilio', 'TWILIO_AUTH_TOKEN') || process.env.REACT_APP_TWILIO_AUTH_TOKEN || '',
+            value: IntegrationConfigManager.getApiKey('twilio', 'TWILIO_AUTH_TOKEN') || integrationsEnv.TWILIO_AUTH_TOKEN || '',
             type: 'password',
             required: true,
             description: 'Your Twilio Auth Token'
           },
           TWILIO_FROM_NUMBER: {
             label: 'From Number',
-            value: IntegrationConfigManager.getApiKey('twilio', 'TWILIO_FROM_NUMBER') || process.env.REACT_APP_TWILIO_FROM_NUMBER || '',
+            value: IntegrationConfigManager.getApiKey('twilio', 'TWILIO_FROM_NUMBER') || integrationsEnv.TWILIO_FROM_NUMBER || '',
             type: 'text',
             required: true,
             description: 'Your Twilio phone number'
@@ -137,14 +138,14 @@ export const IntegrationSettingsManager: React.FC = React.memo(({ isOpen, onClos
         apiKeys: {
           COINBASE_COMMERCE_API_KEY: {
             label: 'API Key',
-            value: IntegrationConfigManager.getApiKey('coinbase', 'COINBASE_COMMERCE_API_KEY') || process.env.REACT_APP_COINBASE_COMMERCE_API_KEY || '',
+            value: IntegrationConfigManager.getApiKey('coinbase', 'COINBASE_COMMERCE_API_KEY') || integrationsEnv.COINBASE_COMMERCE_API_KEY || '',
             type: 'password',
             required: true,
             description: 'Your Coinbase Commerce API key'
           },
           COINBASE_WEBHOOK_SECRET: {
             label: 'Webhook Secret',
-            value: IntegrationConfigManager.getApiKey('coinbase', 'COINBASE_WEBHOOK_SECRET') || process.env.REACT_APP_COINBASE_WEBHOOK_SECRET || '',
+            value: IntegrationConfigManager.getApiKey('coinbase', 'COINBASE_WEBHOOK_SECRET') || integrationsEnv.COINBASE_WEBHOOK_SECRET || '',
             type: 'password',
             required: false,
             description: 'Webhook secret for payment verification'

@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import DOMPurify from 'dompurify';
 import { ArrowLeft, Users, Star, Calendar, Link as LinkIcon, Share2, Heart, MessageCircle, MoreVertical } from 'lucide-react';
 import { FeedService, Feed, FeedPost } from '../services/feeds/FeedService';
 import { FeedSubscriptionService } from '../services/feeds/FeedSubscriptionService';
@@ -80,7 +81,7 @@ export const FeedPage: React.FC = () => {
         {post.content && (
           <div 
             className="prose prose-invert max-w-none"
-            dangerouslySetInnerHTML={{ __html: post.content }}
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.content) }}
           />
         )}
 

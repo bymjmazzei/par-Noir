@@ -28,6 +28,9 @@ export interface Following {
   followedAt: string;
 }
 
+/** Max connections returned in a single request; clients should paginate (limit/offset) for more. */
+const MAX_LIST_PAGE_SIZE = 500;
+
 export class ConnectionsSheetsService {
   private static readonly CONNECTIONS_FILE_NAME = 'connections.xlsx';
   private static readonly FOLLOWERS_FILE_NAME = 'followers.xlsx';
@@ -240,7 +243,7 @@ export class ConnectionsSheetsService {
     try {
       const spreadsheetId = await this.getConnectionsSheet(token, metadataFolderId, userPnIdentifier, accountId);
       const [connRes, blocked, meta] = await Promise.all([
-        this.getConnections(token, spreadsheetId, userPnIdentifier, accountId, { limit: 999999, offset: 0 }),
+        this.getConnections(token, spreadsheetId, userPnIdentifier, accountId, { limit: MAX_LIST_PAGE_SIZE, offset: 0 }),
         this.getBlocked(token, spreadsheetId, userPnIdentifier, accountId),
         this.getMetadata(token, spreadsheetId, userPnIdentifier, accountId)
       ]);
@@ -519,8 +522,8 @@ export class ConnectionsSheetsService {
 
     const total = connections.length;
 
-    // Apply pagination
-    const limit = options?.limit || 50;
+    // Apply pagination (cap limit to avoid unbounded responses)
+    const limit = Math.min(options?.limit ?? 50, MAX_LIST_PAGE_SIZE);
     const offset = options?.offset || 0;
     const paginatedConnections = connections.slice(offset, offset + limit);
 
@@ -541,7 +544,7 @@ export class ConnectionsSheetsService {
     accountId: string | undefined
   ): Promise<Map<string, Connection>> {
     const { connections } = await this.getConnections(token, spreadsheetId, userPnIdentifier, accountId, {
-      limit: 999999,
+      limit: MAX_LIST_PAGE_SIZE,
       offset: 0
     });
     const map = new Map<string, Connection>();

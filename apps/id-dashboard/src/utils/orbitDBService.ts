@@ -4,6 +4,7 @@
  * Maintains same API interface for seamless UI/UX transition
  */
 
+import { integrationsEnv } from '../config/integrationsEnv';
 import { IdentityError, IdentityErrorCodes } from '../types';
 
 export interface OrbitDBConfig {
@@ -62,10 +63,10 @@ export class OrbitDBService {
   constructor(config: Partial<OrbitDBConfig> = {}) {
     this.config = {
       ipfsConfig: {
-        url: process.env.REACT_APP_IPFS_URL || 'https://ipfs.infura.io:5001',
-        gatewayUrl: process.env.REACT_APP_IPFS_GATEWAY_URL || 'https://ipfs.io',
-        projectId: process.env.REACT_APP_IPFS_PROJECT_ID || '',
-        projectSecret: process.env.REACT_APP_IPFS_PROJECT_SECRET || ''
+        url: integrationsEnv.IPFS_URL || 'https://ipfs.infura.io:5001',
+        gatewayUrl: integrationsEnv.IPFS_GATEWAY_URL || 'https://ipfs.io',
+        projectId: integrationsEnv.IPFS_PROJECT_ID || '',
+        projectSecret: integrationsEnv.IPFS_PROJECT_SECRET || ''
       },
       databaseName: 'pn-metadata',
       encryptionEnabled: true,

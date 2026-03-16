@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import { integrationsEnv } from '../config/integrationsEnv';
 
 // Mock types and interfaces
 export interface Identity {
@@ -105,7 +106,7 @@ export class DecentralizedAuthManager {
 
   constructor() {
     this.sdk = new DecentralizedAuthSDK({
-      apiUrl: process.env.REACT_APP_API_URL || 'http://localhost:3002/api',
+      apiUrl: (() => { const base = integrationsEnv.API_URL || ''; return base ? (base.endsWith('/api') ? base : `${base.replace(/\/$/, '')}/api`) : 'http://localhost:3002/api'; })(),
       enableWebSocket: true,
       retryAttempts: 3
     });

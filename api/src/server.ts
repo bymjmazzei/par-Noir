@@ -26,7 +26,8 @@ import { safeClientErrorMessage } from './server/utils/safeError';
 const PORT = process.env.PORT || 3001;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-// Always include these origins, even if ALLOWED_ORIGINS env var is set
+// Always include these origins, even if ALLOWED_ORIGINS env var is set.
+// Capacitor/WebView: add capacitor://localhost and ionic://localhost so mobile app can call API.
 const DEFAULT_ORIGINS = [
   'https://parnoir.com',
   'https://pn.parnoir.com',
@@ -35,6 +36,8 @@ const DEFAULT_ORIGINS = [
   'https://browse.parnoir.com',
   'https://prism.parnoir.com',
   'https://licensing.parnoir.com',
+  'capacitor://localhost',
+  'ionic://localhost',
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:5174'
@@ -9854,15 +9857,26 @@ class ProductionServer {
     });
   }
 
+  /**
+   * WebSocket (Socket.IO) setup.
+   * SECURITY: Connections are currently unauthenticated. Do not use for user-scoped or
+   * sensitive data. If adding notification or private messaging over sockets, require
+   * Bearer token in handshake (e.g. socket.handshake.auth.token) and validate via
+   * PNOAuthService.validateAccessToken before attaching user to socket.data.
+   */
   private setupWebSockets(): void {
     this.io.on('connection', (socket) => {
-      console.log(`Client connected: ${socket.id}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Client connected: ${socket.id}`);
+      }
 
       socket.on('disconnect', () => {
-        console.log(`Client disconnected: ${socket.id}`);
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`Client disconnected: ${socket.id}`);
+        }
       });
 
-      // Handle authentication events
+      // Handle authentication events (challenge/response; no Bearer validation yet)
       socket.on('auth:challenge', (data) => {
         const challenge = this.generateChallenge();
         socket.emit('auth:challenge', { challenge });
@@ -17203,7 +17217,8 @@ class ProductionServer {
         if (!_g) return this.driveNotInitialized(res);
         const metadataFolderId = _g.metadataFolderId;
 
-        const limit = parseInt(req.query.limit as string) || 50;
+        const MAX_NOTIFICATIONS_PAGE_SIZE = 500;
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, MAX_NOTIFICATIONS_PAGE_SIZE);
         const offset = parseInt(req.query.offset as string) || 0;
         const unreadOnly = req.query.unreadOnly === 'true';
         const type = req.query.type as string | undefined;

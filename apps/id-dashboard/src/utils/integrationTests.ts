@@ -1,5 +1,7 @@
 // Integration Tests for All Services (Browser-Compatible)
 // Integration tests for all services
+import { integrationsEnv } from '../config/integrationsEnv';
+
 export interface TestResult {
   service: string;
   status: 'success' | 'error' | 'skipped';
@@ -29,8 +31,8 @@ export class IntegrationTests {
     try {
       
       // Test configuration availability
-      const apiKey = process.env.REACT_APP_PINATA_API_KEY;
-      const gatewayUrl = process.env.REACT_APP_IPFS_GATEWAY_URL;
+      const apiKey = integrationsEnv.PINATA_API_KEY;
+      const gatewayUrl = integrationsEnv.IPFS_GATEWAY_URL;
       
       if (!apiKey) {
         this.results.push({
@@ -67,7 +69,7 @@ export class IntegrationTests {
     try {
       
       // Test API key availability
-      const apiKey = process.env.REACT_APP_COINBASE_COMMERCE_API_KEY;
+      const apiKey = integrationsEnv.COINBASE_COMMERCE_API_KEY;
       
       if (!apiKey) {
         this.results.push({
@@ -107,22 +109,34 @@ export class IntegrationTests {
     try {
       
       const requiredVars = [
-        'REACT_APP_TWILIO_ACCOUNT_SID',
-        'REACT_APP_TWILIO_AUTH_TOKEN', 
-        'REACT_APP_TWILIO_FROM_NUMBER',
-        'REACT_APP_SENDGRID_API_KEY',
-        'REACT_APP_FROM_EMAIL',
-        'REACT_APP_FROM_NAME',
-        'REACT_APP_PINATA_API_KEY',
-        'REACT_APP_IPFS_GATEWAY_URL',
-        'REACT_APP_COINBASE_COMMERCE_API_KEY'
-      ];
-      
+        'VITE_TWILIO_ACCOUNT_SID',
+        'VITE_TWILIO_AUTH_TOKEN',
+        'VITE_TWILIO_FROM_NUMBER',
+        'VITE_SENDGRID_API_KEY',
+        'VITE_FROM_EMAIL',
+        'VITE_FROM_NAME',
+        'VITE_PINATA_API_KEY',
+        'VITE_IPFS_GATEWAY_URL',
+        'VITE_COINBASE_COMMERCE_API_KEY'
+      ] as const;
+
+      const envMap: Record<string, string> = {
+        VITE_TWILIO_ACCOUNT_SID: integrationsEnv.TWILIO_ACCOUNT_SID,
+        VITE_TWILIO_AUTH_TOKEN: integrationsEnv.TWILIO_AUTH_TOKEN,
+        VITE_TWILIO_FROM_NUMBER: integrationsEnv.TWILIO_FROM_NUMBER,
+        VITE_SENDGRID_API_KEY: integrationsEnv.SENDGRID_API_KEY,
+        VITE_FROM_EMAIL: integrationsEnv.FROM_EMAIL,
+        VITE_FROM_NAME: integrationsEnv.FROM_NAME,
+        VITE_PINATA_API_KEY: integrationsEnv.PINATA_API_KEY,
+        VITE_IPFS_GATEWAY_URL: integrationsEnv.IPFS_GATEWAY_URL,
+        VITE_COINBASE_COMMERCE_API_KEY: integrationsEnv.COINBASE_COMMERCE_API_KEY,
+      };
+
       const missingVars: string[] = [];
       const presentVars: string[] = [];
-      
+
       requiredVars.forEach(varName => {
-        const value = process.env[varName];
+        const value = envMap[varName] || '';
         if (value && value !== '') {
           presentVars.push(varName);
         } else {

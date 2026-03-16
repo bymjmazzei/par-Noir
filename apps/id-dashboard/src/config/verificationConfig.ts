@@ -1,6 +1,8 @@
 // Identity Verification Configuration
 // Configures identity verification providers and fraud prevention settings
 
+import { integrationsEnv } from './integrationsEnv';
+
 export interface VerificationProviderConfig {
   name: string;
   enabled: boolean;
@@ -57,10 +59,10 @@ export const defaultVerificationConfig: VerificationConfig = {
     veriff: {
       name: 'Veriff',
       enabled: true,
-      apiKey: import.meta.env.VITE_VERIFF_API_KEY || process.env.REACT_APP_VERIFF_API_KEY,
-      apiSecret: import.meta.env.VITE_VERIFF_API_SECRET || process.env.REACT_APP_VERIFF_API_SECRET,
+      apiKey: integrationsEnv.VERIFF_API_KEY,
+      apiSecret: integrationsEnv.VERIFF_API_SECRET,
       baseUrl: 'https://stationapi.veriff.com',
-      webhookUrl: process.env.REACT_APP_VERIFF_WEBHOOK_URL || 'https://yourdomain.com/api/veriff-webhook',
+      webhookUrl: integrationsEnv.VERIFF_WEBHOOK_URL || 'https://yourdomain.com/api/veriff-webhook',
       supportedDocuments: ['drivers_license', 'passport', 'state_id', 'national_id'],
       supportedCountries: ['US', 'CA', 'GB', 'DE', 'FR', 'ES', 'IT', 'NL', 'SE', 'NO', 'DK', 'FI'],
       fraudThreshold: 0.3,
@@ -72,10 +74,10 @@ export const defaultVerificationConfig: VerificationConfig = {
     jumio: {
       name: 'Jumio',
       enabled: false,
-      apiKey: process.env.REACT_APP_JUMIO_API_KEY,
-      apiSecret: process.env.REACT_APP_JUMIO_API_SECRET,
+      apiKey: integrationsEnv.JUMIO_API_KEY,
+      apiSecret: integrationsEnv.JUMIO_API_SECRET,
       baseUrl: 'https://netverify.com/api/v4',
-      webhookUrl: process.env.REACT_APP_JUMIO_WEBHOOK_URL,
+      webhookUrl: integrationsEnv.JUMIO_WEBHOOK_URL,
       supportedDocuments: ['drivers_license', 'passport', 'state_id', 'national_id'],
       supportedCountries: ['US', 'CA', 'GB', 'DE', 'FR', 'ES', 'IT', 'NL', 'SE', 'NO', 'DK', 'FI', 'AU', 'NZ'],
       fraudThreshold: 0.25,
@@ -87,10 +89,10 @@ export const defaultVerificationConfig: VerificationConfig = {
     onfido: {
       name: 'Onfido',
       enabled: false,
-      apiKey: process.env.REACT_APP_ONFIDO_API_KEY,
-      apiSecret: process.env.REACT_APP_ONFIDO_API_SECRET,
+      apiKey: integrationsEnv.ONFIDO_API_KEY,
+      apiSecret: integrationsEnv.ONFIDO_API_SECRET,
       baseUrl: 'https://api.onfido.com/v3',
-      webhookUrl: process.env.REACT_APP_ONFIDO_WEBHOOK_URL,
+      webhookUrl: integrationsEnv.ONFIDO_WEBHOOK_URL,
       supportedDocuments: ['drivers_license', 'passport', 'state_id', 'national_id'],
       supportedCountries: ['US', 'CA', 'GB', 'DE', 'FR', 'ES', 'IT', 'NL', 'SE', 'NO', 'DK', 'FI', 'AU', 'NZ', 'BR', 'MX'],
       fraudThreshold: 0.2,
@@ -143,28 +145,28 @@ export const getVerificationConfig = (): VerificationConfig => {
   const config = { ...defaultVerificationConfig };
   
   // Override with environment variables
-  if (process.env.REACT_APP_VERIFICATION_PROVIDER) {
-    config.defaultProvider = process.env.REACT_APP_VERIFICATION_PROVIDER as any;
+  if (integrationsEnv.VERIFICATION_PROVIDER) {
+    config.defaultProvider = integrationsEnv.VERIFICATION_PROVIDER as any;
   }
   
-  if (process.env.REACT_APP_VERIFICATION_FRAUD_THRESHOLD) {
-    config.globalSettings.fraudThreshold = parseFloat(process.env.REACT_APP_VERIFICATION_FRAUD_THRESHOLD);
+  if (integrationsEnv.VERIFICATION_FRAUD_THRESHOLD) {
+    config.globalSettings.fraudThreshold = parseFloat(integrationsEnv.VERIFICATION_FRAUD_THRESHOLD);
   }
   
-  if (process.env.REACT_APP_VERIFICATION_CONFIDENCE_THRESHOLD) {
-    config.globalSettings.confidenceThreshold = parseFloat(process.env.REACT_APP_VERIFICATION_CONFIDENCE_THRESHOLD);
+  if (integrationsEnv.VERIFICATION_CONFIDENCE_THRESHOLD) {
+    config.globalSettings.confidenceThreshold = parseFloat(integrationsEnv.VERIFICATION_CONFIDENCE_THRESHOLD);
   }
   
   // Enable providers based on environment
   if (process.env.NODE_ENV === 'production') {
     // In production, enable real providers if API keys are available
-    if (process.env.REACT_APP_VERIFF_API_KEY && process.env.REACT_APP_VERIFF_API_SECRET) {
+    if (integrationsEnv.VERIFF_API_KEY && integrationsEnv.VERIFF_API_SECRET) {
       config.providers.veriff.enabled = true;
     }
-    if (process.env.REACT_APP_JUMIO_API_KEY && process.env.REACT_APP_JUMIO_API_SECRET) {
+    if (integrationsEnv.JUMIO_API_KEY && integrationsEnv.JUMIO_API_SECRET) {
       config.providers.jumio.enabled = true;
     }
-    if (process.env.REACT_APP_ONFIDO_API_KEY && process.env.REACT_APP_ONFIDO_API_SECRET) {
+    if (integrationsEnv.ONFIDO_API_KEY && integrationsEnv.ONFIDO_API_SECRET) {
       config.providers.onfido.enabled = true;
     }
     

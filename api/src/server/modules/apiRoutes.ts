@@ -33,8 +33,22 @@ export async function authenticateApiKey(req: Request, res: Response, next: Func
     return;
   }
 
-  // Attach API key data to request
-  (req as any).apiKey = validation.apiKeyData;
+  const apiKeyData = validation.apiKeyData!;
+
+  const limitResult = await ApiKeyService.checkRateLimit(apiKeyData.id, apiKeyData.rateLimit);
+  if (!limitResult.allowed) {
+    const retryAfterSec = limitResult.resetAt
+      ? Math.ceil((limitResult.resetAt - Date.now()) / 1000)
+      : 60;
+    res.setHeader('Retry-After', String(retryAfterSec));
+    res.status(429).json({
+      error: 'Too Many Requests',
+      message: 'API key rate limit exceeded. Try again later.'
+    });
+    return;
+  }
+
+  (req as any).apiKey = apiKeyData;
   next();
   return;
 }

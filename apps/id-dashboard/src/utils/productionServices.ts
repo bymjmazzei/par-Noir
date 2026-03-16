@@ -1,6 +1,7 @@
 // Production Services Integration
 // This file manages all production services and provides a unified interface
 
+import { integrationsEnv } from '../config/integrationsEnv';
 import { orbitDBService } from './orbitDBService';
 import { emailService } from './emailService';
 import { smsService } from './smsService';
@@ -69,24 +70,24 @@ export class ProductionServicesManager {
       // Default configuration from environment variables
       const config: ProductionServicesConfig = {
         orbitDB: {
-          enabled: !!process.env.REACT_APP_IPFS_PROJECT_ID,
-          ipfsUrl: process.env.REACT_APP_IPFS_URL || '',
-          projectId: process.env.REACT_APP_IPFS_PROJECT_ID || ''
+          enabled: !!integrationsEnv.IPFS_PROJECT_ID,
+          ipfsUrl: integrationsEnv.IPFS_URL || '',
+          projectId: integrationsEnv.IPFS_PROJECT_ID || ''
         },
         email: {
-          enabled: !!process.env.REACT_APP_SENDGRID_API_KEY,
-          apiKey: process.env.REACT_APP_SENDGRID_API_KEY || '',
-          fromEmail: process.env.REACT_APP_FROM_EMAIL || ''
+          enabled: !!integrationsEnv.SENDGRID_API_KEY,
+          apiKey: integrationsEnv.SENDGRID_API_KEY || '',
+          fromEmail: integrationsEnv.FROM_EMAIL || ''
         },
         sms: {
-          enabled: !!process.env.REACT_APP_TWILIO_ACCOUNT_SID,
-          accountSid: process.env.REACT_APP_TWILIO_ACCOUNT_SID || '',
-          authToken: process.env.REACT_APP_TWILIO_AUTH_TOKEN || ''
+          enabled: !!integrationsEnv.TWILIO_ACCOUNT_SID,
+          accountSid: integrationsEnv.TWILIO_ACCOUNT_SID || '',
+          authToken: integrationsEnv.TWILIO_AUTH_TOKEN || ''
         },
         ipfs: {
-          enabled: !!process.env.REACT_APP_IPFS_API_KEY,
-          apiKey: process.env.REACT_APP_IPFS_API_KEY || '',
-          gatewayUrl: process.env.REACT_APP_IPFS_GATEWAY_URL || ''
+          enabled: !!integrationsEnv.IPFS_API_KEY,
+          apiKey: integrationsEnv.IPFS_API_KEY || '',
+          gatewayUrl: integrationsEnv.IPFS_GATEWAY_URL || ''
         },
         qrScanner: {
           enabled: true,
@@ -197,9 +198,9 @@ export class ProductionServicesManager {
   private static async initializeIPFSService(): Promise<ServiceResult> {
     try {
       const config = {
-        apiKey: process.env.REACT_APP_PINATA_API_KEY || '',
-        secretKey: process.env.REACT_APP_PINATA_SECRET_KEY || '',
-        gatewayUrl: process.env.REACT_APP_IPFS_GATEWAY_URL || 'https://gateway.pinata.cloud'
+        apiKey: integrationsEnv.PINATA_API_KEY || '',
+        secretKey: integrationsEnv.PINATA_SECRET_KEY || integrationsEnv.PINATA_SECRET_API_KEY || '',
+        gatewayUrl: integrationsEnv.IPFS_GATEWAY_URL || 'https://gateway.pinata.cloud'
       };
 
       if (!config.apiKey || !config.secretKey) {

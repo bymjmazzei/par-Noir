@@ -82,15 +82,16 @@ export const authenticateToken = async (
       scope: tokenPayload.scope,
     };
     
+    // Do not log DID or pnIdentifier (sensitive); log only that auth succeeded
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[Auth] Authenticated user: ${tokenPayload.did} (${tokenPayload.pnIdentifier || 'no pnIdentifier'})`);
+      console.log('[Auth] Authenticated');
     }
     
     next();
   } catch (error) {
-    // On error, continue without authentication
+    // On error, continue without authentication; do not log token or identity data
     if (process.env.NODE_ENV === 'development') {
-      console.error('[Auth] Error during token verification:', error);
+      console.error('[Auth] Error during token verification');
     }
     next();
   }
@@ -153,7 +154,7 @@ export const requireAuth = async (
     };
     
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[Auth] Authenticated user: ${tokenPayload.did} (${tokenPayload.pnIdentifier || 'no pnIdentifier'})`);
+      console.log('[Auth] Authenticated');
     }
     
     next();

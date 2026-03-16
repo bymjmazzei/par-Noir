@@ -1,5 +1,6 @@
 // Email service using SendGrid
 import sgMail from '@sendgrid/mail';
+import { integrationsEnv } from '../config/integrationsEnv';
 
 export interface EmailConfig {
   apiKey: string;
@@ -265,7 +266,7 @@ export class EmailService {
 
 // Create email service instance with environment variables
 export const emailService = new EmailService({
-  apiKey: process.env.REACT_APP_SENDGRID_API_KEY || '',
-  fromEmail: process.env.REACT_APP_FROM_EMAIL || 'noreply@parnoir.com',
-  fromName: process.env.REACT_APP_FROM_NAME || 'Par-Noir Identity Protocol'
+  apiKey: integrationsEnv.SENDGRID_API_KEY || '',
+  fromEmail: integrationsEnv.FROM_EMAIL || 'noreply@parnoir.com',
+  fromName: integrationsEnv.FROM_NAME || 'Par-Noir Identity Protocol'
 });

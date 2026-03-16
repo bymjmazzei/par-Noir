@@ -206,8 +206,9 @@ export class NotificationsSheetsService {
 
     const total = notifications.length;
 
-    // Apply pagination
-    const limit = options?.limit || 50;
+    // Apply pagination (cap to avoid unbounded responses)
+    const MAX_PAGE_SIZE = 500;
+    const limit = Math.min(options?.limit ?? 50, MAX_PAGE_SIZE);
     const offset = options?.offset || 0;
     const paginatedNotifications = notifications.slice(offset, offset + limit);
 

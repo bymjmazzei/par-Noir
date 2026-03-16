@@ -38,6 +38,14 @@ export interface OAuthUserInfo {
   public_key?: string; // Public key from OAuth for file decryption
 }
 
+/** Feed token metadata only; pn name and passcode are never sent to or stored on the client. */
+export interface FeedToken {
+  feedId: string;
+  feedName: string;
+  subPnIdentifier: string;
+  publicKey?: string;
+}
+
 export interface AuthSession {
   accessToken: string;
   refreshToken?: string;
@@ -47,6 +55,7 @@ export interface AuthSession {
   // pN name is NOT stored - it's a secret
   nickname?: string; // Optional nickname if available
   pnIdentifier?: string; // pN identifier from database (e.g., "83c1db813607")
+  feedTokens?: FeedToken[]; // Safe metadata for context switching; no credentials
 }
 
 export class PNOAuthService {

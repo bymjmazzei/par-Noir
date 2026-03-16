@@ -468,6 +468,10 @@ Updates metadata for a specific DID.
 
 ## Security & Monitoring
 
+### WebSockets (Socket.IO)
+
+Socket.IO connections are currently **unauthenticated**. Do not use them for user-scoped or sensitive data. For notifications or private messaging, use authenticated HTTP APIs or add Bearer token validation to the socket handshake.
+
 ### Get Security Status
 
 Retrieves security status and audit information for a DID.

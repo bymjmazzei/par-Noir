@@ -14,24 +14,23 @@ Apply these on every edit. Full doc: SHARED_CODE_RULES.md.
 
 ## 1. One source of truth — no duplication across apps
 
-- Types, API clients, encryption, and business logic used by more than one of: id-dashboard, aggregator-browser, api → MUST live in `packages/` or `core/`, not in an app.
-- Before adding a type, util, or service in an app: check `packages/` and `core/`. If it exists in the other app, move it to a package and have both apps import it.
-- Never create two separate implementations of the same thing in two apps. One implementation in a package; apps import.
+- Types, API clients, encryption, and business logic used by more than one of: id-dashboard, aggregator-browser, api → MUST live in **`core/`**, **`sdk/`**, or `packages/` (when used), not in an app.
+- Before adding a type, util, or service in an app: check `core/`, `sdk/`, and `packages/`. If it exists in the other app, move it to shared code and have both apps import it.
+- Never create two separate implementations of the same thing in two apps. One implementation in core/, sdk/, or packages/; apps import.
 
 ## 2. Where shared code lives
 
-- **Types** (PublicMetadata, IndexedFile, EncryptedFilePackage, Feed, etc.): `packages/par-noir-types` (create if missing).
-- **API clients** (drive, storage accounts, metadata-index): `packages/par-noir-storage-client` or similar.
-- **Central metadata** (fetch/submit to aggregator API): `packages/par-noir-central-metadata`. Browser: fetch only. Dashboard: fetch + submit.
-- **Pure logic** (e.g. processPDFPagesParallel): `packages/` or `services/` in one app; if both need it → `packages/`.
+- **Identity / crypto:** `core/` (e.g. identity-core). **SDK / client helpers:** `sdk/` (e.g. identity-sdk).
+- **Types, API clients, central metadata:** When shared by multiple apps, use `core/`, `sdk/`, or `packages/` when that layout exists. Browser: fetch only. Dashboard: fetch + submit.
+- **Pure logic** (e.g. processPDFPagesParallel): `packages/` or `services/` in one app; if both need it → `core/`, `sdk/`, or `packages/`.
 - **Apps**: UI, app-specific flows, wiring only. No duplicated types, API logic, or encryption.
 
 ## 3. Hard rules
 
-1. **Apps do not import from each other.** Shared code is in `packages/` or `core/`.
+1. **Apps do not import from each other.** Shared code is in `core/`, `sdk/`, or `packages/`.
 2. **Services do NOT import from UI components** to get a function. Put the function in `packages/` or `services/`; the component imports it.
 3. **Aggregator-browser: storage is API-only.** No direct `googleapis.com` or `oauth2.googleapis.com`. Storage = par Noir API. Do not add orphan direct-Google code in the browser.
-4. **When adding a shared package:** create `packages/<name>/` with `package.json` and `src/index.ts`; add `packages/*` to root `workspaces`; apps use `"@par-noir/<name>": "workspace:*"`.
+4. **When adding shared code:** Prefer `core/` or `sdk/`. If using `packages/`: create `packages/<name>/` with `package.json` and `src/index.ts`; add `packages/*` to root `workspaces`; apps use `"@par-noir/<name>": "workspace:*"`.
 5. **We are in development.** Do not prioritize backwards compatibility. Prefer correct, simple behavior over preserving legacy or broken behavior.
 6. **Do not patch symptoms.** Find the root cause and fix it. Avoid workarounds, compatibility shims, or "quick fixes" that hide the real bug.
 7. **Do not commit .env, API keys, secrets, or other sensitive config to git.** Use .env (gitignored), .env.example with placeholders only, or a secrets manager. Pre-commit runs `scripts/check-secrets.sh` to block commits that add known secret patterns; do not bypass or remove it.
@@ -42,8 +41,8 @@ Apply these on every edit. Full doc: SHARED_CODE_RULES.md.
 
 ## 4. Before you write
 
-- Could the other app need this? → put it in `packages/` first.
-- Am I copying something from the other app? → stop; move to `packages/` and import.
+- Could the other app need this? → put it in `core/`, `sdk/`, or `packages/` first.
+- Am I copying something from the other app? → stop; move to `core/`, `sdk/`, or `packages/` and import.
 - Am I importing a React component from a service? → stop; move the pure logic to `packages/` or `services/`.
 - Am I logging, printing, or storing pn name, passcode, email, age, Google Drive account, or any identity/ZKP-protected data in plain text? → stop; remove or encrypt.
 - Is this identity-direct? → dashboard + APIs. Browser-only? → browser only.

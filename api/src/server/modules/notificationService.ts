@@ -83,7 +83,7 @@ export class NotificationService {
         spreadsheetId,
         normalizedUserPnIdentifier,
         accountId,
-        { limit: 999999, offset: 0 }
+        { limit: 500, offset: 0 }
       );
       const metadata = await NotificationsSheetsService.getMetadata(token, spreadsheetId, normalizedUserPnIdentifier, accountId);
       const updatedAt = metadata?.updatedAt ?? (notifications[0]?.created_at ?? new Date().toISOString());
@@ -413,7 +413,7 @@ export class NotificationService {
         accountId,
         {
           unreadOnly: true,
-          limit: 10000 // Get all unread to count them
+          limit: 500 // Capped; sufficient for unread count
         }
       );
 

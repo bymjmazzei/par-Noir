@@ -30,24 +30,26 @@ This repo is a monorepo so we can reuse code. Duplicating logic or types across 
 ## 1. Before You Write Any New Code
 
 1. **Could id-dashboard or aggregator-browser or api also need this?**  
-   If yes → implement in `packages/` first, then import into the app(s).
+   If yes → implement in `core/` or `sdk/` first (or `packages/` when introduced), then import into the app(s).
 
 2. **Am I about to copy a type, util, or service from one app into another?**  
-   **Stop.** Put it in a shared package; both apps import from it.
+   **Stop.** Put it in shared code (`core/`, `sdk/`, or `packages/` when used); both apps import from it.
 
 3. **Am I adding a file that looks like something in the other app?**  
-   **Stop.** Single source of truth in `packages/`; both apps depend on it.
+   **Stop.** Single source of truth in `core/`, `sdk/`, or `packages/`; both apps depend on it.
 
 ---
 
 ## 2. Where Shared Code Lives
 
+Shared code lives in **`core/`** (e.g. identity-core) and **`sdk/`** (e.g. identity-sdk). When adding shared types or API clients used by multiple apps, use `core/` or `sdk/`; **`packages/`** may be introduced later for additional shared modules.
+
 | What | Where | Used by |
 |------|-------|---------|
-| Types (PublicMetadata, IndexedFile, EncryptedFilePackage, Feed, etc.) | `packages/par-noir-types` | both apps |
-| API clients (drive, storage accounts, metadata-index) | `packages/par-noir-storage-client` | both apps |
-| Central metadata (fetch/submit to aggregator API) | `packages/par-noir-central-metadata` | both apps |
-| Pure logic (e.g. processPDFPagesParallel) | `packages/` or `services/`; if both need it → `packages/` | both apps |
+| Identity / crypto (proof-of-work, 3-factor) | `core/identity-core` | dashboard, API, browser |
+| SDK / client helpers | `sdk/` (e.g. identity-sdk) | apps |
+| Types, API clients, pure logic shared by apps | `core/`, `sdk/`, or `packages/` when present | both apps |
+| Pure logic used in one app only | `services/` in that app | that app |
 
 Apps: UI, app-specific flows, wiring only. No duplicated types, API logic, or encryption.
 
@@ -55,11 +57,11 @@ Apps: UI, app-specific flows, wiring only. No duplicated types, API logic, or en
 
 ## 3. Rules (Must Follow)
 
-1. **One definition per concept.** One PublicMetadata, one IndexedFile, one processPDFPagesParallel, one CentralMetadata. If two apps need it, it lives in a package.
-2. **Apps do not import from each other.** Shared code is in `packages/` or `core/`.
+1. **One definition per concept.** One PublicMetadata, one IndexedFile, one processPDFPagesParallel, one CentralMetadata. If two apps need it, it lives in `core/`, `sdk/`, or `packages/` (when used).
+2. **Apps do not import from each other.** Shared code is in `core/`, `sdk/`, or `packages/`.
 3. **Services do not import from UI components.** Put the function in `packages/` or `services/`; the component imports it.
 4. **Aggregator-browser: API‑only for storage.** No direct googleapis.com or oauth2.googleapis.com. Storage = par Noir API only.
-5. **When adding a shared package:** `packages/<name>/`, add to root `workspaces`, `package.json` with main/types, `src/index.ts`. Apps: `"@par-noir/<name>": "workspace:*"`.
+5. **When adding shared code:** Prefer `core/` or `sdk/`. If using `packages/`: `packages/<name>/`, add to root `workspaces`, `package.json` with main/types, `src/index.ts`. Apps: `"@par-noir/<name>": "workspace:*"`.
 6. **We are in development.** Do not prioritize backwards compatibility. Prefer correct, simple behavior over preserving legacy or broken behavior.
 7. **Do not patch symptoms.** Find the root cause and fix it. Avoid workarounds, compatibility shims, or "quick fixes" that hide the real bug.
 8. **Do not commit .env, API keys, secrets, or other sensitive config to git.** Use .env (gitignored), .env.example with placeholders only, or a secrets manager. Pre-commit runs scripts/check-secrets.sh; do not bypass or remove it.
@@ -85,7 +87,7 @@ If you cannot push (e.g. no credentials): before finishing, tell the user exactl
 
 ## 5. PR / Pre‑Commit Checklist
 
-- [ ] I did not duplicate a type/util/service across apps without putting it in `packages/`.
+- [ ] I did not duplicate a type/util/service across apps without putting it in `core/`, `sdk/`, or `packages/`.
 - [ ] I did not create two separate implementations of the same thing in two apps.
 - [ ] No service imports from a React component to get a pure function.
 - [ ] In aggregator-browser, no direct googleapis.com or oauth2.googleapis.com.

@@ -199,8 +199,9 @@ const TransferReceiver: React.FC<TransferReceiverProps> = ({ transferId, onClose
       if (transferData.ipfsCid) {
         try {
           logger.debug('Cleaning up IPFS file:', transferData.ipfsCid);
-          const pinataApiKey = import.meta.env.VITE_PINATA_API_KEY || process.env.REACT_APP_PINATA_API_KEY;
-          const pinataSecretKey = import.meta.env.VITE_PINATA_SECRET_API_KEY || process.env.REACT_APP_PINATA_SECRET_API_KEY;
+          const { integrationsEnv } = await import('../config/integrationsEnv');
+          const pinataApiKey = integrationsEnv.PINATA_API_KEY;
+          const pinataSecretKey = integrationsEnv.PINATA_SECRET_API_KEY || integrationsEnv.PINATA_SECRET_KEY;
           
           if (!pinataApiKey || !pinataSecretKey) {
             logger.warn('Pinata API credentials not configured, skipping IPFS cleanup');

@@ -1,5 +1,8 @@
 // Integration Configuration Manager
-// This manages API keys and makes them available throughout the application
+// This manages API keys and makes them available throughout the application.
+// Build-time values use VITE_* (see config/integrationsEnv.ts). Runtime user config is stored here.
+
+import { integrationsEnv } from '../config/integrationsEnv';
 
 export interface IntegrationConfig {
   [integrationKey: string]: {
@@ -51,11 +54,7 @@ export class IntegrationConfigManager {
     Object.entries(this.config).forEach(([integrationKey, apiKeys]) => {
       Object.entries(apiKeys).forEach(([key, value]) => {
         if (typeof window !== 'undefined') {
-          (window as any)[`REACT_APP_${key}`] = value;
-        }
-        // Also set process.env for server-side compatibility
-        if (typeof process !== 'undefined' && process.env) {
-          (process.env as any)[`REACT_APP_${key}`] = value;
+          (window as any)[`VITE_${key}`] = value;
         }
       });
     });
@@ -77,12 +76,8 @@ export class IntegrationConfigManager {
     }
     this.config[integrationKey][apiKeyName] = value;
     
-    // Update environment variables
     if (typeof window !== 'undefined') {
-      (window as any)[`REACT_APP_${apiKeyName}`] = value;
-    }
-    if (typeof process !== 'undefined' && process.env) {
-      (process.env as any)[`REACT_APP_${apiKeyName}`] = value;
+      (window as any)[`VITE_${apiKeyName}`] = value;
     }
     
     this.saveToStorage();
@@ -147,28 +142,21 @@ export class IntegrationConfigManager {
   }
 
   /**
-   * Get environment variable (with fallback to stored config)
+   * Get environment variable. Accepts VITE_* or REACT_APP_* key; strips prefix and checks
+   * stored config then build-time integrationsEnv.
    */
   static getEnvVar(key: string): string {
-    // First try process.env (for server-side)
-    if (typeof process !== 'undefined' && process.env && process.env[key]) {
-      return process.env[key] || '';
-    }
-    
-    // Then try window (for client-side)
+    const configKey = key.replace(/^(VITE_|REACT_APP_)/, '');
     if (typeof window !== 'undefined' && (window as any)[key]) {
       return (window as any)[key];
     }
-    
-    // Finally try stored config
-    const configKey = key.replace('REACT_APP_', '');
     for (const integrationKey in this.config) {
       if (this.config[integrationKey][configKey]) {
         return this.config[integrationKey][configKey];
       }
     }
-    
-    return '';
+    const buildTime = (integrationsEnv as Record<string, string>)[configKey];
+    return buildTime ?? '';
   }
 
   /**
