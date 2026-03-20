@@ -1,13 +1,23 @@
 /**
  * Mock template data for all 6 demos. Used until Sheet/API is connected.
  * Cannabis-tailored fictional brands for personality (no real company names).
- * Logos: SVG assets in public. Images: Picsum (deterministic).
+ * Imagery: Leonardo.ai–generated (flower, preroll, edible, influencer, event, dispensary).
  */
 import type { TemplateDataLinkBio, TemplateDataOnePage } from '@/types/templateData';
 import type { DemoSlug } from '@/constants/slugs';
 
-const PICSUM = (seed: string, w: number, h: number) => `https://picsum.photos/seed/${seed}/${w}/${h}`;
+const IMG = (filename: string) => `/demos/images/${filename}`;
 const LOGO = (n: number) => `/demos/logos/logo-${n}.svg`;
+
+// Leonardo.ai–generated images (uploaded to demos/public/demos/images/)
+const LEONARDO = {
+  flower: 'lucid-origin_Lifestyle_product_photo_premium_craft_cannabis_flower_brand_minimalist_flat_lay_-0.jpg',
+  preroll: 'lucid-origin_Lifestyle_brand_photo_for_a_preroll_company_sleek_pre-roll_tubes_or_tins_on_a_co-0.jpg',
+  edible: 'lucid-origin_Premium_edible_brand_photo_artfully_arranged_gummies_or_small-batch_chocolates_o-0.jpg',
+  influencer: 'lucid-origin_Lifestyle_portrait_for_a_cannabis-adjacent_influencer_one_person_from_chest_up_r-0.jpg',
+  event: 'lucid-origin_Event_photo_cannabis-friendly_brand_activation_wide_shot_of_a_minimal_pop-up_or_-0.jpg',
+  dispensary: 'lucid-origin_Premium_dispensary_or_retail_vibe_interior_of_a_clean_modern_shop_with_wooden_sh-0.jpg',
+} as const;
 
 // —— Link in bio 1: dispensary / menu updates
 const mockLinkBio1: TemplateDataLinkBio = {
@@ -19,7 +29,7 @@ const mockLinkBio1: TemplateDataLinkBio = {
   emailCtaButtonText: 'Get updates',
   emailSignupUrl: 'https://script.google.com/macros/s/PLACEHOLDER/exec',
   unsubscribeLink: 'https://demos.parnoir.com/unsubscribe',
-  backgroundImageUrl: PICSUM('riverleaf-bg', 1200, 1600),
+  backgroundImageUrl: IMG(LEONARDO.dispensary),
   websiteUrl: 'https://riverleaf.example',
   socialLinks: [
     { label: 'Menu', url: 'https://example.com/menu' },
@@ -29,7 +39,7 @@ const mockLinkBio1: TemplateDataLinkBio = {
     { label: 'Text club', url: 'https://example.com/text' },
   ],
   fontFamily: 'var(--flyer-body-font)',
-  primaryColor: '#0ea5a4',
+  primaryColor: '#14b8a6',
   secondaryColor: '#fff',
   buttonJustification: 'center',
 };
@@ -44,7 +54,7 @@ const mockLinkBio2: TemplateDataLinkBio = {
   emailCtaButtonText: 'Notify me',
   emailSignupUrl: 'https://script.google.com/macros/s/PLACEHOLDER/exec',
   unsubscribeLink: 'https://demos.parnoir.com/unsubscribe',
-  backgroundImageUrl: PICSUM('ember-bg', 1200, 1600),
+  backgroundImageUrl: IMG(LEONARDO.edible),
   websiteUrl: 'https://ember.example',
   socialLinks: [
     { label: 'Shop', url: 'https://example.com/shop' },
@@ -53,7 +63,7 @@ const mockLinkBio2: TemplateDataLinkBio = {
     { label: 'Instagram', url: 'https://instagram.com' },
   ],
   fontFamily: 'Georgia, serif',
-  primaryColor: '#2563eb',
+  primaryColor: '#7c3aed',
   secondaryColor: '#fff',
   buttonJustification: 'center',
 };
@@ -68,7 +78,7 @@ const mockLinkBio3: TemplateDataLinkBio = {
   emailCtaButtonText: 'Join list',
   emailSignupUrl: 'https://script.google.com/macros/s/PLACEHOLDER/exec',
   unsubscribeLink: 'https://demos.parnoir.com/unsubscribe',
-  backgroundImageUrl: PICSUM('northwind-bg', 1200, 1600),
+  backgroundImageUrl: IMG(LEONARDO.flower),
   websiteUrl: 'https://northwind.example',
   socialLinks: [
     { label: 'Strains', url: 'https://example.com/strains' },
@@ -77,12 +87,12 @@ const mockLinkBio3: TemplateDataLinkBio = {
     { label: 'Instagram', url: 'https://instagram.com' },
   ],
   fontFamily: 'system-ui',
-  primaryColor: '#22c55e',
-  secondaryColor: '#f0fdf4',
+  primaryColor: '#4ade80',
+  secondaryColor: '#0a0a0a',
   buttonJustification: 'left',
 };
 
-// —— One-page 1: premium wellness / tinctures
+// —— One-page 1: premium wellness / tinctures (high-end, classy)
 const mockOnePage1: TemplateDataOnePage = {
   brandName: 'LUCID WELLNESS',
   tagline: 'Calm you can measure.',
@@ -92,23 +102,25 @@ const mockOnePage1: TemplateDataOnePage = {
   emailCtaButtonText: 'Subscribe',
   emailSignupUrl: 'https://script.google.com/macros/s/PLACEHOLDER/exec',
   unsubscribeLink: 'https://demos.parnoir.com/unsubscribe',
-  heroImageUrl: PICSUM('lucid-hero', 1200, 600),
+  heroImageUrl: IMG(LEONARDO.influencer),
+  primaryColor: '#d97706',
+  secondaryColor: '#fff',
   products: [
-    { id: '1', name: 'Daily Tincture (10:1)', imageUrl: PICSUM('lucid-p1', 400, 400), description: 'Fast, consistent drops. Designed for small, repeatable routines.', url: 'https://example.com/tincture' },
-    { id: '2', name: 'Sleep Gummies', imageUrl: PICSUM('lucid-p2', 400, 400), description: 'Gentle dose, clean ingredients. Nightly wind-down without the heaviness.', url: 'https://example.com/gummies' },
-    { id: '3', name: 'CBD Balm', imageUrl: PICSUM('lucid-p3', 400, 400), description: 'Targeted topical for recovery days. Smooth texture, no grease.', url: 'https://example.com/balm' },
-    { id: '4', name: 'Sampler Pack', imageUrl: PICSUM('lucid-p4', 400, 400), description: 'Try the lineup — tincture, gummies, and balm in one box.', url: 'https://example.com/sampler' },
+    { id: '1', name: 'Daily Tincture (10:1)', imageUrl: IMG(LEONARDO.flower), description: 'Fast, consistent drops. Designed for small, repeatable routines.', url: 'https://example.com/tincture' },
+    { id: '2', name: 'Sleep Gummies', imageUrl: IMG(LEONARDO.edible), description: 'Gentle dose, clean ingredients. Nightly wind-down without the heaviness.', url: 'https://example.com/gummies' },
+    { id: '3', name: 'CBD Balm', imageUrl: IMG(LEONARDO.flower), description: 'Targeted topical for recovery days. Smooth texture, no grease.', url: 'https://example.com/balm' },
+    { id: '4', name: 'Sampler Pack', imageUrl: IMG(LEONARDO.dispensary), description: 'Try the lineup — tincture, gummies, and balm in one box.', url: 'https://example.com/sampler' },
   ],
   mediaPosts: [
-    { id: 'm1', type: 'instagram', url: 'https://instagram.com/p/1', thumbnailUrl: PICSUM('lucid-m1', 300, 300), title: 'How we dose (simple guide)' },
-    { id: 'm2', type: 'youtube', url: 'https://youtube.com/watch?v=1', thumbnailUrl: PICSUM('lucid-m2', 300, 300), title: 'Behind the lab: batch testing' },
-    { id: 'm3', type: 'instagram', url: 'https://instagram.com/p/2', thumbnailUrl: PICSUM('lucid-m3', 300, 300), title: 'New: sampler pack' },
-    { id: 'm4', type: 'google_drive', url: 'https://drive.google.com/file/1', thumbnailUrl: PICSUM('lucid-m4', 300, 300), title: 'COA (PDF)' },
-    { id: 'm5', type: 'instagram', url: 'https://instagram.com/p/3', thumbnailUrl: PICSUM('lucid-m5', 300, 300), title: 'Routines that stick' },
+    { id: 'm1', type: 'instagram', url: 'https://instagram.com/p/1', thumbnailUrl: IMG(LEONARDO.influencer), title: 'How we dose (simple guide)' },
+    { id: 'm2', type: 'youtube', url: 'https://youtube.com/watch?v=1', thumbnailUrl: IMG(LEONARDO.event), title: 'Behind the lab: batch testing' },
+    { id: 'm3', type: 'instagram', url: 'https://instagram.com/p/2', thumbnailUrl: IMG(LEONARDO.edible), title: 'New: sampler pack' },
+    { id: 'm4', type: 'google_drive', url: 'https://drive.google.com/file/1', thumbnailUrl: IMG(LEONARDO.flower), title: 'COA (PDF)' },
+    { id: 'm5', type: 'instagram', url: 'https://instagram.com/p/3', thumbnailUrl: IMG(LEONARDO.dispensary), title: 'Routines that stick' },
   ],
 };
 
-// —— One-page 2: lifestyle / pre-rolls
+// —— One-page 2: lifestyle / pre-rolls (vector, cartoony, loud)
 const mockOnePage2: TemplateDataOnePage = {
   brandName: 'NEON JOINTS',
   tagline: 'For nights out and nights in.',
@@ -118,23 +130,25 @@ const mockOnePage2: TemplateDataOnePage = {
   emailCtaButtonText: 'Join list',
   emailSignupUrl: 'https://script.google.com/macros/s/PLACEHOLDER/exec',
   unsubscribeLink: 'https://demos.parnoir.com/unsubscribe',
-  heroImageUrl: PICSUM('neon-hero', 1200, 600),
+  heroImageUrl: IMG(LEONARDO.preroll),
+  primaryColor: '#ec4899',
+  secondaryColor: '#fff',
   products: [
-    { id: '1', name: '6-Pack Minis', imageUrl: PICSUM('neon-p1', 400, 400), description: 'Six minis, mixed strains. Easy to share, easy to carry.', url: 'https://example.com/minis' },
-    { id: '2', name: 'Live Resin Vape', imageUrl: PICSUM('neon-p2', 400, 400), description: 'High terp, smooth pull. Hardware tuned for flavor.', url: 'https://example.com/vape' },
-    { id: '3', name: 'Collab Pack', imageUrl: PICSUM('neon-p3', 400, 400), description: 'Monthly collab with a featured grow. Limited quantities.', url: 'https://example.com/collab' },
-    { id: '4', name: 'Merch Drop', imageUrl: PICSUM('neon-p4', 400, 400), description: 'Hats, tees, and lighters. When it’s gone, it’s gone.', url: 'https://example.com/merch' },
+    { id: '1', name: '6-Pack Minis', imageUrl: IMG(LEONARDO.preroll), description: 'Six minis, mixed strains. Easy to share, easy to carry.', url: 'https://example.com/minis' },
+    { id: '2', name: 'Live Resin Vape', imageUrl: IMG(LEONARDO.flower), description: 'High terp, smooth pull. Hardware tuned for flavor.', url: 'https://example.com/vape' },
+    { id: '3', name: 'Collab Pack', imageUrl: IMG(LEONARDO.event), description: 'Monthly collab with a featured grow. Limited quantities.', url: 'https://example.com/collab' },
+    { id: '4', name: 'Merch Drop', imageUrl: IMG(LEONARDO.dispensary), description: 'Hats, tees, and lighters. When it’s gone, it’s gone.', url: 'https://example.com/merch' },
   ],
   mediaPosts: [
-    { id: 'm1', type: 'instagram', url: 'https://instagram.com/p/1', thumbnailUrl: PICSUM('neon-m1', 300, 300), title: 'Drop recap (sold out)' },
-    { id: 'm2', type: 'youtube', url: 'https://youtube.com/watch?v=1', thumbnailUrl: PICSUM('neon-m2', 300, 300), title: 'How we roll (tour)' },
-    { id: 'm3', type: 'instagram', url: 'https://instagram.com/p/2', thumbnailUrl: PICSUM('neon-m3', 300, 300), title: 'Collab tease' },
-    { id: 'm4', type: 'instagram', url: 'https://instagram.com/p/3', thumbnailUrl: PICSUM('neon-m4', 300, 300), title: 'New pack photos' },
-    { id: 'm5', type: 'google_drive', url: 'https://drive.google.com/file/1', thumbnailUrl: PICSUM('neon-m5', 300, 300), title: 'Menu sheet (PDF)' },
+    { id: 'm1', type: 'instagram', url: 'https://instagram.com/p/1', thumbnailUrl: IMG(LEONARDO.preroll), title: 'Drop recap (sold out)' },
+    { id: 'm2', type: 'youtube', url: 'https://youtube.com/watch?v=1', thumbnailUrl: IMG(LEONARDO.event), title: 'How we roll (tour)' },
+    { id: 'm3', type: 'instagram', url: 'https://instagram.com/p/2', thumbnailUrl: IMG(LEONARDO.flower), title: 'Collab tease' },
+    { id: 'm4', type: 'instagram', url: 'https://instagram.com/p/3', thumbnailUrl: IMG(LEONARDO.influencer), title: 'New pack photos' },
+    { id: 'm5', type: 'google_drive', url: 'https://drive.google.com/file/1', thumbnailUrl: IMG(LEONARDO.edible), title: 'Menu sheet (PDF)' },
   ],
 };
 
-// —— One-page 3: solventless / rosin
+// —— One-page 3: solventless / rosin (clean, saturated)
 const mockOnePage3: TemplateDataOnePage = {
   brandName: 'PURESOL SOLVENTLESS',
   tagline: 'Cold-cured, terp-forward.',
@@ -144,18 +158,20 @@ const mockOnePage3: TemplateDataOnePage = {
   emailCtaButtonText: 'Subscribe',
   emailSignupUrl: 'https://script.google.com/macros/s/PLACEHOLDER/exec',
   unsubscribeLink: 'https://demos.parnoir.com/unsubscribe',
-  heroImageUrl: PICSUM('puresol-hero', 1200, 600),
+  heroImageUrl: IMG(LEONARDO.event),
+  primaryColor: '#14b8a6',
+  secondaryColor: '#000',
   products: [
-    { id: '1', name: 'Live Rosin (90u)', imageUrl: PICSUM('puresol-p1', 400, 400), description: 'Single-source, cold-cured. Labeled by wash and press date.', url: 'https://example.com/rosin' },
-    { id: '2', name: 'AIO Rosin Pen', imageUrl: PICSUM('puresol-p2', 400, 400), description: 'Solventless hardware tuned for low-temp flavor.', url: 'https://example.com/pen' },
-    { id: '3', name: 'Glass & Tools', imageUrl: PICSUM('puresol-p3', 400, 400), description: 'Caps, tools, and cleaning kit. Built for daily use.', url: 'https://example.com/tools' },
+    { id: '1', name: 'Live Rosin (90u)', imageUrl: IMG(LEONARDO.flower), description: 'Single-source, cold-cured. Labeled by wash and press date.', url: 'https://example.com/rosin' },
+    { id: '2', name: 'AIO Rosin Pen', imageUrl: IMG(LEONARDO.preroll), description: 'Solventless hardware tuned for low-temp flavor.', url: 'https://example.com/pen' },
+    { id: '3', name: 'Glass & Tools', imageUrl: IMG(LEONARDO.dispensary), description: 'Caps, tools, and cleaning kit. Built for daily use.', url: 'https://example.com/tools' },
   ],
   mediaPosts: [
-    { id: 'm1', type: 'youtube', url: 'https://youtube.com/watch?v=1', thumbnailUrl: PICSUM('puresol-m1', 300, 300), title: 'Press room walkthrough' },
-    { id: 'm2', type: 'instagram', url: 'https://instagram.com/p/1', thumbnailUrl: PICSUM('puresol-m2', 300, 300), title: 'Batch notes: terps' },
-    { id: 'm3', type: 'instagram', url: 'https://instagram.com/p/2', thumbnailUrl: PICSUM('puresol-m3', 300, 300), title: 'Jar shots' },
-    { id: 'm4', type: 'google_drive', url: 'https://drive.google.com/file/1', thumbnailUrl: PICSUM('puresol-m4', 300, 300), title: 'COA (PDF)' },
-    { id: 'm5', type: 'instagram', url: 'https://instagram.com/p/3', thumbnailUrl: PICSUM('puresol-m5', 300, 300), title: 'Hardware tips' },
+    { id: 'm1', type: 'youtube', url: 'https://youtube.com/watch?v=1', thumbnailUrl: IMG(LEONARDO.event), title: 'Press room walkthrough' },
+    { id: 'm2', type: 'instagram', url: 'https://instagram.com/p/1', thumbnailUrl: IMG(LEONARDO.flower), title: 'Batch notes: terps' },
+    { id: 'm3', type: 'instagram', url: 'https://instagram.com/p/2', thumbnailUrl: IMG(LEONARDO.dispensary), title: 'Jar shots' },
+    { id: 'm4', type: 'google_drive', url: 'https://drive.google.com/file/1', thumbnailUrl: IMG(LEONARDO.edible), title: 'COA (PDF)' },
+    { id: 'm5', type: 'instagram', url: 'https://instagram.com/p/3', thumbnailUrl: IMG(LEONARDO.preroll), title: 'Hardware tips' },
   ],
 };
 

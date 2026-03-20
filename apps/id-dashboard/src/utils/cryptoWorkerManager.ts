@@ -227,6 +227,15 @@ class CryptoWorkerManager {
   }
 }
 
-// Create and export singleton instance
-export const cryptoWorkerManager = new CryptoWorkerManager();
+// Lazy singleton to avoid "Cannot access before initialization" from circular deps (e.g. in WebView/Capacitor)
+let _instance: CryptoWorkerManager | null = null;
+function getInstance(): CryptoWorkerManager {
+  if (!_instance) _instance = new CryptoWorkerManager();
+  return _instance;
+}
+export const cryptoWorkerManager = new Proxy({} as CryptoWorkerManager, {
+  get(_, prop) {
+    return (getInstance() as any)[prop];
+  },
+});
 export default cryptoWorkerManager;

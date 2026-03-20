@@ -1,4 +1,3 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
 // Deployment configuration - Update these values for production deployment
 export const deploymentConfig = {
   // Production API endpoints

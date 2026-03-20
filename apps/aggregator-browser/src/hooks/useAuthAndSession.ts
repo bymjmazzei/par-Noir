@@ -4,6 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { getUserProfile } from '../services/profileService';
@@ -32,6 +33,149 @@ export function useAuthAndSession({
 }: UseAuthAndSessionParams) {
   const { userState, setLocked, setUnlocked, updateDisplayName } = useUserState();
   const loadingDisplayNameRef = useRef<Set<string>>(new Set());
+  /** Dedup OAuth code handling (postMessage + polling + URL resume / Strict Mode) */
+  const oauthProcessedCodesRef = useRef<Set<string>>(new Set());
+
+  const redirectUriForOAuth = `${typeof window !== 'undefined' ? window.location.origin : ''}/oauth-callback.html`;
+
+  const runOAuthCallback = useCallback(
+    async (
+      data: {
+        code?: string;
+        state?: string;
+        error?: string;
+        error_description?: string;
+        age_shared?: string;
+      },
+      options?: { popup?: Window | null; redirectUri?: string }
+    ) => {
+      if (data.error) {
+        setLocked();
+        PNOAuthService.clearSession();
+        showErrorToast(data.error_description || data.error || 'Authentication denied');
+        return;
+      }
+      if (!data.code) return;
+      if (oauthProcessedCodesRef.current.has(data.code)) return;
+      oauthProcessedCodesRef.current.add(data.code);
+
+      const exchangeRedirectUri = options?.redirectUri ?? redirectUriForOAuth;
+
+      try {
+        const ageShared = data.age_shared === 'true';
+        const tokenResponse = await PNOAuthService.exchangeCodeForToken(
+          data.code,
+          exchangeRedirectUri,
+          ageShared
+        );
+        const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
+
+        let feedTokens: unknown[] = [];
+        try {
+          if (userInfo.pn_identifier) {
+            const feedTokensResponse = await fetch(`${API_ENDPOINT}/api/feeds/tokens`, {
+              headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+            });
+            if (feedTokensResponse.ok) {
+              const feedTokensData = await feedTokensResponse.json();
+              feedTokens = feedTokensData.feedTokens || [];
+            }
+          }
+        } catch {
+          // Don't fail auth if feed tokens can't be loaded
+        }
+
+        const sessionWithIdentifier = {
+          accessToken: tokenResponse.access_token,
+          refreshToken: tokenResponse.refresh_token,
+          expiresAt: Date.now() + tokenResponse.expires_in * 1000,
+          did: userInfo.did,
+          pnName: userInfo.nickname,
+          pnIdentifier: userInfo.pn_identifier || undefined,
+          publicKey: userInfo.public_key,
+          feedTokens,
+        };
+        PNOAuthService.saveSession(sessionWithIdentifier);
+
+        if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
+          setUnlocked(userInfo.pn_identifier);
+          try {
+            const profile = await getUserProfile(userInfo.pn_identifier);
+            if (profile.displayName) {
+              updateDisplayName(profile.displayName);
+            } else if (userInfo.nickname && !userState.preferences.displayName) {
+              updateDisplayName(userInfo.nickname);
+            }
+          } catch {
+            if (userInfo.nickname && !userState.preferences.displayName) {
+              updateDisplayName(userInfo.nickname);
+            }
+          }
+        } else {
+          setUnlocked(userInfo.did);
+        }
+
+        if (discoverFilesRef.current) {
+          discoverFilesRef.current(undefined, true);
+        }
+      } catch (err) {
+        console.error('OAuth callback error:', err);
+        oauthProcessedCodesRef.current.delete(data.code!);
+        setLocked();
+        PNOAuthService.clearSession();
+        showErrorToast('Authentication failed. Please try again.');
+      }
+
+      const popup = options?.popup;
+      if (popup && !popup.closed) {
+        try {
+          popup.close();
+          [10, 50, 100, 200].forEach((ms) =>
+            setTimeout(() => {
+              if (popup && !popup.closed) popup.close();
+            }, ms)
+          );
+          setTimeout(() => {
+            if (popup && !popup.closed) window.focus();
+          }, 500);
+        } catch (e) {
+          console.error('Failed to close popup:', e);
+        }
+      }
+    },
+    [
+      redirectUriForOAuth,
+      setLocked,
+      setUnlocked,
+      updateDisplayName,
+      showErrorToast,
+      discoverFilesRef,
+      userState.preferences.displayName,
+    ]
+  );
+
+  /** Android/Capacitor: main window is navigated to /?oauth_resume=1&code=... after popup OAuth */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('oauth_resume') !== '1') return;
+
+    const code = params.get('code');
+    const error = params.get('error');
+    const state = params.get('state');
+    const age_shared = params.get('age_shared');
+
+    window.history.replaceState({}, '', `${window.location.pathname}${window.location.hash}`);
+
+    void runOAuthCallback(
+      {
+        code: code || undefined,
+        state: state || undefined,
+        error: error || undefined,
+        age_shared: age_shared || undefined,
+      },
+      {}
+    );
+  }, [runOAuthCallback]);
 
   const loadUserDisplayName = useCallback(
     async (pnIdentifier: string) => {
@@ -192,127 +336,36 @@ export function useAuthAndSession({
           console.error('Failed to add popup parameter:', e);
         }
 
+        // Native: full-screen OAuth — oauth-callback navigates main window to /?oauth_resume=1&code=...
+        if (Capacitor.isNativePlatform()) {
+          const u = new URL(authUrl);
+          u.searchParams.set('popup', 'false');
+          window.location.href = u.toString();
+          return;
+        }
+
         const popup = window.open(authUrl, 'pn-oauth', 'width=500,height=600,scrollbars=yes,resizable=yes');
         if (!popup) {
           showErrorToast('Popup blocked. Please allow popups for this site.');
           return;
         }
 
-        const processedCodes = new Set<string>();
-
-        const handleOAuthCallback = (data: {
-          code?: string;
-          state?: string;
-          error?: string;
-          error_description?: string;
-          age_shared?: string;
-        }) => {
-          if (data.code) {
-            if (processedCodes.has(data.code)) return;
-            processedCodes.add(data.code);
-            (async () => {
-              try {
-                const ageShared = data.age_shared === 'true';
-                const tokenResponse = await PNOAuthService.exchangeCodeForToken(
-                  data.code!,
-                  actualRedirectUri,
-                  ageShared
-                );
-                const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
-
-                let feedTokens: unknown[] = [];
-                try {
-                  if (userInfo.pn_identifier) {
-                    const feedTokensResponse = await fetch(`${API_ENDPOINT}/api/feeds/tokens`, {
-                      headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-                    });
-                    if (feedTokensResponse.ok) {
-                      const feedTokensData = await feedTokensResponse.json();
-                      feedTokens = feedTokensData.feedTokens || [];
-                    }
-                  }
-                } catch {
-                  // Don't fail auth if feed tokens can't be loaded
-                }
-
-                const sessionWithIdentifier = {
-                  accessToken: tokenResponse.access_token,
-                  refreshToken: tokenResponse.refresh_token,
-                  expiresAt: Date.now() + tokenResponse.expires_in * 1000,
-                  did: userInfo.did,
-                  pnName: userInfo.nickname,
-                  pnIdentifier: userInfo.pn_identifier || undefined,
-                  publicKey: userInfo.public_key,
-                  feedTokens,
-                };
-                PNOAuthService.saveSession(sessionWithIdentifier);
-
-                if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
-                  setUnlocked(userInfo.pn_identifier);
-                  try {
-                    const profile = await getUserProfile(userInfo.pn_identifier);
-                    if (profile.displayName) {
-                      updateDisplayName(profile.displayName);
-                    } else if (userInfo.nickname && !userState.preferences.displayName) {
-                      updateDisplayName(userInfo.nickname);
-                    }
-                  } catch {
-                    if (userInfo.nickname && !userState.preferences.displayName) {
-                      updateDisplayName(userInfo.nickname);
-                    }
-                  }
-                } else {
-                  setUnlocked(userInfo.did);
-                }
-
-                if (discoverFilesRef.current) {
-                  discoverFilesRef.current(undefined, true);
-                }
-              } catch (err) {
-                console.error('OAuth callback error:', err);
-                processedCodes.delete(data.code!);
-                setLocked();
-                PNOAuthService.clearSession();
-                showErrorToast('Authentication failed. Please try again.');
-              }
-            })();
-          } else if (data.error) {
-            setLocked();
-            PNOAuthService.clearSession();
-            showErrorToast(data.error_description || 'Authentication denied');
-          }
-
-          if (popup && !popup.closed) {
-            try {
-              popup.close();
-              [10, 50, 100, 200].forEach((ms, i) =>
-                setTimeout(() => {
-                  if (popup && !popup.closed) popup.close();
-                }, ms)
-              );
-              setTimeout(() => {
-                if (popup && !popup.closed) window.focus();
-              }, 500);
-            } catch (e) {
-              console.error('Failed to close popup:', e);
-            }
-          }
-
-          window.removeEventListener('message', messageListener);
-          window.removeEventListener('storage', storageListener);
-        };
+        let callbackFound = false;
+        let pollInterval: ReturnType<typeof setInterval> | undefined;
+        let checkPopupInterval: ReturnType<typeof setInterval> | undefined;
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
         const messageListener = (event: MessageEvent) => {
           if (event.origin !== window.location.origin) return;
-          if (event.data?.type === 'oauth_callback') handleOAuthCallback(event.data);
+          if (event.data?.type === 'oauth_callback') onOAuthData(event.data as Record<string, unknown>);
         };
 
         const storageListener = (event: StorageEvent) => {
           if (event.key === 'pn_oauth_callback' && event.newValue) {
             try {
-              const data = JSON.parse(event.newValue);
+              const data = JSON.parse(event.newValue) as Record<string, unknown>;
               if (data.type === 'oauth_callback') {
-                handleOAuthCallback(data);
+                onOAuthData(data);
                 localStorage.removeItem('pn_oauth_callback');
               }
             } catch (e) {
@@ -321,14 +374,42 @@ export function useAuthAndSession({
           }
         };
 
+        const cleanup = () => {
+          if (callbackFound) return;
+          callbackFound = true;
+          if (pollInterval !== undefined) clearInterval(pollInterval);
+          if (checkPopupInterval !== undefined) clearInterval(checkPopupInterval);
+          if (timeoutId !== undefined) clearTimeout(timeoutId);
+          window.removeEventListener('message', messageListener);
+          window.removeEventListener('storage', storageListener);
+          try {
+            localStorage.removeItem('pn_oauth_pending');
+            localStorage.removeItem('pn_oauth_latest_key');
+          } catch {
+            /* ignore */
+          }
+        };
+
+        function onOAuthData(raw: Record<string, unknown>) {
+          if (!raw || typeof raw !== 'object') return;
+          const { type: _t, ...rest } = raw;
+          cleanup();
+          void runOAuthCallback(
+            rest as {
+              code?: string;
+              state?: string;
+              error?: string;
+              error_description?: string;
+              age_shared?: string;
+            },
+            { popup, redirectUri: actualRedirectUri }
+          );
+        }
+
         window.addEventListener('message', messageListener);
         window.addEventListener('storage', storageListener);
 
-        let callbackFound = false;
-        let checkPopupInterval: ReturnType<typeof setInterval>;
-        let timeoutId: ReturnType<typeof setTimeout>;
-
-        const pollInterval = setInterval(() => {
+        pollInterval = setInterval(() => {
           if (callbackFound) return;
           const pending = localStorage.getItem('pn_oauth_pending');
           const latestKey = localStorage.getItem('pn_oauth_latest_key');
@@ -336,28 +417,15 @@ export function useAuthAndSession({
             const stored = localStorage.getItem(latestKey);
             if (stored) {
               try {
-                const data = JSON.parse(stored);
-                const age = Date.now() - (data.timestamp || 0);
+                const data = JSON.parse(stored) as Record<string, unknown>;
+                const age = Date.now() - ((data.timestamp as number) || 0);
                 if (data.timestamp && age < 30000) {
-                  callbackFound = true;
-                  clearInterval(pollInterval);
-                  clearInterval(checkPopupInterval!);
-                  clearTimeout(timeoutId!);
-                  localStorage.removeItem('pn_oauth_pending');
-                  localStorage.removeItem('pn_oauth_latest_key');
-                  localStorage.removeItem(latestKey);
-                  handleOAuthCallback(data);
-                  if (popup && !popup.closed) {
-                    for (let i = 0; i < 10; i++) {
-                      setTimeout(() => {
-                        try {
-                          if (popup && !popup.closed) popup.close();
-                        } catch {}
-                      }, i * 50);
-                    }
+                  try {
+                    localStorage.removeItem(latestKey);
+                  } catch {
+                    /* ignore */
                   }
-                  window.removeEventListener('message', messageListener);
-                  window.removeEventListener('storage', storageListener);
+                  onOAuthData(data);
                 }
               } catch (e) {
                 console.error('Failed to parse OAuth callback:', e);
@@ -370,35 +438,25 @@ export function useAuthAndSession({
         checkPopupInterval = setInterval(() => {
           try {
             if (popup.closed && callbackFound) {
-              clearInterval(checkPopupInterval);
-              clearTimeout(timeoutId);
+              if (checkPopupInterval !== undefined) clearInterval(checkPopupInterval);
+              if (timeoutId !== undefined) clearTimeout(timeoutId);
             } else if (popup.closed && !callbackFound) {
               if (popupClosedTime === null) popupClosedTime = Date.now();
               if (popupClosedTime && Date.now() - popupClosedTime > 3000) {
-                callbackFound = true;
-                clearInterval(pollInterval);
-                clearInterval(checkPopupInterval);
-                clearTimeout(timeoutId);
-                window.removeEventListener('message', messageListener);
-                window.removeEventListener('storage', storageListener);
-                localStorage.removeItem('pn_oauth_pending');
-                localStorage.removeItem('pn_oauth_latest_key');
+                cleanup();
                 setLocked();
                 PNOAuthService.clearSession();
                 showErrorToast('Authentication cancelled or failed. Please try again.');
               }
             }
-          } catch {}
+          } catch {
+            /* ignore */
+          }
         }, 500);
 
         timeoutId = setTimeout(() => {
           if (!callbackFound) {
-            clearInterval(pollInterval);
-            clearInterval(checkPopupInterval);
-            window.removeEventListener('message', messageListener);
-            window.removeEventListener('storage', storageListener);
-            localStorage.removeItem('pn_oauth_pending');
-            localStorage.removeItem('pn_oauth_latest_key');
+            cleanup();
             setLocked();
             PNOAuthService.clearSession();
             showErrorToast('Authentication timeout. Please try again.');
@@ -417,6 +475,7 @@ export function useAuthAndSession({
     updateDisplayName,
     showErrorToast,
     discoverFilesRef,
+    runOAuthCallback,
   ]);
 
   return { handleLockUnlock, handleMeClick, loadUserDisplayName };

@@ -55,6 +55,10 @@ export interface TemplateDataOnePage extends TemplateDataBase {
   heroImageUrl: string;
   products: Product[];
   mediaPosts: MediaPost[];
+  /** Optional brand accent (high-saturation); fallback to CSS tokens. */
+  primaryColor?: string;
+  /** Optional text-on-accent color; fallback to white. */
+  secondaryColor?: string;
 }
 
 /** Union: link-in-bio data or one-page data. */

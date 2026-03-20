@@ -1,0 +1,19 @@
+{
+  "name": "par-noir-messaging-native",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "sync": "npx cap sync",
+    "open:android": "npx cap open android",
+    "open:ios": "npx cap open ios"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/ios": "^6.0.0"
+  },
+  "capabilities": {
+    "android": true,
+    "ios": true
+  }
+}

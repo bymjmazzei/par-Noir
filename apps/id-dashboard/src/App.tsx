@@ -5936,10 +5936,10 @@ This invitation expires in 24 hours.`;
               </div>
 
               {/* Tabbed Interface */}
-              <div className="bg-modal-bg rounded-lg shadow p-8 text-text-primary w-full max-w-4xl">
+              <div className="bg-modal-bg rounded-lg shadow p-4 sm:p-6 lg:p-8 text-text-primary w-full max-w-4xl min-w-0">
                 {/* Tab Navigation */}
-                <div className="border-b border-border mb-6">
-                  <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto px-4 justify-start lg:justify-center">
+                <div className="border-b border-border mb-4 sm:mb-6">
+                  <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto px-1 sm:px-4 justify-start lg:justify-center">
                 <button
                       onClick={() => setActiveTab('privacy')}
                       className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${

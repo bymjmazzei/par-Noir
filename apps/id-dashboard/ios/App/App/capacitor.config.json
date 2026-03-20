@@ -1,6 +1,6 @@
 {
-	"appId": "com.parnoir.mobile",
-	"appName": "par Noir",
+	"appId": "com.parnoir.dashboard",
+	"appName": "par Noir Dashboard",
 	"webDir": "dist",
 	"packageClassList": [
 		"AppPlugin",

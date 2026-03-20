@@ -14,7 +14,8 @@ export default defineConfig(({ mode }) => ({
     plugins: () => [react()]
   },
   build: {
-    outDir: 'dist',
+    // Use `vite build --mode messaging` + `.env.messaging` — do not rely on shell env during config load
+    outDir: mode === 'messaging' ? 'dist-messaging' : 'dist',
     sourcemap: false,
     copyPublicDir: true // Ensure public folder is copied
   },

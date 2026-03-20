@@ -2,7 +2,6 @@ import React from 'react';
 import { SiteHeader } from '@/components/SiteHeader';
 import { Footer } from '@/components/Footer';
 import { DemoThumbnail } from '@/components/DemoThumbnail';
-import { SprayDripOverlayCanvas } from '@/components/SprayDripOverlayCanvas';
 import { LINK_IN_BIO_TILES, ONE_PAGE_TILES } from '@/config/demos';
 import '@/styles/home.css';
 
@@ -10,7 +9,6 @@ export function HomePage() {
   return (
     <div className="home-page">
       <SiteHeader />
-      <SprayDripOverlayCanvas color="#007BA7" />
 
       <section className="home-hero">
         <div className="home-container">

@@ -1,0 +1,8 @@
+{
+  "appId": "com.parnoir.messaging",
+  "appName": "par Noir Messages",
+  "webDir": "../dist-messaging",
+  "server": {
+    "androidScheme": "https"
+  }
+}

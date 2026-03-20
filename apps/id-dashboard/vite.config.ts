@@ -1,9 +1,13 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { resolve } from 'path'
+import { resolve, normalize } from 'path'
+
+/** Only our app config — NOT `node_modules/.../src/config/...` (e.g. ipfs-http-client), which would break the bundle with TDZ errors */
+const APP_CONFIG_DIR = normalize(resolve(__dirname, 'src/config')).replace(/\\/g, '/')
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  base: './', // Required for Capacitor: assets load from file:// in WebView
   plugins: [react()],
   worker: {
     format: 'es',
@@ -36,6 +40,13 @@ export default defineConfig(({ mode }) => ({
           // Exclude workers from chunking
           if (id.includes('workers/') || id.includes('.worker.')) {
             return null;
+          }
+          // App config only — `id.includes('config/')` also matches vendor paths like ipfs-http-client/src/config and corrupts the chunk
+          {
+            const normalizedId = id.replace(/\\/g, '/')
+            if (normalizedId === APP_CONFIG_DIR || normalizedId.startsWith(`${APP_CONFIG_DIR}/`)) {
+              return 'config'
+            }
           }
           // Vendor chunks
           if (id.includes('node_modules')) {

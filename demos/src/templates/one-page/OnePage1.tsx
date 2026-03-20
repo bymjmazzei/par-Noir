@@ -8,6 +8,8 @@ interface OnePage1Props {
 export function OnePage1({ data }: OnePage1Props) {
   const [email, setEmail] = useState('');
   const [productModal, setProductModal] = useState<typeof data.products[0] | null>(null);
+  const accent = data.primaryColor ?? 'var(--flyer-accent)';
+  const textOnAccent = data.secondaryColor ?? 'var(--flyer-text)';
 
   return (
     <div className="demo-page-root" style={{ fontFamily: 'var(--flyer-body-font)' }}>
@@ -168,8 +170,8 @@ export function OnePage1({ data }: OnePage1Props) {
               type="submit"
               style={{
                 padding: '18px 28px',
-                backgroundColor: 'var(--flyer-accent)',
-                color: 'var(--flyer-text)',
+                backgroundColor: accent,
+                color: textOnAccent,
                 border: 'none',
                 cursor: 'pointer',
                 fontSize: 'var(--flyer-cta-size)',
@@ -187,7 +189,7 @@ export function OnePage1({ data }: OnePage1Props) {
         </div>
       </section>
 
-      {/* Products: responsive grid, mobile-first */}
+      {/* Products: horizontal carousel */}
       <section
         data-reveal
         className="demo-section"
@@ -211,7 +213,7 @@ export function OnePage1({ data }: OnePage1Props) {
         >
           Products
         </h2>
-        <div className="demo-products-grid">
+        <div className="demo-products-carousel">
           {data.products.map((product) => (
             <button
               key={product.id}
@@ -287,7 +289,7 @@ export function OnePage1({ data }: OnePage1Props) {
               maxWidth: 440,
               width: '100%',
               padding: 'var(--flyer-spacing-lg)',
-              border: 'var(--flyer-border-thick) solid var(--flyer-accent)',
+              border: `var(--flyer-border-thick) solid ${accent}`,
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -321,8 +323,8 @@ export function OnePage1({ data }: OnePage1Props) {
                 style={{
                   display: 'inline-block',
                   padding: '12px 20px',
-                  backgroundColor: 'var(--flyer-accent)',
-                  color: 'var(--flyer-text)',
+                  backgroundColor: accent,
+                  color: textOnAccent,
                   textDecoration: 'none',
                   fontSize: 'var(--flyer-link-size)',
                   fontWeight: 700,
@@ -355,7 +357,7 @@ export function OnePage1({ data }: OnePage1Props) {
         </div>
       )}
 
-      {/* Media: responsive grid */}
+      {/* Media: vertical feed */}
       <section
         data-reveal
         className="demo-section"
@@ -379,33 +381,34 @@ export function OnePage1({ data }: OnePage1Props) {
         >
           Recent media
         </h2>
-        <div className="demo-media-grid">
+        <div className="demo-media-feed">
           {data.mediaPosts.slice(0, 5).map((post) => (
             <a
               key={post.id}
               href={post.url}
               target="_blank"
               rel="noopener noreferrer"
+              className="demo-media-feed-item"
               style={{
-                display: 'block',
-                overflow: 'hidden',
-                backgroundColor: 'var(--flyer-bg-block)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '1rem',
+                padding: '1rem 0',
+                backgroundColor: 'transparent',
                 textDecoration: 'none',
                 color: 'inherit',
-                border: '1px solid rgba(255,255,255,0.2)',
               }}
             >
               {post.thumbnailUrl && (
                 <img
                   src={post.thumbnailUrl}
-                  alt={post.title ?? post.type}
-                  style={{ width: '100%', height: 180, objectFit: 'cover' }}
+                  alt=""
+                  style={{ width: 80, height: 80, objectFit: 'cover', flexShrink: 0 }}
                 />
               )}
               {post.title && (
-                <p
+                <span
                   style={{
-                    margin: 12,
                     fontSize: 'var(--flyer-link-size)',
                     fontWeight: 600,
                     textTransform: 'uppercase',
@@ -414,7 +417,7 @@ export function OnePage1({ data }: OnePage1Props) {
                   }}
                 >
                   {post.title}
-                </p>
+                </span>
               )}
             </a>
           ))}

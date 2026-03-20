@@ -8,6 +8,8 @@ interface OnePage3Props {
 export function OnePage3({ data }: OnePage3Props) {
   const [email, setEmail] = useState('');
   const [productModal, setProductModal] = useState<typeof data.products[0] | null>(null);
+  const accent = data.primaryColor ?? 'var(--flyer-accent-alt)';
+  const textOnAccent = data.secondaryColor ?? '#000';
 
   return (
     <div className="demo-page-root" style={{ fontFamily: 'var(--flyer-body-font)' }}>
@@ -80,8 +82,8 @@ export function OnePage3({ data }: OnePage3Props) {
             maxWidth: 520,
             margin: '0 auto',
             padding: 'var(--flyer-spacing-lg)',
-            borderTop: 'var(--flyer-border-thick) solid var(--flyer-accent-alt)',
-            borderBottom: 'var(--flyer-border-thick) solid var(--flyer-accent-alt)',
+            borderTop: `var(--flyer-border-thick) solid ${accent}`,
+            borderBottom: `var(--flyer-border-thick) solid ${accent}`,
           }}
         >
           <h2
@@ -131,8 +133,8 @@ export function OnePage3({ data }: OnePage3Props) {
               type="submit"
               style={{
                 padding: 18,
-                backgroundColor: 'var(--flyer-accent-alt)',
-                color: '#000',
+                backgroundColor: accent,
+                color: textOnAccent,
                 border: 'none',
                 cursor: 'pointer',
                 fontSize: 'var(--flyer-cta-size)',
@@ -188,7 +190,7 @@ export function OnePage3({ data }: OnePage3Props) {
         </div>
       </section>
 
-      {/* Products: responsive grid */}
+      {/* Products: horizontal carousel */}
       <section
         data-reveal
         className="demo-section"
@@ -212,7 +214,7 @@ export function OnePage3({ data }: OnePage3Props) {
         >
           Products
         </h2>
-        <div className="demo-products-grid">
+        <div className="demo-products-carousel">
           {data.products.map((product) => (
             <button
               key={product.id}
@@ -221,7 +223,7 @@ export function OnePage3({ data }: OnePage3Props) {
               className="demo-product-card"
               style={{
                 padding: 0,
-                border: 'var(--flyer-border-thick) solid var(--flyer-accent-alt)',
+                border: `var(--flyer-border-thick) solid ${accent}`,
                 overflow: 'hidden',
                 cursor: 'pointer',
                 backgroundColor: 'var(--flyer-bg-block)',
@@ -235,6 +237,7 @@ export function OnePage3({ data }: OnePage3Props) {
               <p
                 style={{
                   margin: '20px 20px 6px',
+                  color: 'var(--flyer-text)',
                   fontSize: 'var(--flyer-cta-size)',
                   fontWeight: 700,
                   textAlign: 'left',
@@ -285,7 +288,7 @@ export function OnePage3({ data }: OnePage3Props) {
               maxWidth: 480,
               width: '100%',
               padding: 'var(--flyer-spacing-lg)',
-              border: 'var(--flyer-border-thick) solid var(--flyer-accent-alt)',
+              border: `var(--flyer-border-thick) solid ${accent}`,
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -319,8 +322,8 @@ export function OnePage3({ data }: OnePage3Props) {
                 style={{
                   display: 'inline-block',
                   padding: '12px 24px',
-                  backgroundColor: 'var(--flyer-accent-alt)',
-                  color: '#000',
+                  backgroundColor: accent,
+                  color: textOnAccent,
                   textDecoration: 'none',
                   fontSize: 'var(--flyer-link-size)',
                   fontWeight: 700,
@@ -353,7 +356,7 @@ export function OnePage3({ data }: OnePage3Props) {
         </div>
       )}
 
-      {/* Media: responsive grid */}
+      {/* Media: vertical feed */}
       <section
         data-reveal
         className="demo-section"
@@ -377,33 +380,34 @@ export function OnePage3({ data }: OnePage3Props) {
         >
           Recent media
         </h2>
-        <div className="demo-media-grid">
+        <div className="demo-media-feed">
           {data.mediaPosts.slice(0, 5).map((post) => (
             <a
               key={post.id}
               href={post.url}
               target="_blank"
               rel="noopener noreferrer"
+              className="demo-media-feed-item"
               style={{
-                display: 'block',
-                overflow: 'hidden',
-                backgroundColor: 'var(--flyer-bg-block)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '1rem',
+                padding: '1rem 0',
+                backgroundColor: 'transparent',
                 textDecoration: 'none',
                 color: 'inherit',
-                border: '1px solid rgba(255,255,255,0.2)',
               }}
             >
               {post.thumbnailUrl && (
                 <img
                   src={post.thumbnailUrl}
-                  alt={post.title ?? post.type}
-                  style={{ width: '100%', height: 200, objectFit: 'cover' }}
+                  alt=""
+                  style={{ width: 80, height: 80, objectFit: 'cover', flexShrink: 0 }}
                 />
               )}
               {post.title && (
-                <p
+                <span
                   style={{
-                    margin: 14,
                     fontSize: 'var(--flyer-link-size)',
                     fontWeight: 600,
                     textTransform: 'uppercase',
@@ -412,7 +416,7 @@ export function OnePage3({ data }: OnePage3Props) {
                   }}
                 >
                   {post.title}
-                </p>
+                </span>
               )}
             </a>
           ))}

@@ -84,6 +84,9 @@ public
 .out
 .storybook-out
 
+# Capacitor messaging build (aggregator-browser variant)
+apps/aggregator-browser/dist-messaging/
+
 # Temporary folders
 tmp/
 temp/

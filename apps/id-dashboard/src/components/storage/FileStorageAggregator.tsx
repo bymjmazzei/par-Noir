@@ -3,7 +3,7 @@
  * Dashboard aggregator that collects files from all connected storage backends
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, File, RefreshCw, AlertCircle, Lock, Globe, Info, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Trash2, Minus, Flag } from 'lucide-react';
+import { Download, File, RefreshCw, AlertCircle, Lock, Globe, Info, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Trash2, Minus, Flag, CheckCircle } from 'lucide-react';
 import { DesktopSecureFolderPanel } from './DesktopSecureFolderPanel';
 import { getFileAggregatorService } from '../../services/aggregator/FileAggregatorService';
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
@@ -6417,19 +6417,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, [authenticatedUser, resolvedAuth]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full min-w-0 max-w-full">
       {/* Secure Folder / Desktop App Section */}
       {!hideSecureFolderSection && (
         isDesktopShell ? (
           <DesktopSecureFolderPanel />
         ) : (
         <>
-      <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
+      <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-4 sm:p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center space-x-3 mb-4">
-            <Lock className="h-5 w-5 text-blue-400" />
-            <div>
+            <Lock className="h-5 w-5 text-blue-400 shrink-0" />
+            <div className="min-w-0">
               <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
               <p className="text-text-secondary text-sm">
                 Access your encrypted files with the desktop app
@@ -6505,7 +6505,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               window.open('https://github.com/bymjmazzei/par-Noir/releases/latest', '_blank');
             }
           }}
-          className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors ml-4"
+          className="inline-flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors w-full md:w-auto md:ml-4 shrink-0"
         >
           <Download className="h-4 w-4" />
           <span>Download Desktop App</span>
@@ -6550,22 +6550,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         )
       )}
 
-      {/* Secure Cloud Providers */}
-      <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-            <Cloud className="h-5 w-5 text-blue-400" />
-              <div>
+      {/* Secure Cloud Providers — backend IDs are google_drive::… not literal 'google_drive' */}
+      <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-4 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start space-x-3 min-w-0">
+            <Cloud className="h-5 w-5 text-blue-400 shrink-0 mt-0.5" />
+              <div className="min-w-0">
               <h3 className="text-lg font-semibold text-white">Secure Cloud</h3>
               <p className="text-text-secondary text-sm">Connect encrypted cloud storage providers.</p>
+              {hasConnectedBackends && (
+                <p className="text-green-400 text-sm mt-2 flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 shrink-0" aria-hidden />
+                  <span>Google Drive connected ({driveAccounts.length})</span>
+                </p>
+              )}
               </div>
             </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center gap-3 shrink-0 self-start sm:self-center">
               <button
                 onClick={handleConnectGoogleDrive}
               className={`p-2 rounded-lg border border-blue-500/40 bg-blue-600/10 hover:bg-blue-600/20 transition-colors ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                 disabled={isLoading}
-              title={connectedBackends.has('google_drive') ? 'Google Drive connected' : 'Connect Google Drive'}
+              title={hasConnectedBackends ? 'Google Drive connected — tap to add or re-authenticate' : 'Connect Google Drive'}
             >
               <img
                 src={GOOGLE_DRIVE_ICON_URL}
@@ -6613,30 +6619,35 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       {!resolvedAuth && !error && (
         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
           <div className="flex items-center space-x-2">
-            <AlertCircle className="h-4 w-4 text-yellow-400" />
-            <div className="flex-1">
+            <AlertCircle className="h-4 w-4 text-yellow-400 shrink-0" />
+            <div className="flex-1 min-w-0">
               <span className="text-yellow-400 text-sm">
                 Please unlock your pN first to encrypt files
               </span>
-              <p className="text-yellow-500/70 text-xs mt-1">
-                Debug: authenticatedUser={authenticatedUser ? 'present' : 'null'}, resolvedAuth={resolvedAuth ? 'present' : 'null'}
-              </p>
-              <button
-                onClick={async () => {
-                  try {
-                    const { SecureStorage } = await import('../../utils/storage');
-                    const storage = new SecureStorage();
-                    await storage.init();
-                    const session = await storage.getCurrentSession();
-                    alert(`Session check:\n\nSession exists: ${!!session}\nSession keys: ${session ? Object.keys(session).join(', ') : 'none'}\n\nAuthenticatedUser prop: ${authenticatedUser ? 'present' : 'null'}\nResolvedAuth: ${resolvedAuth ? 'present' : 'null'}`);
-                  } catch (e) {
-                    alert(`Error: ${e}`);
-                  }
-                }}
-                className="mt-2 text-xs text-yellow-400 hover:text-yellow-300 underline"
-              >
-                Debug: Check Session
-              </button>
+              {import.meta.env.DEV && (
+                <>
+                  <p className="text-yellow-500/70 text-xs mt-1 break-all">
+                    Debug: authenticatedUser={authenticatedUser ? 'present' : 'null'}, resolvedAuth={resolvedAuth ? 'present' : 'null'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const { SecureStorage } = await import('../../utils/storage');
+                        const storage = new SecureStorage();
+                        await storage.init();
+                        const session = await storage.getCurrentSession();
+                        alert(`Session check:\n\nSession exists: ${!!session}\nSession keys: ${session ? Object.keys(session).join(', ') : 'none'}\n\nAuthenticatedUser prop: ${authenticatedUser ? 'present' : 'null'}\nResolvedAuth: ${resolvedAuth ? 'present' : 'null'}`);
+                      } catch (e) {
+                        alert(`Error: ${e}`);
+                      }
+                    }}
+                    className="mt-2 text-xs text-yellow-400 hover:text-yellow-300 underline"
+                  >
+                    Debug: Check Session
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -15,47 +15,63 @@
   box-sizing: inherit;
 }
 
-/* Products: wrapping grid so all products visible without horizontal scroll */
-.demo-products-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+/* Products: horizontal carousel with scroll-snap */
+.demo-products-carousel {
+  display: flex;
   gap: 1rem;
-  padding-bottom: 1rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-padding-left: var(--flyer-spacing, 1rem);
+  scroll-padding-right: var(--flyer-spacing, 1rem);
+  padding-bottom: 0.5rem;
+  -webkit-overflow-scrolling: touch;
 }
 
-@media (min-width: 600px) {
-  .demo-products-grid {
-    gap: 1.25rem;
-  }
+.demo-products-carousel::-webkit-scrollbar {
+  height: 6px;
 }
 
-@media (min-width: 900px) {
-  .demo-products-grid {
-    gap: 1.5rem;
-  }
+.demo-products-carousel::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.08);
 }
 
-/* Product card fills grid cell */
-.demo-products-grid .demo-product-card {
-  width: 100%;
+.demo-products-carousel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 3px;
+}
+
+.demo-products-carousel .demo-product-card {
+  flex: 0 0 min(280px, 85vw);
+  scroll-snap-align: start;
   min-width: 0;
   box-sizing: border-box;
 }
 
-/* Media grid: single column on very small screens */
-.demo-media-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr));
-  gap: 1rem;
-  max-width: 900px;
+@media (min-width: 600px) {
+  .demo-products-carousel .demo-product-card {
+    flex: 0 0 300px;
+  }
+}
+
+/* Media: vertical feed (single column, stacked posts) */
+.demo-media-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-width: 520px;
   margin: 0 auto;
 }
 
-@media (min-width: 400px) {
-  .demo-media-grid {
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 1.25rem;
-  }
+.demo-media-feed .demo-media-feed-item {
+  display: block;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.demo-media-feed .demo-media-feed-item:last-child {
+  border-bottom: none;
 }
 
 /* Section padding: tighter on mobile */

@@ -8,7 +8,7 @@ import type { Feed } from '../types/aggregator';
 
 export function useModals() {
   const [showSearch, setShowSearch] = useState(false);
-  const [showInbox, setShowInbox] = useState(false);
+  const [showInbox, setShowInbox] = useState(import.meta.env.VITE_DEFAULT_VIEW === 'messaging');
   const [initialThread, setInitialThread] = useState<{
     participantPnIdentifier: string;
     participantName?: string;

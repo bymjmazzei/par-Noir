@@ -45,8 +45,7 @@
     
     <!-- Content Security Policy - Enhanced Security -->
     <!-- Note: unsafe-inline and unsafe-eval are required for Google OAuth library -->
-    <!-- However, we restrict them to only Google domains for better security -->
-    <!-- Note: require-trusted-types-for is removed as it conflicts with unsafe-inline/unsafe-eval needed for Google OAuth -->
+    <!-- upgrade-insecure-requests omitted: it breaks Capacitor WebView (file/capacitor origins) -->
     <meta http-equiv="Content-Security-Policy" content="
       default-src 'self';
       script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://accounts.google.com;
@@ -58,7 +57,6 @@
       object-src 'none';
       base-uri 'self';
       form-action 'self' https://accounts.google.com;
-      upgrade-insecure-requests;
     ">
   </head>
   <body>

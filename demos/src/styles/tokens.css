@@ -1,19 +1,24 @@
 /**
- * Flyer-style design tokens. Mobile-first: spacing scales up from small screens.
+ * Cannabis-forward design tokens: high contrast, high saturation.
+ * Supports range from high-end/classy to vector/cartoony.
+ * Mobile-first: spacing scales up from small screens.
  */
 :root {
+  /* Type: bold display + condensed body for flyer/poster feel */
   --flyer-heading-font: 'Bebas Neue', 'Oswald', system-ui, sans-serif;
   --flyer-body-font: 'Oswald', system-ui, sans-serif;
   --flyer-heading-size: clamp(2rem, 8vw, 4rem);
   --flyer-heading-size-sm: clamp(1.25rem, 5vw, 2.25rem);
   --flyer-cta-size: 1rem;
   --flyer-link-size: 0.9375rem;
-  --flyer-accent: #ff3366;
-  --flyer-accent-alt: #00d4aa;
+
+  /* High-contrast, high-saturation defaults (cannabis palette) */
+  --flyer-accent: #22c55e;        /* vivid green */
+  --flyer-accent-alt: #f59e0b;   /* amber / gold */
   --flyer-bg-dark: #0a0a0a;
-  --flyer-bg-block: rgba(0, 0, 0, 0.75);
+  --flyer-bg-block: rgba(0, 0, 0, 0.8);
   --flyer-text: #ffffff;
-  --flyer-text-muted: rgba(255, 255, 255, 0.9);
+  --flyer-text-muted: rgba(255, 255, 255, 0.88);
   --flyer-spacing: 1rem;
   --flyer-spacing-lg: 1.5rem;
   --flyer-spacing-xl: 2rem;

@@ -8,6 +8,8 @@ interface OnePage2Props {
 export function OnePage2({ data }: OnePage2Props) {
   const [email, setEmail] = useState('');
   const [productModal, setProductModal] = useState<typeof data.products[0] | null>(null);
+  const accent = data.primaryColor ?? 'var(--flyer-accent)';
+  const textOnAccent = data.secondaryColor ?? 'var(--flyer-text)';
 
   return (
     <div className="demo-page-root" style={{ fontFamily: 'var(--flyer-body-font)', display: 'flex', flexDirection: 'column' }}>
@@ -48,8 +50,8 @@ export function OnePage2({ data }: OnePage2Props) {
         style={{
           paddingTop: 'var(--flyer-spacing-xl)',
           paddingBottom: 'var(--flyer-spacing-xl)',
-          backgroundColor: 'var(--flyer-accent)',
-          color: 'var(--flyer-text)',
+          backgroundColor: accent,
+          color: textOnAccent,
         }}
       >
         <div style={{ maxWidth: 640, margin: '0 auto' }}>
@@ -89,10 +91,10 @@ export function OnePage2({ data }: OnePage2Props) {
               style={{
                 flex: 1,
                 padding: 18,
-                border: 'var(--flyer-border-thick) solid var(--flyer-text)',
+                border: `var(--flyer-border-thick) solid ${textOnAccent}`,
                 fontSize: 'var(--flyer-cta-size)',
                 backgroundColor: 'transparent',
-                color: 'var(--flyer-text)',
+                color: textOnAccent,
                 letterSpacing: '0.05em',
               }}
             />
@@ -100,8 +102,8 @@ export function OnePage2({ data }: OnePage2Props) {
               type="submit"
               style={{
                 padding: '18px 28px',
-                backgroundColor: 'var(--flyer-text)',
-                color: 'var(--flyer-accent)',
+                backgroundColor: textOnAccent,
+                color: accent,
                 border: 'none',
                 cursor: 'pointer',
                 fontSize: 'var(--flyer-cta-size)',
@@ -157,7 +159,7 @@ export function OnePage2({ data }: OnePage2Props) {
         </div>
       </section>
 
-      {/* Products: responsive grid */}
+      {/* Products: horizontal carousel */}
       <section
         data-reveal
         className="demo-section"
@@ -181,7 +183,7 @@ export function OnePage2({ data }: OnePage2Props) {
         >
           Products
         </h2>
-        <div className="demo-products-grid">
+        <div className="demo-products-carousel">
           {data.products.map((product) => (
             <button
               key={product.id}
@@ -190,7 +192,7 @@ export function OnePage2({ data }: OnePage2Props) {
               className="demo-product-card"
               style={{
                 padding: 0,
-                border: 'var(--flyer-border-thick) solid var(--flyer-accent)',
+                border: `var(--flyer-border-thick) solid ${accent}`,
                 overflow: 'hidden',
                 cursor: 'pointer',
                 backgroundColor: 'var(--flyer-bg-block)',
@@ -206,6 +208,7 @@ export function OnePage2({ data }: OnePage2Props) {
                   margin: '18px 18px 6px',
                   fontSize: 'var(--flyer-link-size)',
                   fontWeight: 700,
+                  color: 'var(--flyer-text)',
                   textAlign: 'center',
                   textTransform: 'uppercase',
                   letterSpacing: '0.08em',
@@ -254,7 +257,7 @@ export function OnePage2({ data }: OnePage2Props) {
               maxWidth: 460,
               width: '100%',
               padding: 'var(--flyer-spacing-lg)',
-              border: 'var(--flyer-border-thick) solid var(--flyer-accent)',
+              border: `var(--flyer-border-thick) solid ${accent}`,
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -288,8 +291,8 @@ export function OnePage2({ data }: OnePage2Props) {
                 style={{
                   display: 'inline-block',
                   padding: '12px 20px',
-                  backgroundColor: 'var(--flyer-accent)',
-                  color: 'var(--flyer-text)',
+                  backgroundColor: accent,
+                  color: textOnAccent,
                   textDecoration: 'none',
                   fontSize: 'var(--flyer-link-size)',
                   fontWeight: 700,
@@ -321,7 +324,7 @@ export function OnePage2({ data }: OnePage2Props) {
         </div>
       )}
 
-      {/* Media: responsive grid */}
+      {/* Media: vertical feed */}
       <section
         data-reveal
         className="demo-section"
@@ -345,33 +348,34 @@ export function OnePage2({ data }: OnePage2Props) {
         >
           Recent media
         </h2>
-        <div className="demo-media-grid">
+        <div className="demo-media-feed">
           {data.mediaPosts.slice(0, 5).map((post) => (
             <a
               key={post.id}
               href={post.url}
               target="_blank"
               rel="noopener noreferrer"
+              className="demo-media-feed-item"
               style={{
-                display: 'block',
-                overflow: 'hidden',
-                backgroundColor: 'var(--flyer-bg-block)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '1rem',
+                padding: '1rem 0',
+                backgroundColor: 'transparent',
                 textDecoration: 'none',
                 color: 'inherit',
-                border: '1px solid rgba(255,255,255,0.15)',
               }}
             >
               {post.thumbnailUrl && (
                 <img
                   src={post.thumbnailUrl}
-                  alt={post.title ?? post.type}
-                  style={{ width: '100%', aspectRatio: '1', objectFit: 'cover' }}
+                  alt=""
+                  style={{ width: 80, height: 80, objectFit: 'cover', flexShrink: 0 }}
                 />
               )}
               {post.title && (
-                <p
+                <span
                   style={{
-                    margin: 10,
                     fontSize: 'var(--flyer-link-size)',
                     fontWeight: 600,
                     textTransform: 'uppercase',
@@ -380,7 +384,7 @@ export function OnePage2({ data }: OnePage2Props) {
                   }}
                 >
                   {post.title}
-                </p>
+                </span>
               )}
             </a>
           ))}
