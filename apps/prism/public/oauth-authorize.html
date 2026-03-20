@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Authorize - par Noir Browser</title>
+  <title>Authorize - Prism</title>
   <style>
     * {
       margin: 0;
@@ -525,7 +525,7 @@
           <img src="/branding/Par-Noir-Logo-White.png" alt="par Noir" />
         </div>
         <div class="app-details">
-          <div class="app-name" id="appName">par Noir Browser</div>
+          <div class="app-name" id="appName">Prism</div>
           <div class="app-url" id="appUrl">browse.parnoir.com</div>
         </div>
       </div>
@@ -580,7 +580,7 @@
   <script>
     // Get OAuth parameters from URL
     const urlParams = new URLSearchParams(window.location.search);
-    const clientId = urlParams.get('client_id') || 'browser-app';
+    const clientId = urlParams.get('client_id') || 'prism-app';
     // Use redirect_uri from URL params (set by frontend), fallback to oauth-callback.html
     const redirectUri = urlParams.get('redirect_uri') || `${window.location.origin}/oauth-callback.html`;
     const state = urlParams.get('state') || '';
