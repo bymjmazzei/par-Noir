@@ -27,7 +27,9 @@ const PORT = process.env.PORT || 3001;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // Always include these origins, even if ALLOWED_ORIGINS env var is set.
-// Capacitor/WebView: add capacitor://localhost and ionic://localhost so mobile app can call API.
+// Capacitor/WebView:
+// - capacitor://localhost / ionic:// — some native shells
+// - https://localhost — Android Capacitor when capacitor.config server.androidScheme is "https" (WebView origin for API calls)
 const DEFAULT_ORIGINS = [
   'https://parnoir.com',
   'https://pn.parnoir.com',
@@ -38,6 +40,8 @@ const DEFAULT_ORIGINS = [
   'https://licensing.parnoir.com',
   'capacitor://localhost',
   'ionic://localhost',
+  'https://localhost',
+  'https://127.0.0.1',
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:5174'
