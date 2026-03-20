@@ -1,7 +1,7 @@
 /**
  * Aggregator Browser
  * Licensed aggregator application for discovering and viewing public encrypted content
- * Deployed at browse.parnoir.com
+ * Deployed at browse.parnoir.com; messaging variant at messaging.parnoir.com
  */
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -52,6 +52,7 @@ import { useAuthAndSession } from './hooks/useAuthAndSession';
 import { useMePageData } from './hooks/useMePageData';
 import { reportCopyright } from './services/reportCopyrightService';
 import { PNOAuthService } from './services/pnOAuthService';
+import { MESSAGING_ONLY } from './config/buildFlags';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -925,6 +926,7 @@ function App() {
       )}
       <HomePageContext.Provider value={homeContextValue as HomePageContextValue}>
       <AppLayout
+        messagingOnly={MESSAGING_ONLY}
         viewMode={viewMode}
         activeBottomTab={activeBottomTab}
         setActiveBottomTab={setActiveBottomTab}
@@ -970,6 +972,11 @@ function App() {
           initialThread={initialThread}
           onCreatorClick={handleCreatorClick}
           onNotificationClick={(notification) => {
+            if (MESSAGING_ONLY) {
+              setShowInbox(true);
+              setActiveBottomTab('messages');
+              return;
+            }
             setShowInbox(false);
             setActiveBottomTab('home');
             if (notification.data?.file_id) {

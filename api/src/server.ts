@@ -36,6 +36,7 @@ const DEFAULT_ORIGINS = [
   'https://pn-parnoir.web.app',
   'https://par-noir-dashboard.web.app',
   'https://browse.parnoir.com',
+  'https://messaging.parnoir.com',
   'https://prism.parnoir.com',
   'https://licensing.parnoir.com',
   'capacitor://localhost',

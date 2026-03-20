@@ -15,6 +15,8 @@ import type { Feed } from '../types/aggregator';
 import type { Toast } from './Toast';
 
 export interface AppLayoutProps {
+  /** Messaging standalone build: hide upload chrome, slim bottom nav */
+  messagingOnly?: boolean;
   viewMode: 'grid' | 'feed';
   activeBottomTab: 'home' | 'search' | 'upload' | 'index' | 'messages';
   setActiveBottomTab: (tab: 'home' | 'search' | 'upload' | 'index' | 'messages') => void;
@@ -38,6 +40,7 @@ export interface AppLayoutProps {
 }
 
 export function AppLayout({
+  messagingOnly = false,
   viewMode,
   activeBottomTab,
   setActiveBottomTab,
@@ -63,7 +66,7 @@ export function AppLayout({
     <div
       className={`min-h-screen ${viewMode === 'feed' ? 'h-screen overflow-hidden bg-black' : 'bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900'}`}
     >
-      <UploadStatusCircle onClick={() => setShowUploadQueueOverlay(true)} />
+      {!messagingOnly && <UploadStatusCircle onClick={() => setShowUploadQueueOverlay(true)} />}
       <UploadQueueOverlay isOpen={showUploadQueueOverlay} onClose={() => setShowUploadQueueOverlay(false)} />
       <LockButtonWithContext
         onLockUnlock={onLockUnlock}
@@ -75,6 +78,7 @@ export function AppLayout({
       {children}
       <ToastContainer toasts={toasts} onClose={removeToast} />
       <BottomNav
+        messagingOnly={messagingOnly}
         activeTab={activeBottomTab}
         onTabChange={setActiveBottomTab}
         onHomeClick={() => {

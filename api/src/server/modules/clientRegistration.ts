@@ -27,6 +27,8 @@ clients.set('browser-app', {
   redirectUris: [
     'https://browse.parnoir.com/oauth-callback.html',
     'https://browse.parnoir.com/',
+    'https://messaging.parnoir.com/oauth-callback.html',
+    'https://messaging.parnoir.com/',
     'http://localhost:3000/oauth-callback.html',
     'http://localhost:3000/',
     'http://localhost:5173/oauth-callback.html', // Vite dev server

@@ -3,176 +3,51 @@
     {
       "target": "par-noir-dashboard",
       "public": "apps/id-dashboard/dist",
-      "ignore": [
-        "firebase.json",
-        "**/.*",
-        "**/node_modules/**"
-      ],
-      "rewrites": [
-        {
-          "source": "**",
-          "destination": "/index.html"
-        }
-      ],
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{"source": "**", "destination": "/index.html"}],
       "headers": [
-        {
-          "source": "**/*.@(js|css)",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "max-age=31536000"
-            }
-          ]
-        },
-        {
-          "source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "max-age=31536000"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "target": "demos",
-      "public": "demos/dist",
-      "ignore": [
-        "firebase.json",
-        "**/.*",
-        "**/node_modules/**"
-      ],
-      "rewrites": [
-        {
-          "source": "**",
-          "destination": "/index.html"
-        }
-      ],
-      "headers": [
-        {
-          "source": "**/*.@(js|css)",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "max-age=31536000"
-            }
-          ]
-        },
-        {
-          "source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "max-age=31536000"
-            }
-          ]
-        }
+        {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
+        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]}
       ]
     },
     {
       "target": "browse",
       "public": "apps/aggregator-browser/dist",
-      "ignore": [
-        "firebase.json",
-        "**/.*",
-        "**/node_modules/**"
-      ],
-      "rewrites": [
-        {
-          "source": "**",
-          "destination": "/index.html"
-        }
-      ],
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{"source": "**", "destination": "/index.html"}],
       "headers": [
-        {
-          "source": "**/*.@(js|css)",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "max-age=31536000"
-            }
-          ]
-        },
-        {
-          "source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "max-age=31536000"
-            }
-          ]
-        }
+        {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
+        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]}
+      ]
+    },
+    {
+      "target": "messaging",
+      "public": "apps/aggregator-browser/dist-messaging",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{"source": "**", "destination": "/index.html"}],
+      "headers": [
+        {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
+        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]}
       ]
     },
     {
       "target": "prism",
       "public": "apps/prism/dist",
-      "ignore": [
-        "firebase.json",
-        "**/.*",
-        "**/node_modules/**"
-      ],
-      "rewrites": [
-        {
-          "source": "**",
-          "destination": "/index.html"
-        }
-      ],
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{"source": "**", "destination": "/index.html"}],
       "headers": [
-        {
-          "source": "**/*.@(js|css)",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "max-age=31536000"
-            }
-          ]
-        },
-        {
-          "source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "max-age=31536000"
-            }
-          ]
-        }
+        {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
+        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]}
       ]
     },
     {
       "target": "licensing",
       "public": "apps/licensing-portal/dist",
-      "ignore": [
-        "firebase.json",
-        "**/.*",
-        "**/node_modules/**"
-      ],
-      "rewrites": [
-        {
-          "source": "**",
-          "destination": "/index.html"
-        }
-      ],
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{"source": "**", "destination": "/index.html"}],
       "headers": [
-        {
-          "source": "**/*.@(js|css)",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "max-age=31536000"
-            }
-          ]
-        },
-        {
-          "source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "max-age=31536000"
-            }
-          ]
-        }
+        {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
+        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]}
       ]
     }
   ]

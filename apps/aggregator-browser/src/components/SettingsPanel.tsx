@@ -146,7 +146,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 Your content, your control.
               </p>
               <p className="text-text-secondary text-xs">
-                Version 1.0.0 • browse.parnoir.com
+                Version 1.0.0 • {typeof window !== 'undefined' ? window.location.hostname : 'par Noir'}
               </p>
             </div>
           </section>

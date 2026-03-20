@@ -5,7 +5,8 @@ Licensed aggregator application for discovering and viewing public encrypted con
 ## Deployed At
 
 - **URL**: `browse.parnoir.com`
-- **Firebase Site**: `browse-parnoir` (needs to be created in Firebase Console)
+- **Firebase Site**: `browse-parnoir`
+- **Messaging (standalone web)**: `messaging.parnoir.com` → Firebase site `messaging-parnoir`, build output `dist-messaging` (`npm run build:messaging`). Add the custom domain in Firebase Hosting for that site; API redirect URIs/CORS include `https://messaging.parnoir.com`.
 
 ## Architecture
 

@@ -522,13 +522,24 @@
     console.log('isInPopup (from window.opener):', !!(window.opener && !window.opener.closed));
     console.log('isInPopup (final):', isInPopup);
     
-    // Determine API endpoint
-    const apiEndpoint = window.location.origin.includes('localhost') 
-      ? 'http://localhost:3001' 
-      : 'https://api.parnoir.com';
+    // Determine API endpoint — only use cleartext local API when this page is served by Vite dev (http://localhost:3001).
+    // Some Android WebViews report protocol oddly for https://localhost; never use "localhost in hostname → :3001" or we hit ERR_CLEARTEXT_NOT_PERMITTED.
+    const apiEndpoint = (() => {
+      const o = window.location.origin;
+      if (o === 'http://localhost:3001' || o === 'http://127.0.0.1:3001') {
+        return 'http://localhost:3001';
+      }
+      return 'https://api.parnoir.com';
+    })();
     
     // Log for debugging
     console.log('OAuth API Endpoint:', apiEndpoint);
+
+    // Show this host in the consent UI (browse vs messaging.parnoir.com vs dev)
+    const appUrlEl = document.getElementById('appUrl');
+    if (appUrlEl) {
+      appUrlEl.textContent = window.location.hostname || window.location.host;
+    }
     
     let identityData = null;
     let authorizationCode = null;

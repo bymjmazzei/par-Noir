@@ -8,6 +8,8 @@ import { Search, Home, Plus, MessageSquare, User } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 
 interface BottomNavProps {
+  /** When true (messaging build for messaging.parnoir.com), only Messages + Me */
+  messagingOnly?: boolean;
   activeTab: 'home' | 'search' | 'upload' | 'index' | 'messages';
   onTabChange: (tab: 'home' | 'search' | 'upload' | 'index' | 'messages') => void;
   onSearchClick?: () => void;
@@ -18,6 +20,7 @@ interface BottomNavProps {
 }
 
 export function BottomNav({ 
+  messagingOnly = false,
   activeTab, 
   onTabChange, 
   onSearchClick,
@@ -44,6 +47,33 @@ export function BottomNav({
       onTabChange(tab);
     }
   };
+
+  if (messagingOnly) {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-700 h-16 flex items-center justify-around z-[100]">
+        <button
+          onClick={() => handleTabClick('messages')}
+          className={`
+          flex items-center justify-center h-full text-white hover:text-blue-400 transition-colors
+          ${activeTab === 'messages' ? 'text-blue-400' : ''}
+            `}
+          title="Inbox"
+        >
+          <MessageSquare className="h-6 w-6" />
+        </button>
+        <button
+          onClick={() => handleTabClick('index')}
+          className={`
+          flex items-center justify-center h-full text-white hover:text-blue-400 transition-colors
+          ${activeTab === 'index' ? 'text-blue-400' : ''}
+            `}
+          title="Me"
+        >
+          <User className="h-6 w-6" />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-700 h-16 flex items-center justify-around z-[100]">

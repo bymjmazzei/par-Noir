@@ -12,6 +12,9 @@
         "browse": [
           "browse-parnoir"
         ],
+        "messaging": [
+          "messaging-parnoir"
+        ],
         "prism": [
           "prism-parnoir"
         ],
