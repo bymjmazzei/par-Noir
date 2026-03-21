@@ -48,7 +48,9 @@ export function App() {
         setError(data.error_description || data.error || res.statusText);
         return;
       }
-      setMessage(`OAuth client registered: ${data.clientId}. Use this client_id in your app (see PN_OAUTH_INTEGRATION.md).`);
+      setMessage(
+        `OAuth client registered: ${data.clientId}. Use this client_id in your app (see PN_OAUTH_INTEGRATION.md).`
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Request failed');
     }
@@ -81,135 +83,118 @@ export function App() {
   };
 
   return (
-    <div style={styles.page}>
-      <h1 style={styles.h1}>par Noir — Developer</h1>
-      <p style={styles.muted}>
-        Register OAuth clients and issue API keys. Requires <code>ADMIN_API_KEY</code> on the API (header{' '}
-        <code>X-Admin-Key</code>). Production: <a href="https://developers.parnoir.com">developers.parnoir.com</a> once
-        hosted. API: <code>{API_ENDPOINT}</code>
-      </p>
+    <div className="dev-root">
+      <header className="dev-header">
+        <div className="dev-header-inner">
+          <img className="dev-logo" src="/branding/Par-Noir-Logo-White.png" alt="par Noir" />
+          <div className="dev-header-text">
+            <p className="dev-title">Developer console</p>
+            <p className="dev-sub">OAuth clients &amp; API keys — same visual language as the identity dashboard</p>
+          </div>
+        </div>
+      </header>
 
-      <label style={styles.label}>
-        Admin key (X-Admin-Key)
-        <input
-          type="password"
-          style={styles.input}
-          value={adminKey}
-          onChange={(e) => setAdminKey(e.target.value)}
-          placeholder="From server ADMIN_API_KEY"
-          autoComplete="off"
-        />
-      </label>
+      <main className="dev-main">
+        <p className="dev-lead">
+          Register OAuth clients and issue API keys for <code>/api/v1/*</code>. The API must have{' '}
+          <code>ADMIN_API_KEY</code> set; send it as header <code>X-Admin-Key</code>. Endpoint:{' '}
+          <span className="dev-api-pill">{API_ENDPOINT}</span>
+        </p>
 
-      {error && <div style={styles.error}>{error}</div>}
-      {message && <pre style={styles.success}>{message}</pre>}
+        <div className="dev-field">
+          <label htmlFor="admin-key">Admin key (X-Admin-Key)</label>
+          <input
+            id="admin-key"
+            type="password"
+            className="dev-input"
+            value={adminKey}
+            onChange={(e) => setAdminKey(e.target.value)}
+            placeholder="From server ADMIN_API_KEY"
+            autoComplete="off"
+          />
+        </div>
 
-      <section style={styles.card}>
-        <h2>Register OAuth client</h2>
-        <label style={styles.label}>
-          clientId
-          <input style={styles.input} value={ocClientId} onChange={(e) => setOcClientId(e.target.value)} />
-        </label>
-        <label style={styles.label}>
-          name
-          <input style={styles.input} value={ocName} onChange={(e) => setOcName(e.target.value)} />
-        </label>
-        <label style={styles.label}>
-          description
-          <input style={styles.input} value={ocDescription} onChange={(e) => setOcDescription(e.target.value)} />
-        </label>
-        <label style={styles.label}>
-          redirect URIs (one per line)
-          <textarea style={{ ...styles.input, minHeight: 80 }} value={ocRedirectUris} onChange={(e) => setOcRedirectUris(e.target.value)} />
-        </label>
-        <label style={styles.label}>
-          scopes (space-separated)
-          <input style={styles.input} value={ocScopes} onChange={(e) => setOcScopes(e.target.value)} />
-        </label>
-        <button type="button" style={styles.button} onClick={registerOAuthClient}>
-          POST /oauth/clients
-        </button>
-      </section>
+        {error && <div className="dev-alert dev-alert--error">{error}</div>}
+        {message && <div className="dev-alert dev-alert--success">{message}</div>}
 
-      <section style={styles.card}>
-        <h2>Issue API key</h2>
-        <label style={styles.label}>
-          pnId (pN identifier the key is bound to)
-          <input style={styles.input} value={akPnId} onChange={(e) => setAkPnId(e.target.value)} />
-        </label>
-        <label style={styles.label}>
-          scopes (comma-separated, optional)
-          <input style={styles.input} value={akScopes} onChange={(e) => setAkScopes(e.target.value)} />
-        </label>
-        <button type="button" style={styles.button} onClick={createApiKey}>
-          POST /api/admin/api-keys
-        </button>
-      </section>
+        <div className="dev-grid">
+          <section className="dev-card">
+            <h2>Register OAuth client</h2>
+            <div className="dev-field">
+              <label htmlFor="oc-client-id">clientId</label>
+              <input
+                id="oc-client-id"
+                className="dev-input"
+                value={ocClientId}
+                onChange={(e) => setOcClientId(e.target.value)}
+              />
+            </div>
+            <div className="dev-field">
+              <label htmlFor="oc-name">name</label>
+              <input id="oc-name" className="dev-input" value={ocName} onChange={(e) => setOcName(e.target.value)} />
+            </div>
+            <div className="dev-field">
+              <label htmlFor="oc-desc">description</label>
+              <input
+                id="oc-desc"
+                className="dev-input"
+                value={ocDescription}
+                onChange={(e) => setOcDescription(e.target.value)}
+              />
+            </div>
+            <div className="dev-field">
+              <label htmlFor="oc-redirect">redirect URIs (one per line)</label>
+              <textarea
+                id="oc-redirect"
+                className="dev-textarea"
+                value={ocRedirectUris}
+                onChange={(e) => setOcRedirectUris(e.target.value)}
+              />
+            </div>
+            <div className="dev-field">
+              <label htmlFor="oc-scopes">scopes (space-separated)</label>
+              <input
+                id="oc-scopes"
+                className="dev-input"
+                value={ocScopes}
+                onChange={(e) => setOcScopes(e.target.value)}
+              />
+            </div>
+            <button type="button" className="dev-btn" onClick={registerOAuthClient}>
+              Register client
+            </button>
+          </section>
 
-      <p style={styles.muted}>
-        Integration guide: repo <code>docs/developer/PN_OAUTH_INTEGRATION.md</code>
-      </p>
+          <section className="dev-card">
+            <h2>Issue API key</h2>
+            <div className="dev-field">
+              <label htmlFor="ak-pn">pnId (pN identifier the key is bound to)</label>
+              <input
+                id="ak-pn"
+                className="dev-input"
+                value={akPnId}
+                onChange={(e) => setAkPnId(e.target.value)}
+              />
+            </div>
+            <div className="dev-field">
+              <label htmlFor="ak-scopes">scopes (comma-separated, optional)</label>
+              <input
+                id="ak-scopes"
+                className="dev-input"
+                value={akScopes}
+                onChange={(e) => setAkScopes(e.target.value)}
+              />
+            </div>
+            <button type="button" className="dev-btn" onClick={createApiKey}>
+              Create API key
+            </button>
+          </section>
+        </div>
+
+        <footer className="dev-foot">
+          Integration guide: <code>docs/developer/PN_OAUTH_INTEGRATION.md</code>
+        </footer>
+      </main>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  page: {
-    fontFamily: 'system-ui, sans-serif',
-    maxWidth: 560,
-    margin: '0 auto',
-    padding: 24,
-    color: '#e5e5e5',
-    background: '#0a0a0a',
-    minHeight: '100vh'
-  },
-  h1: { fontSize: 22, marginBottom: 8 },
-  muted: { color: '#888', fontSize: 13, lineHeight: 1.5 },
-  label: { display: 'block', marginTop: 12, fontSize: 13 },
-  input: {
-    display: 'block',
-    width: '100%',
-    marginTop: 4,
-    padding: 8,
-    borderRadius: 6,
-    border: '1px solid #333',
-    background: '#111',
-    color: '#eee',
-    boxSizing: 'border-box'
-  },
-  button: {
-    marginTop: 16,
-    padding: '10px 16px',
-    borderRadius: 6,
-    border: 'none',
-    background: '#3b82f6',
-    color: '#fff',
-    cursor: 'pointer',
-    fontWeight: 600
-  },
-  card: {
-    marginTop: 24,
-    padding: 16,
-    border: '1px solid #222',
-    borderRadius: 8,
-    background: '#111'
-  },
-  error: {
-    marginTop: 12,
-    padding: 12,
-    background: '#3f1d1d',
-    color: '#fca5a5',
-    borderRadius: 6,
-    fontSize: 14
-  },
-  success: {
-    marginTop: 12,
-    padding: 12,
-    background: '#142e1f',
-    color: '#86efac',
-    borderRadius: 6,
-    fontSize: 13,
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-all'
-  }
-};
