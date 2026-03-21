@@ -49,7 +49,16 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Deploy to Firebase (hosting: id-dashboard + browse + messaging + prism + licensing)
+# Build developer-portal (developers.parnoir.com → developer-parnoir site)
+echo "📦 Building developer-portal..."
+cd ../developer-portal
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ developer-portal build failed"
+    exit 1
+fi
+
+# Deploy to Firebase (hosting: id-dashboard + browse + messaging + prism + licensing + developer)
 echo "🔥 Deploying to Firebase..."
 cd ../..
 firebase deploy --only hosting

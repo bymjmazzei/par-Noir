@@ -6,7 +6,7 @@
 
 ## Get a `client_id` and API access
 
-1. **Developer console (hosted):** When a Firebase Hosting site is wired for `apps/developer-portal`, use your deployed URL (e.g. developers subdomain). Until then, use the **local** portal below. The API must have `ADMIN_API_KEY` set; the portal sends `X-Admin-Key`.
+1. **Developer console (hosted):** [https://developers.parnoir.com](https://developers.parnoir.com) (Firebase site `developer-parnoir`; default URL [https://developer-parnoir.web.app](https://developer-parnoir.web.app)). In Firebase Console → Hosting → site **developer-parnoir** → *Add custom domain*, attach `developers.parnoir.com` if you see “Site Not Found” after DNS changes. The API must have `ADMIN_API_KEY` set; the portal sends `X-Admin-Key`.
 2. **Local:** Run `apps/developer-portal` (`npm install && npm run dev`, default [http://localhost:5176](http://localhost:5176)) and set `VITE_API_ENDPOINT` to your API if not using production.
 3. **API directly:** `POST /oauth/clients` and `POST /api/admin/api-keys` with `X-Admin-Key: <ADMIN_API_KEY>` — see [why-oauth-registry-is-centralized.md](../architecture/why-oauth-registry-is-centralized.md).
 

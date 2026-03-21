@@ -49,6 +49,16 @@
         {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
         {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]}
       ]
+    },
+    {
+      "target": "developer",
+      "public": "apps/developer-portal/dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{"source": "**", "destination": "/index.html"}],
+      "headers": [
+        {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
+        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]}
+      ]
     }
   ]
 }
