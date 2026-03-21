@@ -38,10 +38,20 @@ Hand-maintained index of **major** HTTP routes. When you add a user-facing or in
 | POST | `/api/feeds` | Create feed |
 | GET | `/api/feeds` | List feeds |
 
+## Developer portal (Bearer + OAuth client id)
+
+| Method | Path | Notes |
+|--------|------|--------|
+| POST | `/api/developer/api-keys` | Valid Bearer; token must be for client `developer-portal` (or `DEVELOPER_PORTAL_CLIENT_ID`) |
+| GET | `/api/developer/api-keys` | List key metadata for authenticated pn |
+| POST | `/api/developer/oauth-clients` | Register OAuth client with `owner_pn_id` |
+| GET | `/api/developer/oauth-clients` | List clients owned by authenticated pn |
+
 ## Admin (secured)
 
 | Method | Path | Notes |
 |--------|------|--------|
+| POST | `/oauth/clients` | `ADMIN_API_KEY` (break-glass; browser uses `/api/developer/oauth-clients` instead) |
 | POST | `/api/admin/api-keys` | `ADMIN_API_KEY` |
 | POST | `/api/admin/identity/succession` | Register predecessor → successor |
 | GET | `/api/admin/audit-events` | Query `limit`, optional `event_type` |

@@ -22,6 +22,7 @@ import crypto from 'crypto';
 import { determineFileType, getFileTypeFromMime, determineContentClass } from './server/utils/fileTypeUtils';
 import { safeClientErrorMessage } from './server/utils/safeError';
 import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modules/adminDeveloperRoutes';
+import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSelfServiceRoutes';
 
 // Environment configuration
 const PORT = process.env.PORT || 3001;
@@ -41,6 +42,7 @@ const DEFAULT_ORIGINS = [
   'https://prism.parnoir.com',
   'https://licensing.parnoir.com',
   'https://developers.parnoir.com',
+  'https://developers-parnoir.web.app',
   'capacitor://localhost',
   'ionic://localhost',
   'https://localhost',
@@ -11265,6 +11267,7 @@ class ProductionServer {
     });
 
     registerAdminDeveloperRoutes(this.app);
+    registerDeveloperSelfServiceRoutes(this.app);
   }
 
   /**

@@ -13,6 +13,8 @@ export interface OAuthClient {
   description?: string;
   redirectUris: string[];
   scopes?: string[];
+  /** Set when registered via developer portal (self-service) */
+  ownerPnId?: string;
   createdAt: number;
   updatedAt: number;
   isActive: boolean;
@@ -21,12 +23,14 @@ export interface OAuthClient {
 function rowToClient(row: Record<string, unknown>): OAuthClient {
   const redirectUris = row.redirect_uris as string[] | unknown;
   const scopes = row.scopes as string[] | unknown;
+  const ownerRaw = row.owner_pn_id;
   return {
     clientId: row.client_id as string,
     name: row.name as string,
     description: (row.description as string) || undefined,
     redirectUris: Array.isArray(redirectUris) ? redirectUris : [],
     scopes: Array.isArray(scopes) && scopes.length > 0 ? scopes : [],
+    ownerPnId: ownerRaw != null && String(ownerRaw).length > 0 ? String(ownerRaw) : undefined,
     createdAt: new Date(row.created_at as string).getTime(),
     updatedAt: new Date(row.updated_at as string).getTime(),
     isActive: Boolean(row.is_active)
@@ -79,6 +83,18 @@ export class ClientRegistrationService {
           'http://localhost:5174/'
         ],
         scopes: ['openid', 'profile']
+      },
+      {
+        clientId: 'developer-portal',
+        name: 'par Noir Developer console',
+        description: 'Sign in to create API keys and register OAuth apps for your integrations',
+        redirectUris: [
+          'https://developers.parnoir.com/oauth-callback.html',
+          'https://developers-parnoir.web.app/oauth-callback.html',
+          'http://localhost:5176/oauth-callback.html',
+          'http://127.0.0.1:5176/oauth-callback.html'
+        ],
+        scopes: ['openid', 'profile']
       }
     ];
 
@@ -103,9 +119,11 @@ export class ClientRegistrationService {
       clientSecretHash = await bcrypt.hash(client.clientSecret, 12);
     }
 
+    const ownerPnId = client.ownerPnId?.trim() || null;
+
     const result = await pool.query(
-      `INSERT INTO oauth_clients (client_id, name, description, redirect_uris, scopes, client_secret_hash, is_active)
-       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7)
+      `INSERT INTO oauth_clients (client_id, name, description, redirect_uris, scopes, client_secret_hash, is_active, owner_pn_id)
+       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8)
        RETURNING *`,
       [
         client.clientId,
@@ -114,7 +132,8 @@ export class ClientRegistrationService {
         JSON.stringify(client.redirectUris),
         JSON.stringify(client.scopes ?? []),
         clientSecretHash,
-        client.isActive !== false
+        client.isActive !== false,
+        ownerPnId
       ]
     );
 
@@ -212,6 +231,17 @@ export class ClientRegistrationService {
     const { getDatabasePool } = await import('../utils/database');
     const pool = getDatabasePool();
     const result = await pool.query(`SELECT * FROM oauth_clients ORDER BY client_id`);
+    return result.rows.map(rowToClient);
+  }
+
+  /** OAuth clients registered by a given pN via developer self-service */
+  static async listClientsByOwnerPnId(ownerPnId: string): Promise<OAuthClient[]> {
+    const { getDatabasePool } = await import('../utils/database');
+    const pool = getDatabasePool();
+    const result = await pool.query(
+      `SELECT * FROM oauth_clients WHERE owner_pn_id = $1 ORDER BY client_id`,
+      [ownerPnId.trim()]
+    );
     return result.rows.map(rowToClient);
   }
 

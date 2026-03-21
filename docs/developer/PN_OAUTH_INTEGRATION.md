@@ -6,9 +6,12 @@
 
 ## Get a `client_id` and API access
 
-1. **Developer console (hosted):** [https://developers.parnoir.com](https://developers.parnoir.com) (Firebase multisite id **`developers-parnoir`**, matching the subdomain; fallback URL [https://developers-parnoir.web.app](https://developers-parnoir.web.app)). Deploy target `hosting:developer` must map to that site id in `.firebaserc`. The API must have `ADMIN_API_KEY` set; the portal sends `X-Admin-Key`.
-2. **Local:** Run `apps/developer-portal` (`npm install && npm run dev`, default [http://localhost:5176](http://localhost:5176)) and set `VITE_API_ENDPOINT` to your API if not using production.
-3. **API directly:** `POST /oauth/clients` and `POST /api/admin/api-keys` with `X-Admin-Key: <ADMIN_API_KEY>` — see [why-oauth-registry-is-centralized.md](../architecture/why-oauth-registry-is-centralized.md).
+1. **Developer console (hosted):** [https://developers.parnoir.com](https://developers.parnoir.com) (Firebase multisite id **`developers-parnoir`**; fallback [https://developers-parnoir.web.app](https://developers-parnoir.web.app)). Deploy target `hosting:developer` must map to that site id in `.firebaserc`. **Sign in** uses the same par Noir OAuth flow as any third-party app: the portal is registered as OAuth client `developer-portal` (override with env `DEVELOPER_PORTAL_CLIENT_ID` on the API). After sign-in, the SPA calls:
+   - `POST /api/developer/oauth-clients` — register **your** app’s OAuth client (Bearer token; `owner_pn_id` stored server-side).
+   - `POST /api/developer/api-keys` — create an API key for **your** signed-in identity only (Bearer token).
+   - `GET /api/developer/oauth-clients` and `GET /api/developer/api-keys` — list what you registered (no secrets).
+2. **Local:** Run `apps/developer-portal` (`npm install && npm run dev`, default [http://localhost:5176](http://localhost:5176)). Set `VITE_API_ENDPOINT` to your API if not using production. Optional: `VITE_PN_CLIENT_ID` if you changed `DEVELOPER_PORTAL_CLIENT_ID` on the API. Copy [`apps/developer-portal/.env.example`](../../apps/developer-portal/.env.example) to `.env` as needed.
+3. **Break-glass / automation:** `POST /oauth/clients` and `POST /api/admin/api-keys` with `X-Admin-Key: <ADMIN_API_KEY>` — **never** ship `ADMIN_API_KEY` in a browser app; use only from secure operators or CI. See [why-oauth-registry-is-centralized.md](../architecture/why-oauth-registry-is-centralized.md).
 
 4. **Superseded identities:** Poll `GET /api/v1/identity/successor?pn_identifier=` so you do not treat a retired pN as valid forever — see [INTEGRATOR_IDENTITY_SUCCESSION.md](./INTEGRATOR_IDENTITY_SUCCESSION.md).
 

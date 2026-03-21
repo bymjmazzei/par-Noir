@@ -16,7 +16,8 @@ const sources = [
   path.join(root, 'api/src/server.ts'),
   path.join(root, 'api/src/server/modules/apiRoutes.ts'),
   path.join(root, 'api/src/server/modules/feedRoutes.ts'),
-  path.join(root, 'api/src/server/modules/adminDeveloperRoutes.ts')
+  path.join(root, 'api/src/server/modules/adminDeveloperRoutes.ts'),
+  path.join(root, 'api/src/server/modules/developerSelfServiceRoutes.ts')
 ];
 
 const md = fs.readFileSync(manifestPath, 'utf8');

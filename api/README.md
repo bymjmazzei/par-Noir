@@ -270,7 +270,8 @@ This API server supports the **"MARK I"** identity - the first real identity cre
 | Variable | Purpose |
 |----------|---------|
 | `DATABASE_URL` | PostgreSQL connection string (required in production with DB features) |
-| `ADMIN_API_KEY` | Protects `POST /api/admin/api-keys`, `POST /api/admin/identity/succession`, `GET /api/admin/audit-events` (`X-Admin-Key` or `Authorization: Bearer`) |
+| `ADMIN_API_KEY` | Protects `POST /oauth/clients` (admin), `POST /api/admin/api-keys`, `POST /api/admin/identity/succession`, `GET /api/admin/audit-events` (`X-Admin-Key` or `Authorization: Bearer`). Do not use from browser apps. |
+| `DEVELOPER_PORTAL_CLIENT_ID` | Optional; defaults to **`developer-portal`**. OAuth access tokens for this client id are required for `/api/developer/*` self-service routes. |
 | `AUDIT_RETENTION_DAYS` | Optional; defaults to **365** for `audit_events` pruning helper |
 
 See `docs/developer/INTEGRATOR_IDENTITY_SUCCESSION.md` for public succession reads (`GET /api/v1/identity/successor`).

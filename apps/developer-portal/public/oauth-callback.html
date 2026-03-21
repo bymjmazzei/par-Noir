@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Signing in…</title>
+  </head>
+  <body>
+    <p style="font-family: system-ui, sans-serif; padding: 1.5rem; color: #e5e5e5; background: #0a0a0a; min-height: 100vh; margin: 0">
+      Signing you in…
+    </p>
+    <script>
+      (async function () {
+        var params = new URLSearchParams(window.location.search);
+        var err = params.get('error');
+        var code = params.get('code');
+        var state = params.get('state');
+        var ctx = null;
+        try {
+          ctx = JSON.parse(sessionStorage.getItem('dev_portal_oauth') || 'null');
+        } catch (e) {
+          ctx = null;
+        }
+        if (err) {
+          sessionStorage.removeItem('dev_portal_oauth');
+          window.location.replace('/?error=' + encodeURIComponent(err));
+          return;
+        }
+        if (!code || !ctx || state !== ctx.state) {
+          sessionStorage.removeItem('dev_portal_oauth');
+          window.location.replace('/?error=' + encodeURIComponent('invalid_callback'));
+          return;
+        }
+        try {
+          var res = await fetch(ctx.api + '/oauth/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              code: code,
+              client_id: ctx.clientId,
+              redirect_uri: ctx.redirectUri,
+              grant_type: 'authorization_code'
+            })
+          });
+          var data = await res.json().catch(function () {
+            return {};
+          });
+          if (!res.ok) {
+            throw new Error(data.error_description || data.error || 'token_failed');
+          }
+          sessionStorage.setItem('dev_portal_access_token', data.access_token);
+          if (data.refresh_token) {
+            sessionStorage.setItem('dev_portal_refresh_token', data.refresh_token);
+          }
+        } catch (e) {
+          sessionStorage.removeItem('dev_portal_oauth');
+          var msg = e && e.message ? e.message : 'token_failed';
+          window.location.replace('/?error=' + encodeURIComponent(msg));
+          return;
+        }
+        sessionStorage.removeItem('dev_portal_oauth');
+        window.location.replace('/');
+      })();
+    </script>
+  </body>
+</html>

@@ -666,6 +666,20 @@ export async function initializeDatabase(): Promise<void> {
       );
     }
 
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const ownerPnPath = path.join(__dirname, '../../migrations/add_oauth_clients_owner_pn.sql');
+      const ownerPnSql = fs.readFileSync(ownerPnPath, 'utf-8');
+      await db.query(ownerPnSql);
+      console.log('✅ oauth_clients.owner_pn_id migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ oauth_clients owner_pn_id migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
     const { ClientRegistrationService } = await import('../modules/clientRegistration');
     await ClientRegistrationService.ensureDefaultClientsSeeded();
 

@@ -61,6 +61,8 @@ export class ApiKeyService {
     isActive?: boolean;
     requestsPerMinute?: number;
     requestsPerDay?: number;
+    /** audit_events.actor_hint — default `admin` */
+    auditActorHint?: string;
   }): Promise<{ record: ApiKeyRecord; plaintextKey: string }> {
     const rawBytes = crypto.randomBytes(32);
     const plaintextKey = `pn_${rawBytes.toString('hex')}`;
@@ -87,7 +89,7 @@ export class ApiKeyService {
     const record = mapApiKeyRow(result.rows[0] as Record<string, unknown>);
     await appendAuditEvent({
       eventType: 'api_key.created',
-      actorHint: 'admin',
+      actorHint: params.auditActorHint ?? 'admin',
       subjectPnIdentifier: params.pnId,
       metadata: { keyId: record.id }
     });
@@ -96,6 +98,35 @@ export class ApiKeyService {
       record,
       plaintextKey
     };
+  }
+
+  /** Non-secret metadata for keys owned by a pN (developer self-service listing). */
+  static async listKeysByPnId(pnId: string): Promise<
+    Array<{
+      id: string;
+      pnId: string;
+      scopes: string[];
+      isActive: boolean;
+      createdAt: string;
+      lastUsedAt?: string;
+      ownerType?: string;
+    }>
+  > {
+    const pool = getDatabasePool();
+    const result = await pool.query(
+      `SELECT id, pn_id, scopes, is_active, created_at, last_used_at, owner_type
+       FROM api_keys WHERE pn_id = $1 ORDER BY created_at DESC`,
+      [pnId.trim()]
+    );
+    return result.rows.map((row: Record<string, unknown>) => ({
+      id: String(row.id),
+      pnId: String(row.pn_id),
+      scopes: Array.isArray(row.scopes) ? (row.scopes as string[]) : [],
+      isActive: Boolean(row.is_active),
+      createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : new Date().toISOString(),
+      lastUsedAt: row.last_used_at ? new Date(String(row.last_used_at)).toISOString() : undefined,
+      ownerType: row.owner_type ? String(row.owner_type) : undefined
+    }));
   }
 
   /**

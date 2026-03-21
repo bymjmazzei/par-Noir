@@ -68,6 +68,39 @@ body {
   min-width: 200px;
 }
 
+.dev-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.dev-user-pill {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-muted {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.dev-btn--ghost {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.dev-btn--ghost:hover {
+  background: var(--hover);
+  border-color: #525252;
+  color: var(--text);
+}
+
 .dev-title {
   margin: 0;
   font-size: 0.75rem;
@@ -229,6 +262,47 @@ body {
   border: 1px solid rgba(134, 239, 172, 0.2);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.dev-alert--info {
+  background: rgba(30, 58, 95, 0.35);
+  color: #93c5fd;
+  border: 1px solid rgba(147, 197, 253, 0.25);
+}
+
+.dev-summary {
+  margin-bottom: 1.75rem;
+  padding: 1rem 1.25rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.dev-summary-block {
+  margin-top: 0.75rem;
+}
+
+.dev-summary-block:first-of-type {
+  margin-top: 0.35rem;
+}
+
+.dev-summary-block h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.dev-summary-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.dev-summary-list li {
+  margin-bottom: 0.25rem;
 }
 
 .dev-foot {
