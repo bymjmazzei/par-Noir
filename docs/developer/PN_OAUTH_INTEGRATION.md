@@ -6,7 +6,7 @@
 
 ## Get a `client_id` and API access
 
-1. **Developer console (hosted):** [https://developers.parnoir.com](https://developers.parnoir.com) (Firebase multisite id **`developers-parnoir`**; fallback [https://developers-parnoir.web.app](https://developers-parnoir.web.app)). Deploy target `hosting:developer` must map to that site id in `.firebaserc`. **Sign in** uses the same par Noir OAuth flow as any third-party app: the portal is registered as OAuth client `developer-portal` (override with env `DEVELOPER_PORTAL_CLIENT_ID` on the API). After sign-in, the SPA calls:
+1. **Developer console (hosted):** [https://developers.parnoir.com](https://developers.parnoir.com) (Firebase multisite id **`developers-parnoir`**; fallback [https://developers-parnoir.web.app](https://developers-parnoir.web.app)). Deploy target `hosting:developer` must map to that site id in `.firebaserc`. **Unlock pN** uses the same par Noir OAuth flow as any third-party app: the portal is registered as OAuth client `developer-portal` (override with env `DEVELOPER_PORTAL_CLIENT_ID` on the API). After you unlock, the SPA calls:
    - `POST /api/developer/oauth-clients` — register **your** app’s OAuth client (Bearer token; `owner_pn_id` stored server-side).
    - `POST /api/developer/api-keys` — create an API key for **your** signed-in identity only (Bearer token).
    - `GET /api/developer/oauth-clients` and `GET /api/developer/api-keys` — list what you registered (no secrets).

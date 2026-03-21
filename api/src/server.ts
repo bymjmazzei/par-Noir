@@ -554,56 +554,69 @@ class ProductionServer {
       '/api/aggregator/metadata-index/debug'
     ];
     
+    // GET navigations to API-hosted OAuth HTML (user follows link from developer portal, etc.)
+    // do not send an Origin header; allow those without weakening CORS for state-changing API calls.
+    const isOAuthBrowserHtmlEntryGet = (req: express.Request): boolean => {
+      if (req.method !== 'GET') return false;
+      const path = req.path || req.url?.split('?')[0] || '';
+      return (
+        path.startsWith('/oauth/authorize/consent') ||
+        path.startsWith('/oauth/consent')
+      );
+    };
+
     // Custom CORS middleware that checks path before allowing no-origin requests
     this.app.use((req, res, next) => {
       const origin = req.headers.origin;
       const path = req.path || req.url?.split('?')[0] || '';
       const isPublicPath = publicNoOriginPaths.some(p => path === p || path.startsWith(p));
-      
+
       // SECURITY FIX: In production, block no-origin requests except for public endpoints
-      if (!origin && NODE_ENV === 'production' && !isPublicPath) {
+      // and OAuth consent HTML entry (top-level navigation from allowed first-party sites).
+      if (!origin && NODE_ENV === 'production' && !isPublicPath && !isOAuthBrowserHtmlEntryGet(req)) {
         console.error(`[CORS] Blocked no-origin request to ${path} in production`);
         res.status(403).json({ error: 'Origin header required in production' });
         return;
       }
-      
+
       // Continue to standard CORS middleware
       next();
     });
-    
-    this.app.use(cors({
-      origin: (origin, callback) => {
-        // SECURITY FIX: Only allow no-origin requests for specific public endpoints
-        // This prevents CSRF-like attacks from tools that omit Origin header
-        if (!origin) {
-          // In development, allow no-origin but log it
-          if (NODE_ENV === 'development') {
-            console.warn(`[CORS] Allowing no-origin request (development mode)`);
-          return callback(null, true);
-        }
-          
-          // In production, this should have been handled by the middleware above
-          // But as a fallback, block it here too
-          return callback(new Error('Origin header required'));
-        }
-        
-        if (ALLOWED_ORIGINS.includes(origin)) {
-          if (NODE_ENV === 'development') {
-            console.log(`[CORS] Allowing origin: ${origin}`);
+
+    this.app.use((req, res, next) => {
+      const allowNoOriginOAuthHtml = isOAuthBrowserHtmlEntryGet(req);
+
+      return cors({
+        origin: (origin, callback) => {
+          if (!origin) {
+            if (NODE_ENV === 'development') {
+              console.warn(`[CORS] Allowing no-origin request (development mode)`);
+              return callback(null, true);
+            }
+            if (allowNoOriginOAuthHtml) {
+              return callback(null, true);
+            }
+            return callback(new Error('Origin header required'));
           }
-          callback(null, true);
-        } else {
-          console.error(`[CORS] Blocked origin: ${origin}. Allowed origins:`, ALLOWED_ORIGINS);
-          callback(new Error('Not allowed by CORS'));
-        }
-      },
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-      exposedHeaders: ['Content-Type'],
-      maxAge: 86400, // 24 hours
-      preflightContinue: false, // Handle preflight immediately
-    }));
+
+          if (ALLOWED_ORIGINS.includes(origin)) {
+            if (NODE_ENV === 'development') {
+              console.log(`[CORS] Allowing origin: ${origin}`);
+            }
+            callback(null, true);
+          } else {
+            console.error(`[CORS] Blocked origin: ${origin}. Allowed origins:`, ALLOWED_ORIGINS);
+            callback(new Error('Not allowed by CORS'));
+          }
+        },
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+        exposedHeaders: ['Content-Type'],
+        maxAge: 86400, // 24 hours
+        preflightContinue: false, // Handle preflight immediately
+      })(req, res, next);
+    });
 
     // Compression
     this.app.use(compression());

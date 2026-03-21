@@ -10,6 +10,27 @@ function FieldHelp({ children }: { children: ReactNode }) {
   return <span className="dev-help">{children}</span>;
 }
 
+function IconLock({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 17a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6V11Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function getAccessToken(): string | null {
   if (typeof sessionStorage === 'undefined') return null;
   const t = sessionStorage.getItem(STORAGE_ACCESS);
@@ -135,7 +156,7 @@ export function App() {
     })();
   }, [refreshDashboard]);
 
-  const startSignIn = () => {
+  const startUnlock = () => {
     setError(null);
     setMessage(null);
     const state = crypto.getRandomValues(new Uint8Array(16)).reduce(
@@ -194,7 +215,7 @@ export function App() {
     setMessage(null);
     const t = getAccessToken();
     if (!t) {
-      setError('Sign in first.');
+      setError('Unlock your pN first (use Unlock pN above).');
       return;
     }
     const redirectUris = ocRedirectUris
@@ -233,7 +254,7 @@ export function App() {
     setMessage(null);
     const t = getAccessToken();
     if (!t) {
-      setError('Sign in first.');
+      setError('Unlock your pN first (use Unlock pN above).');
       return;
     }
     const scopes = akScopes.split(',').map((s) => s.trim()).filter(Boolean);
@@ -268,7 +289,7 @@ export function App() {
           <img className="dev-logo" src="/branding/Par-Noir-Logo-White.png" alt="par Noir" />
           <div className="dev-header-text">
             <p className="dev-title">Developer console</p>
-            <p className="dev-sub">Register apps that use par Noir sign-in and API access</p>
+            <p className="dev-sub">Unlock your pN to register integrations and API access</p>
           </div>
           <div className="dev-header-actions">
             {loadingSession ? (
@@ -276,16 +297,18 @@ export function App() {
             ) : signedIn ? (
               <>
                 <span className="dev-user-pill" title={user?.did}>
-                  Signed in
+                  Unlocked
                   {user?.pn_identifier || user?.sub ? ` · ${user.pn_identifier || user.sub}` : ''}
                 </span>
-                <button type="button" className="dev-btn dev-btn--ghost" onClick={signOut}>
-                  Sign out
+                <button type="button" className="dev-btn dev-btn--ghost" onClick={signOut} aria-label="Lock session">
+                  <IconLock className="dev-btn-icon" />
+                  Lock
                 </button>
               </>
             ) : (
-              <button type="button" className="dev-btn" onClick={startSignIn}>
-                Sign in with par Noir
+              <button type="button" className="dev-btn dev-btn-unlock" onClick={startUnlock}>
+                <IconLock className="dev-btn-icon" />
+                Unlock pN
               </button>
             )}
           </div>
@@ -298,27 +321,27 @@ export function App() {
             What this page is for
           </h2>
           <p>
-            If you’re building a <strong>website or product</strong> that should talk to par Noir (for example “log in with
-            par Noir” or calling par Noir’s HTTP API), this console registers that product after you{' '}
-            <strong>sign in with your par Noir identity</strong> — the same OAuth flow as any other third-party app. No admin
-            password is used in the browser.
+            If you’re building a <strong>website or product</strong> that should talk to par Noir (for example letting your
+            users unlock their pN or calling par Noir’s HTTP API), this console registers that product after you{' '}
+            <strong>unlock your pN</strong> — the same OAuth flow as any other third-party app. No admin password is used in
+            the browser.
           </p>
           <p>
             There are <strong>two different things</strong> below, for two different jobs:
           </p>
           <ul>
             <li>
-              <strong>Sign-in for your app (OAuth)</strong> — Registers your product so it can run the login flow and
-              defines which return URLs are allowed after login.
+              <strong>OAuth for your app</strong> — Registers your product so it can run the unlock / authorize flow and
+              defines which return URLs are allowed afterward.
             </li>
             <li>
               <strong>Backend API key</strong> — A secret your <em>server</em> sends when it calls{' '}
-              <code>/api/v1/...</code>. Keys you create here are always tied to <strong>your</strong> signed-in identity.
+              <code>/api/v1/...</code>. Keys you create here are always tied to <strong>the pN you unlocked here</strong>.
             </li>
           </ul>
           <p>
-            <strong>Typical order:</strong> (1) Sign in with par Noir. (2) Register the OAuth client for your app. (3) Create
-            an API key for server-to-server calls (scoped to you).
+            <strong>Typical order:</strong> (1) Unlock pN. (2) Register the OAuth client for your app. (3) Create an API key
+            for server-to-server calls (scoped to that identity).
           </p>
         </section>
 
@@ -327,10 +350,19 @@ export function App() {
         </p>
 
         {!signedIn && !loadingSession && (
-          <div className="dev-alert dev-alert--info">
-            Use <strong>Sign in with par Noir</strong> in the header. You’ll unlock with your identity file on the secure
-            par Noir authorization page, then return here.
-          </div>
+          <section className="dev-unlock-hero" aria-labelledby="unlock-cta-heading">
+            <h2 id="unlock-cta-heading" className="dev-unlock-hero-title">
+              Unlock pN to continue
+            </h2>
+            <p className="dev-unlock-hero-desc">
+              Opens the secure par Noir authorize page (identity file + passcode). When you’re done, you’ll return here with
+              a session — same flow as the browser and other third-party apps.
+            </p>
+            <button type="button" className="dev-btn dev-btn-unlock dev-btn-unlock--large" onClick={startUnlock}>
+              <IconLock className="dev-btn-icon" />
+              Unlock pN
+            </button>
+          </section>
         )}
 
         {error && <div className="dev-alert dev-alert--error">{error}</div>}
@@ -373,9 +405,9 @@ export function App() {
 
             <div className="dev-grid">
               <section className="dev-card" aria-labelledby="oauth-heading">
-                <h2 id="oauth-heading">Sign-in for your app (OAuth client)</h2>
+                <h2 id="oauth-heading">OAuth client (your app)</h2>
                 <p className="dev-card-desc">
-                  Use this when your product has a “Connect par Noir” or “Sign in with par Noir” button. You get a{' '}
+                  Use when your product lets people <strong>unlock their pN</strong> (or connect their identity). You get a{' '}
                   <strong>client id</strong> for your app. Redirect URLs must match your real URLs exactly.
                 </p>
                 <div className="dev-field">
@@ -411,7 +443,7 @@ export function App() {
                   />
                 </div>
                 <div className="dev-field">
-                  <label htmlFor="oc-redirect">Allowed return URLs after login</label>
+                  <label htmlFor="oc-redirect">Allowed return URLs after unlock / authorize</label>
                   <textarea
                     id="oc-redirect"
                     className="dev-textarea"
@@ -440,8 +472,8 @@ export function App() {
               <section className="dev-card" aria-labelledby="apikey-heading">
                 <h2 id="apikey-heading">Backend API key</h2>
                 <p className="dev-card-desc">
-                  For <strong>your server</strong> calling <code>/api/v1/...</code>. The key is created for the identity you
-                  signed in with — you do not enter a separate pn id.
+                  For <strong>your server</strong> calling <code>/api/v1/...</code>. The key is created for the pN you
+                  unlocked in this session — you do not enter a separate id.
                 </p>
                 <div className="dev-field">
                   <label htmlFor="ak-scopes">Which API areas this key may use</label>
