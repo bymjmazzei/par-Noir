@@ -58,7 +58,11 @@ export const LockButtonWithContext: React.FC<LockButtonWithContextProps> = ({
   // Removed debug logging - only log errors
 
   return (
-    <div ref={containerRef} className="fixed top-3 right-3 z-[110] flex flex-col items-center space-y-0.5">
+    <div
+      ref={containerRef}
+      className="fixed right-3 z-[110] flex flex-col items-center space-y-0.5"
+      style={{ top: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}
+    >
       {/* Lock/Unlock Button */}
       <button
         onClick={onLockUnlock}

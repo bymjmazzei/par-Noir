@@ -50,7 +50,8 @@ export const UploadStatusCircle: React.FC<UploadStatusCircleProps> = ({ onClick 
   return (
     <button
       onClick={onClick}
-      className="fixed top-4 left-4 z-[200] w-12 h-12 rounded-full bg-neutral-900 border-2 border-neutral-700 hover:border-neutral-500 transition-colors flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-neutral-900"
+      className="fixed left-4 z-[200] w-12 h-12 rounded-full bg-neutral-900 border-2 border-neutral-700 hover:border-neutral-500 transition-colors flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-neutral-900"
+      style={{ top: 'calc(1rem + env(safe-area-inset-top, 0px))' }}
       aria-label={`Upload progress: ${progress.overallProgress}%`}
       title={`Upload progress: ${progress.overallProgress}%`}
     >

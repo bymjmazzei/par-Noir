@@ -10,6 +10,8 @@ import { TextPostData, TextPostStyle } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { EditMetadataModal, MetadataFormData } from './EditMetadataModal';
+import { Capacitor } from '@capacitor/core';
+import { pickImageFromNative } from '../hooks/useNativeFilePicker';
 
 // Helper function to convert hex to RGB
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
@@ -759,18 +761,22 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
     return lines.length > 0 ? lines : [''];
   };
 
+  const applyBackgroundImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setBackgroundImage(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleBackgroundImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (!file.type.startsWith('image/')) {
-        alert('Please select an image file');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setBackgroundImage(event.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+      applyBackgroundImageFile(file);
     }
   };
 
@@ -1116,7 +1122,14 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                   }}
                 />
                 <button
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={async () => {
+                    if (Capacitor.isNativePlatform()) {
+                      const file = await pickImageFromNative('photos');
+                      if (file) applyBackgroundImageFile(file);
+                    } else {
+                      fileInputRef.current?.click();
+                    }
+                  }}
                   className="p-2 text-white hover:opacity-80 transition-opacity flex items-center justify-center"
                 >
                   <ImageIcon className="h-5 w-5" />

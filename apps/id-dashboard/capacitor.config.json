@@ -2,7 +2,12 @@
   "appId": "com.parnoir.dashboard",
   "appName": "par Noir Dashboard",
   "webDir": "dist",
+  "backgroundColor": "#000000",
   "server": {
     "androidScheme": "https"
+  },
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#000000"
   }
 }

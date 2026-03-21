@@ -88,9 +88,12 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
     if (!apiKey?.key) return;
 
     try {
-      await navigator.clipboard.writeText(apiKey.key);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      const { copyToClipboard } = await import('../utils/helpers');
+      const ok = await copyToClipboard(apiKey.key);
+      if (ok) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
     } catch (err) {
       console.error('Failed to copy API key:', err);
     }

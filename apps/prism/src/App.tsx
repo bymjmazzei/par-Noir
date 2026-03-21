@@ -11,6 +11,7 @@ import { RayView } from './components/RayView';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { fetchAdminCheck, fetchAdminStats, fetchReputation, submitRayApply, seedDemoQueue, ensurePrismLedgers, ReputationResult } from './services/prismApi';
 import { getPrismOAuthUrl } from './utils/oauth';
+import { SplashScreen } from '@capacitor/splash-screen';
 
 function LockedView({ onApplyOpen }: { onApplyOpen: () => void }) {
   return (
@@ -20,6 +21,7 @@ function LockedView({ onApplyOpen }: { onApplyOpen: () => void }) {
         backgroundImage: 'url(/branding/Par-Noir-Background-Dark.png)',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
+        paddingTop: 'env(safe-area-inset-top, 0px)',
       }}
     >
       <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
@@ -191,7 +193,10 @@ function UnlockedView() {
   }, [session?.accessToken, adminState?.isAdmin]);
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
+    <div
+      className="min-h-screen bg-[#0a0a0a] text-white"
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+    >
       <header className="border-b border-neutral-800 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -303,9 +308,16 @@ function AppContent() {
   const [applyOpen, setApplyOpen] = useState(false);
   const { session, loading } = useAuth();
 
+  useEffect(() => {
+    SplashScreen.hide().catch(() => {});
+  }, []);
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center">
+      <div
+        className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      >
         <div className="text-neutral-500">Loading...</div>
       </div>
     );

@@ -29,6 +29,8 @@ clients.set('browser-app', {
     'https://browse.parnoir.com/',
     'https://messaging.parnoir.com/oauth-callback.html',
     'https://messaging.parnoir.com/',
+    'https://localhost/oauth-callback.html', // Capacitor native (Android with server.androidScheme)
+    'https://localhost/',
     'http://localhost:3000/oauth-callback.html',
     'http://localhost:3000/',
     'http://localhost:5173/oauth-callback.html', // Vite dev server
@@ -48,6 +50,8 @@ clients.set('prism-app', {
   redirectUris: [
     'https://prism.parnoir.com/oauth-callback.html',
     'https://prism.parnoir.com/',
+    'https://localhost/oauth-callback.html', // Capacitor native (Android with server.androidScheme)
+    'https://localhost/',
     'http://localhost:5174/oauth-callback.html',
     'http://localhost:5174/'
   ],

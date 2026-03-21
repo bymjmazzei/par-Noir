@@ -238,10 +238,16 @@ export function downloadFile(data: string, filename: string, mimeType: string = 
 }
 
 /**
- * Copy text to clipboard
+ * Copy text to clipboard. Uses Capacitor Clipboard on native for reliability.
  */
 export async function copyToClipboard(text: string): Promise<boolean> {
   try {
+    const { Capacitor } = await import('@capacitor/core');
+    if (Capacitor.isNativePlatform()) {
+      const { Clipboard } = await import('@capacitor/clipboard');
+      await Clipboard.write({ string: text });
+      return true;
+    }
     await navigator.clipboard.writeText(text);
     return true;
   } catch (error) {

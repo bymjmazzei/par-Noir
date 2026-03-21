@@ -50,9 +50,11 @@ import { useFeedFiltering } from './hooks/useFeedFiltering';
 import { useThumbnailsAndMedia } from './hooks/useThumbnailsAndMedia';
 import { useAuthAndSession } from './hooks/useAuthAndSession';
 import { useMePageData } from './hooks/useMePageData';
+import { usePushNotifications } from './hooks/usePushNotifications';
 import { reportCopyright } from './services/reportCopyrightService';
 import { PNOAuthService } from './services/pnOAuthService';
 import { MESSAGING_ONLY } from './config/buildFlags';
+import { SplashScreen } from '@capacitor/splash-screen';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -61,6 +63,10 @@ import { MESSAGING_ONLY } from './config/buildFlags';
 const EMPTY_ARRAY: IndexedFile[] = [];
 
 function App() {
+  useEffect(() => {
+    SplashScreen.hide().catch(() => {});
+  }, []);
+
   const { userState, setLocked, setUnlocked, updateDisplayName, getDisplayName } = useUserState();
   const { activeContext, setActiveContext, availableContexts } = useAppContext(userState.pnIdentifier);
   const discover = useDiscoverFiles();
@@ -162,6 +168,18 @@ function App() {
   // MOBILE FIX: Use actual viewport height instead of 100vh to account for mobile browser UI
   const viewportHeightCSS = useViewportHeightCSS(true); // true = exclude bottom nav
 
+  // Push notifications (native only): register token when authenticated, handle tap → open thread
+  usePushNotifications({
+    getAccessToken: () => PNOAuthService.getValidAccessToken(),
+    onNotificationAction: (data) => {
+      const participantPnIdentifier = data.from_pn_identifier || data.participant_pn_identifier;
+      if (participantPnIdentifier) {
+        setInitialThread({ participantPnIdentifier });
+        setShowInbox(true);
+        setActiveBottomTab('messages');
+      }
+    },
+  });
 
   // Feed navigation hook
   const { getNextFeed, getPreviousFeed } = useFeedNavigation(
@@ -740,11 +758,12 @@ function App() {
   const handleShare = useCallback(async (fileId: string) => {
     share(fileId);
     const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
+    const { shareContent } = await import('./utils/nativeShare');
+    const ok = await shareContent({ url: shareUrl });
+    if (ok) {
       success('Link copied to clipboard!');
       setParam('file', fileId);
-    } catch (err) {
+    } else {
       showErrorToast('Failed to copy link. Please try again.');
     }
   }, [share, success, setParam, showErrorToast]);

@@ -11,7 +11,13 @@ install! 'cocoapods', :disable_input_output_paths => true
 def capacitor_pods
   pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
   pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
-
+  pod 'CapacitorCamera', :path => '../../../../../node_modules/@capacitor/camera'
+  pod 'CapacitorClipboard', :path => '../../../../../node_modules/@capacitor/clipboard'
+  pod 'CapacitorSecureStoragePlugin', :path => '../../../../../node_modules/capacitor-secure-storage-plugin'
+  pod 'CapacitorPushNotifications', :path => '../../../../../node_modules/@capacitor/push-notifications'
+  pod 'CapacitorFilesystem', :path => '../../../../../node_modules/@capacitor/filesystem'
+  pod 'CapacitorShare', :path => '../../../../../node_modules/@capacitor/share'
+  pod 'CapacitorSplashScreen', :path => '../../../../../node_modules/@capacitor/splash-screen'
 end
 
 target 'App' do

@@ -50,7 +50,10 @@ export function BottomNav({
 
   if (messagingOnly) {
     return (
-      <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-700 h-16 flex items-center justify-around z-[100]">
+      <div
+        className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-700 flex items-center justify-around z-[100]"
+        style={{ height: 'calc(4rem + env(safe-area-inset-bottom, 0px))', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      >
         <button
           onClick={() => handleTabClick('messages')}
           className={`
@@ -76,7 +79,10 @@ export function BottomNav({
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-700 h-16 flex items-center justify-around z-[100]">
+    <div
+      className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-700 flex items-center justify-around z-[100]"
+      style={{ height: 'calc(4rem + env(safe-area-inset-bottom, 0px))', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+    >
       {/* HOME - Always visible */}
       <button
         onClick={() => handleTabClick('home')}

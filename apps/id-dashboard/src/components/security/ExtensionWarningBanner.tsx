@@ -49,7 +49,10 @@ export const ExtensionWarningBanner: React.FC<ExtensionWarningBannerProps> = ({ 
   const displayWarning = highSeverityWarnings.length > 0 ? highSeverityWarnings[0] : warnings[0];
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800 shadow-md">
+    <div
+      className="fixed left-0 right-0 z-50 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800 shadow-md"
+      style={{ top: 'env(safe-area-inset-top, 0px)' }}
+    >
       <div className="max-w-7xl mx-auto px-4 py-3">
         <div className="flex items-start justify-between">
           <div className="flex items-start space-x-3 flex-1">

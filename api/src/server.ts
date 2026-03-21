@@ -17655,6 +17655,64 @@ class ProductionServer {
         });
       }
     });
+
+    // POST /api/push/register - Register device token for push notifications
+    this.app.post('/api/push/register', async (req, res) => {
+      try {
+        const authHeader = req.headers.authorization;
+        const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        if (!token) {
+          return res.status(401).json({ error: 'unauthorized', error_description: 'Bearer token required' });
+        }
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        if (!tokenPayload?.pnIdentifier) {
+          return res.status(401).json({ error: 'unauthorized', error_description: 'Invalid or expired token' });
+        }
+        const { deviceToken, platform } = req.body;
+        if (!deviceToken || !platform || !['ios', 'android'].includes(platform)) {
+          return res.status(400).json({ error: 'deviceToken and platform (ios|android) required' });
+        }
+        const { PushService } = await import('./server/modules/pushService');
+        await PushService.registerToken(tokenPayload.pnIdentifier, deviceToken, platform);
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Push register failed:', error);
+        return res.status(500).json({
+          error: 'server_error',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to register'
+        });
+      }
+    });
+
+    // DELETE /api/push/register - Unregister device token
+    this.app.delete('/api/push/register', async (req, res) => {
+      try {
+        const authHeader = req.headers.authorization;
+        const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        if (!token) {
+          return res.status(401).json({ error: 'unauthorized', error_description: 'Bearer token required' });
+        }
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        if (!tokenPayload?.pnIdentifier) {
+          return res.status(401).json({ error: 'unauthorized', error_description: 'Invalid or expired token' });
+        }
+        const deviceToken = req.body?.deviceToken || req.query.deviceToken;
+        if (!deviceToken) {
+          return res.status(400).json({ error: 'deviceToken required' });
+        }
+        const { PushService } = await import('./server/modules/pushService');
+        await PushService.unregisterToken(tokenPayload.pnIdentifier, deviceToken);
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Push unregister failed:', error);
+        return res.status(500).json({
+          error: 'server_error',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to unregister'
+        });
+      }
+    });
   }
 
   public async start(): Promise<void> {

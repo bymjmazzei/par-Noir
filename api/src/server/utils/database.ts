@@ -809,6 +809,18 @@ export async function initializeDatabase(): Promise<void> {
       console.debug('ℹ️ Prism min_required_reputation migration error (may already be applied):', migrationError?.message);
     }
 
+    // Run device_tokens migration (push notifications)
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const migrationPath = path.join(__dirname, '../../migrations/add_device_tokens.sql');
+      const migrationSQL = fs.readFileSync(migrationPath, 'utf-8');
+      await db.query(migrationSQL);
+      console.log('✅ Device tokens migration executed');
+    } catch (migrationError: any) {
+      console.debug('ℹ️ Device tokens migration error (may already be applied):', (migrationError as Error)?.message);
+    }
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);

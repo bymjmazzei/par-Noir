@@ -115,7 +115,10 @@ export function HomePage() {
       )}
 
       {viewMode === 'feed' && (
-        <div className="fixed top-0 left-0 h-12 flex items-center z-[100] bg-transparent" style={{ right: '56px' }}>
+        <div
+          className="fixed left-0 h-12 flex items-center z-[100] bg-transparent"
+          style={{ right: '56px', top: 'env(safe-area-inset-top, 0px)' }}
+        >
           <FeedRail
             feeds={feedRailItems}
             activeFeedId={activeFeedId}
@@ -230,7 +233,18 @@ export function HomePage() {
         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 mb-4">
           <p className="text-yellow-400 text-sm">{error}</p>
           <p className="text-yellow-400/80 text-xs mt-2">
-            Note: Connect Google Drive at <a href="https://pn.parnoir.com" target="_blank" rel="noopener noreferrer" className="underline">pn.parnoir.com</a> first to scan for public files
+            Note: Connect Google Drive at{' '}
+            <button
+              type="button"
+              onClick={async () => {
+                const { openExternalUrl } = await import('../utils/openExternalUrl');
+                await openExternalUrl('https://pn.parnoir.com');
+              }}
+              className="underline hover:no-underline"
+            >
+              pn.parnoir.com
+            </button>{' '}
+            first to scan for public files
           </p>
         </div>
       )}
@@ -243,7 +257,10 @@ export function HomePage() {
           message={typeof window !== 'undefined' && localStorage.getItem('google_drive_token') ? 'No files have been marked as public yet. Mark files as public in the dashboard to see them here.' : 'Connect Google Drive in the dashboard to scan for public files'}
         />
       ) : viewMode === 'feed' && activeFeedId === 'discovery' ? (
-        <div className="flex-1 h-full pt-20 pb-20">
+        <div
+          className="flex-1 h-full pb-20"
+          style={{ paddingTop: 'calc(5rem + env(safe-area-inset-top, 0px))' }}
+        >
           <DiscoveryPage
             files={indexedFiles}
             feeds={feeds}

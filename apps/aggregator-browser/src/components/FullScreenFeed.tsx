@@ -2593,14 +2593,9 @@ export function FullScreenFeed({
               }}
               onShare={isMePageCover ? async () => {} : async () => {
                 _onShare(fileId);
-                // Directly copy link to clipboard
                 const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
-                try {
-                  await navigator.clipboard.writeText(shareUrl);
-                  // Could show a toast here if needed
-                } catch (err) {
-                  console.error('Failed to copy link:', err);
-                }
+                const { copyToClipboard } = await import('../utils/clipboard');
+                await copyToClipboard(shareUrl);
               }}
               onAddToFeed={onAddToFeed ? () => onAddToFeed(indexedFile) : undefined}
               onEdit={onEdit ? () => onEdit(indexedFile) : undefined}
@@ -2626,16 +2621,8 @@ export function FullScreenFeed({
                   setShowEngagementOverlay(false);
                   onComment(indexedFile);
                 }}
-                onShare={async () => {
-                _onShare(fileId);
-                  // Copy link to clipboard
-                  const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
-                  try {
-                    await navigator.clipboard.writeText(shareUrl);
-                    setShowEngagementOverlay(false);
-                  } catch (err) {
-                    console.error('Failed to copy link:', err);
-                  }
+                onShare={() => {
+                  _onShare(fileId);
                 }}
                 onSave={onSave ? () => onSave(indexedFile) : undefined}
                 onClose={() => setShowEngagementOverlay(false)}

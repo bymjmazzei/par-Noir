@@ -43,16 +43,18 @@ export function EngagementActions({
     const fileId = file.metadata.fileId;
     const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
     
-    try {
-      await navigator.clipboard.writeText(shareUrl);
+    const { shareContent } = await import('../utils/nativeShare');
+    const ok = await shareContent({
+      title: file.metadata.name || file.metadata.title || 'par Noir',
+      text: file.metadata.description || '',
+      url: shareUrl
+    });
+    if (ok) {
       success('Link copied to clipboard!');
-      
-      // Call optional callback for additional actions (like recording share)
       if (onShare) {
         onShare();
       }
-    } catch (err) {
-      console.error('Failed to copy link:', err);
+    } else {
       error('Failed to copy link. Please try again.');
     }
   };

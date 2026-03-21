@@ -25,14 +25,15 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ authenticatedUser, onLogout, onOfflineModeChange, pwaState, onPWAInstall, onPWACheckUpdate, onExport, onPasscodeLogout, onPinRefresh }) => {
   const [isPWA, setIsPWA] = useState(false);
 
-  // Check if running as PWA
+  // Check if running as PWA or native app (Capacitor) - hide Install in both
   React.useEffect(() => {
     const checkPWA = () => {
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
       const isInstalled = (window.navigator as any).standalone === true;
-      setIsPWA(isStandalone || isInstalled);
+      const isCapacitor = typeof (window as any).Capacitor !== 'undefined';
+      setIsPWA(isStandalone || isInstalled || isCapacitor);
     };
-    
+
     checkPWA();
     window.addEventListener('resize', checkPWA);
     return () => window.removeEventListener('resize', checkPWA);
@@ -40,7 +41,10 @@ const Header: React.FC<HeaderProps> = ({ authenticatedUser, onLogout, onOfflineM
 
   return (
     <>
-      <header className="fixed top-0 left-0 w-full z-40 text-text-primary border-b border-border">
+      <header
+        className="fixed left-0 w-full z-40 text-text-primary"
+        style={{ top: 'env(safe-area-inset-top, 0px)', background: 'transparent', border: 'none' }}
+      >
         <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3">
           <div className="flex items-center space-x-4">
             <ThemeSwitcher />

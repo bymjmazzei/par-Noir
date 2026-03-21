@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense, useRef } from 'react';
+import React, { useState, useEffect, lazy, Suspense, useRef, useCallback } from 'react';
 import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown, Users } from 'lucide-react';
 import Header from './components/Header';
 import { QRCodeManager } from './utils/qrCode';
@@ -73,6 +73,9 @@ import { ScreenProtection } from './utils/security/screenProtection';
 import { ExtensionDetector } from './utils/security/extensionDetector';
 import { ExtensionWarningBanner } from './components/security/ExtensionWarningBanner';
 import { BiometricPasscodeModal } from './components/security/BiometricPasscodeModal';
+import { SplashScreen } from '@capacitor/splash-screen';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
 
 // Custom hooks for state management
 import { useAppState } from './hooks/useAppState';
@@ -81,6 +84,7 @@ import { usePrivacyState } from './hooks/usePrivacyState';
 import { useExportState } from './hooks/useExportState';
 import { useCustodianState } from './hooks/useCustodianState';
 import { useMigrationState } from './hooks/useMigrationState';
+import { usePushNotifications } from './hooks/usePushNotifications';
 
 // Lazy load heavy components
 const EnhancedPrivacyPanel = lazy(() => import('./components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
@@ -237,6 +241,11 @@ const generateSecureToken = async (identity: any): Promise<string> => {
 };
 
 function App() {
+  // Hide native splash screen when app is ready
+  React.useEffect(() => {
+    SplashScreen.hide().catch(() => {});
+  }, []);
+
   // SECURITY: Migrate SimpleStorage from localStorage to IndexedDB on app start
   React.useEffect(() => {
     const migrateStorage = async () => {
@@ -338,6 +347,11 @@ function App() {
     recoveryKeys,
     setRecoveryKeys
   } = identityState;
+
+  // Push notifications (native only): register when authenticated
+  usePushNotifications({
+    getAccessToken: useCallback(async () => authenticatedUser?.accessToken ?? null, [authenticatedUser?.accessToken]),
+  });
 
   // Destructure privacy state from custom hook
   const {
@@ -4179,6 +4193,7 @@ This invitation expires in 24 hours.`;
   // PWA lock management with stable dependencies
   useEffect(() => {
     let lockTimeout: NodeJS.Timeout | null = null;
+    const capListenerRef = { current: null as { remove: () => Promise<void> } | null };
 
     const checkInitialLock = () => {
       if (pwaState.isInstalled && !authenticatedUser) {
@@ -4188,7 +4203,6 @@ This invitation expires in 24 hours.`;
           const now = Date.now();
           const timeSinceUnlock = now - unlockTime;
           
-          // Lock after 5 minutes of inactivity
           if (timeSinceUnlock > 5 * 60 * 1000) {
             setIsPWALocked(true);
           }
@@ -4198,56 +4212,59 @@ This invitation expires in 24 hours.`;
 
     const handleVisibilityChange = () => {
       if (document.hidden && pwaState.isInstalled && authenticatedUser) {
-        // Lock when tab becomes hidden
-        if (lockTimeout) {
-          clearTimeout(lockTimeout);
-        }
-        lockTimeout = setTimeout(() => {
-          setIsPWALocked(true);
-        }, 5 * 60 * 1000); // Lock after 5 minutes of inactivity
+        if (lockTimeout) clearTimeout(lockTimeout);
+        lockTimeout = setTimeout(() => setIsPWALocked(true), 5 * 60 * 1000);
       }
     };
 
     const handleUserActivity = () => {
-      // Reset lock timer on user activity
-      if (lockTimeout) {
-        clearTimeout(lockTimeout);
-      }
-      
-      if (document.hidden) {
-        lockTimeout = setTimeout(() => {
-          setIsPWALocked(true);
-        }, 5 * 60 * 1000); // Lock after 5 minutes of inactivity
+      if (lockTimeout) clearTimeout(lockTimeout);
+      if (document.hidden && pwaState.isInstalled && authenticatedUser) {
+        lockTimeout = setTimeout(() => setIsPWALocked(true), 5 * 60 * 1000);
       }
     };
 
-    // Set up event listeners
     document.addEventListener('visibilitychange', handleVisibilityChange);
     document.addEventListener('mousedown', handleUserActivity);
     document.addEventListener('keydown', handleUserActivity);
     document.addEventListener('touchstart', handleUserActivity);
 
-    // Check initial lock state when PWA is launched
+    void (async () => {
+      try {
+        if (Capacitor.isNativePlatform()) {
+          const listener = await CapApp.addListener('appStateChange', ({ isActive }) => {
+            if (pwaState.isInstalled && authenticatedUser) {
+              if (!isActive) {
+                if (lockTimeout) clearTimeout(lockTimeout);
+                lockTimeout = setTimeout(() => setIsPWALocked(true), 5 * 60 * 1000);
+              } else if (lockTimeout) {
+                clearTimeout(lockTimeout);
+                lockTimeout = null;
+              }
+            }
+          });
+          capListenerRef.current = listener;
+        }
+      } catch {
+        // CapApp not available
+      }
+    })();
+
     checkInitialLock();
 
-    // Initial lock timer if app is hidden
-    if (document.hidden) {
-      lockTimeout = setTimeout(() => {
-        setIsPWALocked(true);
-      }, 5 * 60 * 1000);
+    if (document.hidden && pwaState.isInstalled && authenticatedUser) {
+      lockTimeout = setTimeout(() => setIsPWALocked(true), 5 * 60 * 1000);
     }
 
     return () => {
-      // Cleanup
-      if (lockTimeout) {
-        clearTimeout(lockTimeout);
-      }
+      if (lockTimeout) clearTimeout(lockTimeout);
+      capListenerRef.current?.remove?.();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       document.removeEventListener('mousedown', handleUserActivity);
       document.removeEventListener('keydown', handleUserActivity);
       document.removeEventListener('touchstart', handleUserActivity);
     };
-  }, [pwaState.isInstalled]); // Removed authenticatedUser dependency to prevent unnecessary re-registration
+  }, [pwaState.isInstalled]);
 
   // Handle PWA unlock
   const handlePWAUnlock = () => {
@@ -4942,7 +4959,7 @@ This invitation expires in 24 hours.`;
   }, [pwaState]);
 
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
+    <div className="min-h-screen text-text-primary flex flex-col">
       {/* Extension Warning Banner */}
       <ExtensionWarningBanner />
       
@@ -4963,7 +4980,10 @@ This invitation expires in 24 hours.`;
       
       {/* Success Display */}
       {success && (
-        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 mb-4 p-3 bg-green-100 border border-green-200 rounded-lg shadow-lg">
+        <div
+          className="fixed left-1/2 transform -translate-x-1/2 z-50 mb-4 p-3 bg-green-100 border border-green-200 rounded-lg shadow-lg"
+          style={{ top: 'calc(5rem + env(safe-area-inset-top, 0px))' }}
+        >
           <p className="text-green-700 text-sm">{success}</p>
           <button 
             onClick={() => {
@@ -4982,7 +5002,10 @@ This invitation expires in 24 hours.`;
 
       {/* Error Display */}
       {error && authenticatedUser && (
-        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 mb-4 p-3 bg-red-100 border border-red-200 rounded-lg shadow-lg">
+        <div
+          className="fixed left-1/2 transform -translate-x-1/2 z-50 mb-4 p-3 bg-red-100 border border-red-200 rounded-lg shadow-lg"
+          style={{ top: 'calc(5rem + env(safe-area-inset-top, 0px))' }}
+        >
           <p className="text-red-700 text-sm">{error}</p>
         </div>
       )}
@@ -4993,7 +5016,10 @@ This invitation expires in 24 hours.`;
           const syncStatus = getOfflineSyncStatus();
           if (syncStatus.hasPending) {
             return (
-              <div className="fixed top-16 right-4 z-50 mb-4 p-3 bg-yellow-100 border border-yellow-200 rounded-lg shadow-lg">
+              <div
+                className="fixed right-4 z-50 mb-4 p-3 bg-yellow-100 border border-yellow-200 rounded-lg shadow-lg"
+                style={{ top: 'calc(4rem + env(safe-area-inset-top, 0px))' }}
+              >
                 <div className="flex items-center space-x-2">
                   <span className="text-yellow-700 text-sm">
                     <div className="flex items-center gap-2">
@@ -5024,7 +5050,10 @@ This invitation expires in 24 hours.`;
       <main className="flex-1">
                 {/* Main Screen - Show when not authenticated and not on transfer route */}
         {!authenticatedUser && !showTransferReceiver && (
-          <div className="max-w-6xl mx-auto text-text-primary pt-12 px-4 sm:px-6 lg:px-8">
+          <div
+            className="max-w-6xl mx-auto text-text-primary px-4 sm:px-6 lg:px-8"
+            style={{ paddingTop: 'calc(3rem + env(safe-area-inset-top, 0px))' }}
+          >
             
             {/* Header */}
             <div className="flex justify-center items-center mt-2 mb-2">
@@ -5794,7 +5823,10 @@ This invitation expires in 24 hours.`;
 
 
         {authenticatedUser && (
-          <div className="max-w-6xl mx-auto text-text-primary pt-20 px-4 sm:px-6 lg:px-8">
+          <div
+            className="max-w-6xl mx-auto text-text-primary px-4 sm:px-6 lg:px-8"
+            style={{ paddingTop: 'calc(5rem + env(safe-area-inset-top, 0px))' }}
+          >
             
             {/* Authenticated Dashboard */}
             <div className="flex flex-col items-center gap-8 -mt-4 relative z-10">
@@ -6770,10 +6802,13 @@ This invitation expires in 24 hours.`;
           setTransferPasscode={setTransferPasscode}
           transferUrl={transferUrl}
           onTransferSetup={handleTransferSetup}
-          onCopyUrl={() => {
-                        navigator.clipboard.writeText(transferUrl);
-                        setSuccessWithTimeout('URL copied to clipboard!');
-                        setTimeout(() => setSuccessWithTimeout(null), 3000);
+          onCopyUrl={async () => {
+                        const { copyToClipboard } = await import('./utils/helpers');
+                        const ok = await copyToClipboard(transferUrl);
+                        if (ok) {
+                          setSuccessWithTimeout('URL copied to clipboard!');
+                          setTimeout(() => setSuccessWithTimeout(null), 3000);
+                        }
                       }}
           success={success}
         />

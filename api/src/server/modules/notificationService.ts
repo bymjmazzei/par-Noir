@@ -740,13 +740,13 @@ export class NotificationService {
     toPnIdentifier: string,
     threadId?: string
   ): Promise<void> {
-    // Use pn identifiers directly (already normalized)
+    const normalizedTo = this.normalizeToPnIdentifier(toPnIdentifier);
     await this.createNotification(
       accessToken,
       metadataFolderId,
-      toPnIdentifier,
+      normalizedTo,
       {
-        user_pn_identifier: toPnIdentifier,
+        user_pn_identifier: normalizedTo,
         type: 'new_message',
         title: 'New message',
         message: 'You have a new message',
@@ -757,5 +757,12 @@ export class NotificationService {
         }
       }
     );
+    // Send native push to recipient's devices
+    const { PushService } = await import('./pushService');
+    PushService.send(normalizedTo, {
+      title: 'New message',
+      body: 'You have a new message',
+      data: { message_id: messageId, from_pn_identifier: fromPnIdentifier, thread_id: threadId || '' }
+    }).catch((e) => console.warn('[NotificationService] Push send failed:', (e as Error)?.message));
   }
 }

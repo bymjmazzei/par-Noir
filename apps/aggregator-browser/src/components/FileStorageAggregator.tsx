@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Star, Type, Upload, Minus, Trash2, Layers } from 'lucide-react';
+import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Star, Type, Upload, Minus, Trash2, Layers, Camera, Image } from 'lucide-react';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
@@ -22,6 +22,8 @@ import { ThumbnailImage } from './file/ThumbnailImage';
 import { useDriveAccounts } from '../hooks/useDriveAccounts';
 import type { DriveAccount, DriveFile } from './storage/storageTypes';
 import { API_ENDPOINT } from '../config/api';
+import { Capacitor } from '@capacitor/core';
+import { pickImageFromNative } from '../hooks/useNativeFilePicker';
 
 interface EncryptedFilePackage {
   encrypted: string;
@@ -2949,6 +2951,40 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                             <Type className="h-4 w-4" />
                             Add Thought
                           </button>
+                          {Capacitor.isNativePlatform() && (
+                            <>
+                              <button
+                                onClick={async () => {
+                                  setSelectedAccountId(account.accountId);
+                                  const file = await pickImageFromNative('camera');
+                                  if (file) {
+                                    addUploadTask(file, account.accountId, true);
+                                  }
+                                  setShowAddMenuFor(null);
+                                  setAddMenuPosition(null);
+                                }}
+                                className="w-full px-4 py-2 text-left text-white hover:bg-neutral-700 flex items-center gap-2 text-sm"
+                              >
+                                <Camera className="h-4 w-4" />
+                                Take Photo
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  setSelectedAccountId(account.accountId);
+                                  const file = await pickImageFromNative('photos');
+                                  if (file) {
+                                    addUploadTask(file, account.accountId, true);
+                                  }
+                                  setShowAddMenuFor(null);
+                                  setAddMenuPosition(null);
+                                }}
+                                className="w-full px-4 py-2 text-left text-white hover:bg-neutral-700 flex items-center gap-2 text-sm"
+                              >
+                                <Image className="h-4 w-4" />
+                                Choose from Library
+                              </button>
+                            </>
+                          )}
                           <button
                             onClick={() => {
                               setSelectedAccountId(account.accountId);

@@ -199,11 +199,12 @@ export function MePageTabsRail({ activeTab, onTabSelect, availableTabs }: MePage
   }, [showDropdown]);
 
   return (
-    <div 
-      className="fixed top-0 left-0 h-12 flex items-center z-[100] bg-transparent"
-      style={{ 
+    <div
+      className="fixed left-0 h-12 flex items-center z-[100] bg-transparent"
+      style={{
         right: '56px', // Space for lock button (40px button + 12px right-3 + 4px gap)
-        background: 'transparent'
+        background: 'transparent',
+        top: 'env(safe-area-inset-top, 0px)',
       }}
     >
       <div className="relative w-full">

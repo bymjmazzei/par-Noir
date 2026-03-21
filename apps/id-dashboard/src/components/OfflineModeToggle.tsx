@@ -54,9 +54,9 @@ export const OfflineModeToggle: React.FC<OfflineModeToggleProps> = ({
         onClick={handleToggle}
         disabled={!isOnline}
         className={`relative inline-flex h-8 w-16 items-center rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
-          isOfflineMode 
-            ? 'bg-red-500' 
-            : 'bg-green-500'
+          isOfflineMode
+            ? 'bg-red-500'
+            : 'bg-black/20 dark:bg-white/10'
         } ${
           !isOnline 
             ? 'opacity-50 cursor-not-allowed' 
@@ -67,7 +67,9 @@ export const OfflineModeToggle: React.FC<OfflineModeToggleProps> = ({
         title={!isOnline ? 'Cannot toggle while offline' : 'Toggle offline mode'}
       >
         {/* ON/OFF Labels */}
-        <div className="absolute inset-0 flex items-center justify-between px-2 text-xs font-bold text-white">
+        <div className={`absolute inset-0 flex items-center justify-between px-2 text-xs font-bold ${
+          isOfflineMode ? 'text-white' : 'text-white/90'
+        }`}>
           <span className={`transition-opacity duration-300 ${isOfflineMode ? 'opacity-100' : 'opacity-50'}`}>
             OFF
           </span>

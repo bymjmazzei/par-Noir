@@ -33,6 +33,12 @@ html, body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* iOS safe area: constant() for older WebKit, env() for modern */
+.safe-area-top {
+  padding-top: constant(safe-area-inset-top);
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
 /* Prevent zoom on input focus */
 input, textarea, select {
   font-size: 16px !important;
@@ -117,14 +123,6 @@ input, textarea, select {
   --modal-border: var(--dark-modal-border);
 }
 
-.theme-dark .bg-bg-primary {
-  background-image: var(--pn-bg-dark, url('../branding/Par-Noir-Background-Dark.png'));
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-}
-
 /* Light Theme */
 .theme-light {
   --bg-primary: var(--light-bg);
@@ -162,27 +160,51 @@ input, textarea, select {
   --modal-border: var(--light-modal-border);
 }
 
-.theme-light .bg-bg-primary {
-  background-image: var(--pn-bg-light, url('../branding/Par-Noir-Background-Light.png'));
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-}
-
 /* Base styles */
+html {
+  background-color: var(--bg-primary, #000000);
+}
 body {
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: all 0.3s ease;
-  background-color: var(--bg-primary);
+  background-color: var(--bg-primary, #000000);
   color: var(--text-primary);
+  position: relative;
+}
+/* Single fixed background - same on unlock, unlocked, all tabs. Never changes. */
+.theme-dark body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image: url('../branding/Par-Noir-Background-Dark.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+.theme-light body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image: url('../branding/Par-Noir-Background-Light.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+#root {
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
 }
 
-/* Main container background */
+/* Main container - no background, let body show through */
 .min-h-screen {
-  background-color: var(--bg-primary);
+  background-color: transparent;
 }
 
 /* Theme-aware text classes */
@@ -277,10 +299,10 @@ input, textarea, select {
   box-shadow: var(--shadow);
 }
 
-/* Header styles */
+/* Header styles - use .header-with-bg for headers that need background/border */
 header {
-  background-color: var(--bg-primary);
-  border-bottom: 1px solid var(--border);
+  background-color: transparent;
+  border-bottom: none;
 }
 
 /* Theme switcher */

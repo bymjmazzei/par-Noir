@@ -67,33 +67,27 @@ export function EngagementOverlay({
 
   const handleCopyLink = async () => {
     const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.metadata.fileId}&view=feed`;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
+    const { copyToClipboard } = await import('../utils/clipboard');
+    const ok = await copyToClipboard(shareUrl);
+    if (ok) {
+      onShare();
       setShareMenuOpen(false);
       onClose();
-    } catch (err) {
-      console.error('Failed to copy link:', err);
     }
   };
 
   const handleExternalShare = async () => {
     const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.metadata.fileId}&view=feed`;
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: file.metadata.name || file.metadata.title || 'Check this out',
-          text: file.metadata.description || '',
-          url: shareUrl
-        });
-        setShareMenuOpen(false);
-        onClose();
-      } catch (err) {
-        // User cancelled or error
-        console.log('Share cancelled or failed:', err);
-      }
-    } else {
-      // Fallback to copy link
-      handleCopyLink();
+    const { shareContent } = await import('../utils/nativeShare');
+    const ok = await shareContent({
+      title: file.metadata.name || file.metadata.title || 'Check this out',
+      text: file.metadata.description || '',
+      url: shareUrl
+    });
+    if (ok) {
+      onShare();
+      setShareMenuOpen(false);
+      onClose();
     }
   };
 
@@ -190,6 +184,13 @@ export function EngagementOverlay({
             {/* Share submenu */}
             {shareMenuOpen && (
               <div className="ml-16 space-y-2">
+                <button
+                  onClick={handleExternalShare}
+                  className="w-full flex items-center space-x-3 p-3 bg-neutral-800 rounded-lg hover:bg-neutral-700 transition-colors text-left"
+                >
+                  <ExternalLink className="h-5 w-5 text-neutral-400" />
+                  <span className="text-white text-sm">Share</span>
+                </button>
                 <button
                   onClick={handleCopyLink}
                   className="w-full flex items-center space-x-3 p-3 bg-neutral-800 rounded-lg hover:bg-neutral-700 transition-colors text-left"

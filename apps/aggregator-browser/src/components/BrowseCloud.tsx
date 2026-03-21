@@ -356,9 +356,10 @@ export function BrowseCloud({ onClose, onUploadClick }: { onClose: () => void; o
                     ? 'border-green-500/50 hover:border-green-500'
                     : 'border-orange-500/50 hover:border-orange-500'
                 }`}
-                onClick={() => {
+                onClick={async () => {
                   if (file.webViewLink) {
-                    window.open(file.webViewLink, '_blank');
+                    const { openExternalUrl } = await import('../utils/openExternalUrl');
+                    await openExternalUrl(file.webViewLink!);
                   }
                 }}
               >
@@ -404,9 +405,10 @@ export function BrowseCloud({ onClose, onUploadClick }: { onClose: () => void; o
                 className={`bg-neutral-800 rounded-lg p-4 cursor-pointer transition-all hover:bg-neutral-700 border-l-4 ${
                   file.isPublic ? 'border-l-green-500' : 'border-l-orange-500'
                 }`}
-                onClick={() => {
+                onClick={async () => {
                   if (file.webViewLink) {
-                    window.open(file.webViewLink, '_blank');
+                    const { openExternalUrl } = await import('../utils/openExternalUrl');
+                    await openExternalUrl(file.webViewLink!);
                   }
                 }}
               >

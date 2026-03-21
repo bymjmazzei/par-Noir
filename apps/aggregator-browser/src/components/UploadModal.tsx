@@ -233,8 +233,9 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
   return (
     <div className="h-full w-full bg-neutral-900 flex flex-col overflow-y-auto" style={{ paddingBottom: '64px' }}>
       {/* Railway Header */}
-      <div 
-        className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 z-[100] bg-neutral-900 border-b border-neutral-800"
+      <div
+        className="fixed left-0 right-0 h-12 flex items-center justify-between px-4 z-[100] bg-neutral-900 border-b border-neutral-800"
+        style={{ top: 'env(safe-area-inset-top, 0px)' }}
       >
         {/* Left - Settings Button */}
         <button
@@ -255,7 +256,10 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
       </div>
 
       {/* FileStorageAggregator Component */}
-      <div className="flex-1 overflow-y-auto p-6" style={{ marginTop: '48px' }}>
+      <div
+        className="flex-1 overflow-y-auto p-6"
+        style={{ marginTop: 'calc(48px + env(safe-area-inset-top, 0px))' }}
+      >
         <FileStorageAggregator 
           authenticatedUser={authenticatedUser} 
           hideSecureFolderSection={true}

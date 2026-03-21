@@ -7,8 +7,25 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Configure WebView after a short delay so it's created (fixes white overscroll)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.configureWebViewForDarkTheme()
+        }
         return true
+    }
+
+    private func configureWebViewForDarkTheme() {
+        guard let bridgeVC = window?.rootViewController as? CAPBridgeViewController else { return }
+        bridgeVC.loadViewIfNeeded()
+        guard let webView = bridgeVC.webView else { return }
+        // Dark background so overscroll doesn't show white
+        webView.isOpaque = false
+        webView.backgroundColor = .black
+        webView.scrollView.backgroundColor = .black
+        // Disable bounce to prevent overscroll
+        webView.scrollView.bounces = false
+        webView.scrollView.alwaysBounceVertical = false
+        webView.scrollView.alwaysBounceHorizontal = false
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

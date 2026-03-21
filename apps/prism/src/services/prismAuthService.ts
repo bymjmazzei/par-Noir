@@ -4,6 +4,7 @@
  */
 
 import { API_ENDPOINT } from '../config/api';
+import { secureStorageAdapter } from '../utils/secureStorageAdapter';
 
 const CLIENT_ID = import.meta.env.VITE_PN_CLIENT_ID || 'prism-app';
 const SESSION_KEY = 'prism_session';
@@ -57,17 +58,18 @@ export async function exchangeCodeForToken(code: string): Promise<PrismSession> 
   return session;
 }
 
-export function saveSession(session: PrismSession): void {
+export async function saveSession(session: PrismSession): Promise<void> {
   try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    await secureStorageAdapter.setItem(SESSION_KEY, JSON.stringify(session));
   } catch (e) {
     console.warn('[Prism Auth] Failed to save session:', e);
   }
 }
 
-export function getSession(): PrismSession | null {
+export async function getSession(): Promise<PrismSession | null> {
   try {
-    const raw = localStorage.getItem(SESSION_KEY);
+    await secureStorageAdapter.migrateFromLocalStorage(SESSION_KEY);
+    const raw = await secureStorageAdapter.getItem(SESSION_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as PrismSession;
     if (s.expiresAt && s.expiresAt < Date.now() + 60000) return null; // Expired or about to
@@ -77,6 +79,6 @@ export function getSession(): PrismSession | null {
   }
 }
 
-export function clearSession(): void {
-  localStorage.removeItem(SESSION_KEY);
+export async function clearSession(): Promise<void> {
+  await secureStorageAdapter.removeItem(SESSION_KEY);
 }

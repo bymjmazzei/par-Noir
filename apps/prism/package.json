@@ -11,8 +11,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/clipboard": "^6.0.0",
     "@capacitor/core": "^6.0.0",
+    "capacitor-secure-storage-plugin": "^0.10.0",
     "@capacitor/keyboard": "^6.0.0",
+    "@capacitor/splash-screen": "^6.0.0",
     "@capacitor/status-bar": "^6.0.0",
     "lucide-react": "^0.263.1",
     "react": "^18.2.0",

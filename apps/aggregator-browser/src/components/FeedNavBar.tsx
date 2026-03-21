@@ -26,7 +26,10 @@ export function FeedNavBar({ feedHierarchy, activeFeedId, onFeedSelect }: FeedNa
   }, [activeFeedId]);
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-neutral-900/95 backdrop-blur-sm border-b border-neutral-700">
+    <div
+      className="fixed top-0 left-0 right-0 z-50 bg-neutral-900/95 backdrop-blur-sm border-b border-neutral-700"
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+    >
       <div
         ref={scrollContainerRef}
         className="flex items-center overflow-x-auto scrollbar-hide px-4 py-3"
