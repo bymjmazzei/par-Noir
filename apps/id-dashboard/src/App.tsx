@@ -6014,9 +6014,9 @@ This invitation expires in 24 hours.`;
 
               {/* Tabbed Interface */}
               <div className="bg-modal-bg rounded-lg shadow p-4 sm:p-6 lg:p-8 text-text-primary w-full max-w-4xl min-w-0">
-                {/* Tab Navigation */}
-                <div className="border-b border-border mb-4 sm:mb-6">
-                  <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto px-1 sm:px-4 justify-start lg:justify-center">
+                {/* Tab Navigation - scrollable on narrow viewports; Sub-pN is 3rd tab */}
+                <div className="border-b border-border mb-4 sm:mb-6 relative">
+                  <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto overflow-y-hidden px-1 sm:px-4 justify-start lg:justify-center [scrollbar-width:thin]">
                 <button
                       onClick={() => setActiveTab('privacy')}
                       className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
@@ -6029,17 +6029,6 @@ This invitation expires in 24 hours.`;
                 </button>
 
                       <button
-                        onClick={() => setActiveTab('delegation')}
-                        className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
-                          activeTab === 'delegation'
-                            ? 'border-primary text-primary'
-                            : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
-                        }`}
-                      >
-                        Delegation
-                      </button>
-
-                      <button
                         onClick={() => setActiveTab('subpn')}
                         className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 flex items-center gap-1 ${
                           activeTab === 'subpn'
@@ -6049,6 +6038,17 @@ This invitation expires in 24 hours.`;
                       >
                         <Layers className="w-4 h-4" />
                         Sub-pN
+                      </button>
+
+                      <button
+                        onClick={() => setActiveTab('delegation')}
+                        className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
+                          activeTab === 'delegation'
+                            ? 'border-primary text-primary'
+                            : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
+                        }`}
+                      >
+                        Delegation
                       </button>
 
                     <button
