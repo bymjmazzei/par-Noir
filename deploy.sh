@@ -49,7 +49,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Build developer-portal (developers.parnoir.com → developer-parnoir site)
+# Build developer-portal (developers.parnoir.com → Firebase site developers-parnoir)
 echo "📦 Building developer-portal..."
 cd ../developer-portal
 npm run build
