@@ -25,6 +25,8 @@ export interface ApiKeyRecord {
   verificationId?: string;
   scopes: string[];
   ownerType?: string;
+  rootPnId?: string;
+  ownedAssetId?: string;
   rateLimit?: {
     requestsPerMinute: number;
     requestsPerDay: number;
@@ -43,6 +45,8 @@ function mapApiKeyRow(row: Record<string, unknown>): ApiKeyRecord {
     verificationId: row.verification_id ? String(row.verification_id) : undefined,
     scopes: Array.isArray(row.scopes) ? (row.scopes as string[]) : [],
     ownerType: row.owner_type ? String(row.owner_type) : 'pn_user',
+    rootPnId: row.root_pn_id ? String(row.root_pn_id) : undefined,
+    ownedAssetId: row.owned_asset_id ? String(row.owned_asset_id) : undefined,
     rateLimit: {
       requestsPerMinute: Number(row.requests_per_minute) || DEFAULT_REQUESTS_PER_MINUTE,
       requestsPerDay: Number(row.requests_per_day) || DEFAULT_REQUESTS_PER_DAY
@@ -70,23 +74,41 @@ export class ApiKeyService {
 
     const pool = getDatabasePool();
     const scopes = params.scopes?.length ? params.scopes : ['oauth', 'data_points', 'content'];
-    const result = await pool.query(
-      `INSERT INTO api_keys (
+    const client = await pool.connect();
+    let record: ApiKeyRecord;
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        `INSERT INTO api_keys (
         pn_id, owner_type, key_hash, is_active, scopes, requests_per_minute, requests_per_day
       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *`,
-      [
-        params.pnId,
-        params.ownerType ?? 'pn_user',
-        keyHash,
-        params.isActive !== false,
-        scopes,
-        params.requestsPerMinute ?? DEFAULT_REQUESTS_PER_MINUTE,
-        params.requestsPerDay ?? DEFAULT_REQUESTS_PER_DAY
-      ]
-    );
-
-    const record = mapApiKeyRow(result.rows[0] as Record<string, unknown>);
+        [
+          params.pnId,
+          params.ownerType ?? 'pn_user',
+          keyHash,
+          params.isActive !== false,
+          scopes,
+          params.requestsPerMinute ?? DEFAULT_REQUESTS_PER_MINUTE,
+          params.requestsPerDay ?? DEFAULT_REQUESTS_PER_DAY
+        ]
+      );
+      record = mapApiKeyRow(result.rows[0] as Record<string, unknown>);
+      const { OwnedAssetService } = await import('./ownedAssetService');
+      await OwnedAssetService.registerApiKeyAssetWithClient(client, {
+        apiKeyId: record.id,
+        pnId: params.pnId,
+        ownerType: params.ownerType
+      });
+      const refreshed = await client.query(`SELECT * FROM api_keys WHERE id = $1`, [record.id]);
+      record = mapApiKeyRow(refreshed.rows[0] as Record<string, unknown>);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
     await appendAuditEvent({
       eventType: 'api_key.created',
       actorHint: params.auditActorHint ?? 'admin',
@@ -115,7 +137,7 @@ export class ApiKeyService {
     const pool = getDatabasePool();
     const result = await pool.query(
       `SELECT id, pn_id, scopes, is_active, created_at, last_used_at, owner_type
-       FROM api_keys WHERE pn_id = $1 ORDER BY created_at DESC`,
+       FROM api_keys WHERE pn_id = $1 OR root_pn_id = $1 ORDER BY created_at DESC`,
       [pnId.trim()]
     );
     return result.rows.map((row: Record<string, unknown>) => ({
@@ -158,6 +180,12 @@ export class ApiKeyService {
 
       if (isPnRevokedForNetwork(apiKeyData.pnId)) {
         return { valid: false, error: 'API key identity is superseded on the par Noir network' };
+      }
+
+      const { OwnedAssetService } = await import('./ownedAssetService');
+      const reg = await OwnedAssetService.assertApiKeyRegistryAllows(apiKeyData.id);
+      if (!reg.ok) {
+        return { valid: false, error: reg.error };
       }
 
       await pool.query(

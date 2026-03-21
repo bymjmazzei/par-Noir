@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown, Users, HardDrive } from 'lucide-react';
+import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown, Users, HardDrive, Layers } from 'lucide-react';
 import { DIDInfo, RecoveryCustodian, RecoveryRequest, RecoveryKey, SyncedDevice } from '../types/dashboard';
 import { SecureStorage } from "../../utils/storage";
 import { logger } from "../../utils/logger";
@@ -7,6 +7,7 @@ import { useCleanupManager } from "../../utils/cleanupManager";
 import { ThemeSwitcher } from '../ThemeSwitcher';
 import { FileStorageAggregator } from '../storage/FileStorageAggregator';
 import { DelegationModal } from '../DelegationModal';
+import { SubPnTab } from '../subpn/SubPnTab';
 
 interface MainDashboardProps {
   dids: DIDInfo[];
@@ -27,7 +28,9 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   onDIDDelete,
   authenticatedUser
 }) => {
-  const [activeTab, setActiveTab] = useState<'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation' | 'storage'>('privacy');
+  const [activeTab, setActiveTab] = useState<
+    'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation' | 'storage' | 'subpn'
+  >('privacy');
   const [globalSettingsExpanded, setGlobalSettingsExpanded] = useState(false);
   const [thirdPartyExpanded, setThirdPartyExpanded] = useState(false);
   const [attestedDataPoints, setAttestedDataPoints] = useState<Set<string>>(new Set());
@@ -81,9 +84,12 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     cleanupManager.addTimer(timeoutId);
   }, [cleanupManager]);
 
-  const handleTabChange = useCallback((tab: 'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation' | 'storage') => {
-    setActiveTab(tab);
-  }, []);
+  const handleTabChange = useCallback(
+    (tab: 'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation' | 'storage' | 'subpn') => {
+      setActiveTab(tab);
+    },
+    []
+  );
 
   const handleGlobalSettingsToggle = useCallback(() => {
     setGlobalSettingsExpanded(prev => !prev);
@@ -173,13 +179,25 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                     { id: 'recovery', label: 'Recovery', icon: RefreshCw },
                     { id: 'storage', label: 'Storage', icon: HardDrive },
                     { id: 'developer', label: 'Developer', icon: Monitor },
+                    { id: 'subpn', label: 'Sub-pN', icon: Layers },
                     { id: 'delegation', label: 'Delegation', icon: Users }
                   ].map((tab) => {
                     const Icon = tab.icon;
                     return (
                       <button
                         key={tab.id}
-                        onClick={() => handleTabChange(tab.id as 'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation' | 'storage')}
+                        onClick={() =>
+                          handleTabChange(
+                            tab.id as
+                              | 'privacy'
+                              | 'devices'
+                              | 'recovery'
+                              | 'developer'
+                              | 'delegation'
+                              | 'storage'
+                              | 'subpn'
+                          )
+                        }
                         className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                           activeTab === tab.id
                             ? 'border-primary text-primary'
@@ -228,6 +246,14 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                   <h3 className="text-lg font-semibold mb-4 text-theme-primary">Developer Tools</h3>
                   <p className="text-theme-secondary">Developer tools and API access will be displayed here.</p>
                 </div>
+              )}
+
+              {activeTab === 'subpn' && (
+                <SubPnTab
+                  accessToken={authenticatedUser?.accessToken || authenticatedUser?.authToken}
+                  sessionId={authenticatedUser?.id}
+                  publicKey={authenticatedUser?.publicKey}
+                />
               )}
 
               {activeTab === 'delegation' && (

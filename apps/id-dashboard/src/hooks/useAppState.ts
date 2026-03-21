@@ -75,7 +75,9 @@ export function useAppState() {
   const [selectedDID, setSelectedDID] = useState<DIDInfo | null>(null);
 
   // Navigation state
-  const [activeTab, setActiveTab] = useState<'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation' | 'storage'>('privacy');
+  const [activeTab, setActiveTab] = useState<
+    'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation' | 'storage' | 'subpn'
+  >('privacy');
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [globalSettingsExpanded, setGlobalSettingsExpanded] = useState(false);
   const [thirdPartyExpanded, setThirdPartyExpanded] = useState(false);

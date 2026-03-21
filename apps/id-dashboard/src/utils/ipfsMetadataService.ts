@@ -4,6 +4,15 @@
 import { integrationsEnv } from '../config/integrationsEnv';
 import { ipfsService } from './ipfsService';
 
+/** Public manifest entry for owned / sub assets (no secrets). */
+export interface OwnedAssetManifestEntry {
+  assetId: string;
+  kind: string;
+  subjectPnIdentifier?: string;
+  label?: string;
+  publicDetailCid?: string;
+}
+
 export interface PNMetadata {
   pnId: string;
   name?: string;
@@ -12,6 +21,8 @@ export interface PNMetadata {
   createdAt?: string;
   updatedAt?: string;
   version?: number;
+  /** User-published catalog of subs and assets (non-sensitive). */
+  ownedAssets?: OwnedAssetManifestEntry[];
 }
 
 export interface MetadataResult {

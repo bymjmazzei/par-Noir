@@ -23,6 +23,7 @@ import { determineFileType, getFileTypeFromMime, determineContentClass } from '.
 import { safeClientErrorMessage } from './server/utils/safeError';
 import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modules/adminDeveloperRoutes';
 import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSelfServiceRoutes';
+import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
 
 // Environment configuration
 const PORT = process.env.PORT || 3001;
@@ -11281,6 +11282,7 @@ class ProductionServer {
 
     registerAdminDeveloperRoutes(this.app);
     registerDeveloperSelfServiceRoutes(this.app);
+    registerOwnedAssetRoutes(this.app);
   }
 
   /**

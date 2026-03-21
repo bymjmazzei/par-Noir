@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense, useRef, useCallback } from 'react';
-import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown, Users } from 'lucide-react';
+import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown, Users, Layers } from 'lucide-react';
 import Header from './components/Header';
 import { QRCodeManager } from './utils/qrCode';
   import { QRCodeScanner } from './components/QRCodeScanner';
@@ -50,6 +50,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import DmcaPolicy from './pages/DmcaPolicy';
 import { MainDashboard } from './components/app/MainDashboard';
 import { DelegationModal } from './components/DelegationModal';
+import { SubPnTab } from './components/subpn/SubPnTab';
 import { IdentityVerificationModal } from './components/IdentityVerificationModal';
 import { FileStorageAggregator } from './components/storage/FileStorageAggregator';
 import { ExportAuthModal } from './components/modals/ExportAuthModal';
@@ -6038,6 +6039,18 @@ This invitation expires in 24 hours.`;
                         Delegation
                       </button>
 
+                      <button
+                        onClick={() => setActiveTab('subpn')}
+                        className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 flex items-center gap-1 ${
+                          activeTab === 'subpn'
+                            ? 'border-primary text-primary'
+                            : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
+                        }`}
+                      >
+                        <Layers className="w-4 h-4" />
+                        Sub-pN
+                      </button>
+
                     <button
                       onClick={() => setActiveTab('recovery')}
                       className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
@@ -6503,6 +6516,14 @@ This invitation expires in 24 hours.`;
 
 
                   {/* Delegation Tab */}
+                  {activeTab === 'subpn' && (
+                    <SubPnTab
+                      accessToken={authenticatedUser?.accessToken || authenticatedUser?.authToken}
+                      sessionId={authenticatedUser?.id}
+                      publicKey={authenticatedUser?.publicKey}
+                    />
+                  )}
+
                   {activeTab === 'delegation' && (
                     <div className="space-y-6">
                       <div>

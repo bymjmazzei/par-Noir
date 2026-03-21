@@ -22,10 +22,11 @@ After **recovery or key rotation**, a user may have a **successor** pN identifie
 
 ## Server behavior (summary)
 
-- **OAuth:** Authorization codes, token exchange, refresh, and in-memory access token validation reject **superseded** predecessors.  
-- **Storage:** `GET`/`PUT` `/api/storage/credentials/...` and Drive proxy token retrieval reject predecessors.  
-- **Feeds:** Creating a feed rejects **superseded** `creatorDid` when that DID was recorded on the succession row.  
+- **OAuth:** Authorization codes, token exchange, refresh, and in-memory access token validation reject **superseded** predecessors.
+- **Storage:** `GET`/`PUT` `/api/storage/credentials/...` and Drive proxy token retrieval reject predecessors.
+- **Feeds:** Creating a feed rejects **superseded** `creatorDid` when that DID was recorded on the succession row.
 - **API keys:** Keys whose `pn_id` is a superseded predecessor fail validation.
+- **Owned-asset registry:** On succession migration, `pn_owned_assets.root_pn_identifier`, `api_keys.root_pn_id`, and `feeds.owner_pn_identifier` rows tied to the predecessor are updated to the successor where applicable. See [OWNED_ASSETS_INTEGRATORS.md](./OWNED_ASSETS_INTEGRATORS.md).
 
 ## Registering succession (operators)
 

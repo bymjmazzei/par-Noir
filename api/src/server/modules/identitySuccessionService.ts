@@ -150,6 +150,23 @@ export async function registerSuccession(params: {
       await client.query(`UPDATE aggregator_thoughts SET pn_identifier = $2 WHERE pn_identifier = $1`, [pred, succ]);
       await client.query(`UPDATE aggregator_collections SET pn_identifier = $2 WHERE pn_identifier = $1`, [pred, succ]);
       await client.query(`UPDATE device_tokens SET pn_identifier = $2 WHERE pn_identifier = $1`, [pred, succ]);
+      await client.query(
+        `UPDATE pn_owned_assets SET root_pn_identifier = $2, updated_at = NOW() WHERE root_pn_identifier = $1`,
+        [pred, succ]
+      );
+      await client.query(`UPDATE api_keys SET root_pn_id = $2 WHERE root_pn_id = $1`, [pred, succ]);
+      await client.query(
+        `UPDATE feeds SET owner_pn_identifier = $2 WHERE owner_pn_identifier = $1`,
+        [pred, succ]
+      );
+      try {
+        await client.query(
+          `UPDATE pn_ipfs_manifest_pointers SET root_pn_identifier = $2, updated_at = NOW() WHERE root_pn_identifier = $1`,
+          [pred, succ]
+        );
+      } catch {
+        /* table may be missing on older DBs */
+      }
     }
 
     await client.query('COMMIT');

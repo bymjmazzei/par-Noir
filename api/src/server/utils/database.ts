@@ -879,6 +879,31 @@ export async function initializeDatabase(): Promise<void> {
       );
     }
 
+    // pn_owned_assets registry + delegations + api_keys link columns
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const ownedPath = path.join(__dirname, '../../migrations/add_pn_owned_assets.sql');
+      const ownedSql = fs.readFileSync(ownedPath, 'utf-8');
+      await db.query(ownedSql);
+      console.log('✅ pn_owned_assets migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ pn_owned_assets migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
+      const { OwnedAssetService } = await import('../modules/ownedAssetService');
+      await OwnedAssetService.backfillLegacyApiKeys();
+    } catch (bfErr: unknown) {
+      console.debug(
+        'ℹ️ owned-assets backfill skipped:',
+        bfErr instanceof Error ? bfErr.message : bfErr
+      );
+    }
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);

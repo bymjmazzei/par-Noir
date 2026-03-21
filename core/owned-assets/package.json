@@ -1,0 +1,15 @@
+{
+  "name": "@par-noir/owned-assets",
+  "version": "1.0.0",
+  "description": "Shared types for par Noir owned assets and sub-pN registry",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
