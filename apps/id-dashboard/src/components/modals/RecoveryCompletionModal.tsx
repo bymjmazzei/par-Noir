@@ -36,9 +36,11 @@ export function RecoveryCompletionModal({
             <div className="text-6xl mb-4 flex justify-center">
               <PartyPopper className="w-16 h-16 text-green-500" />
             </div>
-            <h3 className="text-lg font-medium mb-2">Identity Recovered!</h3>
+            <h3 className="text-lg font-medium mb-2">Recovery complete</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Your identity <strong>{recoveredDID.nickname}</strong> has been successfully recovered.
+              <strong>{recoveredDID.nickname}</strong> is unlocked on this device. If you <strong>migrated</strong> to a
+              new pN file (new keys), the <strong>old</strong> identifier is only valid offline; par Noir services bind to
+              the <strong>successor</strong> after migration is registered on the network.
             </p>
           </div>
           
@@ -65,9 +67,9 @@ export function RecoveryCompletionModal({
               <p>• All previous synced devices will be disconnected</p>
               <p>• You can add new devices using QR codes</p>
               <p>• Your identity data will be restored to this device</p>
-              <p>• <strong>Automatic License Transfer:</strong> All licenses will be transferred to the new identity</p>
-              <p>• <strong>ZK Proof Validation:</strong> Recovery was validated using zero-knowledge proofs</p>
-              <p>• <strong>Security:</strong> Previous devices lose access immediately</p>
+              <p>• <strong>Licenses / network state:</strong> Use your current (successor) identity for dashboard, storage, and ZKPs</p>
+              <p>• <strong>ZK proof validation:</strong> Custodian approvals used recovery proofs (no passcode on the wire)</p>
+              <p>• <strong>Security:</strong> Treat old backups as retired for online services after a registered migration</p>
             </div>
           </div>
           

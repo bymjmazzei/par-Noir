@@ -651,6 +651,24 @@ export async function initializeDatabase(): Promise<void> {
       ON oauth_refresh_tokens(expires_at)
     `);
 
+    // OAuth client registry + API keys (persistent; see docs/architecture/why-oauth-registry-is-centralized.md)
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const migrationPath = path.join(__dirname, '../../migrations/add_oauth_clients_api_keys.sql');
+      const migrationSQL = fs.readFileSync(migrationPath, 'utf-8');
+      await db.query(migrationSQL);
+      console.log('✅ oauth_clients / api_keys migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ oauth_clients / api_keys migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    const { ClientRegistrationService } = await import('../modules/clientRegistration');
+    await ClientRegistrationService.ensureDefaultClientsSeeded();
+
     // User profiles table - indexes pnIdentifier to displayName for fast lookups
     await db.query(`
       CREATE TABLE IF NOT EXISTS user_profiles (
@@ -819,6 +837,32 @@ export async function initializeDatabase(): Promise<void> {
       console.log('✅ Device tokens migration executed');
     } catch (migrationError: any) {
       console.debug('ℹ️ Device tokens migration error (may already be applied):', (migrationError as Error)?.message);
+    }
+
+    // Identity succession + audit_events
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const migrationPath = path.join(__dirname, '../../migrations/add_identity_succession_audit.sql');
+      const migrationSQL = fs.readFileSync(migrationPath, 'utf-8');
+      await db.query(migrationSQL);
+      console.log('✅ Identity succession / audit migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ Identity succession migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
+      const { warmIdentitySuccessionCache } = await import('../modules/identitySuccessionService');
+      await warmIdentitySuccessionCache();
+      console.log('✅ Identity succession revocation cache warmed');
+    } catch (warmErr: unknown) {
+      console.debug(
+        'ℹ️ Identity succession cache warm skipped:',
+        warmErr instanceof Error ? warmErr.message : warmErr
+      );
     }
 
     console.log('✅ Database schema initialized');

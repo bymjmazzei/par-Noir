@@ -9,6 +9,8 @@ interface HeaderProps {
   authenticatedUser: any;
   onLogout: () => void;
   onOfflineModeChange: (offline: boolean) => void;
+  /** When false, show a compact offline hint (identity unlock / local data still work). */
+  isOnline?: boolean;
   pwaState?: {
     isInstallable: boolean;
     isInstalled: boolean;
@@ -22,7 +24,7 @@ interface HeaderProps {
   onPinRefresh?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ authenticatedUser, onLogout, onOfflineModeChange, pwaState, onPWAInstall, onPWACheckUpdate, onExport, onPasscodeLogout, onPinRefresh }) => {
+const Header: React.FC<HeaderProps> = ({ authenticatedUser, onLogout, onOfflineModeChange, isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true, pwaState, onPWAInstall, onPWACheckUpdate, onExport, onPasscodeLogout, onPinRefresh }) => {
   const [isPWA, setIsPWA] = useState(false);
 
   // Check if running as PWA or native app (Capacitor) - hide Install in both
@@ -45,6 +47,14 @@ const Header: React.FC<HeaderProps> = ({ authenticatedUser, onLogout, onOfflineM
         className="fixed left-0 w-full z-40 text-text-primary"
         style={{ top: 'env(safe-area-inset-top, 0px)', background: 'transparent', border: 'none' }}
       >
+        {!isOnline && (
+          <div
+            className="w-full text-center text-xs py-1.5 px-3 bg-amber-900/90 text-amber-100 border-b border-amber-700/50"
+            role="status"
+          >
+            You’re offline. Identity unlock and local data still work; Google Drive and cloud sync need a connection.
+          </div>
+        )}
         <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3">
           <div className="flex items-center space-x-4">
             <ThemeSwitcher />

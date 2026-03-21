@@ -200,8 +200,7 @@ Please install manually:
     // Check initial state
     checkIfInstalled();
 
-    // Register service worker (disabled for now)
-    if (false && 'serviceWorker' in navigator) {
+    if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js')
         .then((registration) => {
           setState(prev => ({ ...prev, serviceWorkerRegistration: registration }));

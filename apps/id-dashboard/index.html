@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/icons/favicon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icons/icon-192x192.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Par Noir - Digital Identity Management</title>
     
@@ -20,13 +20,13 @@
     <link rel="manifest" href="/manifest.json" />
     
     <!-- Apple Touch Icons -->
-    <link rel="apple-touch-icon" href="/icons/favicon.png" />
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.svg" />
     <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-192x192.svg" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-512x512.svg" />
     <link rel="apple-touch-icon" sizes="167x167" href="/icons/icon-192x192.svg" />
     
     <!-- Microsoft Tiles -->
-    <meta name="msapplication-TileImage" content="/icons/favicon.png" />
+    <meta name="msapplication-TileImage" content="/icons/icon-192x192.svg" />
     <meta name="msapplication-TileColor" content="#1f2937" />
     
     <!-- Preconnect for performance -->
@@ -75,32 +75,5 @@
       }
     </script>
 
-    <!-- Service Worker Registration (disabled) -->
-    <script>
-      if (false && 'serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then((registration) => {
-              console.log('Service Worker registered successfully:', registration.scope);
-              
-              // Handle service worker updates
-              registration.addEventListener('updatefound', () => {
-                const newWorker = registration.installing;
-                newWorker.addEventListener('statechange', () => {
-                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    // New service worker available
-                    if (confirm('A new version is available. Reload to update?')) {
-                      window.location.reload();
-                    }
-                  }
-                });
-              });
-            })
-            .catch((error) => {
-              console.error('Service Worker registration failed:', error);
-            });
-        });
-      }
-    </script>
   </body>
 </html>

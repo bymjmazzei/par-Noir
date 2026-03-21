@@ -1118,6 +1118,18 @@ async function createIdentity(
 
 ---
 
+## par Noir route manifest & related docs
+
+Canonical lists of public HTTP routes and L5 integration topics live alongside this guide:
+
+- **[ROUTE_MANIFEST.md](./ROUTE_MANIFEST.md)** — major API routes (hand-maintained; run drift check below).
+- **[third-party-sharing-and-L5.md](./third-party-sharing-and-L5.md)** — user-authorized third-party access patterns.
+- **[INTEGRATOR_IDENTITY_SUCCESSION.md](./INTEGRATOR_IDENTITY_SUCCESSION.md)** — superseded / successor pN identifiers (“picture on a wall” online).
+
+**Drift check (optional):** from repo root, `node scripts/check-route-manifest.mjs` compares manifest entries to `api/src/server.ts` and `api/src/server/modules/apiRoutes.ts` (substring presence).
+
+---
+
 ## Support & Resources
 
 ### Documentation

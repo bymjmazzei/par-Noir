@@ -56,6 +56,58 @@ export async function authenticateApiKey(req: Request, res: Response, next: Func
 /**
  * OAuth Authentication Endpoints
  */
+/**
+ * Public read-only identity succession (integrators; no PII beyond opaque pn ids)
+ */
+export function setupIdentityPublicRoutes(app: any) {
+  app.get('/api/v1/identity/successor', async (req: Request, res: Response) => {
+    try {
+      const pn = req.query.pn_identifier as string;
+      if (!pn || typeof pn !== 'string') {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'pn_identifier query parameter is required'
+        });
+      }
+      const { getSuccessorPublicInfo } = await import('./identitySuccessionService');
+      const info = await getSuccessorPublicInfo(pn);
+      return res.json(info);
+    } catch (error) {
+      console.error('[identity/successor] error:', error);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: 'Failed to load succession state'
+      });
+    }
+  });
+
+  /** Alias — same payload as /successor (plan naming) */
+  app.get('/api/v1/identity/revocations', async (req: Request, res: Response) => {
+    try {
+      const pn = req.query.pn_identifier as string;
+      if (!pn || typeof pn !== 'string') {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'pn_identifier query parameter is required'
+        });
+      }
+      const { getSuccessorPublicInfo } = await import('./identitySuccessionService');
+      const info = await getSuccessorPublicInfo(pn);
+      return res.json({
+        revoked: info.revoked,
+        successorPnIdentifier: info.successorPnIdentifier,
+        effectiveAt: info.effectiveAt
+      });
+    } catch (error) {
+      console.error('[identity/revocations] error:', error);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: 'Failed to load revocation state'
+      });
+    }
+  });
+}
+
 export function setupOAuthRoutes(app: any) {
   /**
    * GET /api/v1/oauth/authorize
@@ -77,17 +129,27 @@ export function setupOAuthRoutes(app: any) {
       // For now, we'll allow any client_id (can be enhanced with client registration)
 
       const scopes = scope ? (scope as string).split(' ') : ['openid', 'profile'];
-      
-      // Generate authorization code
-      const code = PNOAuthService.generateAuthorizationCode({
-        clientId: client_id as string,
-        redirectUri: redirect_uri as string,
-        scope: scopes,
-        state: state as string,
-        nonce: nonce as string,
-        did: apiKey.pnId, // Use pN ID from API key
-        pnIdentifier: apiKey.pnId
-      });
+
+      let code: string;
+      try {
+        code = PNOAuthService.generateAuthorizationCode({
+          clientId: client_id as string,
+          redirectUri: redirect_uri as string,
+          scope: scopes,
+          state: state as string,
+          nonce: nonce as string,
+          did: apiKey.pnId, // Use pN ID from API key
+          pnIdentifier: apiKey.pnId
+        });
+      } catch (e: unknown) {
+        if ((e as Error & { code?: string }).code === 'IDENTITY_SUPERSEDED') {
+          return res.status(403).json({
+            error: 'access_denied',
+            error_description: 'This pN identifier is superseded on the par Noir network. Use the successor identity.'
+          });
+        }
+        throw e;
+      }
 
       // Return authorization code
       const redirectUrl = new URL(redirect_uri as string);

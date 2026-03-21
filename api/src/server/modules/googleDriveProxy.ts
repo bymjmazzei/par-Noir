@@ -46,6 +46,11 @@ export class GoogleDriveProxyService {
       console.error(`[GoogleDriveProxy] Invalid pn identifier: ${pnIdentifier}. Expected format: pn-{hash}`);
       throw new Error('Google Drive not connected. Please connect in the dashboard.');
     }
+
+    const { isPnRevokedForNetwork } = await import('./identitySuccessionService');
+    if (isPnRevokedForNetwork(pnIdentifier)) {
+      throw new Error('This pN identifier is retired on the par Noir network. Use your successor identity for Drive access.');
+    }
     
     // Try pn identifier first; also try additionalCandidates (e.g. legacy raw identity_id from DB)
     const identifierCandidates = [pnIdentifier];

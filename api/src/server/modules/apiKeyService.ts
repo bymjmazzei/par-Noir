@@ -3,7 +3,10 @@
  * Validates API keys and manages API access
  */
 
+import crypto from 'crypto';
 import { getDatabasePool } from '../utils/database';
+import { appendAuditEvent } from './auditService';
+import { isPnRevokedForNetwork } from './identitySuccessionService';
 
 const DEFAULT_REQUESTS_PER_MINUTE = 60;
 const DEFAULT_REQUESTS_PER_DAY = 10000;
@@ -21,13 +24,80 @@ export interface ApiKeyRecord {
   lastUsedAt?: string;
   verificationId?: string;
   scopes: string[];
+  ownerType?: string;
   rateLimit?: {
     requestsPerMinute: number;
     requestsPerDay: number;
   };
 }
 
+function mapApiKeyRow(row: Record<string, unknown>): ApiKeyRecord {
+  return {
+    id: String(row.id),
+    pnId: String(row.pn_id),
+    keyHash: String(row.key_hash),
+    isActive: Boolean(row.is_active),
+    createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : new Date().toISOString(),
+    activatedAt: row.activated_at ? new Date(String(row.activated_at)).toISOString() : undefined,
+    lastUsedAt: row.last_used_at ? new Date(String(row.last_used_at)).toISOString() : undefined,
+    verificationId: row.verification_id ? String(row.verification_id) : undefined,
+    scopes: Array.isArray(row.scopes) ? (row.scopes as string[]) : [],
+    ownerType: row.owner_type ? String(row.owner_type) : 'pn_user',
+    rateLimit: {
+      requestsPerMinute: Number(row.requests_per_minute) || DEFAULT_REQUESTS_PER_MINUTE,
+      requestsPerDay: Number(row.requests_per_day) || DEFAULT_REQUESTS_PER_DAY
+    }
+  };
+}
+
 export class ApiKeyService {
+  /**
+   * Create a new API key; returns plaintext once (store nowhere after response).
+   */
+  static async createApiKey(params: {
+    pnId: string;
+    ownerType?: string;
+    scopes?: string[];
+    isActive?: boolean;
+    requestsPerMinute?: number;
+    requestsPerDay?: number;
+  }): Promise<{ record: ApiKeyRecord; plaintextKey: string }> {
+    const rawBytes = crypto.randomBytes(32);
+    const plaintextKey = `pn_${rawBytes.toString('hex')}`;
+    const keyHash = crypto.createHash('sha256').update(plaintextKey).digest('hex');
+
+    const pool = getDatabasePool();
+    const scopes = params.scopes?.length ? params.scopes : ['oauth', 'data_points', 'content'];
+    const result = await pool.query(
+      `INSERT INTO api_keys (
+        pn_id, owner_type, key_hash, is_active, scopes, requests_per_minute, requests_per_day
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *`,
+      [
+        params.pnId,
+        params.ownerType ?? 'pn_user',
+        keyHash,
+        params.isActive !== false,
+        scopes,
+        params.requestsPerMinute ?? DEFAULT_REQUESTS_PER_MINUTE,
+        params.requestsPerDay ?? DEFAULT_REQUESTS_PER_DAY
+      ]
+    );
+
+    const record = mapApiKeyRow(result.rows[0] as Record<string, unknown>);
+    await appendAuditEvent({
+      eventType: 'api_key.created',
+      actorHint: 'admin',
+      subjectPnIdentifier: params.pnId,
+      metadata: { keyId: record.id }
+    });
+
+    return {
+      record,
+      plaintextKey
+    };
+  }
+
   /**
    * Validate API key
    */
@@ -37,8 +107,6 @@ export class ApiKeyService {
     error?: string;
   }> {
     try {
-      // Hash the API key for lookup
-      const crypto = await import('crypto');
       const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
 
       const pool = getDatabasePool();
@@ -51,13 +119,16 @@ export class ApiKeyService {
         return { valid: false, error: 'API key not found' };
       }
 
-      const apiKeyData = result.rows[0] as ApiKeyRecord;
+      const apiKeyData = mapApiKeyRow(result.rows[0] as Record<string, unknown>);
 
       if (!apiKeyData.isActive) {
         return { valid: false, error: 'API key is not active' };
       }
 
-      // Update last used timestamp
+      if (isPnRevokedForNetwork(apiKeyData.pnId)) {
+        return { valid: false, error: 'API key identity is superseded on the par Noir network' };
+      }
+
       await pool.query(
         `UPDATE api_keys SET last_used_at = NOW() WHERE id = $1`,
         [apiKeyData.id]
@@ -134,4 +205,3 @@ export class ApiKeyService {
     };
   }
 }
-

@@ -6,6 +6,7 @@
 
 import crypto from 'crypto';
 import { getDatabasePool } from '../utils/database';
+import { isDidRevokedForNetwork, isPnRevokedForNetwork } from './identitySuccessionService';
 
 export interface AuthorizationCode {
   code: string;
@@ -100,6 +101,17 @@ export class PNOAuthService {
     pnIdentifier?: string; // pN identifier (derived client-side, never derived from secrets)
     // SECURITY: pN name and passcode are NEVER accepted or stored - they're secrets
   }): string {
+    if (isPnRevokedForNetwork(params.pnIdentifier)) {
+      const err = new Error('identity_superseded') as Error & { code: string };
+      err.code = 'IDENTITY_SUPERSEDED';
+      throw err;
+    }
+    if (isDidRevokedForNetwork(params.did)) {
+      const err = new Error('identity_superseded') as Error & { code: string };
+      err.code = 'IDENTITY_SUPERSEDED';
+      throw err;
+    }
+
     const code = crypto.randomBytes(32).toString('hex');
     
     // Normalize redirect URI (remove trailing slash) for consistent comparison
@@ -186,6 +198,10 @@ export class PNOAuthService {
 
     // Remove used authorization code (one-time use)
     authorizationCodes.delete(params.code);
+
+    if (isPnRevokedForNetwork(authCode.pnIdentifier) || isDidRevokedForNetwork(authCode.did)) {
+      return null;
+    }
 
     // Generate access token
     // SECURITY: Use pnIdentifier directly from authorization code (derived client-side)
@@ -434,6 +450,11 @@ export class PNOAuthService {
         return null;
       }
 
+      if (isPnRevokedForNetwork(tokenData.pn_identifier) || isDidRevokedForNetwork(tokenData.did)) {
+        await db.query('DELETE FROM oauth_refresh_tokens WHERE refresh_token = $1', [refreshToken]);
+        return null;
+      }
+
       // Generate new access token
       // Use stored pN identifier from refresh token if available
       const accessToken = await this.generateAccessToken({
@@ -464,6 +485,10 @@ export class PNOAuthService {
     // Check in-memory cache first
     const cached = accessTokens.get(token);
     if (cached && cached.expiresAt > Date.now()) {
+      if (isPnRevokedForNetwork(cached.pnIdentifier) || isDidRevokedForNetwork(cached.did)) {
+        accessTokens.delete(token);
+        return null;
+      }
       return cached;
     }
 
@@ -491,6 +516,10 @@ export class PNOAuthService {
 
       // Check expiration
       if (payload.expiresAt < Date.now()) {
+        return null;
+      }
+
+      if (isPnRevokedForNetwork(payload.pnIdentifier) || isDidRevokedForNetwork(payload.did)) {
         return null;
       }
 

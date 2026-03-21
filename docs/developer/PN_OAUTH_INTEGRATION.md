@@ -4,6 +4,16 @@
 
 ---
 
+## Get a `client_id` and API access
+
+1. **Developer console (hosted):** [https://developers.parnoir.com](https://developers.parnoir.com) — register an OAuth client and (with admin access) issue an API key bound to a pN identifier. The API must have `ADMIN_API_KEY` set; you use header `X-Admin-Key` in the portal.
+2. **Local:** Run `apps/developer-portal` (`npm install && npm run dev`, default [http://localhost:5176](http://localhost:5176)) and set `VITE_API_ENDPOINT` to your API if not using production.
+3. **API directly:** `POST /oauth/clients` and `POST /api/admin/api-keys` with `X-Admin-Key: <ADMIN_API_KEY>` — see [why-oauth-registry-is-centralized.md](../architecture/why-oauth-registry-is-centralized.md).
+
+4. **Superseded identities:** Poll `GET /api/v1/identity/successor?pn_identifier=` so you do not treat a retired pN as valid forever — see [INTEGRATOR_IDENTITY_SUCCESSION.md](./INTEGRATOR_IDENTITY_SUCCESSION.md).
+
+---
+
 ## Quick Start
 
 ### Installation
@@ -19,7 +29,7 @@ import { createPNOAuthClient } from '@identity-protocol/identity-sdk';
 
 // Initialize OAuth client
 const pnAuth = createPNOAuthClient({
-  clientId: 'your-client-id', // Get from par Noir developer portal
+  clientId: 'your-client-id', // From developers.parnoir.com or admin POST /oauth/clients
   scopes: ['openid', 'profile'],
   usePopup: true // Opens popup window (like Google OAuth)
 });

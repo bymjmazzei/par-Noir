@@ -411,6 +411,37 @@ function App() {
     setPendingCustodianInvitation
   } = migrationState;
 
+  const [networkIdentityRetired, setNetworkIdentityRetired] = React.useState(false);
+
+  React.useEffect(() => {
+    setNetworkIdentityRetired(false);
+    if (!authenticatedUser?.id || !authenticatedUser?.publicKey) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const creds = SecureCredentialManager.getCredentials(authenticatedUser.id);
+        if (!creds?.pnName || !creds?.passcode) return;
+        const { VolumeIdGenerator } = await import('./utils/crypto/volumeIdGenerator');
+        const pn = await VolumeIdGenerator.generateVolumeId({
+          pnName: creds.pnName,
+          passcode: creds.passcode,
+          publicKey: authenticatedUser.publicKey
+        });
+        const res = await fetch(
+          `${API_ENDPOINT}/api/v1/identity/successor?pn_identifier=${encodeURIComponent(pn)}`
+        );
+        if (!res.ok || cancelled) return;
+        const j = (await res.json()) as { revoked?: boolean };
+        if (j.revoked && !cancelled) setNetworkIdentityRetired(true);
+      } catch {
+        /* offline or API error */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticatedUser?.id, authenticatedUser?.publicKey]);
+
   // Destructure custodian state from custom hook
   const {
     showDeviceInfoModal,
@@ -4963,11 +4994,23 @@ This invitation expires in 24 hours.`;
     <div className="min-h-screen text-text-primary flex flex-col">
       {/* Extension Warning Banner */}
       <ExtensionWarningBanner />
+
+      {networkIdentityRetired && (
+        <div
+          className="w-full z-30 px-4 py-2 text-sm text-center bg-red-950/95 text-red-100 border-b border-red-800 shrink-0"
+          role="alert"
+        >
+          This pN identifier is retired on the par Noir network. Use your current pN file for cloud storage, ZKPs, and
+          connected services. Decrypting an old backup may still work offline, but it no longer receives network-backed
+          state.
+        </div>
+      )}
       
       <Header
         authenticatedUser={authenticatedUser}
         onLogout={handleLogout}
         onOfflineModeChange={handleOfflineModeChange}
+        isOnline={pwaState.isOnline}
         pwaState={pwaState}
         onPWAInstall={pwaHandlers?.install}
         onPWACheckUpdate={pwaHandlers?.checkForUpdates}

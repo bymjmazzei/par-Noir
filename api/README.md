@@ -261,6 +261,16 @@ This API server supports the **"MARK I"** identity - the first real identity cre
 - ✅ **Military-Grade Security**: FIPS 140-3 Level 4 equivalent
 - ✅ **Production Ready**: No simulations, no mock components, real cryptography
 
+## Environment (par Noir operations)
+
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | PostgreSQL connection string (required in production with DB features) |
+| `ADMIN_API_KEY` | Protects `POST /api/admin/api-keys`, `POST /api/admin/identity/succession`, `GET /api/admin/audit-events` (`X-Admin-Key` or `Authorization: Bearer`) |
+| `AUDIT_RETENTION_DAYS` | Optional; defaults to **365** for `audit_events` pruning helper |
+
+See `docs/developer/INTEGRATOR_IDENTITY_SUCCESSION.md` for public succession reads (`GET /api/v1/identity/successor`).
+
 ## 📚 **Documentation**
 
 - [Military-Grade Implementation Guide](../core/identity-core/MILITARY_GRADE_QUANTUM_RESISTANT_SUMMARY.md)

@@ -21,6 +21,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import crypto from 'crypto';
 import { determineFileType, getFileTypeFromMime, determineContentClass } from './server/utils/fileTypeUtils';
 import { safeClientErrorMessage } from './server/utils/safeError';
+import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modules/adminDeveloperRoutes';
 
 // Environment configuration
 const PORT = process.env.PORT || 3001;
@@ -39,13 +40,15 @@ const DEFAULT_ORIGINS = [
   'https://messaging.parnoir.com',
   'https://prism.parnoir.com',
   'https://licensing.parnoir.com',
+  'https://developers.parnoir.com',
   'capacitor://localhost',
   'ionic://localhost',
   'https://localhost',
   'https://127.0.0.1',
   'http://localhost:3000',
   'http://localhost:3001',
-  'http://localhost:5174'
+  'http://localhost:5174',
+  'http://localhost:5176'
 ];
 
 const ENV_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean) || [];
@@ -3067,7 +3070,13 @@ class ProductionServer {
     });
 
     // API Routes (v1) - OAuth, Data Points, Content Portability
-    const { setupOAuthRoutes, setupDataPointRoutes, setupContentPortabilityRoutes } = await import('./server/modules/apiRoutes');
+    const {
+      setupIdentityPublicRoutes,
+      setupOAuthRoutes,
+      setupDataPointRoutes,
+      setupContentPortabilityRoutes
+    } = await import('./server/modules/apiRoutes');
+    setupIdentityPublicRoutes(this.app);
     setupOAuthRoutes(this.app);
     setupDataPointRoutes(this.app);
     setupContentPortabilityRoutes(this.app);
@@ -5217,6 +5226,15 @@ class ProductionServer {
           return res.status(400).json({ error: 'Missing credentials in request body' });
         }
 
+        const { isPnRevokedForNetwork } = await import('./server/modules/identitySuccessionService');
+        if (isPnRevokedForNetwork(pnIdentifier)) {
+          return res.status(403).json({
+            error: 'identity_superseded',
+            error_description:
+              'This pN identifier is retired on the par Noir network. Use your successor identity for storage and services.'
+          });
+        }
+
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const record = await storageCredentialsService.upsertCredentials(pnIdentifier, credentials, cid);
         
@@ -5588,6 +5606,15 @@ class ProductionServer {
         // Normalize to pnIdentifier format
         const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
 
+        const { isPnRevokedForNetwork } = await import('./server/modules/identitySuccessionService');
+        if (isPnRevokedForNetwork(pnIdentifier)) {
+          return res.status(403).json({
+            error: 'identity_superseded',
+            error_description:
+              'This pN identifier is retired on the par Noir network. Cloud storage and synced state are bound to your successor identity.'
+          });
+        }
+
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         let record = await storageCredentialsService.getCredentials(pnIdentifier);
 
@@ -5646,6 +5673,14 @@ class ProductionServer {
 
         const sanitizedIdentityId = identityId.replace(/[^a-zA-Z0-9-]/g, '');
         const pnIdentifier = sanitizedIdentityId.startsWith('pn-') ? sanitizedIdentityId : `pn-${sanitizedIdentityId}`;
+
+        const { isPnRevokedForNetwork } = await import('./server/modules/identitySuccessionService');
+        if (isPnRevokedForNetwork(pnIdentifier)) {
+          return res.status(403).json({
+            error: 'identity_superseded',
+            error_description: 'This pN identifier is retired on the par Noir network.'
+          });
+        }
 
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
@@ -7880,6 +7915,14 @@ class ProductionServer {
           return res.status(403).json({ error: 'Free tier cannot create feeds. Upgrade to feed or self-hosted tier.' });
         }
 
+        const { isDidRevokedForNetwork } = await import('./server/modules/identitySuccessionService');
+        if (isDidRevokedForNetwork(creatorDid)) {
+          return res.status(403).json({
+            error: 'identity_superseded',
+            error_description: 'This creator DID is retired on the par Noir network. Create feeds with your successor identity.'
+          });
+        }
+
         const feed = await FeedService.createFeed({
           feedName,
           feedCategory,
@@ -9948,7 +9991,7 @@ class ProductionServer {
 
       // Validate client and redirect URI
       const { ClientRegistrationService } = await import('./server/modules/clientRegistration');
-      if (!ClientRegistrationService.validateClient(client_id as string, redirect_uri as string)) {
+      if (!(await ClientRegistrationService.validateClient(client_id as string, redirect_uri as string))) {
         return res.status(400).json({
           error: 'invalid_client',
           error_description: 'Invalid client_id or redirect_uri'
@@ -9957,7 +10000,7 @@ class ProductionServer {
 
       // Validate scopes
       const scopes = scope ? (scope as string).split(' ') : ['openid', 'profile'];
-      if (!ClientRegistrationService.validateScopes(client_id as string, scopes)) {
+      if (!(await ClientRegistrationService.validateScopes(client_id as string, scopes))) {
         return res.status(400).json({
           error: 'invalid_scope',
           error_description: 'One or more requested scopes are not allowed for this client'
@@ -9996,7 +10039,7 @@ class ProductionServer {
       // Validate client (skip for browser-app)
       if (!isBrowserApp) {
       const { ClientRegistrationService } = await import('./server/modules/clientRegistration');
-      if (!ClientRegistrationService.validateClient(client_id as string, redirect_uri as string)) {
+      if (!(await ClientRegistrationService.validateClient(client_id as string, redirect_uri as string))) {
         return res.status(400).json({
           error: 'invalid_client',
           error_description: 'Invalid client_id or redirect_uri'
@@ -10113,17 +10156,29 @@ class ProductionServer {
         // Generate authorization code immediately (before async checks)
         // SECURITY FIX: Store pnIdentifier directly instead of secrets
         const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
-        const code = PNOAuthService.generateAuthorizationCode({
-          clientId: client_id,
-          redirectUri: redirect_uri,
-          scope: scopes,
-          state,
-          nonce,
-          did,
-          publicKey: public_key, // Still needed for file decryption
-          pnIdentifier: pnIdentifier // Store pN identifier directly (derived client-side)
-          // pnName and passcode are NOT stored - they're secrets
-        });
+        let code: string;
+        try {
+          code = PNOAuthService.generateAuthorizationCode({
+            clientId: client_id,
+            redirectUri: redirect_uri,
+            scope: scopes,
+            state,
+            nonce,
+            did,
+            publicKey: public_key, // Still needed for file decryption
+            pnIdentifier: pnIdentifier // Store pN identifier directly (derived client-side)
+            // pnName and passcode are NOT stored - they're secrets
+          });
+        } catch (oauthErr: unknown) {
+          if ((oauthErr as Error & { code?: string }).code === 'IDENTITY_SUPERSEDED') {
+            return res.status(403).json({
+              error: 'access_denied',
+              error_description:
+                'This identity is superseded on the par Noir network. Use your successor pN file and identifier for OAuth and services.'
+            });
+          }
+          throw oauthErr;
+        }
 
         // Check third-party-permissions so we can skip consent when user already granted browser-app
         let existingPermissions: { ageShared: boolean } | null = null;
@@ -10871,9 +10926,9 @@ class ProductionServer {
 
       // Validate client
       const { ClientRegistrationService } = await import('./server/modules/clientRegistration');
-      const client = ClientRegistrationService.getClient(client_id as string);
+      const client = await ClientRegistrationService.getClient(client_id as string);
       
-      if (!client || !ClientRegistrationService.validateClient(client_id as string, redirect_uri as string)) {
+      if (!client || !(await ClientRegistrationService.validateClient(client_id as string, redirect_uri as string))) {
         res.status(400).send(`
           <html>
             <head><title>OAuth Error</title></head>
@@ -11106,9 +11161,9 @@ class ProductionServer {
       `);
     });
 
-    // Client Management Endpoints
+    // Client Management Endpoints (admin key required)
     // POST /oauth/clients - Register a new OAuth client
-    this.app.post('/oauth/clients', async (req, res) => {
+    this.app.post('/oauth/clients', requireAdminApiKey, async (req, res) => {
       try {
         const { ClientRegistrationService } = await import('./server/modules/clientRegistration');
         const { clientId, name, description, redirectUris, scopes, clientSecret } = req.body;
@@ -11120,14 +11175,14 @@ class ProductionServer {
           });
         }
 
-        if (ClientRegistrationService.clientExists(clientId)) {
+        if (await ClientRegistrationService.clientExists(clientId)) {
           return res.status(409).json({
             error: 'client_exists',
             error_description: 'Client with this ID already exists'
           });
         }
 
-        const client = ClientRegistrationService.registerClient({
+        const client = await ClientRegistrationService.registerClient({
           clientId,
           name,
           description,
@@ -11149,11 +11204,11 @@ class ProductionServer {
       }
     });
 
-    // GET /oauth/clients/:client_id - Get client information
-    this.app.get('/oauth/clients/:client_id', async (req, res) => {
+    // GET /oauth/clients/:client_id - Get client information (admin key required)
+    this.app.get('/oauth/clients/:client_id', requireAdminApiKey, async (req, res) => {
       try {
         const { ClientRegistrationService } = await import('./server/modules/clientRegistration');
-        const client = ClientRegistrationService.getClient(req.params.client_id);
+        const client = await ClientRegistrationService.getClient(req.params.client_id);
 
         if (!client) {
           return res.status(404).json({
@@ -11208,6 +11263,8 @@ class ProductionServer {
         });
       }
     });
+
+    registerAdminDeveloperRoutes(this.app);
   }
 
   /**
