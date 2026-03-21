@@ -86,6 +86,7 @@ import { useExportState } from './hooks/useExportState';
 import { useCustodianState } from './hooks/useCustodianState';
 import { useMigrationState } from './hooks/useMigrationState';
 import { usePushNotifications } from './hooks/usePushNotifications';
+import { useApiToken } from './hooks/useApiToken';
 
 // Lazy load heavy components
 const EnhancedPrivacyPanel = lazy(() => import('./components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
@@ -273,6 +274,7 @@ function App() {
   // Use custom hooks for state management - MUST be declared before any functions that use these variables
   const appState = useAppState();
   const identityState = useIdentityState();
+  const { apiToken, connectApi, clearApiToken, isConnecting, connectError } = useApiToken();
   const privacyState = usePrivacyState();
   const exportState = useExportState();
   const custodianState = useCustodianState();
@@ -1844,6 +1846,7 @@ function App() {
       notificationsService.clearUnlockedIdentity();
       
       // Clear all state
+      clearApiToken();
       setAuthenticatedUser(null);
       setDids([]);
       setSelectedDID(null);
@@ -1870,6 +1873,7 @@ function App() {
     } catch (error) {
               logError('Error during logout:', error);
       // Force clear state even if storage fails
+      clearApiToken();
       setAuthenticatedUser(null);
       setDids([]);
       setSelectedDID(null);
@@ -6518,7 +6522,10 @@ This invitation expires in 24 hours.`;
                   {/* Delegation Tab */}
                   {activeTab === 'subpn' && (
                     <SubPnTab
-                      accessToken={authenticatedUser?.accessToken || authenticatedUser?.authToken}
+                      accessToken={apiToken}
+                      onConnect={connectApi}
+                      isConnecting={isConnecting}
+                      connectError={connectError}
                       sessionId={authenticatedUser?.id}
                       publicKey={authenticatedUser?.publicKey}
                     />

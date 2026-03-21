@@ -61,12 +61,26 @@ export class ClientRegistrationService {
           'https://browse.parnoir.com/',
           'https://messaging.parnoir.com/oauth-callback.html',
           'https://messaging.parnoir.com/',
+          'https://pn.parnoir.com/oauth-callback.html',
+          'https://pn.parnoir.com/pn-oauth-callback.html',
+          'https://pn.parnoir.com/',
+          'https://par-noir-dashboard.web.app/oauth-callback.html',
+          'https://par-noir-dashboard.web.app/pn-oauth-callback.html',
+          'https://par-noir-dashboard.web.app/',
           'https://localhost/oauth-callback.html',
+          'https://localhost/pn-oauth-callback.html',
           'https://localhost/',
           'http://localhost:3000/oauth-callback.html',
+          'http://localhost:3000/pn-oauth-callback.html',
           'http://localhost:3000/',
           'http://localhost:5173/oauth-callback.html',
-          'http://localhost:5173/'
+          'http://localhost:5173/pn-oauth-callback.html',
+          'http://localhost:5173/',
+          'http://localhost:3001/oauth-callback.html',
+          'http://localhost:3001/pn-oauth-callback.html',
+          'http://localhost:3001/',
+          'http://127.0.0.1:3001/pn-oauth-callback.html',
+          'http://127.0.0.1:3001/'
         ],
         scopes: ['openid', 'profile']
       },
@@ -100,9 +114,11 @@ export class ClientRegistrationService {
 
     for (const d of defaults) {
       await pool.query(
-        `INSERT INTO oauth_clients (client_id, name, description, redirect_uris, scopes, is_active)
-         VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, true)
-         ON CONFLICT (client_id) DO NOTHING`,
+        `INSERT INTO oauth_clients (client_id, name, description, redirect_uris, scopes, is_active, updated_at)
+         VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, true, NOW())
+         ON CONFLICT (client_id) DO UPDATE SET
+           redirect_uris = EXCLUDED.redirect_uris,
+           updated_at = NOW()`,
         [d.clientId, d.name, d.description, JSON.stringify(d.redirectUris), JSON.stringify(d.scopes)]
       );
     }

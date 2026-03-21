@@ -37,11 +37,21 @@ const STORAGE_SEAL_PREFIX = 'par_noir_sub_seal_';
 
 interface SubPnTabProps {
   accessToken: string | null | undefined;
+  onConnect?: () => Promise<string | null>;
+  isConnecting?: boolean;
+  connectError?: string | null;
   sessionId: string | undefined;
   publicKey: string | undefined;
 }
 
-export const SubPnTab: React.FC<SubPnTabProps> = ({ accessToken, sessionId, publicKey }) => {
+export const SubPnTab: React.FC<SubPnTabProps> = ({
+  accessToken,
+  onConnect,
+  isConnecting,
+  connectError,
+  sessionId,
+  publicKey
+}) => {
   const [assets, setAssets] = useState<OwnedAssetDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -281,9 +291,26 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({ accessToken, sessionId, publ
       </div>
 
       {!accessToken && (
-        <div className="p-4 rounded-lg bg-amber-900/20 border border-amber-700 text-sm">
-          Connect via Services (OAuth) so your dashboard has an access token; then you can list and create registry
-          entries.
+        <div className="p-4 rounded-lg bg-amber-900/20 border border-amber-700 text-sm space-y-3">
+          <p>
+            Connect to the par Noir API to list and create subs. Click Connect to open the authorization popup, unlock
+            your pN, and approve.
+          </p>
+          {connectError && (
+            <p className="text-red-400" role="alert">
+              {connectError}
+            </p>
+          )}
+          {onConnect && (
+            <button
+              type="button"
+              onClick={() => void onConnect()}
+              disabled={isConnecting}
+              className="px-4 py-2 rounded-md bg-primary text-bg-primary font-medium hover:opacity-90 disabled:opacity-50"
+            >
+              {isConnecting ? 'Connecting...' : 'Connect to par Noir API'}
+            </button>
+          )}
         </div>
       )}
 

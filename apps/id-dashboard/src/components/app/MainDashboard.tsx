@@ -8,6 +8,7 @@ import { ThemeSwitcher } from '../ThemeSwitcher';
 import { FileStorageAggregator } from '../storage/FileStorageAggregator';
 import { DelegationModal } from '../DelegationModal';
 import { SubPnTab } from '../subpn/SubPnTab';
+import { useApiToken } from '../../hooks/useApiToken';
 
 interface MainDashboardProps {
   dids: DIDInfo[];
@@ -41,6 +42,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   const [isDelegationModalOpen, setIsDelegationModalOpen] = useState(false);
 
   const cleanupManager = useCleanupManager();
+  const { apiToken, connectApi, isConnecting, connectError } = useApiToken();
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -250,7 +252,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
               {activeTab === 'subpn' && (
                 <SubPnTab
-                  accessToken={authenticatedUser?.accessToken || authenticatedUser?.authToken}
+                  accessToken={apiToken}
+                  onConnect={connectApi}
+                  isConnecting={isConnecting}
+                  connectError={connectError}
                   sessionId={authenticatedUser?.id}
                   publicKey={authenticatedUser?.publicKey}
                 />
