@@ -3,7 +3,7 @@ import { AuthSession, EncryptedIdentity } from "../../utils/crypto";
 import { SecureStorage } from "../../utils/storage";
 import { SecureCredentialManager } from "../../utils/secureCredentialManager";
 import { UnifiedAuth } from '../UnifiedAuth';
-import { BiometricAuth } from "../../utils/biometric";
+import * as BiometricAdapter from "../../utils/biometricAdapter";
 import { logger } from "../../utils/logger";
 import { AutoLockManager } from "../../utils/security/autoLockManager";
 
@@ -98,7 +98,7 @@ export const AuthenticationManager: React.FC<AuthenticationManagerProps> = ({
       setError(null);
 
       // Check if biometric is available
-      const isAvailable = await BiometricAuth.isAvailable();
+      const isAvailable = await BiometricAdapter.isAvailable();
       
       if (!isAvailable) {
         setError('Biometric authentication is not available on this device');
@@ -116,8 +116,8 @@ export const AuthenticationManager: React.FC<AuthenticationManagerProps> = ({
         
         // Find first identity with biometric credentials
         for (const identity of identities) {
-          const creds = await BiometricAuth.getCredentials(identity.id);
-          if (creds.length > 0) {
+          const creds = await BiometricAdapter.hasCredentialsForIdentity(identity.id);
+          if (creds) {
             targetIdentityId = identity.id;
             break;
           }
@@ -130,7 +130,7 @@ export const AuthenticationManager: React.FC<AuthenticationManagerProps> = ({
       }
 
       // Authenticate with biometric
-      const result = await BiometricAuth.authenticate(targetIdentityId);
+      const result = await BiometricAdapter.authenticate({ identityId: targetIdentityId });
       
         if (result.success) {
         // Get the encrypted identity from SimpleStorage

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, User, Smartphone, CheckCircle } from 'lucide-react';
-import { BiometricAuth } from '../utils/biometric';
+import * as BiometricAdapter from '../utils/biometricAdapter';
 
 interface BiometricSetupProps {
   isOpen: boolean;
@@ -35,7 +35,7 @@ export const BiometricSetup: React.FC<BiometricSetupProps> = ({
   const checkBiometricAvailability = async () => {
     try {
       setIsLoading(true);
-      const info = await BiometricAuth.getCapabilityInfo();
+      const info = await BiometricAdapter.getCapabilityInfo();
       setBiometricInfo(info);
       
       if (info.available) {
@@ -55,7 +55,7 @@ export const BiometricSetup: React.FC<BiometricSetupProps> = ({
       setIsLoading(true);
       setError(null);
       
-      const credential = await BiometricAuth.registerCredential(identityId, pnName);
+      const credential = await BiometricAdapter.registerCredential(identityId, pnName);
       
       if (credential) {
         setStep('success');

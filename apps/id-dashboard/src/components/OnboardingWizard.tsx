@@ -31,8 +31,6 @@ interface OnboardingWizardProps {
   onNavigateToSection?: (section: string) => void;
 }
 
-const hasNfcSupport = typeof window !== 'undefined' && 'NDEFReader' in window;
-
 interface WizardStep {
   id: string;
   title: string;
@@ -60,6 +58,11 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
   const [showInfo, setShowInfo] = useState(false);
   const [nickname, setNickname] = useState(currentUser?.nickname || '');
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
+  const [hasNfcSupport, setHasNfcSupport] = useState(false);
+
+  useEffect(() => {
+    import('../utils/nfcAdapter').then((m) => m.isSupported().then(setHasNfcSupport));
+  }, []);
 
   const steps: WizardStep[] = [
     {

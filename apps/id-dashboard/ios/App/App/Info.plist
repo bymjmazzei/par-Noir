@@ -45,5 +45,9 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Unlock your par Noir identity with Face ID</string>
+	<key>NFCReaderUsageDescription</key>
+	<string>Read and write your pN identity to NFC cards</string>
 </dict>
 </plist>

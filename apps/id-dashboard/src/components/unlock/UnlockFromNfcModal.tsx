@@ -1,9 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CreditCard, AlertTriangle } from 'lucide-react';
 import { IdentityCrypto, EncryptedData, AuthSession } from '../../utils/crypto';
-
-const PARNOIR_MIME_TYPE = 'application/x-parnoir-identity';
-const hasNfcSupport = typeof window !== 'undefined' && 'NDEFReader' in window;
+import * as nfcAdapter from '../../utils/nfcAdapter';
 
 export interface UnlockFromNfcResult {
   authSession: AuthSession;
@@ -33,6 +31,12 @@ export function UnlockFromNfcModal({
   const [passcode, setPasscode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [hasNfcSupport, setHasNfcSupport] = useState(false);
+  const [nfcScanResult, setNfcScanResult] = useState<{ boundPnBlob: string; uid: string } | null>(null);
+
+  useEffect(() => {
+    nfcAdapter.isSupported().then(setHasNfcSupport);
+  }, []);
 
   const handleClose = () => {
     setStep('scan');
@@ -40,79 +44,23 @@ export function UnlockFromNfcModal({
     setPasscode('');
     setError(null);
     setLoading(false);
+    setNfcScanResult(null);
     onClose();
   };
 
   const handleScan = async () => {
     setError(null);
     if (!hasNfcSupport) {
-      setError('NFC unlock requires Chrome on Android.');
-      return;
-    }
-    const NDEFReader = (window as any).NDEFReader;
-    if (!NDEFReader) {
-      setError('NFC not supported');
+      setError('NFC unlock requires a device with NFC (Android or iOS) or Chrome on Android.');
       return;
     }
     setLoading(true);
     try {
-      const ndef = new NDEFReader();
-      const abortController = new AbortController();
-      let timeoutId: ReturnType<typeof setTimeout>;
-      const result = await new Promise<{ boundPnBlob: string; uid: string }>((resolve, reject) => {
-        const onReading = async (evt: any) => {
-          clearTimeout(timeoutId);
-          ndef.removeEventListener('reading', onReading);
-          ndef.removeEventListener('error', onErrorHandler);
-          try {
-            const { serialNumber, message } = evt;
-            if (!message?.records?.length) {
-              reject(new Error('No records on NFC tag'));
-              return;
-            }
-            for (const record of message.records) {
-              if (
-                record.recordType === 'mime' &&
-                record.mediaType === PARNOIR_MIME_TYPE &&
-                record.data
-              ) {
-                const decoder = new TextDecoder();
-                const boundPnBlob = decoder.decode(record.data);
-                resolve({ boundPnBlob, uid: serialNumber });
-                return;
-              }
-            }
-            reject(new Error('pN identity not found on this card'));
-          } catch (err) {
-            reject(err);
-          }
-        };
-        const onErrorHandler = (e: Event) => {
-          clearTimeout(timeoutId);
-          ndef.removeEventListener('reading', onReading);
-          ndef.removeEventListener('error', onErrorHandler);
-          reject((e as ErrorEvent).error || new Error('NFC read failed'));
-        };
-        ndef.addEventListener('reading', onReading);
-        ndef.addEventListener('error', onErrorHandler);
-        timeoutId = setTimeout(() => {
-          ndef.removeEventListener('reading', onReading);
-          ndef.removeEventListener('error', onErrorHandler);
-          abortController.abort();
-          reject(new Error('Timeout: tap your NFC card'));
-        }, 60000);
-        ndef.scan({ signal: abortController.signal }).catch((err: Error) => {
-          clearTimeout(timeoutId);
-          ndef.removeEventListener('reading', onReading);
-          ndef.removeEventListener('error', onErrorHandler);
-          reject(err);
-        });
-      });
-      (window as any).__unlockNfcBoundPnBlob = result.boundPnBlob;
-      (window as any).__unlockNfcUid = result.uid;
+      const result = await nfcAdapter.readTagForUnlock(60000);
+      setNfcScanResult({ boundPnBlob: result.boundPnBlob!, uid: result.uid });
       setStep('credentials');
-    } catch (err: any) {
-      setError(err.message || 'Failed to read NFC card');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to read NFC card');
     } finally {
       setLoading(false);
     }
@@ -124,12 +72,12 @@ export function UnlockFromNfcModal({
       setError('Please enter pN name and passcode');
       return;
     }
-    const boundPnBlob = (window as any).__unlockNfcBoundPnBlob;
-    const uid = (window as any).__unlockNfcUid;
-    if (!boundPnBlob || !uid) {
+    const scanResult = nfcScanResult;
+    if (!scanResult?.boundPnBlob || !scanResult?.uid) {
       setError('Session expired. Please scan again.');
       return;
     }
+    const { boundPnBlob, uid } = scanResult;
     setLoading(true);
     try {
       const pnData = JSON.parse(boundPnBlob);
@@ -159,8 +107,7 @@ export function UnlockFromNfcModal({
         pnName,
         passcode
       );
-      delete (window as any).__unlockNfcBoundPnBlob;
-      delete (window as any).__unlockNfcUid;
+      setNfcScanResult(null);
       const identityForStorage = {
         ...identityToUnlock,
         encryptedData: identityToUnlock.encrypted ?? identityToUnlock.encryptedData,
@@ -203,7 +150,7 @@ export function UnlockFromNfcModal({
           <div className="mb-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex gap-3">
             <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
             <p className="text-sm text-text-secondary">
-              NFC unlock requires Chrome on Android. Use file upload or USB instead.
+              NFC unlock requires a device with NFC (Android or iOS) or Chrome on Android.
             </p>
           </div>
         )}
@@ -259,8 +206,7 @@ export function UnlockFromNfcModal({
                 setPnName('');
                 setPasscode('');
                 setError(null);
-                delete (window as any).__unlockNfcBoundPnBlob;
-                delete (window as any).__unlockNfcUid;
+                setNfcScanResult(null);
               }}
               className="w-full text-text-secondary text-sm py-1 hover:text-text-primary"
             >

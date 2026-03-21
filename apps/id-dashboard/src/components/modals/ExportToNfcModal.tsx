@@ -1,12 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CreditCard, AlertTriangle } from 'lucide-react';
 import { IdentityCrypto } from '../../utils/crypto';
+import * as nfcAdapter from '../../utils/nfcAdapter';
 
 const PARNOIR_MIME_TYPE = 'application/x-parnoir-identity';
-
-const hasNfcSupport =
-  typeof window !== 'undefined' &&
-  'NDEFReader' in window;
 
 interface ExportToNfcModalProps {
   isOpen: boolean;
@@ -27,6 +24,11 @@ export function ExportToNfcModal({
   const [pnName, setPnName] = useState('');
   const [passcode, setPasscode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [hasNfcSupport, setHasNfcSupport] = useState(false);
+
+  useEffect(() => {
+    nfcAdapter.isSupported().then(setHasNfcSupport);
+  }, []);
 
   const handleClose = () => {
     setStep('verify');
@@ -53,52 +55,16 @@ export function ExportToNfcModal({
       return;
     }
 
-    if (!hasNfcSupport) {
-      setError('NFC export requires Chrome on Android. Use Download or USB instead.');
-      return;
-    }
-
-    const NDEFReader = (window as any).NDEFReader;
-    if (!NDEFReader) {
-      setError('NFC not supported');
+    const supported = await nfcAdapter.isSupported();
+    if (!supported) {
+      setError('NFC export requires a device with NFC (Android or iOS) or Chrome on Android.');
       return;
     }
 
     try {
       setStep('writing');
 
-      const ndef = new NDEFReader();
-
-      const abortController = new AbortController();
-      let timeoutId: ReturnType<typeof setTimeout>;
-      const cardUid = await new Promise<string>((resolve, reject) => {
-        const onReading = (evt: { serialNumber: string }) => {
-          clearTimeout(timeoutId);
-          ndef.removeEventListener('reading', onReading);
-          ndef.removeEventListener('error', onError);
-          resolve(evt.serialNumber);
-        };
-        const onError = (e: Event) => {
-          clearTimeout(timeoutId);
-          ndef.removeEventListener('reading', onReading);
-          ndef.removeEventListener('error', onError);
-          reject((e as ErrorEvent).error || new Error('NFC read failed'));
-        };
-        ndef.addEventListener('reading', onReading);
-        ndef.addEventListener('error', onError);
-        timeoutId = setTimeout(() => {
-          ndef.removeEventListener('reading', onReading);
-          ndef.removeEventListener('error', onError);
-          abortController.abort();
-          reject(new Error('Timeout: tap your NFC card'));
-        }, 60000);
-        ndef.scan({ signal: abortController.signal }).catch((err: Error) => {
-          clearTimeout(timeoutId);
-          ndef.removeEventListener('reading', onReading);
-          ndef.removeEventListener('error', onError);
-          reject(err);
-        });
-      });
+      const cardUid = await nfcAdapter.readTagForUid(60000);
 
       const encryptedData = {
         encrypted: identityToExport.encryptedData ?? (identityToExport as any).encrypted,
@@ -129,17 +95,11 @@ export function ExportToNfcModal({
       });
 
       const encoder = new TextEncoder();
-      const ndefMessage = {
-        records: [
-          {
-            recordType: 'mime',
-            mediaType: PARNOIR_MIME_TYPE,
-            data: encoder.encode(boundPnBlob),
-          },
-        ],
-      };
-
-      await ndef.write(ndefMessage);
+      await nfcAdapter.writeTag({
+        recordType: 'mime',
+        mediaType: PARNOIR_MIME_TYPE,
+        data: encoder.encode(boundPnBlob),
+      });
 
       handleClose();
       onSuccess();
@@ -178,7 +138,7 @@ export function ExportToNfcModal({
           <div className="mb-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex gap-3">
             <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
             <p className="text-sm text-text-secondary">
-              NFC export requires Chrome on Android. Use Download or USB instead.
+              NFC export requires a device with NFC (Android or iOS) or Chrome on Android.
             </p>
           </div>
         )}

@@ -22,7 +22,7 @@ import { IntegratorTile } from './components/IntegratorTile';
 
 import { MigrationManager, WebIdentityData, MigrationResult } from './utils/migration';
 
-import { BiometricAuth } from './utils/biometric';
+import * as BiometricAdapter from './utils/biometricAdapter';
 
 import { cloudSyncManager } from './utils/cloudSync';
 import { SecureMetadataStorage } from './utils/secureMetadataStorage';
@@ -419,6 +419,7 @@ function App() {
     setShowUnlockFromUsbModal,
     showUnlockFromNfcModal,
     setShowUnlockFromNfcModal,
+    hasNfcSupport,
     showSendInvitationModal,
     setShowSendInvitationModal,
     selectedCustodianForInvitation,
@@ -2326,7 +2327,7 @@ function App() {
       setBiometricPasscodeError(null);
       
       // Attempt biometric authentication
-      const result = await BiometricAuth.authenticate(identity.id);
+      const result = await BiometricAdapter.authenticate({ identityId: identity.id });
       
       if (result.success) {
         // Get the encrypted identity from SimpleStorage
@@ -5188,7 +5189,7 @@ This invitation expires in 24 hours.`;
                         <span>Read from USB</span>
                       </button>
                     )}
-                    {typeof window !== 'undefined' && 'NDEFReader' in window && (
+                    {hasNfcSupport && (
                       <button
                         type="button"
                         onClick={() => setShowUnlockFromNfcModal(true)}

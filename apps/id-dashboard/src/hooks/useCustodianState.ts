@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export function useCustodianState() {
   // Profile editing state
@@ -28,7 +28,12 @@ export function useCustodianState() {
   const [showDeviceInfoModal, setShowDeviceInfoModal] = useState(false);
   const [showUnlockFromUsbModal, setShowUnlockFromUsbModal] = useState(false);
   const [showUnlockFromNfcModal, setShowUnlockFromNfcModal] = useState(false);
+  const [hasNfcSupport, setHasNfcSupport] = useState(false);
   const [showSendInvitationModal, setShowSendInvitationModal] = useState(false);
+
+  useEffect(() => {
+    import('../utils/nfcAdapter').then((m) => m.isSupported().then(setHasNfcSupport));
+  }, []);
   const [selectedCustodianForInvitation, setSelectedCustodianForInvitation] = useState<any>(null);
 
   // Form states
@@ -139,6 +144,7 @@ export function useCustodianState() {
     setShowUnlockFromUsbModal,
     showUnlockFromNfcModal,
     setShowUnlockFromNfcModal,
+    hasNfcSupport,
     showSendInvitationModal,
     setShowSendInvitationModal,
     selectedCustodianForInvitation,

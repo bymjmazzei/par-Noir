@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileText, Smartphone, Usb, CreditCard } from 'lucide-react';
 
-const hasNfcSupport = typeof window !== 'undefined' && 'NDEFReader' in window;
+import * as nfcAdapter from '../../utils/nfcAdapter';
 
 interface ExportOptionsModalProps {
   isOpen: boolean;
@@ -28,6 +28,11 @@ export function ExportOptionsModal({
   onExportToNfc,
   onTransfer
 }: ExportOptionsModalProps) {
+  const [hasNfcSupport, setHasNfcSupport] = useState(false);
+  useEffect(() => {
+    nfcAdapter.isSupported().then(setHasNfcSupport);
+  }, []);
+
   if (!isOpen) return null;
 
   const handleClose = () => {
