@@ -300,7 +300,12 @@ export function App() {
                   Unlocked
                   {user?.pn_identifier || user?.sub ? ` · ${user.pn_identifier || user.sub}` : ''}
                 </span>
-                <button type="button" className="dev-btn dev-btn--ghost" onClick={signOut} aria-label="Lock session">
+                <button
+                  type="button"
+                  className="dev-btn dev-btn--ghost dev-btn--inline-icon"
+                  onClick={signOut}
+                  aria-label="Lock session"
+                >
                   <IconLock className="dev-btn-icon" />
                   Lock
                 </button>

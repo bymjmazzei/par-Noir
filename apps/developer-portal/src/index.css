@@ -217,7 +217,8 @@ body {
   flex-shrink: 0;
 }
 
-.dev-btn-unlock {
+.dev-btn-unlock,
+.dev-btn--inline-icon {
   gap: 0.45rem;
 }
 
