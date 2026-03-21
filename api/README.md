@@ -261,6 +261,10 @@ This API server supports the **"MARK I"** identity - the first real identity cre
 - ✅ **Military-Grade Security**: FIPS 140-3 Level 4 equivalent
 - ✅ **Production Ready**: No simulations, no mock components, real cryptography
 
+## Build note (Railway / Docker)
+
+`database.ts` loads SQL from `dist/migrations/` at runtime (paths relative to compiled `dist/server/utils/`). The **`npm run build`** script copies `api/migrations/` → `api/dist/migrations/` after `tsc`. If you build with plain `tsc` only, migrations won’t run and boot will fail with missing `oauth_clients`.
+
 ## Environment (par Noir operations)
 
 | Variable | Purpose |
