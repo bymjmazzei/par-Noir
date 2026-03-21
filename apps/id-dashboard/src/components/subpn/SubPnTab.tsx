@@ -20,6 +20,13 @@ import { ipfsMetadataService } from '../../utils/ipfsMetadataService';
 const SUB_KINDS = ['feed', 'device', 'ai_agent', 'smart_device'] as const;
 type SubKind = (typeof SUB_KINDS)[number];
 
+const KIND_LABELS: Record<SubKind, string> = {
+  feed: 'Feed',
+  device: 'Device (phone, laptop)',
+  ai_agent: 'AI agent',
+  smart_device: 'Smart device (IoT)',
+};
+
 function randomSecret(len = 24): string {
   const a = new Uint8Array(len);
   crypto.getRandomValues(a);
@@ -313,7 +320,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({ accessToken, sessionId, publ
             >
               {SUB_KINDS.map((k) => (
                 <option key={k} value={k}>
-                  {k}
+                  {KIND_LABELS[k]}
                 </option>
               ))}
             </select>
@@ -340,7 +347,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({ accessToken, sessionId, publ
           <button
             type="button"
             onClick={() => void createSub()}
-            className="w-full py-2 rounded-md bg-primary text-white font-medium hover:opacity-90 disabled:opacity-50"
+            className="w-full py-2 rounded-md bg-primary text-bg-primary font-medium hover:opacity-90 disabled:opacity-50"
             disabled={loading || !accessToken}
           >
             Create and register
@@ -398,8 +405,18 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({ accessToken, sessionId, publ
               <p>Use Delegations below to scope ZKP or integrations when enforcement lands on those routes.</p>
             )}
             {selected.kind === 'feed' && <p>Link feed folders from Storage; registry row tracks this sub subject.</p>}
-            {selected.kind === 'device' && <p>Device profile can live in metadata and Drive companion files.</p>}
-            {selected.kind === 'smart_device' && <p>Smart device profile and connections — extend metadata as needed.</p>}
+            {selected.kind === 'device' && (
+              <p>
+                <strong>Device:</strong> Your phone, laptop, or tablet. For device sync and per-device identity; profile
+                in metadata and Drive.
+              </p>
+            )}
+            {selected.kind === 'smart_device' && (
+              <p>
+                <strong>Smart device:</strong> IoT and smart-home devices (speakers, appliances). For connected things
+                that act on your behalf; extend metadata for connections.
+              </p>
+            )}
           </div>
 
           <div className="border-t border-border pt-4 space-y-3">
@@ -462,7 +479,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({ accessToken, sessionId, publ
               <button
                 type="button"
                 onClick={() => void addDelegation()}
-                className="px-3 py-1 rounded-md bg-primary text-white text-sm"
+                className="px-3 py-1 rounded-md bg-primary text-bg-primary text-sm"
               >
                 Add
               </button>
