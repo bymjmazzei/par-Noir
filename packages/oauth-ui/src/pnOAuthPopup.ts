@@ -1,16 +1,20 @@
 /**
  * Shared pN OAuth popup flow. Must stay in sync with static oauth-callback.html
  * (apps/aggregator-browser/public/oauth-callback.html and copies in other apps).
- * Callback must not navigate window.opener (postMessage + same-origin localStorage poll only).
+ * Callback must not navigate window.opener. Uses postMessage, BroadcastChannel (par-noir-oauth-v1),
+ * and same-origin localStorage polling.
  *
  * Contract:
  * - Callback page posts message: { type: 'oauth_callback', code?, state?, error?, age_shared?, timestamp? }
  * - Callback page sets localStorage: pn_oauth_pending, pn_oauth_latest_key, pn_oauth_callback_<ts>
+ * - With pn_popup=1 from API, callback must not load the SPA in the popup when opener is missing.
  */
 
 export const PN_OAUTH_MESSAGE_TYPE = 'oauth_callback' as const;
 export const PN_OAUTH_STORAGE_PENDING = 'pn_oauth_pending';
 export const PN_OAUTH_STORAGE_LATEST_KEY = 'pn_oauth_latest_key';
+/** Same-origin bridge when the popup loses window.opener after cross-origin redirects (must match static oauth-callback.html). */
+export const PN_OAUTH_BROADCAST_CHANNEL = 'par-noir-oauth-v1';
 
 export interface OAuthConsentUrlConfig {
   clientId: string;
@@ -92,7 +96,8 @@ function parseOAuthPayload(raw: Record<string, unknown>): PnOAuthPopupResult | n
 }
 
 /**
- * Opens consent URL in a popup and resolves when oauth_callback is received (postMessage or localStorage poll).
+ * Opens consent URL in a popup and resolves when oauth_callback is received
+ * (postMessage, BroadcastChannel, or localStorage poll).
  */
 export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<PnOAuthPopupResult> {
   const {
@@ -117,9 +122,21 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let popupClosedTime: number | null = null;
 
+    let oauthBc: BroadcastChannel | undefined;
+
+    const closeOauthBc = () => {
+      try {
+        oauthBc?.close();
+      } catch {
+        /* ignore */
+      }
+      oauthBc = undefined;
+    };
+
     const finish = (result: PnOAuthPopupResult) => {
       if (settled) return;
       settled = true;
+      closeOauthBc();
       if (pollInterval !== undefined) clearInterval(pollInterval);
       if (checkClosedInterval !== undefined) clearInterval(checkClosedInterval);
       if (timeoutId !== undefined) clearTimeout(timeoutId);
@@ -137,6 +154,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     const fail = (err: Error) => {
       if (settled) return;
       settled = true;
+      closeOauthBc();
       if (pollInterval !== undefined) clearInterval(pollInterval);
       if (checkClosedInterval !== undefined) clearInterval(checkClosedInterval);
       if (timeoutId !== undefined) clearTimeout(timeoutId);
@@ -157,6 +175,16 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       if (parsed.state !== undefined && parsed.state !== expectedState) return;
       finish(parsed);
     };
+
+    try {
+      oauthBc = new BroadcastChannel(PN_OAUTH_BROADCAST_CHANNEL);
+      oauthBc.onmessage = (ev: MessageEvent) => {
+        if (!ev.data || typeof ev.data !== 'object') return;
+        acceptPayload(ev.data as Record<string, unknown>);
+      };
+    } catch {
+      /* private mode / unsupported */
+    }
 
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== origin) return;

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Keep in sync with apps/aggregator-browser/public/oauth-callback.html -->
+<!-- Canonical pN OAuth popup bridge; keep copies in prism/developer-portal/id-dashboard in sync. -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -16,11 +16,11 @@
       min-height: 100vh;
       margin: 0;
     }
-    
+
     .container {
       text-align: center;
     }
-    
+
     .spinner {
       width: 40px;
       height: 40px;
@@ -30,11 +30,11 @@
       animation: spin 0.8s linear infinite;
       margin: 0 auto 16px;
     }
-    
+
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
-    
+
     .message {
       color: #9ca3af;
       font-size: 14px;
@@ -46,66 +46,84 @@
     <div class="spinner"></div>
     <div class="message">Completing authorization...</div>
   </div>
-  
+
   <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const state = urlParams.get('state');
-    const error = urlParams.get('error');
-    const ageShared = urlParams.get('age_shared');
-    
-    const oauthData = {
-      type: 'oauth_callback',
-      code: code,
-      state: state,
-      error: error,
-      age_shared: ageShared,
-      timestamp: Date.now()
-    };
-    
-    const callbackKey = `pn_oauth_callback_${Date.now()}`;
-    try {
-      localStorage.setItem(callbackKey, JSON.stringify(oauthData));
-      localStorage.setItem('pn_oauth_pending', 'true');
-      localStorage.setItem('pn_oauth_latest_key', callbackKey);
-    } catch (e) {
-      console.warn('localStorage failed', e);
-    }
-    
-    function buildResumeUrl() {
-      const q = new URLSearchParams(window.location.search);
-      q.set('oauth_resume', '1');
-      return window.location.origin + '/?' + q.toString();
-    }
-    
-    const resumeUrl = buildResumeUrl();
-    
-    if (window.opener && !window.opener.closed) {
+    (function () {
+      var BC_NAME = 'par-noir-oauth-v1';
+      var urlParams = new URLSearchParams(window.location.search);
+      var pnPopupFlow = urlParams.get('pn_popup') === '1';
+      var code = urlParams.get('code');
+      var state = urlParams.get('state');
+      var error = urlParams.get('error');
+      var ageShared = urlParams.get('age_shared');
+
+      var oauthData = {
+        type: 'oauth_callback',
+        code: code,
+        state: state,
+        error: error,
+        age_shared: ageShared,
+        timestamp: Date.now()
+      };
+
+      var callbackKey = 'pn_oauth_callback_' + Date.now();
       try {
-        window.opener.postMessage(oauthData, window.location.origin);
+        localStorage.setItem(callbackKey, JSON.stringify(oauthData));
+        localStorage.setItem('pn_oauth_pending', 'true');
+        localStorage.setItem('pn_oauth_latest_key', callbackKey);
       } catch (e) {
-        console.warn('postMessage failed', e);
+        console.warn('localStorage failed', e);
       }
-    }
-    
-    document.body.innerHTML = `
-      <div style="padding: 40px; text-align: center;">
-        <div style="color: #10b981; font-size: 24px; margin-bottom: 16px;">✓ Authorization Complete</div>
-        <p style="color: #9ca3af;">You can close this window.</p>
-      </div>
-    `;
-    
-    if (!window.opener || window.opener.closed) {
-      window.location.replace(resumeUrl);
-    } else {
-      for (let i = 1; i <= 15; i++) {
-        setTimeout(() => {
-          try {
-            if (!window.closed) window.close();
-          } catch (e) {}
-        }, i * 100);
+
+      try {
+        var oauthBc = new BroadcastChannel(BC_NAME);
+        oauthBc.postMessage(oauthData);
+        oauthBc.close();
+      } catch (e) {}
+
+      if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.postMessage(oauthData, window.location.origin);
+        } catch (e) {
+          console.warn('postMessage failed', e);
+        }
       }
-    }
+
+      function buildResumeUrl() {
+        var q = new URLSearchParams(window.location.search);
+        q.set('oauth_resume', '1');
+        return window.location.origin + '/?' + q.toString();
+      }
+      var resumeUrl = buildResumeUrl();
+
+      document.body.innerHTML =
+        '<div style="padding: 40px; text-align: center;">' +
+        '<div style="color: #10b981; font-size: 24px; margin-bottom: 16px;">✓ Authorization Complete</div>' +
+        '<p style="color: #9ca3af;">You can close this window.</p>' +
+        '</div>';
+
+      var lackOpener = !window.opener || window.opener.closed;
+
+      function tryClosePopup() {
+        for (var i = 1; i <= 20; i++) {
+          setTimeout(function () {
+            try {
+              if (!window.closed) window.close();
+            } catch (e) {}
+          }, i * 120);
+        }
+      }
+
+      if (lackOpener) {
+        if (pnPopupFlow) {
+          tryClosePopup();
+        } else {
+          window.location.replace(resumeUrl);
+        }
+      } else {
+        tryClosePopup();
+      }
+    })();
   </script>
 </body>
 </html>

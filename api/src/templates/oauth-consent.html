@@ -594,6 +594,7 @@
     const state = urlParams.get('state') || '';
     const scope = urlParams.get('scope') || 'openid profile';
     const nonce = urlParams.get('nonce') || '';
+    const popupFlow = urlParams.get('popup') === 'true';
     
     // Log for debugging
     console.log('OAuth params:', { clientId, redirectUri, state, scope });
@@ -632,12 +633,16 @@
       try {
         u = new URL(redirectUri);
       } catch (e) {
-        window.location.href = redirectUri + '?code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state || '');
+        var sep0 = redirectUri.indexOf('?') >= 0 ? '&' : '?';
+        var qs0 = 'code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state || '');
+        if (popupFlow) qs0 += '&pn_popup=1';
+        window.location.href = redirectUri + sep0 + qs0;
         return;
       }
       u.searchParams.set('code', code);
       if (state) u.searchParams.set('state', state);
       if (ageShared !== undefined && ageShared !== null) u.searchParams.set('age_shared', ageShared ? 'true' : 'false');
+      if (popupFlow) u.searchParams.set('pn_popup', '1');
       window.location.href = u.toString();
     }
     
@@ -1058,9 +1063,12 @@
         try {
           var du = new URL(redirectUri);
           du.searchParams.set('error', 'access_denied');
+          if (popupFlow) du.searchParams.set('pn_popup', '1');
           window.location.href = du.toString();
         } catch (_) {
-          window.location.href = redirectUri + (redirectUri.indexOf('?') >= 0 ? '&' : '?') + 'error=access_denied';
+          var sepD = redirectUri.indexOf('?') >= 0 ? '&' : '?';
+          var denyQs = 'error=access_denied' + (popupFlow ? '&pn_popup=1' : '');
+          window.location.href = redirectUri + sepD + denyQs;
         }
       }
     });
