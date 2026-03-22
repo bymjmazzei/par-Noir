@@ -1,6 +1,7 @@
 /**
  * Shared pN OAuth popup flow. Must stay in sync with static oauth-callback.html
  * (apps/aggregator-browser/public/oauth-callback.html and copies in other apps).
+ * Callback must not navigate window.opener (postMessage + same-origin localStorage poll only).
  *
  * Contract:
  * - Callback page posts message: { type: 'oauth_callback', code?, state?, error?, age_shared?, timestamp? }

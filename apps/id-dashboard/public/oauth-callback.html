@@ -80,16 +80,12 @@
     
     const resumeUrl = buildResumeUrl();
     
+    // Popup: postMessage + localStorage poll on opener; do not navigate opener (reload kills the unlock handler).
     if (window.opener && !window.opener.closed) {
       try {
         window.opener.postMessage(oauthData, window.location.origin);
       } catch (e) {
         console.warn('postMessage failed', e);
-      }
-      try {
-        window.opener.location.replace(resumeUrl);
-      } catch (e) {
-        console.warn('opener.location.replace failed', e);
       }
     }
     

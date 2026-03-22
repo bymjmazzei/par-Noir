@@ -81,22 +81,15 @@
     }
     
     const resumeUrl = buildResumeUrl();
-    
-    // Desktop: postMessage to opener (when it works)
+
+    // Popup + opener: postMessage + same-origin localStorage (opener polls in startPnOAuthPopup).
+    // Do NOT opener.location.replace here: it reloads the parent, aborts the awaiting Promise, and
+    // races postMessage. Native full-window OAuth has no opener — branch below uses resumeUrl on self.
     if (window.opener && !window.opener.closed) {
       try {
         window.opener.postMessage(oauthData, window.location.origin);
-        console.log('postMessage sent to opener');
       } catch (e) {
         console.warn('postMessage failed', e);
-      }
-      // Capacitor / Android WebView: opener often never receives postMessage; localStorage in popup
-      // is not shared with the main WebView. Navigate the main app with the code in the URL.
-      try {
-        window.opener.location.replace(resumeUrl);
-        console.log('Navigated opener to app with oauth_resume');
-      } catch (e) {
-        console.warn('opener.location.replace failed', e);
       }
     }
     
