@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Completing sign-in...</title>
+  <style>
+    body { font-family: system-ui; background: #000; color: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+    .msg { color: #10b981; }
+  </style>
+</head>
+<body>
+  <p class="msg">Sign-in complete. Closing...</p>
+  <script>
+    (function() {
+      var params = new URLSearchParams(window.location.search);
+      var code = params.get('code');
+      var state = params.get('state');
+      var error = params.get('error');
+      var errorDesc = params.get('error_description');
+      var ageShared = params.get('age_shared');
+      var redirectUri = params.get('redirect_uri');
+      if (!redirectUri) return;
+      var appOrigin;
+      try { appOrigin = new URL(redirectUri).origin; } catch (e) { return; }
+      var q = new URLSearchParams();
+      q.set('oauth_resume', '1');
+      if (code) q.set('code', code);
+      if (state) q.set('state', state);
+      if (error) q.set('error', error);
+      if (errorDesc) q.set('error_description', errorDesc);
+      if (ageShared) q.set('age_shared', ageShared);
+      var resumeUrl = appOrigin + '/?' + q.toString();
+      var oauthData = { type: 'oauth_callback', code: code, state: state, error: error, error_description: errorDesc, age_shared: ageShared, timestamp: Date.now() };
+      if (window.opener && !window.opener.closed) {
+        try { window.opener.postMessage(oauthData, appOrigin); } catch (e) {}
+        try { window.opener.location.replace(resumeUrl); } catch (e) {}
+      }
+      setTimeout(function() { window.close(); }, 100);
+    })();
+  </script>
+</body>
+</html>

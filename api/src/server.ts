@@ -10986,6 +10986,23 @@ class ProductionServer {
       res.send(html);
     });
 
+    // GET /oauth/popup-bridge - API-hosted handoff while popup still has opener (avoids cross-origin opener loss)
+    this.app.get('/oauth/popup-bridge', async (req, res) => {
+      const { code, state, redirect_uri, age_shared, error, error_description, client_id } = req.query;
+      if (!redirect_uri || !client_id) {
+        return res.status(400).send('<html><body><p>Missing redirect_uri or client_id</p></body></html>');
+      }
+      const { ClientRegistrationService } = await import('./server/modules/clientRegistration');
+      const isValid = await ClientRegistrationService.validateClient(client_id as string, redirect_uri as string);
+      if (!isValid) {
+        return res.status(400).send('<html><body><p>Invalid client_id or redirect_uri</p></body></html>');
+      }
+      const fs = await import('fs');
+      const templatePath = path.join(__dirname, 'templates', 'oauth-popup-bridge.html');
+      const html = fs.readFileSync(templatePath, 'utf8');
+      return res.send(html);
+    });
+
     // Client Management Endpoints (admin key required)
     // POST /oauth/clients - Register a new OAuth client
     this.app.post('/oauth/clients', requireAdminApiKey, async (req, res) => {
