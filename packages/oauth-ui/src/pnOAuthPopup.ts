@@ -81,6 +81,12 @@ export interface StartPnOAuthPopupOptions {
   timeoutMs?: number;
   popupName?: string;
   popupFeatures?: string;
+  /**
+   * When true, navigate this window to `/?oauth_resume=1&code=...` instead of resolving the Promise.
+   * Use when the host app completes OAuth from the URL on load (e.g. useAuthAndSession). Required for
+   * reliable completion if storage/BroadcastChannel cannot bridge the popup to this document.
+   */
+  completeViaParentNavigation?: boolean;
 }
 
 function parseOAuthPayload(raw: Record<string, unknown>): PnOAuthPopupResult | null {
@@ -95,6 +101,18 @@ function parseOAuthPayload(raw: Record<string, unknown>): PnOAuthPopupResult | n
   };
 }
 
+function buildOAuthResumeUrl(pageOrigin: string, parsed: PnOAuthPopupResult): string {
+  const base = pageOrigin.replace(/\/$/, '');
+  const p = new URLSearchParams();
+  p.set('oauth_resume', '1');
+  if (parsed.code) p.set('code', parsed.code);
+  if (parsed.state) p.set('state', parsed.state);
+  if (parsed.error) p.set('error', parsed.error);
+  if (parsed.error_description) p.set('error_description', parsed.error_description);
+  if (parsed.age_shared) p.set('age_shared', parsed.age_shared);
+  return `${base}/?${p.toString()}`;
+}
+
 /**
  * Opens consent URL in a popup and resolves when oauth_callback is received
  * (postMessage, BroadcastChannel, or localStorage poll).
@@ -107,6 +125,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     timeoutMs = 300_000,
     popupName = 'pn-oauth',
     popupFeatures = DEFAULT_POPUP_FEATURES,
+    completeViaParentNavigation = false,
   } = options;
 
   return new Promise((resolve, reject) => {
@@ -133,9 +152,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       oauthBc = undefined;
     };
 
-    const finish = (result: PnOAuthPopupResult) => {
-      if (settled) return;
-      settled = true;
+    const disposeAwait = () => {
       closeOauthBc();
       if (pollInterval !== undefined) clearInterval(pollInterval);
       if (checkClosedInterval !== undefined) clearInterval(checkClosedInterval);
@@ -148,24 +165,19 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       } catch {
         /* ignore */
       }
+    };
+
+    const finish = (result: PnOAuthPopupResult) => {
+      if (settled) return;
+      settled = true;
+      disposeAwait();
       resolve(result);
     };
 
     const fail = (err: Error) => {
       if (settled) return;
       settled = true;
-      closeOauthBc();
-      if (pollInterval !== undefined) clearInterval(pollInterval);
-      if (checkClosedInterval !== undefined) clearInterval(checkClosedInterval);
-      if (timeoutId !== undefined) clearTimeout(timeoutId);
-      window.removeEventListener('message', onMessage);
-      window.removeEventListener('storage', onStorage);
-      try {
-        localStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
-        localStorage.removeItem(PN_OAUTH_STORAGE_LATEST_KEY);
-      } catch {
-        /* ignore */
-      }
+      disposeAwait();
       reject(err);
     };
 
@@ -173,6 +185,14 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       const parsed = parseOAuthPayload(raw);
       if (!parsed) return;
       if (parsed.state !== undefined && parsed.state !== expectedState) return;
+      if (!parsed.code && !parsed.error) return;
+      if (completeViaParentNavigation) {
+        if (settled) return;
+        settled = true;
+        disposeAwait();
+        window.location.replace(buildOAuthResumeUrl(origin, parsed));
+        return;
+      }
       finish(parsed);
     };
 
@@ -222,8 +242,9 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
           if (stored) {
             try {
               const data = JSON.parse(stored) as Record<string, unknown>;
-              const age = Date.now() - ((data.timestamp as number) || 0);
-              if (data.timestamp && age < 30_000) {
+              const ts = Number(data.timestamp);
+              const age = Number.isFinite(ts) ? Date.now() - ts : 0;
+              if (Number.isFinite(ts) && age < 120_000) {
                 try {
                   localStorage.removeItem(latestKey);
                 } catch {

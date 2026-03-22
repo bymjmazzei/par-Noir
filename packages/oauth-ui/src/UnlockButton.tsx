@@ -41,6 +41,11 @@ export interface UnlockButtonProps {
   onPopupFlowFailed?: (reason: string) => void;
   /** Native / full-window: skip popup and assign location (e.g. Capacitor) */
   forceRedirect?: boolean;
+  /**
+   * When true, popup completion navigates this window to /?oauth_resume=1&code=... (host must handle on load).
+   * Use for first-party apps (e.g. Prism) when postMessage/storage bridging is unreliable.
+   */
+  completeViaParentNavigation?: boolean;
   children?: ReactNode;
   className?: string;
   /** Override click; if provided, default unlock behavior is skipped */
@@ -98,7 +103,11 @@ export function UnlockButton({
 
     void (async () => {
       try {
-        const result = await startPnOAuthPopup({ url, expectedState: state });
+        const result = await startPnOAuthPopup({
+          url,
+          expectedState: state,
+          completeViaParentNavigation,
+        });
         await onPopupResult?.(result);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);

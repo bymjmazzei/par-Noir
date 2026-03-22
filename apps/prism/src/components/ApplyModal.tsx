@@ -55,7 +55,12 @@ export function ApplyModal({ open, onClose }: ApplyModalProps) {
     const url = buildOAuthConsentUrl({ ...consentConfig, forPopup: true });
     setBusy(true);
     try {
-      const result = await startPnOAuthPopup({ url, expectedState: state, timeoutMs: 300_000 });
+      const result = await startPnOAuthPopup({
+        url,
+        expectedState: state,
+        timeoutMs: 300_000,
+        completeViaParentNavigation: true,
+      });
       if (result.error) {
         setFlowError(result.error === 'access_denied' ? 'Authorization denied' : result.error);
         return;

@@ -164,6 +164,7 @@ export function useAuthAndSession({
     const error = params.get('error');
     const state = params.get('state');
     const age_shared = params.get('age_shared');
+    const error_description = params.get('error_description') || undefined;
 
     window.history.replaceState({}, '', `${window.location.pathname}${window.location.hash}`);
 
@@ -172,6 +173,7 @@ export function useAuthAndSession({
         code: code || undefined,
         state: state || undefined,
         error: error || undefined,
+        error_description,
         age_shared: age_shared || undefined,
       },
       {}
@@ -351,6 +353,7 @@ export function useAuthAndSession({
           url: authUrl,
           expectedState,
           timeoutMs: 30_000,
+          completeViaParentNavigation: true,
         });
 
         await runOAuthCallback(

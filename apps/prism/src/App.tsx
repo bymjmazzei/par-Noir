@@ -17,8 +17,6 @@ import { exchangeCodeForToken } from './services/prismAuthService';
 import { SplashScreen } from '@capacitor/splash-screen';
 
 function LockedView({ onApplyOpen }: { onApplyOpen: () => void }) {
-  const { refreshSession } = useAuth();
-
   return (
     <div
       className="min-h-screen text-white relative"
@@ -47,11 +45,12 @@ function LockedView({ onApplyOpen }: { onApplyOpen: () => void }) {
               config={getPrismOAuthConfig()}
               onBeforeNavigate={prismOnBeforeNavigate}
               forceRedirect={Capacitor.isNativePlatform()}
+              completeViaParentNavigation={!Capacitor.isNativePlatform()}
               onPopupResult={async (r) => {
                 if (r.error) return;
                 if (!r.code) return;
                 await exchangeCodeForToken(r.code);
-                await refreshSession();
+                window.location.reload();
               }}
               className="p-2 text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
               title="Unlock pN"
