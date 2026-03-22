@@ -10950,6 +10950,11 @@ class ProductionServer {
         .replace(/\{\{CLIENT_DESCRIPTION\}\}/g, (client.description || 'This application wants to access your pN identity').replace(/</g, '&lt;'))
         .replace(/\{\{SCOPES_HTML\}\}/, scopesHtml);
 
+      // OAuth consent page needs inline styles and scripts; override strict CSP for this response
+      res.set(
+        'Content-Security-Policy',
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https:;"
+      );
       res.send(html);
     });
 

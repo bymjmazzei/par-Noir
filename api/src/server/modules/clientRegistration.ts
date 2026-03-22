@@ -59,8 +59,12 @@ export class ClientRegistrationService {
         redirectUris: [
           'https://browse.parnoir.com/oauth-callback.html',
           'https://browse.parnoir.com/',
+          'https://browse-parnoir.web.app/oauth-callback.html',
+          'https://browse-parnoir.web.app/',
           'https://messaging.parnoir.com/oauth-callback.html',
           'https://messaging.parnoir.com/',
+          'https://messaging-parnoir.web.app/oauth-callback.html',
+          'https://messaging-parnoir.web.app/',
           'https://pn.parnoir.com/oauth-callback.html',
           'https://pn.parnoir.com/pn-oauth-callback.html',
           'https://pn.parnoir.com/',
@@ -91,6 +95,8 @@ export class ClientRegistrationService {
         redirectUris: [
           'https://prism.parnoir.com/oauth-callback.html',
           'https://prism.parnoir.com/',
+          'https://prism-parnoir.web.app/oauth-callback.html',
+          'https://prism-parnoir.web.app/',
           'https://localhost/oauth-callback.html',
           'https://localhost/',
           'http://localhost:5174/oauth-callback.html',
