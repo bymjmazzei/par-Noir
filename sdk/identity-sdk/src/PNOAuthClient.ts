@@ -4,6 +4,8 @@
  * Similar to Google OAuth - developers can integrate pN login into their platforms
  */
 
+import { buildOAuthConsentUrl, startPnOAuthPopup } from '@par-noir/oauth-ui';
+
 export interface PNOAuthConfig {
   clientId: string;
   redirectUri?: string; // Optional for popup flow
@@ -36,8 +38,6 @@ export interface PNOAuthSession {
 
 export class PNOAuthClient {
   private config: Required<PNOAuthConfig>;
-  private popup: Window | null = null;
-  private messageListener: ((event: MessageEvent) => void) | null = null;
 
   constructor(config: PNOAuthConfig) {
     this.config = {
@@ -50,135 +50,75 @@ export class PNOAuthClient {
   }
 
   /**
-   * Start OAuth flow - opens popup window
-   * Similar to Google OAuth: window.open() with authorization URL
+   * Start OAuth flow — API-hosted consent, popup by default (same as par Noir browser).
+   * Host app must serve static `oauth-callback.html` (postMessage bridge); copy from par Noir repo.
    */
   async authenticate(options?: {
     scope?: string[];
     state?: string;
   }): Promise<PNOAuthSession> {
-    return new Promise((resolve, reject) => {
-      if (!this.config.usePopup) {
-        // Redirect flow (fallback)
-        const authUrl = this.buildAuthorizationUrl(options);
-        window.location.href = authUrl;
-        return;
-      }
+    const state = options?.state || this.generateState();
+    const scope = options?.scope || this.config.scopes;
+    const nonce = this.generateNonce();
 
-      // Popup flow
-      const state = options?.state || this.generateState();
-      const scope = options?.scope || this.config.scopes;
-      
-      // Store state for verification
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('pn_oauth_state', state);
-      }
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('pn_oauth_state', state);
+    }
 
-      // Build authorization URL pointing to oauth-authorize.html
-      const authUrl = this.buildPopupAuthorizationUrl({
-        scope,
-        state
-      });
-
-      // Open popup window (like Google OAuth)
-      const popupWidth = 500;
-      const popupHeight = 700;
-      const left = (window.screen.width - popupWidth) / 2;
-      const top = (window.screen.height - popupHeight) / 2;
-
-      this.popup = window.open(
-        authUrl,
-        'pn_oauth',
-        `width=${popupWidth},height=${popupHeight},left=${left},top=${top},resizable=yes,scrollbars=yes`
-      );
-
-      if (!this.popup) {
-        reject(new Error('Popup blocked. Please allow popups for this site.'));
-        return;
-      }
-
-      // Listen for OAuth callback from popup
-      this.messageListener = async (event: MessageEvent) => {
-        // Verify origin
-        if (event.origin !== window.location.origin) {
-          return;
-        }
-
-        if (event.data.type === 'oauth_callback') {
-          // Clean up listener
-          if (this.messageListener) {
-            window.removeEventListener('message', this.messageListener);
-            this.messageListener = null;
-          }
-
-          const { code, error, state: returnedState } = event.data;
-
-          if (error) {
-            this.popup?.close();
-            reject(new Error(error === 'access_denied' ? 'Authorization denied' : error));
-            return;
-          }
-
-          if (!code) {
-            this.popup?.close();
-            reject(new Error('No authorization code received'));
-            return;
-          }
-
-          // Verify state
-          const storedState = sessionStorage.getItem('pn_oauth_state');
-          if (storedState !== returnedState) {
-            this.popup?.close();
-            reject(new Error('Invalid state parameter'));
-            return;
-          }
-
-          try {
-            // Exchange code for tokens
-            const tokenResponse = await this.exchangeCodeForToken(code);
-            
-            // Get user info
-            const userInfo = await this.getUserInfo(tokenResponse.access_token);
-
-            // Create session
-            const session: PNOAuthSession = {
-              accessToken: tokenResponse.access_token,
-              refreshToken: tokenResponse.refresh_token,
-              expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
-              did: userInfo.did,
-              pnName: userInfo.pn_name
-            };
-
-            // Close popup
-            this.popup?.close();
-            this.popup = null;
-
-            // Clear state
-            sessionStorage.removeItem('pn_oauth_state');
-
-            resolve(session);
-          } catch (err: any) {
-            this.popup?.close();
-            this.popup = null;
-            reject(err);
-          }
-        }
-      };
-
-      window.addEventListener('message', this.messageListener);
-
-      // Monitor popup for close (user might have cancelled)
-      const checkClosed = setInterval(() => {
-        if (this.popup?.closed) {
-          clearInterval(checkClosed);
-          if (this.messageListener) {
-            window.removeEventListener('message', this.messageListener);
-            this.messageListener = null;
-          }
-          reject(new Error('Popup closed by user'));
-        }
-      }, 500);
+    const url = buildOAuthConsentUrl({
+      clientId: this.config.clientId,
+      apiEndpoint: this.config.apiEndpoint,
+      redirectUri: this.config.redirectUri,
+      scope: [...scope],
+      state,
+      nonce,
+      forPopup: this.config.usePopup,
     });
+
+    if (!this.config.usePopup) {
+      window.location.href = url;
+      return new Promise(() => {
+        /* page unloads */
+      });
+    }
+
+    let result;
+    try {
+      result = await startPnOAuthPopup({
+        url,
+        expectedState: state,
+        timeoutMs: 300_000,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === 'POPUP_BLOCKED') {
+        throw new Error('Popup blocked. Please allow popups for this site.');
+      }
+      if (msg === 'POPUP_CLOSED') {
+        throw new Error('Popup closed by user');
+      }
+      throw e;
+    }
+
+    if (result.error) {
+      throw new Error(result.error === 'access_denied' ? 'Authorization denied' : result.error);
+    }
+    if (!result.code) {
+      throw new Error('No authorization code received');
+    }
+
+    const tokenResponse = await this.exchangeCodeForToken(result.code);
+    const userInfo = await this.getUserInfo(tokenResponse.access_token);
+
+    sessionStorage.removeItem('pn_oauth_state');
+
+    return {
+      accessToken: tokenResponse.access_token,
+      refreshToken: tokenResponse.refresh_token,
+      expiresAt: Date.now() + tokenResponse.expires_in * 1000,
+      did: userInfo.did,
+      pnName: userInfo.pn_name,
+    };
   }
 
   /**
@@ -266,57 +206,6 @@ export class PNOAuthClient {
       const error = await response.json().catch(() => ({ error: 'Token revocation failed' }));
       throw new Error(error.error_description || error.error || 'Token revocation failed');
     }
-  }
-
-  /**
-   * Build authorization URL for popup flow
-   */
-  private buildPopupAuthorizationUrl(options?: {
-    scope?: string[];
-    state?: string;
-  }): string {
-    const scope = options?.scope || this.config.scopes;
-    const state = options?.state || this.generateState();
-    const nonce = this.generateNonce();
-
-    const params = new URLSearchParams({
-      client_id: this.config.clientId,
-      redirect_uri: this.config.redirectUri,
-      response_type: 'code',
-      scope: scope.join(' '),
-      state,
-      nonce
-    });
-
-    // For popup flow, point to oauth-authorize.html
-    if (typeof window !== 'undefined') {
-      return `${window.location.origin}/oauth-authorize.html?${params.toString()}`;
-    }
-
-    return `${this.config.apiEndpoint}/oauth/authorize?${params.toString()}`;
-  }
-
-  /**
-   * Build authorization URL for redirect flow
-   */
-  private buildAuthorizationUrl(options?: {
-    scope?: string[];
-    state?: string;
-  }): string {
-    const scope = options?.scope || this.config.scopes;
-    const state = options?.state || this.generateState();
-    const nonce = this.generateNonce();
-
-    const params = new URLSearchParams({
-      client_id: this.config.clientId,
-      redirect_uri: this.config.redirectUri,
-      response_type: 'code',
-      scope: scope.join(' '),
-      state,
-      nonce
-    });
-
-    return `${this.config.apiEndpoint}/oauth/authorize?${params.toString()}`;
   }
 
   /**

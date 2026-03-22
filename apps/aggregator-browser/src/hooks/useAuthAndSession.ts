@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { startPnOAuthPopup } from '@par-noir/oauth-ui';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { getUserProfile } from '../services/profileService';
@@ -336,6 +337,8 @@ export function useAuthAndSession({
           console.error('Failed to add popup parameter:', e);
         }
 
+        const expectedState = new URL(authUrl).searchParams.get('state') || '';
+
         // Native: full-screen OAuth — oauth-callback navigates main window to /?oauth_resume=1&code=...
         if (Capacitor.isNativePlatform()) {
           const u = new URL(authUrl);
@@ -344,127 +347,38 @@ export function useAuthAndSession({
           return;
         }
 
-        const popup = window.open(authUrl, 'pn-oauth', 'width=500,height=600,scrollbars=yes,resizable=yes');
-        if (!popup) {
+        const result = await startPnOAuthPopup({
+          url: authUrl,
+          expectedState,
+          timeoutMs: 30_000,
+        });
+
+        await runOAuthCallback(
+          {
+            code: result.code,
+            state: result.state,
+            error: result.error,
+            error_description: result.error_description,
+            age_shared: result.age_shared,
+          },
+          { redirectUri: actualRedirectUri }
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg === 'POPUP_BLOCKED') {
           showErrorToast('Popup blocked. Please allow popups for this site.');
-          return;
+        } else if (msg === 'POPUP_TIMEOUT') {
+          setLocked();
+          PNOAuthService.clearSession();
+          showErrorToast('Authentication timeout. Please try again.');
+        } else if (msg === 'POPUP_CLOSED') {
+          setLocked();
+          PNOAuthService.clearSession();
+          showErrorToast('Authentication cancelled or failed. Please try again.');
+        } else {
+          console.error('OAuth popup error:', err);
+          showErrorToast('Failed to open authentication window');
         }
-
-        let callbackFound = false;
-        let pollInterval: ReturnType<typeof setInterval> | undefined;
-        let checkPopupInterval: ReturnType<typeof setInterval> | undefined;
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-        const messageListener = (event: MessageEvent) => {
-          if (event.origin !== window.location.origin) return;
-          if (event.data?.type === 'oauth_callback') onOAuthData(event.data as Record<string, unknown>);
-        };
-
-        const storageListener = (event: StorageEvent) => {
-          if (event.key === 'pn_oauth_callback' && event.newValue) {
-            try {
-              const data = JSON.parse(event.newValue) as Record<string, unknown>;
-              if (data.type === 'oauth_callback') {
-                onOAuthData(data);
-                localStorage.removeItem('pn_oauth_callback');
-              }
-            } catch (e) {
-              console.error('Failed to parse OAuth callback from localStorage:', e);
-            }
-          }
-        };
-
-        const cleanup = () => {
-          if (callbackFound) return;
-          callbackFound = true;
-          if (pollInterval !== undefined) clearInterval(pollInterval);
-          if (checkPopupInterval !== undefined) clearInterval(checkPopupInterval);
-          if (timeoutId !== undefined) clearTimeout(timeoutId);
-          window.removeEventListener('message', messageListener);
-          window.removeEventListener('storage', storageListener);
-          try {
-            localStorage.removeItem('pn_oauth_pending');
-            localStorage.removeItem('pn_oauth_latest_key');
-          } catch {
-            /* ignore */
-          }
-        };
-
-        function onOAuthData(raw: Record<string, unknown>) {
-          if (!raw || typeof raw !== 'object') return;
-          const { type: _t, ...rest } = raw;
-          cleanup();
-          void runOAuthCallback(
-            rest as {
-              code?: string;
-              state?: string;
-              error?: string;
-              error_description?: string;
-              age_shared?: string;
-            },
-            { popup, redirectUri: actualRedirectUri }
-          );
-        }
-
-        window.addEventListener('message', messageListener);
-        window.addEventListener('storage', storageListener);
-
-        pollInterval = setInterval(() => {
-          if (callbackFound) return;
-          const pending = localStorage.getItem('pn_oauth_pending');
-          const latestKey = localStorage.getItem('pn_oauth_latest_key');
-          if (pending === 'true' && latestKey) {
-            const stored = localStorage.getItem(latestKey);
-            if (stored) {
-              try {
-                const data = JSON.parse(stored) as Record<string, unknown>;
-                const age = Date.now() - ((data.timestamp as number) || 0);
-                if (data.timestamp && age < 30000) {
-                  try {
-                    localStorage.removeItem(latestKey);
-                  } catch {
-                    /* ignore */
-                  }
-                  onOAuthData(data);
-                }
-              } catch (e) {
-                console.error('Failed to parse OAuth callback:', e);
-              }
-            }
-          }
-        }, 50);
-
-        let popupClosedTime: number | null = null;
-        checkPopupInterval = setInterval(() => {
-          try {
-            if (popup.closed && callbackFound) {
-              if (checkPopupInterval !== undefined) clearInterval(checkPopupInterval);
-              if (timeoutId !== undefined) clearTimeout(timeoutId);
-            } else if (popup.closed && !callbackFound) {
-              if (popupClosedTime === null) popupClosedTime = Date.now();
-              if (popupClosedTime && Date.now() - popupClosedTime > 3000) {
-                cleanup();
-                setLocked();
-                PNOAuthService.clearSession();
-                showErrorToast('Authentication cancelled or failed. Please try again.');
-              }
-            }
-          } catch {
-            /* ignore */
-          }
-        }, 500);
-
-        timeoutId = setTimeout(() => {
-          if (!callbackFound) {
-            cleanup();
-            setLocked();
-            PNOAuthService.clearSession();
-            showErrorToast('Authentication timeout. Please try again.');
-          }
-        }, 30000);
-      } catch (err) {
-        console.error('OAuth redirect error:', err);
-        showErrorToast('Failed to open authentication window');
       }
     }
   }, [

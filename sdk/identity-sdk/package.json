@@ -21,7 +21,8 @@
   "author": "Identity Protocol Team",
   "license": "UNLICENSED",
   "dependencies": {
-    "@identity-protocol/identity-core": "file:../../core/identity-core"
+    "@identity-protocol/identity-core": "file:../../core/identity-core",
+    "@par-noir/oauth-ui": "file:../../packages/oauth-ui"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

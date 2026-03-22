@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
-import { UnlockButton, LockButton } from '@par-noir/oauth-ui';
+import { UnlockButton, LockButton, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from './config/api';
 import { PN_CLIENT_ID } from './config/client';
 
@@ -74,6 +74,63 @@ export function App() {
     return h;
   }, []);
 
+  const completePortalOAuth = useCallback(async (result: PnOAuthPopupResult) => {
+    if (result.error) {
+      setError(result.error_description || result.error);
+      return;
+    }
+    if (!result.code) return;
+    const raw = sessionStorage.getItem(STORAGE_OAUTH_CTX);
+    if (!raw) {
+      setError('OAuth session expired. Try unlocking again.');
+      return;
+    }
+    let ctx: { state: string; clientId: string; redirectUri: string };
+    try {
+      ctx = JSON.parse(raw) as { state: string; clientId: string; redirectUri: string };
+    } catch {
+      setError('Invalid OAuth context');
+      return;
+    }
+    if (result.state !== undefined && result.state !== ctx.state) {
+      setError('Invalid OAuth state');
+      return;
+    }
+    const body: Record<string, unknown> = {
+      code: result.code,
+      client_id: ctx.clientId,
+      redirect_uri: ctx.redirectUri,
+      grant_type: 'authorization_code',
+    };
+    if (result.age_shared === 'true') {
+      body.age_shared = true;
+    }
+    const tokenRes = await fetch(`${API_ENDPOINT}/oauth/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = (await tokenRes.json().catch(() => ({}))) as {
+      access_token?: string;
+      refresh_token?: string;
+      error_description?: string;
+      error?: string;
+    };
+    if (!tokenRes.ok) {
+      setError(data.error_description || data.error || 'Token exchange failed');
+      return;
+    }
+    if (data.access_token) {
+      sessionStorage.setItem(STORAGE_ACCESS, data.access_token);
+    }
+    if (data.refresh_token) {
+      sessionStorage.setItem(STORAGE_REFRESH, data.refresh_token);
+    }
+    sessionStorage.removeItem(STORAGE_OAUTH_CTX);
+    setToken(data.access_token ?? null);
+    setError(null);
+  }, []);
+
   const refreshDashboard = useCallback(async () => {
     const t = getAccessToken();
     if (!t) {
@@ -124,17 +181,35 @@ export function App() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
+    if (params.get('oauth_resume') === '1') {
+      const resumeResult: PnOAuthPopupResult = {
+        code: params.get('code') || undefined,
+        state: params.get('state') || undefined,
+        error: params.get('error') || undefined,
+        age_shared: params.get('age_shared') || undefined,
+      };
+      window.history.replaceState({}, '', window.location.pathname);
+      void (async () => {
+        setLoadingSession(true);
+        await completePortalOAuth(resumeResult);
+        await refreshDashboard();
+        setLoadingSession(false);
+      })();
+      return;
+    }
+
     const qErr = params.get('error');
     if (qErr) {
       setError(decodeURIComponent(qErr.replace(/\+/g, ' ')));
       window.history.replaceState({}, '', window.location.pathname);
     }
-    (async () => {
+    void (async () => {
       setLoadingSession(true);
       await refreshDashboard();
       setLoadingSession(false);
     })();
-  }, [refreshDashboard]);
+  }, [refreshDashboard, completePortalOAuth]);
 
   const handleBeforeUnlock = (state: string, nonce: string) => {
     setError(null);
@@ -274,6 +349,11 @@ export function App() {
                   scope: ['openid', 'profile'],
                 }}
                 onBeforeNavigate={handleBeforeUnlock}
+                onPopupResult={async (r) => {
+                  await completePortalOAuth(r);
+                  await refreshDashboard();
+                }}
+                onPopupFlowFailed={(msg) => setError(msg)}
                 iconOnly
                 className="dev-btn dev-btn-unlock dev-btn--header-unlock"
               />
@@ -333,6 +413,11 @@ export function App() {
                 scope: ['openid', 'profile'],
               }}
               onBeforeNavigate={handleBeforeUnlock}
+              onPopupResult={async (r) => {
+                await completePortalOAuth(r);
+                await refreshDashboard();
+              }}
+              onPopupFlowFailed={(msg) => setError(msg)}
               className="dev-btn dev-btn-unlock dev-btn-unlock--large"
               children="Unlock pN"
             />

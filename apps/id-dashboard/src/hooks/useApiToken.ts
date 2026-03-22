@@ -1,10 +1,11 @@
 /**
  * par Noir API token for owned-assets and other API routes.
  * The dashboard's local session token is not a valid OAuth JWT.
- * This hook manages a par Noir OAuth token obtained via the OAuth popup flow.
+ * This hook manages a par Noir OAuth token obtained via the same popup flow as the browser.
  */
 
 import { useState, useCallback } from 'react';
+import { buildOAuthConsentUrl, startPnOAuthPopup } from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from '../config/api';
 
 const PN_CLIENT_ID = import.meta.env.VITE_PN_CLIENT_ID || 'browser-app';
@@ -32,6 +33,12 @@ function setStoredToken(t: StoredToken | null): void {
   else sessionStorage.removeItem(STORAGE_KEY);
 }
 
+function randomHex(bytes: number): string {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export function useApiToken() {
   const [apiToken, setApiToken] = useState<string | null>(() => getStoredToken()?.accessToken ?? null);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -43,87 +50,69 @@ export function useApiToken() {
     setConnectError(null);
   }, []);
 
-  const connectApi = useCallback((): Promise<string | null> => {
-    return new Promise((resolve) => {
-      setIsConnecting(true);
-      setConnectError(null);
-      const redirectUri = `${window.location.origin}/pn-oauth-callback.html`;
-      const state = `state-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const nonce = `nonce-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      sessionStorage.setItem('pn_oauth_state', state);
-      const params = new URLSearchParams({
-        client_id: PN_CLIENT_ID,
-        redirect_uri: redirectUri,
-        response_type: 'code',
-        scope: 'openid profile',
-        state,
-        nonce,
-        popup: 'true',
+  const connectApi = useCallback(async (): Promise<string | null> => {
+    setIsConnecting(true);
+    setConnectError(null);
+
+    const redirectUri = `${window.location.origin}/oauth-callback.html`;
+    const state = randomHex(16);
+    const nonce = randomHex(16);
+    sessionStorage.setItem('pn_oauth_state', state);
+
+    const url = buildOAuthConsentUrl({
+      clientId: PN_CLIENT_ID,
+      apiEndpoint: API_ENDPOINT,
+      redirectUri,
+      scope: ['openid', 'profile'],
+      state,
+      nonce,
+      forPopup: true,
+    });
+
+    try {
+      const result = await startPnOAuthPopup({
+        url,
+        expectedState: state,
+        timeoutMs: 300_000,
       });
-      const authUrl = `${window.location.origin}/oauth-authorize.html?${params.toString()}`;
-      const popup = window.open(authUrl, 'pn_oauth', 'width=500,height=700,left=200,top=100,resizable=yes,scrollbars=yes');
-      if (!popup) {
-        setConnectError('Popup blocked. Please allow popups for this site.');
-        setIsConnecting(false);
-        resolve(null);
-        return;
+
+      if (result.error) {
+        setConnectError(
+          result.error === 'access_denied' ? 'Authorization denied' : result.error_description || result.error
+        );
+        return null;
+      }
+      if (!result.code) {
+        setConnectError('No authorization code received');
+        return null;
+      }
+      if (result.state !== state) {
+        setConnectError('Invalid state');
+        return null;
       }
 
-      let resolved = false;
-      const cleanup = () => {
-        window.removeEventListener('message', listener);
-        clearInterval(interval);
-        setIsConnecting(false);
-      };
-      const doResolve = (value: string | null) => {
-        if (resolved) return;
-        resolved = true;
-        cleanup();
-        resolve(value);
-      };
-
-      const listener = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
-        const data = event.data;
-        if (data?.type !== 'oauth_callback') return;
-        if (data.error) {
-          setConnectError(data.error === 'access_denied' ? 'Authorization denied' : data.error);
-          doResolve(null);
-          return;
-        }
-        const code = data.code;
-        if (!code) {
-          setConnectError('No authorization code received');
-          doResolve(null);
-          return;
-        }
-        if (data.state !== state) {
-          setConnectError('Invalid state');
-          doResolve(null);
-          return;
-        }
-        exchangeCode(code, redirectUri)
-          .then((token) => {
-            if (token) {
-              const expiresAt = Date.now() + 60 * 60 * 1000;
-              setStoredToken({ accessToken: token, expiresAt });
-              setApiToken(token);
-            }
-            doResolve(token);
-          })
-          .catch((err) => {
-            setConnectError(err instanceof Error ? err.message : 'Token exchange failed');
-            doResolve(null);
-          });
-      };
-      window.addEventListener('message', listener);
-      const interval = setInterval(() => {
-        if (popup.closed) {
-          if (!resolved) setConnectError('Popup closed');
-          doResolve(null);
-        }
-      }, 500);
-    });
+      const token = await exchangeCode(result.code, redirectUri);
+      if (token) {
+        const expiresAt = Date.now() + 60 * 60 * 1000;
+        setStoredToken({ accessToken: token, expiresAt });
+        setApiToken(token);
+      }
+      return token;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === 'POPUP_BLOCKED') {
+        setConnectError('Popup blocked. Please allow popups for this site.');
+      } else if (msg === 'POPUP_CLOSED') {
+        setConnectError('Popup closed');
+      } else if (msg === 'POPUP_TIMEOUT') {
+        setConnectError('Connection timed out');
+      } else {
+        setConnectError(msg);
+      }
+      return null;
+    } finally {
+      setIsConnecting(false);
+    }
   }, []);
 
   return { apiToken, connectApi, clearApiToken, isConnecting, connectError };

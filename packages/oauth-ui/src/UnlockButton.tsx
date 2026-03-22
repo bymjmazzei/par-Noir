@@ -1,5 +1,14 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { LockIcon } from './LockIcon';
+import {
+  buildOAuthConsentUrl,
+  startPnOAuthPopup,
+  type PnOAuthPopupResult,
+} from './pnOAuthPopup';
+
+export type { OAuthConsentUrlConfig } from './pnOAuthPopup';
+export { buildOAuthConsentUrl, buildOAuthAuthorizeUrl, startPnOAuthPopup } from './pnOAuthPopup';
+export type { PnOAuthPopupResult } from './pnOAuthPopup';
 
 export interface UnlockButtonConfig {
   clientId: string;
@@ -22,45 +31,25 @@ function generateNonce(): string {
   return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/**
- * Builds the OAuth authorize URL and returns it. Caller can navigate or open popup.
- */
-export function buildOAuthAuthorizeUrl(config: UnlockButtonConfig): string {
-  const state = config.state ?? generateState();
-  const nonce = config.nonce ?? generateNonce();
-  const scope = (config.scope ?? ['openid', 'profile']).join(' ');
-
-  const params = new URLSearchParams({
-    client_id: config.clientId,
-    redirect_uri: config.redirectUri,
-    response_type: 'code',
-    scope,
-    state,
-    nonce,
-  });
-
-  return `${config.apiEndpoint.replace(/\/$/, '')}/oauth/authorize/consent?${params.toString()}`;
-}
-
 export interface UnlockButtonProps {
   config: UnlockButtonConfig;
   /** Store state/nonce here before navigation (e.g. sessionStorage key) */
   onBeforeNavigate?: (state: string, nonce: string) => void;
+  /** After popup completes (success or OAuth error payload). Not called for forceRedirect. */
+  onPopupResult?: (result: PnOAuthPopupResult) => void | Promise<void>;
+  /** Popup blocked, timeout, closed without result, or unexpected error */
+  onPopupFlowFailed?: (reason: string) => void;
+  /** Native / full-window: skip popup and assign location (e.g. Capacitor) */
+  forceRedirect?: boolean;
   children?: ReactNode;
   className?: string;
-  /** Override click; if provided, config/navigate are ignored */
+  /** Override click; if provided, default unlock behavior is skipped */
   onClick?: () => void;
-  /** If true, show lock icon (default true) */
   showIcon?: boolean;
-  /** Icon + label in compact headers (no visible label; uses aria-label) */
   iconOnly?: boolean;
   title?: string;
 }
 
-/**
- * Button that navigates to the canonical OAuth consent page.
- * Uses buildOAuthAuthorizeUrl; stores state/nonce via onBeforeNavigate for callback verification.
- */
 const iconStyle: CSSProperties = {
   width: '1.125rem',
   height: '1.125rem',
@@ -69,9 +58,15 @@ const iconStyle: CSSProperties = {
   verticalAlign: 'middle',
 };
 
+/**
+ * Button that starts pN OAuth in a popup (default) or full redirect when forceRedirect is set.
+ */
 export function UnlockButton({
   config,
   onBeforeNavigate,
+  onPopupResult,
+  onPopupFlowFailed,
+  forceRedirect = false,
   children = 'Unlock pN',
   className = '',
   onClick,
@@ -89,12 +84,35 @@ export function UnlockButton({
     const nonce = config.nonce ?? generateNonce();
     onBeforeNavigate?.(state, nonce);
 
-    const url = buildOAuthAuthorizeUrl({
+    const url = buildOAuthConsentUrl({
       ...config,
       state,
       nonce,
+      forPopup: !forceRedirect,
     });
-    window.location.href = url;
+
+    if (forceRedirect) {
+      window.location.href = url;
+      return;
+    }
+
+    void (async () => {
+      try {
+        const result = await startPnOAuthPopup({ url, expectedState: state });
+        await onPopupResult?.(result);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg === 'POPUP_BLOCKED') {
+          onPopupFlowFailed?.('Popup blocked. Allow popups for this site.');
+        } else if (msg === 'POPUP_TIMEOUT') {
+          onPopupFlowFailed?.('Authentication timed out. Try again.');
+        } else if (msg === 'POPUP_CLOSED') {
+          onPopupFlowFailed?.('Sign-in was cancelled or the window closed.');
+        } else {
+          onPopupFlowFailed?.(msg);
+        }
+      }
+    })();
   };
 
   const showLabel = !iconOnly && children != null && children !== false;

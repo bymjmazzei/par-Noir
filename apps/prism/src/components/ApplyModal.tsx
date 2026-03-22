@@ -3,20 +3,79 @@
  * Shows program requirements and Sign in with par Noir to apply
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { X, Shield, CheckCircle2 } from 'lucide-react';
-import { getPrismOAuthUrl } from '../utils/oauth';
+import { buildOAuthConsentUrl, startPnOAuthPopup } from '@par-noir/oauth-ui';
+import { Capacitor } from '@capacitor/core';
+import { API_ENDPOINT } from '../config/api';
+import { PRISM_CLIENT_ID, prismOnBeforeNavigate } from '../utils/oauth';
+import { exchangeCodeForToken } from '../services/prismAuthService';
+import { useAuth } from '../contexts/AuthContext';
 
 interface ApplyModalProps {
   open: boolean;
   onClose: () => void;
 }
 
+function randomHex(bytes: number): string {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export function ApplyModal({ open, onClose }: ApplyModalProps) {
+  const { refreshSession } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [flowError, setFlowError] = useState<string | null>(null);
+
   if (!open) return null;
 
-  const handleSignIn = () => {
-    window.location.href = getPrismOAuthUrl();
+  const handleSignIn = async () => {
+    setFlowError(null);
+    const state = randomHex(16);
+    const nonce = randomHex(16);
+    prismOnBeforeNavigate(state, nonce);
+
+    const consentConfig = {
+      clientId: PRISM_CLIENT_ID,
+      apiEndpoint: API_ENDPOINT,
+      redirectUri: `${window.location.origin}/oauth-callback.html`,
+      scope: ['openid', 'profile'] as string[],
+      state,
+      nonce,
+    };
+
+    if (Capacitor.isNativePlatform()) {
+      const url = buildOAuthConsentUrl({ ...consentConfig, forPopup: false });
+      window.location.href = url;
+      onClose();
+      return;
+    }
+
+    const url = buildOAuthConsentUrl({ ...consentConfig, forPopup: true });
+    setBusy(true);
+    try {
+      const result = await startPnOAuthPopup({ url, expectedState: state, timeoutMs: 300_000 });
+      if (result.error) {
+        setFlowError(result.error === 'access_denied' ? 'Authorization denied' : result.error);
+        return;
+      }
+      if (!result.code) return;
+      await exchangeCodeForToken(result.code);
+      await refreshSession();
+      onClose();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === 'POPUP_BLOCKED') {
+        setFlowError('Popup blocked. Allow popups for this site.');
+      } else if (msg === 'POPUP_CLOSED') {
+        setFlowError('Sign-in was cancelled.');
+      } else if (msg !== 'POPUP_TIMEOUT') {
+        setFlowError(msg);
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -61,12 +120,19 @@ export function ApplyModal({ open, onClose }: ApplyModalProps) {
             </li>
           </ul>
 
+          {flowError && (
+            <p className="mb-4 text-sm text-red-400" role="alert">
+              {flowError}
+            </p>
+          )}
+
           <button
             type="button"
-            onClick={handleSignIn}
-            className="w-full py-3 px-4 bg-white text-black font-medium rounded-lg hover:bg-neutral-200 transition-colors"
+            onClick={() => void handleSignIn()}
+            disabled={busy}
+            className="w-full py-3 px-4 bg-white text-black font-medium rounded-lg hover:bg-neutral-200 transition-colors disabled:opacity-50"
           >
-            Sign in with par Noir to apply
+            {busy ? 'Opening sign-in…' : 'Sign in with par Noir to apply'}
           </button>
 
           <p className="mt-4 text-xs text-neutral-500 text-center">
