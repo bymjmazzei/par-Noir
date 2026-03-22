@@ -5,7 +5,8 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Lock, Unlock, ChevronDown, User, Rss } from 'lucide-react';
+import { ChevronDown, User, Rss } from 'lucide-react';
+import { LockIcon, UnlockIcon } from '@par-noir/oauth-ui';
 import { useUserState } from '../contexts/UserStateContext';
 import { AppContext } from '../hooks/useAppContext';
 
@@ -70,9 +71,9 @@ export const LockButtonWithContext: React.FC<LockButtonWithContextProps> = ({
         title={userState.isUnlocked ? 'Lock pN' : 'Unlock pN'}
       >
         {userState.isUnlocked ? (
-          <Unlock className="h-5 w-5" />
+          <UnlockIcon className="h-5 w-5" />
         ) : (
-          <Lock className="h-5 w-5" />
+          <LockIcon className="h-5 w-5" />
         )}
       </button>
 

@@ -5,12 +5,13 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Lock, Shield, Users, FileCheck, LogOut, ShieldCheck } from 'lucide-react';
+import { Shield, Users, FileCheck, LogOut, ShieldCheck } from 'lucide-react';
 import { ApplyModal } from './components/ApplyModal';
 import { RayView } from './components/RayView';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { fetchAdminCheck, fetchAdminStats, fetchReputation, submitRayApply, seedDemoQueue, ensurePrismLedgers, ReputationResult } from './services/prismApi';
-import { getPrismOAuthUrl } from './utils/oauth';
+import { UnlockButton } from '@par-noir/oauth-ui';
+import { getPrismOAuthConfig, prismOnBeforeNavigate } from './utils/oauth';
 import { SplashScreen } from '@capacitor/splash-screen';
 
 function LockedView({ onApplyOpen }: { onApplyOpen: () => void }) {
@@ -38,14 +39,13 @@ function LockedView({ onApplyOpen }: { onApplyOpen: () => void }) {
               <span className="text-xl font-semibold tracking-tight">Prism</span>
               <span className="text-neutral-400 text-sm">Auditor Program</span>
             </div>
-            <button
-              type="button"
-              onClick={() => { window.location.href = getPrismOAuthUrl(); }}
+            <UnlockButton
+              config={getPrismOAuthConfig()}
+              onBeforeNavigate={prismOnBeforeNavigate}
               className="p-2 text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
               title="Unlock pN"
-            >
-              <Lock className="h-5 w-5" />
-            </button>
+              children=""
+            />
           </div>
         </header>
 

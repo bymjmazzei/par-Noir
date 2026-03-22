@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { UnlockButton, LockButton } from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from './config/api';
 import { PN_CLIENT_ID } from './config/client';
 
@@ -8,27 +9,6 @@ const STORAGE_OAUTH_CTX = 'dev_portal_oauth';
 
 function FieldHelp({ children }: { children: ReactNode }) {
   return <span className="dev-help">{children}</span>;
-}
-
-function IconLock({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 17a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6V11Z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 function getAccessToken(): string | null {
@@ -156,37 +136,14 @@ export function App() {
     })();
   }, [refreshDashboard]);
 
-  const startUnlock = () => {
+  const handleBeforeUnlock = (state: string, nonce: string) => {
     setError(null);
     setMessage(null);
-    const state = crypto.getRandomValues(new Uint8Array(16)).reduce(
-      (s, b) => s + b.toString(16).padStart(2, '0'),
-      ''
-    );
-    const nonce = crypto.getRandomValues(new Uint8Array(16)).reduce(
-      (s, b) => s + b.toString(16).padStart(2, '0'),
-      ''
-    );
     const redirectUri = `${window.location.origin}/oauth-callback.html`;
     sessionStorage.setItem(
       STORAGE_OAUTH_CTX,
-      JSON.stringify({
-        api: API_ENDPOINT,
-        clientId: PN_CLIENT_ID,
-        state,
-        nonce,
-        redirectUri
-      })
+      JSON.stringify({ api: API_ENDPOINT, clientId: PN_CLIENT_ID, state, nonce, redirectUri })
     );
-    const q = new URLSearchParams({
-      client_id: PN_CLIENT_ID,
-      redirect_uri: redirectUri,
-      response_type: 'code',
-      scope: 'openid profile',
-      state,
-      nonce
-    });
-    window.location.href = `${API_ENDPOINT}/oauth/authorize/consent?${q.toString()}`;
   };
 
   const signOut = async () => {
@@ -300,21 +257,26 @@ export function App() {
                   Unlocked
                   {user?.pn_identifier || user?.sub ? ` · ${user.pn_identifier || user.sub}` : ''}
                 </span>
-                <button
-                  type="button"
+                <LockButton
+                  onLock={signOut}
+                  refreshToken={sessionStorage.getItem(STORAGE_REFRESH)}
+                  apiEndpoint={API_ENDPOINT}
                   className="dev-btn dev-btn--ghost dev-btn--inline-icon"
-                  onClick={signOut}
-                  aria-label="Lock session"
-                >
-                  <IconLock className="dev-btn-icon" />
-                  Lock
-                </button>
+                  children="Lock"
+                />
               </>
             ) : (
-              <button type="button" className="dev-btn dev-btn-unlock" onClick={startUnlock}>
-                <IconLock className="dev-btn-icon" />
-                Unlock pN
-              </button>
+              <UnlockButton
+                config={{
+                  clientId: PN_CLIENT_ID,
+                  apiEndpoint: API_ENDPOINT,
+                  redirectUri: `${window.location.origin}/oauth-callback.html`,
+                  scope: ['openid', 'profile'],
+                }}
+                onBeforeNavigate={handleBeforeUnlock}
+                className="dev-btn dev-btn-unlock"
+                children="Unlock pN"
+              />
             )}
           </div>
         </div>
@@ -363,10 +325,17 @@ export function App() {
               Opens the secure par Noir authorize page (identity file + passcode). When you’re done, you’ll return here with
               a session — same flow as the browser and other third-party apps.
             </p>
-            <button type="button" className="dev-btn dev-btn-unlock dev-btn-unlock--large" onClick={startUnlock}>
-              <IconLock className="dev-btn-icon" />
-              Unlock pN
-            </button>
+            <UnlockButton
+              config={{
+                clientId: PN_CLIENT_ID,
+                apiEndpoint: API_ENDPOINT,
+                redirectUri: `${window.location.origin}/oauth-callback.html`,
+                scope: ['openid', 'profile'],
+              }}
+              onBeforeNavigate={handleBeforeUnlock}
+              className="dev-btn dev-btn-unlock dev-btn-unlock--large"
+              children="Unlock pN"
+            />
           </section>
         )}
 

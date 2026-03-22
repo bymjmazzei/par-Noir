@@ -119,7 +119,7 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
     const top = (window.screen.height - popupHeight) / 2;
 
     const popup = window.open(
-      `/oauth-authorize.html?${authUrl.split('?')[1] || ''}`,
+      authUrl,
       'pn_oauth',
       `width=${popupWidth},height=${popupHeight},left=${left},top=${top},resizable=yes,scrollbars=yes`
     );

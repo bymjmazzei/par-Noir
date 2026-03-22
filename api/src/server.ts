@@ -10063,43 +10063,18 @@ class ProductionServer {
         }
       }
 
-      // Route based on client_id
-      if (client_id === 'browser-app') {
-        // Browser app: redirect to browse.parnoir.com's oauth-authorize.html
-        const redirectUrl = new URL(redirect_uri as string);
-        const browserAppOrigin = `${redirectUrl.protocol}//${redirectUrl.host}`;
-        
-        const consentUrl = new URL(`${browserAppOrigin}/oauth-authorize.html`);
-        consentUrl.searchParams.set('client_id', client_id as string);
-        consentUrl.searchParams.set('redirect_uri', redirect_uri as string);
-        if (scope) consentUrl.searchParams.set('scope', scope as string);
-        if (state) consentUrl.searchParams.set('state', state as string);
-        if (nonce) consentUrl.searchParams.set('nonce', nonce as string);
-        
-        // Preserve popup parameter if present
-        const popupParam = req.query.popup || (redirect_uri as string).includes('popup=true') ? 'true' : undefined;
-        if (popupParam) {
-          consentUrl.searchParams.set('popup', 'true');
-        }
+      // All clients: use API-hosted canonical consent page
+      const consentUrl = new URL(`${req.protocol}://${req.get('host')}/oauth/consent`);
+      consentUrl.searchParams.set('client_id', client_id as string);
+      consentUrl.searchParams.set('redirect_uri', redirect_uri as string);
+      if (scope) consentUrl.searchParams.set('scope', scope as string);
+      if (state) consentUrl.searchParams.set('state', state as string);
+      if (nonce) consentUrl.searchParams.set('nonce', nonce as string);
 
-        return res.redirect(consentUrl.toString());
-      } else {
-        // Third-party clients: use API-hosted generic consent page
-        const consentUrl = new URL(`${req.protocol}://${req.get('host')}/oauth/consent`);
-        consentUrl.searchParams.set('client_id', client_id as string);
-        consentUrl.searchParams.set('redirect_uri', redirect_uri as string);
-        if (scope) consentUrl.searchParams.set('scope', scope as string);
-        if (state) consentUrl.searchParams.set('state', state as string);
-        if (nonce) consentUrl.searchParams.set('nonce', nonce as string);
-        
-        // Preserve popup parameter if present
-        const popupParam = req.query.popup || (redirect_uri as string).includes('popup=true') ? 'true' : undefined;
-        if (popupParam) {
-          consentUrl.searchParams.set('popup', 'true');
-        }
+      const popupParam = req.query.popup || (redirect_uri as string).includes('popup=true') ? 'true' : undefined;
+      if (popupParam) consentUrl.searchParams.set('popup', 'true');
 
-        return res.redirect(consentUrl.toString());
-      }
+      return res.redirect(consentUrl.toString());
     });
 
     // POST /oauth/authorize/authenticate - Authenticate user with pN identity
@@ -10922,12 +10897,10 @@ class ProductionServer {
       }
     });
 
-    // GET /oauth/consent - Generic OAuth consent page for third-party clients
-    // Serves a generic consent page that works for any registered client
+    // GET /oauth/consent - Canonical OAuth consent page for all clients
     this.app.get('/oauth/consent', async (req, res) => {
       const { client_id, redirect_uri, scope, state, nonce } = req.query;
 
-      // Validate required parameters
       if (!client_id || !redirect_uri) {
         res.status(400).send(`
           <html>
@@ -10938,12 +10911,18 @@ class ProductionServer {
             </body>
           </html>
         `);
+        return;
       }
 
-      // Validate client
       const { ClientRegistrationService } = await import('./server/modules/clientRegistration');
-      const client = await ClientRegistrationService.getClient(client_id as string);
-      
+      const isBrowserApp = client_id === 'browser-app';
+      let client = await ClientRegistrationService.getClient(client_id as string);
+
+      if (!client && isBrowserApp) {
+        await ClientRegistrationService.ensureDefaultClientsSeeded();
+        client = await ClientRegistrationService.getClient(client_id as string);
+      }
+
       if (!client || !(await ClientRegistrationService.validateClient(client_id as string, redirect_uri as string))) {
         res.status(400).send(`
           <html>
@@ -10957,224 +10936,21 @@ class ProductionServer {
         return;
       }
 
-      // Parse scopes
       const scopes = scope ? (scope as string).split(' ') : ['openid', 'profile'];
-      
-      // Serve generic consent page HTML
-      res.send(`
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Authorize - ${client.name}</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #000;
-      color: #fff;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .container {
-      width: 100%;
-      max-width: 420px;
-      background: rgba(26, 26, 26, 0.95);
-      border: 1px solid #333;
-      border-radius: 12px;
-      padding: 32px;
-    }
-    h1 { font-size: 24px; margin-bottom: 8px; }
-    .app-name { color: #60a5fa; font-weight: 600; }
-    .subtitle { color: #9ca3af; font-size: 14px; margin-bottom: 24px; }
-    .permissions { background: rgba(0, 0, 0, 0.3); border-radius: 8px; padding: 16px; margin: 24px 0; }
-    .permission-item { padding: 8px 0; color: #e5e7eb; font-size: 14px; }
-    .buttons { display: flex; gap: 12px; margin-top: 24px; }
-    button {
-      flex: 1;
-      padding: 12px 24px;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .btn-deny {
-      background: rgba(26, 26, 26, 0.95);
-      border: 1px solid #4b5563;
-      color: #fff;
-    }
-    .btn-deny:hover { background: rgba(31, 31, 31, 0.95); }
-    .btn-approve {
-      background: #3b82f6;
-      color: #fff;
-    }
-    .btn-approve:hover { background: #2563eb; }
-    .error { background: #7f1d1d; color: #fca5a5; padding: 12px; border-radius: 8px; margin-bottom: 16px; }
-    .loading { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; margin-right: 8px; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>Authorize <span class="app-name">${client.name}</span></h1>
-    <p class="subtitle">${client.description || 'This application wants to access your pN identity'}</p>
-    
-    <div id="error" style="display: none;" class="error"></div>
-    
-    <div class="permissions">
-      <strong style="display: block; margin-bottom: 12px;">Requested Permissions:</strong>
-      ${scopes.map(s => `<div class="permission-item">• ${s === 'openid' ? 'Verify your identity' : s === 'profile' ? 'Access your profile information' : s}</div>`).join('')}
-    </div>
-    
-    <div class="buttons">
-      <button class="btn-deny" id="denyBtn">Deny</button>
-      <button class="btn-approve" id="approveBtn">Approve</button>
-    </div>
-  </div>
-  
-  <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    const clientId = urlParams.get('client_id');
-    const redirectUri = urlParams.get('redirect_uri');
-    const scope = urlParams.get('scope') || 'openid profile';
-    const state = urlParams.get('state') || '';
-    const nonce = urlParams.get('nonce') || '';
-    const isInPopup = urlParams.get('popup') === 'true' || !!(window.opener && !window.opener.closed);
-    
-    let authorizationCode = null;
-    
-    // Step 1: Authenticate user
-    async function authenticate() {
-      const identityFileInput = document.createElement('input');
-      identityFileInput.type = 'file';
-      identityFileInput.accept = '.did,.json,.pn,.id,.identity,application/json';
-      
-      return new Promise((resolve, reject) => {
-        identityFileInput.onchange = async (e) => {
-          const file = e.target.files[0];
-          if (!file) {
-            reject(new Error('No file selected'));
-            return;
-          }
-          
-          const fileText = await file.text();
-          let identityData;
-          try {
-            identityData = JSON.parse(fileText);
-          } catch {
-            reject(new Error('Invalid identity file'));
-            return;
-          }
-          
-          const passcode = prompt('Enter your passcode:');
-          if (!passcode) {
-            reject(new Error('Passcode required'));
-            return;
-          }
-          
-          try {
-            const apiBase = window.location.origin;
-            const response = await fetch(apiBase + '/oauth/authorize/authenticate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                client_id: clientId,
-                redirect_uri: redirectUri,
-                scope: scope,
-                state: state,
-                nonce: nonce,
-                encrypted_identity: identityData,
-                passcode: passcode,
-                public_key: identityData.publicKey || identityData.key?.public || ''
-              })
-            });
-            
-            if (!response.ok) {
-              const error = await response.json();
-              reject(new Error(error.error_description || 'Authentication failed'));
-              return;
-            }
-            
-            const data = await response.json();
-            resolve(data.code);
-          } catch (err) {
-            reject(err);
-          }
-        };
-        
-        identityFileInput.click();
-      });
-    }
-    
-    document.getElementById('approveBtn').addEventListener('click', async () => {
-      const btn = document.getElementById('approveBtn');
-      btn.disabled = true;
-      btn.innerHTML = '<span class="loading"></span> Approving...';
-      
-      try {
-        if (!authorizationCode) {
-          authorizationCode = await authenticate();
-        }
-        
-        if (isInPopup) {
-          // Send message to opener
-          if (window.opener && !window.opener.closed) {
-            window.opener.postMessage({
-              type: 'oauth_callback',
-              code: authorizationCode,
-              state: state
-            }, window.location.origin);
-          }
-          
-          // Also store in localStorage for polling
-          const callbackKey = 'pn_oauth_callback_' + Date.now();
-          localStorage.setItem(callbackKey, JSON.stringify({
-            type: 'oauth_callback',
-            code: authorizationCode,
-            state: state,
-            timestamp: Date.now()
-          }));
-          localStorage.setItem('pn_oauth_pending', 'true');
-          localStorage.setItem('pn_oauth_latest_key', callbackKey);
-          
-          // Close popup
-          window.close();
-        } else {
-          // Redirect to redirect_uri with code
-          window.location.href = redirectUri + '?code=' + authorizationCode + (state ? '&state=' + state : '');
-        }
-      } catch (err) {
-        document.getElementById('error').style.display = 'block';
-        document.getElementById('error').textContent = err.message || 'Authentication failed';
-        btn.disabled = false;
-        btn.innerHTML = 'Approve';
-      }
-    });
-    
-    document.getElementById('denyBtn').addEventListener('click', () => {
-      if (isInPopup) {
-        if (window.opener && !window.opener.closed) {
-          window.opener.postMessage({
-            type: 'oauth_callback',
-            error: 'access_denied',
-            state: state
-          }, window.location.origin);
-        }
-        window.close();
-      } else {
-        window.location.href = redirectUri + '?error=access_denied' + (state ? '&state=' + state : '');
-      }
-    });
-  </script>
-</body>
-</html>
-      `);
+      const scopesHtml = scopes.map(s =>
+        `<div class="permission-item">• ${s === 'openid' ? 'Verify your identity' : s === 'profile' ? 'Access your profile information' : s}</div>`
+      ).join('');
+
+      const path = await import('path');
+      const fs = await import('fs');
+      const templatePath = path.join(__dirname, 'templates', 'oauth-consent.html');
+      let html = fs.readFileSync(templatePath, 'utf8');
+      html = html
+        .replace(/\{\{CLIENT_NAME\}\}/g, (client.name || client_id as string).replace(/</g, '&lt;'))
+        .replace(/\{\{CLIENT_DESCRIPTION\}\}/g, (client.description || 'This application wants to access your pN identity').replace(/</g, '&lt;'))
+        .replace(/\{\{SCOPES_HTML\}\}/, scopesHtml);
+
+      res.send(html);
     });
 
     // Client Management Endpoints (admin key required)

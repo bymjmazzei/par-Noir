@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authorize - {{CLIENT_NAME}}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #000;
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      width: 100%;
+      max-width: 420px;
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 32px;
+    }
+    h1 { font-size: 24px; margin-bottom: 8px; }
+    .app-name { color: #60a5fa; font-weight: 600; }
+    .subtitle { color: #9ca3af; font-size: 14px; margin-bottom: 24px; }
+    .permissions { background: rgba(0, 0, 0, 0.3); border-radius: 8px; padding: 16px; margin: 24px 0; }
+    .permission-item { padding: 8px 0; color: #e5e7eb; font-size: 14px; }
+    .unlock-section { margin: 24px 0; padding-top: 24px; border-top: 1px solid #333; }
+    .unlock-section.hidden { display: none; }
+    .form-group { margin-bottom: 20px; }
+    label { display: block; color: #e5e7eb; font-size: 14px; font-weight: 500; margin-bottom: 8px; }
+    .file-upload-area {
+      border: 2px dashed #4b5563;
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: rgba(0, 0, 0, 0.2);
+    }
+    .file-upload-area:hover { border-color: #6b7280; }
+    .file-upload-area.has-file { border-color: #3b82f6; }
+    .file-name { color: #e5e7eb; font-weight: 500; }
+    .file-hint { color: #6b7280; font-size: 12px; margin-top: 4px; }
+    input[type="file"] { display: none; }
+    .input-wrapper { position: relative; }
+    input[type="password"], input[type="text"] {
+      width: 100%;
+      padding: 12px 44px 12px 16px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+    }
+    input:focus { outline: none; border-color: #3b82f6; }
+    .eye-toggle {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: #6b7280;
+      cursor: pointer;
+      padding: 4px;
+    }
+    .eye-toggle:hover { color: #9ca3af; }
+    .eye-toggle svg { width: 20px; height: 20px; }
+    .age-row { margin: 20px 0; }
+    .age-row label { margin-bottom: 8px; }
+    select {
+      width: 100%;
+      padding: 12px 16px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    select:focus { outline: none; border-color: #3b82f6; }
+    .optional-badge { color: #60a5fa; font-size: 12px; font-weight: 500; margin-left: 4px; }
+    .buttons { display: flex; gap: 12px; margin-top: 24px; }
+    button {
+      flex: 1;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-deny {
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #4b5563;
+      color: #fff;
+    }
+    .btn-deny:hover:not(:disabled) { background: rgba(31, 31, 31, 0.95); }
+    .btn-approve {
+      background: #3b82f6;
+      color: #fff;
+    }
+    .btn-approve:hover:not(:disabled) { background: #2563eb; }
+    .error {
+      background: #7f1d1d;
+      color: #fca5a5;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    .error.hidden { display: none; }
+    .loading {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Authorize <span class="app-name">{{CLIENT_NAME}}</span></h1>
+    <p class="subtitle">{{CLIENT_DESCRIPTION}}</p>
+
+    <div id="error" class="error hidden"></div>
+
+    <div class="permissions">
+      <strong style="display: block; margin-bottom: 12px;">Requested Permissions:</strong>
+      {{SCOPES_HTML}}
+    </div>
+
+    <div id="unlockSection" class="unlock-section">
+      <div class="form-group">
+        <label>pN Identity File</label>
+        <div class="file-upload-area" id="fileUploadArea">
+          <div class="file-name" id="fileName">Tap to upload pN file</div>
+          <div class="file-hint">.did or .json files</div>
+          <input type="file" id="identityFile" accept=".did,.json,.pn,.id,.identity,application/json" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Passcode</label>
+        <div class="input-wrapper">
+          <input type="password" id="passcode" placeholder="Enter your passcode" autocomplete="off" />
+          <button type="button" class="eye-toggle" id="togglePasscode" aria-label="Toggle passcode visibility">
+            <svg id="eyeIcon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div id="ageAttestationRow" class="age-row" style="display: none;">
+        <label>Age Attestation <span class="optional-badge">(Optional)</span></label>
+        <select id="ageAttestationSelect">
+          <option value="">Select an option</option>
+          <option value="shared">Share age verification for 18+ content</option>
+          <option value="no">Do not share</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="buttons">
+      <button class="btn-deny" id="denyBtn">Deny</button>
+      <button class="btn-approve" id="approveBtn">Approve</button>
+    </div>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const clientId = urlParams.get('client_id');
+    const redirectUri = urlParams.get('redirect_uri');
+    const scope = urlParams.get('scope') || 'openid profile';
+    const state = urlParams.get('state') || '';
+    const nonce = urlParams.get('nonce') || '';
+    const isBrowserApp = clientId === 'browser-app';
+    const isInPopup = urlParams.get('popup') === 'true' || !!(window.opener && !window.opener.closed);
+
+    let authorizationCode = null;
+    let identityData = null;
+
+    const fileArea = document.getElementById('fileUploadArea');
+    const fileInput = document.getElementById('identityFile');
+    const fileName = document.getElementById('fileName');
+    const passcodeInput = document.getElementById('passcode');
+    const toggleBtn = document.getElementById('togglePasscode');
+    const eyeIcon = document.getElementById('eyeIcon');
+    const errorEl = document.getElementById('error');
+    const approveBtn = document.getElementById('approveBtn');
+    const denyBtn = document.getElementById('denyBtn');
+
+    fileArea.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      const f = e.target.files[0];
+      if (f) {
+        fileName.textContent = f.name;
+        fileArea.classList.add('has-file');
+        f.text().then(t => {
+          try {
+            identityData = JSON.parse(t);
+          } catch {
+            identityData = null;
+            fileName.textContent = 'Invalid JSON - tap to re-select';
+            fileArea.classList.remove('has-file');
+          }
+        });
+      }
+    });
+
+    toggleBtn.addEventListener('click', () => {
+      const isPass = passcodeInput.type === 'password';
+      passcodeInput.type = isPass ? 'text' : 'password';
+      eyeIcon.innerHTML = isPass
+        ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />'
+        : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />';
+    });
+
+    function showError(msg) {
+      errorEl.textContent = msg || 'Authentication failed';
+      errorEl.classList.remove('hidden');
+    }
+
+    function hideError() {
+      errorEl.textContent = '';
+      errorEl.classList.add('hidden');
+    }
+
+    async function authenticate() {
+      if (!identityData) {
+        showError('Please select your pN identity file');
+        return null;
+      }
+      const pass = passcodeInput.value.trim();
+      if (!pass) {
+        showError('Please enter your passcode');
+        return null;
+      }
+      hideError();
+      try {
+        const apiBase = window.location.origin;
+        const did = identityData.id || identityData.did || identityData.sub;
+        if (!did) {
+          showError('Identity file must contain id, did, or sub');
+          return null;
+        }
+        const res = await fetch(apiBase + '/oauth/authorize/authenticate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            client_id: clientId,
+            redirect_uri: redirectUri,
+            scope: scope,
+            state: state,
+            nonce: nonce,
+            encrypted_identity: identityData,
+            passcode: pass,
+            public_key: identityData.publicKey || identityData.key?.public || identityData.keys?.publicKey || '',
+            did: did
+          })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error_description || 'Authentication failed');
+        }
+        const data = await res.json();
+        return data.code;
+      } catch (e) {
+        showError(e.message || 'Authentication failed');
+        return null;
+      }
+    }
+
+    function getAgeShared() {
+      if (!isBrowserApp) return undefined;
+      const sel = document.getElementById('ageAttestationSelect');
+      return sel ? sel.value === 'shared' : undefined;
+    }
+
+    function redirectWithCode(code) {
+      const ageShared = getAgeShared();
+      const ageParam = isBrowserApp && ageShared !== undefined ? '&age_shared=' + (ageShared ? 'true' : 'false') : '';
+      const sep = redirectUri.includes('?') ? '&' : '?';
+      window.location.href = redirectUri + sep + 'code=' + encodeURIComponent(code) + (state ? '&state=' + encodeURIComponent(state) : '') + ageParam;
+    }
+
+    function deny() {
+      if (isInPopup && window.opener && !window.opener.closed) {
+        try {
+          const targetOrigin = new URL(redirectUri).origin;
+          window.opener.postMessage({ type: 'oauth_callback', error: 'access_denied', state: state }, targetOrigin);
+        } catch (_) {}
+        window.close();
+      } else {
+        const sep = redirectUri.includes('?') ? '&' : '?';
+        window.location.href = redirectUri + sep + 'error=access_denied' + (state ? '&state=' + encodeURIComponent(state) : '');
+      }
+    }
+
+    approveBtn.addEventListener('click', async () => {
+      if (isBrowserApp) {
+        const ageSel = document.getElementById('ageAttestationSelect');
+        if (ageSel && !ageSel.value) {
+          showError('Please select whether to share your age attestation');
+          return;
+        }
+      }
+      if (!authorizationCode) {
+        approveBtn.disabled = true;
+        approveBtn.innerHTML = '<span class="loading"></span> Approving...';
+        const code = await authenticate();
+        approveBtn.disabled = false;
+        approveBtn.innerHTML = 'Approve';
+        if (code) {
+          authorizationCode = code;
+          redirectWithCode(code);
+        }
+      } else {
+        redirectWithCode(authorizationCode);
+      }
+    });
+
+    denyBtn.addEventListener('click', deny);
+
+    if (isBrowserApp) {
+      const ageRow = document.getElementById('ageAttestationRow');
+      if (ageRow) ageRow.style.display = 'block';
+    }
+  </script>
+</body>
+</html>

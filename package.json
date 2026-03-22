@@ -37,6 +37,7 @@
   "workspaces": [
     "core/*",
     "sdk/*",
+    "packages/*",
     "apps/*"
   ],
   "keywords": [

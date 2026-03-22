@@ -4,6 +4,7 @@ import { ThemeSwitcher } from './ThemeSwitcher';
 import { PWAInstall } from './PWAInstall';
 import NotificationsButton from './NotificationsButton';
 import { RefreshCw } from 'lucide-react';
+import { LockIcon } from '@par-noir/oauth-ui';
 
 interface HeaderProps {
   authenticatedUser: any;
@@ -82,9 +83,10 @@ const Header: React.FC<HeaderProps> = ({ authenticatedUser, onLogout, onOfflineM
             {!isPWA && authenticatedUser && (
               <button
                 onClick={onLogout}
-                className="px-3 py-1 text-sm border border-border rounded hover:bg-hover transition-colors"
+                className="px-3 py-1 text-sm border border-border rounded hover:bg-hover transition-colors flex items-center gap-2"
                 title="Lock Identity"
               >
+                <LockIcon className="w-4 h-4" />
                 Lock
               </button>
             )}
@@ -93,9 +95,10 @@ const Header: React.FC<HeaderProps> = ({ authenticatedUser, onLogout, onOfflineM
             {isPWA && authenticatedUser && onPasscodeLogout && (
               <button
                 onClick={onPasscodeLogout}
-                className="px-3 py-1 text-sm border border-border rounded hover:bg-hover transition-colors"
+                className="px-3 py-1 text-sm border border-border rounded hover:bg-hover transition-colors flex items-center gap-2"
                 title="Return to Passcode Screen"
               >
+                <LockIcon className="w-4 h-4" />
                 Lock
               </button>
             )}

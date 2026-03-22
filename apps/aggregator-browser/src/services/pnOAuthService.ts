@@ -16,8 +16,7 @@ function getClientId(): string {
   // Fallback to "browser-app" - this is a public constant, not a secret
   return id || 'browser-app';
 }
-// For popup flow, redirect_uri should be oauth-callback.html (matches oauth-authorize.html)
-const REDIRECT_URI = typeof window !== 'undefined' 
+const REDIRECT_URI = typeof window !== 'undefined'
   ? `${window.location.origin}/oauth-callback.html`
   : 'http://localhost:3000/oauth-callback.html';
 
@@ -60,8 +59,7 @@ export interface AuthSession {
 
 export class PNOAuthService {
   /**
-   * Generate authorization URL
-   * For popup flow, redirect_uri should point to oauth-authorize.html
+   * Generate authorization URL for API consent page.
    */
   static getAuthorizationUrl(params?: {
     scope?: string[];
@@ -81,8 +79,6 @@ export class PNOAuthService {
       sessionStorage.setItem('pn_oauth_nonce', nonce);
     }
 
-    // For popup flow, use oauth-authorize.html as the redirect target
-    // The popup will handle the unlock UI and send code back via postMessage
     const redirectUri = usePopup 
       ? `${typeof window !== 'undefined' ? window.location.origin : ''}/oauth-callback.html`
       : REDIRECT_URI;
@@ -96,12 +92,7 @@ export class PNOAuthService {
       nonce
     }).toString();
 
-    // Return URL to oauth-authorize.html with params
-    if (usePopup && typeof window !== 'undefined') {
-      return `${window.location.origin}/oauth-authorize.html?${paramsStr}`;
-    }
-
-    return `${API_ENDPOINT}/oauth/authorize?${paramsStr}`;
+    return `${API_ENDPOINT.replace(/\/$/, '')}/oauth/authorize/consent?${paramsStr}`;
   }
 
   /**

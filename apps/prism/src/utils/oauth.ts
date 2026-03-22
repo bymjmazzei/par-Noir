@@ -1,11 +1,28 @@
 /**
  * OAuth helpers for Prism
- * Builds authorize URL for prism-app client
+ * Builds authorize URL for prism-app client (API consent)
  */
 
 import { API_ENDPOINT } from '../config/api';
 
-const CLIENT_ID = import.meta.env.VITE_PN_CLIENT_ID || 'prism-app';
+export const PRISM_CLIENT_ID = import.meta.env.VITE_PN_CLIENT_ID || 'prism-app';
+
+/** Config for UnlockButton / OAuth consent flow */
+export function getPrismOAuthConfig() {
+  return {
+    clientId: PRISM_CLIENT_ID,
+    apiEndpoint: API_ENDPOINT,
+    redirectUri: `${window.location.origin}/oauth-callback.html`,
+    scope: ['openid', 'profile'] as const,
+  };
+}
+
+/** Store state/nonce for callback verification */
+export function prismOnBeforeNavigate(state: string, nonce: string) {
+  sessionStorage.setItem('pn_oauth_state', state);
+  sessionStorage.setItem('pn_oauth_nonce', nonce);
+  sessionStorage.setItem('pn_oauth_return_path', '/');
+}
 
 function generateState(): string {
   const arr = new Uint8Array(16);
@@ -20,29 +37,23 @@ function generateNonce(): string {
 }
 
 /**
- * Returns OAuth authorize URL for Prism
- * Opens oauth-authorize.html which handles unlock + consent
+ * Returns OAuth authorize URL for Prism (API consent).
+ * Used when direct navigation is needed (e.g. ApplyModal).
  */
 export function getPrismOAuthUrl(): string {
-  const redirectUri = `${window.location.origin}/oauth-callback.html`;
+  const config = getPrismOAuthConfig();
   const state = generateState();
   const nonce = generateNonce();
-  const scope = ['openid', 'profile'];
-
-  if (typeof window !== 'undefined') {
-    sessionStorage.setItem('pn_oauth_state', state);
-    sessionStorage.setItem('pn_oauth_nonce', nonce);
-    sessionStorage.setItem('pn_oauth_return_path', '/');
-  }
+  prismOnBeforeNavigate(state, nonce);
 
   const params = new URLSearchParams({
-    client_id: CLIENT_ID,
-    redirect_uri: redirectUri,
+    client_id: config.clientId,
+    redirect_uri: config.redirectUri,
     response_type: 'code',
-    scope: scope.join(' '),
+    scope: config.scope.join(' '),
     state,
     nonce,
   });
 
-  return `${window.location.origin}/oauth-authorize.html?${params.toString()}`;
+  return `${config.apiEndpoint.replace(/\/$/, '')}/oauth/authorize/consent?${params.toString()}`;
 }

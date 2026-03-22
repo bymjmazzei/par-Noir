@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

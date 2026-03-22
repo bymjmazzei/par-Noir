@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
     "@bytetrade/capacitor-native-biometric": "^6.0.5",
     "@capacitor/app": "^6.0.0",
     "@capacitor/clipboard": "^6.0.0",
