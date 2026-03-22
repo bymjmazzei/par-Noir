@@ -52,11 +52,31 @@ const DEFAULT_ORIGINS = [
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:5174',
-  'http://localhost:5176'
+  'http://localhost:5176',
+  // API-hosted OAuth consent page uses fetch() same-origin; browsers send Origin: https://api.parnoir.com
+  'https://api.parnoir.com',
 ];
 
 const ENV_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean) || [];
 const ALLOWED_ORIGINS = [...new Set([...DEFAULT_ORIGINS, ...ENV_ORIGINS])]; // Merge and deduplicate
+
+/** True when Origin is this server's own public host (consent HTML on API calling API). */
+function isSameOriginAsApiHost(origin: string, req: express.Request): boolean {
+  try {
+    const originUrl = new URL(origin);
+    const forwarded = req.headers['x-forwarded-host'];
+    const rawHost =
+      (typeof forwarded === 'string' ? forwarded.split(',')[0] : null)?.trim() ||
+      req.headers.host ||
+      '';
+    if (!rawHost) return false;
+    const requestHost = rawHost.trim().toLowerCase();
+    const originHost = originUrl.host.toLowerCase();
+    return originHost === requestHost;
+  } catch {
+    return false;
+  }
+}
 
 // Rate limiting configuration - higher limit for authenticated requests
 // SECURITY FIX: Rate limits now check for valid token format, not just presence
@@ -608,6 +628,8 @@ class ProductionServer {
             if (NODE_ENV === 'development') {
               console.log(`[CORS] Allowing origin: ${origin}`);
             }
+            callback(null, true);
+          } else if (isSameOriginAsApiHost(origin, req)) {
             callback(null, true);
           } else {
             console.error(`[CORS] Blocked origin: ${origin}. Allowed origins:`, ALLOWED_ORIGINS);
