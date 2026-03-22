@@ -19,6 +19,7 @@ import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import crypto from 'crypto';
+import path from 'path';
 import { determineFileType, getFileTypeFromMime, determineContentClass } from './server/utils/fileTypeUtils';
 import { safeClientErrorMessage } from './server/utils/safeError';
 import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modules/adminDeveloperRoutes';
@@ -531,6 +532,9 @@ class ProductionServer {
   }
 
   private setupMiddleware(): void {
+    // OAuth consent page loads USB/NFC unlock helper from same origin
+    this.app.use('/oauth-assets', express.static(path.join(__dirname, 'static', 'oauth')));
+
     // Security middleware
     this.app.use(helmet({
       contentSecurityPolicy: {
@@ -10937,18 +10941,25 @@ class ProductionServer {
       }
 
       const scopes = scope ? (scope as string).split(' ') : ['openid', 'profile'];
-      const scopesHtml = scopes.map(s =>
-        `<div class="permission-item">• ${s === 'openid' ? 'Verify your identity' : s === 'profile' ? 'Access your profile information' : s}</div>`
-      ).join('');
+      const scopesHtml = scopes
+        .map((s) => {
+          const label =
+            s === 'openid' ? 'Verify your identity' : s === 'profile' ? 'Access your profile information' : s;
+          return `<div class="permission-desc" style="margin:6px 0">• ${label}</div>`;
+        })
+        .join('');
 
-      const path = await import('path');
       const fs = await import('fs');
       const templatePath = path.join(__dirname, 'templates', 'oauth-consent.html');
       let html = fs.readFileSync(templatePath, 'utf8');
+      const assetBase =
+        (process.env.OAUTH_UI_ASSET_ORIGIN && process.env.OAUTH_UI_ASSET_ORIGIN.replace(/\/$/, '')) ||
+        'https://browse.parnoir.com';
       html = html
         .replace(/\{\{CLIENT_NAME\}\}/g, (client.name || client_id as string).replace(/</g, '&lt;'))
         .replace(/\{\{CLIENT_DESCRIPTION\}\}/g, (client.description || 'This application wants to access your pN identity').replace(/</g, '&lt;'))
-        .replace(/\{\{SCOPES_HTML\}\}/, scopesHtml);
+        .replace(/\{\{SCOPES_HTML\}\}/g, scopesHtml)
+        .replace(/\{\{ASSET_BASE\}\}/g, assetBase);
 
       // OAuth consent page needs inline styles and scripts; override strict CSP for this response
       res.set(

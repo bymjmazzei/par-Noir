@@ -3,36 +3,105 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Authorize - {{CLIENT_NAME}}</title>
+  <title>Unlock pN — {{CLIENT_NAME}}</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #000;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #000 url('{{ASSET_BASE}}/branding/Par-Noir-Background-Dark.png') center/cover no-repeat fixed;
       color: #fff;
       min-height: 100vh;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       padding: 20px;
+      position: relative;
     }
+    
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 0;
+    }
+    
     .container {
       width: 100%;
       max-width: 420px;
+      position: relative;
+      z-index: 1;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    
+    .logo-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 16px;
+      width: 120px;
+      height: 120px;
+      margin-left: auto;
+      margin-right: auto;
+      overflow: hidden;
+    }
+    
+    .logo-container img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      clip-path: inset(15% 0 15% 0);
+    }
+    
+    /* Text logo and subtitle removed - using PNG logo only */
+    
+    .form-container {
       background: rgba(26, 26, 26, 0.95);
       border: 1px solid #333;
       border-radius: 12px;
       padding: 32px;
+      backdrop-filter: blur(10px);
     }
-    h1 { font-size: 24px; margin-bottom: 8px; }
-    .app-name { color: #60a5fa; font-weight: 600; }
-    .subtitle { color: #9ca3af; font-size: 14px; margin-bottom: 24px; }
-    .permissions { background: rgba(0, 0, 0, 0.3); border-radius: 8px; padding: 16px; margin: 24px 0; }
-    .permission-item { padding: 8px 0; color: #e5e7eb; font-size: 14px; }
-    .unlock-section { margin: 24px 0; padding-top: 24px; border-top: 1px solid #333; }
-    .unlock-section.hidden { display: none; }
-    .form-group { margin-bottom: 20px; }
-    label { display: block; color: #e5e7eb; font-size: 14px; font-weight: 500; margin-bottom: 8px; }
+    
+    .step-indicator {
+      text-align: center;
+      color: #fff;
+      font-size: 12px;
+      margin-bottom: 24px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    
+    .step-indicator.active {
+      color: #fff;
+    }
+    
+    .form-group {
+      margin-bottom: 24px;
+      position: relative;
+    }
+    
+    label {
+      display: block;
+      color: #e5e7eb;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+    
     .file-upload-area {
       border: 2px dashed #4b5563;
       border-radius: 8px;
@@ -40,24 +109,71 @@
       text-align: center;
       cursor: pointer;
       transition: all 0.2s;
-      background: rgba(0, 0, 0, 0.2);
+      background: rgba(26, 26, 26, 0.95);
     }
-    .file-upload-area:hover { border-color: #6b7280; }
-    .file-upload-area.has-file { border-color: #3b82f6; }
-    .file-name { color: #e5e7eb; font-weight: 500; }
-    .file-hint { color: #6b7280; font-size: 12px; margin-top: 4px; }
-    input[type="file"] { display: none; }
-    .input-wrapper { position: relative; }
-    input[type="password"], input[type="text"] {
+    
+    .file-upload-area:hover {
+      border-color: #6b7280;
+      background: rgba(31, 31, 31, 0.95);
+    }
+    
+    .file-upload-area.has-file {
+      border-color: #3b82f6;
+      background: rgba(26, 26, 26, 0.95);
+    }
+    
+    .upload-icon {
+      font-size: 32px;
+      margin-bottom: 8px;
+      color: #6b7280;
+    }
+    
+    .file-upload-area.has-file .upload-icon {
+      color: #3b82f6;
+    }
+    
+    .file-name {
+      color: #e5e7eb;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    
+    .file-hint {
+      color: #6b7280;
+      font-size: 12px;
+    }
+    
+    input[type="file"] {
+      display: none;
+    }
+    
+    .input-wrapper {
+      position: relative;
+    }
+    
+    input[type="text"],
+    input[type="password"] {
       width: 100%;
-      padding: 12px 44px 12px 16px;
-      background: rgba(0, 0, 0, 0.3);
+      padding: 12px 40px 12px 16px;
+      background: rgba(26, 26, 26, 0.95);
       border: 1px solid #333;
       border-radius: 8px;
       color: #fff;
       font-size: 14px;
+      transition: all 0.2s;
     }
-    input:focus { outline: none; border-color: #3b82f6; }
+    
+    input[type="text"]:focus,
+    input[type="password"]:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    
+    input::placeholder {
+      color: #6b7280;
+    }
+    
     .eye-toggle {
       position: absolute;
       right: 12px;
@@ -68,24 +184,37 @@
       color: #6b7280;
       cursor: pointer;
       padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.2s;
     }
-    .eye-toggle:hover { color: #9ca3af; }
-    .eye-toggle svg { width: 20px; height: 20px; }
-    .age-row { margin: 20px 0; }
-    .age-row label { margin-bottom: 8px; }
-    select {
-      width: 100%;
-      padding: 12px 16px;
-      background: rgba(0, 0, 0, 0.3);
-      border: 1px solid #333;
+    
+    .eye-toggle:hover {
+      color: #9ca3af;
+    }
+    
+    .eye-toggle svg {
+      width: 20px;
+      height: 20px;
+    }
+    
+    .error {
+      background: #7f1d1d;
+      border: 1px solid #991b1b;
+      color: #fca5a5;
+      padding: 12px;
       border-radius: 8px;
-      color: #fff;
       font-size: 14px;
-      cursor: pointer;
+      margin-bottom: 16px;
     }
-    select:focus { outline: none; border-color: #3b82f6; }
-    .optional-badge { color: #60a5fa; font-size: 12px; font-weight: 500; margin-left: 4px; }
-    .buttons { display: flex; gap: 12px; margin-top: 24px; }
+    
+    .button-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 32px;
+    }
+    
     button {
       flex: 1;
       padding: 12px 24px;
@@ -96,249 +225,845 @@
       cursor: pointer;
       transition: all 0.2s;
     }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-deny {
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .btn-cancel {
       background: rgba(26, 26, 26, 0.95);
       border: 1px solid #4b5563;
       color: #fff;
     }
-    .btn-deny:hover:not(:disabled) { background: rgba(31, 31, 31, 0.95); }
-    .btn-approve {
-      background: #3b82f6;
+    
+    .btn-cancel:hover:not(:disabled) {
+      background: rgba(31, 31, 31, 0.95);
+      border-color: #6b7280;
+    }
+    
+    .btn-primary {
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #4b5563;
       color: #fff;
     }
-    .btn-approve:hover:not(:disabled) { background: #2563eb; }
-    .error {
-      background: #7f1d1d;
-      color: #fca5a5;
-      padding: 12px;
-      border-radius: 8px;
-      margin-bottom: 16px;
-      font-size: 14px;
+    
+    .btn-primary:hover:not(:disabled) {
+      background: rgba(31, 31, 31, 0.95);
+      border-color: #6b7280;
     }
-    .error.hidden { display: none; }
+    
+    .btn-full {
+      width: 100%;
+    }
+    
+    .mode-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .mode-btn {
+      flex: 1;
+      padding: 10px 8px;
+      font-size: 13px;
+      background: rgba(40, 40, 40, 0.95);
+      border: 1px solid #444;
+      color: #9ca3af;
+    }
+    .mode-btn.active {
+      border-color: #3b82f6;
+      color: #fff;
+      background: rgba(30, 58, 138, 0.35);
+    }
+    .physical-hint {
+      color: #6b7280;
+      font-size: 12px;
+      margin-bottom: 12px;
+      line-height: 1.4;
+    }
+    #nfcScanBtn {
+      width: 100%;
+      margin-bottom: 8px;
+    }
+    #nfcStatus {
+      font-size: 13px;
+      color: #9ca3af;
+      margin-bottom: 8px;
+      min-height: 1.2em;
+    }
+    
     .loading {
       display: inline-block;
       width: 16px;
       height: 16px;
-      border: 2px solid rgba(255,255,255,0.3);
+      border: 2px solid rgba(255, 255, 255, 0.3);
       border-top-color: #fff;
       border-radius: 50%;
       animation: spin 0.6s linear infinite;
       margin-right: 8px;
       vertical-align: middle;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .permissions-list {
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+    
+    .permission-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #1f2937;
+    }
+    
+    .permission-item:last-child {
+      border-bottom: none;
+    }
+    
+    /* Permission icon removed - no placeholder needed */
+    
+    .permission-text {
+      flex: 1;
+    }
+    
+    .permission-title {
+      color: #e5e7eb;
+      font-weight: 500;
+      font-size: 14px;
+      margin-bottom: 2px;
+    }
+    
+    .permission-desc {
+      color: #6b7280;
+      font-size: 12px;
+    }
+    
+    .permission-select {
+      padding: 8px 12px;
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      min-width: 120px;
+    }
+    
+    .permission-select:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    
+    .permission-select:invalid {
+      border-color: #ef4444;
+    }
+    
+    .required-badge {
+      color: #ef4444;
+      font-size: 12px;
+      font-weight: 500;
+      margin-left: 4px;
+    }
+    
+    .optional-badge {
+      color: #3b82f6;
+      font-size: 12px;
+      font-weight: 500;
+      margin-left: 4px;
+    }
+    
+    .app-info {
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+    }
+    
+    .app-icon {
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 12px;
+    }
+    
+    .app-icon img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    
+    .app-details {
+      flex: 1;
+    }
+    
+    .app-name {
+      color: #e5e7eb;
+      font-weight: 500;
+      font-size: 16px;
+      margin-bottom: 2px;
+    }
+    
+    .app-url {
+      color: #6b7280;
+      font-size: 12px;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Authorize <span class="app-name">{{CLIENT_NAME}}</span></h1>
-    <p class="subtitle">{{CLIENT_DESCRIPTION}}</p>
-
-    <div id="error" class="error hidden"></div>
-
-    <div class="permissions">
-      <strong style="display: block; margin-bottom: 12px;">Requested Permissions:</strong>
-      {{SCOPES_HTML}}
-    </div>
-
-    <div id="unlockSection" class="unlock-section">
-      <div class="form-group">
-        <label>pN Identity File</label>
-        <div class="file-upload-area" id="fileUploadArea">
-          <div class="file-name" id="fileName">Tap to upload pN file</div>
-          <div class="file-hint">.did or .json files</div>
-          <input type="file" id="identityFile" accept=".did,.json,.pn,.id,.identity,application/json" />
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Passcode</label>
-        <div class="input-wrapper">
-          <input type="password" id="passcode" placeholder="Enter your passcode" autocomplete="off" />
-          <button type="button" class="eye-toggle" id="togglePasscode" aria-label="Toggle passcode visibility">
-            <svg id="eyeIcon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-          </button>
-        </div>
-      </div>
-      <div id="ageAttestationRow" class="age-row" style="display: none;">
-        <label>Age Attestation <span class="optional-badge">(Optional)</span></label>
-        <select id="ageAttestationSelect">
-          <option value="">Select an option</option>
-          <option value="shared">Share age verification for 18+ content</option>
-          <option value="no">Do not share</option>
-        </select>
+    <div class="header">
+      <div class="logo-container">
+        <img src="{{ASSET_BASE}}/branding/Par-Noir-Logo-White.png" alt="par Noir" />
       </div>
     </div>
+    
+    <div class="form-container" id="unlockStep">
+      <div class="step-indicator active">Step 1: Unlock Your pN</div>
+      
+      <form id="unlockForm">
+        <div class="mode-row" role="tablist" aria-label="Unlock method">
+          <button type="button" class="mode-btn active" id="modeFile" data-mode="file">File</button>
+          <button type="button" class="mode-btn" id="modeUsb" data-mode="usb">USB</button>
+          <button type="button" class="mode-btn" id="modeNfc" data-mode="nfc">NFC</button>
+        </div>
+        
+        <div id="fileModeSection">
+        <div class="form-group">
+          <label>pN Identity File</label>
+          <div class="file-upload-area" id="fileUploadArea">
+            <div class="upload-icon">↑</div>
+            <div class="file-name" id="fileName">Tap to upload pN file</div>
+            <div class="file-hint">(.did or .json files)</div>
+            <input type="file" id="identityFile" accept=".did,.json,.pn,.id,.identity,application/json" />
+          </div>
+        </div>
+        </div>
+        
+        <div id="usbModeSection" style="display: none;">
+          <p class="physical-hint">Use the same USB backup as in the dashboard: key file (and payload if you use two files), plus the drive passcode you set when exporting.</p>
+          <div class="form-group">
+            <label>Key file (parnoir-key.enc)</label>
+            <div class="file-upload-area" id="usbKeyUploadArea">
+              <div class="upload-icon">↑</div>
+              <div class="file-name" id="usbKeyFileName">Select key file</div>
+              <input type="file" id="usbKeyFile" accept=".enc,application/octet-stream,text/plain,.json" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Drive passcode</label>
+            <input type="password" id="usbDrivePasscode" placeholder="Passcode for USB key file" autocomplete="off" />
+          </div>
+          <div class="form-group">
+            <label>Payload file (if separate)</label>
+            <div class="file-upload-area" id="usbPayloadUploadArea">
+              <div class="upload-icon">↑</div>
+              <div class="file-name" id="usbPayloadFileName">Optional — parnoir-payload.enc</div>
+              <input type="file" id="usbPayloadFile" accept=".enc,application/json,text/plain" />
+            </div>
+          </div>
+        </div>
+        
+        <div id="nfcModeSection" style="display: none;">
+          <p class="physical-hint">Hold your NFC card or fob to the back of your phone (Chrome on Android). Then enter pN name and passcode below.</p>
+          <button type="button" class="btn-primary btn-full" id="nfcScanBtn">Tap NFC card</button>
+          <div id="nfcStatus"></div>
+        </div>
+        
+        <div class="form-group">
+          <label>pN Name (Secret)</label>
+          <div class="input-wrapper">
+            <input type="password" id="pnName" placeholder="Enter your secret pN name" required autocomplete="off" />
+            <button type="button" class="eye-toggle" id="togglePnName" aria-label="Toggle pN name visibility">
+              <svg id="eyeIconPnName" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Passcode</label>
+          <div class="input-wrapper">
+            <input type="password" id="passcode" placeholder="Enter your passcode" required />
+            <button type="button" class="eye-toggle" id="togglePasscode" aria-label="Toggle passcode visibility">
+              <svg id="eyeIconPasscode" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        <div id="errorMessage" class="error" style="display: none;"></div>
+        
+        <button type="submit" class="btn-primary btn-full" id="unlockBtn">
+          Unlock pN
+        </button>
+      </form>
+    </div>
+    
+    <div class="form-container" id="consentStep" style="display: none;">
+      <div class="step-indicator active">Step 2: Authorize Application</div>
+      
+      <div class="app-info">
+        <div class="app-icon">
+          <img src="{{ASSET_BASE}}/branding/Par-Noir-Logo-White.png" alt="par Noir" />
+        </div>
+        <div class="app-details">
+          <div class="app-name" id="appName">{{CLIENT_NAME}}</div>
+          <div class="app-url" id="appUrl">browse.parnoir.com</div>
+          <div class="app-url" id="appDesc" style="margin-top: 6px; white-space: pre-wrap;">{{CLIENT_DESCRIPTION}}</div>
+        </div>
+      </div>
+      
+      <div class="permissions-list">
+        <!-- pN Identifier - Required -->
+        <div class="permission-item">
+          <div class="permission-text">
+            <div class="permission-title">
+              pN Identifier <span class="required-badge">(Required)</span>
+            </div>
+            <div class="permission-desc" id="pnIdentifierDisplay">Loading...</div>
+          </div>
+        </div>
 
-    <div class="buttons">
-      <button class="btn-deny" id="denyBtn">Deny</button>
-      <button class="btn-approve" id="approveBtn">Approve</button>
+        <div id="genericScopesBlock" class="permission-item" style="display: none;">
+          <div class="permission-text">
+            <div class="permission-title">Requested permissions</div>
+            <div class="permission-desc">{{SCOPES_HTML}}</div>
+          </div>
+        </div>
+        
+        <!-- Age Attestation - Optional with dropdown (browser-app only) -->
+        <div class="permission-item browser-only-consent">
+          <div class="permission-text">
+            <div class="permission-title">
+              Age Attestation <span class="optional-badge">(Optional)</span>
+            </div>
+            <div class="permission-desc">Share your age verification to access 18+ and NSFW content</div>
+          </div>
+          <div style="margin-left: 12px;">
+            <select id="ageAttestationSelect" class="permission-select">
+              <option value="">Select...</option>
+              <option value="shared">Share</option>
+              <option value="not-shared">Don't Share</option>
+            </select>
+          </div>
+        </div>
+        
+        <!-- Secure Cloud Access - Required (browser-app only) -->
+        <div class="permission-item browser-only-consent">
+          <div class="permission-text">
+            <div class="permission-title">
+              Secure Cloud Access <span class="required-badge">(Required)</span>
+            </div>
+            <div class="permission-desc">Access your media, companion metadata, and engagements stored in your secure cloud</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="button-group">
+        <button type="button" class="btn-cancel" id="denyBtn">Deny</button>
+        <button type="button" class="btn-primary" id="approveBtn">Approve</button>
+      </div>
     </div>
   </div>
 
+  <script src="/oauth-assets/oauth-physical-unlock.js"></script>
   <script>
+    // Get OAuth parameters from URL
     const urlParams = new URLSearchParams(window.location.search);
-    const clientId = urlParams.get('client_id');
-    const redirectUri = urlParams.get('redirect_uri');
-    const scope = urlParams.get('scope') || 'openid profile';
+    const clientId = urlParams.get('client_id') || 'browser-app';
+    // Use redirect_uri from URL params (set by frontend), fallback to oauth-callback.html
+    const redirectUri = urlParams.get('redirect_uri') || `${window.location.origin}/oauth-callback.html`;
     const state = urlParams.get('state') || '';
+    const scope = urlParams.get('scope') || 'openid profile';
     const nonce = urlParams.get('nonce') || '';
-    const isBrowserApp = clientId === 'browser-app';
+    
+    // Log for debugging
+    console.log('OAuth params:', { clientId, redirectUri, state, scope });
+    
+    // Check if we're in a popup - use URL parameter since window.opener can be lost on redirect
     const isInPopup = urlParams.get('popup') === 'true' || !!(window.opener && !window.opener.closed);
+    console.log('isInPopup (from URL param):', urlParams.get('popup') === 'true');
+    console.log('isInPopup (from window.opener):', !!(window.opener && !window.opener.closed));
+    console.log('isInPopup (final):', isInPopup);
+    
+    // This page is served by the API; POST authenticate to same origin
+    const apiEndpoint = window.location.origin;
+    console.log('OAuth API Endpoint:', apiEndpoint);
 
-    let authorizationCode = null;
-    let identityData = null;
-
-    const fileArea = document.getElementById('fileUploadArea');
-    const fileInput = document.getElementById('identityFile');
-    const fileName = document.getElementById('fileName');
-    const passcodeInput = document.getElementById('passcode');
-    const toggleBtn = document.getElementById('togglePasscode');
-    const eyeIcon = document.getElementById('eyeIcon');
-    const errorEl = document.getElementById('error');
-    const approveBtn = document.getElementById('approveBtn');
-    const denyBtn = document.getElementById('denyBtn');
-
-    fileArea.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', (e) => {
-      const f = e.target.files[0];
-      if (f) {
-        fileName.textContent = f.name;
-        fileArea.classList.add('has-file');
-        f.text().then(t => {
-          try {
-            identityData = JSON.parse(t);
-          } catch {
-            identityData = null;
-            fileName.textContent = 'Invalid JSON - tap to re-select';
-            fileArea.classList.remove('has-file');
-          }
-        });
-      }
-    });
-
-    toggleBtn.addEventListener('click', () => {
-      const isPass = passcodeInput.type === 'password';
-      passcodeInput.type = isPass ? 'text' : 'password';
-      eyeIcon.innerHTML = isPass
-        ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />'
-        : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />';
-    });
-
-    function showError(msg) {
-      errorEl.textContent = msg || 'Authentication failed';
-      errorEl.classList.remove('hidden');
-    }
-
-    function hideError() {
-      errorEl.textContent = '';
-      errorEl.classList.add('hidden');
-    }
-
-    async function authenticate() {
-      if (!identityData) {
-        showError('Please select your pN identity file');
-        return null;
-      }
-      const pass = passcodeInput.value.trim();
-      if (!pass) {
-        showError('Please enter your passcode');
-        return null;
-      }
-      hideError();
+    const appUrlEl = document.getElementById('appUrl');
+    if (appUrlEl) {
       try {
-        const apiBase = window.location.origin;
-        const did = identityData.id || identityData.did || identityData.sub;
-        if (!did) {
-          showError('Identity file must contain id, did, or sub');
-          return null;
-        }
-        const res = await fetch(apiBase + '/oauth/authorize/authenticate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            client_id: clientId,
-            redirect_uri: redirectUri,
-            scope: scope,
-            state: state,
-            nonce: nonce,
-            encrypted_identity: identityData,
-            passcode: pass,
-            public_key: identityData.publicKey || identityData.key?.public || identityData.keys?.publicKey || '',
-            did: did
-          })
-        });
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error_description || 'Authentication failed');
-        }
-        const data = await res.json();
-        return data.code;
+        appUrlEl.textContent = new URL(redirectUri).hostname || redirectUri;
+      } catch (_) {
+        appUrlEl.textContent = window.location.hostname || window.location.host;
+      }
+    }
+
+    const isBrowserApp = clientId === 'browser-app';
+    if (!isBrowserApp) {
+      document.querySelectorAll('.browser-only-consent').forEach(function (el) {
+        el.style.display = 'none';
+      });
+      var gsb = document.getElementById('genericScopesBlock');
+      if (gsb) gsb.style.display = 'flex';
+    }
+
+    /** Redirect to app callback URL (never api host) with code and optional age_shared */
+    function redirectWithAuthCodeFixed(code, ageShared) {
+      var u;
+      try {
+        u = new URL(redirectUri);
       } catch (e) {
-        showError(e.message || 'Authentication failed');
-        return null;
+        window.location.href = redirectUri + '?code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state || '');
+        return;
       }
+      u.searchParams.set('code', code);
+      if (state) u.searchParams.set('state', state);
+      if (ageShared !== undefined && ageShared !== null) u.searchParams.set('age_shared', ageShared ? 'true' : 'false');
+      window.location.href = u.toString();
     }
-
-    function getAgeShared() {
-      if (!isBrowserApp) return undefined;
-      const sel = document.getElementById('ageAttestationSelect');
-      return sel ? sel.value === 'shared' : undefined;
-    }
-
-    function redirectWithCode(code) {
-      const ageShared = getAgeShared();
-      const ageParam = isBrowserApp && ageShared !== undefined ? '&age_shared=' + (ageShared ? 'true' : 'false') : '';
-      const sep = redirectUri.includes('?') ? '&' : '?';
-      window.location.href = redirectUri + sep + 'code=' + encodeURIComponent(code) + (state ? '&state=' + encodeURIComponent(state) : '') + ageParam;
-    }
-
-    function deny() {
-      if (isInPopup && window.opener && !window.opener.closed) {
-        try {
-          const targetOrigin = new URL(redirectUri).origin;
-          window.opener.postMessage({ type: 'oauth_callback', error: 'access_denied', state: state }, targetOrigin);
-        } catch (_) {}
-        window.close();
+    
+    let identityData = null;
+    let authorizationCode = null;
+    let pnIdentifier = null;
+    let decryptedIdentity = null;
+    
+    // Show/hide toggle for pN name
+    let showPnName = false;
+    const togglePnNameBtn = document.getElementById('togglePnName');
+    const pnNameInput = document.getElementById('pnName');
+    const eyeIconPnName = document.getElementById('eyeIconPnName');
+    
+    togglePnNameBtn.addEventListener('click', () => {
+      showPnName = !showPnName;
+      pnNameInput.type = showPnName ? 'text' : 'password';
+      // Update icon (eye open/closed)
+      if (showPnName) {
+        eyeIconPnName.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0L3 6.29m3.29 0L6.29 3m13.42 13.42L21 21M6.29 3L3 6.29m13.42 13.42L21 21" />';
       } else {
-        const sep = redirectUri.includes('?') ? '&' : '?';
-        window.location.href = redirectUri + sep + 'error=access_denied' + (state ? '&state=' + encodeURIComponent(state) : '');
+        eyeIconPnName.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />';
+      }
+    });
+    
+    // Show/hide toggle for passcode
+    let showPasscode = false;
+    const togglePasscodeBtn = document.getElementById('togglePasscode');
+    const passcodeInput = document.getElementById('passcode');
+    const eyeIconPasscode = document.getElementById('eyeIconPasscode');
+    
+    togglePasscodeBtn.addEventListener('click', () => {
+      showPasscode = !showPasscode;
+      passcodeInput.type = showPasscode ? 'text' : 'password';
+      // Update icon (eye open/closed)
+      if (showPasscode) {
+        eyeIconPasscode.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0L3 6.29m3.29 0L6.29 3m13.42 13.42L21 21M6.29 3L3 6.29m13.42 13.42L21 21" />';
+      } else {
+        eyeIconPasscode.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />';
+      }
+    });
+    
+    // File upload handler
+    const fileUploadArea = document.getElementById('fileUploadArea');
+    const identityFileInput = document.getElementById('identityFile');
+    const fileName = document.getElementById('fileName');
+    
+    fileUploadArea.addEventListener('click', () => {
+      identityFileInput.click();
+    });
+    
+    identityFileInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        fileName.textContent = file.name;
+        fileUploadArea.classList.add('has-file');
+      }
+    });
+    
+    let unlockMode = 'file';
+    var nfcPayload = null;
+    function setUnlockMode(mode) {
+      unlockMode = mode;
+      ['modeFile', 'modeUsb', 'modeNfc'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.classList.toggle('active', el.getAttribute('data-mode') === mode);
+      });
+      document.getElementById('fileModeSection').style.display = mode === 'file' ? 'block' : 'none';
+      document.getElementById('usbModeSection').style.display = mode === 'usb' ? 'block' : 'none';
+      document.getElementById('nfcModeSection').style.display = mode === 'nfc' ? 'block' : 'none';
+      if (mode !== 'nfc') {
+        nfcPayload = null;
+        var ns = document.getElementById('nfcStatus');
+        if (ns) ns.textContent = '';
       }
     }
+    document.getElementById('modeFile').addEventListener('click', function () { setUnlockMode('file'); });
+    document.getElementById('modeUsb').addEventListener('click', function () { setUnlockMode('usb'); });
+    document.getElementById('modeNfc').addEventListener('click', function () { setUnlockMode('nfc'); });
+    
+    var usbKeyInput = document.getElementById('usbKeyFile');
+    var usbPayloadInput = document.getElementById('usbPayloadFile');
+    var usbKeyUploadArea = document.getElementById('usbKeyUploadArea');
+    var usbPayloadUploadArea = document.getElementById('usbPayloadUploadArea');
+    var usbKeyFileName = document.getElementById('usbKeyFileName');
+    var usbPayloadFileName = document.getElementById('usbPayloadFileName');
+    usbKeyUploadArea.addEventListener('click', function () { usbKeyInput.click(); });
+    usbPayloadUploadArea.addEventListener('click', function () { usbPayloadInput.click(); });
+    usbKeyInput.addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      usbKeyFileName.textContent = f ? f.name : 'Select key file';
+      if (f) usbKeyUploadArea.classList.add('has-file');
+    });
+    usbPayloadInput.addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      usbPayloadFileName.textContent = f ? f.name : 'Optional — parnoir-payload.enc';
+      if (f) usbPayloadUploadArea.classList.add('has-file');
+    });
+    
+    var nfcScanBtn = document.getElementById('nfcScanBtn');
+    var nfcStatusEl = document.getElementById('nfcStatus');
+    nfcScanBtn.addEventListener('click', async function () {
+      if (!window.ParNoirOAuthPhysical || !ParNoirOAuthPhysical.hasNfc()) {
+        nfcStatusEl.textContent = 'NFC requires Chrome on Android (Web NFC).';
+        return;
+      }
+      nfcStatusEl.textContent = 'Hold your card near the phone…';
+      nfcScanBtn.disabled = true;
+      try {
+        nfcPayload = await ParNoirOAuthPhysical.readNfcIdentity();
+        nfcStatusEl.textContent = 'Card read. Enter pN name and passcode, then Unlock.';
+      } catch (err) {
+        nfcStatusEl.textContent = err.message || 'NFC read failed';
+        nfcPayload = null;
+      } finally {
+        nfcScanBtn.disabled = false;
+      }
+    });
+    
+    async function completeOAuthUnlock(encryptedIdentity, publicKey, did, decryptedIdentity, pnName, passcode) {
+      identityData = null;
+      const authResponse = await fetch(`${apiEndpoint}/oauth/authorize/authenticate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          scope: scope,
+          state: state,
+          nonce: nonce,
+          encrypted_identity: encryptedIdentity,
+          passcode: passcode,
+          public_key: publicKey,
+          did: did,
+          pn_name: pnName
+        })
+      });
+      
+      if (!authResponse.ok) {
+        const error = await authResponse.json().catch(() => ({ error: 'Authentication failed' }));
+        throw new Error(error.error_description || error.error || 'Authentication failed');
+      }
+      
+      const authResult = await authResponse.json();
+      authorizationCode = authResult.code;
+      
+      const combined = `${pnName}:${passcode}:${publicKey}`;
+      const encoder = new TextEncoder();
+      const data = encoder.encode(combined);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      const shortHash = hexHash.substring(0, 12);
+      pnIdentifier = `pn-${shortHash}`;
+      
+      const existingPermissions = authResult.existingPermissions;
+      console.log('[OAuth] Auth result:', {
+        hasCode: !!authorizationCode,
+        hasExistingPermissions: !!existingPermissions,
+        existingPermissions: existingPermissions,
+        clientId: clientId
+      });
+      
+      if (existingPermissions && clientId === 'browser-app') {
+        redirectWithAuthCodeFixed(authorizationCode, !!existingPermissions.ageShared);
+        return;
+      }
 
-    approveBtn.addEventListener('click', async () => {
-      if (isBrowserApp) {
-        const ageSel = document.getElementById('ageAttestationSelect');
-        if (ageSel && !ageSel.value) {
-          showError('Please select whether to share your age attestation');
+      if (!isBrowserApp) {
+        redirectWithAuthCodeFixed(authorizationCode, false);
+        return;
+      }
+      
+      document.getElementById('pnIdentifierDisplay').textContent = pnIdentifier;
+      document.getElementById('unlockStep').style.display = 'none';
+      document.getElementById('consentStep').style.display = 'block';
+    }
+    
+    // Unlock form handler
+    document.getElementById('unlockForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const pnName = pnNameInput.value;
+      const passcode = passcodeInput.value;
+      const errorDiv = document.getElementById('errorMessage');
+      const unlockBtn = document.getElementById('unlockBtn');
+      
+      if (!pnName || !passcode) {
+        errorDiv.textContent = 'Please enter pN name and passcode';
+        errorDiv.style.display = 'block';
+        return;
+      }
+      
+      if (unlockMode === 'file') {
+        const file = identityFileInput.files?.[0];
+        if (!file) {
+          errorDiv.textContent = 'Please select your pN identity file';
+          errorDiv.style.display = 'block';
+          return;
+        }
+      } else if (unlockMode === 'usb') {
+        const kf = usbKeyInput.files?.[0];
+        const drivePass = document.getElementById('usbDrivePasscode').value;
+        if (!kf || !drivePass) {
+          errorDiv.textContent = 'Select the key file and enter the drive passcode';
+          errorDiv.style.display = 'block';
+          return;
+        }
+      } else if (unlockMode === 'nfc') {
+        if (!nfcPayload) {
+          errorDiv.textContent = 'Tap NFC card first, then enter pN name and passcode';
+          errorDiv.style.display = 'block';
           return;
         }
       }
-      if (!authorizationCode) {
-        approveBtn.disabled = true;
-        approveBtn.innerHTML = '<span class="loading"></span> Approving...';
-        const code = await authenticate();
-        approveBtn.disabled = false;
-        approveBtn.innerHTML = 'Approve';
-        if (code) {
-          authorizationCode = code;
-          redirectWithCode(code);
+      
+      unlockBtn.disabled = true;
+      unlockBtn.innerHTML = '<span class="loading"></span> Unlocking...';
+      errorDiv.style.display = 'none';
+      
+      try {
+        let encryptedIdentity;
+        let publicKey;
+        let did;
+        
+        if (unlockMode === 'nfc') {
+          if (!window.ParNoirOAuthPhysical) throw new Error('Physical unlock script failed to load');
+          const u = await ParNoirOAuthPhysical.unlockBoundIdentity(
+            nfcPayload.boundPnBlob,
+            nfcPayload.uid,
+            pnName,
+            passcode
+          );
+          encryptedIdentity = u.encryptedIdentity;
+          publicKey = u.publicKey;
+          did = u.did;
+          decryptedIdentity = u.decryptedIdentity;
+          await completeOAuthUnlock(encryptedIdentity, publicKey, did, decryptedIdentity, pnName, passcode);
+          return;
         }
-      } else {
-        redirectWithCode(authorizationCode);
+        
+        if (unlockMode === 'usb') {
+          if (!window.ParNoirOAuthPhysical) throw new Error('Physical unlock script failed to load');
+          const kf = usbKeyInput.files[0];
+          const drivePass = document.getElementById('usbDrivePasscode').value;
+          const keyText = await kf.text();
+          var payloadText = null;
+          var pf = usbPayloadInput.files?.[0];
+          if (pf) payloadText = await pf.text();
+          const u = await ParNoirOAuthPhysical.unlockFromUsbKeyAndPayload(keyText, drivePass, payloadText, pnName, passcode);
+          encryptedIdentity = u.encryptedIdentity;
+          publicKey = u.publicKey;
+          did = u.did;
+          decryptedIdentity = u.decryptedIdentity;
+          await completeOAuthUnlock(encryptedIdentity, publicKey, did, decryptedIdentity, pnName, passcode);
+          return;
+        }
+        
+        // File mode (default)
+        const file = identityFileInput.files[0];
+        const fileText = await file.text();
+        identityData = JSON.parse(fileText);
+        
+        // Extract identity information - handle backup files with identities array
+        // Check if it's a backup file with identities array
+        if (identityData.identities && Array.isArray(identityData.identities)) {
+          if (identityData.identities.length === 0) {
+            throw new Error('Invalid pN file: No identities found in backup file');
+          }
+          if (identityData.identities.length > 1) {
+            throw new Error('Invalid pN file: Multiple identities found. Please use a single identity file.');
+          }
+          // Extract the single identity from the backup
+          encryptedIdentity = identityData.identities[0];
+          publicKey = encryptedIdentity.publicKey;
+          // DID is encrypted inside, we'll extract it after decryption
+          did = null; // Will be extracted after decryption
+        } else if (identityData.publicKey && identityData.encryptedData) {
+          // Standard single identity file
+          encryptedIdentity = identityData;
+          publicKey = identityData.publicKey;
+          // DID might be in unencrypted part, but we'll decrypt to get the real one
+          did = identityData.id || identityData.did || null;
+        } else {
+          throw new Error('Invalid identity file: missing public key or encrypted data');
+        }
+        
+        if (!publicKey) {
+          throw new Error('Invalid identity file: missing public key');
+        }
+        
+        // ALWAYS decrypt identity to get DID - EXACT COPY FROM DASHBOARD
+        // This is the EXACT same code from apps/id-dashboard/src/utils/crypto.ts
+        if (encryptedIdentity.encryptedData && encryptedIdentity.iv && encryptedIdentity.salt) {
+          try {
+            // Helper function - EXACT COPY from dashboard
+            const base64ToArrayBuffer = (base64) => {
+              const binary = atob(base64);
+              const bytes = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+              }
+              return bytes.buffer;
+            };
+            
+            // EXACT COPY of dashboard's deriveKey method
+            const encoder = new TextEncoder();
+            const passcodeBuffer = encoder.encode(passcode);
+            const saltBuffer = base64ToArrayBuffer(encryptedIdentity.salt);
+            
+            const keyMaterial = await crypto.subtle.importKey(
+              'raw',
+              passcodeBuffer,
+              'PBKDF2',
+              false,
+              ['deriveBits', 'deriveKey']
+            );
+            
+            const derivedKey = await crypto.subtle.deriveKey(
+              {
+                name: 'PBKDF2',
+                salt: saltBuffer,
+                iterations: 1000000, // Military-grade: 1M iterations
+                hash: 'SHA-512', // Military-grade: SHA-512
+              },
+              keyMaterial,
+              { name: 'AES-GCM', length: 256 },
+              false,
+              ['encrypt', 'decrypt']
+            );
+            
+            // EXACT COPY of dashboard's decrypt method
+            const iv = base64ToArrayBuffer(encryptedIdentity.iv);
+            const data = base64ToArrayBuffer(encryptedIdentity.encryptedData);
+            
+            const decryptedBuffer = await crypto.subtle.decrypt(
+              { name: 'AES-GCM', iv },
+              derivedKey,
+              data
+            );
+            
+            const decoder = new TextDecoder();
+            const decryptedData = decoder.decode(decryptedBuffer);
+            const identity = JSON.parse(decryptedData);
+            
+            // Store decrypted identity for pN identifier generation
+            decryptedIdentity = identity;
+            
+            // Extract DID from decrypted identity (same as dashboard)
+            did = identity.id; // DID comes from decrypted data (EXACT as dashboard)
+            if (did) {
+              console.log('✅ Decrypted identity, extracted DID:', did.substring(0, 30) + '...');
+            } else {
+              console.error('❌ Decrypted identity but no DID found:', Object.keys(identity));
+              throw new Error('Identity file does not contain a DID');
+            }
+          } catch (decryptError) {
+            console.error('❌ Failed to decrypt identity:', decryptError);
+            throw new Error('Failed to decrypt identity file. Please check your passcode.');
+          }
+        } else {
+          // If no encrypted data, use the DID from unencrypted part (shouldn't happen normally)
+          if (!did) {
+            throw new Error('Identity file has no encrypted data and no DID found');
+          }
+        }
+        
+        if (!did) {
+          throw new Error('Failed to extract DID from identity file');
+        }
+        
+        await completeOAuthUnlock(encryptedIdentity, publicKey, did, decryptedIdentity, pnName, passcode);
+        
+      } catch (error) {
+        errorDiv.textContent = error.message || 'Failed to unlock. Please check your passcode and try again.';
+        errorDiv.style.display = 'block';
+        unlockBtn.disabled = false;
+        unlockBtn.textContent = 'Unlock pN';
       }
     });
-
-    denyBtn.addEventListener('click', deny);
-
-    if (isBrowserApp) {
-      const ageRow = document.getElementById('ageAttestationRow');
-      if (ageRow) ageRow.style.display = 'block';
-    }
+    
+    // Consent handlers (Step 2 — browser-app only; other clients redirect after unlock)
+    document.getElementById('approveBtn').addEventListener('click', () => {
+      const ageSelect = document.getElementById('ageAttestationSelect');
+      if (isBrowserApp) {
+        if (!ageSelect || !ageSelect.value) {
+          alert('Please select whether to share your age attestation');
+          if (ageSelect) ageSelect.focus();
+          return;
+        }
+      }
+      const shareAge = ageSelect && ageSelect.value === 'shared';
+      if (!authorizationCode) {
+        console.error('No authorization code!');
+        return;
+      }
+      redirectWithAuthCodeFixed(authorizationCode, shareAge);
+    });
+    
+    document.getElementById('denyBtn').addEventListener('click', () => {
+      var appOrigin = '';
+      try {
+        appOrigin = new URL(redirectUri).origin;
+      } catch (_) {}
+      if (window.opener && !window.opener.closed && appOrigin) {
+        try {
+          window.opener.postMessage({
+            type: 'oauth_callback',
+            error: 'access_denied',
+            error_description: 'User denied access'
+          }, appOrigin);
+          window.close();
+        } catch (e) {
+          console.error('Failed to send OAuth denial message:', e);
+          window.close();
+        }
+      } else {
+        try {
+          var du = new URL(redirectUri);
+          du.searchParams.set('error', 'access_denied');
+          window.location.href = du.toString();
+        } catch (_) {
+          window.location.href = redirectUri + (redirectUri.indexOf('?') >= 0 ? '&' : '?') + 'error=access_denied';
+        }
+      }
+    });
   </script>
 </body>
 </html>

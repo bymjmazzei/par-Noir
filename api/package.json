@@ -4,7 +4,7 @@
   "description": "Production API server for Identity Protocol",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc && rm -rf dist/migrations dist/templates && mkdir -p dist/migrations dist/templates && cp -R migrations/. dist/migrations/ && cp -R src/templates/. dist/templates/",
+    "build": "tsc && rm -rf dist/migrations dist/templates dist/static && mkdir -p dist/migrations dist/templates dist/static && cp -R migrations/. dist/migrations/ && cp -R src/templates/. dist/templates/ && cp -R src/static/. dist/static/",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
     "auth:dev": "ts-node decentralized-auth-server.ts",
