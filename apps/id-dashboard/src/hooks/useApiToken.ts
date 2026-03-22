@@ -69,11 +69,19 @@ export function useApiToken() {
       forPopup: true,
     });
 
+    let apiOrigin = '';
+    try {
+      apiOrigin = new URL((API_ENDPOINT || 'https://api.parnoir.com').replace(/\/$/, '')).origin;
+    } catch {
+      /* ignore */
+    }
+
     try {
       const result = await startPnOAuthPopup({
         url,
         expectedState: state,
         timeoutMs: 300_000,
+        allowedMessageOrigins: apiOrigin ? [apiOrigin] : undefined,
       });
 
       if (result.error) {

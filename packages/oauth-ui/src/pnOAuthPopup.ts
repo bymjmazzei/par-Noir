@@ -78,6 +78,12 @@ export interface StartPnOAuthPopupOptions {
   expectedState: string;
   /** Opener origin for postMessage validation (default window.location.origin) */
   origin?: string;
+  /**
+   * Additional origins to accept postMessage from. Required when using the API popup-bridge:
+   * the bridge runs on the API host and sends messages from that origin, not the app origin.
+   * Pass the API base URL origin, e.g. new URL(API_ENDPOINT).origin.
+   */
+  allowedMessageOrigins?: string[];
   timeoutMs?: number;
   popupName?: string;
   popupFeatures?: string;
@@ -122,11 +128,15 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     url,
     expectedState,
     origin = typeof window !== 'undefined' ? window.location.origin : '',
+    allowedMessageOrigins = [],
     timeoutMs = 300_000,
     popupName = 'pn-oauth',
     popupFeatures = DEFAULT_POPUP_FEATURES,
     completeViaParentNavigation = false,
   } = options;
+
+  const isAllowedOrigin = (eventOrigin: string) =>
+    eventOrigin === origin || allowedMessageOrigins.some((a) => a === eventOrigin);
 
   return new Promise((resolve, reject) => {
     const popup = window.open(url, popupName, popupFeatures);
@@ -207,7 +217,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     }
 
     const onMessage = (event: MessageEvent) => {
-      if (event.origin !== origin) return;
+      if (!isAllowedOrigin(event.origin)) return;
       const data = event.data;
       if (!data || typeof data !== 'object') return;
       acceptPayload(data as Record<string, unknown>);

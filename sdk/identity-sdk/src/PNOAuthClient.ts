@@ -82,12 +82,20 @@ export class PNOAuthClient {
       });
     }
 
+    let apiOrigin = '';
+    try {
+      apiOrigin = new URL(this.config.apiEndpoint.replace(/\/$/, '') || this.config.apiEndpoint).origin;
+    } catch {
+      /* ignore */
+    }
+
     let result;
     try {
       result = await startPnOAuthPopup({
         url,
         expectedState: state,
         timeoutMs: 300_000,
+        allowedMessageOrigins: apiOrigin ? [apiOrigin] : undefined,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

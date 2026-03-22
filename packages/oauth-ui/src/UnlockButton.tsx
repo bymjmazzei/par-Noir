@@ -72,6 +72,7 @@ export function UnlockButton({
   onPopupResult,
   onPopupFlowFailed,
   forceRedirect = false,
+  completeViaParentNavigation = false,
   children = 'Unlock pN',
   className = '',
   onClick,
@@ -101,12 +102,20 @@ export function UnlockButton({
       return;
     }
 
+    let apiOrigin = '';
+    try {
+      apiOrigin = new URL(config.apiEndpoint.replace(/\/$/, '') || config.apiEndpoint).origin;
+    } catch {
+      /* ignore */
+    }
+
     void (async () => {
       try {
         const result = await startPnOAuthPopup({
           url,
           expectedState: state,
           completeViaParentNavigation,
+          allowedMessageOrigins: apiOrigin ? [apiOrigin] : undefined,
         });
         await onPopupResult?.(result);
       } catch (e) {

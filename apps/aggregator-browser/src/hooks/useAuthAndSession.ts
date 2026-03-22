@@ -349,11 +349,20 @@ export function useAuthAndSession({
           return;
         }
 
+        let apiOrigin = '';
+        try {
+          const base = (API_ENDPOINT || 'https://api.parnoir.com').replace(/\/$/, '') || 'https://api.parnoir.com';
+          apiOrigin = new URL(base).origin;
+        } catch {
+          /* use empty, postMessage from API bridge will be rejected; URL resume may still work */
+        }
+
         const result = await startPnOAuthPopup({
           url: authUrl,
           expectedState,
           timeoutMs: 30_000,
           completeViaParentNavigation: true,
+          allowedMessageOrigins: apiOrigin ? [apiOrigin] : undefined,
         });
 
         await runOAuthCallback(
