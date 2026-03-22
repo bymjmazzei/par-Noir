@@ -222,6 +222,16 @@ body {
   gap: 0.45rem;
 }
 
+.dev-btn--header-unlock {
+  padding: 0.5rem 0.6rem;
+  min-width: 2.25rem;
+}
+
+.dev-btn-unlock svg,
+.dev-btn--inline-icon svg {
+  flex-shrink: 0;
+}
+
 .dev-btn-unlock--large {
   margin-top: 0.5rem;
   padding: 0.85rem 1.35rem;

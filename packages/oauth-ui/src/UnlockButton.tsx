@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { LockIcon } from './LockIcon';
 
 export interface UnlockButtonConfig {
@@ -52,6 +52,8 @@ export interface UnlockButtonProps {
   onClick?: () => void;
   /** If true, show lock icon (default true) */
   showIcon?: boolean;
+  /** Icon + label in compact headers (no visible label; uses aria-label) */
+  iconOnly?: boolean;
   title?: string;
 }
 
@@ -59,6 +61,14 @@ export interface UnlockButtonProps {
  * Button that navigates to the canonical OAuth consent page.
  * Uses buildOAuthAuthorizeUrl; stores state/nonce via onBeforeNavigate for callback verification.
  */
+const iconStyle: CSSProperties = {
+  width: '1.125rem',
+  height: '1.125rem',
+  flexShrink: 0,
+  display: 'block',
+  verticalAlign: 'middle',
+};
+
 export function UnlockButton({
   config,
   onBeforeNavigate,
@@ -66,6 +76,7 @@ export function UnlockButton({
   className = '',
   onClick,
   showIcon = true,
+  iconOnly = false,
   title = 'Unlock pN',
 }: UnlockButtonProps) {
   const handleClick = () => {
@@ -86,10 +97,25 @@ export function UnlockButton({
     window.location.href = url;
   };
 
+  const showLabel = !iconOnly && children != null && children !== false;
+
   return (
-    <button type="button" onClick={handleClick} className={className} title={title}>
-      {showIcon && <LockIcon className="inline-block w-5 h-5 align-middle mr-1.5" style={{ verticalAlign: 'middle' }} />}
-      {children}
+    <button
+      type="button"
+      onClick={handleClick}
+      className={className}
+      title={title}
+      aria-label={iconOnly ? title : undefined}
+    >
+      {showIcon && (
+        <LockIcon
+          style={{
+            ...iconStyle,
+            marginRight: showLabel ? '0.375rem' : 0,
+          }}
+        />
+      )}
+      {showLabel ? children : null}
     </button>
   );
 }

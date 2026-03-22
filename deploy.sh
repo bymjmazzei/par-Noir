@@ -13,28 +13,26 @@ if [ $? -ne 0 ]; then
 fi
 
 # Build aggregator-browser (browse target)
-# VITE_PN_CLIENT_ID is required for pN OAuth; default to browser-app when unset (e.g. no .env).
-export VITE_PN_CLIENT_ID="${VITE_PN_CLIENT_ID:-browser-app}"
+# Do not `export` VITE_PN_CLIENT_ID: a single export would leak browser-app into prism / developer-portal builds.
 echo "📦 Building aggregator-browser..."
 cd ../aggregator-browser
-npm run build
+VITE_PN_CLIENT_ID="${VITE_PN_CLIENT_ID:-browser-app}" npm run build
 if [ $? -ne 0 ]; then
     echo "❌ aggregator-browser build failed"
     exit 1
 fi
 
 echo "📦 Building aggregator-browser (messaging → dist-messaging)..."
-npm run build:messaging
+VITE_PN_CLIENT_ID="${VITE_PN_CLIENT_ID:-browser-app}" npm run build:messaging
 if [ $? -ne 0 ]; then
     echo "❌ aggregator-browser messaging build failed"
     exit 1
 fi
 
 # Build prism (prism target)
-export VITE_PN_CLIENT_ID="${VITE_PN_CLIENT_ID:-prism-app}"
 echo "📦 Building prism..."
 cd ../prism
-npm run build
+VITE_PN_CLIENT_ID="${VITE_PN_CLIENT_ID:-prism-app}" npm run build
 if [ $? -ne 0 ]; then
     echo "❌ prism build failed"
     exit 1
@@ -52,7 +50,7 @@ fi
 # Build developer-portal (developers.parnoir.com → Firebase site developers-parnoir)
 echo "📦 Building developer-portal..."
 cd ../developer-portal
-npm run build
+VITE_PN_CLIENT_ID="${VITE_PN_CLIENT_ID:-developer-portal}" npm run build
 if [ $? -ne 0 ]; then
     echo "❌ developer-portal build failed"
     exit 1

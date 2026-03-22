@@ -86,7 +86,7 @@ export class ClientRegistrationService {
           'http://127.0.0.1:3001/pn-oauth-callback.html',
           'http://127.0.0.1:3001/'
         ],
-        scopes: ['openid', 'profile']
+        scopes: ['openid', 'profile', 'zkp:age_attestation']
       },
       {
         clientId: 'prism-app',
@@ -114,7 +114,7 @@ export class ClientRegistrationService {
           'http://localhost:5176/oauth-callback.html',
           'http://127.0.0.1:5176/oauth-callback.html'
         ],
-        scopes: ['openid', 'profile']
+        scopes: ['openid', 'profile', 'zkp:age_attestation']
       }
     ];
 
@@ -124,6 +124,7 @@ export class ClientRegistrationService {
          VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, true, NOW())
          ON CONFLICT (client_id) DO UPDATE SET
            redirect_uris = EXCLUDED.redirect_uris,
+           scopes = EXCLUDED.scopes,
            updated_at = NOW()`,
         [d.clientId, d.name, d.description, JSON.stringify(d.redirectUris), JSON.stringify(d.scopes)]
       );

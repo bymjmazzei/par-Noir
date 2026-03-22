@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { UnlockIcon } from './UnlockIcon';
 
 export interface LockButtonProps {
@@ -44,9 +44,18 @@ export function LockButton({
     await onLock();
   };
 
+  const iconStyle: CSSProperties = {
+    width: '1.125rem',
+    height: '1.125rem',
+    flexShrink: 0,
+    display: 'block',
+    verticalAlign: 'middle',
+    marginRight: children != null && children !== false ? '0.375rem' : 0,
+  };
+
   return (
     <button type="button" onClick={handleClick} className={className} title={title}>
-      {showIcon && <UnlockIcon className="inline-block w-5 h-5 align-middle mr-1.5" style={{ verticalAlign: 'middle' }} />}
+      {showIcon && <UnlockIcon style={iconStyle} />}
       {children}
     </button>
   );

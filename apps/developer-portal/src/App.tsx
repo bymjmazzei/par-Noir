@@ -274,8 +274,8 @@ export function App() {
                   scope: ['openid', 'profile'],
                 }}
                 onBeforeNavigate={handleBeforeUnlock}
-                className="dev-btn dev-btn-unlock"
-                children="Unlock pN"
+                iconOnly
+                className="dev-btn dev-btn-unlock dev-btn--header-unlock"
               />
             )}
           </div>

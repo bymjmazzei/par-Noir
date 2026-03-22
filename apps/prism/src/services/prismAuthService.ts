@@ -5,8 +5,9 @@
 
 import { API_ENDPOINT } from '../config/api';
 import { secureStorageAdapter } from '../utils/secureStorageAdapter';
+import { PRISM_CLIENT_ID } from '../utils/oauth';
 
-const CLIENT_ID = import.meta.env.VITE_PN_CLIENT_ID || 'prism-app';
+const CLIENT_ID = PRISM_CLIENT_ID;
 const SESSION_KEY = 'prism_session';
 
 export interface PrismSession {

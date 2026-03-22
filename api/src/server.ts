@@ -536,14 +536,14 @@ class ProductionServer {
     this.app.use('/oauth-assets', express.static(path.join(__dirname, 'static', 'oauth')));
 
     // Security middleware
+    // Single CSP policy: API serves OAuth consent HTML with inline script/style. A second CSP header
+    // on /oauth/consent would stack with this and browsers apply the intersection — blocking inline.
     this.app.use(helmet({
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          // SECURITY FIX: Remove 'unsafe-inline' - use nonces or hashes for inline styles
-          // Note: This may break some inline styles. If needed, use style-src 'self' 'nonce-{random}'
-          styleSrc: ["'self'"],
-          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
           imgSrc: ["'self'", "data:", "https:"],
         },
       },
@@ -10961,11 +10961,6 @@ class ProductionServer {
         .replace(/\{\{SCOPES_HTML\}\}/g, scopesHtml)
         .replace(/\{\{ASSET_BASE\}\}/g, assetBase);
 
-      // OAuth consent page needs inline styles and scripts; override strict CSP for this response
-      res.set(
-        'Content-Security-Policy',
-        "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https:;"
-      );
       res.send(html);
     });
 

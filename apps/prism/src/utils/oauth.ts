@@ -5,7 +5,9 @@
 
 import { API_ENDPOINT } from '../config/api';
 
-export const PRISM_CLIENT_ID = import.meta.env.VITE_PN_CLIENT_ID || 'prism-app';
+const raw = import.meta.env.VITE_PN_CLIENT_ID && String(import.meta.env.VITE_PN_CLIENT_ID).trim();
+/** Do not use browser-app: deploy/env can leak that id into this build and break redirect validation. */
+export const PRISM_CLIENT_ID = raw && raw !== 'browser-app' ? raw : 'prism-app';
 
 /** Config for UnlockButton / OAuth consent flow */
 export function getPrismOAuthConfig() {
