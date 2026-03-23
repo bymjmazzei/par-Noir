@@ -265,6 +265,8 @@ This API server supports the **"MARK I"** identity - the first real identity cre
 
 `database.ts` loads SQL from `dist/migrations/` at runtime (paths relative to compiled `dist/server/utils/`). The **`npm run build`** script copies `api/migrations/` → `api/dist/migrations/` after `tsc`. If you build with plain `tsc` only, migrations won’t run and boot will fail with missing `oauth_clients`.
 
+**Railway / image build “stuck” or OOM:** `src/server.ts` is very large; full `tsc` with declaration emit can exhaust memory on small builders. Production builds use **`tsconfig.build.json`** (no `.d.ts` / maps) and **`NODE_OPTIONS=--max-old-space-size=8192`** (see `package.json` and `nixpacks.toml`). If builds still timeout, increase the service **build timeout** in Railway or use a larger builder plan.
+
 ## Environment (par Noir operations)
 
 | Variable | Purpose |

@@ -1,3 +1,5 @@
+# ffmpeg: runtime (mediaSamplingService). Keep — required at run, not for compile.
+# Large tsc (server.ts ~18k lines): use heap + skip .d.ts in tsconfig.build.json to avoid OOM / "stuck" builds.
 [phases.setup]
 nixPkgs = ["nodejs_20", "npm-9_x", "ffmpeg"]
 
@@ -5,7 +7,7 @@ nixPkgs = ["nodejs_20", "npm-9_x", "ffmpeg"]
 cmds = ["npm ci --production=false"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["NODE_OPTIONS=--max-old-space-size=8192 npm run build"]
 
 [start]
 cmd = "npm start"
