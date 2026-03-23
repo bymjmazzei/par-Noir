@@ -1,3 +1,5 @@
+import { pushPnOAuthDebug } from './pnOAuthDebug';
+
 /**
  * Shared pN OAuth popup flow. Must stay in sync with static oauth-callback.html
  * (apps/aggregator-browser/public/oauth-callback.html and copies in other apps).
@@ -176,8 +178,13 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     eventOrigin === origin || allowedMessageOrigins.some((a) => a === eventOrigin);
 
   return new Promise((resolve, reject) => {
+    pushPnOAuthDebug('popup_flow_start', {
+      completeViaParentNavigation,
+      expectedStateEmpty: expectedState === '',
+    });
     const popup = window.open(url, popupName, popupFeatures);
     if (!popup) {
+      pushPnOAuthDebug('popup_blocked', {});
       reject(new Error('POPUP_BLOCKED'));
       return;
     }
@@ -225,23 +232,38 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       if (settled) return;
       settled = true;
       disposeAwait();
+      pushPnOAuthDebug('popup_reject', { reason: err.message });
       reject(err);
     };
 
-    const acceptPayload = (raw: Record<string, unknown>) => {
+    const acceptPayload = (raw: Record<string, unknown>, source: string) => {
       const parsed = parseOAuthPayload(raw);
-      if (!parsed) return;
-      if (!parsed.code && !parsed.error) return;
+      if (!parsed) {
+        pushPnOAuthDebug('popup_payload_skip', { source, reason: 'not_oauth_callback' });
+        return;
+      }
+      if (!parsed.code && !parsed.error) {
+        pushPnOAuthDebug('popup_payload_skip', { source, reason: 'no_code_no_error' });
+        return;
+      }
+
+      pushPnOAuthDebug('popup_payload_ok', {
+        source,
+        hasCode: Boolean(parsed.code),
+        hasError: Boolean(parsed.error),
+      });
 
       // CSRF: when we sent a non-empty state, require a match (payload or sessionStorage fallback).
       // Silent mismatch used to block navigation entirely — parent never unlocked with no error.
       if (expectedState !== '') {
         const incoming = resolveIncomingOAuthState(parsed);
         if (incoming === undefined) {
+          pushPnOAuthDebug('popup_state_fail', { source, reason: 'OAUTH_STATE_MISSING' });
           fail(new Error('OAUTH_STATE_MISSING'));
           return;
         }
         if (!oauthStatesMatch(incoming, expectedState)) {
+          pushPnOAuthDebug('popup_state_fail', { source, reason: 'OAUTH_STATE_MISMATCH' });
           fail(new Error('OAUTH_STATE_MISMATCH'));
           return;
         }
@@ -251,9 +273,11 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
         if (settled) return;
         settled = true;
         disposeAwait();
+        pushPnOAuthDebug('popup_parent_nav', { source });
         window.location.replace(buildOAuthResumeUrl(origin, parsed));
         return;
       }
+      pushPnOAuthDebug('popup_finish', { source });
       finish(parsed);
     };
 
@@ -261,7 +285,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       oauthBc = new BroadcastChannel(PN_OAUTH_BROADCAST_CHANNEL);
       oauthBc.onmessage = (ev: MessageEvent) => {
         if (!ev.data || typeof ev.data !== 'object') return;
-        acceptPayload(ev.data as Record<string, unknown>);
+        acceptPayload(ev.data as Record<string, unknown>, 'broadcast');
       };
     } catch {
       /* private mode / unsupported */
@@ -271,7 +295,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       if (!isAllowedOrigin(event.origin)) return;
       const data = event.data;
       if (!data || typeof data !== 'object') return;
-      acceptPayload(data as Record<string, unknown>);
+      acceptPayload(data as Record<string, unknown>, 'postMessage');
     };
 
     const onStorage = (event: StorageEvent) => {
@@ -281,7 +305,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       if (!key.startsWith('pn_oauth_callback_')) return;
       try {
         const data = JSON.parse(event.newValue) as Record<string, unknown>;
-        acceptPayload(data);
+        acceptPayload(data, 'storage');
       } catch {
         /* ignore */
       }
@@ -314,7 +338,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
                 } catch {
                   /* ignore */
                 }
-                acceptPayload(data);
+                acceptPayload(data, 'poll');
               }
             } catch {
               /* ignore */
@@ -347,7 +371,10 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     }, 500);
 
     timeoutId = setTimeout(() => {
-      if (!settled) fail(new Error('POPUP_TIMEOUT'));
+      if (!settled) {
+        pushPnOAuthDebug('popup_timeout', {});
+        fail(new Error('POPUP_TIMEOUT'));
+      }
     }, timeoutMs);
   });
 }

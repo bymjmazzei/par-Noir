@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { startPnOAuthPopup } from '@par-noir/oauth-ui';
+import { pushPnOAuthDebug, startPnOAuthPopup } from '@par-noir/oauth-ui';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { getUserProfile } from '../services/profileService';
@@ -51,20 +51,38 @@ export function useAuthAndSession({
       },
       options?: { popup?: Window | null; redirectUri?: string }
     ) => {
+      pushPnOAuthDebug('run_oauth_callback_start', {
+        hasError: Boolean(data.error),
+        hasCode: Boolean(data.code),
+        viaPopupOption: Boolean(options?.popup),
+      });
+
       if (data.error) {
+        pushPnOAuthDebug('run_oauth_callback_denied', {
+          errorKey: data.error ? String(data.error).slice(0, 80) : '',
+        });
         setLocked();
         PNOAuthService.clearSession();
         showErrorToast(data.error_description || data.error || 'Authentication denied');
         return;
       }
-      if (!data.code) return;
-      if (oauthProcessedCodesRef.current.has(data.code)) return;
+      if (!data.code) {
+        pushPnOAuthDebug('run_oauth_callback_no_code', {});
+        return;
+      }
+      if (oauthProcessedCodesRef.current.has(data.code)) {
+        pushPnOAuthDebug('run_oauth_callback_deduped', {});
+        return;
+      }
       oauthProcessedCodesRef.current.add(data.code);
 
       const exchangeRedirectUri = options?.redirectUri ?? redirectUriForOAuth;
 
       try {
         const ageShared = data.age_shared === 'true';
+        pushPnOAuthDebug('run_oauth_callback_exchange', {
+          redirectUriLen: exchangeRedirectUri.length,
+        });
         const tokenResponse = await PNOAuthService.exchangeCodeForToken(
           data.code,
           exchangeRedirectUri,
@@ -120,8 +138,13 @@ export function useAuthAndSession({
         if (discoverFilesRef.current) {
           discoverFilesRef.current(undefined, true);
         }
+        pushPnOAuthDebug('run_oauth_callback_success', {
+          hasPnIdentifier: Boolean(userInfo.pn_identifier),
+        });
       } catch (err) {
-        console.error('OAuth callback error:', err);
+        pushPnOAuthDebug('run_oauth_callback_exception', {
+          name: err instanceof Error ? err.name : 'unknown',
+        });
         oauthProcessedCodesRef.current.delete(data.code!);
         setLocked();
         PNOAuthService.clearSession();
@@ -164,6 +187,11 @@ export function useAuthAndSession({
     const params = new URLSearchParams(search);
     if (params.get('oauth_resume') !== '1') return;
 
+    pushPnOAuthDebug('oauth_resume_effect', {
+      source: storedSearch ? 'sessionStorage' : 'location',
+      searchLen: search.length,
+    });
+
     const code = params.get('code');
     const error = params.get('error');
     const state = params.get('state');
@@ -176,6 +204,10 @@ export function useAuthAndSession({
 
     void (async () => {
       try {
+        pushPnOAuthDebug('oauth_resume_before_exchange', {
+          hasCode: Boolean(code),
+          hasError: Boolean(error),
+        });
         await runOAuthCallback(
           {
             code: code || undefined,
@@ -187,6 +219,7 @@ export function useAuthAndSession({
           {}
         );
       } finally {
+        pushPnOAuthDebug('oauth_resume_replace_state', {});
         clearOAuthQuery();
       }
     })();
@@ -353,6 +386,10 @@ export function useAuthAndSession({
 
         const expectedState = new URL(authUrl).searchParams.get('state') || '';
 
+        pushPnOAuthDebug('lock_unlock_popup_open', {
+          expectedStateLen: expectedState.length,
+        });
+
         // Native: full-screen OAuth — oauth-callback navigates main window to /?oauth_resume=1&code=...
         if (Capacitor.isNativePlatform()) {
           const u = new URL(authUrl);
@@ -370,11 +407,17 @@ export function useAuthAndSession({
         });
 
         if (!result.code && !result.error) {
+          pushPnOAuthDebug('lock_unlock_popup_empty_result', {});
           setLocked();
           PNOAuthService.clearSession();
           showErrorToast('Sign-in did not complete. Please try again.');
           return;
         }
+
+        pushPnOAuthDebug('lock_unlock_popup_got_result', {
+          hasCode: Boolean(result.code),
+          hasError: Boolean(result.error),
+        });
 
         await runOAuthCallback(
           {
@@ -388,6 +431,7 @@ export function useAuthAndSession({
         );
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
+        pushPnOAuthDebug('lock_unlock_popup_catch', { msg });
         if (msg === 'POPUP_BLOCKED') {
           showErrorToast('Popup blocked. Please allow popups for this site.');
         } else if (msg === 'POPUP_TIMEOUT') {

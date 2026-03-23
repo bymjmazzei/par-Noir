@@ -49,6 +49,28 @@
 
   <script>
     (function () {
+      /** Same key as @par-noir/oauth-ui pnOAuthDebug — opt-in via ?pn_debug_oauth=1 on browse app */
+      var DEBUG_KEY = 'pn_debug_oauth';
+      function oauthDbg(phase, data) {
+        try {
+          if (localStorage.getItem(DEBUG_KEY) !== '1') return;
+          var entry = { t: Date.now(), loc: 'oauth-callback', phase: phase };
+          if (data) {
+            for (var k in data) {
+              if (Object.prototype.hasOwnProperty.call(data, k)) entry[k] = data[k];
+            }
+          }
+          if (!window.__PN_OAUTH_DEBUG__) window.__PN_OAUTH_DEBUG__ = [];
+          window.__PN_OAUTH_DEBUG__.push(entry);
+          if (window.opener && !window.opener.closed) {
+            try {
+              if (!window.opener.__PN_OAUTH_DEBUG__) window.opener.__PN_OAUTH_DEBUG__ = [];
+              window.opener.__PN_OAUTH_DEBUG__.push(entry);
+            } catch (e) {}
+          }
+        } catch (e) {}
+      }
+
       var BC_NAME = 'par-noir-oauth-v1';
       var urlParams = new URLSearchParams(window.location.search);
       var pnPopupFlow = urlParams.get('pn_popup') === '1';
@@ -56,6 +78,12 @@
       var state = urlParams.get('state');
       var error = urlParams.get('error');
       var ageShared = urlParams.get('age_shared');
+
+      oauthDbg('callback_start', {
+        hasCode: !!code,
+        hasError: !!error,
+        pnPopupFlow: pnPopupFlow
+      });
 
       var oauthData = {
         type: 'oauth_callback',
@@ -153,6 +181,11 @@
       } else {
         deliverHandshake();
       }
+
+      oauthDbg('callback_handoff', {
+        handedOffViaOpenerNav: handedOffViaOpenerNav,
+        hasOpener: !!(window.opener && !window.opener.closed)
+      });
 
       document.body.innerHTML =
         '<div style="padding: 40px; text-align: center;">' +

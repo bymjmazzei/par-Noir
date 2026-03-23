@@ -16,3 +16,10 @@ export {
 } from './pnOAuthPopup';
 export { LockButton } from './LockButton';
 export type { LockButtonProps } from './LockButton';
+export {
+  initPnOAuthDebugFromUrl,
+  isPnOAuthDebugEnabled,
+  pushPnOAuthDebug,
+  PN_DEBUG_OAUTH_STORAGE_KEY,
+} from './pnOAuthDebug';
+export type { PnOAuthDebugEntry } from './pnOAuthDebug';

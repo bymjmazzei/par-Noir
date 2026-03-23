@@ -7,6 +7,7 @@
  * pN identifier is derived client-side using VolumeIdGenerator.
  */
 
+import { pushPnOAuthDebug } from '@par-noir/oauth-ui';
 import { VolumeIdGenerator } from '../utils/volumeIdGenerator';
 import { API_ENDPOINT } from '../config/api';
 
@@ -127,9 +128,11 @@ export class PNOAuthService {
           passcode: params.passcode,
           publicKey: params.publicKey
         });
-        console.log('[OAuth] Derived pN identifier client-side:', pnIdentifier);
+        pushPnOAuthDebug('oauth_derive_pn_id_ok', { ok: true });
       } catch (error) {
-        console.error('[OAuth] Failed to derive pN identifier:', error);
+        pushPnOAuthDebug('oauth_derive_pn_id_fail', {
+          name: error instanceof Error ? error.name : 'unknown',
+        });
         // Continue without pnIdentifier - server can derive it as fallback
       }
     }
@@ -171,11 +174,12 @@ export class PNOAuthService {
     // Must match the redirect_uri used in the authorization request exactly
     // Normalize to ensure exact match (remove trailing slashes, ensure consistent encoding)
     const finalRedirectUri = (redirectUri || REDIRECT_URI).replace(/\/$/, ''); // Remove trailing slash
-    
-    console.log('🔐 [Token Exchange] Using redirect_uri:', finalRedirectUri);
-    console.log('🔐 [Token Exchange] Code (first 20 chars):', code.substring(0, 20));
-    console.log('🔐 [Token Exchange] Age shared:', ageShared);
-    
+
+    pushPnOAuthDebug('exchange_token_attempt', {
+      redirectUriLen: finalRedirectUri.length,
+      ageShared: Boolean(ageShared),
+    });
+
     const response = await fetch(`${API_ENDPOINT}/oauth/token`, {
       method: 'POST',
       headers: {
@@ -198,11 +202,15 @@ export class PNOAuthService {
       } catch {
         error = { error: 'Token exchange failed', error_description: errorText };
       }
-      console.error('🔐 [Token Exchange] Error response:', error);
-      console.error('🔐 [Token Exchange] Status:', response.status);
+      pushPnOAuthDebug('exchange_token_http_error', {
+        status: response.status,
+        errKey:
+          typeof error?.error === 'string' ? String(error.error).slice(0, 80) : 'unknown',
+      });
       throw new Error(error.error_description || error.error || 'Token exchange failed');
     }
 
+    pushPnOAuthDebug('exchange_token_ok', { status: response.status });
     return response.json();
   }
 
