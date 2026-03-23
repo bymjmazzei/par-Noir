@@ -129,21 +129,12 @@
       var resumeUrl = buildResumeUrl();
 
       /**
-       * Chrome can partition or drop postMessage/localStorage between OAuth popup and parent.
-       * Same-origin opener navigation matches the Capacitor path: parent loads /?oauth_resume=1&code=...
-       * and useAuthAndSession runs runOAuthCallback — most reliable handoff.
+       * Navigate opener to /?oauth_resume=1&code=... — most reliable handoff vs postMessage/storage.
+       * Do NOT read window.opener.location first: accessing opener's document can throw (COOP,
+       * cross-origin intermediate OAuth redirects, Safari) even when replace() to our app origin works.
        */
-      function canNavigateOpenerSameOrigin() {
-        try {
-          if (!window.opener || window.opener.closed) return false;
-          return window.opener.location.origin === window.location.origin;
-        } catch (e) {
-          return false;
-        }
-      }
-
       var handedOffViaOpenerNav = false;
-      if (canNavigateOpenerSameOrigin()) {
+      if (window.opener && !window.opener.closed) {
         try {
           window.opener.location.replace(resumeUrl);
           handedOffViaOpenerNav = true;
