@@ -10,6 +10,7 @@ import { useUserState } from '../contexts/UserStateContext';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { getUserProfile } from '../services/profileService';
 import { API_ENDPOINT } from '../config/api';
+import { PN_OAUTH_RESUME_SEARCH_KEY } from '../oauthResumeBootstrap';
 
 export interface UseAuthAndSessionParams {
   setViewingCreatorId: (id: string | null) => void;
@@ -157,7 +158,10 @@ export function useAuthAndSession({
 
   /** Android/Capacitor / Chrome opener nav: main window loads /?oauth_resume=1&code=... after popup OAuth */
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const storedSearch = sessionStorage.getItem(PN_OAUTH_RESUME_SEARCH_KEY);
+    if (storedSearch) sessionStorage.removeItem(PN_OAUTH_RESUME_SEARCH_KEY);
+    const search = storedSearch ?? window.location.search;
+    const params = new URLSearchParams(search);
     if (params.get('oauth_resume') !== '1') return;
 
     const code = params.get('code');

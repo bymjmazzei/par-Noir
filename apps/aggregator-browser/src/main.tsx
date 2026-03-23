@@ -1,9 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { snapshotOAuthResumeSearchFromUrl } from './oauthResumeBootstrap';
 import App from './App';
 import './index.css';
 import { UserStateProvider } from './contexts/UserStateContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
+
+snapshotOAuthResumeSearchFromUrl();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
