@@ -54,7 +54,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       processedCodesRef.current.add(code);
-      window.history.replaceState({}, '', window.location.pathname);
 
       void (async () => {
         try {
@@ -67,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         } finally {
           setLoading(false);
+          window.history.replaceState({}, '', window.location.pathname);
         }
       })();
       return;

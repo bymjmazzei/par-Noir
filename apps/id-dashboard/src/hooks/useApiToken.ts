@@ -69,37 +69,43 @@ export function useApiToken() {
     const stateParam = params.get('state');
     const storedState = sessionStorage.getItem('pn_oauth_state');
 
-    window.history.replaceState({}, '', `${window.location.pathname}${window.location.hash}`);
+    const clearOAuthQuery = () => {
+      window.history.replaceState({}, '', `${window.location.pathname}${window.location.hash}`);
+    };
 
-    if (err) {
-      const desc = params.get('error_description');
-      setConnectError(desc ? decodeURIComponent(desc.replace(/\+/g, ' ')) : err);
-      return;
-    }
-    if (!code) return;
-    if (processedResumeCodesRef.current.has(code)) return;
-    processedResumeCodesRef.current.add(code);
-
-    if (stateParam && storedState && !oauthStatesMatch(stateParam, storedState)) {
-      setConnectError('Sign-in could not be verified. Please try again.');
-      return;
-    }
-
-    const redirectUri = `${window.location.origin}/oauth-callback.html`;
-    setIsConnecting(true);
     void (async () => {
       try {
-        const token = await exchangeCode(code, redirectUri);
-        if (token) {
-          const expiresAt = Date.now() + 60 * 60 * 1000;
-          setStoredToken({ accessToken: token, expiresAt });
-          setApiToken(token);
+        if (err) {
+          const desc = params.get('error_description');
+          setConnectError(desc ? decodeURIComponent(desc.replace(/\+/g, ' ')) : err);
+          return;
         }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setConnectError(msg);
+        if (!code) return;
+        if (processedResumeCodesRef.current.has(code)) return;
+        processedResumeCodesRef.current.add(code);
+
+        if (stateParam && storedState && !oauthStatesMatch(stateParam, storedState)) {
+          setConnectError('Sign-in could not be verified. Please try again.');
+          return;
+        }
+
+        const redirectUri = `${window.location.origin}/oauth-callback.html`;
+        setIsConnecting(true);
+        try {
+          const token = await exchangeCode(code, redirectUri);
+          if (token) {
+            const expiresAt = Date.now() + 60 * 60 * 1000;
+            setStoredToken({ accessToken: token, expiresAt });
+            setApiToken(token);
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          setConnectError(msg);
+        } finally {
+          setIsConnecting(false);
+        }
       } finally {
-        setIsConnecting(false);
+        clearOAuthQuery();
       }
     })();
   }, []);

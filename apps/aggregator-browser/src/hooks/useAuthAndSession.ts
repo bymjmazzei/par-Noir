@@ -155,7 +155,7 @@ export function useAuthAndSession({
     ]
   );
 
-  /** Android/Capacitor: main window is navigated to /?oauth_resume=1&code=... after popup OAuth */
+  /** Android/Capacitor / Chrome opener nav: main window loads /?oauth_resume=1&code=... after popup OAuth */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('oauth_resume') !== '1') return;
@@ -166,18 +166,26 @@ export function useAuthAndSession({
     const age_shared = params.get('age_shared');
     const error_description = params.get('error_description') || undefined;
 
-    window.history.replaceState({}, '', `${window.location.pathname}${window.location.hash}`);
+    const clearOAuthQuery = () => {
+      window.history.replaceState({}, '', `${window.location.pathname}${window.location.hash}`);
+    };
 
-    void runOAuthCallback(
-      {
-        code: code || undefined,
-        state: state || undefined,
-        error: error || undefined,
-        error_description,
-        age_shared: age_shared || undefined,
-      },
-      {}
-    );
+    void (async () => {
+      try {
+        await runOAuthCallback(
+          {
+            code: code || undefined,
+            state: state || undefined,
+            error: error || undefined,
+            error_description,
+            age_shared: age_shared || undefined,
+          },
+          {}
+        );
+      } finally {
+        clearOAuthQuery();
+      }
+    })();
   }, [runOAuthCallback]);
 
   const loadUserDisplayName = useCallback(

@@ -189,12 +189,15 @@ export function App() {
         error: params.get('error') || undefined,
         age_shared: params.get('age_shared') || undefined,
       };
-      window.history.replaceState({}, '', window.location.pathname);
       void (async () => {
-        setLoadingSession(true);
-        await completePortalOAuth(resumeResult);
-        await refreshDashboard();
-        setLoadingSession(false);
+        try {
+          setLoadingSession(true);
+          await completePortalOAuth(resumeResult);
+          await refreshDashboard();
+        } finally {
+          setLoadingSession(false);
+          window.history.replaceState({}, '', window.location.pathname);
+        }
       })();
       return;
     }
