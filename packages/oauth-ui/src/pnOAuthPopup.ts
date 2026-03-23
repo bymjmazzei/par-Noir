@@ -90,8 +90,9 @@ export interface StartPnOAuthPopupOptions {
   popupFeatures?: string;
   /**
    * When true, navigate this window to `/?oauth_resume=1&code=...` instead of resolving the Promise.
-   * Use when the host app completes OAuth from the URL on load (e.g. useAuthAndSession). Required for
-   * reliable completion if storage/BroadcastChannel cannot bridge the popup to this document.
+   * Prefer **false** for web + API popup-bridge: the bridge postMessages the opener; resolving here runs
+   * token exchange in the same document. Use **true** only for hosts that intentionally complete OAuth
+   * from a fresh load (e.g. full-window / native) and do not await the Promise after.
    */
   completeViaParentNavigation?: boolean;
 }

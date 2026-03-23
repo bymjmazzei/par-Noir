@@ -357,11 +357,14 @@ export function useAuthAndSession({
           /* use empty, postMessage from API bridge will be rejected; URL resume may still work */
         }
 
+        // completeViaParentNavigation: false — exchange code in this document after postMessage/poll.
+        // Navigating the opener from the API bridge (/?oauth_resume=...) full-reloads the SPA and
+        // breaks the in-flight Promise / oauth_resume timing; same-tab completion matches normal OAuth popups.
         const result = await startPnOAuthPopup({
           url: authUrl,
           expectedState,
           timeoutMs: 30_000,
-          completeViaParentNavigation: true,
+          completeViaParentNavigation: false,
           allowedMessageOrigins: apiOrigin ? [apiOrigin] : undefined,
         });
 

@@ -65,7 +65,7 @@ export function ApplyModal({ open, onClose }: ApplyModalProps) {
         url,
         expectedState: state,
         timeoutMs: 300_000,
-        completeViaParentNavigation: true,
+        completeViaParentNavigation: false,
         allowedMessageOrigins: apiOrigin ? [apiOrigin] : undefined,
       });
       if (result.error) {

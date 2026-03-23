@@ -23,14 +23,6 @@
       if (!redirectUri) return;
       var appOrigin;
       try { appOrigin = new URL(redirectUri).origin; } catch (e) { return; }
-      var q = new URLSearchParams();
-      q.set('oauth_resume', '1');
-      if (code) q.set('code', code);
-      if (state) q.set('state', state);
-      if (error) q.set('error', error);
-      if (errorDesc) q.set('error_description', errorDesc);
-      if (ageShared) q.set('age_shared', ageShared);
-      var resumeUrl = appOrigin + '/?' + q.toString();
       // Only string fields (parent parseOAuthPayload uses typeof === 'string' checks).
       var oauthData = { type: 'oauth_callback', timestamp: Date.now() };
       if (code) oauthData.code = code;
@@ -40,19 +32,13 @@
       if (ageShared) oauthData.age_shared = ageShared;
       var openerOk = !!(window.opener && !window.opener.closed);
       if (openerOk) {
-        // Prefer navigating the opener: avoids postMessage vs unload races (postMessage then
-        // immediate opener.replace could drop the message before the parent handled it).
-        try {
-          window.opener.location.replace(resumeUrl);
-          setTimeout(function () { try { window.close(); } catch (e) {} }, 300);
-          return;
-        } catch (e) {
-          /* fall through to postMessage */
-        }
+        // Standard OAuth popup handoff: postMessage to opener only. Do NOT navigate the opener here —
+        // that full-page reloads the SPA and races/breaks the parent's startPnOAuthPopup Promise; the
+        // parent exchanges the code in the same document (completeViaParentNavigation: false).
         try {
           window.opener.postMessage(oauthData, appOrigin);
         } catch (e) {}
-        setTimeout(function () { try { window.close(); } catch (e) {} }, 400);
+        setTimeout(function () { try { window.close(); } catch (e) {} }, 300);
       } else {
         // Opener missing (cross-origin / noopener / COOP). Do NOT load the SPA root in this window —
         // that only unlocks inside the popup. Redirect to the app's oauth-callback.html with the
