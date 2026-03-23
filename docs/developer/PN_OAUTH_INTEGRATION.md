@@ -17,6 +17,23 @@
 
 ---
 
+## Canonical OAuth 2.0 (authorization code)
+
+**Compliance with the par Noir API does not require a popup.** The standard contract is:
+
+1. Register **`client_id`** and one or more exact **`redirect_uri`** values (developer portal or admin).
+2. Send the user to the **authorize** URL (with `response_type=code`, `client_id`, `redirect_uri`, `state`, scopes, etc.).
+3. After unlock + consent, the **authorization server redirects the browser** to your registered **`redirect_uri`** with query parameters:
+   - **Success:** `code`, `state`, and optional `age_shared` (RFC 6749-style).
+   - **Denial / error:** `error`, `error_description`, and `state` where applicable.
+4. Exchange the **`code`** for tokens at the token endpoint (from your backend or SPA, per your security model).
+
+Popup-based UX (e.g. `@par-noir/oauth-ui` or the identity SDK with `usePopup: true`) is **optional**; it still ends with that same redirect to **`your`** `redirect_uri` (e.g. `https://yourapp/oauth-callback.html?code=...`). The static callback page typically `postMessage`s to `window.opener` and/or uses `localStorage` + `BroadcastChannel` so the parent can finish **same-origin**—but **third parties who only implement full-page redirect** already match the API contract.
+
+**Legacy:** `GET /oauth/popup-bridge` on the API host is **removed** (responds with `410 Gone`). Do not depend on it.
+
+---
+
 ## Quick Start
 
 ### Installation
@@ -146,9 +163,9 @@ After unlocking, users see a consent screen showing what permissions your app is
 - Like and engage with content
 - Create and manage feeds
 
-### 4. Authorization Code Returned
+### 4. Authorization code returned (redirect)
 
-The popup sends an authorization code back to your app via `postMessage`.
+The browser is **redirected** to your registered **`redirect_uri`** with `code` and `state` in the query string (same for full-page and popup flows). If you use a popup, that URL is often a small static page (e.g. `oauth-callback.html`) that delivers the result to the parent via **`postMessage`**, **localStorage**, and/or **BroadcastChannel** on **your** origin—not via a cross-origin bridge on the API host.
 
 ### 5. Code Exchanged for Tokens
 

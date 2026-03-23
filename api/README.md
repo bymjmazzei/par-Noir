@@ -278,8 +278,11 @@ This API server supports the **"MARK I"** identity - the first real identity cre
 
 See `docs/developer/INTEGRATOR_IDENTITY_SUCCESSION.md` for public succession reads (`GET /api/v1/identity/successor`).
 
+**Third-party OAuth:** The canonical flow is **authorization code** with a registered **`redirect_uri`**; after consent the user agent is always redirected there with `code` / `state` (or OAuth `error` params). Popup UX is optional and still uses the same redirect. See [`docs/developer/PN_OAUTH_INTEGRATION.md`](../docs/developer/PN_OAUTH_INTEGRATION.md). **`GET /oauth/popup-bridge`** is deprecated (**410 Gone**).
+
 ## 📚 **Documentation**
 
+- [pN OAuth for integrators](../docs/developer/PN_OAUTH_INTEGRATION.md)
 - [Military-Grade Implementation Guide](../core/identity-core/MILITARY_GRADE_QUANTUM_RESISTANT_SUMMARY.md)
 - [Zero-Knowledge Proofs Documentation](../core/identity-core/TRUE_ZERO_KNOWLEDGE_PROOFS_SUMMARY.md)
 - [Security Audit Guide](../docs/security/SECURITY_AUDIT_GUIDE.md)

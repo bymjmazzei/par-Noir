@@ -627,19 +627,8 @@
       if (gsb) gsb.style.display = 'flex';
     }
 
-    /** Redirect to app callback URL (never api host) with code and optional age_shared.
-     * When popupFlow: go via API bridge so handoff happens while popup still has window.opener. */
+    /** Redirect to registered redirect_uri with code (RFC 6749). Same path for popup and full-page — popup loads oauth-callback.html on the app origin; postMessage + storage bridge are same-origin with the parent. */
     function redirectWithAuthCodeFixed(code, ageShared) {
-      if (popupFlow) {
-        var bridge = new URL(window.location.origin + '/oauth/popup-bridge');
-        bridge.searchParams.set('code', code);
-        bridge.searchParams.set('state', state || '');
-        bridge.searchParams.set('redirect_uri', redirectUri);
-        bridge.searchParams.set('client_id', clientId);
-        if (ageShared !== undefined && ageShared !== null) bridge.searchParams.set('age_shared', ageShared ? 'true' : 'false');
-        window.location.href = bridge.toString();
-        return;
-      }
       var u;
       try {
         u = new URL(redirectUri);
@@ -1069,22 +1058,15 @@
           window.close();
         }
       } else {
-        if (popupFlow) {
-          var bridgeDeny = new URL(window.location.origin + '/oauth/popup-bridge');
-          bridgeDeny.searchParams.set('error', 'access_denied');
-          bridgeDeny.searchParams.set('error_description', 'User denied access');
-          bridgeDeny.searchParams.set('state', state || '');
-          bridgeDeny.searchParams.set('redirect_uri', redirectUri);
-          bridgeDeny.searchParams.set('client_id', clientId);
-          window.location.href = bridgeDeny.toString();
-        } else {
-          try {
-            var du = new URL(redirectUri);
-            du.searchParams.set('error', 'access_denied');
-            window.location.href = du.toString();
-          } catch (_) {
-            window.location.href = redirectUri + (redirectUri.indexOf('?') >= 0 ? '&' : '?') + 'error=access_denied';
-          }
+        try {
+          var du = new URL(redirectUri);
+          du.searchParams.set('error', 'access_denied');
+          du.searchParams.set('error_description', 'User denied access');
+          if (state) du.searchParams.set('state', state);
+          window.location.href = du.toString();
+        } catch (_) {
+          var sep = redirectUri.indexOf('?') >= 0 ? '&' : '?';
+          window.location.href = redirectUri + sep + 'error=access_denied&error_description=' + encodeURIComponent('User denied access') + (state ? '&state=' + encodeURIComponent(state) : '');
         }
       }
     });

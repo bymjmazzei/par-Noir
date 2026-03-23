@@ -349,23 +349,12 @@ export function useAuthAndSession({
           return;
         }
 
-        let apiOrigin = '';
-        try {
-          const base = (API_ENDPOINT || 'https://api.parnoir.com').replace(/\/$/, '') || 'https://api.parnoir.com';
-          apiOrigin = new URL(base).origin;
-        } catch {
-          /* use empty, postMessage from API bridge will be rejected; URL resume may still work */
-        }
-
-        // completeViaParentNavigation: false — exchange code in this document after postMessage/poll.
-        // Navigating the opener from the API bridge (/?oauth_resume=...) full-reloads the SPA and
-        // breaks the in-flight Promise / oauth_resume timing; same-tab completion matches normal OAuth popups.
+        // completeViaParentNavigation: false — token exchange in this tab after oauth-callback.html postMessage (same origin).
         const result = await startPnOAuthPopup({
           url: authUrl,
           expectedState,
           timeoutMs: 120_000,
           completeViaParentNavigation: false,
-          allowedMessageOrigins: apiOrigin ? [apiOrigin] : undefined,
         });
 
         if (!result.code && !result.error) {

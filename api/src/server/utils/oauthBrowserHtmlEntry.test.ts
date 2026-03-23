@@ -14,7 +14,7 @@ describe('isOAuthBrowserHtmlEntryGet', () => {
     expect(isOAuthBrowserHtmlEntryGet(mockReq('GET', '/oauth/consent?client_id=foo'))).toBe(true);
   });
 
-  it('allows GET popup-bridge (OAuth handoff after consent in popup)', () => {
+  it('allows GET deprecated popup-bridge path (no-Origin GETs; handler returns 410)', () => {
     expect(isOAuthBrowserHtmlEntryGet(mockReq('GET', '/oauth/popup-bridge'))).toBe(true);
     expect(
       isOAuthBrowserHtmlEntryGet(
@@ -23,7 +23,7 @@ describe('isOAuthBrowserHtmlEntryGet', () => {
     ).toBe(true);
   });
 
-  it('rejects non-GET', () => {
+  it('rejects non-GET on popup-bridge', () => {
     expect(isOAuthBrowserHtmlEntryGet(mockReq('POST', '/oauth/popup-bridge'))).toBe(false);
   });
 

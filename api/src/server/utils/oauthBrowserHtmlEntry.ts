@@ -4,8 +4,7 @@ import type express from 'express';
  * GET navigations to API-hosted OAuth HTML do not send an Origin header.
  * Allow those in production no-Origin checks without weakening CORS for state-changing API calls.
  *
- * Includes `/oauth/popup-bridge` — popup redirects here after consent so the bridge script
- * can postMessage / navigate the opener before the window closes.
+ * `/oauth/popup-bridge` remains listed so deprecated GETs (no Origin) reach the 410 handler.
  */
 export function isOAuthBrowserHtmlEntryGet(req: express.Request): boolean {
   if (req.method !== 'GET') return false;

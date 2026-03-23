@@ -1,13 +1,16 @@
 /**
  * Shared pN OAuth popup flow. Must stay in sync with static oauth-callback.html
  * (apps/aggregator-browser/public/oauth-callback.html and copies in other apps).
- * Callback must not navigate window.opener. Uses postMessage, BroadcastChannel (par-noir-oauth-v1),
- * and same-origin localStorage polling.
+ *
+ * After consent, the API redirects the popup to the registered redirect_uri (RFC 6749) — typically
+ * oauth-callback.html on the **same origin** as the opener. Handoff uses postMessage from that
+ * origin, BroadcastChannel (par-noir-oauth-v1), and same-origin localStorage polling when opener
+ * is missing.
  *
  * Contract:
  * - Callback page posts message: { type: 'oauth_callback', code?, state?, error?, age_shared?, timestamp? }
  * - Callback page sets localStorage: pn_oauth_pending, pn_oauth_latest_key, pn_oauth_callback_<ts>
- * - With pn_popup=1 from API, callback must not load the SPA in the popup when opener is missing.
+ * - With pn_popup=1, callback may close without loading the SPA when opener is missing.
  */
 
 export const PN_OAUTH_MESSAGE_TYPE = 'oauth_callback' as const;
@@ -80,9 +83,8 @@ export interface StartPnOAuthPopupOptions {
   /** Opener origin for postMessage validation (default window.location.origin) */
   origin?: string;
   /**
-   * Additional origins to accept postMessage from. Required when using the API popup-bridge:
-   * the bridge runs on the API host and sends messages from that origin, not the app origin.
-   * Pass the API base URL origin, e.g. new URL(API_ENDPOINT).origin.
+   * Extra origins to accept postMessage from (optional). Default is `origin` (the app that opened
+   * the popup); OAuth completion messages normally come from the same origin as the static callback page.
    */
   allowedMessageOrigins?: string[];
   timeoutMs?: number;
@@ -90,9 +92,8 @@ export interface StartPnOAuthPopupOptions {
   popupFeatures?: string;
   /**
    * When true, navigate this window to `/?oauth_resume=1&code=...` instead of resolving the Promise.
-   * Prefer **false** for web + API popup-bridge: the bridge postMessages the opener; resolving here runs
-   * token exchange in the same document. Use **true** only for hosts that intentionally complete OAuth
-   * from a fresh load (e.g. full-window / native) and do not await the Promise after.
+   * Prefer **false** for web popups so token exchange runs in the same document after postMessage.
+   * Use **true** for full-window / native flows that complete OAuth from a fresh load.
    */
   completeViaParentNavigation?: boolean;
 }
@@ -133,7 +134,7 @@ function buildOAuthResumeUrl(pageOrigin: string, parsed: PnOAuthPopupResult): st
   return `${base}/?${p.toString()}`;
 }
 
-/** Compare OAuth state values (handles minor encoding differences across bridge/callback). */
+/** Compare OAuth state values (handles minor encoding differences across redirects). */
 function oauthStatesMatch(incoming: string, expected: string): boolean {
   const a = incoming.trim();
   const b = expected.trim();
@@ -171,18 +172,8 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     completeViaParentNavigation = false,
   } = options;
 
-  /** Consent + popup-bridge live on the API host; postMessage always comes from that origin. */
-  let oauthFlowApiOrigin = '';
-  try {
-    oauthFlowApiOrigin = new URL(url).origin;
-  } catch {
-    /* ignore */
-  }
-
   const isAllowedOrigin = (eventOrigin: string) =>
-    eventOrigin === origin ||
-    allowedMessageOrigins.some((a) => a === eventOrigin) ||
-    (oauthFlowApiOrigin !== '' && eventOrigin === oauthFlowApiOrigin);
+    eventOrigin === origin || allowedMessageOrigins.some((a) => a === eventOrigin);
 
   return new Promise((resolve, reject) => {
     const popup = window.open(url, popupName, popupFeatures);

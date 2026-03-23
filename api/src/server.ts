@@ -10983,44 +10983,12 @@ class ProductionServer {
       res.send(html);
     });
 
-    // GET /oauth/popup-bridge - API-hosted handoff while popup still has opener (avoids cross-origin opener loss)
-    this.app.get('/oauth/popup-bridge', async (req, res) => {
-      const qOne = (v: string | string[] | undefined): string | undefined => {
-        if (typeof v === 'string') return v;
-        if (Array.isArray(v) && typeof v[0] === 'string') return v[0];
-        return undefined;
-      };
-      const code = qOne(req.query.code as string | string[] | undefined);
-      const state = qOne(req.query.state as string | string[] | undefined);
-      const redirect_uri = qOne(req.query.redirect_uri as string | string[] | undefined);
-      const age_shared = qOne(req.query.age_shared as string | string[] | undefined);
-      const error = qOne(req.query.error as string | string[] | undefined);
-      const error_description = qOne(req.query.error_description as string | string[] | undefined);
-      const client_id = qOne(req.query.client_id as string | string[] | undefined);
-      if (!redirect_uri || !client_id) {
-        return res.status(400).send('<html><body><p>Missing redirect_uri or client_id</p></body></html>');
-      }
-      const { ClientRegistrationService } = await import('./server/modules/clientRegistration');
-      const isValid = await ClientRegistrationService.validateClient(client_id, redirect_uri);
-      if (!isValid) {
-        return res.status(400).send('<html><body><p>Invalid client_id or redirect_uri</p></body></html>');
-      }
-      const fs = await import('fs');
-      const templatePath = path.join(__dirname, 'templates', 'oauth-popup-bridge.html');
-      let html = fs.readFileSync(templatePath, 'utf8');
-      const bridgePayload = {
-        code,
-        state,
-        redirect_uri,
-        age_shared,
-        error,
-        error_description
-      };
-      const safeJson = JSON.stringify(bridgePayload).replace(/</g, '\\u003c');
-      html = html.replace('{{BRIDGE_JSON}}', '(' + safeJson + ')');
+    // GET /oauth/popup-bridge — deprecated (OAuth now redirects to registered redirect_uri only)
+    this.app.get('/oauth/popup-bridge', (_req, res) => {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-      res.type('html');
-      return res.send(html);
+      res.status(410).type('text/plain').send(
+        'Gone: popup-bridge is removed. OAuth completes via redirect to your registered redirect_uri (RFC 6749). Update bookmarks and client flows.'
+      );
     });
 
     // Client Management Endpoints (admin key required)

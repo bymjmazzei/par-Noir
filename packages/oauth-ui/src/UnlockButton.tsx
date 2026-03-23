@@ -102,20 +102,12 @@ export function UnlockButton({
       return;
     }
 
-    let apiOrigin = '';
-    try {
-      apiOrigin = new URL(config.apiEndpoint.replace(/\/$/, '') || config.apiEndpoint).origin;
-    } catch {
-      /* ignore */
-    }
-
     void (async () => {
       try {
         const result = await startPnOAuthPopup({
           url,
           expectedState: state,
           completeViaParentNavigation,
-          allowedMessageOrigins: apiOrigin ? [apiOrigin] : undefined,
         });
         await onPopupResult?.(result);
       } catch (e) {
