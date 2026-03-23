@@ -121,14 +121,38 @@
         }
       }
 
-      deliverHandshake();
-
       function buildResumeUrl() {
         var q = new URLSearchParams(window.location.search);
         q.set('oauth_resume', '1');
         return window.location.origin + '/?' + q.toString();
       }
       var resumeUrl = buildResumeUrl();
+
+      /**
+       * Chrome can partition or drop postMessage/localStorage between OAuth popup and parent.
+       * Same-origin opener navigation matches the Capacitor path: parent loads /?oauth_resume=1&code=...
+       * and useAuthAndSession runs runOAuthCallback — most reliable handoff.
+       */
+      function canNavigateOpenerSameOrigin() {
+        try {
+          if (!window.opener || window.opener.closed) return false;
+          return window.opener.location.origin === window.location.origin;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      var handedOffViaOpenerNav = false;
+      if (canNavigateOpenerSameOrigin()) {
+        try {
+          window.opener.location.replace(resumeUrl);
+          handedOffViaOpenerNav = true;
+        } catch (e) {
+          deliverHandshake();
+        }
+      } else {
+        deliverHandshake();
+      }
 
       document.body.innerHTML =
         '<div style="padding: 40px; text-align: center;">' +
@@ -138,9 +162,8 @@
 
       var lackOpener = !window.opener || window.opener.closed;
 
-      /** Defer close so the parent tab can run postMessage listeners and localStorage poll (same tick races). */
       function tryClosePopup() {
-        var base = 2600;
+        var base = handedOffViaOpenerNav ? 400 : 2600;
         for (var i = 1; i <= 20; i++) {
           setTimeout(function () {
             try {
@@ -150,7 +173,9 @@
         }
       }
 
-      if (lackOpener) {
+      if (handedOffViaOpenerNav) {
+        tryClosePopup();
+      } else if (lackOpener) {
         if (pnPopupFlow) {
           tryClosePopup();
         } else {

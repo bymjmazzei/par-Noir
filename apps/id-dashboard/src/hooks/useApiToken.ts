@@ -4,7 +4,7 @@
  * This hook manages a par Noir OAuth token obtained via the same popup flow as the browser.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { buildOAuthConsentUrl, startPnOAuthPopup } from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from '../config/api';
 
@@ -39,10 +39,70 @@ function randomHex(bytes: number): string {
   return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+function oauthStatesMatch(incoming: string, expected: string): boolean {
+  const a = incoming.trim();
+  const b = expected.trim();
+  if (a === b) return true;
+  try {
+    return decodeURIComponent(a) === decodeURIComponent(b);
+  } catch {
+    return false;
+  }
+}
+
 export function useApiToken() {
   const [apiToken, setApiToken] = useState<string | null>(() => getStoredToken()?.accessToken ?? null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const processedResumeCodesRef = useRef<Set<string>>(new Set());
+
+  /**
+   * Popup oauth-callback may navigate the opener to /?oauth_resume=1&code=... (Chrome handoff).
+   * That reloads the app; startPnOAuthPopup never resolves — complete OAuth here instead.
+   */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('oauth_resume') !== '1') return;
+
+    const code = params.get('code');
+    const err = params.get('error');
+    const stateParam = params.get('state');
+    const storedState = sessionStorage.getItem('pn_oauth_state');
+
+    window.history.replaceState({}, '', `${window.location.pathname}${window.location.hash}`);
+
+    if (err) {
+      const desc = params.get('error_description');
+      setConnectError(desc ? decodeURIComponent(desc.replace(/\+/g, ' ')) : err);
+      return;
+    }
+    if (!code) return;
+    if (processedResumeCodesRef.current.has(code)) return;
+    processedResumeCodesRef.current.add(code);
+
+    if (stateParam && storedState && !oauthStatesMatch(stateParam, storedState)) {
+      setConnectError('Sign-in could not be verified. Please try again.');
+      return;
+    }
+
+    const redirectUri = `${window.location.origin}/oauth-callback.html`;
+    setIsConnecting(true);
+    void (async () => {
+      try {
+        const token = await exchangeCode(code, redirectUri);
+        if (token) {
+          const expiresAt = Date.now() + 60 * 60 * 1000;
+          setStoredToken({ accessToken: token, expiresAt });
+          setApiToken(token);
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setConnectError(msg);
+      } finally {
+        setIsConnecting(false);
+      }
+    })();
+  }, []);
 
   const clearApiToken = useCallback(() => {
     setStoredToken(null);
