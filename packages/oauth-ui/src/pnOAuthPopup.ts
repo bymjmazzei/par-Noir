@@ -159,8 +159,18 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     completeViaParentNavigation = false,
   } = options;
 
+  /** Consent + popup-bridge live on the API host; postMessage always comes from that origin. */
+  let oauthFlowApiOrigin = '';
+  try {
+    oauthFlowApiOrigin = new URL(url).origin;
+  } catch {
+    /* ignore */
+  }
+
   const isAllowedOrigin = (eventOrigin: string) =>
-    eventOrigin === origin || allowedMessageOrigins.some((a) => a === eventOrigin);
+    eventOrigin === origin ||
+    allowedMessageOrigins.some((a) => a === eventOrigin) ||
+    (oauthFlowApiOrigin !== '' && eventOrigin === oauthFlowApiOrigin);
 
   return new Promise((resolve, reject) => {
     const popup = window.open(url, popupName, popupFeatures);
@@ -225,7 +235,10 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       if (expectedState !== '') {
         const incoming = resolveIncomingOAuthState(parsed);
         if (incoming === undefined) return;
-        if (!oauthStatesMatch(incoming, expectedState)) return;
+        if (!oauthStatesMatch(incoming, expectedState)) {
+          fail(new Error('OAUTH_STATE_MISMATCH'));
+          return;
+        }
       }
 
       if (completeViaParentNavigation) {

@@ -390,6 +390,10 @@ export function useAuthAndSession({
           setLocked();
           PNOAuthService.clearSession();
           showErrorToast('Authentication cancelled or failed. Please try again.');
+        } else if (msg === 'OAUTH_STATE_MISMATCH') {
+          setLocked();
+          PNOAuthService.clearSession();
+          showErrorToast('Sign-in session mismatch. Close other tabs and try again.');
         } else {
           console.error('OAuth popup error:', err);
           showErrorToast('Failed to open authentication window');

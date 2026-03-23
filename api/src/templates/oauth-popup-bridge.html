@@ -7,23 +7,54 @@
   <style>
     body { font-family: system-ui; background: #000; color: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
     .msg { color: #10b981; }
+    .err { color: #f87171; max-width: 90vw; text-align: center; padding: 16px; }
   </style>
 </head>
 <body>
   <p class="msg">Sign-in complete. Closing...</p>
+  <!-- Server may inject payload so handoff works even if location.search is wrong (CDN/proxy edge cases). -->
+  <script>
+    window.__PN_OAUTH_BRIDGE__ = {{BRIDGE_JSON}};
+  </script>
   <script>
     (function() {
-      var params = new URLSearchParams(window.location.search);
-      var code = params.get('code');
-      var state = params.get('state');
-      var error = params.get('error');
-      var errorDesc = params.get('error_description');
-      var ageShared = params.get('age_shared');
-      var redirectUri = params.get('redirect_uri');
-      if (!redirectUri) return;
+      var injected = typeof window.__PN_OAUTH_BRIDGE__ !== 'undefined' && window.__PN_OAUTH_BRIDGE__ !== null
+        ? window.__PN_OAUTH_BRIDGE__
+        : null;
+      var code, state, error, errorDesc, ageShared, redirectUri;
+      if (injected && typeof injected === 'object' && injected.redirect_uri) {
+        code = injected.code != null ? String(injected.code) : null;
+        state = injected.state != null ? String(injected.state) : null;
+        error = injected.error != null ? String(injected.error) : null;
+        errorDesc = injected.error_description != null ? String(injected.error_description) : null;
+        ageShared = injected.age_shared != null ? String(injected.age_shared) : null;
+        redirectUri = String(injected.redirect_uri);
+      } else {
+        var params = new URLSearchParams(window.location.search);
+        redirectUri = params.get('redirect_uri');
+        code = params.get('code');
+        state = params.get('state');
+        error = params.get('error');
+        errorDesc = params.get('error_description');
+        ageShared = params.get('age_shared');
+      }
+      if (!redirectUri) {
+        var el = document.querySelector('.msg');
+        if (el) {
+          el.className = 'err';
+          el.textContent = 'OAuth handoff missing redirect_uri. Try again or use a normal browser window.';
+        }
+        return;
+      }
       var appOrigin;
-      try { appOrigin = new URL(redirectUri).origin; } catch (e) { return; }
-      // Only string fields (parent parseOAuthPayload uses typeof === 'string' checks).
+      try { appOrigin = new URL(redirectUri).origin; } catch (e) {
+        var el2 = document.querySelector('.msg');
+        if (el2) {
+          el2.className = 'err';
+          el2.textContent = 'Invalid redirect_uri for OAuth handoff.';
+        }
+        return;
+      }
       var oauthData = { type: 'oauth_callback', timestamp: Date.now() };
       if (code) oauthData.code = code;
       if (state) oauthData.state = state;
@@ -32,19 +63,15 @@
       if (ageShared) oauthData.age_shared = ageShared;
       var openerOk = !!(window.opener && !window.opener.closed);
       if (openerOk) {
-        // Standard OAuth popup handoff: postMessage to opener only. Do NOT navigate the opener here —
-        // that full-page reloads the SPA and races/breaks the parent's startPnOAuthPopup Promise; the
-        // parent exchanges the code in the same document (completeViaParentNavigation: false).
+        try {
+          /* targetOrigin '*' — parent still validates event.origin (API host). Fixed delivery when appOrigin mismatches. */
+          window.opener.postMessage(oauthData, '*');
+        } catch (e) {}
         try {
           window.opener.postMessage(oauthData, appOrigin);
         } catch (e) {}
         setTimeout(function () { try { window.close(); } catch (e) {} }, 300);
       } else {
-        // Opener missing (cross-origin / noopener / COOP). Do NOT load the SPA root in this window —
-        // that only unlocks inside the popup. Redirect to the app's oauth-callback.html with the
-        // same query as a normal OAuth redirect; it writes shared-origin localStorage + BroadcastChannel
-        // so the parent window's startPnOAuthPopup poll can complete. pn_popup=1 matches
-        // oauth-callback.html: lackOpener + pnPopupFlow → close popup only, no SPA navigation.
         try {
           var ru = new URL(redirectUri);
           if (code) ru.searchParams.set('code', code);
