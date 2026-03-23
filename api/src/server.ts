@@ -21,6 +21,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import crypto from 'crypto';
 import path from 'path';
 import { determineFileType, getFileTypeFromMime, determineContentClass } from './server/utils/fileTypeUtils';
+import { isOAuthBrowserHtmlEntryGet } from './server/utils/oauthBrowserHtmlEntry';
 import { safeClientErrorMessage } from './server/utils/safeError';
 import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modules/adminDeveloperRoutes';
 import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSelfServiceRoutes';
@@ -579,17 +580,6 @@ class ProductionServer {
       '/api/aggregator/metadata-index/debug'
     ];
     
-    // GET navigations to API-hosted OAuth HTML (user follows link from developer portal, etc.)
-    // do not send an Origin header; allow those without weakening CORS for state-changing API calls.
-    const isOAuthBrowserHtmlEntryGet = (req: express.Request): boolean => {
-      if (req.method !== 'GET') return false;
-      const path = req.path || req.url?.split('?')[0] || '';
-      return (
-        path.startsWith('/oauth/authorize/consent') ||
-        path.startsWith('/oauth/consent')
-      );
-    };
-
     // Custom CORS middleware that checks path before allowing no-origin requests
     this.app.use((req, res, next) => {
       const origin = req.headers.origin;
