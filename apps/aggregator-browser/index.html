@@ -45,6 +45,24 @@
         } catch (e) {}
         return s;
       };
+      /** Turn OAuth step logging on (persists) and reload — no need to remember ?pn_debug_oauth=1 */
+      window.pnOAuthDebugOn = function () {
+        try {
+          localStorage.setItem(K, '1');
+        } catch (e) {
+          return 'failed: ' + e;
+        }
+        location.reload();
+      };
+      window.pnOAuthDebugOff = function () {
+        try {
+          localStorage.removeItem(K);
+          if (window.__PN_OAUTH_DEBUG__) window.__PN_OAUTH_DEBUG__.length = 0;
+        } catch (e) {
+          return 'failed: ' + e;
+        }
+        location.reload();
+      };
     })();
   </script>
   <script type="module" src="/src/main.tsx"></script>
