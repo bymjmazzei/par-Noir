@@ -40,7 +40,8 @@
         var s = JSON.stringify(log, null, 2);
         try {
           if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(s);
+            var p = navigator.clipboard.writeText(s);
+            if (p && typeof p.then === 'function') p.catch(function () {});
           }
         } catch (e) {}
         return s;

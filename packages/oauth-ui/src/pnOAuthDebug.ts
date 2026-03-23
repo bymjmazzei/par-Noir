@@ -31,7 +31,10 @@ function ensureDebugGlobals(): void {
       const log = w.__PN_OAUTH_DEBUG__ ?? [];
       const s = JSON.stringify(log, null, 2);
       try {
-        void navigator.clipboard?.writeText(s);
+        const p = navigator.clipboard?.writeText(s);
+        if (p && typeof (p as Promise<void>).catch === 'function') {
+          void (p as Promise<void>).catch(() => {});
+        }
       } catch {
         /* ignore */
       }
