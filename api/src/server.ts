@@ -573,18 +573,21 @@ class ProductionServer {
     // CORS configuration with security improvements
     // SECURITY FIX: Restrict no-origin requests to prevent CSRF attacks
     const publicNoOriginPaths = [
-      '/health', 
+      '/health',
+      '/favicon.ico',
       '/api/aggregator/metadata-index', 
       '/api/aggregator/nsfw-index',
       '/api/aggregator/fix-feeds',
       '/api/aggregator/metadata-index/debug'
     ];
-    
+    const isPublicNoOriginPath = (path: string): boolean =>
+      publicNoOriginPaths.some((p) => path === p || path.startsWith(p));
+
     // Custom CORS middleware that checks path before allowing no-origin requests
     this.app.use((req, res, next) => {
       const origin = req.headers.origin;
       const path = req.path || req.url?.split('?')[0] || '';
-      const isPublicPath = publicNoOriginPaths.some(p => path === p || path.startsWith(p));
+      const isPublicPath = isPublicNoOriginPath(path);
 
       // SECURITY FIX: In production, block no-origin requests except for public endpoints
       // and OAuth consent HTML entry (top-level navigation from allowed first-party sites).
@@ -600,6 +603,7 @@ class ProductionServer {
 
     this.app.use((req, res, next) => {
       const allowNoOriginOAuthHtml = isOAuthBrowserHtmlEntryGet(req);
+      const pathForCors = req.path || req.url?.split('?')[0] || '';
 
       return cors({
         origin: (origin, callback) => {
@@ -609,6 +613,9 @@ class ProductionServer {
               return callback(null, true);
             }
             if (allowNoOriginOAuthHtml) {
+              return callback(null, true);
+            }
+            if (isPublicNoOriginPath(pathForCors)) {
               return callback(null, true);
             }
             return callback(new Error('Origin header required'));

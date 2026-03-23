@@ -31,12 +31,34 @@
       if (errorDesc) q.set('error_description', errorDesc);
       if (ageShared) q.set('age_shared', ageShared);
       var resumeUrl = appOrigin + '/?' + q.toString();
-      var oauthData = { type: 'oauth_callback', code: code, state: state, error: error, error_description: errorDesc, age_shared: ageShared, timestamp: Date.now() };
-      if (window.opener && !window.opener.closed) {
-        try { window.opener.postMessage(oauthData, appOrigin); } catch (e) {}
-        try { window.opener.location.replace(resumeUrl); } catch (e) {}
+      // Only string fields (parent parseOAuthPayload uses typeof === 'string' checks).
+      var oauthData = { type: 'oauth_callback', timestamp: Date.now() };
+      if (code) oauthData.code = code;
+      if (state) oauthData.state = state;
+      if (error) oauthData.error = error;
+      if (errorDesc) oauthData.error_description = errorDesc;
+      if (ageShared) oauthData.age_shared = ageShared;
+      var openerOk = !!(window.opener && !window.opener.closed);
+      if (openerOk) {
+        // Prefer navigating the opener: avoids postMessage vs unload races (postMessage then
+        // immediate opener.replace could drop the message before the parent handled it).
+        try {
+          window.opener.location.replace(resumeUrl);
+          setTimeout(function () { try { window.close(); } catch (e) {} }, 300);
+          return;
+        } catch (e) {
+          /* fall through to postMessage */
+        }
+        try {
+          window.opener.postMessage(oauthData, appOrigin);
+        } catch (e) {}
+        setTimeout(function () { try { window.close(); } catch (e) {} }, 400);
+      } else {
+        // Last resort: load the app in this window so oauth_resume can run (e.g. opener lost).
+        try {
+          window.location.replace(resumeUrl);
+        } catch (e) {}
       }
-      setTimeout(function() { window.close(); }, 100);
     })();
   </script>
 </body>
