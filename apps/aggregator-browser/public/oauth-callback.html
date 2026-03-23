@@ -75,19 +75,53 @@
         console.warn('localStorage failed', e);
       }
 
-      try {
-        var oauthBc = new BroadcastChannel(BC_NAME);
-        oauthBc.postMessage(oauthData);
-        oauthBc.close();
-      } catch (e) {}
-
-      if (window.opener && !window.opener.closed) {
+      /** Parent origin for postMessage targetOrigin — must match opener, not only this frame. */
+      function getOpenerTargetOrigin() {
+        var o = window.location.origin;
         try {
-          window.opener.postMessage(oauthData, window.location.origin);
+          if (window.opener && !window.opener.closed && window.opener.location && window.opener.location.origin) {
+            o = window.opener.location.origin;
+          }
         } catch (e) {
-          console.warn('postMessage failed', e);
+          /* cross-origin opener: keep this window's origin (same as app when same-site OAuth) */
+        }
+        return o;
+      }
+
+      function postToBroadcastChannel() {
+        try {
+          var ch = new BroadcastChannel(BC_NAME);
+          ch.postMessage(oauthData);
+          ch.close();
+        } catch (e) {}
+      }
+
+      function postToOpener(targetOrigin) {
+        if (!window.opener || window.opener.closed) return;
+        try {
+          window.opener.postMessage(oauthData, targetOrigin);
+        } catch (e) {
+          try {
+            window.opener.postMessage(oauthData, window.location.origin);
+          } catch (e2) {}
         }
       }
+
+      /** Redeliver: storage partition / timing can drop a single postMessage or BC message. */
+      function deliverHandshake() {
+        var targetOrigin = getOpenerTargetOrigin();
+        var delays = [0, 30, 80, 150, 300, 600, 1200, 2000];
+        for (var i = 0; i < delays.length; i++) {
+          (function (ms) {
+            setTimeout(function () {
+              postToBroadcastChannel();
+              postToOpener(targetOrigin);
+            }, ms);
+          })(delays[i]);
+        }
+      }
+
+      deliverHandshake();
 
       function buildResumeUrl() {
         var q = new URLSearchParams(window.location.search);
@@ -104,13 +138,15 @@
 
       var lackOpener = !window.opener || window.opener.closed;
 
+      /** Defer close so the parent tab can run postMessage listeners and localStorage poll (same tick races). */
       function tryClosePopup() {
+        var base = 2600;
         for (var i = 1; i <= 20; i++) {
           setTimeout(function () {
             try {
               if (!window.closed) window.close();
             } catch (e) {}
-          }, i * 120);
+          }, base + i * 150);
         }
       }
 

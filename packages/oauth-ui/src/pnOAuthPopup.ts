@@ -204,7 +204,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       if (pollInterval !== undefined) clearInterval(pollInterval);
       if (checkClosedInterval !== undefined) clearInterval(checkClosedInterval);
       if (timeoutId !== undefined) clearTimeout(timeoutId);
-      window.removeEventListener('message', onMessage);
+      window.removeEventListener('message', onMessage, true);
       window.removeEventListener('storage', onStorage);
       try {
         localStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
@@ -292,10 +292,11 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       }
     };
 
-    window.addEventListener('message', onMessage);
+    // Capture phase: some embeds / timing edge cases deliver message after microtasks; capture runs first.
+    window.addEventListener('message', onMessage, true);
     window.addEventListener('storage', onStorage);
 
-    pollInterval = setInterval(() => {
+    const pollStorageOnce = () => {
       if (settled) return;
       try {
         const pending = localStorage.getItem(PN_OAUTH_STORAGE_PENDING);
@@ -323,14 +324,20 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       } catch {
         /* ignore */
       }
-    }, 50);
+    };
 
+    queueMicrotask(() => pollStorageOnce());
+    pollInterval = setInterval(pollStorageOnce, 50);
+
+    // Wait longer after popup closes before failing: callback defers window.close() so parent can
+    // still receive postMessage / BroadcastChannel / poll localStorage in slow browsers.
+    const POPUP_CLOSED_GRACE_MS = 8000;
     checkClosedInterval = setInterval(() => {
       if (settled) return;
       try {
         if (popup.closed) {
           if (popupClosedTime === null) popupClosedTime = Date.now();
-          else if (Date.now() - popupClosedTime > 3000) {
+          else if (Date.now() - popupClosedTime > POPUP_CLOSED_GRACE_MS) {
             fail(new Error('POPUP_CLOSED'));
           }
         }
