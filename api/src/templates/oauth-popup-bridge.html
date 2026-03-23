@@ -56,21 +56,25 @@
         return;
       }
       var oauthData = { type: 'oauth_callback', timestamp: Date.now() };
-      if (code) oauthData.code = code;
-      if (state) oauthData.state = state;
-      if (error) oauthData.error = error;
-      if (errorDesc) oauthData.error_description = errorDesc;
-      if (ageShared) oauthData.age_shared = ageShared;
+      if (code != null && code !== '') oauthData.code = code;
+      if (state != null && state !== '') oauthData.state = state;
+      if (error != null && error !== '') oauthData.error = error;
+      if (errorDesc != null && errorDesc !== '') oauthData.error_description = errorDesc;
+      if (ageShared != null && ageShared !== '') oauthData.age_shared = ageShared;
       var openerOk = !!(window.opener && !window.opener.closed);
       if (openerOk) {
-        try {
-          /* targetOrigin '*' — parent still validates event.origin (API host). Fixed delivery when appOrigin mismatches. */
-          window.opener.postMessage(oauthData, '*');
-        } catch (e) {}
-        try {
-          window.opener.postMessage(oauthData, appOrigin);
-        } catch (e) {}
-        setTimeout(function () { try { window.close(); } catch (e) {} }, 300);
+        function sendToOpener() {
+          try {
+            window.opener.postMessage(oauthData, '*');
+          } catch (e) {}
+          try {
+            window.opener.postMessage(oauthData, appOrigin);
+          } catch (e) {}
+        }
+        sendToOpener();
+        setTimeout(sendToOpener, 0);
+        setTimeout(sendToOpener, 50);
+        setTimeout(function () { try { window.close(); } catch (e) {} }, 400);
       } else {
         try {
           var ru = new URL(redirectUri);

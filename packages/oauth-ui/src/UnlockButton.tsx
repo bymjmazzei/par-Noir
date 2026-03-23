@@ -126,6 +126,8 @@ export function UnlockButton({
           onPopupFlowFailed?.('Authentication timed out. Try again.');
         } else if (msg === 'POPUP_CLOSED') {
           onPopupFlowFailed?.('Sign-in was cancelled or the window closed.');
+        } else if (msg === 'OAUTH_STATE_MISMATCH' || msg === 'OAUTH_STATE_MISSING') {
+          onPopupFlowFailed?.('Sign-in could not be verified. Close other tabs and try again.');
         } else {
           onPopupFlowFailed?.(msg);
         }

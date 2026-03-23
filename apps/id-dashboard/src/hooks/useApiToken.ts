@@ -114,6 +114,8 @@ export function useApiToken() {
         setConnectError('Popup closed');
       } else if (msg === 'POPUP_TIMEOUT') {
         setConnectError('Connection timed out');
+      } else if (msg === 'OAUTH_STATE_MISMATCH' || msg === 'OAUTH_STATE_MISSING') {
+        setConnectError('Sign-in could not be verified. Please try again.');
       } else {
         setConnectError(msg);
       }

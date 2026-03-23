@@ -363,10 +363,17 @@ export function useAuthAndSession({
         const result = await startPnOAuthPopup({
           url: authUrl,
           expectedState,
-          timeoutMs: 30_000,
+          timeoutMs: 120_000,
           completeViaParentNavigation: false,
           allowedMessageOrigins: apiOrigin ? [apiOrigin] : undefined,
         });
+
+        if (!result.code && !result.error) {
+          setLocked();
+          PNOAuthService.clearSession();
+          showErrorToast('Sign-in did not complete. Please try again.');
+          return;
+        }
 
         await runOAuthCallback(
           {
@@ -394,6 +401,10 @@ export function useAuthAndSession({
           setLocked();
           PNOAuthService.clearSession();
           showErrorToast('Sign-in session mismatch. Close other tabs and try again.');
+        } else if (msg === 'OAUTH_STATE_MISSING') {
+          setLocked();
+          PNOAuthService.clearSession();
+          showErrorToast('Sign-in data was incomplete. Please try again.');
         } else {
           console.error('OAuth popup error:', err);
           showErrorToast('Failed to open authentication window');

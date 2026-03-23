@@ -105,6 +105,9 @@ export class PNOAuthClient {
       if (msg === 'POPUP_CLOSED') {
         throw new Error('Popup closed by user');
       }
+      if (msg === 'OAUTH_STATE_MISMATCH' || msg === 'OAUTH_STATE_MISSING') {
+        throw new Error('Sign-in could not be verified. Please try again.');
+      }
       throw e;
     }
 

@@ -82,6 +82,8 @@ export function ApplyModal({ open, onClose }: ApplyModalProps) {
         setFlowError('Popup blocked. Allow popups for this site.');
       } else if (msg === 'POPUP_CLOSED') {
         setFlowError('Sign-in was cancelled.');
+      } else if (msg === 'OAUTH_STATE_MISMATCH' || msg === 'OAUTH_STATE_MISSING') {
+        setFlowError('Sign-in could not be verified. Please try again.');
       } else if (msg !== 'POPUP_TIMEOUT') {
         setFlowError(msg);
       }

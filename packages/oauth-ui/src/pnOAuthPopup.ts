@@ -97,15 +97,27 @@ export interface StartPnOAuthPopupOptions {
   completeViaParentNavigation?: boolean;
 }
 
+function coerceOAuthString(v: unknown): string | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return undefined;
+}
+
 function parseOAuthPayload(raw: Record<string, unknown>): PnOAuthPopupResult | null {
   if (!raw || typeof raw !== 'object') return null;
   if (raw.type !== PN_OAUTH_MESSAGE_TYPE) return null;
+  const code = coerceOAuthString(raw.code);
+  const state = coerceOAuthString(raw.state);
+  const err = coerceOAuthString(raw.error);
+  const errDesc = coerceOAuthString(raw.error_description);
+  const age = coerceOAuthString(raw.age_shared);
   return {
-    code: typeof raw.code === 'string' ? raw.code : undefined,
-    state: typeof raw.state === 'string' ? raw.state : undefined,
-    error: typeof raw.error === 'string' ? raw.error : undefined,
-    error_description: typeof raw.error_description === 'string' ? raw.error_description : undefined,
-    age_shared: typeof raw.age_shared === 'string' ? raw.age_shared : undefined,
+    code: code !== undefined && code.length > 0 ? code : undefined,
+    state: state !== undefined ? state : undefined,
+    error: err !== undefined && err.length > 0 ? err : undefined,
+    error_description: errDesc !== undefined && errDesc.length > 0 ? errDesc : undefined,
+    age_shared: age !== undefined && age.length > 0 ? age : undefined,
   };
 }
 
@@ -234,7 +246,10 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       // Silent mismatch used to block navigation entirely — parent never unlocked with no error.
       if (expectedState !== '') {
         const incoming = resolveIncomingOAuthState(parsed);
-        if (incoming === undefined) return;
+        if (incoming === undefined) {
+          fail(new Error('OAUTH_STATE_MISSING'));
+          return;
+        }
         if (!oauthStatesMatch(incoming, expectedState)) {
           fail(new Error('OAUTH_STATE_MISMATCH'));
           return;
@@ -269,18 +284,20 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     };
 
     const onStorage = (event: StorageEvent) => {
-      if (event.key === 'pn_oauth_callback' && event.newValue) {
-        try {
-          const data = JSON.parse(event.newValue) as Record<string, unknown>;
-          acceptPayload(data);
-        } catch {
-          /* ignore */
-        }
-        try {
-          localStorage.removeItem('pn_oauth_callback');
-        } catch {
-          /* ignore */
-        }
+      const key = event.key;
+      if (!key || !event.newValue) return;
+      // oauth-callback.html uses pn_oauth_callback_<timestamp>, not a fixed key
+      if (!key.startsWith('pn_oauth_callback_')) return;
+      try {
+        const data = JSON.parse(event.newValue) as Record<string, unknown>;
+        acceptPayload(data);
+      } catch {
+        /* ignore */
+      }
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        /* ignore */
       }
     };
 
