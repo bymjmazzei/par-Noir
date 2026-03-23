@@ -7,7 +7,7 @@ import './index.css';
 import { UserStateProvider } from './contexts/UserStateContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
-/** Opt-in: ?pn_debug_oauth=1 — read window.__PN_OAUTH_DEBUG__ in DevTools (production strips console.*). */
+/** Opt-in: ?pn_debug_oauth=1 — then pnOAuthDebugCopy() or window.__PN_OAUTH_DEBUG__ (production strips console.*). */
 initPnOAuthDebugFromUrl();
 snapshotOAuthResumeSearchFromUrl();
 
