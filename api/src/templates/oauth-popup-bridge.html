@@ -54,9 +54,20 @@
         } catch (e) {}
         setTimeout(function () { try { window.close(); } catch (e) {} }, 400);
       } else {
-        // Last resort: load the app in this window so oauth_resume can run (e.g. opener lost).
+        // Opener missing (cross-origin / noopener / COOP). Do NOT load the SPA root in this window —
+        // that only unlocks inside the popup. Redirect to the app's oauth-callback.html with the
+        // same query as a normal OAuth redirect; it writes shared-origin localStorage + BroadcastChannel
+        // so the parent window's startPnOAuthPopup poll can complete. pn_popup=1 matches
+        // oauth-callback.html: lackOpener + pnPopupFlow → close popup only, no SPA navigation.
         try {
-          window.location.replace(resumeUrl);
+          var ru = new URL(redirectUri);
+          if (code) ru.searchParams.set('code', code);
+          if (state) ru.searchParams.set('state', state);
+          if (error) ru.searchParams.set('error', error);
+          if (errorDesc) ru.searchParams.set('error_description', errorDesc);
+          if (ageShared) ru.searchParams.set('age_shared', ageShared);
+          ru.searchParams.set('pn_popup', '1');
+          window.location.replace(ru.toString());
         } catch (e) {}
       }
     })();

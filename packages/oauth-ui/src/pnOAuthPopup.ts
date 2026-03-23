@@ -71,7 +71,8 @@ export function buildOAuthAuthorizeUrl(config: OAuthConsentUrlConfig): string {
   return buildOAuthConsentUrl(config);
 }
 
-const DEFAULT_POPUP_FEATURES = 'width=500,height=600,scrollbars=yes,resizable=yes';
+/** popup=yes helps some browsers keep window.opener for cross-origin OAuth flows */
+const DEFAULT_POPUP_FEATURES = 'popup=yes,width=500,height=600,scrollbars=yes,resizable=yes';
 
 export interface StartPnOAuthPopupOptions {
   url: string;
