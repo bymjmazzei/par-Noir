@@ -370,29 +370,6 @@ function App() {
     }
   }, [getParam, indexedFiles.length, userState.preferences.subscribedFeedIds]); // Removed activeFeedId to prevent interference
 
-  // Update URL when state changes
-  useEffect(() => {
-    if (viewingCreatorId) {
-      setParam('creator', viewingCreatorId);
-    } else {
-      setParam('creator', null);
-    }
-  }, [viewingCreatorId, setParam]);
-
-  useEffect(() => {
-    if (viewingBrandedFeed) {
-      setParam('feed', viewingBrandedFeed.feedId);
-    } else if (activeFeedId !== 'public') {
-      setParam('feed', activeFeedId);
-    } else {
-      setParam('feed', null);
-    }
-  }, [viewingBrandedFeed, activeFeedId, setParam]);
-
-  useEffect(() => {
-    setParam('view', viewMode);
-  }, [viewMode, setParam]);
-
   // Reset feed index and pagination when feed changes (unless navigating to a specific file)
   useEffect(() => {
     if (visibleFileId || mePageData.isNavigatingToFileRef.current || mePageData.lastNavigatedFileIdRef.current) return;
@@ -495,6 +472,30 @@ function App() {
     showErrorToast,
     discoverFilesRef,
   });
+
+  // Update URL when state changes — MUST run after useAuthAndSession registers oauth_resume handling.
+  // Otherwise setParam pushState runs first on OAuth return and can strip oauth_resume/code before the resume effect runs.
+  useEffect(() => {
+    if (viewingCreatorId) {
+      setParam('creator', viewingCreatorId);
+    } else {
+      setParam('creator', null);
+    }
+  }, [viewingCreatorId, setParam]);
+
+  useEffect(() => {
+    if (viewingBrandedFeed) {
+      setParam('feed', viewingBrandedFeed.feedId);
+    } else if (activeFeedId !== 'public') {
+      setParam('feed', activeFeedId);
+    } else {
+      setParam('feed', null);
+    }
+  }, [viewingBrandedFeed, activeFeedId, setParam]);
+
+  useEffect(() => {
+    setParam('view', viewMode);
+  }, [viewMode, setParam]);
 
   // Public feed now uses the same thumbnails state as Me page
   // generateThumbnailsForImages already populates thumbnails for all discovered files

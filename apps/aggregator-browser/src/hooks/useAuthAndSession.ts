@@ -199,7 +199,6 @@ export function useAuthAndSession({
   /** Android/Capacitor / Chrome opener nav: main window loads /?oauth_resume=1&code=... after popup OAuth */
   useEffect(() => {
     const storedSearch = sessionStorage.getItem(PN_OAUTH_RESUME_SEARCH_KEY);
-    if (storedSearch) sessionStorage.removeItem(PN_OAUTH_RESUME_SEARCH_KEY);
     const search = storedSearch ?? window.location.search;
     const params = new URLSearchParams(search);
     if (params.get('oauth_resume') !== '1') return;
@@ -237,6 +236,11 @@ export function useAuthAndSession({
         );
       } finally {
         pushPnOAuthDebug('oauth_resume_replace_state', {});
+        try {
+          sessionStorage.removeItem(PN_OAUTH_RESUME_SEARCH_KEY);
+        } catch {
+          /* ignore */
+        }
         clearOAuthQuery();
       }
     })();
