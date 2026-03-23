@@ -12,6 +12,23 @@ import { getUserProfile } from '../services/profileService';
 import { API_ENDPOINT } from '../config/api';
 import { PN_OAUTH_RESUME_SEARCH_KEY } from '../oauthResumeBootstrap';
 
+/**
+ * oauth-callback.html may hand off via `opener.location.replace(/?oauth_resume=1&code=...)`.
+ * The page reloads and saves the session there, while `startPnOAuthPopup` in the old document
+ * often rejects with POPUP_CLOSED (no postMessage). Poll until the new session appears.
+ */
+async function waitForValidOAuthSession(maxMs: number): Promise<boolean> {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    const session = PNOAuthService.loadSession();
+    if (session && PNOAuthService.isSessionValid(session) && session.did) {
+      return true;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return false;
+}
+
 export interface UseAuthAndSessionParams {
   setViewingCreatorId: (id: string | null) => void;
   setActiveBottomTab: (tab: string) => void;
@@ -439,6 +456,21 @@ export function useAuthAndSession({
           PNOAuthService.clearSession();
           showErrorToast('Authentication timeout. Please try again.');
         } else if (msg === 'POPUP_CLOSED') {
+          pushPnOAuthDebug('popup_closed_wait_for_session', {});
+          const recovered = await waitForValidOAuthSession(12_000);
+          if (recovered) {
+            pushPnOAuthDebug('popup_closed_recovered_session', {});
+            const session = PNOAuthService.loadSession()!;
+            const pnId = session.pnIdentifier || session.did;
+            setUnlocked(pnId);
+            if (pnId && !pnId.startsWith('did:key:')) {
+              setTimeout(() => loadUserDisplayName(pnId), 500);
+            }
+            if (discoverFilesRef.current) {
+              discoverFilesRef.current(undefined, true);
+            }
+            return;
+          }
           setLocked();
           PNOAuthService.clearSession();
           showErrorToast('Authentication cancelled or failed. Please try again.');
@@ -465,6 +497,7 @@ export function useAuthAndSession({
     showErrorToast,
     discoverFilesRef,
     runOAuthCallback,
+    loadUserDisplayName,
   ]);
 
   return { handleLockUnlock, handleMeClick, loadUserDisplayName };

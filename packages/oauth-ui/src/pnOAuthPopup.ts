@@ -281,6 +281,27 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       finish(parsed);
     };
 
+    /** oauth-callback.html may call opener.location.replace(/?oauth_resume=1&code=...) before postMessage is observed. */
+    const tryAcceptFromOpenerUrl = () => {
+      if (settled) return;
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        if (sp.get('oauth_resume') !== '1') return;
+        const raw: Record<string, unknown> = {
+          type: PN_OAUTH_MESSAGE_TYPE,
+          code: sp.get('code') ?? undefined,
+          state: sp.get('state') ?? undefined,
+          error: sp.get('error') ?? undefined,
+          error_description: sp.get('error_description') ?? undefined,
+          age_shared: sp.get('age_shared') ?? undefined,
+          timestamp: Date.now(),
+        };
+        acceptPayload(raw, 'opener_url');
+      } catch {
+        /* ignore */
+      }
+    };
+
     try {
       oauthBc = new BroadcastChannel(PN_OAUTH_BROADCAST_CHANNEL);
       oauthBc.onmessage = (ev: MessageEvent) => {
@@ -322,6 +343,8 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
 
     const pollStorageOnce = () => {
       if (settled) return;
+      tryAcceptFromOpenerUrl();
+      if (settled) return;
       try {
         const pending = localStorage.getItem(PN_OAUTH_STORAGE_PENDING);
         const latestKey = localStorage.getItem(PN_OAUTH_STORAGE_LATEST_KEY);
@@ -358,11 +381,14 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     const POPUP_CLOSED_GRACE_MS = 8000;
     checkClosedInterval = setInterval(() => {
       if (settled) return;
+      tryAcceptFromOpenerUrl();
+      if (settled) return;
       try {
         if (popup.closed) {
           if (popupClosedTime === null) popupClosedTime = Date.now();
           else if (Date.now() - popupClosedTime > POPUP_CLOSED_GRACE_MS) {
-            fail(new Error('POPUP_CLOSED'));
+            tryAcceptFromOpenerUrl();
+            if (!settled) fail(new Error('POPUP_CLOSED'));
           }
         }
       } catch {
