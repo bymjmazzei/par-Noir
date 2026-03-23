@@ -627,7 +627,12 @@
       if (gsb) gsb.style.display = 'flex';
     }
 
-    /** Redirect to registered redirect_uri with code (RFC 6749). Same path for popup and full-page — popup loads oauth-callback.html on the app origin; postMessage + storage bridge are same-origin with the parent. */
+    /**
+     * Redirect to registered redirect_uri with code (RFC 6749).
+     * When popup=true on authorize, append pn_popup=1 so oauth-callback.html never loads the full SPA
+     * in the popup if window.opener was dropped (Safari / cross-origin); without it, lackOpener + no pn_popup
+     * triggers location.replace(/?oauth_resume=...) and the app unlocks in the wrong window.
+     */
     function redirectWithAuthCodeFixed(code, ageShared) {
       var u;
       try {
@@ -635,12 +640,17 @@
       } catch (e) {
         var sep0 = redirectUri.indexOf('?') >= 0 ? '&' : '?';
         var qs0 = 'code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state || '');
+        if (ageShared !== undefined && ageShared !== null) {
+          qs0 += '&age_shared=' + (ageShared ? 'true' : 'false');
+        }
+        if (popupFlow) qs0 += '&pn_popup=1';
         window.location.href = redirectUri + sep0 + qs0;
         return;
       }
       u.searchParams.set('code', code);
       if (state) u.searchParams.set('state', state);
       if (ageShared !== undefined && ageShared !== null) u.searchParams.set('age_shared', ageShared ? 'true' : 'false');
+      if (popupFlow) u.searchParams.set('pn_popup', '1');
       window.location.href = u.toString();
     }
     
@@ -1063,10 +1073,13 @@
           du.searchParams.set('error', 'access_denied');
           du.searchParams.set('error_description', 'User denied access');
           if (state) du.searchParams.set('state', state);
+          if (popupFlow) du.searchParams.set('pn_popup', '1');
           window.location.href = du.toString();
         } catch (_) {
           var sep = redirectUri.indexOf('?') >= 0 ? '&' : '?';
-          window.location.href = redirectUri + sep + 'error=access_denied&error_description=' + encodeURIComponent('User denied access') + (state ? '&state=' + encodeURIComponent(state) : '');
+          var qdeny = 'error=access_denied&error_description=' + encodeURIComponent('User denied access') + (state ? '&state=' + encodeURIComponent(state) : '');
+          if (popupFlow) qdeny += '&pn_popup=1';
+          window.location.href = redirectUri + sep + qdeny;
         }
       }
     });
