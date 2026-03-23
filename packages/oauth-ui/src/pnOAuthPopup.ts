@@ -120,6 +120,28 @@ function buildOAuthResumeUrl(pageOrigin: string, parsed: PnOAuthPopupResult): st
   return `${base}/?${p.toString()}`;
 }
 
+/** Compare OAuth state values (handles minor encoding differences across bridge/callback). */
+function oauthStatesMatch(incoming: string, expected: string): boolean {
+  const a = incoming.trim();
+  const b = expected.trim();
+  if (a === b) return true;
+  try {
+    return decodeURIComponent(a) === decodeURIComponent(b);
+  } catch {
+    return false;
+  }
+}
+
+function resolveIncomingOAuthState(parsed: PnOAuthPopupResult): string | undefined {
+  if (parsed.state !== undefined) return parsed.state;
+  try {
+    const fromSession = sessionStorage.getItem('pn_oauth_state');
+    return fromSession && fromSession.length > 0 ? fromSession : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Opens consent URL in a popup and resolves when oauth_callback is received
  * (postMessage, BroadcastChannel, or localStorage poll).
@@ -195,8 +217,16 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     const acceptPayload = (raw: Record<string, unknown>) => {
       const parsed = parseOAuthPayload(raw);
       if (!parsed) return;
-      if (parsed.state !== undefined && parsed.state !== expectedState) return;
       if (!parsed.code && !parsed.error) return;
+
+      // CSRF: when we sent a non-empty state, require a match (payload or sessionStorage fallback).
+      // Silent mismatch used to block navigation entirely — parent never unlocked with no error.
+      if (expectedState !== '') {
+        const incoming = resolveIncomingOAuthState(parsed);
+        if (incoming === undefined) return;
+        if (!oauthStatesMatch(incoming, expectedState)) return;
+      }
+
       if (completeViaParentNavigation) {
         if (settled) return;
         settled = true;
