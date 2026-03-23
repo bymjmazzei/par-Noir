@@ -22,6 +22,31 @@
 </head>
 <body>
   <div id="root"></div>
+  <!-- Runs before the Vite bundle so DevTools always has these (cache/old bundle can’t strip this). -->
+  <script>
+    (function () {
+      if (typeof window === 'undefined') return;
+      var K = 'pn_debug_oauth';
+      if (!window.__PN_OAUTH_DEBUG__) window.__PN_OAUTH_DEBUG__ = [];
+      window.pnOAuthDebugStatus = function () {
+        try {
+          return localStorage.getItem(K) === '1' ? 'on' : 'off';
+        } catch (e) {
+          return 'off';
+        }
+      };
+      window.pnOAuthDebugCopy = function () {
+        var log = window.__PN_OAUTH_DEBUG__ || [];
+        var s = JSON.stringify(log, null, 2);
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(s);
+          }
+        } catch (e) {}
+        return s;
+      };
+    })();
+  </script>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>
