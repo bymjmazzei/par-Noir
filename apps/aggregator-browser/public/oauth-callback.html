@@ -178,12 +178,6 @@
         hasOpener: !!(window.opener && !window.opener.closed)
       });
 
-      document.body.innerHTML =
-        '<div style="padding: 40px; text-align: center;">' +
-        '<div style="color: #10b981; font-size: 24px; margin-bottom: 16px;">✓ Authorization Complete</div>' +
-        '<p style="color: #9ca3af;">You can close this window.</p>' +
-        '</div>';
-
       var lackOpener = !window.opener || window.opener.closed;
 
       function tryClosePopup() {
