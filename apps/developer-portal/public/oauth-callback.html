@@ -167,11 +167,8 @@
       if (handedOffViaOpenerNav) {
         tryClosePopup();
       } else if (lackOpener) {
-        if (pnPopupFlow) {
-          tryClosePopup();
-        } else {
-          window.location.replace(resumeUrl);
-        }
+        // Never discard OAuth result when opener is missing. Resume in this window.
+        window.location.replace(resumeUrl);
       } else {
         tryClosePopup();
       }

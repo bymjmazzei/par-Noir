@@ -463,7 +463,7 @@ export function useAuthAndSession({
           showErrorToast('Authentication timeout. Please try again.');
         } else if (msg === 'POPUP_CLOSED') {
           pushPnOAuthDebug('popup_closed_wait_for_session', {});
-          const recovered = await waitForValidOAuthSession(12_000);
+          const recovered = await waitForValidOAuthSession(25_000);
           if (recovered) {
             pushPnOAuthDebug('popup_closed_recovered_session', {});
             const session = PNOAuthService.loadSession()!;
@@ -477,19 +477,9 @@ export function useAuthAndSession({
             }
             return;
           }
-          // Final fallback: switch to full-page OAuth when popup handoff fails.
-          // This avoids browser popup/opener/storage race conditions.
-          try {
-            const fallbackUrl = new URL(authUrl);
-            fallbackUrl.searchParams.set('popup', 'false');
-            sessionStorage.setItem('pn_oauth_full_redirect_fallback', '1');
-            window.location.href = fallbackUrl.toString();
-            return;
-          } catch {
-            setLocked();
-            PNOAuthService.clearSession();
-            showErrorToast('Authentication cancelled or failed. Please try again.');
-          }
+          setLocked();
+          PNOAuthService.clearSession();
+          showErrorToast('Popup closed before sign-in completed. Please try again.');
         } else if (msg === 'OAUTH_STATE_MISMATCH') {
           setLocked();
           PNOAuthService.clearSession();
