@@ -253,6 +253,77 @@ export function useAuthAndSession({
     })();
   }, [runOAuthCallback]);
 
+  /**
+   * Recovery path: if callback payload is written to storage but popup handshake
+   * path is missed, consume it directly from parent and complete token exchange.
+   */
+  useEffect(() => {
+    let mounted = true;
+
+    const tryConsumePendingOAuthStorage = async () => {
+      if (!mounted) return;
+      try {
+        const latestKey = localStorage.getItem(PN_OAUTH_STORAGE_LATEST_KEY);
+        if (!latestKey) return;
+        const raw = localStorage.getItem(latestKey);
+        if (!raw) return;
+        const data = JSON.parse(raw) as {
+          type?: string;
+          code?: string;
+          state?: string;
+          error?: string;
+          error_description?: string;
+          age_shared?: string;
+          timestamp?: number;
+        };
+        if (data.type !== 'oauth_callback') return;
+        const code = data.code;
+        const err = data.error;
+        if (!code && !err) return;
+        if (code && oauthProcessedCodesRef.current.has(code)) return;
+        const ts = Number(data.timestamp);
+        if (Number.isFinite(ts) && Date.now() - ts > 120_000) return;
+
+        pushPnOAuthDebug('storage_recovery_consume', {
+          hasCode: Boolean(code),
+          hasError: Boolean(err),
+        });
+
+        try {
+          localStorage.removeItem(latestKey);
+          localStorage.removeItem(PN_OAUTH_STORAGE_LATEST_KEY);
+          localStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
+        } catch {
+          /* ignore */
+        }
+
+        await runOAuthCallback(
+          {
+            code: code || undefined,
+            state: data.state || undefined,
+            error: err || undefined,
+            error_description: data.error_description || undefined,
+            age_shared: data.age_shared || undefined,
+          },
+          { redirectUri: redirectUriForOAuth }
+        );
+      } catch {
+        /* ignore */
+      }
+    };
+
+    // Immediate check + short poll for handshake races.
+    void tryConsumePendingOAuthStorage();
+    const id = window.setInterval(() => {
+      void tryConsumePendingOAuthStorage();
+    }, 500);
+
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, [redirectUriForOAuth, runOAuthCallback]);
+
   const loadUserDisplayName = useCallback(
     async (pnIdentifier: string) => {
       if (!pnIdentifier || pnIdentifier.startsWith('did:key:')) return;
