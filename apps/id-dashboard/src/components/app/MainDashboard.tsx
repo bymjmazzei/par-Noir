@@ -42,7 +42,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   const [isDelegationModalOpen, setIsDelegationModalOpen] = useState(false);
 
   const cleanupManager = useCleanupManager();
-  const { apiToken, connectApi, isConnecting, connectError } = useApiToken();
+  const { apiToken } = useApiToken();
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -253,9 +253,6 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               {activeTab === 'subpn' && (
                 <SubPnTab
                   accessToken={apiToken}
-                  onConnect={connectApi}
-                  isConnecting={isConnecting}
-                  connectError={connectError}
                   sessionId={authenticatedUser?.id}
                   publicKey={authenticatedUser?.publicKey}
                 />

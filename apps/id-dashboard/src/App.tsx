@@ -274,7 +274,7 @@ function App() {
   // Use custom hooks for state management - MUST be declared before any functions that use these variables
   const appState = useAppState();
   const identityState = useIdentityState();
-  const { apiToken, connectApi, clearApiToken, isConnecting, connectError } = useApiToken();
+  const { apiToken, clearApiToken, ensureApiTokenAfterUnlock } = useApiToken();
   const privacyState = usePrivacyState();
   const exportState = useExportState();
   const custodianState = useCustodianState();
@@ -1742,6 +1742,29 @@ function App() {
         // passcode removed - use SecureCredentialManager.getCredentials(session.id) if needed
         authToken: session.authToken || undefined,
       });
+
+      // Acquire par Noir API JWT immediately after identity unlock.
+      const credentials = SecureCredentialManager.getCredentials(session.id);
+      if (credentials && session.publicKey) {
+        try {
+          const storedIdentity = await storage.getIdentity(session.publicKey);
+          if (storedIdentity) {
+            await ensureApiTokenAfterUnlock({
+              encryptedIdentity: {
+                encryptedData: storedIdentity.encryptedData,
+                iv: storedIdentity.iv,
+                salt: storedIdentity.salt
+              },
+              publicKey: session.publicKey,
+              did: session.id,
+              pnName: credentials.pnName,
+              passcode: credentials.passcode
+            });
+          }
+        } catch {
+          // Keep unlock success path intact; Sub-pN flows can surface token errors.
+        }
+      }
 
       // Set the unlocked identity for notifications
       // SECURITY: pnName and passcode not passed - stored in SecureCredentialManager only
@@ -6523,9 +6546,6 @@ This invitation expires in 24 hours.`;
                   {activeTab === 'subpn' && (
                     <SubPnTab
                       accessToken={apiToken}
-                      onConnect={connectApi}
-                      isConnecting={isConnecting}
-                      connectError={connectError}
                       sessionId={authenticatedUser?.id}
                       publicKey={authenticatedUser?.publicKey}
                     />
