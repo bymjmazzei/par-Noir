@@ -35,18 +35,27 @@ function randomSecret(len = 24): string {
 
 const STORAGE_SEAL_PREFIX = 'par_noir_sub_seal_';
 
+interface ScopeOption {
+  key: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+}
+
 interface SubPnTabProps {
   accessToken: string | null | undefined;
   connectError?: string | null;
   sessionId: string | undefined;
   publicKey: string | undefined;
+  availableScopes?: ScopeOption[];
 }
 
 export const SubPnTab: React.FC<SubPnTabProps> = ({
   accessToken,
   connectError,
   sessionId,
-  publicKey
+  publicKey,
+  availableScopes = []
 }) => {
   const [assets, setAssets] = useState<OwnedAssetDto[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,8 +64,13 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   const [createKind, setCreateKind] = useState<SubKind>('ai_agent');
   const [label, setLabel] = useState('');
   const [exportPassphrase, setExportPassphrase] = useState('');
-  const [mainPassForExport, setMainPassForExport] = useState('');
   const [exportPassConfirm, setExportPassConfirm] = useState('');
+  const [showExportAuthModal, setShowExportAuthModal] = useState(false);
+  const [authPnName, setAuthPnName] = useState('');
+  const [authPasscode, setAuthPasscode] = useState('');
+  const [authFile, setAuthFile] = useState<File | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [delegations, setDelegations] = useState<
     Array<{
       id: string;
@@ -68,7 +82,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   >([]);
   const [newDelPn, setNewDelPn] = useState('');
   const [newDelClient, setNewDelClient] = useState('');
-  const [newDelScope, setNewDelScope] = useState('*');
+  const [delegationBusyScope, setDelegationBusyScope] = useState<string | null>(null);
 
   const rootPnForIpfs = useCallback(async (): Promise<string | null> => {
     if (!sessionId || !publicKey) return null;
@@ -193,18 +207,37 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     }
   };
 
-  const verifyMainPass = (): boolean => {
-    if (!sessionId) return false;
-    const c = SecureCredentialManager.getCredentials(sessionId);
-    return !!c?.passcode && c.passcode === mainPassForExport;
+  const closeExportAuthModal = () => {
+    if (authLoading) return;
+    setShowExportAuthModal(false);
+    setAuthPnName('');
+    setAuthPasscode('');
+    setAuthFile(null);
+    setAuthError(null);
   };
 
-  const downloadExport = async () => {
-    if (!selected || !accessToken) return;
-    if (!verifyMainPass()) {
-      setErr('Main passcode does not match.');
-      return;
+  const parseIdentityFile = async (file: File): Promise<EncryptedIdentity> => {
+    const raw = await file.text();
+    const parsed = JSON.parse(raw) as
+      | EncryptedIdentity
+      | { identities?: EncryptedIdentity[]; encryptedIdentity?: EncryptedIdentity };
+
+    if (parsed && typeof parsed === 'object') {
+      if ('encryptedData' in parsed && 'iv' in parsed && 'salt' in parsed) {
+        return parsed as EncryptedIdentity;
+      }
+      if (Array.isArray(parsed.identities) && parsed.identities.length === 1) {
+        return parsed.identities[0];
+      }
+      if (parsed.encryptedIdentity && parsed.encryptedIdentity.encryptedData) {
+        return parsed.encryptedIdentity;
+      }
     }
+    throw new Error('Invalid identity file. Use your root pN identity file.');
+  };
+
+  const doDownloadExport = async () => {
+    if (!selected || !accessToken) return;
     const ep = exportPassConfirm.trim();
     if (!ep) {
       setErr('Enter your export passphrase.');
@@ -248,26 +281,99 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       a.click();
       URL.revokeObjectURL(url);
       await auditSubExport(accessToken, selected.id);
-      setMainPassForExport('');
       setExportPassConfirm('');
     } catch {
       setErr('Export passphrase wrong or corrupt backup.');
     }
   };
 
-  const addDelegation = async () => {
-    if (!accessToken || !selectedId) return;
+  const handleConfirmFullReauthAndExport = async () => {
+    if (!authFile) {
+      setAuthError('Upload your root pN identity file.');
+      return;
+    }
+    if (!authPnName.trim() || !authPasscode.trim()) {
+      setAuthError('Enter your pN name and passcode.');
+      return;
+    }
+    if (!sessionId) {
+      setAuthError('No active root identity session. Unlock again.');
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError(null);
     try {
-      await createDelegation(accessToken, selectedId, {
-        delegateePnIdentifier: newDelPn.trim() || undefined,
-        delegateeClientId: newDelClient.trim() || undefined,
-        scope: newDelScope.trim() || '*'
-      });
-      setNewDelPn('');
-      setNewDelClient('');
+      const encryptedIdentity = await parseIdentityFile(authFile);
+      const authSession = await IdentityCrypto.authenticateIdentity(
+        encryptedIdentity,
+        authPasscode.trim(),
+        authPnName.trim()
+      );
+      if (authSession.id !== sessionId) {
+        throw new Error('Re-authenticated identity does not match the currently unlocked root pN.');
+      }
+      closeExportAuthModal();
+      await doDownloadExport();
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : 'Re-authentication failed.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const getDelegationTarget = (): { delegateePnIdentifier?: string; delegateeClientId?: string } | null => {
+    const pn = newDelPn.trim();
+    const client = newDelClient.trim();
+    if (!pn && !client) return null;
+    if (pn && client) return null;
+    return pn ? { delegateePnIdentifier: pn } : { delegateeClientId: client };
+  };
+
+  const isScopeEnabledForTarget = (scope: string): boolean => {
+    const target = getDelegationTarget();
+    if (!target) return false;
+    return delegations.some((d) => {
+      const targetMatchesPn =
+        target.delegateePnIdentifier && d.delegateePnIdentifier === target.delegateePnIdentifier;
+      const targetMatchesClient = target.delegateeClientId && d.delegateeClientId === target.delegateeClientId;
+      return (targetMatchesPn || targetMatchesClient) && d.scope === scope;
+    });
+  };
+
+  const handleScopeToggle = async (scope: string, nextEnabled: boolean) => {
+    if (!accessToken || !selectedId) return;
+    const target = getDelegationTarget();
+    if (!target) {
+      setErr('Choose either a delegate pN identifier or a client id first.');
+      return;
+    }
+    if (!nextEnabled && !isScopeEnabledForTarget(scope)) return;
+
+    setErr(null);
+    setDelegationBusyScope(scope);
+    try {
+      if (nextEnabled) {
+        await createDelegation(accessToken, selectedId, {
+          ...target,
+          scope
+        });
+      } else {
+        const match = delegations.find((d) => {
+          const targetMatchesPn =
+            target.delegateePnIdentifier && d.delegateePnIdentifier === target.delegateePnIdentifier;
+          const targetMatchesClient = target.delegateeClientId && d.delegateeClientId === target.delegateeClientId;
+          return (targetMatchesPn || targetMatchesClient) && d.scope === scope;
+        });
+        if (match) {
+          await revokeDelegation(accessToken, match.id);
+        }
+      }
       await loadDelegations();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Delegation failed');
+      setErr(e instanceof Error ? e.message : 'Delegation update failed');
+    } finally {
+      setDelegationBusyScope(null);
     }
   };
 
@@ -435,15 +541,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               Export sub backup
             </h5>
             <p className="text-xs text-text-secondary">
-              Re-enter your main pN passcode, then the export passphrase you set at creation.
+              Full re-auth is required before export: root identity file + pN name + passcode, then export passphrase.
             </p>
-            <input
-              type="password"
-              className="w-full max-w-md rounded-md bg-secondary border border-border px-3 py-2 text-sm"
-              placeholder="Main pN passcode"
-              value={mainPassForExport}
-              onChange={(e) => setMainPassForExport(e.target.value)}
-            />
             <input
               type="password"
               className="w-full max-w-md rounded-md bg-secondary border border-border px-3 py-2 text-sm"
@@ -453,7 +552,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
             />
             <button
               type="button"
-              onClick={() => void downloadExport()}
+              onClick={() => setShowExportAuthModal(true)}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-green-700 text-white text-sm hover:bg-green-600"
             >
               <Download className="w-4 h-4" />
@@ -466,7 +565,9 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               <UserPlus className="w-4 h-4" />
               Delegations
             </h5>
-            <p className="text-xs text-text-secondary">Grant another pN or OAuth client id a scope for this sub.</p>
+            <p className="text-xs text-text-secondary">
+              Select one delegate target, then toggle Privacy/Sharing scopes on or off.
+            </p>
             <div className="flex flex-wrap gap-2 items-end">
               <input
                 className="rounded-md bg-secondary border border-border px-2 py-1 text-sm flex-1 min-w-[140px]"
@@ -480,19 +581,44 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
                 value={newDelClient}
                 onChange={(e) => setNewDelClient(e.target.value)}
               />
-              <input
-                className="rounded-md bg-secondary border border-border px-2 py-1 text-sm w-28"
-                placeholder="scope"
-                value={newDelScope}
-                onChange={(e) => setNewDelScope(e.target.value)}
-              />
-              <button
-                type="button"
-                onClick={() => void addDelegation()}
-                className="px-3 py-1 rounded-md bg-primary text-bg-primary text-sm"
-              >
-                Add
-              </button>
+            </div>
+            {!getDelegationTarget() && (
+              <p className="text-xs text-amber-400">Enter exactly one target (pN or client id) to enable scope toggles.</p>
+            )}
+            {newDelPn.trim() && newDelClient.trim() && (
+              <p className="text-xs text-amber-400">Use either delegatee pN or client id, not both at the same time.</p>
+            )}
+            <div className="space-y-2">
+              {availableScopes.length === 0 && (
+                <p className="text-xs text-text-secondary">No Privacy/Sharing scopes are available yet.</p>
+              )}
+              {availableScopes.map((scope) => {
+                const checked = isScopeEnabledForTarget(scope.key);
+                const disabled =
+                  !scope.enabled || !getDelegationTarget() || delegationBusyScope === scope.key || !!(newDelPn.trim() && newDelClient.trim());
+                return (
+                  <label
+                    key={scope.key}
+                    className={`flex items-start justify-between gap-3 rounded border px-3 py-2 ${
+                      scope.enabled ? 'border-border bg-modal-bg' : 'border-amber-700 bg-amber-900/20'
+                    }`}
+                  >
+                    <span>
+                      <span className="block text-sm font-medium">{scope.label}</span>
+                      <span className="block text-xs text-text-secondary">{scope.description}</span>
+                      {!scope.enabled && (
+                        <span className="block text-xs text-amber-400 mt-1">Disabled by global Privacy/Sharing policy.</span>
+                      )}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={disabled}
+                      onChange={(e) => void handleScopeToggle(scope.key, e.target.checked)}
+                    />
+                  </label>
+                );
+              })}
             </div>
             <ul className="space-y-2">
               {delegations.map((d) => (
@@ -523,6 +649,61 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
           <div className="border-t border-border pt-4 flex items-center gap-2 text-xs text-text-secondary">
             <Shield className="w-4 h-4" />
             API keys for your account appear as separate rows (kind api_key) when synced from the registry.
+          </div>
+        </div>
+      )}
+
+      {showExportAuthModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-md rounded-lg bg-modal-bg border border-border p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h5 className="font-semibold">Full re-auth required</h5>
+              <button type="button" className="text-text-secondary" onClick={closeExportAuthModal}>
+                x
+              </button>
+            </div>
+            <p className="text-xs text-text-secondary">
+              Re-authenticate with your root identity file, pN name, and passcode to export this sub backup.
+            </p>
+            <input
+              type="file"
+              accept=".did,.json,.pn,.id,.identity,application/json"
+              onChange={(e) => setAuthFile(e.target.files?.[0] || null)}
+              className="w-full text-sm"
+            />
+            <input
+              type="password"
+              placeholder="Root pN name"
+              value={authPnName}
+              onChange={(e) => setAuthPnName(e.target.value)}
+              className="w-full rounded-md bg-secondary border border-border px-3 py-2 text-sm"
+            />
+            <input
+              type="password"
+              placeholder="Root passcode"
+              value={authPasscode}
+              onChange={(e) => setAuthPasscode(e.target.value)}
+              className="w-full rounded-md bg-secondary border border-border px-3 py-2 text-sm"
+            />
+            {authError && <p className="text-xs text-red-400">{authError}</p>}
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={closeExportAuthModal}
+                className="px-3 py-2 rounded bg-secondary border border-border text-sm"
+                disabled={authLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmFullReauthAndExport()}
+                className="px-3 py-2 rounded bg-primary text-bg-primary text-sm"
+                disabled={authLoading}
+              >
+                {authLoading ? 'Verifying...' : 'Verify and export'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -350,6 +350,16 @@ function App() {
     recoveryKeys,
     setRecoveryKeys
   } = identityState;
+  const subPnAvailableScopes = React.useMemo(
+    () =>
+      Object.entries(privacySettings.dataPoints).map(([key, dp]) => ({
+        key,
+        label: dp.label,
+        description: dp.description,
+        enabled: dp.globalSetting
+      })),
+    [privacySettings.dataPoints]
+  );
   const getEncryptedIdentityForApiToken = React.useCallback(
     async (
       identityPublicKeyOrId: string | undefined
@@ -6617,6 +6627,7 @@ This invitation expires in 24 hours.`;
                       connectError={connectError}
                       sessionId={authenticatedUser?.id}
                       publicKey={authenticatedUser?.publicKey}
+                      availableScopes={subPnAvailableScopes}
                     />
                   )}
 
