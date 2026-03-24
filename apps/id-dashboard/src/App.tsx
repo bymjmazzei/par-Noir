@@ -350,16 +350,6 @@ function App() {
     recoveryKeys,
     setRecoveryKeys
   } = identityState;
-  const subPnAvailableScopes = React.useMemo(
-    () =>
-      Object.entries(privacySettings.dataPoints).map(([key, dp]) => ({
-        key,
-        label: dp.label,
-        description: dp.description,
-        enabled: dp.globalSetting
-      })),
-    [privacySettings.dataPoints]
-  );
   const getEncryptedIdentityForApiToken = React.useCallback(
     async (
       identityPublicKeyOrId: string | undefined
@@ -453,6 +443,16 @@ function App() {
     showIntegrationSettings,
     setShowIntegrationSettings
   } = privacyState;
+  const subPnAvailableScopes = React.useMemo(
+    () =>
+      Object.entries(privacySettings.dataPoints).map(([key, dp]) => ({
+        key,
+        label: dp.label,
+        description: dp.description,
+        enabled: dp.globalSetting
+      })),
+    [privacySettings.dataPoints]
+  );
 
   // Destructure migration state from custom hook
   const {
