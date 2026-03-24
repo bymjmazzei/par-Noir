@@ -79,6 +79,13 @@ function isSameOriginAsApiHost(origin: string, req: express.Request): boolean {
   }
 }
 
+function redactPnIdentifier(pnIdentifier?: string): string {
+  if (!pnIdentifier) return 'pn-unknown';
+  const normalized = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+  if (normalized.length <= 8) return 'pn-***';
+  return `${normalized.slice(0, 5)}***${normalized.slice(-3)}`;
+}
+
 // Rate limiting configuration - higher limit for authenticated requests
 // SECURITY FIX: Rate limits now check for valid token format, not just presence
 const limiter = rateLimit({
@@ -10166,7 +10173,7 @@ class ProductionServer {
             console.error('[OAuth Auth] Failed to derive pN identifier:', error);
           }
         } else if (pnIdentifier && process.env.NODE_ENV === 'development') {
-          console.log('[OAuth Auth] Using pN identifier from client:', pnIdentifier);
+          console.log('[OAuth Auth] Using pN identifier from client:', redactPnIdentifier(pnIdentifier));
         }
 
         // Generate authorization code immediately (before async checks)
@@ -10837,13 +10844,13 @@ class ProductionServer {
             
             if (result.rows.length > 0 && result.rows[0].pn_identifier) {
               pnIdentifier = result.rows[0].pn_identifier;
-              console.log(`✅ [Userinfo] Found pN identifier in database: ${pnIdentifier}`);
+              console.log(`✅ [Userinfo] Found pN identifier in database: ${redactPnIdentifier(pnIdentifier)}`);
             }
           } catch (dbError) {
             console.warn('⚠️ [Userinfo] Failed to look up pN identifier from database:', dbError);
           }
         } else {
-          console.log(`✅ [Userinfo] Using pN identifier from token: ${pnIdentifier}`);
+          console.log(`✅ [Userinfo] Using pN identifier from token: ${redactPnIdentifier(pnIdentifier)}`);
         }
 
         // Get publicKey from authorization code (stored during /oauth/auth)

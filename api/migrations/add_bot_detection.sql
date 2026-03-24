@@ -58,9 +58,10 @@ CREATE TABLE IF NOT EXISTS file_views (
   viewed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create unique index for conflict resolution (one view per file per user per day)
+-- Create unique index for conflict resolution (one view per file per user per UTC day)
+-- Note: use an immutable UTC day bucket expression to avoid timestamptz/date mutability issues.
 CREATE UNIQUE INDEX IF NOT EXISTS file_views_file_user_date_unique 
-ON file_views(file_id, user_did, DATE(viewed_at));
+ON file_views(file_id, user_did, DATE_TRUNC('day', viewed_at AT TIME ZONE 'UTC'));
 
 -- Create indexes for file_views
 CREATE INDEX IF NOT EXISTS idx_file_views_user_did 

@@ -7,6 +7,12 @@ interface EncryptedPayload {
   ciphertext: string;
 }
 
+function redactIdentityIdentifier(value?: string): string {
+  if (!value) return 'unknown';
+  if (value.length <= 6) return '***';
+  return `${value.slice(0, 3)}***${value.slice(-3)}`;
+}
+
 export interface StoredCredentialsRecord {
   identityId: string;
   credentials: any;
@@ -258,7 +264,9 @@ export class StorageCredentialsService {
         );
 
         if (result.rows.length > 0) {
-          console.log(`[StorageCredentials] Found credentials using candidate: ${candidate}`);
+          console.log(
+            `[StorageCredentials] Found credentials using candidate: ${redactIdentityIdentifier(candidate)}`
+          );
           const row = result.rows[0];
           // Decrypt and return (same logic as getCredentials)
           let credentials: any = null;
@@ -282,7 +290,10 @@ export class StorageCredentialsService {
             const decrypted = this.decryptPayload(encryptedPayload);
             credentials = JSON.parse(decrypted);
           } catch (error) {
-            console.warn(`⚠️ Failed to decrypt storage credentials for identity ${candidate}:`, error);
+            console.warn(
+              `⚠️ Failed to decrypt storage credentials for identity ${redactIdentityIdentifier(candidate)}:`,
+              error
+            );
             continue; // Try next candidate
           }
 
@@ -297,7 +308,10 @@ export class StorageCredentialsService {
           };
         }
       } catch (error) {
-        console.warn(`[StorageCredentials] Error querying candidate ${candidate}:`, error);
+        console.warn(
+          `[StorageCredentials] Error querying candidate ${redactIdentityIdentifier(candidate)}:`,
+          error
+        );
         continue; // Try next candidate
       }
     }

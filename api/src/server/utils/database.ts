@@ -836,7 +836,12 @@ export async function initializeDatabase(): Promise<void> {
       console.log('✅ Bot detection migration executed');
     } catch (migrationError: any) {
       // Migration errors are non-fatal - table/columns may already exist
-      console.debug('ℹ️ Bot detection migration error (may already be applied):', migrationError?.message);
+      const message = migrationError?.message || '';
+      if (message.includes('functions in index expression must be marked IMMUTABLE')) {
+        console.log('ℹ️ Bot detection migration skipped legacy immutable index expression; continuing startup');
+      } else {
+        console.debug('ℹ️ Bot detection migration error (may already be applied):', message);
+      }
     }
 
     // Run prism min_required_reputation migration
