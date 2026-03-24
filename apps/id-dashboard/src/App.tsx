@@ -271,42 +271,6 @@ function App() {
     }
   };
 
-  const getEncryptedIdentityForApiToken = React.useCallback(
-    async (
-      identityPublicKeyOrId: string | undefined
-    ): Promise<{ encryptedData: string; iv: string; salt: string } | null> => {
-      if (!identityPublicKeyOrId) return null;
-
-      // First try SecureStorage path used by newer dashboard flows.
-      const secureIdentity = await storage.getIdentity(identityPublicKeyOrId);
-      if (secureIdentity?.encryptedData && secureIdentity.iv && secureIdentity.salt) {
-        return {
-          encryptedData: secureIdentity.encryptedData,
-          iv: secureIdentity.iv,
-          salt: secureIdentity.salt
-        };
-      }
-
-      // Fallback to SimpleStorage path (publicKey/id keyed) used in active unlock/create flows.
-      const simpleStorage = SimpleStorage.getInstance();
-      const simpleIdentity = await simpleStorage.getIdentity(identityPublicKeyOrId);
-      const encrypted = simpleIdentity?.encryptedData as
-        | { encryptedData?: string; iv?: string; salt?: string }
-        | undefined;
-
-      if (encrypted?.encryptedData && encrypted.iv && encrypted.salt) {
-        return {
-          encryptedData: encrypted.encryptedData,
-          iv: encrypted.iv,
-          salt: encrypted.salt
-        };
-      }
-
-      return null;
-    },
-    [storage]
-  );
-
   // Use custom hooks for state management - MUST be declared before any functions that use these variables
   const appState = useAppState();
   const identityState = useIdentityState();
@@ -386,6 +350,41 @@ function App() {
     recoveryKeys,
     setRecoveryKeys
   } = identityState;
+  const getEncryptedIdentityForApiToken = React.useCallback(
+    async (
+      identityPublicKeyOrId: string | undefined
+    ): Promise<{ encryptedData: string; iv: string; salt: string } | null> => {
+      if (!identityPublicKeyOrId) return null;
+
+      // First try SecureStorage path used by newer dashboard flows.
+      const secureIdentity = await storage.getIdentity(identityPublicKeyOrId);
+      if (secureIdentity?.encryptedData && secureIdentity.iv && secureIdentity.salt) {
+        return {
+          encryptedData: secureIdentity.encryptedData,
+          iv: secureIdentity.iv,
+          salt: secureIdentity.salt
+        };
+      }
+
+      // Fallback to SimpleStorage path (publicKey/id keyed) used in active unlock/create flows.
+      const simpleStorage = SimpleStorage.getInstance();
+      const simpleIdentity = await simpleStorage.getIdentity(identityPublicKeyOrId);
+      const encrypted = simpleIdentity?.encryptedData as
+        | { encryptedData?: string; iv?: string; salt?: string }
+        | undefined;
+
+      if (encrypted?.encryptedData && encrypted.iv && encrypted.salt) {
+        return {
+          encryptedData: encrypted.encryptedData,
+          iv: encrypted.iv,
+          salt: encrypted.salt
+        };
+      }
+
+      return null;
+    },
+    [storage]
+  );
   const apiTokenAttemptedForUserRef = React.useRef<string | null>(null);
 
   // Push notifications (native only): register when authenticated
