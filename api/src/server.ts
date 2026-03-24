@@ -10094,8 +10094,9 @@ class ProductionServer {
       if (state) consentUrl.searchParams.set('state', state as string);
       if (nonce) consentUrl.searchParams.set('nonce', nonce as string);
 
-      const popupParam = req.query.popup || (redirect_uri as string).includes('popup=true') ? 'true' : undefined;
-      if (popupParam) consentUrl.searchParams.set('popup', 'true');
+      // Canonical contract: popup behavior is controlled only by the explicit query parameter.
+      const popupParam = req.query.popup;
+      if (popupParam === 'true') consentUrl.searchParams.set('popup', 'true');
 
       return res.redirect(consentUrl.toString());
     });

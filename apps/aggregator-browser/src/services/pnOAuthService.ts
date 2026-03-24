@@ -8,6 +8,7 @@
  */
 
 import { pushPnOAuthDebug } from '@par-noir/oauth-ui';
+import { buildOAuthConsentUrl } from '@par-noir/oauth-ui';
 import { VolumeIdGenerator } from '../utils/volumeIdGenerator';
 import { API_ENDPOINT } from '../config/api';
 
@@ -80,20 +81,19 @@ export class PNOAuthService {
       sessionStorage.setItem('pn_oauth_nonce', nonce);
     }
 
-    const redirectUri = usePopup 
+    const redirectUri = usePopup
       ? `${typeof window !== 'undefined' ? window.location.origin : ''}/oauth-callback.html`
       : REDIRECT_URI;
 
-    const paramsStr = new URLSearchParams({
-      client_id: getClientId(),
-      redirect_uri: redirectUri,
-      response_type: 'code',
-      scope: scope.join(' '),
+    return buildOAuthConsentUrl({
+      clientId: getClientId(),
+      apiEndpoint: API_ENDPOINT,
+      redirectUri,
+      scope: [...scope],
       state,
-      nonce
-    }).toString();
-
-    return `${API_ENDPOINT.replace(/\/$/, '')}/oauth/authorize/consent?${paramsStr}`;
+      nonce,
+      forPopup: usePopup,
+    });
   }
 
   /**
