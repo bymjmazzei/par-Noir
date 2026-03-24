@@ -12,12 +12,15 @@ import {
 } from 'lucide-react';
 import { FeedDelegationModal } from '../components/feeds/FeedDelegationModal';
 import { ContentNoticesSection } from '../components/ContentNoticesSection';
+import { useApiToken } from '../hooks/useApiToken';
 
 interface DeveloperPortalProps {
   authenticatedUser: { id: string; publicKey?: string; nickname?: string; accessToken?: string } | null;
 }
 
 export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedUser }) => {
+  /** par Noir OAuth JWT — required for /api/* routes that call PNOAuthService.validateAccessToken */
+  const { apiToken } = useApiToken();
   const [showLicenseModal, setShowLicenseModal] = useState(false);
   const [showProposalModal, setShowProposalModal] = useState(false);
   const [showFeedCreator, setShowFeedCreator] = useState(false);
@@ -178,7 +181,7 @@ export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedU
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {authenticatedUser && (
-          <ContentNoticesSection accessToken={(authenticatedUser as { accessToken?: string }).accessToken} />
+          <ContentNoticesSection accessToken={apiToken} />
         )}
         {/* Feed Services Section */}
         <section className="mb-12">
