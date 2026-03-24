@@ -117,10 +117,10 @@ export class VeraCryptDarwinDriver extends VeraCryptDriver {
       '--mount',
       this.containerPath,
       '--mount-point', this.mountPoint,
-      '--password', this.unlockContext.authToken,
+      '--stdin',
       '--non-interactive',
       '--quiet'
-    ]);
+    ], this.unlockContext.authToken);
   }
 
   protected async executeUnmount(): Promise<void> {
@@ -152,14 +152,14 @@ export class VeraCryptDarwinDriver extends VeraCryptDriver {
       '--create',
       this.containerPath,
       '--size', '512M',
-      '--password', this.unlockContext.authToken,
+      '--stdin',
       '--hash', 'sha-512',
       '--encryption', 'AES',
       '--filesystem', 'APFS',
       '--volume-type', 'normal',
       '--non-interactive',
       '--quiet'
-    ]);
+    ], this.unlockContext.authToken);
   }
 }
 

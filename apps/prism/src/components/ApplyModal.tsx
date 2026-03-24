@@ -8,7 +8,7 @@ import { X, Shield, CheckCircle2 } from 'lucide-react';
 import { buildOAuthConsentUrl, startPnOAuthPopup } from '@par-noir/oauth-ui';
 import { Capacitor } from '@capacitor/core';
 import { API_ENDPOINT } from '../config/api';
-import { PRISM_CLIENT_ID, prismOnBeforeNavigate } from '../utils/oauth';
+import { getPrismRedirectUri, PRISM_CLIENT_ID, prismOnBeforeNavigate } from '../utils/oauth';
 import { exchangeCodeForToken } from '../services/prismAuthService';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -39,7 +39,7 @@ export function ApplyModal({ open, onClose }: ApplyModalProps) {
     const consentConfig = {
       clientId: PRISM_CLIENT_ID,
       apiEndpoint: API_ENDPOINT,
-      redirectUri: `${window.location.origin}/oauth-callback.html`,
+      redirectUri: getPrismRedirectUri(),
       scope: ['openid', 'profile'] as string[],
       state,
       nonce,

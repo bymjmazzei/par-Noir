@@ -411,16 +411,16 @@ export class PNOAuthService {
   }
 
   /**
-   * Save session to localStorage
+   * Save session to sessionStorage (reduced persistence surface).
    */
   static saveSession(session: AuthSession): void {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('pn_oauth_session', JSON.stringify(session));
+      sessionStorage.setItem('pn_oauth_session', JSON.stringify(session));
     }
   }
 
   /**
-   * Load session from localStorage
+   * Load session from sessionStorage
    */
   static loadSession(): AuthSession | null {
     if (typeof window === 'undefined') {
@@ -428,7 +428,7 @@ export class PNOAuthService {
     }
 
     try {
-      const stored = localStorage.getItem('pn_oauth_session');
+      const stored = sessionStorage.getItem('pn_oauth_session');
       if (!stored) {
         return null;
       }
@@ -459,7 +459,7 @@ export class PNOAuthService {
    */
   static clearSession(): void {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('pn_oauth_session');
+      sessionStorage.removeItem('pn_oauth_session');
     }
   }
 

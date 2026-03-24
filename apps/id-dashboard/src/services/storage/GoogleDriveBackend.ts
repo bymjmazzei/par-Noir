@@ -10,7 +10,6 @@ import {
   StorageBackendConfig
 } from '../../types/aggregator';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
-import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 
 export class GoogleDriveBackend extends AbstractStorageBackend {
   private token: string | null = null;
@@ -361,70 +360,8 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         }
       }
 
-      try {
-        const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || (await getGoogleDriveClientId());
-        if (!clientId || clientId.trim() === '') {
-          throw new Error('Google Drive client ID not configured. Set VITE_GOOGLE_DRIVE_CLIENT_ID or configure GOOGLE_DRIVE_CLIENT_ID on the API.');
-        }
-        const clientSecret = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_SECRET;
-
-        const params = new URLSearchParams({
-          client_id: clientId,
-          refresh_token: refreshToken,
-          grant_type: 'refresh_token',
-        });
-
-        if (clientSecret) {
-          params.set('client_secret', clientSecret);
-        }
-
-        const response = await fetch('https://oauth2.googleapis.com/token', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: params,
-        });
-
-        if (!response.ok) {
-          let errorBody = '';
-          try {
-            errorBody = await response.text();
-          } catch (e) {
-            errorBody = 'Unable to read error body';
-          }
-          throw new Error(`Token refresh failed: ${response.status} ${response.statusText} - ${errorBody}`);
-        }
-
-        const data = await response.json();
-
-        if (data.refresh_token) {
-          this.refreshToken = data.refresh_token;
-          try {
-            localStorage.setItem(`${this.keyPrefix}_refresh_token`, data.refresh_token);
-          } catch (storageError) {
-            console.warn('⚠️ [GoogleDriveBackend] Unable to persist refreshed refresh token locally:', storageError);
-          }
-        }
-
-        if (data.access_token) {
-          window.dispatchEvent(
-            new CustomEvent('google-drive-token-refreshed', {
-              detail: {
-                backendId: this.backendId,
-                accessToken: data.access_token,
-                refreshToken: this.refreshToken ?? refreshToken,
-                email: this.userEmail,
-              },
-            })
-          );
-        }
-
-        return data.access_token || null;
-      } catch (error) {
-        console.error('Failed to refresh token:', error);
-        return null;
-      }
+      console.error('Failed to refresh token via API endpoint only');
+      return null;
     })();
 
     try {

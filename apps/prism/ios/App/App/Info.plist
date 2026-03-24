@@ -47,5 +47,18 @@
 	<true/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Unlock your par Noir identity with Face ID</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.parnoir.prism.oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.parnoir.prism</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

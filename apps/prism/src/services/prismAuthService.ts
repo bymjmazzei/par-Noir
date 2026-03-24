@@ -5,7 +5,7 @@
 
 import { API_ENDPOINT } from '../config/api';
 import { secureStorageAdapter } from '../utils/secureStorageAdapter';
-import { PRISM_CLIENT_ID } from '../utils/oauth';
+import { getPrismRedirectUri, PRISM_CLIENT_ID } from '../utils/oauth';
 
 const CLIENT_ID = PRISM_CLIENT_ID;
 const SESSION_KEY = 'prism_session';
@@ -19,7 +19,7 @@ export interface PrismSession {
 }
 
 function getRedirectUri(): string {
-  return `${window.location.origin}/oauth-callback.html`;
+  return getPrismRedirectUri();
 }
 
 export async function exchangeCodeForToken(code: string): Promise<PrismSession> {

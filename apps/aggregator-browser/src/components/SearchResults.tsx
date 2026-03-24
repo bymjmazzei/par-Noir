@@ -280,33 +280,13 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                           loading="lazy"
                           onError={(e) => {
-                            // Try Google Drive direct link as fallback
-                            const fileId = file.metadata.fileId;
-                            if (fileId) {
-                              e.currentTarget.src = `https://drive.google.com/uc?export=view&id=${fileId}`;
-                            } else {
-                              e.currentTarget.style.display = 'none';
-                              const placeholder = document.createElement('div');
-                              placeholder.className = 'w-full h-full flex items-center justify-center text-neutral-500 text-xs';
-                              placeholder.textContent = 'No preview';
-                              e.currentTarget.parentElement?.appendChild(placeholder);
-                            }
-                          }}
-                        />
-                      ) : file.metadata.fileId ? (
-                        <img
-                          src={`https://drive.google.com/uc?export=view&id=${file.metadata.fileId}`}
-                    alt={file.metadata.name || file.metadata.title || 'Untitled'}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          loading="lazy"
-                    onError={(e) => {
                             e.currentTarget.style.display = 'none';
                             const placeholder = document.createElement('div');
                             placeholder.className = 'w-full h-full flex items-center justify-center text-neutral-500 text-xs';
                             placeholder.textContent = 'No preview';
                             e.currentTarget.parentElement?.appendChild(placeholder);
-                    }}
-                  />
+                          }}
+                        />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-neutral-500 text-xs">
                           No preview

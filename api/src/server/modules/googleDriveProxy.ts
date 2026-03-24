@@ -35,7 +35,7 @@ export class GoogleDriveProxyService {
    * Handles token refresh if needed
    */
   async getAccessToken(userPnIdentifier: string, accountId?: string, additionalCandidates?: string[]): Promise<string> {
-    console.log(`[GoogleDriveProxy] getAccessToken called with userPnIdentifier: ${userPnIdentifier}, accountId: ${accountId}`);
+    console.log(`[GoogleDriveProxy] getAccessToken called`);
     
     // CRITICAL: Use ONLY the pn identifier (first candidate)
     // Dashboard stores credentials under pn identifier only, so we should only try that
@@ -62,7 +62,7 @@ export class GoogleDriveProxyService {
       }
     }
     
-    console.log(`[GoogleDriveProxy] Using pn identifier only: ${pnIdentifier}`);
+    console.log(`[GoogleDriveProxy] Resolving credentials by identifier candidate`);
     
     // Try to find credentials using only the pn identifier
     const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(identifierCandidates);
@@ -72,12 +72,10 @@ export class GoogleDriveProxyService {
       throw new Error('Google Drive not connected. Please connect in the dashboard.');
     }
     
-    const usedIdentifier = credentialsRecord.identityId;
-    
-    console.log(`[GoogleDriveProxy] Using credentials stored under identifier: ${usedIdentifier}`);
+    console.log(`[GoogleDriveProxy] Credentials record found`);
 
     const credentials = credentialsRecord.credentials;
-    console.log(`[GoogleDriveProxy] Found credentials record. Has googleDriveAccounts: ${!!credentials.googleDriveAccounts}, has googleDrive: ${!!credentials.googleDrive}`);
+    console.log(`[GoogleDriveProxy] Credential shape resolved`);
     
     // Support both googleDriveAccounts array and single googleDrive object
     let account: GoogleDriveToken | null = null;
@@ -86,11 +84,7 @@ export class GoogleDriveProxyService {
       // Extract the actual account identifier if accountId includes "::"
       const actualAccountId = accountId.includes('::') ? accountId.split('::')[1] : accountId;
       
-      console.log(`[GoogleDriveProxy] Looking for account with accountId: ${accountId} (actualAccountId: ${actualAccountId})`);
-      console.log(`[GoogleDriveProxy] Available accounts:`, credentials.googleDriveAccounts.map((acc: any) => ({
-        backendId: acc.backendId,
-        keyPrefix: acc.keyPrefix
-      })));
+      console.log(`[GoogleDriveProxy] Looking up requested account`);
       
       // Find specific account by accountId (backendId, keyPrefix, or full accountId string)
       // AccountId might be in format "google_drive::email-hash" or just "backendId" or "keyPrefix"
@@ -107,15 +101,11 @@ export class GoogleDriveProxyService {
       ) || null;
       
       if (!account) {
-        console.error(`[GoogleDriveProxy] Account not found for accountId: ${accountId} (actualAccountId: ${actualAccountId})`);
-        console.error(`[GoogleDriveProxy] Available accounts:`, credentials.googleDriveAccounts.map((acc: any) => ({
-          backendId: acc.backendId,
-          keyPrefix: acc.keyPrefix
-        })));
+        console.error(`[GoogleDriveProxy] Requested account not found`);
         throw new Error(`Google Drive account not found for accountId: ${accountId}`);
       }
-      
-      console.log(`[GoogleDriveProxy] Found matching account:`, { backendId: (account as any).backendId, keyPrefix: (account as any).keyPrefix });
+
+      console.log(`[GoogleDriveProxy] Requested account resolved`);
     } else if (credentials.googleDriveAccounts && credentials.googleDriveAccounts.length > 0) {
       // Use first account if no accountId specified
       account = credentials.googleDriveAccounts[0];
@@ -141,18 +131,10 @@ export class GoogleDriveProxyService {
       expires_at: account.expires_at
     };
 
-    console.log(`[GoogleDriveProxy] Token extracted from account:`, {
-      hasAccessToken: !!token.access_token,
-      accessTokenLength: token.access_token?.length || 0,
-      accessTokenPrefix: token.access_token?.substring(0, 20) || 'N/A',
-      hasRefreshToken: !!token.refresh_token,
-      expires_at: token.expires_at,
-      expires_in: token.expires_in,
-      accountKeys: Object.keys(account || {})
-    });
+    console.log(`[GoogleDriveProxy] Token metadata loaded`);
 
     if (!token.access_token) {
-      console.error(`[GoogleDriveProxy] No access token found in account object. Account keys:`, Object.keys(account || {}));
+      console.error(`[GoogleDriveProxy] No access token found in account object`);
       throw new Error('Google Drive access token not found');
     }
 
@@ -166,13 +148,13 @@ export class GoogleDriveProxyService {
     const expiresSoon = expiresAt < now + 300000; // 5 minutes
     const shouldRefresh = isExpired || expiresSoon;
     
-    console.log(`[GoogleDriveProxy] Token check for accountId: ${accountId || 'default'}, expiresAt: ${new Date(expiresAt).toISOString()}, now: ${new Date(now).toISOString()}, isExpired: ${isExpired}, expiresSoon: ${expiresSoon}, shouldRefresh: ${shouldRefresh}`);
+    console.log(`[GoogleDriveProxy] Token check`, { shouldRefresh, isExpired, expiresSoon });
     
     // Only refresh if token is expired or about to expire
     // Don't refresh unnecessarily - the stored token is valid if it's not expired
     if (token.refresh_token && shouldRefresh) {
       try {
-        console.log(`[GoogleDriveProxy] Refreshing access token for accountId: ${accountId || 'default'}`);
+        console.log(`[GoogleDriveProxy] Refreshing access token`);
         const refreshedToken = await this.refreshAccessToken(token.refresh_token);
         console.log(`[GoogleDriveProxy] Token refreshed successfully`);
         
@@ -203,7 +185,7 @@ export class GoogleDriveProxyService {
             };
           } else {
             // Account not found in array - this shouldn't happen, but log and try to use first account
-            console.warn(`[GoogleDriveProxy] Account ${accountId} not found in googleDriveAccounts array. Available accounts:`, credentials.googleDriveAccounts.map((acc: any) => ({ backendId: acc.backendId, keyPrefix: acc.keyPrefix })));
+            console.warn(`[GoogleDriveProxy] Requested account missing during refresh persistence`);
             // Try to update first account as fallback
             if (credentials.googleDriveAccounts.length > 0) {
               credentials.googleDriveAccounts[0] = {
@@ -247,7 +229,7 @@ export class GoogleDriveProxyService {
         // CRITICAL: Always save credentials after refresh to persist the refresh token
         // CRITICAL: Use the pn identifier from the credentials record, not userPnIdentifier
         await storageCredentialsService.upsertCredentials(credentialsRecord.identityId, credentials);
-        console.log(`[GoogleDriveProxy] Credentials saved after token refresh for accountId: ${accountId || 'default'}`);
+        console.log(`[GoogleDriveProxy] Credentials saved after token refresh`);
         
         return refreshedToken.access_token;
       } catch (error: any) {
@@ -273,7 +255,7 @@ export class GoogleDriveProxyService {
       throw new Error('Google Drive access token has expired. Please reconnect your Google Drive account in the dashboard.');
     }
     
-    console.log(`[GoogleDriveProxy] Returning access token. Length: ${finalToken?.length || 0}, Prefix: ${finalToken?.substring(0, 20) || 'N/A'}`);
+    console.log(`[GoogleDriveProxy] Returning access token`);
     return finalToken;
   }
 

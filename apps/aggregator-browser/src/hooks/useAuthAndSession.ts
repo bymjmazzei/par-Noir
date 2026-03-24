@@ -263,9 +263,9 @@ export function useAuthAndSession({
     const tryConsumePendingOAuthStorage = async () => {
       if (!mounted) return;
       try {
-        const latestKey = localStorage.getItem(PN_OAUTH_STORAGE_LATEST_KEY);
+        const latestKey = sessionStorage.getItem(PN_OAUTH_STORAGE_LATEST_KEY);
         if (!latestKey) return;
-        const raw = localStorage.getItem(latestKey);
+        const raw = sessionStorage.getItem(latestKey);
         if (!raw) return;
         const data = JSON.parse(raw) as {
           type?: string;
@@ -290,9 +290,9 @@ export function useAuthAndSession({
         });
 
         try {
-          localStorage.removeItem(latestKey);
-          localStorage.removeItem(PN_OAUTH_STORAGE_LATEST_KEY);
-          localStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
+          sessionStorage.removeItem(latestKey);
+          sessionStorage.removeItem(PN_OAUTH_STORAGE_LATEST_KEY);
+          sessionStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
         } catch {
           /* ignore */
         }
@@ -557,8 +557,8 @@ export function useAuthAndSession({
           // pn_oauth_callback_* entries when popup messaging is missed.
           try {
             const callbackKeys: string[] = [];
-            for (let i = 0; i < localStorage.length; i += 1) {
-              const k = localStorage.key(i);
+            for (let i = 0; i < sessionStorage.length; i += 1) {
+              const k = sessionStorage.key(i);
               if (k && k.startsWith('pn_oauth_callback_')) callbackKeys.push(k);
             }
 
@@ -570,7 +570,7 @@ export function useAuthAndSession({
             });
 
             for (const key of callbackKeys) {
-              const raw = localStorage.getItem(key);
+              const raw = sessionStorage.getItem(key);
               if (!raw) continue;
               const data = JSON.parse(raw) as {
                 code?: string;
@@ -591,9 +591,9 @@ export function useAuthAndSession({
                 hasError: Boolean(data?.error),
               });
               try {
-                localStorage.removeItem(key);
-                localStorage.removeItem(PN_OAUTH_STORAGE_LATEST_KEY);
-                localStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
+                sessionStorage.removeItem(key);
+                sessionStorage.removeItem(PN_OAUTH_STORAGE_LATEST_KEY);
+                sessionStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
               } catch {
                 /* ignore */
               }

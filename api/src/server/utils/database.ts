@@ -31,7 +31,11 @@ export function getDatabasePool(): Pool {
     const poolMax = parseInt(process.env.DATABASE_POOL_MAX || '20', 10) || 20;
     const config: PoolConfig = {
       connectionString: dbUrl,
-      ssl: requiresSSL ? { rejectUnauthorized: false } : false,
+      ssl: requiresSSL
+        ? {
+            rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
+          }
+        : false,
       max: poolMax,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 30000, // Increased to 30 seconds for Railway network latency

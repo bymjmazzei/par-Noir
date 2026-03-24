@@ -82,7 +82,18 @@ export class PNOAuthService {
   private static readonly CODE_EXPIRY = 10 * 60 * 1000; // 10 minutes
   private static readonly ACCESS_TOKEN_EXPIRY = 60 * 60 * 1000; // 1 hour
   private static readonly REFRESH_TOKEN_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 days
-  private static readonly TOKEN_SECRET = process.env.PN_OAUTH_SECRET || crypto.randomBytes(32).toString('hex');
+  private static readonly TOKEN_SECRET = (() => {
+    const configured = process.env.PN_OAUTH_SECRET?.trim();
+    if (configured) return configured;
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('PN_OAUTH_SECRET must be set in production');
+    }
+    return crypto.randomBytes(32).toString('hex');
+  })();
+
+  private static hashRefreshToken(token: string): string {
+    return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
+  }
 
   /**
    * Generate authorization code
@@ -384,6 +395,7 @@ export class PNOAuthService {
     scope: string[] 
   }): Promise<string> {
     const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = this.hashRefreshToken(token);
     const expiresAt = new Date(Date.now() + this.REFRESH_TOKEN_EXPIRY);
     
     // Use provided pN identifier (derived client-side)
@@ -403,7 +415,7 @@ export class PNOAuthService {
            client_id = $5,
            scope = $6,
            expires_at = $7`,
-        [token, params.did, pnIdentifier, params.publicKey, params.clientId, params.scope, expiresAt]
+        [tokenHash, params.did, pnIdentifier, params.publicKey, params.clientId, params.scope, expiresAt]
       );
     } catch (error) {
       console.error('[OAuth] Failed to store refresh token in database:', error);
@@ -418,6 +430,7 @@ export class PNOAuthService {
    */
   static async refreshAccessToken(refreshToken: string, clientId: string): Promise<AccessToken | null> {
     const db = getDatabasePool();
+    const tokenHash = this.hashRefreshToken(refreshToken);
     
     try {
       // Query refresh token from database
@@ -425,7 +438,7 @@ export class PNOAuthService {
         `SELECT did, pn_identifier, client_id, scope, expires_at 
          FROM oauth_refresh_tokens 
          WHERE refresh_token = $1`,
-        [refreshToken]
+        [tokenHash]
       );
 
       if (result.rows.length === 0) {
@@ -440,7 +453,7 @@ export class PNOAuthService {
       if (expiresAt.getTime() < Date.now()) {
         console.warn('[OAuth] Refresh token has expired');
         // Clean up expired token
-        await db.query('DELETE FROM oauth_refresh_tokens WHERE refresh_token = $1', [refreshToken]);
+        await db.query('DELETE FROM oauth_refresh_tokens WHERE refresh_token = $1', [tokenHash]);
         return null;
       }
 
@@ -451,7 +464,7 @@ export class PNOAuthService {
       }
 
       if (isPnRevokedForNetwork(tokenData.pn_identifier) || isDidRevokedForNetwork(tokenData.did)) {
-        await db.query('DELETE FROM oauth_refresh_tokens WHERE refresh_token = $1', [refreshToken]);
+        await db.query('DELETE FROM oauth_refresh_tokens WHERE refresh_token = $1', [tokenHash]);
         return null;
       }
 
@@ -537,11 +550,12 @@ export class PNOAuthService {
    */
   static async revokeRefreshToken(refreshToken: string): Promise<boolean> {
     const db = getDatabasePool();
+    const tokenHash = this.hashRefreshToken(refreshToken);
     
     try {
       const result = await db.query(
         'DELETE FROM oauth_refresh_tokens WHERE refresh_token = $1',
-        [refreshToken]
+        [tokenHash]
       );
       return (result.rowCount ?? 0) > 0;
     } catch (error) {

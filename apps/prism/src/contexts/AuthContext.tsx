@@ -39,6 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const params = new URLSearchParams(window.location.search);
     const oauthResume = params.get('oauth_resume') === '1';
     const code = params.get('code');
+    const state = params.get('state');
     const error = params.get('error') || params.get('oauth_error');
 
     if (error) {
@@ -48,6 +49,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (code) {
+      const expectedState = sessionStorage.getItem('pn_oauth_state');
+      if (!state || !expectedState || state !== expectedState) {
+        window.history.replaceState({}, '', window.location.pathname);
+        setLoading(false);
+        return;
+      }
+
       if (processedCodesRef.current.has(code)) {
         window.history.replaceState({}, '', window.location.pathname);
         setLoading(false);

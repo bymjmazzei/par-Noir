@@ -42,11 +42,6 @@ export function CollectionFeed({
   const loadingFilesRef = useRef<Set<string>>(new Set());
 
   const viewportHeightCSS = useViewportHeightCSS(true);
-  // #region agent log
-  useEffect(() => {
-    fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:46',message:'Viewport height CSS calculated (post-fix)',data:{viewportHeightCSS,windowInnerHeight:typeof window !== 'undefined' ? window.innerHeight : 0,expectedHeightExcludingNav:typeof window !== 'undefined' ? window.innerHeight - 64 : 0},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
-  }, [viewportHeightCSS]);
-  // #endregion
 
   // Load metadata for all files in collection
   useEffect(() => {
@@ -640,22 +635,6 @@ export function CollectionFeed({
     }
   }, [currentIndex]);
 
-  // #region agent log
-  // Log computed styles after mount to verify height calculation (post-fix)
-  useEffect(() => {
-    if (scrollContainerRef.current) {
-      const el = scrollContainerRef.current;
-      const computedStyle = window.getComputedStyle(el);
-      const computedHeight = computedStyle.height;
-      const computedBottom = computedStyle.bottom;
-      const computedTop = computedStyle.top;
-      const actualHeight = el.offsetHeight;
-      const actualClientHeight = el.clientHeight;
-      const expectedHeight = window.innerHeight - 64;
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:635',message:'Container mounted - computed dimensions (post-fix)',data:{viewportHeightCSS,windowInnerHeight:window.innerHeight,computedHeight,computedBottom,computedTop,actualHeight,actualClientHeight,expectedHeight,heightMatches:Math.abs(actualHeight - expectedHeight) < 5},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'C'})}).catch(()=>{});
-    }
-  }, [viewportHeightCSS]);
-  // #endregion
 
   // #region agent log
   if (import.meta.env.DEV) {
@@ -692,7 +671,6 @@ export function CollectionFeed({
             windowInnerHeight: window.innerHeight,
             expectedHeight: window.innerHeight - 64
           });
-          fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:657',message:'Container ref set - height values with parent context',data:{viewportHeightCSS,windowInnerHeight:window.innerHeight,computedHeight,computedBottom,computedPosition,actualHeight,parentHeight,parentPosition,bottomNavHeight:64,expectedHeight:window.innerHeight - 64},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'D'})}).catch(()=>{});
         }
         // #endregion
       }}

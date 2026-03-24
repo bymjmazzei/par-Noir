@@ -4,6 +4,7 @@
  */
 
 import { API_ENDPOINT } from '../config/api';
+import { Capacitor } from '@capacitor/core';
 
 const raw = import.meta.env.VITE_PN_CLIENT_ID && String(import.meta.env.VITE_PN_CLIENT_ID).trim();
 /** Do not use browser-app: deploy/env can leak that id into this build and break redirect validation. */
@@ -14,9 +15,16 @@ export function getPrismOAuthConfig() {
   return {
     clientId: PRISM_CLIENT_ID,
     apiEndpoint: API_ENDPOINT,
-    redirectUri: `${window.location.origin}/oauth-callback.html`,
+    redirectUri: getPrismRedirectUri(),
     scope: ['openid', 'profile'] as const,
   };
+}
+
+export function getPrismRedirectUri(): string {
+  if (Capacitor.isNativePlatform()) {
+    return 'com.parnoir.prism://oauth-callback';
+  }
+  return `${window.location.origin}/oauth-callback.html`;
 }
 
 /** Store state/nonce for callback verification */

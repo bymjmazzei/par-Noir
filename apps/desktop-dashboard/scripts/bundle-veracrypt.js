@@ -12,6 +12,7 @@ const http = require('http');
 const { execSync } = require('child_process');
 const { createWriteStream } = require('fs');
 const { pipeline } = require('stream/promises');
+const crypto = require('crypto');
 
 const VERACRYPT_VERSION = '1.26.7';
 const RESOURCES_DIR = path.join(__dirname, '..', 'resources', 'veracrypt');
@@ -207,6 +208,11 @@ const downloadFile = async (url, dest) => {
   });
 };
 
+const sha256File = (filePath) => {
+  const data = fs.readFileSync(filePath);
+  return crypto.createHash('sha256').update(data).digest('hex');
+};
+
 const ensureVeraCrypt = async () => {
   const platform = process.platform;
   const platformConfig = PLATFORMS[platform];
@@ -251,6 +257,17 @@ const ensureVeraCrypt = async () => {
     }
   } else {
     console.log(`[veracrypt-bundle] Using cached download for ${platform}`);
+  }
+
+  // Optional integrity verification: set VERACRYPT_SHA256_<PLATFORM> in CI/release.
+  const checksumEnvKey = `VERACRYPT_SHA256_${platform.toUpperCase()}`;
+  const expectedHash = process.env[checksumEnvKey];
+  if (expectedHash) {
+    const actualHash = sha256File(downloadPath);
+    if (actualHash.toLowerCase() !== expectedHash.toLowerCase()) {
+      throw new Error(`[veracrypt-bundle] Checksum mismatch for ${platform}. Expected ${expectedHash}, got ${actualHash}`);
+    }
+    console.log(`[veracrypt-bundle] Checksum verified for ${platform}`);
   }
 
   // Extract

@@ -36,6 +36,15 @@ console.log('[desktop] userData path set to', portableDataRoot);
 
 let mainWindow: BrowserWindow | null = null;
 const secureVolumeManager = new SecureVolumeManager();
+const isAllowedExternalUrl = (target: string): boolean => {
+  try {
+    const parsed = new URL(target);
+    if (parsed.protocol !== 'https:') return false;
+    return parsed.hostname.endsWith('parnoir.com') || parsed.hostname === 'github.com';
+  } catch {
+    return false;
+  }
+};
 
 const registerIpc = () => {
   ipcMain.handle(SECURE_VOLUME_IPC_CHANNEL.status, async () => {
@@ -104,6 +113,10 @@ const registerIpc = () => {
     if (!target) {
       throw new Error('Missing target path');
     }
+    const resolved = path.resolve(target);
+    if (!resolved.startsWith(app.getPath('userData'))) {
+      throw new Error('Blocked unsafe path');
+    }
     return shell.openPath(target);
   });
 };
@@ -117,7 +130,7 @@ const createWindow = async () => {
       preload: path.join(__dirname, '../preload/preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false
+      sandbox: true
     }
   });
 
@@ -130,7 +143,9 @@ const createWindow = async () => {
   }
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url);
+    if (isAllowedExternalUrl(details.url)) {
+      void shell.openExternal(details.url);
+    }
     return { action: 'deny' };
   });
 

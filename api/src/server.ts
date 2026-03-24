@@ -2168,7 +2168,6 @@ class ProductionServer {
 
         console.log(`📝 [${requestId}] Submitting metadata for file: ${validatedMetadata.fileId}`);
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/src/server.ts:1606',message:'Submitting metadata',data:{fileId:validatedMetadata.fileId,isPublic:validatedMetadata.isPublic,pnIdentifier},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
 
         // When making content public, run repeat-infringer (timeout), Prism bypass, and DMCA gate
@@ -2322,7 +2321,6 @@ class ProductionServer {
         }
 
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/src/server.ts:1611',message:'Metadata submitted successfully',data:{fileId:validatedMetadata.fileId,isPublic:validatedMetadata.isPublic},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
         console.log(`✅ [${requestId}] Successfully submitted metadata for: ${validatedMetadata.fileId}`);
         return res.json({
@@ -3967,7 +3965,6 @@ class ProductionServer {
         let finalIsPublic = isPublic;
         if (isPublic === undefined && current && current.metadata.backend === 'google_drive') {
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.ts:2100',message:'Reading companion metadata for isPublic',data:{fileId,currentIsPublic:current.metadata.isPublic},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
           // #endregion
           try {
             const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
@@ -4016,7 +4013,6 @@ class ProductionServer {
                     if (companionMetadata) {
                       finalIsPublic = companionMetadata.visibility === 'public';
                       // #region agent log
-                      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.ts:2131',message:'Companion metadata read result',data:{fileId,visibility:companionMetadata.visibility,finalIsPublic,currentIsPublic:current.metadata.isPublic},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
                       // #endregion
                       console.log(`[MetadataIndex PUT] Read isPublic from companion metadata: ${finalIsPublic} (visibility: ${companionMetadata.visibility})`);
                     }
@@ -4026,7 +4022,6 @@ class ProductionServer {
             }
           } catch (companionError: any) {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.ts:2136',message:'Failed to read companion metadata',data:{fileId,error:companionError.message,currentIsPublic:current.metadata.isPublic},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
             // #endregion
             console.warn(`[MetadataIndex PUT] Failed to read companion metadata for ${fileId}:`, companionError.message);
             // If companion metadata read failed, preserve existing isPublic value (don't change it)
@@ -4038,7 +4033,6 @@ class ProductionServer {
         }
 
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.ts:2142',message:'Updating metadata with isPublic',data:{fileId,isPublicProvided:isPublic,finalIsPublic,currentIsPublic:current?.metadata.isPublic},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
         // #endregion
 
         // CRITICAL: OWNERSHIP VERIFICATION - Only owner can update metadata
@@ -6207,9 +6201,7 @@ class ProductionServer {
         }
         
         console.log(`[StorageAccounts] Found ${googleDriveAccounts.length} Google Drive account(s)`);
-        if (googleDriveAccounts.length > 0) {
-          console.log(`[StorageAccounts] First account structure:`, JSON.stringify(googleDriveAccounts[0], null, 2));
-        } else {
+        if (googleDriveAccounts.length === 0) {
           console.warn(`[StorageAccounts] No Google Drive accounts found. Credentials structure:`, {
             hasGoogleDriveAccounts: !!credentials?.googleDriveAccounts,
             hasGoogleDrive: !!credentials?.googleDrive,
@@ -6228,8 +6220,7 @@ class ProductionServer {
             hasBackendId: !!account?.backendId,
             hasKeyPrefix: !!account?.keyPrefix,
             hasAccessToken: !!((account as any)?.access_token || (account as any)?.accessToken),
-            hasEmail: !!(account as any)?.email,
-            accountKeys: Object.keys(account || {})
+            hasEmail: !!(account as any)?.email
           });
           
           // Try to get user info from Google Drive API to get email
@@ -8757,9 +8748,6 @@ class ProductionServer {
 
         const responseText = await tokenResponse.text();
         console.log('[Google OAuth Token Exchange] Google response status:', tokenResponse.status);
-        console.log('[Google OAuth Token Exchange] Google response length:', responseText.length);
-        console.log('[Google OAuth Token Exchange] Google response (first 500 chars):', responseText.substring(0, 500));
-
         if (!tokenResponse.ok) {
           let errorData;
           try {
@@ -8771,8 +8759,6 @@ class ProductionServer {
           console.error('[Google OAuth Token Exchange] Token exchange failed:', {
             status: tokenResponse.status,
             error: errorData,
-            redirectUri: redirectUri,
-            clientId: clientId,
             codeLength: code?.length || 0
           });
           
@@ -8782,9 +8768,7 @@ class ProductionServer {
             message: errorData.error_description || errorData.error || 'Failed to exchange authorization code with Google',
             details: {
               googleError: errorData,
-              httpStatus: tokenResponse.status,
-              redirectUri: redirectUri,
-              clientId: clientId
+              httpStatus: tokenResponse.status
             }
           });
         }
@@ -8824,6 +8808,23 @@ class ProductionServer {
     // POST /api/auth/google-oauth/refresh - Refresh access token using refresh token
     this.app.post('/api/auth/google-oauth/refresh', async (req, res) => {
       try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Missing or invalid Authorization header'
+          });
+        }
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        if (!tokenPayload) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Invalid or expired access token'
+          });
+        }
+
         const { refreshToken } = req.body;
 
         if (!refreshToken) {

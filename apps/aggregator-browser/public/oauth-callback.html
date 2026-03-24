@@ -96,11 +96,11 @@
 
       var callbackKey = 'pn_oauth_callback_' + Date.now();
       try {
-        localStorage.setItem(callbackKey, JSON.stringify(oauthData));
-        localStorage.setItem('pn_oauth_pending', 'true');
-        localStorage.setItem('pn_oauth_latest_key', callbackKey);
+        sessionStorage.setItem(callbackKey, JSON.stringify(oauthData));
+        sessionStorage.setItem('pn_oauth_pending', 'true');
+        sessionStorage.setItem('pn_oauth_latest_key', callbackKey);
       } catch (e) {
-        console.warn('localStorage failed', e);
+        console.warn('sessionStorage failed', e);
       }
 
       /** Parent origin for postMessage targetOrigin — must match opener, not only this frame. */
