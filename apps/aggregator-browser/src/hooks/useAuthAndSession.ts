@@ -477,9 +477,19 @@ export function useAuthAndSession({
             }
             return;
           }
-          setLocked();
-          PNOAuthService.clearSession();
-          showErrorToast('Authentication cancelled or failed. Please try again.');
+          // Final fallback: switch to full-page OAuth when popup handoff fails.
+          // This avoids browser popup/opener/storage race conditions.
+          try {
+            const fallbackUrl = new URL(authUrl);
+            fallbackUrl.searchParams.set('popup', 'false');
+            sessionStorage.setItem('pn_oauth_full_redirect_fallback', '1');
+            window.location.href = fallbackUrl.toString();
+            return;
+          } catch {
+            setLocked();
+            PNOAuthService.clearSession();
+            showErrorToast('Authentication cancelled or failed. Please try again.');
+          }
         } else if (msg === 'OAUTH_STATE_MISMATCH') {
           setLocked();
           PNOAuthService.clearSession();
