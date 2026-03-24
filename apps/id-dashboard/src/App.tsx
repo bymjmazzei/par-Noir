@@ -274,7 +274,7 @@ function App() {
   // Use custom hooks for state management - MUST be declared before any functions that use these variables
   const appState = useAppState();
   const identityState = useIdentityState();
-  const { apiToken, clearApiToken, ensureApiTokenAfterUnlock } = useApiToken();
+  const { apiToken, connectError, clearApiToken, ensureApiTokenAfterUnlock } = useApiToken();
   const privacyState = usePrivacyState();
   const exportState = useExportState();
   const custodianState = useCustodianState();
@@ -350,11 +350,52 @@ function App() {
     recoveryKeys,
     setRecoveryKeys
   } = identityState;
+  const apiTokenAttemptedForUserRef = React.useRef<string | null>(null);
 
   // Push notifications (native only): register when authenticated
   usePushNotifications({
     getAccessToken: useCallback(async () => authenticatedUser?.accessToken ?? null, [authenticatedUser?.accessToken]),
   });
+
+  React.useEffect(() => {
+    if (!authenticatedUser?.id || apiToken) return;
+    if (apiTokenAttemptedForUserRef.current === authenticatedUser.id) return;
+
+    const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+    if (!credentials) return;
+
+    apiTokenAttemptedForUserRef.current = authenticatedUser.id;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const identityKey = authenticatedUser.publicKey || authenticatedUser.id;
+        let storedIdentity = identityKey ? await storage.getIdentity(identityKey) : null;
+        if (!storedIdentity && authenticatedUser.publicKey && authenticatedUser.publicKey !== authenticatedUser.id) {
+          storedIdentity = await storage.getIdentity(authenticatedUser.id);
+        }
+        if (!storedIdentity) return;
+
+        await ensureApiTokenAfterUnlock({
+          encryptedIdentity: {
+            encryptedData: storedIdentity.encryptedData,
+            iv: storedIdentity.iv,
+            salt: storedIdentity.salt
+          },
+          publicKey: authenticatedUser.publicKey || identityKey,
+          did: authenticatedUser.id,
+          pnName: credentials.pnName,
+          passcode: credentials.passcode
+        });
+      } finally {
+        if (cancelled) return;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticatedUser, apiToken, ensureApiTokenAfterUnlock, storage]);
 
   // Destructure privacy state from custom hook
   const {
@@ -6546,6 +6587,7 @@ This invitation expires in 24 hours.`;
                   {activeTab === 'subpn' && (
                     <SubPnTab
                       accessToken={apiToken}
+                      connectError={connectError}
                       sessionId={authenticatedUser?.id}
                       publicKey={authenticatedUser?.publicKey}
                     />

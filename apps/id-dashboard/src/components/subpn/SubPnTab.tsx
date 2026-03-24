@@ -37,12 +37,14 @@ const STORAGE_SEAL_PREFIX = 'par_noir_sub_seal_';
 
 interface SubPnTabProps {
   accessToken: string | null | undefined;
+  connectError?: string | null;
   sessionId: string | undefined;
   publicKey: string | undefined;
 }
 
 export const SubPnTab: React.FC<SubPnTabProps> = ({
   accessToken,
+  connectError,
   sessionId,
   publicKey
 }) => {
@@ -285,8 +287,13 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       </div>
 
       {!accessToken && (
-        <div className="p-4 rounded-lg bg-amber-900/20 border border-amber-700 text-sm">
-          API session is still initializing. Unlock your pN again if this message persists.
+        <div className="p-4 rounded-lg bg-amber-900/20 border border-amber-700 text-sm space-y-2">
+          <p>API session is still initializing. Unlock your pN again if this message persists.</p>
+          {connectError && (
+            <p className="text-red-400" role="alert">
+              {connectError}
+            </p>
+          )}
         </div>
       )}
 
