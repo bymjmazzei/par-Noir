@@ -29,11 +29,17 @@ export function getDatabasePool(): Pool {
 
     // Pool max defaults to 20; can be increased via DATABASE_POOL_MAX if load testing shows exhaustion
     const poolMax = parseInt(process.env.DATABASE_POOL_MAX || '20', 10) || 20;
+    const rejectUnauthorizedOverride = process.env.DB_SSL_REJECT_UNAUTHORIZED;
+    const rejectUnauthorized =
+      typeof rejectUnauthorizedOverride === 'string'
+        ? rejectUnauthorizedOverride !== 'false'
+        : false;
+
     const config: PoolConfig = {
       connectionString: dbUrl,
       ssl: requiresSSL
         ? {
-            rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
+            rejectUnauthorized,
           }
         : false,
       max: poolMax,
