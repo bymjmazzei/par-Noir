@@ -1,4 +1,10 @@
 import '@testing-library/jest-dom';
+import type { SDKConfig } from '../src/types';
+
+jest.mock('@par-noir/oauth-ui', () => ({
+  buildOAuthConsentUrl: jest.fn(() => 'https://api.test/oauth'),
+  startPnOAuthPopup: jest.fn(),
+}));
 
 // Mock crypto worker manager
 jest.mock('@identity-protocol/identity-core/src/encryption/cryptoWorkerManager', () => ({
@@ -112,43 +118,54 @@ if (!global.window) {
 // Mock process.env
 process.env.NODE_ENV = 'test';
 
-// Global test utilities
-global.createMockSDKConfig = () => ({
-  identityProvider: {
-    name: 'Test Provider',
-    type: 'oauth2' as const,
-    config: {
+/** Shared mock OAuth configuration for unit tests (also assigned to `global` below). */
+export function createMockSDKConfig(): SDKConfig {
+  return {
+    identityProvider: {
       name: 'Test Provider',
-      clientId: 'test-client-id',
-      redirectUri: 'http://localhost:3000/callback',
-      scopes: ['openid', 'profile', 'email'],
-      endpoints: {
-        authorization: 'https://test.com/oauth/authorize',
-        token: 'https://test.com/oauth/token',
-        userInfo: 'https://test.com/oauth/userinfo',
-        revocation: 'https://test.com/oauth/revoke'
-      }
+      type: 'oauth2',
+      config: {
+        name: 'Test Provider',
+        clientId: 'test-client-id',
+        clientSecret: 'test-client-secret',
+        redirectUri: 'http://localhost:3000/callback',
+        scopes: ['openid', 'profile', 'email'],
+        endpoints: {
+          authorization: 'https://test.com/oauth/authorize',
+          token: 'https://test.com/oauth/token',
+          userInfo: 'https://test.com/oauth/userinfo',
+          revocation: 'https://test.com/oauth/revoke',
+        },
+      },
+      metadata: {
+        logo: 'https://test.com/logo.png',
+        description: 'Test identity provider',
+      },
     },
-    metadata: {
-      logo: 'https://test.com/logo.png',
-      description: 'Test identity provider'
-    }
-  },
-  storage: 'memory',
-  autoRefresh: true,
-  debug: false
-});
+    storage: 'memory',
+    autoRefresh: true,
+    debug: false,
+  };
+}
 
-global.createMockSession = () => ({
-  accessToken: 'mock-access-token',
-  refreshToken: 'mock-refresh-token',
-  expiresAt: Date.now() + 3600000,
-  user: {
-    id: 'test-user-id',
-    email: 'test@example.com',
-    name: 'Test User'
-  }
-});
+export function createMockSession() {
+  return {
+    accessToken: 'mock-access-token',
+    refreshToken: 'mock-refresh-token',
+    expiresAt: Date.now() + 3600000,
+    user: {
+      id: 'test-user-id',
+      email: 'test@example.com',
+      name: 'Test User',
+    },
+  };
+}
+
+// Global test utilities (legacy tests rely on globals)
+(globalThis as unknown as { createMockSDKConfig: typeof createMockSDKConfig }).createMockSDKConfig =
+  createMockSDKConfig;
+(globalThis as unknown as { createMockSession: typeof createMockSession }).createMockSession =
+  createMockSession;
 
 // Clean up after each test
 afterEach(() => {

@@ -81,7 +81,7 @@ export class ZKPManager {
   private async verifySchnorrProof(proof: ZKPProofData): Promise<boolean> {
     // This would use your authentic Schnorr verification implementation
     // For now, returning a placeholder verification
-    return proof.R && proof.c && proof.s;
+    return !!(proof.R && proof.c && proof.s);
   }
 
   /**
@@ -90,7 +90,7 @@ export class ZKPManager {
   private async verifyPedersenProof(proof: PedersenProofData): Promise<boolean> {
     // This would use your authentic Pedersen verification implementation
     // For now, returning a placeholder verification
-    return proof.commitment && proof.proof;
+    return !!(proof.commitment && proof.proof);
   }
 
   /**

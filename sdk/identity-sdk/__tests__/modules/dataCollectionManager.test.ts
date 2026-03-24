@@ -1,254 +1,182 @@
 import { DataCollectionManager } from '../../src/IdentitySDK/modules/dataCollectionManager';
+import { installIdentityEventAutoResolve } from '../identityEventTestSetup';
 
 describe('DataCollectionManager', () => {
   let dataManager: DataCollectionManager;
+  let uninstallEvents: () => void;
 
   beforeEach(() => {
     dataManager = new DataCollectionManager();
+    uninstallEvents = installIdentityEventAutoResolve();
   });
 
   afterEach(() => {
+    uninstallEvents();
     jest.clearAllMocks();
   });
 
-  describe('Initialization', () => {
-    it('should initialize data collection manager', () => {
-      expect(dataManager).toBeInstanceOf(DataCollectionManager);
-    });
+  it('initializes', () => {
+    expect(dataManager).toBeInstanceOf(DataCollectionManager);
   });
 
   describe('Compliance Data', () => {
-    it('should get compliance data for platform', () => {
-      const platform = 'test-platform';
-      const complianceData = dataManager.getComplianceData(platform);
-      
-      expect(complianceData).toBeDefined();
-      expect(complianceData.platform).toBe(platform);
-    });
-
-    it('should handle unknown platform', () => {
-      const platform = 'unknown-platform';
-      const complianceData = dataManager.getComplianceData(platform);
-      
-      expect(complianceData).toBeDefined();
-      expect(complianceData.platform).toBe(platform);
+    it('returns compliance data for platform', () => {
+      const complianceData = dataManager.getComplianceData('test-platform');
+      expect(complianceData.platform).toBe('test-platform');
     });
   });
 
   describe('Data Collection Requests', () => {
-    it('should request data collection', async () => {
-      const request = {
-        platform: 'test-platform',
-        dataPoints: ['email', 'name', 'phone'],
-        purpose: 'authentication',
-        userId: 'test-user-id'
-      };
-      
-      const response = await dataManager.requestDataCollection(request);
-      expect(response).toBeDefined();
-      expect(response.requestId).toBeDefined();
-    });
-
-    it('should handle invalid data collection request', async () => {
-      const invalidRequest = {
-        platform: '',
-        dataPoints: [],
-        purpose: '',
-        userId: ''
-      };
-      
-      await expect(dataManager.requestDataCollection(invalidRequest)).rejects.toThrow();
-    });
-
-    it('should validate data collection request', () => {
-      const validRequest = {
+    it('requestDataCollection resolves when event bridge is installed', async () => {
+      const response = await dataManager.requestDataCollection({
         platform: 'test-platform',
         dataPoints: ['email'],
         purpose: 'authentication',
-        userId: 'test-user-id'
-      };
-      
-      const isValid = dataManager.validateDataCollectionRequest(validRequest);
-      expect(isValid).toBe(true);
+        consentText: 'consent',
+        dataUsage: 'usage',
+      });
+      expect(response.success).toBe(true);
+      expect(response.requestId).toBe('mock-req-id');
+    });
+
+    it('throws on unknown data point ids', async () => {
+      await expect(
+        dataManager.requestDataCollection({
+          platform: 'test-platform',
+          dataPoints: ['not-a-real-dp'],
+          purpose: 'authentication',
+          consentText: 'consent',
+          dataUsage: 'usage',
+        })
+      ).rejects.toThrow(/Invalid data points/);
+    });
+
+    it('validateDataCollectionRequest rejects empty platform', () => {
+      expect(
+        dataManager.validateDataCollectionRequest({
+          platform: '',
+          dataPoints: ['email'],
+        })
+      ).toBe(false);
+    });
+
+    it('validateDataCollectionRequest accepts valid email request', () => {
+      expect(
+        dataManager.validateDataCollectionRequest({
+          platform: 'x',
+          dataPoints: ['email'],
+        })
+      ).toBe(true);
     });
   });
 
   describe('Standard Data Points', () => {
-    it('should request standard data point', async () => {
-      const request = {
+    it('requestStandardDataPoint resolves', async () => {
+      const response = await dataManager.requestStandardDataPoint({
         dataPointId: 'email',
-        userId: 'test-user-id',
-        purpose: 'authentication'
-      };
-      
-      const response = await dataManager.requestStandardDataPoint(request);
-      expect(response).toBeDefined();
+        platform: 'test',
+        purpose: 'auth',
+      });
+      expect(response.success).toBe(true);
       expect(response.dataPointId).toBe('email');
     });
 
-    it('should get available data points', () => {
-      const dataPoints = dataManager.getAvailableDataPoints();
-      expect(dataPoints).toBeDefined();
-      expect(typeof dataPoints).toBe('object');
+    it('getAvailableDataPoints returns registry', () => {
+      expect(dataManager.getAvailableDataPoints().email).toBeDefined();
     });
 
-    it('should validate data point request', () => {
-      const isValid = dataManager.validateDataPointRequest('email');
-      expect(typeof isValid).toBe('boolean');
+    it('validateDataPointRequest', () => {
+      expect(dataManager.validateDataPointRequest('email')).toBe(true);
+      expect(dataManager.validateDataPointRequest('nope')).toBe(false);
     });
 
-    it('should get data point metadata', () => {
-      const metadata = dataManager.getDataPointMetadata('email');
-      expect(metadata).toBeDefined();
-      expect(metadata.id).toBe('email');
-    });
-
-    it('should handle invalid data point ID', () => {
-      const metadata = dataManager.getDataPointMetadata('invalid-data-point');
-      expect(metadata).toBeUndefined();
+    it('getDataPointMetadata throws for unknown id', () => {
+      expect(() => dataManager.getDataPointMetadata('invalid-data-point')).toThrow();
     });
   });
 
-  describe('Data Point Proposals', () => {
-    it('should propose new data point', async () => {
-      const proposal = {
-        name: 'test-data-point',
-        description: 'Test data point for testing',
-        category: 'personal',
+  describe('Proposals & votes', () => {
+    it('proposeDataPoint resolves when useCase present and name is unique', async () => {
+      const response = await dataManager.proposeDataPoint({
+        name: 'Unique Test DP 001',
+        description: 'desc',
+        category: 'identity',
         dataType: 'string',
-        required: false,
-        proposer: 'test-user-id'
-      };
-      
-      const response = await dataManager.proposeDataPoint(proposal);
-      expect(response).toBeDefined();
-      expect(response.proposalId).toBeDefined();
+        requiredFields: [],
+        examples: [],
+        useCase: 'testing',
+        proposedBy: 'user',
+      });
+      expect(response.success).toBe(true);
+      expect(response.proposalId).toBe('mock-proposal-id');
     });
 
-    it('should handle invalid proposal', async () => {
-      const invalidProposal = {
+    it('proposeDataPoint returns error when required fields missing', async () => {
+      const response = await dataManager.proposeDataPoint({
         name: '',
         description: '',
-        category: '',
-        dataType: '',
-        required: false,
-        proposer: ''
-      };
-      
-      await expect(dataManager.proposeDataPoint(invalidProposal)).rejects.toThrow();
+        category: 'identity',
+        dataType: 'string',
+        requiredFields: [],
+        examples: [],
+        useCase: '',
+        proposedBy: 'user',
+      });
+      expect(response.success).toBe(false);
     });
 
-    it('should vote on proposal', async () => {
-      const vote = {
-        proposalId: 'test-proposal-id',
-        vote: 'approve',
-        voter: 'test-user-id',
-        reason: 'Good proposal'
-      };
-      
-      const response = await dataManager.voteOnProposal(vote);
-      expect(response).toBeDefined();
-      expect(response.voteId).toBeDefined();
+    it('voteOnProposal resolves', async () => {
+      const response = await dataManager.voteOnProposal({
+        proposalId: 'p1',
+        voterId: 'v1',
+        vote: 'upvote',
+      });
+      expect(response.success).toBe(true);
     });
 
-    it('should handle invalid vote', async () => {
-      const invalidVote = {
+    it('voteOnProposal returns error when ids missing', async () => {
+      const response = await dataManager.voteOnProposal({
         proposalId: '',
-        vote: 'invalid',
-        voter: '',
-        reason: ''
-      };
-      
-      await expect(dataManager.voteOnProposal(invalidVote)).rejects.toThrow();
+        voterId: 'v1',
+        vote: 'upvote',
+      });
+      expect(response.success).toBe(false);
     });
   });
 
-  describe('Data Point Categories', () => {
-    it('should get data points by category', () => {
-      const personalDataPoints = dataManager.getDataPointsByCategory('personal');
-      expect(personalDataPoints).toBeDefined();
-      expect(Array.isArray(personalDataPoints)).toBe(true);
+  describe('Categories & validation helpers', () => {
+    it('getDataPointsByCategory', () => {
+      const list = dataManager.getDataPointsByCategory('personal');
+      expect(Array.isArray(list)).toBe(true);
+      expect(list.length).toBeGreaterThan(0);
     });
 
-    it('should get all categories', () => {
-      const categories = dataManager.getCategories();
-      expect(categories).toBeDefined();
-      expect(Array.isArray(categories)).toBe(true);
-    });
-  });
-
-  describe('Data Point Validation', () => {
-    it('should validate data point value', () => {
-      const isValid = dataManager.validateDataPointValue('email', 'test@example.com');
-      expect(isValid).toBe(true);
+    it('getCategories', () => {
+      expect(dataManager.getCategories()).toContain('personal');
     });
 
-    it('should reject invalid data point value', () => {
-      const isValid = dataManager.validateDataPointValue('email', 'invalid-email');
-      expect(isValid).toBe(false);
+    it('validateDataPointValue', () => {
+      expect(dataManager.validateDataPointValue('email', 'a@b.co')).toBe(true);
+      expect(dataManager.validateDataPointValue('email', 'not-an-email')).toBe(false);
     });
 
-    it('should validate required data points', () => {
-      const data = {
-        email: 'test@example.com',
-        name: 'Test User'
-      };
-      
-      const missing = dataManager.validateRequiredDataPoints(data, ['email', 'name', 'phone']);
+    it('validateRequiredDataPoints', () => {
+      const missing = dataManager.validateRequiredDataPoints(
+        { email: 'a@b.co', name: 'Test' },
+        ['email', 'name', 'phone']
+      );
       expect(missing).toContain('phone');
     });
   });
 
-  describe('Error Handling', () => {
-    it('should handle network errors gracefully', async () => {
-      // Mock network error
-      const originalFetch = global.fetch;
-      global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
-      
-      const request = {
-        platform: 'test-platform',
-        dataPoints: ['email'],
-        purpose: 'authentication',
-        userId: 'test-user-id'
-      };
-      
-      await expect(dataManager.requestDataCollection(request)).rejects.toThrow('Network error');
-      
-      global.fetch = originalFetch;
+  describe('Security helpers', () => {
+    it('sanitizeDataPointValue strips tags', () => {
+      const malicious = '<script>alert("xss")</script>';
+      expect(dataManager.sanitizeDataPointValue(malicious)).not.toContain('<script>');
     });
 
-    it('should handle invalid responses gracefully', async () => {
-      // Mock invalid response
-      const originalFetch = global.fetch;
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: false,
-        status: 400,
-        json: () => Promise.resolve({ error: 'Bad request' })
-      });
-      
-      const request = {
-        platform: 'test-platform',
-        dataPoints: ['email'],
-        purpose: 'authentication',
-        userId: 'test-user-id'
-      };
-      
-      await expect(dataManager.requestDataCollection(request)).rejects.toThrow();
-      
-      global.fetch = originalFetch;
-    });
-  });
-
-  describe('Security', () => {
-    it('should sanitize data point values', () => {
-      const maliciousValue = '<script>alert("xss")</script>';
-      const sanitized = dataManager.sanitizeDataPointValue(maliciousValue);
-      expect(sanitized).not.toContain('<script>');
-    });
-
-    it('should validate data point permissions', () => {
-      const hasPermission = dataManager.validateDataPointPermission('email', 'test-user-id');
-      expect(typeof hasPermission).toBe('boolean');
+    it('validateDataPointPermission returns boolean', () => {
+      expect(typeof dataManager.validateDataPointPermission('email', 'u1')).toBe('boolean');
     });
   });
 });

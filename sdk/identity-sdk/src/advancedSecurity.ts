@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '@identity-protocol/identity-core/src/encryption/cryptoWorkerManager';
 // Advanced Security Types
 export interface CertificateInfo {
   fingerprint: string;
@@ -74,7 +74,12 @@ export class CertificatePinning {
     return Array.from(hash).map(b => b.toString(16).padStart(2, '0')).join(':').toUpperCase();
   }
   private generateSerialNumber(): string {
-    return Array.from(await cryptoWorkerManager.generateRandom(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join(':').toUpperCase();
+    const bytes = new Uint8Array(16);
+    cryptoWorkerManager.generateRandom(bytes);
+    return Array.from(bytes)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join(':')
+      .toUpperCase();
   }
   private async verifyCertificate(cert: CertificateInfo, domain: string): Promise<boolean> {
     const now = new Date();

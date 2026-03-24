@@ -27,9 +27,12 @@ export class IdentitySDK {
   private session: UserSession | null = null;
 
   constructor(config: SDKConfig, storage?: any) {
+    if (!config?.identityProvider?.config) {
+      throw new Error(ERROR_MESSAGES.INVALID_CONFIG);
+    }
     this.config = config;
     this.storage = storage;
-    
+
     // Initialize managers
     this.authenticationManager = new AuthenticationManager(config, storage);
     this.zkpManager = new ZKPManager();

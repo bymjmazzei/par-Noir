@@ -24,6 +24,9 @@ export class AuthenticationManager {
   private session: UserSession | null = null;
 
   constructor(config: SDKConfig, storage: any) {
+    if (!config?.identityProvider?.config) {
+      throw new Error(ERROR_MESSAGES.INVALID_CONFIG);
+    }
     this.config = config;
     this.storage = storage;
   }
@@ -38,7 +41,7 @@ export class AuthenticationManager {
     const authRequest: AuthRequest = {
       clientId: this.config.identityProvider.config.clientId,
       redirectUri: this.config.identityProvider.config.redirectUri,
-      scope: this.config.identityProvider.config.scope,
+      scope: this.config.identityProvider.config.scopes,
       responseType: 'code',
       state,
       nonce

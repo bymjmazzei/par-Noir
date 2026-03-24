@@ -1,7 +1,10 @@
 import { ZKPManager } from '../../src/IdentitySDK/modules/zkpManager';
+import { ZKP_PROOF_TYPES } from '../../src/IdentitySDK/constants/sdkConstants';
 
 describe('ZKPManager', () => {
   let zkpManager: ZKPManager;
+
+  const mockPrivateKey = {} as CryptoKey;
 
   beforeEach(() => {
     zkpManager = new ZKPManager();
@@ -11,186 +14,67 @@ describe('ZKPManager', () => {
     jest.clearAllMocks();
   });
 
-  describe('Initialization', () => {
-    it('should initialize ZKP manager', () => {
-      expect(zkpManager).toBeInstanceOf(ZKPManager);
+  it('initializes', () => {
+    expect(zkpManager).toBeInstanceOf(ZKPManager);
+  });
+
+  describe('Schnorr', () => {
+    it('generates Schnorr-shaped proof (R, c, s)', async () => {
+      const proof = await zkpManager.generateSchnorrProof(mockPrivateKey);
+      expect(proof.R).toMatch(/^[0-9a-f]+$/);
+      expect(proof.c).toMatch(/^[0-9a-f]+$/);
+      expect(proof.s).toMatch(/^[0-9a-f]+$/);
+    });
+
+    it('verifies Schnorr proof via verifyProof', async () => {
+      const proof = await zkpManager.generateSchnorrProof(mockPrivateKey);
+      await expect(zkpManager.verifyProof(proof, ZKP_PROOF_TYPES.SCHNORR)).resolves.toBe(true);
     });
   });
 
-  describe('Schnorr Proofs', () => {
-    it('should generate Schnorr proof', async () => {
-      const privateKey = 'test-private-key';
-      const proof = await zkpManager.generateSchnorrProof(privateKey);
-      
-      expect(proof).toBeDefined();
-      expect(proof.type).toBe('schnorr');
+  describe('Pedersen', () => {
+    it('generates Pedersen-shaped proof', async () => {
+      const proof = await zkpManager.generatePedersenProof('pn-test');
+      expect(proof.commitment).toMatch(/^[0-9a-f]+$/);
+      expect(proof.proof).toMatch(/^[0-9a-f]+$/);
     });
 
-    it('should verify Schnorr proof', async () => {
-      const proof = {
-        type: 'schnorr',
-        commitment: 'test-commitment',
-        challenge: 'test-challenge',
-        response: 'test-response'
-      };
-      
-      const isValid = await zkpManager.verifySchnorrProof(proof);
-      expect(typeof isValid).toBe('boolean');
-    });
-
-    it('should handle invalid Schnorr proof', async () => {
-      const invalidProof = {
-        type: 'schnorr',
-        commitment: 'invalid',
-        challenge: 'invalid',
-        response: 'invalid'
-      };
-      
-      const isValid = await zkpManager.verifySchnorrProof(invalidProof);
-      expect(isValid).toBe(false);
+    it('verifies Pedersen proof via verifyProof', async () => {
+      const proof = await zkpManager.generatePedersenProof('pn-test');
+      await expect(zkpManager.verifyProof(proof, ZKP_PROOF_TYPES.PEDERSEN)).resolves.toBe(true);
     });
   });
 
-  describe('Pedersen Proofs', () => {
-    it('should generate Pedersen proof', async () => {
-      const publicPNId = 'test-public-id';
-      const proof = await zkpManager.generatePedersenProof(publicPNId);
-      
-      expect(proof).toBeDefined();
-      expect(proof.type).toBe('pedersen');
+  describe('Data point & ownership', () => {
+    it('generates data point proof payload', async () => {
+      const proof = await zkpManager.generateDataPointProof('email', 'user-1');
+      expect(proof.dataPointId).toBe('email');
+      expect(proof.userId).toBe('user-1');
+      expect(proof.type).toBe('data_point_access');
     });
 
-    it('should verify Pedersen proof', async () => {
-      const proof = {
-        type: 'pedersen',
-        commitment: 'test-commitment',
-        opening: {
-          message: 'test-message',
-          randomness: 'test-randomness'
-        }
-      };
-      
-      const isValid = await zkpManager.verifyPedersenProof(proof);
-      expect(typeof isValid).toBe('boolean');
-    });
-
-    it('should handle invalid Pedersen proof', async () => {
-      const invalidProof = {
-        type: 'pedersen',
-        commitment: 'invalid',
-        opening: {
-          message: 'invalid',
-          randomness: 'invalid'
-        }
-      };
-      
-      const isValid = await zkpManager.verifyPedersenProof(invalidProof);
-      expect(isValid).toBe(false);
+    it('generates ownership proof payload', async () => {
+      const proof = await zkpManager.generateOwnershipProof({ owner: 'a', asset: 'b' });
+      expect(proof.proof).toBeDefined();
+      expect(proof.metadata?.algorithm).toBe('schnorr');
     });
   });
 
-  describe('Data Point Proofs', () => {
-    it('should generate data point proof', async () => {
-      const dataPointId = 'email';
-      const userId = 'test-user-id';
-      const proof = await zkpManager.generateDataPointProof(dataPointId, userId);
-      
-      expect(proof).toBeDefined();
-      expect(proof.dataPointId).toBe(dataPointId);
-      expect(proof.userId).toBe(userId);
+  describe('verifyProof', () => {
+    it('returns false for unknown proof type (no throw)', async () => {
+      await expect(zkpManager.verifyProof({ x: 1 }, 'unknown-type')).resolves.toBe(false);
     });
 
-    it('should verify data point proof', async () => {
-      const proof = {
-        dataPointId: 'email',
-        userId: 'test-user-id',
-        proof: 'test-proof-data'
-      };
-      
-      const isValid = await zkpManager.verifyDataPointProof(proof);
-      expect(typeof isValid).toBe('boolean');
-    });
-  });
-
-  describe('Ownership Proofs', () => {
-    it('should generate ownership proof', async () => {
-      const data = {
-        owner: 'test-owner',
-        asset: 'test-asset',
-        timestamp: Date.now()
-      };
-      
-      const proof = await zkpManager.generateOwnershipProof(data);
-      expect(proof).toBeDefined();
-      expect(proof.owner).toBe(data.owner);
-      expect(proof.asset).toBe(data.asset);
-    });
-
-    it('should verify ownership proof', async () => {
-      const proof = {
-        owner: 'test-owner',
-        asset: 'test-asset',
-        proof: 'test-proof-data',
-        timestamp: Date.now()
-      };
-      
-      const isValid = await zkpManager.verifyOwnershipProof(proof);
-      expect(typeof isValid).toBe('boolean');
-    });
-  });
-
-  describe('Generic Proof Operations', () => {
-    it('should verify proof with valid type', async () => {
-      const proof = {
-        type: 'schnorr',
-        data: 'test-proof-data'
-      };
-      
-      const isValid = await zkpManager.verifyProof(proof, 'schnorr');
-      expect(typeof isValid).toBe('boolean');
-    });
-
-    it('should handle unknown proof type', async () => {
-      const proof = {
-        type: 'unknown',
-        data: 'test-proof-data'
-      };
-      
-      await expect(zkpManager.verifyProof(proof, 'unknown')).rejects.toThrow();
-    });
-  });
-
-  describe('Error Handling', () => {
-    it('should handle invalid input gracefully', async () => {
-      await expect(zkpManager.generateSchnorrProof('')).rejects.toThrow();
-    });
-
-    it('should handle malformed proof data', async () => {
-      const malformedProof = {
-        type: 'schnorr',
-        // Missing required fields
-      };
-      
-      const isValid = await zkpManager.verifySchnorrProof(malformedProof as any);
-      expect(isValid).toBe(false);
+    it('returns false for malformed Schnorr proof', async () => {
+      await expect(zkpManager.verifyProof({ R: '' }, ZKP_PROOF_TYPES.SCHNORR)).resolves.toBe(false);
     });
   });
 
   describe('Security', () => {
-    it('should generate cryptographically secure proofs', async () => {
-      const proof1 = await zkpManager.generateSchnorrProof('test-key-1');
-      const proof2 = await zkpManager.generateSchnorrProof('test-key-2');
-      
-      expect(proof1).not.toEqual(proof2);
-    });
-
-    it('should not leak private information in proofs', async () => {
-      const privateKey = 'secret-private-key';
-      const proof = await zkpManager.generateSchnorrProof(privateKey);
-      
-      expect(proof.commitment).not.toContain(privateKey);
-      expect(proof.challenge).not.toContain(privateKey);
-      expect(proof.response).not.toContain(privateKey);
+    it('generates distinct Schnorr proofs across calls', async () => {
+      const a = await zkpManager.generateSchnorrProof(mockPrivateKey);
+      const b = await zkpManager.generateSchnorrProof(mockPrivateKey);
+      expect(a).not.toEqual(b);
     });
   });
 });

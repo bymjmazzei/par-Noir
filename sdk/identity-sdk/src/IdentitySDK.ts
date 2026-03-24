@@ -15,8 +15,9 @@
  * - IdentitySDK/index.ts: Re-exports all modular components
  */
 
-// Re-export the main IdentitySDK and all modular components
-export { IdentitySDK } from './IdentitySDK';
+// Re-export the main IdentitySDK and all modular components.
+// Use explicit `/index` so bundlers do not resolve `./IdentitySDK` to this file (self-import loop).
+export { IdentitySDK } from './IdentitySDK/index';
 
 // Re-export types for backward compatibility
 export * from './IdentitySDK/types/identitySDK';
@@ -30,4 +31,4 @@ export { ZKPManager } from './IdentitySDK/modules/zkpManager';
 export { DataCollectionManager } from './IdentitySDK/modules/dataCollectionManager';
 
 // Default export for backward compatibility
-export { IdentitySDK as default } from './IdentitySDK';
+export { IdentitySDK as default } from './IdentitySDK/index';

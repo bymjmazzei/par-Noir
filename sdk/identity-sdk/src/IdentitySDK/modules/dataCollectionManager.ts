@@ -1,4 +1,4 @@
-import { 
+import {
   ComplianceData,
   DataCollectionRequest,
   DataCollectionResponse,
@@ -7,10 +7,12 @@ import {
   DataPointProposalRequest,
   DataPointProposalResponse,
   VoteRequest,
-  VoteResponse
+  VoteResponse,
 } from '../types';
+import { ERROR_MESSAGES } from '../constants/sdkConstants';
+
 // Mock STANDARD_DATA_POINTS for now
-const STANDARD_DATA_POINTS = {
+const STANDARD_DATA_POINTS: Record<string, Record<string, unknown>> = {
   email: {
     id: 'email',
     name: 'Email',
@@ -22,9 +24,8 @@ const STANDARD_DATA_POINTS = {
     requiredFields: ['email'],
     defaultPrivacy: 'private',
     examples: ['Account creation', 'Password reset']
-  }
+  },
 };
-import { ERROR_MESSAGES } from '../constants/sdkConstants';
 
 export class DataCollectionManager {
   /**
@@ -48,8 +49,14 @@ export class DataCollectionManager {
    * Request additional data collection from user using standardized data points
    */
   async requestDataCollection(request: DataCollectionRequest): Promise<DataCollectionResponse> {
+    if (!request?.platform?.trim()) {
+      throw new Error(ERROR_MESSAGES.INVALID_DATA_POINT);
+    }
+    if (!request.dataPoints?.length) {
+      throw new Error(ERROR_MESSAGES.INVALID_DATA_POINT);
+    }
     // Validate requested data points
-    const invalidDataPoints = request.dataPoints.filter(dp => !STANDARD_DATA_POINTS[dp]);
+    const invalidDataPoints = request.dataPoints.filter((dp: string) => !STANDARD_DATA_POINTS[dp]);
     if (invalidDataPoints.length > 0) {
       throw new Error(`Invalid data points: ${invalidDataPoints.join(', ')}`);
     }
@@ -92,8 +99,8 @@ export class DataCollectionManager {
       }
 
       // Check if data point already exists
-      const existingDataPoint = Object.values(STANDARD_DATA_POINTS).find(
-        dp => dp.name.toLowerCase() === proposal.name.toLowerCase()
+      const existingDataPoint = Object.values(STANDARD_DATA_POINTS).find((dp: Record<string, unknown>) =>
+        String(dp.name).toLowerCase() === proposal.name.toLowerCase()
       );
       if (existingDataPoint) {
         return { success: false, error: 'Data point already exists' };
@@ -164,5 +171,55 @@ export class DataCollectionManager {
       throw new Error(`Unknown data point: ${dataPointId}`);
     }
     return dataPoint;
+  }
+
+  /**
+   * Basic structural validation for programmatic callers (tests and integrations).
+   */
+  validateDataCollectionRequest(request: Partial<DataCollectionRequest>): boolean {
+    if (!request?.platform?.trim()) return false;
+    if (!request.dataPoints?.length) return false;
+    return request.dataPoints.every(dp => !!STANDARD_DATA_POINTS[dp]);
+  }
+
+  getDataPointsByCategory(category: string): Record<string, unknown>[] {
+    return Object.values(STANDARD_DATA_POINTS).filter(
+      (dp: Record<string, unknown>) => dp.category === category
+    );
+  }
+
+  getCategories(): string[] {
+    const set = new Set<string>();
+    for (const dp of Object.values(STANDARD_DATA_POINTS)) {
+      const c = dp.category;
+      if (typeof c === 'string') set.add(c);
+    }
+    return Array.from(set);
+  }
+
+  sanitizeDataPointValue(value: string): string {
+    if (typeof value !== 'string') return '';
+    return value.replace(/<[^>]*>/g, '');
+  }
+
+  validateDataPointValue(dataPointId: string, value: string): boolean {
+    if (dataPointId === 'email') {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+    }
+    return value.length > 0;
+  }
+
+  validateRequiredDataPoints(
+    data: Record<string, unknown>,
+    required: string[]
+  ): string[] {
+    return required.filter(
+      k => data[k] === undefined || data[k] === null || data[k] === ''
+    );
+  }
+
+  /** Placeholder: real permission checks happen server-side after OAuth. */
+  validateDataPointPermission(_dataPointId: string, _userId: string): boolean {
+    return true;
   }
 }

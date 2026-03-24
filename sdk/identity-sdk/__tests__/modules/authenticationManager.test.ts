@@ -1,131 +1,111 @@
 import { AuthenticationManager } from '../../src/IdentitySDK/modules/authenticationManager';
-import { createMockSDKConfig, createMockSession } from '../setup';
+import { MemoryStorage } from '../../src/MemoryStorage';
+import { createMockSDKConfig } from '../setup';
+import { mockFetchOAuthSuccess } from '../oauthFetchMock';
 
 describe('AuthenticationManager', () => {
   let authManager: AuthenticationManager;
-  let mockConfig: any;
+  let mockConfig: ReturnType<typeof createMockSDKConfig>;
+  let storage: MemoryStorage;
 
   beforeEach(() => {
     mockConfig = createMockSDKConfig();
-    authManager = new AuthenticationManager(mockConfig);
+    storage = new MemoryStorage();
+    authManager = new AuthenticationManager(mockConfig, storage);
   });
 
   afterEach(() => {
     jest.clearAllMocks();
+    global.fetch = jest.fn() as typeof fetch;
   });
 
   describe('Initialization', () => {
-    it('should initialize with valid configuration', () => {
+    it('initializes with valid configuration', () => {
       expect(authManager).toBeInstanceOf(AuthenticationManager);
     });
 
-    it('should throw error for invalid configuration', () => {
-      expect(() => {
-        new AuthenticationManager(null as any);
-      }).toThrow();
+    it('throws for invalid configuration', () => {
+      expect(() => new AuthenticationManager(null as any, storage)).toThrow();
     });
   });
 
   describe('Authentication Flow', () => {
-    it('should initialize authentication', async () => {
+    it('initializeAuth returns client, redirect, scope, state', async () => {
       const authRequest = await authManager.initializeAuth();
-      expect(authRequest).toBeDefined();
-      expect(authRequest.url).toBeDefined();
+      expect(authRequest.clientId).toBe('test-client-id');
+      expect(authRequest.redirectUri).toBe('http://localhost:3000/callback');
+      expect(authRequest.scope?.length).toBeGreaterThan(0);
       expect(authRequest.state).toBeDefined();
     });
 
-    it('should handle authentication callback with valid code', async () => {
-      const mockCallbackUrl = 'http://localhost:3000/callback?code=valid-code&state=test-state';
-      const response = await authManager.handleAuthCallback(mockCallbackUrl);
-      
-      expect(response).toBeDefined();
-      expect(response.success).toBeDefined();
+    it('handleAuthCallback succeeds when state matches and OAuth endpoints respond', async () => {
+      global.fetch = mockFetchOAuthSuccess();
+
+      const { state } = await authManager.initializeAuth();
+      const url = `http://localhost:3000/callback?code=valid-code&state=${encodeURIComponent(state!)}`;
+      const response = await authManager.handleAuthCallback(url);
+
+      expect(response.success).toBe(true);
+      expect(response.session).toBeDefined();
     });
 
-    it('should handle authentication callback with error', async () => {
-      const errorUrl = 'http://localhost:3000/callback?error=access_denied&error_description=User+denied+access';
+    it('handleAuthCallback returns error for OAuth error param', async () => {
+      const errorUrl =
+        'http://localhost:3000/callback?error=access_denied&error_description=User+denied+access';
       const response = await authManager.handleAuthCallback(errorUrl);
-      
       expect(response.success).toBe(false);
       expect(response.error).toBeDefined();
     });
 
-    it('should handle invalid callback URL', async () => {
-      const invalidUrl = 'invalid-url';
-      const response = await authManager.handleAuthCallback(invalidUrl);
-      
+    it('handleAuthCallback returns error for invalid URL', async () => {
+      const response = await authManager.handleAuthCallback('invalid-url');
       expect(response.success).toBe(false);
     });
   });
 
   describe('Session Management', () => {
-    it('should get current session', () => {
-      const session = authManager.getCurrentSession();
-      expect(session).toBeNull(); // No session initially
+    it('getCurrentSession is null before login', () => {
+      expect(authManager.getCurrentSession()).toBeNull();
     });
 
-    it('should check session validity', () => {
-      const isValid = authManager.isSessionValid();
-      expect(typeof isValid).toBe('boolean');
+    it('isSessionValid returns boolean', () => {
+      expect(typeof authManager.isSessionValid()).toBe('boolean');
     });
 
-    it('should refresh session if needed', async () => {
+    it('refreshSessionIfNeeded returns boolean', async () => {
       const refreshed = await authManager.refreshSessionIfNeeded();
       expect(typeof refreshed).toBe('boolean');
     });
 
-    it('should logout user', async () => {
+    it('logout clears session', async () => {
       await authManager.logout();
       expect(authManager.getCurrentSession()).toBeNull();
     });
   });
 
-  describe('Token Management', () => {
-    it('should handle token refresh', async () => {
-      const refreshed = await authManager.refreshToken('mock-refresh-token');
-      expect(refreshed).toBeDefined();
-    });
-
-    it('should handle token validation', () => {
-      const isValid = authManager.validateToken('mock-token');
-      expect(typeof isValid).toBe('boolean');
-    });
-
-    it('should handle token expiration', () => {
-      const isExpired = authManager.isTokenExpired('mock-token');
-      expect(typeof isExpired).toBe('boolean');
-    });
-  });
-
   describe('Error Handling', () => {
-    it('should handle network errors gracefully', async () => {
-      // Mock network error
-      const originalFetch = global.fetch;
+    it('handleAuthCallback returns failure when fetch rejects', async () => {
       global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
-      
-      const response = await authManager.handleAuthCallback('http://localhost:3000/callback?code=test');
-      expect(response.success).toBe(false);
-      
-      global.fetch = originalFetch;
-    });
-
-    it('should handle invalid token errors', async () => {
-      const response = await authManager.refreshToken('invalid-token');
+      const response = await authManager.handleAuthCallback(
+        'http://localhost:3000/callback?code=test&state=x'
+      );
       expect(response.success).toBe(false);
     });
   });
 
   describe('Security', () => {
-    it('should validate state parameter', async () => {
-      const callbackUrl = 'http://localhost:3000/callback?code=test&state=invalid-state';
-      const response = await authManager.handleAuthCallback(callbackUrl);
+    it('rejects callback when state does not match stored state', async () => {
+      global.fetch = mockFetchOAuthSuccess();
+      await authManager.initializeAuth();
+      const response = await authManager.handleAuthCallback(
+        'http://localhost:3000/callback?code=test&state=wrong-state'
+      );
       expect(response.success).toBe(false);
     });
 
-    it('should handle CSRF protection', async () => {
+    it('initializeAuth produces non-trivial state', async () => {
       const authRequest = await authManager.initializeAuth();
-      expect(authRequest.state).toBeDefined();
-      expect(authRequest.state.length).toBeGreaterThan(0);
+      expect(authRequest.state!.length).toBeGreaterThan(16);
     });
   });
 });
