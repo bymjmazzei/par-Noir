@@ -158,6 +158,33 @@ function resolveIncomingOAuthState(parsed: PnOAuthPopupResult): string | undefin
   }
 }
 
+function readLatestOAuthStoragePayloadDirect(): Record<string, unknown> | null {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('pn_oauth_callback_')) keys.push(key);
+    }
+    if (keys.length === 0) return null;
+    keys.sort((a, b) => {
+      const at = Number(a.replace('pn_oauth_callback_', ''));
+      const bt = Number(b.replace('pn_oauth_callback_', ''));
+      return bt - at;
+    });
+    for (const key of keys) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const data = JSON.parse(raw) as Record<string, unknown>;
+      const ts = Number((data as { timestamp?: unknown }).timestamp);
+      if (Number.isFinite(ts) && Date.now() - ts > 120_000) continue;
+      return data;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 /**
  * Opens consent URL in a popup and resolves when oauth_callback is received
  * (postMessage, BroadcastChannel, or localStorage poll).
@@ -330,11 +357,6 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       } catch {
         /* ignore */
       }
-      try {
-        localStorage.removeItem(key);
-      } catch {
-        /* ignore */
-      }
     };
 
     // Capture phase: some embeds / timing edge cases deliver message after microtasks; capture runs first.
@@ -356,17 +378,21 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
               const ts = Number(data.timestamp);
               const age = Number.isFinite(ts) ? Date.now() - ts : 0;
               if (Number.isFinite(ts) && age < 120_000) {
-                try {
-                  localStorage.removeItem(latestKey);
-                } catch {
-                  /* ignore */
-                }
                 acceptPayload(data, 'poll');
               }
             } catch {
               /* ignore */
             }
           }
+        }
+      } catch {
+        /* ignore */
+      }
+      if (settled) return;
+      try {
+        const direct = readLatestOAuthStoragePayloadDirect();
+        if (direct) {
+          acceptPayload(direct, 'poll_scan');
         }
       } catch {
         /* ignore */
