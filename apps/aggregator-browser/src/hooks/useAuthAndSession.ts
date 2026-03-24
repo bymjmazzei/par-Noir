@@ -165,7 +165,9 @@ export function useAuthAndSession({
         oauthProcessedCodesRef.current.delete(data.code!);
         setLocked();
         PNOAuthService.clearSession();
-        showErrorToast('Authentication failed. Please try again.');
+        const rawMessage = err instanceof Error ? err.message : String(err);
+        const safeMessage = rawMessage ? rawMessage.slice(0, 180) : 'Authentication failed';
+        showErrorToast(safeMessage);
       }
 
       const popup = options?.popup;
