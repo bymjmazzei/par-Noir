@@ -482,45 +482,62 @@ export function useAuthAndSession({
             }
             return;
           }
-          // Deterministic fallback: consume callback payload from localStorage
-          // when popup closes before postMessage/broadcast is observed.
+          // Deterministic fallback: consume callback payload directly from
+          // pn_oauth_callback_* entries when popup messaging is missed.
           try {
-            const pending = localStorage.getItem(PN_OAUTH_STORAGE_PENDING);
-            const latestKey = localStorage.getItem(PN_OAUTH_STORAGE_LATEST_KEY);
-            if (pending === 'true' && latestKey) {
-              const raw = localStorage.getItem(latestKey);
-              if (raw) {
-                const data = JSON.parse(raw) as {
-                  code?: string;
-                  state?: string;
-                  error?: string;
-                  error_description?: string;
-                  age_shared?: string;
-                };
-                pushPnOAuthDebug('popup_closed_storage_fallback', {
-                  hasCode: Boolean(data?.code),
-                  hasError: Boolean(data?.error),
-                });
-                try {
-                  localStorage.removeItem(latestKey);
-                  localStorage.removeItem(PN_OAUTH_STORAGE_LATEST_KEY);
-                  localStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
-                } catch {
-                  /* ignore */
-                }
-                if (data?.code || data?.error) {
-                  await runOAuthCallback(
-                    {
-                      code: data.code,
-                      state: data.state,
-                      error: data.error,
-                      error_description: data.error_description,
-                      age_shared: data.age_shared,
-                    },
-                    { redirectUri: actualRedirectUri }
-                  );
-                  return;
-                }
+            const callbackKeys: string[] = [];
+            for (let i = 0; i < localStorage.length; i += 1) {
+              const k = localStorage.key(i);
+              if (k && k.startsWith('pn_oauth_callback_')) callbackKeys.push(k);
+            }
+
+            // Try newest first by suffix timestamp.
+            callbackKeys.sort((a, b) => {
+              const at = Number(a.replace('pn_oauth_callback_', ''));
+              const bt = Number(b.replace('pn_oauth_callback_', ''));
+              return bt - at;
+            });
+
+            for (const key of callbackKeys) {
+              const raw = localStorage.getItem(key);
+              if (!raw) continue;
+              const data = JSON.parse(raw) as {
+                code?: string;
+                state?: string;
+                error?: string;
+                error_description?: string;
+                age_shared?: string;
+                timestamp?: number;
+              };
+              // Ignore stale leftovers from older attempts.
+              const ts = Number(data.timestamp);
+              if (Number.isFinite(ts) && Date.now() - ts > 120_000) {
+                continue;
+              }
+
+              pushPnOAuthDebug('popup_closed_storage_fallback', {
+                hasCode: Boolean(data?.code),
+                hasError: Boolean(data?.error),
+              });
+              try {
+                localStorage.removeItem(key);
+                localStorage.removeItem(PN_OAUTH_STORAGE_LATEST_KEY);
+                localStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
+              } catch {
+                /* ignore */
+              }
+              if (data?.code || data?.error) {
+                await runOAuthCallback(
+                  {
+                    code: data.code,
+                    state: data.state,
+                    error: data.error,
+                    error_description: data.error_description,
+                    age_shared: data.age_shared,
+                  },
+                  { redirectUri: actualRedirectUri }
+                );
+                return;
               }
             }
           } catch {
