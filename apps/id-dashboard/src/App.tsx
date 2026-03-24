@@ -271,6 +271,42 @@ function App() {
     }
   };
 
+  const getEncryptedIdentityForApiToken = React.useCallback(
+    async (
+      identityPublicKeyOrId: string | undefined
+    ): Promise<{ encryptedData: string; iv: string; salt: string } | null> => {
+      if (!identityPublicKeyOrId) return null;
+
+      // First try SecureStorage path used by newer dashboard flows.
+      const secureIdentity = await storage.getIdentity(identityPublicKeyOrId);
+      if (secureIdentity?.encryptedData && secureIdentity.iv && secureIdentity.salt) {
+        return {
+          encryptedData: secureIdentity.encryptedData,
+          iv: secureIdentity.iv,
+          salt: secureIdentity.salt
+        };
+      }
+
+      // Fallback to SimpleStorage path (publicKey/id keyed) used in active unlock/create flows.
+      const simpleStorage = SimpleStorage.getInstance();
+      const simpleIdentity = await simpleStorage.getIdentity(identityPublicKeyOrId);
+      const encrypted = simpleIdentity?.encryptedData as
+        | { encryptedData?: string; iv?: string; salt?: string }
+        | undefined;
+
+      if (encrypted?.encryptedData && encrypted.iv && encrypted.salt) {
+        return {
+          encryptedData: encrypted.encryptedData,
+          iv: encrypted.iv,
+          salt: encrypted.salt
+        };
+      }
+
+      return null;
+    },
+    [storage]
+  );
+
   // Use custom hooks for state management - MUST be declared before any functions that use these variables
   const appState = useAppState();
   const identityState = useIdentityState();
@@ -370,18 +406,14 @@ function App() {
     void (async () => {
       try {
         const identityKey = authenticatedUser.publicKey || authenticatedUser.id;
-        let storedIdentity = identityKey ? await storage.getIdentity(identityKey) : null;
-        if (!storedIdentity && authenticatedUser.publicKey && authenticatedUser.publicKey !== authenticatedUser.id) {
-          storedIdentity = await storage.getIdentity(authenticatedUser.id);
+        let encryptedIdentity = await getEncryptedIdentityForApiToken(identityKey);
+        if (!encryptedIdentity && authenticatedUser.publicKey && authenticatedUser.publicKey !== authenticatedUser.id) {
+          encryptedIdentity = await getEncryptedIdentityForApiToken(authenticatedUser.id);
         }
-        if (!storedIdentity) return;
+        if (!encryptedIdentity) return;
 
         await ensureApiTokenAfterUnlock({
-          encryptedIdentity: {
-            encryptedData: storedIdentity.encryptedData,
-            iv: storedIdentity.iv,
-            salt: storedIdentity.salt
-          },
+          encryptedIdentity,
           publicKey: authenticatedUser.publicKey || identityKey,
           did: authenticatedUser.id,
           pnName: credentials.pnName,
@@ -395,7 +427,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [authenticatedUser, apiToken, ensureApiTokenAfterUnlock, storage]);
+  }, [authenticatedUser, apiToken, ensureApiTokenAfterUnlock, getEncryptedIdentityForApiToken]);
 
   // Destructure privacy state from custom hook
   const {
@@ -1788,14 +1820,10 @@ function App() {
       const credentials = SecureCredentialManager.getCredentials(session.id);
       if (credentials && session.publicKey) {
         try {
-          const storedIdentity = await storage.getIdentity(session.publicKey);
-          if (storedIdentity) {
+          const encryptedIdentity = await getEncryptedIdentityForApiToken(session.publicKey);
+          if (encryptedIdentity) {
             await ensureApiTokenAfterUnlock({
-              encryptedIdentity: {
-                encryptedData: storedIdentity.encryptedData,
-                iv: storedIdentity.iv,
-                salt: storedIdentity.salt
-              },
+              encryptedIdentity,
               publicKey: session.publicKey,
               did: session.id,
               pnName: credentials.pnName,
