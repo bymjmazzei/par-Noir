@@ -5,7 +5,12 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { pushPnOAuthDebug, startPnOAuthPopup } from '@par-noir/oauth-ui';
+import {
+  pushPnOAuthDebug,
+  startPnOAuthPopup,
+  PN_OAUTH_STORAGE_LATEST_KEY,
+  PN_OAUTH_STORAGE_PENDING,
+} from '@par-noir/oauth-ui';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { getUserProfile } from '../services/profileService';
@@ -476,6 +481,50 @@ export function useAuthAndSession({
               discoverFilesRef.current(undefined, true);
             }
             return;
+          }
+          // Deterministic fallback: consume callback payload from localStorage
+          // when popup closes before postMessage/broadcast is observed.
+          try {
+            const pending = localStorage.getItem(PN_OAUTH_STORAGE_PENDING);
+            const latestKey = localStorage.getItem(PN_OAUTH_STORAGE_LATEST_KEY);
+            if (pending === 'true' && latestKey) {
+              const raw = localStorage.getItem(latestKey);
+              if (raw) {
+                const data = JSON.parse(raw) as {
+                  code?: string;
+                  state?: string;
+                  error?: string;
+                  error_description?: string;
+                  age_shared?: string;
+                };
+                pushPnOAuthDebug('popup_closed_storage_fallback', {
+                  hasCode: Boolean(data?.code),
+                  hasError: Boolean(data?.error),
+                });
+                try {
+                  localStorage.removeItem(latestKey);
+                  localStorage.removeItem(PN_OAUTH_STORAGE_LATEST_KEY);
+                  localStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
+                } catch {
+                  /* ignore */
+                }
+                if (data?.code || data?.error) {
+                  await runOAuthCallback(
+                    {
+                      code: data.code,
+                      state: data.state,
+                      error: data.error,
+                      error_description: data.error_description,
+                      age_shared: data.age_shared,
+                    },
+                    { redirectUri: actualRedirectUri }
+                  );
+                  return;
+                }
+              }
+            }
+          } catch {
+            /* ignore */
           }
           setLocked();
           PNOAuthService.clearSession();
