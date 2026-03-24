@@ -1,4 +1,3 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
 import { 
   StandardDataPoint, 
   ZKPGenerationRequest, 

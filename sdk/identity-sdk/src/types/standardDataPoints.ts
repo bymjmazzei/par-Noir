@@ -12,7 +12,7 @@
 //
 
 // Re-export the main standard data points and all modular components
-export { StandardDataPoints } from './standardDataPoints';
+export { StandardDataPoints } from './standardDataPoints/index';
 
 // Re-export types for backward compatibility
 export * from './standardDataPoints/types/standardDataPoints';
@@ -25,4 +25,4 @@ export { ZKPGenerator } from './standardDataPoints/modules/zkpGenerator';
 export { DataPointProposalManager } from './standardDataPoints/modules/dataPointProposalManager';
 
 // Default export for backward compatibility
-export { StandardDataPoints as default } from './standardDataPoints';
+export { StandardDataPoints as default } from './standardDataPoints/index';

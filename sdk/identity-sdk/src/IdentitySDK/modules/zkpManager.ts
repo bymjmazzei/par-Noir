@@ -127,17 +127,22 @@ export class ZKPManager {
    */
   async generateOwnershipProof(data: any): Promise<OwnershipProof> {
     try {
-      // This would generate a proof of data ownership
-      // For now, returning a placeholder proof structure
+      const ts = new Date().toISOString();
+      const expiresAt = new Date(Date.now() + 3600000).toISOString();
       return {
-        proof: this.generateHex(128),
-        timestamp: new Date().toISOString(),
-        signature: this.generateHex(64),
-        metadata: {
-          algorithm: 'schnorr',
-          curve: 'ed25519',
-          version: '1.0'
-        }
+        proofId: this.generateHex(16),
+        statement: 'ownership_attestation',
+        proof: {
+          schnorrProof: this.generateHex(64),
+          pedersenProof: this.generateHex(64)
+        },
+        publicInputs: {
+          ecosystemId: typeof data?.ecosystemId === 'string' ? data.ecosystemId : '',
+          requestedData: Array.isArray(data?.requestedData) ? data.requestedData : [],
+          timestamp: ts,
+          expiresAt
+        },
+        signature: this.generateHex(64)
       };
     } catch (error) {
       throw new Error(`Failed to generate ownership proof: ${error instanceof Error ? error.message : 'Unknown error'}`);

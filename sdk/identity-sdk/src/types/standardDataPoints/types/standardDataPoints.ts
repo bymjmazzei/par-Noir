@@ -1,4 +1,3 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
 export interface StandardDataPoint {
   id: string;
   name: string;

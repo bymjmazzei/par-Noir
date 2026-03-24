@@ -1,10 +1,9 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
-import { 
-  Identity, 
-  AuthRequest, 
-  AuthResponse, 
-  UserSession, 
-  SDKConfig, 
+import {
+  Identity,
+  AuthRequest,
+  AuthCallbackResult,
+  UserSession,
+  SDKConfig,
   IdentityProvider,
   IdentityError,
   ErrorCo,
@@ -52,14 +51,16 @@ export class IdentitySDK {
   /**
    * Handle authentication callback
    */
-  async handleAuthCallback(url: string): Promise<AuthResponse> {
+  async handleAuthCallback(url: string): Promise<AuthCallbackResult> {
     const response = await this.authenticationManager.handleAuthCallback(url);
-    
+
     if (response.success && response.session) {
       this.session = response.session;
-      this.emit(EventTypes.LOGIN, response.session);
+      this.emit(EventTypes.AUTH_SUCCESS, response.session);
+    } else if (!response.success) {
+      this.emit(EventTypes.AUTH_ERROR, new Error(response.error));
     }
-    
+
     return response;
   }
 

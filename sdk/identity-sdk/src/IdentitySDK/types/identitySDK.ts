@@ -1,4 +1,3 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
 export interface SecureSession {
   id: string;
   userId: string;

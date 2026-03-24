@@ -55,8 +55,10 @@ describe('ZKPManager', () => {
 
     it('generates ownership proof payload', async () => {
       const proof = await zkpManager.generateOwnershipProof({ owner: 'a', asset: 'b' });
-      expect(proof.proof).toBeDefined();
-      expect(proof.metadata?.algorithm).toBe('schnorr');
+      expect(proof.proofId).toBeDefined();
+      expect(proof.proof.schnorrProof).toBeDefined();
+      expect(proof.proof.pedersenProof).toBeDefined();
+      expect(proof.publicInputs.timestamp).toBeDefined();
     });
   });
 

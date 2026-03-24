@@ -19,6 +19,7 @@ export type {
   Identity,
   AuthRequest,
   AuthResponse,
+  AuthCallbackResult,
   TokenInfo,
   UserSession,
   SDKConfig,
@@ -114,9 +115,4 @@ export const createSimpleConfig = (
   };
 };
 
-// React hook for easy integration
-export const useIdentitySDK = (config: SDKConfig) => {
-  // This would be implemented in a separate React-specific file
-  // For now, return the SDK instance
-  return new IdentitySDK(config);
-}; 
+export { useIdentitySDK } from './react/useIdentitySDK'; 

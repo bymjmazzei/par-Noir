@@ -1,4 +1,3 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
 import { StandardDataPoint, ZKPProof, DataPointProposal } from './standardDataPoints';
 
 // Core Identity Types
@@ -55,6 +54,7 @@ export interface PlatformConfig {
     token: string;
     userInfo: string;
     revocation?: string;
+    logout?: string;
   };
 }
 
@@ -83,6 +83,11 @@ export interface UserSession {
   createdAt: string;
   lastActive: string;
 }
+
+/** Result of completing the OAuth redirect callback (code exchange + session creation). */
+export type AuthCallbackResult =
+  | { success: true; session: UserSession }
+  | { success: false; error: string };
 
 // Error Types
 export interface IdentityError extends Error {

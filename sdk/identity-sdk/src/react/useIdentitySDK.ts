@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { IdentitySDK, SDKConfig, UserSession, EventTypes } from '../index';
+import { IdentitySDK } from '../IdentitySDK';
+import type { SDKConfig, UserSession, AuthCallbackResult } from '../types';
+import { EventTypes } from '../types';
+
+function identityEventName(type: EventTypes): string {
+  return `identity:${type}`;
+}
 
 export const useIdentitySDK = (config: SDKConfig) => {
   const [session, setSession] = useState<UserSession | null>(null);
@@ -8,156 +14,152 @@ export const useIdentitySDK = (config: SDKConfig) => {
   const [error, setError] = useState<Error | null>(null);
   const sdkRef = useRef<IdentitySDK | null>(null);
 
-  // Initialize SDK
   useEffect(() => {
-    if (!sdkRef.current) {
-      sdkRef.current = new IdentitySDK(config);
-      
-      // Set up event listeners
-      sdkRef.current.on(EventTypes.AUTH_SUCCESS, (session: UserSession) => {
-        setSession(session);
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const sdk = new IdentitySDK(config);
+    sdkRef.current = sdk;
+
+    const onAuthSuccess = (e: Event) => {
+      const detail = (e as CustomEvent<UserSession>).detail;
+      if (detail) {
+        setSession(detail);
         setIsAuthenticated(true);
         setError(null);
-      });
-
-      sdkRef.current.on(EventTypes.AUTH_ERROR, (error: Error) => {
-        setError(error);
-        setIsAuthenticated(false);
-      });
-
-      sdkRef.current.on(EventTypes.LOGOUT, () => {
-        setSession(null);
-        setIsAuthenticated(false);
-        setError(null);
-      });
-
-      sdkRef.current.on(EventTypes.TOKEN_EXPIRED, () => {
-        setSession(null);
-        setIsAuthenticated(false);
-      });
-
-      // Check for existing session
-      sdkRef.current?.getCurrentSession().then(currentSession => {
-        if (currentSession) {
-          setSession(currentSession);
-          sdkRef.current?.isAuthenticated().then(isAuth => {
-            setIsAuthenticated(isAuth);
-          });
-        }
-      });
-    }
-  }, [config]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (sdkRef.current) {
-        // Remove event listeners
-        sdkRef.current.off(EventTypes.AUTH_SUCCESS, () => {});
-        sdkRef.current.off(EventTypes.AUTH_ERROR, () => {});
-        sdkRef.current.off(EventTypes.LOGOUT, () => {});
-        sdkRef.current.off(EventTypes.TOKEN_EXPIRED, () => {});
       }
     };
-  }, []);
 
-  // Authentication methods
-  const authenticate = useCallback(async (platform: string, options?: {
-    scope?: string[];
-    state?: string;
-    nonce?: string;
-    responseType?: 'code' | 'token' | 'id_token';
-  }) => {
-    if (!sdkRef.current) return;
-    
+    const onAuthError = (e: Event) => {
+      const detail = (e as CustomEvent<Error>).detail;
+      setError(detail instanceof Error ? detail : new Error('Authentication error'));
+      setIsAuthenticated(false);
+    };
+
+    const onLogout = () => {
+      setSession(null);
+      setIsAuthenticated(false);
+      setError(null);
+    };
+
+    const onTokenExpired = () => {
+      setSession(null);
+      setIsAuthenticated(false);
+    };
+
+    window.addEventListener(identityEventName(EventTypes.AUTH_SUCCESS), onAuthSuccess);
+    window.addEventListener(identityEventName(EventTypes.AUTH_ERROR), onAuthError);
+    window.addEventListener(identityEventName(EventTypes.LOGOUT), onLogout);
+    window.addEventListener(identityEventName(EventTypes.TOKEN_EXPIRED), onTokenExpired);
+
+    const current = sdk.getCurrentSession();
+    if (current && sdk.isSessionValid()) {
+      setSession(current);
+      setIsAuthenticated(true);
+    }
+
+    return () => {
+      window.removeEventListener(identityEventName(EventTypes.AUTH_SUCCESS), onAuthSuccess);
+      window.removeEventListener(identityEventName(EventTypes.AUTH_ERROR), onAuthError);
+      window.removeEventListener(identityEventName(EventTypes.LOGOUT), onLogout);
+      window.removeEventListener(identityEventName(EventTypes.TOKEN_EXPIRED), onTokenExpired);
+      sdkRef.current = null;
+    };
+  }, [config]);
+
+  const initializeAuth = useCallback(async () => {
+    if (!sdkRef.current) {
+      return;
+    }
     setIsLoading(true);
     setError(null);
-    
     try {
-      await sdkRef.current.authenticate(platform, options);
+      return await sdkRef.current.initializeAuth();
     } catch (err) {
-      setError(err as Error);
+      setError(err instanceof Error ? err : new Error('initializeAuth failed'));
+      throw err;
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  const handleCallback = useCallback(async (url: string) => {
-    if (!sdkRef.current) return;
-    
+  const handleAuthCallback = useCallback(async (url: string): Promise<AuthCallbackResult | undefined> => {
+    if (!sdkRef.current) {
+      return;
+    }
     setIsLoading(true);
     setError(null);
-    
     try {
-      const newSession = await sdkRef.current.handleCallback(url);
-      setSession(newSession);
-      setIsAuthenticated(true);
+      const result = await sdkRef.current.handleAuthCallback(url);
+      if (result.success && result.session) {
+        setSession(result.session);
+        setIsAuthenticated(true);
+      } else if (!result.success) {
+        setError(new Error(result.error));
+        setIsAuthenticated(false);
+      }
+      return result;
     } catch (err) {
-      setError(err as Error);
+      setError(err instanceof Error ? err : new Error('handleAuthCallback failed'));
       setIsAuthenticated(false);
+      throw err;
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   const logout = useCallback(async () => {
-    if (!sdkRef.current) return;
-    
+    if (!sdkRef.current) {
+      return;
+    }
     setIsLoading(true);
-    
     try {
       await sdkRef.current.logout();
       setSession(null);
       setIsAuthenticated(false);
       setError(null);
     } catch (err) {
-      setError(err as Error);
+      setError(err instanceof Error ? err : new Error('logout failed'));
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  const refreshToken = useCallback(async () => {
-    if (!sdkRef.current) return;
-    
+  const refreshSession = useCallback(async () => {
+    if (!sdkRef.current) {
+      return;
+    }
     setIsLoading(true);
     setError(null);
-    
     try {
-      await sdkRef.current.refreshToken();
-      // Session will be updated via event listener
+      await sdkRef.current.refreshSessionIfNeeded();
     } catch (err) {
-      setError(err as Error);
+      setError(err instanceof Error ? err : new Error('refresh failed'));
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Utility methods
-  const getCurrentSession = useCallback(() => {
-    return sdkRef.current?.getCurrentSession() || null;
+  const getCurrentSession = useCallback((): UserSession | null => {
+    return sdkRef.current?.getCurrentSession() ?? null;
   }, []);
 
-  const checkAuthentication = useCallback(() => {
-    return sdkRef.current?.isAuthenticated() || false;
+  const checkAuthentication = useCallback((): boolean => {
+    return sdkRef.current?.isSessionValid() ?? false;
   }, []);
 
   return {
-    // State
     session,
     isAuthenticated,
     isLoading,
     error,
-    
-    // Methods
-    authenticate,
-    handleCallback,
+    initializeAuth,
+    handleAuthCallback,
     logout,
-    refreshToken,
+    refreshSession,
     getCurrentSession,
     checkAuthentication,
-    
-    // SDK instance (for advanced usage)
     sdk: sdkRef.current
   };
-}; 
+};

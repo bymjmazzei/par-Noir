@@ -1,21 +1,13 @@
 import { cryptoWorkerManager } from '@identity-protocol/identity-core/src/encryption/cryptoWorkerManager';
-import { 
-  Identity, 
-  AuthRequest, 
-  AuthResponse, 
-  TokenInfo, 
-  UserSession, 
-  SDKConfig, 
-  IdentityProvider,
-  IdentityError,
-  ErrorCo,
-  EventTypes
+import {
+  Identity,
+  AuthRequest,
+  AuthCallbackResult,
+  TokenInfo,
+  UserSession,
+  SDKConfig,
 } from '../types';
-import { 
-  AuthState, 
-  TokenExchangeData, 
-  UserInfoData 
-} from '../types/identitySDK';
+import { AuthState, TokenExchangeData } from '../types/identitySDK';
 import { SDK_DEFAULTS, STORAGE_KEYS, ERROR_MESSAGES } from '../constants/sdkConstants';
 
 export class AuthenticationManager {
@@ -37,7 +29,7 @@ export class AuthenticationManager {
   async initializeAuth(): Promise<AuthRequest> {
     const state = this.generateState();
     const nonce = this.generateNonce();
-    
+
     const authRequest: AuthRequest = {
       clientId: this.config.identityProvider.config.clientId,
       redirectUri: this.config.identityProvider.config.redirectUri,
@@ -47,7 +39,6 @@ export class AuthenticationManager {
       nonce
     };
 
-    // Store auth state
     this.storeAuthState({ state, nonce, timestamp: Date.now() });
 
     return authRequest;
@@ -56,9 +47,10 @@ export class AuthenticationManager {
   /**
    * Handle authentication callback
    */
-  async handleAuthCallback(url: string): Promise<AuthResponse> {
+  async handleAuthCallback(url: string): Promise<AuthCallbackResult> {
     try {
-      const urlParams = new URLSearchParams(url.split('?')[1]);
+      const query = url.includes('?') ? url.split('?')[1] ?? '' : '';
+      const urlParams = new URLSearchParams(query);
       const code = urlParams.get('code');
       const state = urlParams.get('state');
       const error = urlParams.get('error');
@@ -71,41 +63,39 @@ export class AuthenticationManager {
         throw new Error('Missing authorization code or state');
       }
 
-      // Verify state
       const storedState = await this.getStoredAuthState();
       if (!storedState || storedState.state !== state) {
         throw new Error(ERROR_MESSAGES.INVALID_STATE);
       }
 
-      // Exchange code for tokens
-      const tokenInfo = await this.exchangeCodeForTokens({ code, state, redirectUri: this.config.identityProvider.config.redirectUri });
+      const tokenInfo = await this.exchangeCodeForTokens({
+        code,
+        state,
+        redirectUri: this.config.identityProvider.config.redirectUri
+      });
 
-      // Get user info
-      const userInfo = await this.getUserInfo(tokenInfo.access_token);
+      const identity = await this.getUserInfo(tokenInfo.accessToken);
 
-      // Create session
+      const now = new Date().toISOString();
       this.session = {
-        accessToken: tokenInfo.access_token,
-        refreshToken: tokenInfo.refresh_token,
-        expiresAt: new Date(Date.now() + tokenInfo.expires_in * 1000).toISOString(),
-        user: userInfo
+        identity,
+        tokens: tokenInfo,
+        platform: this.config.identityProvider.name,
+        createdAt: now,
+        lastActive: now
       };
 
-      // Store session
       this.storeSession(this.session);
-
-      // Clear auth state
       this.clearStoredAuthState();
 
       return {
         success: true,
         session: this.session
       };
-
-    } catch (error) {
+    } catch (err) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: err instanceof Error ? err.message : 'Unknown error'
       };
     }
   }
@@ -115,13 +105,15 @@ export class AuthenticationManager {
    */
   async logout(): Promise<void> {
     try {
-      if (this.session?.accessToken) {
+      const accessToken = this.session?.tokens.accessToken;
+      if (accessToken) {
         const provider = this.config.identityProvider;
-        if (provider.config.endpoints.logout) {
-          await fetch(provider.config.endpoints.logout, {
+        const logoutUrl = provider.config.endpoints.logout;
+        if (logoutUrl) {
+          await fetch(logoutUrl, {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${this.session.accessToken}`,
+              Authorization: `Bearer ${accessToken}`,
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -132,17 +124,13 @@ export class AuthenticationManager {
         }
       }
 
-      // Clear session
       this.session = null;
       this.clearStoredSession();
       this.clearStoredAuthState();
-
-    } catch (error) {
-      // Silently handle logout errors in production
+    } catch {
       if (process.env.NODE_ENV === 'development') {
         // Logout error
       }
-      // Still clear local session even if server logout fails
       this.session = null;
       this.clearStoredSession();
       this.clearStoredAuthState();
@@ -157,52 +145,61 @@ export class AuthenticationManager {
   }
 
   /**
-   * Check if session is valid
+   * Check if session is valid (access token not past expiry, with buffer).
    */
   isSessionValid(): boolean {
     if (!this.session) return false;
-    
-    const now = new Date();
-    const expiresAt = new Date(this.session.expiresAt);
-    
-    return now < expiresAt;
+
+    const issued = new Date(this.session.lastActive).getTime();
+    const expiresMs = issued + this.session.tokens.expiresIn * 1000;
+    const bufferSec = this.config.tokenExpiryBuffer ?? 60;
+    return Date.now() < expiresMs - bufferSec * 1000;
   }
 
   /**
    * Refresh session if needed
    */
   async refreshSessionIfNeeded(): Promise<boolean> {
-    if (!this.session || this.isSessionValid()) {
+    if (!this.session) {
+      return true;
+    }
+    if (this.isSessionValid()) {
       return true;
     }
 
     try {
       const provider = this.config.identityProvider;
-      if (provider.config.endpoints.token && this.session.refreshToken) {
-        const response = await fetch(provider.config.endpoints.token, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-          },
-          body: new URLSearchParams({
-            grant_type: 'refresh_token',
-            refresh_token: this.session.refreshToken,
-            client_id: provider.config.clientId,
-            client_secret: provider.config.clientSecret
-          })
-        });
-
-        if (response.ok) {
-          const tokenInfo: TokenInfo = await response.json();
-          
-          this.session.accessToken = tokenInfo.access_token;
-          this.session.expiresAt = new Date(Date.now() + tokenInfo.expires_in * 1000).toISOString();
-          
-          this.storeSession(this.session);
-          return true;
-        }
+      const refreshToken = this.session.tokens.refreshToken;
+      if (!provider.config.endpoints.token || !refreshToken) {
+        return false;
       }
-    } catch (error) {
+
+      const body: Record<string, string> = {
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: provider.config.clientId
+      };
+      if (provider.config.clientSecret) {
+        body.client_secret = provider.config.clientSecret;
+      }
+
+      const response = await fetch(provider.config.endpoints.token, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: new URLSearchParams(body)
+      });
+
+      if (response.ok) {
+        const raw = await response.json();
+        const tokenInfo = this.normalizeTokenResponse(raw);
+        this.session.tokens = tokenInfo;
+        this.session.lastActive = new Date().toISOString();
+        this.storeSession(this.session);
+        return true;
+      }
+    } catch {
       if (process.env.NODE_ENV === 'development') {
         // Session refresh error
       }
@@ -216,25 +213,30 @@ export class AuthenticationManager {
    */
   private async exchangeCodeForTokens(data: TokenExchangeData): Promise<TokenInfo> {
     const provider = this.config.identityProvider;
+    const body: Record<string, string> = {
+      grant_type: 'authorization_code',
+      code: data.code,
+      redirect_uri: data.redirectUri,
+      client_id: provider.config.clientId
+    };
+    if (provider.config.clientSecret) {
+      body.client_secret = provider.config.clientSecret;
+    }
+
     const response = await fetch(provider.config.endpoints.token, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: data.code,
-        redirect_uri: data.redirectUri,
-        client_id: provider.config.clientId,
-        client_secret: provider.config.clientSecret
-      })
+      body: new URLSearchParams(body)
     });
 
     if (!response.ok) {
       throw new Error(`Token exchange failed: ${response.statusText}`);
     }
 
-    return response.json();
+    const raw = await response.json();
+    return this.normalizeTokenResponse(raw);
   }
 
   /**
@@ -244,7 +246,7 @@ export class AuthenticationManager {
     const provider = this.config.identityProvider;
     const response = await fetch(provider.config.endpoints.userInfo, {
       headers: {
-        'Authorization': `Bearer ${accessToken}`
+        Authorization: `Bearer ${accessToken}`
       }
     });
 
@@ -252,7 +254,59 @@ export class AuthenticationManager {
       throw new Error(`Failed to get user info: ${response.statusText}`);
     }
 
-    return response.json();
+    const raw = await response.json();
+    return this.mapUserInfoToIdentity(raw);
+  }
+
+  private normalizeTokenResponse(raw: unknown): TokenInfo {
+    if (typeof raw !== 'object' || raw === null) {
+      throw new Error('Invalid token response');
+    }
+    const o = raw as Record<string, unknown>;
+    const accessToken = String(o.access_token ?? o.accessToken ?? '');
+    if (!accessToken) {
+      throw new Error('Missing access token');
+    }
+    const expiresIn = Number(o.expires_in ?? o.expiresIn ?? 3600);
+    const rt = o.refresh_token ?? o.refreshToken;
+    const refreshToken = typeof rt === 'string' ? rt : undefined;
+    let scope: string[] = [];
+    const sc = o.scope;
+    if (typeof sc === 'string') {
+      scope = sc.split(/\s+/).filter(Boolean);
+    } else if (Array.isArray(sc)) {
+      scope = sc.map(String);
+    }
+    return {
+      accessToken,
+      tokenType: 'Bearer',
+      expiresIn,
+      scope,
+      refreshToken
+    };
+  }
+
+  private mapUserInfoToIdentity(user: unknown): Identity {
+    const u = user as Record<string, unknown>;
+    const id = String(u.sub ?? u.id ?? '');
+    const email = typeof u.email === 'string' ? u.email : undefined;
+    const displayName =
+      typeof u.name === 'string'
+        ? u.name
+        : typeof u.display_name === 'string'
+          ? u.display_name
+          : undefined;
+    const now = new Date().toISOString();
+    return {
+      id,
+      username: typeof u.preferred_username === 'string' ? u.preferred_username : id,
+      displayName,
+      email,
+      createdAt: typeof u.created_at === 'string' ? u.created_at : now,
+      updatedAt: now,
+      status: 'active',
+      metadata: {}
+    };
   }
 
   /**
@@ -309,14 +363,6 @@ export class AuthenticationManager {
     if (this.storage) {
       this.storage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
     }
-  }
-
-  /**
-   * Get stored user session
-   */
-  private async getStoredSession(): Promise<UserSession | null> {
-    const stored = await this.storage?.getItem(STORAGE_KEYS.SESSION);
-    return stored ? JSON.parse(stored) : null;
   }
 
   /**

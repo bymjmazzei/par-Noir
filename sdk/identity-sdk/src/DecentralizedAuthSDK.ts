@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '@identity-protocol/identity-core/src/encryption/cryptoWorkerManager';
 /**
  * Decentralized Authentication SDK
  * 
@@ -271,7 +271,7 @@ export class DecentralizedAuthSDK {
     const encoder = new TextEncoder();
     const data = encoder.encode(challenge);
     
-    const signature = await await cryptoWorkerManager.sign(
+    const signature = await cryptoWorkerManager.sign(
       { name: 'Ed25519' },
       privateKey,
       data
@@ -293,7 +293,7 @@ export class DecentralizedAuthSDK {
   private async exportPublicKey(privateKey: CryptoKey): Promise<string> {
     // For Ed25519, we need to derive the public key from the private key
     // This is a simplified implementation - in production you'd want to store the public key separately
-    const exported = await await cryptoWorkerManager.exportKey('raw', privateKey);
+    const exported = await cryptoWorkerManager.exportKey('raw', privateKey);
     return Buffer.from(exported).toString('base64');
   }
 
