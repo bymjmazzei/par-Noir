@@ -586,7 +586,7 @@ export class PNOAuthService {
       if (tokenData.revoked_at) {
         return null;
       }
-      if (tokenData.used_at) {
+      if (securityFlags.enforceRefreshRotation && tokenData.used_at) {
         await db.query(
           `UPDATE oauth_refresh_tokens
            SET revoked_at = NOW(), reuse_detected_at = NOW(), revoked_reason = 'reuse_detected'
@@ -620,28 +620,32 @@ export class PNOAuthService {
         scope: tokenData.scope || []
       });
 
-      const nextRefreshToken = await this.generateRefreshToken({
-        did: tokenData.did,
-        publicKey: undefined,
-        pnIdentifier: tokenData.pn_identifier,
-        clientId: clientId,
-        scope: tokenData.scope || [],
-        familyId: tokenData.family_id || tokenHash,
-        parentTokenHash: tokenHash,
-      });
+      let responseRefreshToken = refreshToken;
+      if (securityFlags.enforceRefreshRotation) {
+        const nextRefreshToken = await this.generateRefreshToken({
+          did: tokenData.did,
+          publicKey: undefined,
+          pnIdentifier: tokenData.pn_identifier,
+          clientId: clientId,
+          scope: tokenData.scope || [],
+          familyId: tokenData.family_id || tokenHash,
+          parentTokenHash: tokenHash,
+        });
 
-      await db.query(
-        `UPDATE oauth_refresh_tokens
-         SET used_at = NOW(), replaced_by = $2
-         WHERE refresh_token = $1`,
-        [tokenHash, this.hashRefreshToken(nextRefreshToken)]
-      );
+        await db.query(
+          `UPDATE oauth_refresh_tokens
+           SET used_at = NOW(), replaced_by = $2
+           WHERE refresh_token = $1`,
+          [tokenHash, this.hashRefreshToken(nextRefreshToken)]
+        );
+        responseRefreshToken = nextRefreshToken;
+      }
 
       return {
         access_token: accessToken,
         token_type: 'Bearer',
         expires_in: Math.floor(this.ACCESS_TOKEN_EXPIRY / 1000),
-        refresh_token: nextRefreshToken,
+        refresh_token: responseRefreshToken,
         scope: (tokenData.scope || []).join(' ')
       };
     } catch (error) {

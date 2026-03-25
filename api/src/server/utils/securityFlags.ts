@@ -1,6 +1,7 @@
 export const securityFlags = {
   enableAsymmetricTokens: process.env.PN_OAUTH_ENABLE_ASYMMETRIC === 'true',
-  enforceRefreshRotation: process.env.PN_OAUTH_ENFORCE_REFRESH_ROTATION !== 'false',
+  // Backward-compatible default: do not enforce rotation until clients are upgraded.
+  enforceRefreshRotation: process.env.PN_OAUTH_ENFORCE_REFRESH_ROTATION === 'true',
   enableStorageEnvelopeV2: process.env.STORAGE_CREDENTIALS_ENVELOPE_V2 === 'true',
   enableAdminIdentityHeaders: process.env.ADMIN_IDENTITY_HEADERS_ENABLED === 'true',
   disableLegacyAdminApiKey: process.env.ADMIN_DISABLE_LEGACY_API_KEY === 'true',
