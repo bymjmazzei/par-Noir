@@ -1,53 +1,66 @@
 # Production readiness: close the “disagree” gaps
 
-This document is the **in-repo** copy of the production readiness plan. Cursor’s **Build Plan** UI may point at a separate file under `~/.cursor/plans/`; that file does **not** update when code merges unless someone edits it. **Truth for shipped work:** `git log` and the paths below.
+This document is the **in-repo** copy of the production readiness plan. Cursor’s **Build Plan** UI may point at a separate file under `~/.cursor/plans/`; that file does not update when code merges unless someone edits it. **Truth for shipped work:** `git log` and the paths below.
 
-## Shipped (first implementation pass)
+## Shipped — pass 1
 
-**Commit:** `d182f55f` — *Production readiness: API observability, Redis key limits, strict VITE_API_ENDPOINT* (`main`; Firebase static apps deployed via `./deploy.sh`).
+**Commit:** `d182f55f` — *Production readiness: API observability, Redis key limits, strict VITE_API_ENDPOINT*
 
 | Theme | What landed | Where |
 |-------|-------------|--------|
-| VITE API URL | Production build fails if `VITE_API_ENDPOINT` is unset; dev defaults to `http://127.0.0.1:3001` | `apps/id-dashboard/src/config/api.ts`, `apps/aggregator-browser/src/config/api.ts`, `apps/prism/src/config/api.ts`, `apps/developer-portal/src/config/api.ts` |
-| WebSockets | Optional `SOCKET_REQUIRE_AUTH=true`: OAuth access token required on Socket.IO handshake | `api/src/server.ts` (`setupWebSockets`) |
-| Sentry (API) | Optional `SENTRY_DSN`; strips auth/cookies in `beforeSend` | `api/src/server/utils/sentry.ts` |
-| Access logs | `X-Request-Id`; JSON lines (path only). Dev on; prod: `ACCESS_LOG_JSON=true` | `api/src/server.ts` |
-| Readiness | `GET /health/ready` checks DB when `DATABASE_URL` is set | `api/src/server.ts` |
-| API-key limits | Redis-backed counters when Redis cache is connected (`REDIS_URL`) | `api/src/server/modules/apiKeyService.ts` |
-| Ops docs | Env template, README bullets, rate-limit note | `api/.env.example`, `api/README.md`, `docs/api/RATE_LIMITS.md`, `apps/id-dashboard/env.template` |
+| VITE API URL | Production fails if `VITE_API_ENDPOINT` unset; dev → `http://127.0.0.1:3001` | `apps/*/src/config/api.ts` (dashboard, aggregator-browser, prism, developer-portal) |
+| WebSockets | Optional `SOCKET_REQUIRE_AUTH=true` | `api/src/server.ts` |
+| Sentry (API) | Optional `SENTRY_DSN` | `api/src/server/utils/sentry.ts` |
+| Access logs | `X-Request-Id`, JSON lines (`ACCESS_LOG_JSON` in prod) | `api/src/server.ts` |
+| Readiness | `GET /health/ready` | `api/src/server.ts` |
+| API-key limits | Redis when connected | `api/src/server/modules/apiKeyService.ts` |
+| Ops pointers | `.env.example`, README, `RATE_LIMITS.md` | `api/`, `docs/api/` |
 
-**API host:** Redeploy the Node API (e.g. Railway) so server changes apply. Firebase only ships static front ends.
+## Shipped — pass 2 (this continuation)
 
-## Open follow-ups (not in that commit)
+| Theme | What landed | Where |
+|-------|-------------|--------|
+| Phase 1 — log hygiene | Removed token-prefix logging; removed full `JSON.stringify(credentials)`; gated StorageAccounts / my-files verbose logs to **development**; `getAllFilesForUser` user logs dev-only | `api/src/server.ts`, `api/src/server/modules/aggregatorMetadataServiceDB.ts` |
+| Phase 2 — browser errors | Optional **`VITE_SENTRY_DSN`** (production); ErrorBoundary → Sentry | `apps/aggregator-browser/src/config/sentry.ts`, `main.tsx`, `ErrorBoundary.tsx` |
+| Phase 2 — smoke | `npm run smoke:health` (curl `/health` + `/health/ready`) | `api/scripts/smoke-api-health.sh`, `api/package.json` |
+| Phase 3 / 6 — templates | Backup/restore runbook + GA checklist (fill in per drill) | [BACKUP_AND_RESTORE_RUNBOOK.md](./BACKUP_AND_RESTORE_RUNBOOK.md), [GO_NO_GO_LAUNCH.md](./GO_NO_GO_LAUNCH.md) |
+| Phase 4 — edge | CDN/proxy body size / timeouts note | [CDN_AND_PROXY_LIMITS.md](./CDN_AND_PROXY_LIMITS.md) |
+| Env example | Aggregator Sentry vars documented | `apps/aggregator-browser/.env.example` |
 
-- Full Phase 1 audit: grep for PII in logs; CORS smoke from devices; broader `REACT_APP_*` → `VITE_*` in shell/docs/templates.
-- Observability: external synthetic checks; dashboards (5xx, latency, pool, 429); optional browser Sentry.
-- Backups: provider backup story + restore drill + RPO/RTO.
-- Load / edge: stress hot paths; document CDN/proxy limits vs API body caps.
-- Stores: run per-app iOS/Android checklist (privacy, support, OAuth, permissions, internal testing).
-- GA: formal go/no-go checklist (README has starter bullets only).
+**API host:** Redeploy Node API for server changes. **Firebase:** redeploy static apps after aggregator change if you want browser Sentry in the browse build.
+
+## Still open (manual or later passes)
+
+- Broad **grep** across remaining `api/src` modules for `console.log` with identifiers in production (many routes still log in dev-only now; spot-check new code).
+- **CORS smoke** from real Capacitor WebView devices.
+- **REACT_APP_* → VITE_*** in shell scripts and old markdown (large surface).
+- **External uptime** monitors (Better Stack, GCP, etc.) hitting `/health` and `/health/ready`.
+- **Dashboards** (5xx, latency, pool, 429) in your host’s metrics.
+- **Load tests** (k6, Artillery) on hot routes — not added yet.
+- **Store checklist execution** per app (privacy, support, TestFlight/Play internal).
 
 ## Phase status (summary)
 
 | Phase | Done / partial | Still to do |
 |-------|----------------|-------------|
-| 1 Security / consistency | VITE prod guard, optional socket auth, env.template note | PII grep, CORS smoke, template/script sweep |
-| 2 Observability | Sentry hook, request id, access JSON, `/health/ready` | Uptime checks, dashboards, client errors |
-| 3 Backups / secrets | README pointers | Drill, RPO/RTO, rotation runbook |
-| 4 Rate / load | Redis API-key limits when Redis up | Load test, edge doc |
-| 5 Store | — | Execute checklist per app |
-| 6 Launch criteria | — | Write explicit gates |
+| 1 | VITE guard, socket opt-in, major credential log fixes, env notes | Remaining modules audit, CORS device smoke, script/doc REACT_APP sweep |
+| 2 | API Sentry, request id, access JSON, `/health/ready`, smoke script, aggregator Sentry | Uptime SaaS, dashboards, id-dashboard Sentry (optional) |
+| 3 | Runbook template | Perform drill; fill table |
+| 4 | Redis API keys, proxy doc | Load test script |
+| 5 | — | Execute per app |
+| 6 | Checklist template | Sign-offs |
 
-## Principles (unchanged)
+## Principles
 
 - How to build: `.cursor/rules/`, [SHARED_CODE_RULES.md](../../SHARED_CODE_RULES.md).
-- What the code does: read the code; do not trust stale “status” markdown without verifying.
+- What the code does: read the code.
 
 ## Suggested order
 
-1. Redeploy API; set `SENTRY_DSN` and `REDIS_URL` if needed.
-2. Finish remaining Phase 1 checks.
-3. Backup restore drill.
-4. External monitors + dashboards.
-5. Load test when scaling.
-6. Store submission + GA checklist.
+1. Redeploy API; set `SENTRY_DSN`, `REDIS_URL` as needed.
+2. Set `VITE_SENTRY_DSN` on aggregator production build when ready.
+3. Run `npm run smoke:health` against production API from CI or laptop.
+4. Complete backup drill + [GO_NO_GO_LAUNCH.md](./GO_NO_GO_LAUNCH.md).
+5. Load test + external monitors when scaling.
+
+Related: [api/README.md](../../api/README.md) operations section.

@@ -1088,12 +1088,19 @@ export class AggregatorMetadataServiceDB {
         });
       }
 
-      console.log(`📤 [getAllFilesForUser] Returning ${entries.length} files (public + private) for user ${pnIdentifier}`);
-      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(
+          `📤 [getAllFilesForUser] Returning ${entries.length} files (public + private) for user (redacted)`
+        );
+      }
+
       // Verify files exist in Google Drive before returning (filter out deleted files)
       const verifiedEntries = await this.verifyGoogleDriveFilesExist(entries);
-      
-      if (verifiedEntries.length !== entries.length) {
+
+      if (
+        verifiedEntries.length !== entries.length &&
+        process.env.NODE_ENV === 'development'
+      ) {
         console.log(`✅ [getAllFilesForUser] Filtered out ${entries.length - verifiedEntries.length} deleted file(s)`);
       }
       

@@ -276,7 +276,10 @@ class ProductionServer {
         console.error(`[getOrCreateMetadataFolder] Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText}`);
         console.error(`[getOrCreateMetadataFolder] Full error response text:`, errorText);
         console.error(`[getOrCreateMetadataFolder] Parsed error JSON:`, errorJson);
-        console.error(`[getOrCreateMetadataFolder] Token used (first 50 chars):`, accessToken.substring(0, 50));
+        // Never log access token material (even a prefix) — credential leakage in logs
+        if (NODE_ENV === 'development') {
+          console.error(`[getOrCreateMetadataFolder] Bearer token present: ${accessToken ? 'yes' : 'no'} (length ${accessToken?.length ?? 0})`);
+        }
         throw new Error(`Failed to create pN folder: ${createPnFolderResponse.status} ${createPnFolderResponse.statusText} - ${errorText.substring(0, 500)}`);
       }
 
@@ -2145,7 +2148,11 @@ class ProductionServer {
           fileType
         });
 
-        console.log(`📤 [GET /api/aggregator/my-files] Returning ${files.length} files for user ${pnIdentifier}`);
+        if (NODE_ENV === 'development') {
+          console.log(
+            `📤 [GET /api/aggregator/my-files] Returning ${files.length} files for user ${redactPnIdentifier(pnIdentifier)}`
+          );
+        }
         return res.json({
           files,
           updatedAt: new Date().toISOString(),
@@ -6208,16 +6215,22 @@ class ProductionServer {
                 pnIdentifier = tokenPayload.pnIdentifier;
               } else {
                 // Fallback: return empty accounts if we can't determine pn identifier
-                console.warn(`[StorageAccounts] Cannot determine pn identifier from DID: ${identityId}`);
+                if (NODE_ENV === 'development') {
+                  console.warn(`[StorageAccounts] Cannot determine pn identifier from DID: ${identityId}`);
+                }
                 return res.json({ success: true, accounts: [] });
               }
             } catch (tokenError) {
-              console.warn(`[StorageAccounts] Failed to validate token:`, tokenError);
+              if (NODE_ENV === 'development') {
+                console.warn(`[StorageAccounts] Failed to validate token:`, tokenError);
+              }
               return res.json({ success: true, accounts: [] });
             }
           } else {
             // No token provided, can't determine pn identifier
-            console.warn(`[StorageAccounts] No Authorization header provided for DID: ${identityId}`);
+            if (NODE_ENV === 'development') {
+              console.warn(`[StorageAccounts] No Authorization header provided for DID: ${identityId}`);
+            }
             return res.json({ success: true, accounts: [] });
           }
         } else {
@@ -6225,14 +6238,21 @@ class ProductionServer {
           pnIdentifier = `pn-${identityId}`;
         }
 
-        console.log(`[StorageAccounts] Normalized identityId ${identityId} to pn identifier: ${pnIdentifier}`);
-        console.log(`[StorageAccounts] Fetching credentials for: ${pnIdentifier}`);
+        if (NODE_ENV === 'development') {
+          console.log(
+            `[StorageAccounts] Normalized identityId to pn identifier: ${redactPnIdentifier(pnIdentifier)}`
+          );
+        }
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const record = await storageCredentialsService.getCredentials(pnIdentifier);
-        console.log(`[StorageAccounts] Credentials service returned:`, record ? 'record found' : 'null');
+        if (NODE_ENV === 'development') {
+          console.log(`[StorageAccounts] Credentials service returned:`, record ? 'record found' : 'null');
+        }
 
         if (!record) {
-          console.log(`[StorageAccounts] No credentials record found for identityId: ${identityId}`);
+          if (NODE_ENV === 'development') {
+            console.log(`[StorageAccounts] No credentials record found for identityId: ${identityId}`);
+          }
           return res.json({
             success: true,
             accounts: []
@@ -6240,9 +6260,11 @@ class ProductionServer {
         }
 
         const credentials = record.credentials;
-        console.log(`[StorageAccounts] Found credentials record for ${pnIdentifier}`);
-        console.log(`[StorageAccounts] Credentials keys:`, Object.keys(credentials || {}));
-        console.log(`[StorageAccounts] Credentials structure (full):`, JSON.stringify(credentials, null, 2));
+        if (NODE_ENV === 'development') {
+          console.log(`[StorageAccounts] Found credentials record for ${redactPnIdentifier(pnIdentifier)}`);
+          console.log(`[StorageAccounts] Credential object top-level keys:`, Object.keys(credentials || {}));
+          // Never log full credentials — contains OAuth tokens and account identifiers
+        }
         
         const accounts: Array<{ provider: string; accountId: string; email?: string; displayName?: string }> = [];
 
@@ -6260,12 +6282,16 @@ class ProductionServer {
         
         // Ensure it's an array
         if (!Array.isArray(googleDriveAccounts)) {
-          console.warn(`[StorageAccounts] googleDriveAccounts is not an array, type: ${typeof googleDriveAccounts}`);
+          if (NODE_ENV === 'development') {
+            console.warn(`[StorageAccounts] googleDriveAccounts is not an array, type: ${typeof googleDriveAccounts}`);
+          }
           googleDriveAccounts = [];
         }
         
-        console.log(`[StorageAccounts] Found ${googleDriveAccounts.length} Google Drive account(s)`);
-        if (googleDriveAccounts.length === 0) {
+        if (NODE_ENV === 'development') {
+          console.log(`[StorageAccounts] Found ${googleDriveAccounts.length} Google Drive account(s)`);
+        }
+        if (googleDriveAccounts.length === 0 && NODE_ENV === 'development') {
           console.warn(`[StorageAccounts] No Google Drive accounts found. Credentials structure:`, {
             hasGoogleDriveAccounts: !!credentials?.googleDriveAccounts,
             hasGoogleDrive: !!credentials?.googleDrive,
@@ -6279,13 +6305,15 @@ class ProductionServer {
           const account = googleDriveAccounts[i];
           const accountId = account?.backendId || account?.keyPrefix || `${pnIdentifier}_${i}`;
           
-          console.log(`[StorageAccounts] Processing account ${i + 1}:`, {
-            accountId,
-            hasBackendId: !!account?.backendId,
-            hasKeyPrefix: !!account?.keyPrefix,
-            hasAccessToken: !!((account as any)?.access_token || (account as any)?.accessToken),
-            hasEmail: !!(account as any)?.email
-          });
+          if (NODE_ENV === 'development') {
+            console.log(`[StorageAccounts] Processing account ${i + 1}:`, {
+              accountId,
+              hasBackendId: !!account?.backendId,
+              hasKeyPrefix: !!account?.keyPrefix,
+              hasAccessToken: !!((account as any)?.access_token || (account as any)?.accessToken),
+              hasEmail: !!(account as any)?.email
+            });
+          }
           
           // Try to get user info from Google Drive API to get email
           try {
@@ -6341,7 +6369,9 @@ class ProductionServer {
           }
         }
         
-        console.log(`[StorageAccounts] Returning ${accounts.length} account(s) for ${identityId}`);
+        if (NODE_ENV === 'development') {
+          console.log(`[StorageAccounts] Returning ${accounts.length} account(s)`);
+        }
 
         // Add other cloud providers here as they're added (Cloudflare R2, etc.)
 

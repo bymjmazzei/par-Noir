@@ -280,7 +280,9 @@ This API server supports the **"MARK I"** identity - the first real identity cre
 | `ACCESS_LOG_JSON` | Set to `true` to emit one JSON access line per request in production (on by default in development only) |
 | `SOCKET_REQUIRE_AUTH` | Set to `true` to require a valid OAuth access token on Socket.IO handshakes |
 
-**Health:** `GET /health` (liveness). `GET /health/ready` returns 503 if `DATABASE_URL` is set but the database is unreachable.
+**Health:** `GET /health` (liveness). `GET /health/ready` returns 503 if `DATABASE_URL` is set but the database is unreachable. Quick check: `API_BASE_URL=https://your-api npm run smoke:health` (from `api/`).
+
+**Runbooks:** [docs/ops/BACKUP_AND_RESTORE_RUNBOOK.md](../docs/ops/BACKUP_AND_RESTORE_RUNBOOK.md), [docs/ops/GO_NO_GO_LAUNCH.md](../docs/ops/GO_NO_GO_LAUNCH.md), [docs/ops/CDN_AND_PROXY_LIMITS.md](../docs/ops/CDN_AND_PROXY_LIMITS.md).
 
 **Operations (checklist):** (1) Configure automated Postgres backups and run a restore drill on your provider. (2) Set `SENTRY_DSN` or another APM path you own. (3) For more than one API instance, set `REDIS_URL` so per–API-key limits stay global. (4) Native apps: privacy policy URL, support contact, OAuth redirect / `VITE_PN_CLIENT_ID` per app, TestFlight or Play internal track before wide release. Full phased plan and “what shipped” vs open items: [docs/ops/PRODUCTION_READINESS_PLAN.md](../docs/ops/PRODUCTION_READINESS_PLAN.md).
 
