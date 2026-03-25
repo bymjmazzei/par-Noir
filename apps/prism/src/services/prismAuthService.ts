@@ -55,7 +55,7 @@ export async function exchangeCodeForToken(code: string): Promise<PrismSession> 
     pnIdentifier: user.pn_identifier,
   };
 
-  saveSession(session);
+  await saveSession(session);
   return session;
 }
 
