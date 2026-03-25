@@ -257,6 +257,8 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     let checkClosedInterval: ReturnType<typeof setInterval> | undefined;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let popupClosedTime: number | null = null;
+    /** Until true, ignore popup.closed — cross-origin OAuth can report closed until the popup reaches same-origin callback. */
+    let popupEverSeenOpen = false;
 
     let oauthBc: BroadcastChannel | undefined;
 
@@ -438,27 +440,32 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     queueMicrotask(() => pollStorageOnce());
     pollInterval = setInterval(pollStorageOnce, 50);
 
-    // Wait longer after popup closes before failing: callback defers window.close() so parent can
-    // still receive postMessage / BroadcastChannel / poll localStorage in slow browsers.
-    const POPUP_CLOSED_GRACE_MS = 8000;
+    // Wait after popup closes before failing: callback defers window.close() so parent can still
+    // receive postMessage / BroadcastChannel / poll localStorage in slow browsers.
+    const POPUP_CLOSED_GRACE_MS = 15_000;
     checkClosedInterval = setInterval(() => {
       if (settled) return;
       tryAcceptFromOpenerUrl();
       if (settled) return;
       try {
-        if (popup.closed) {
-          if (popupClosedTime === null) popupClosedTime = Date.now();
-          else if (Date.now() - popupClosedTime > POPUP_CLOSED_GRACE_MS) {
-            tryAcceptFromOpenerUrl();
-            if (!settled) fail(new Error('POPUP_CLOSED'));
-          }
-        } else {
-          // Cross-origin OAuth navigations can briefly report closed; reset so we only fail after
-          // a sustained closed period while the window was previously observable as open.
+        if (!popup.closed) {
+          popupEverSeenOpen = true;
           popupClosedTime = null;
+          return;
+        }
+        // closed === true
+        if (!popupEverSeenOpen) {
+          // Do not treat as user cancel: during API consent the opener often sees closed===true
+          // until the redirect hits same-origin oauth-callback.html.
+          return;
+        }
+        if (popupClosedTime === null) popupClosedTime = Date.now();
+        else if (Date.now() - popupClosedTime > POPUP_CLOSED_GRACE_MS) {
+          tryAcceptFromOpenerUrl();
+          if (!settled) fail(new Error('POPUP_CLOSED'));
         }
       } catch {
-        /* COOP may throw */
+        /* COOP may throw when reading popup.closed during cross-origin navigation */
       }
     }, 500);
 
