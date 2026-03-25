@@ -282,7 +282,7 @@ This API server supports the **"MARK I"** identity - the first real identity cre
 
 **Health:** `GET /health` (liveness). `GET /health/ready` returns 503 if `DATABASE_URL` is set but the database is unreachable.
 
-**Operations (checklist):** (1) Configure automated Postgres backups and run a restore drill on your provider. (2) Set `SENTRY_DSN` or another APM path you own. (3) For more than one API instance, set `REDIS_URL` so per–API-key limits stay global. (4) Native apps: privacy policy URL, support contact, OAuth redirect / `VITE_PN_CLIENT_ID` per app, TestFlight or Play internal track before wide release.
+**Operations (checklist):** (1) Configure automated Postgres backups and run a restore drill on your provider. (2) Set `SENTRY_DSN` or another APM path you own. (3) For more than one API instance, set `REDIS_URL` so per–API-key limits stay global. (4) Native apps: privacy policy URL, support contact, OAuth redirect / `VITE_PN_CLIENT_ID` per app, TestFlight or Play internal track before wide release. Full phased plan and “what shipped” vs open items: [docs/ops/PRODUCTION_READINESS_PLAN.md](../docs/ops/PRODUCTION_READINESS_PLAN.md).
 
 See `docs/developer/INTEGRATOR_IDENTITY_SUCCESSION.md` for public succession reads (`GET /api/v1/identity/successor`).
 
