@@ -11,18 +11,10 @@ import { RayView } from './components/RayView';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { fetchAdminCheck, fetchAdminStats, fetchReputation, submitRayApply, seedDemoQueue, ensurePrismLedgers, ReputationResult } from './services/prismApi';
 import { UnlockButton } from '@par-noir/oauth-ui';
-import { Capacitor } from '@capacitor/core';
 import { getPrismOAuthConfig, prismOnBeforeNavigate } from './utils/oauth';
-import { exchangeCodeForToken } from './services/prismAuthService';
 import { SplashScreen } from '@capacitor/splash-screen';
 
-function LockedView({
-  onApplyOpen,
-  onOAuthComplete,
-}: {
-  onApplyOpen: () => void;
-  onOAuthComplete: () => Promise<void>;
-}) {
+function LockedView({ onApplyOpen }: { onApplyOpen: () => void }) {
   return (
     <div
       className="min-h-screen text-white relative"
@@ -50,21 +42,8 @@ function LockedView({
             <UnlockButton
               config={getPrismOAuthConfig()}
               onBeforeNavigate={prismOnBeforeNavigate}
-              forceRedirect={Capacitor.isNativePlatform()}
+              forceRedirect
               completeViaParentNavigation={false}
-              onPopupResult={async (r) => {
-                if (r.error) return;
-                if (!r.code) return;
-                try {
-                  await exchangeCodeForToken(r.code);
-                  await onOAuthComplete();
-                } catch (e) {
-                  console.error('[Prism] Unlock: token exchange failed', e);
-                }
-              }}
-              onPopupFlowFailed={(reason) => {
-                console.warn('[Prism] OAuth popup flow failed:', reason);
-              }}
               className="p-2 text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
               title="Unlock pN"
               iconOnly
@@ -329,7 +308,7 @@ function UnlockedView() {
 
 function AppContent() {
   const [applyOpen, setApplyOpen] = useState(false);
-  const { session, loading, refreshSession } = useAuth();
+  const { session, loading } = useAuth();
 
   useEffect(() => {
     SplashScreen.hide().catch(() => {});
@@ -352,10 +331,7 @@ function AppContent() {
 
   return (
     <>
-      <LockedView
-        onApplyOpen={() => setApplyOpen(true)}
-        onOAuthComplete={refreshSession}
-      />
+      <LockedView onApplyOpen={() => setApplyOpen(true)} />
       <ApplyModal open={applyOpen} onClose={() => setApplyOpen(false)} />
     </>
   );
