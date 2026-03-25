@@ -39,21 +39,16 @@
 
 ---
 
-### 3. **API Key Activation (Developer Portal)** ✅
-**Location:** Developer Tab
+### 3. **API Key Activation** ✅
+**Location:** License / API access in the dashboard (not the Services tab). Integrator OAuth clients and backend API keys: hosted developer console (e.g. developers.parnoir.com).
 
 **How to Test:**
-1. Click **"Developer"** tab in main navigation
-2. Look for **"API Key"** or **"Developer API Access"** section
-3. Click to view your API key
-4. Click **"Activate API Key"** (if inactive)
-5. Complete identity verification (Veriff)
+1. Open the dashboard area where license / API key activation is offered (e.g. License flow).
+2. View API key state and use **Activate API Key** if inactive (Veriff) when that flow is enabled.
 
 **Expected Behavior:**
-- API key is displayed
-- Status shows "Active" or "Inactive"
-- Activation requires identity verification
-- After activation, API key can be used for OAuth and data points
+- User-scoped API key can be activated per dashboard license flow where applicable.
+- Third-party **integrator** keys are created only after unlocking on the developer console.
 
 ---
 

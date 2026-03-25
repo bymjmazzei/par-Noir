@@ -38,3 +38,39 @@ export async function pruneAuditEventsOlderThan(days: number = DEFAULT_RETENTION
   );
   return r.rowCount ?? 0;
 }
+
+export interface AuditEventRow {
+  event_type: string;
+  created_at: Date;
+  metadata: Record<string, unknown>;
+}
+
+/** Recent audit rows for a subject (e.g. data point proposals from developer console). */
+export async function listAuditEventsBySubject(params: {
+  subjectPnIdentifier: string;
+  eventType: string;
+  limit?: number;
+}): Promise<AuditEventRow[]> {
+  try {
+    const db = getDatabasePool();
+    const limit = Math.min(Math.max(params.limit ?? 50, 1), 200);
+    const r = await db.query(
+      `SELECT event_type, created_at, metadata
+       FROM audit_events
+       WHERE subject_pn_identifier = $1 AND event_type = $2
+       ORDER BY created_at DESC
+       LIMIT $3`,
+      [params.subjectPnIdentifier.slice(0, 255), params.eventType.slice(0, 64), limit]
+    );
+    return r.rows.map((row: { event_type: string; created_at: Date; metadata: unknown }) => ({
+      event_type: row.event_type,
+      created_at: row.created_at,
+      metadata: (typeof row.metadata === 'object' && row.metadata !== null
+        ? row.metadata
+        : {}) as Record<string, unknown>
+    }));
+  } catch (err) {
+    console.warn('[audit] listAuditEventsBySubject failed:', (err as Error).message);
+    return [];
+  }
+}

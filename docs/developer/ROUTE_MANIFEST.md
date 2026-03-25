@@ -8,6 +8,7 @@ Hand-maintained index of **major** HTTP routes. When you add a user-facing or in
 |--------|------|--------|
 | GET | `/api/v1/identity/successor` | Query `pn_identifier` — succession / revocation (public read) |
 | GET | `/api/v1/identity/revocations` | Alias of successor response shape |
+| GET | `/api/v1/standard-data-points` | Public catalog of standard data point metadata (no auth) |
 | GET | `/api/v1/oauth/authorize` | API-key gated OAuth authorize |
 | POST | `/api/v1/oauth/token` | API-key gated token exchange |
 | GET | `/api/v1/data-points/:dataPointId` | API key + scope |
@@ -46,6 +47,8 @@ Hand-maintained index of **major** HTTP routes. When you add a user-facing or in
 | GET | `/api/developer/api-keys` | List key metadata for authenticated pn |
 | POST | `/api/developer/oauth-clients` | Register OAuth client with `owner_pn_id` |
 | GET | `/api/developer/oauth-clients` | List clients owned by authenticated pn |
+| POST | `/api/developer/data-point-proposals` | Submit standard data point proposal (audit log) |
+| GET | `/api/developer/data-point-proposals` | List proposals for authenticated pn (from audit) |
 
 ## Admin (secured)
 

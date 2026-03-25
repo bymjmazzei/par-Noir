@@ -59,7 +59,7 @@ Verify these are set in Railway:
 - [ ] Gemini AI moderation working (upload a file)
 - [ ] Reporting system working (report content)
 - [ ] Feed creation UI accessible
-- [ ] API key modal accessible (Developer Portal)
+- [ ] API key activation accessible (License area in dashboard; integrator keys on hosted developer console)
 
 ## ✅ Step 6: Coinbase Webhook Setup
 

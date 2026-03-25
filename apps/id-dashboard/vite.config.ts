@@ -16,6 +16,8 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
+      // Source ESM — dist is CJS and breaks Vite named exports for this workspace package
+      '@par-noir/standard-data-points': resolve(__dirname, '../../packages/standard-data-points/src/index.ts'),
     },
   },
   optimizeDeps: {

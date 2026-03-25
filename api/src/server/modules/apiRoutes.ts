@@ -4,10 +4,9 @@
  */
 
 import { Request, Response } from 'express';
+import { getStandardDataPointsPublic, DATA_POINT_CATEGORIES } from '@par-noir/standard-data-points';
 import { ApiKeyService } from './apiKeyService';
 import { PNOAuthService } from './pnOAuthService';
-import { ZKPDataPointsService } from './zkpDataPointsService';
-import { AggregatorMetadataService } from './aggregatorMetadataService';
 
 /**
  * Middleware to authenticate API requests using API key
@@ -77,6 +76,27 @@ export function setupIdentityPublicRoutes(app: any) {
       return res.status(500).json({
         error: 'server_error',
         error_description: 'Failed to load succession state'
+      });
+    }
+  });
+
+  /**
+   * GET /api/v1/standard-data-points
+   * Public metadata catalog (no PII; integrators and developer portal).
+   */
+  app.get('/api/v1/standard-data-points', (_req: Request, res: Response) => {
+    try {
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      return res.json({
+        version: '1',
+        dataPoints: getStandardDataPointsPublic(),
+        categories: DATA_POINT_CATEGORIES
+      });
+    } catch (error) {
+      console.error('[standard-data-points] error:', error);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: 'Failed to load standard data points catalog'
       });
     }
   });

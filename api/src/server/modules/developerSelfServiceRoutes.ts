@@ -7,12 +7,14 @@ import type { Application, Response, NextFunction } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddleware';
 import { ApiKeyService } from './apiKeyService';
 import { ClientRegistrationService } from './clientRegistration';
-import { appendAuditEvent } from './auditService';
+import { appendAuditEvent, listAuditEventsBySubject } from './auditService';
 import { safeClientErrorMessage } from '../utils/safeError';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 const RESERVED_CLIENT_IDS = new Set(['browser-app', 'prism-app', 'developer-portal']);
+
+const DATA_POINT_PROPOSAL_EVENT = 'data_point.proposal';
 
 export function getDeveloperPortalClientId(): string {
   return (process.env.DEVELOPER_PORTAL_CLIENT_ID || 'developer-portal').trim();
@@ -181,6 +183,121 @@ export function registerDeveloperSelfServiceRoutes(app: Application): void {
       return res.status(500).json({
         error: 'server_error',
         error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to list clients'
+      });
+    }
+  });
+
+  app.post('/api/developer/data-point-proposals', ...chain, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const pnId = req.user?.pnIdentifier?.trim();
+      if (!pnId) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Your session has no par Noir user id.'
+        });
+      }
+
+      const body = req.body || {};
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      const description = typeof body.description === 'string' ? body.description.trim() : '';
+      const useCase = typeof body.useCase === 'string' ? body.useCase.trim() : '';
+      const category = typeof body.category === 'string' ? body.category.trim() : '';
+      const dataType = typeof body.dataType === 'string' ? body.dataType.trim() : '';
+
+      if (!name || !description || !useCase) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'name, description, and useCase are required'
+        });
+      }
+
+      const allowedCategories = new Set(['verification', 'preferences', 'compliance', 'location']);
+      if (!allowedCategories.has(category)) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'category must be verification, preferences, compliance, or location'
+        });
+      }
+
+      const allowedDataTypes = new Set(['string', 'number', 'boolean', 'date', 'object']);
+      if (!allowedDataTypes.has(dataType)) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'dataType must be string, number, boolean, date, or object'
+        });
+      }
+
+      const requiredFields = Array.isArray(body.requiredFields)
+        ? body.requiredFields.map((x: unknown) => String(x).trim()).filter(Boolean)
+        : [];
+      const examples = Array.isArray(body.examples)
+        ? body.examples.map((x: unknown) => String(x).trim()).filter(Boolean)
+        : [];
+
+      if (requiredFields.length === 0 || examples.length === 0) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'requiredFields and examples must be non-empty arrays'
+        });
+      }
+
+      const proposalId = `proposal_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+      const proposedAt = new Date().toISOString();
+
+      await appendAuditEvent({
+        eventType: DATA_POINT_PROPOSAL_EVENT,
+        actorHint: 'developer_portal',
+        subjectPnIdentifier: pnId,
+        metadata: {
+          proposalId,
+          proposedAt,
+          name,
+          description,
+          category,
+          dataType,
+          requiredFields,
+          examples,
+          useCase
+        }
+      });
+
+      return res.status(201).json({ proposalId, proposedAt, status: 'pending' });
+    } catch (error: unknown) {
+      console.error('[developer] data-point-proposals POST:', error);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to submit proposal'
+      });
+    }
+  });
+
+  app.get('/api/developer/data-point-proposals', ...chain, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const pnId = req.user?.pnIdentifier?.trim();
+      if (!pnId) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Your session has no par Noir user id.'
+        });
+      }
+
+      const rows = await listAuditEventsBySubject({
+        subjectPnIdentifier: pnId,
+        eventType: DATA_POINT_PROPOSAL_EVENT,
+        limit: 100
+      });
+
+      const proposals = rows.map((row) => ({
+        ...((row.metadata as Record<string, unknown>) || {}),
+        recordedAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at)
+      }));
+
+      return res.json({ proposals });
+    } catch (error: unknown) {
+      console.error('[developer] data-point-proposals GET:', error);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to list proposals'
       });
     }
   });

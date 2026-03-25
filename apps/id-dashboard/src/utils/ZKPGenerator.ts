@@ -1,6 +1,7 @@
 import { cryptoWorkerManager } from './cryptoWorkerManager';
-import { StandardDataPoint, ZKPGenerationRequest, ZKPProof } from '../types/DataPointTypes';
+import type { DataPointProposal, StandardDataPoint, ZKPGenerationRequest, ZKPProof } from '../types/DataPointTypes';
 import { STANDARD_DATA_POINTS } from '../types/StandardDataPointsRegistry';
+import { DataPointProposalManager } from './DataPointProposal';
 
 // ZKP Generation Functions
 export class ZKPGenerator {
@@ -85,6 +86,8 @@ export class ZKPGenerator {
       case 'location_verification':
         return this.generateLocationVerificationProof(userData, verificationLevel);
       case 'identity_verification':
+        return this.generateIdentityVerificationProof(userData, verificationLevel);
+      case 'identity_attestation':
         return this.generateIdentityVerificationProof(userData, verificationLevel);
       case 'preference_disclosure':
         return this.generatePreferenceDisclosureProof(userData, verificationLevel);
@@ -223,5 +226,25 @@ export class ZKPGenerator {
     if (age < 50) return '40_49';
     if (age < 60) return '50_59';
     return '60_plus';
+  }
+
+  static async proposeDataPoint(
+    proposal: Omit<DataPointProposal, 'id' | 'proposedAt' | 'status' | 'votes'>,
+    identityId: string,
+    pnName: string,
+    passcode: string
+  ): Promise<{ success: boolean; proposalId?: string; error?: string }> {
+    return DataPointProposalManager.proposeDataPoint(proposal, identityId, pnName, passcode);
+  }
+
+  static async getPendingProposals(
+    identityId: string,
+    pnName: string,
+    passcode: string
+  ): Promise<DataPointProposal[]> {
+    void pnName;
+    void passcode;
+    const all = await DataPointProposalManager.getProposals(identityId);
+    return all.filter((p) => p.status === 'pending');
   }
 }

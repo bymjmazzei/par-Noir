@@ -1,0 +1,250 @@
+openapi: 3.0.3
+info:
+  title: par Noir integrator API (subset)
+  version: '1.0'
+  description: |
+    Representative routes for third-party apps. Full server surface is larger; see ROUTE_MANIFEST in the repo.
+servers:
+  - url: https://api.parnoir.com
+    description: Production
+paths:
+  /api/v1/standard-data-points:
+    get:
+      summary: Public standard data points catalog
+      operationId: listStandardDataPoints
+      responses:
+        '200':
+          description: Catalog metadata (no PII)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    type: string
+                  dataPoints:
+                    type: array
+                    items:
+                      type: object
+                  categories:
+                    type: object
+                    additionalProperties:
+                      type: string
+  /api/v1/identity/successor:
+    get:
+      summary: Identity succession / revocation (public, opaque ids)
+      operationId: getIdentitySuccessor
+      parameters:
+        - name: pn_identifier
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successor state
+          content:
+            application/json:
+              schema:
+                type: object
+  /api/v1/oauth/authorize:
+    get:
+      summary: OAuth2 authorize (requires API key)
+      operationId: oauthAuthorize
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: scope
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: nonce
+          in: query
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to client with code or error
+  /api/v1/oauth/token:
+    post:
+      summary: OAuth2 token exchange
+      operationId: oauthToken
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                  example: authorization_code
+                code:
+                  type: string
+                client_id:
+                  type: string
+                redirect_uri:
+                  type: string
+      responses:
+        '200':
+          description: Tokens
+          content:
+            application/json:
+              schema:
+                type: object
+  /oauth/token:
+    post:
+      summary: OAuth2 token (popup / server; same semantics as v1 where applicable)
+      operationId: oauthTokenLegacy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Tokens
+  /oauth/userinfo:
+    get:
+      summary: Userinfo for Bearer access token
+      operationId: oauthUserinfo
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Claims (no sensitive fields in logs)
+          content:
+            application/json:
+              schema:
+                type: object
+  /api/developer/oauth-clients:
+    get:
+      summary: List OAuth clients registered by unlocking user (developer portal token)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Client list
+    post:
+      summary: Register OAuth client
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientId, name, redirectUris]
+              properties:
+                clientId:
+                  type: string
+                name:
+                  type: string
+                description:
+                  type: string
+                redirectUris:
+                  type: array
+                  items:
+                    type: string
+                scopes:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: Created
+  /api/developer/api-keys:
+    get:
+      summary: List API keys for unlocked pN
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Key metadata (not secrets)
+    post:
+      summary: Create API key
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scopes:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: Key created (plaintext once)
+  /api/developer/data-point-proposals:
+    get:
+      summary: List proposals submitted from developer portal (audit-backed)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Proposal rows
+    post:
+      summary: Submit standard data point proposal
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, description, category, dataType, requiredFields, examples, useCase]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                category:
+                  type: string
+                  enum: [verification, preferences, compliance, location]
+                dataType:
+                  type: string
+                  enum: [string, number, boolean, date, object]
+                requiredFields:
+                  type: array
+                  items:
+                    type: string
+                examples:
+                  type: array
+                  items:
+                    type: string
+                useCase:
+                  type: string
+      responses:
+        '201':
+          description: Recorded
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

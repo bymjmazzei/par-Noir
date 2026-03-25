@@ -1,39 +1,14 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
-// Standardized Data Points System - Types
-// Defines common data points that developers can request
-// Each data point has a standard ZKP generation method
+// Standardized Data Points System — shared catalog types from @par-noir/standard-data-points
+import type { StandardDataPoint, ZKPType } from '@par-noir/standard-data-points';
+export type { StandardDataPoint, ZKPType };
 
-export interface StandardDataPoint {
-  id: string;
-  name: string;
-  description: string;
-  category: 'identity' | 'verification' | 'preferences' | 'compliance' | 'location';
-  dataType: 'string' | 'number' | 'boolean' | 'date' | 'object';
-  zkpType: ZKPType;
-  validation?: DataValidation;
-  requiredFields?: string[];
-  optionalFields?: string[];
-  defaultPrivacy: 'public' | 'private' | 'selective';
-  examples: string[];
-}
-
-export type ZKPType = 
-  | 'age_verification'
-  | 'email_verification'
-  | 'phone_verification'
-  | 'location_verification'
-  | 'identity_verification'
-  | 'identity_attestation'
-  | 'preference_disclosure'
-  | 'compliance_attestation'
-  | 'custom_proof';
-
+/** Dashboard-only validation helpers (e.g. custom checks) layered on catalog rows */
 export interface DataValidation {
   minValue?: number;
   maxValue?: number;
   pattern?: RegExp;
   required?: boolean;
-  custom?: (value: any) => boolean;
+  custom?: (value: unknown) => boolean;
 }
 
 export interface ZKPGenerationRequest {

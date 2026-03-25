@@ -1,0 +1,14 @@
+{
+  "name": "@par-noir/standard-data-points",
+  "version": "1.0.0",
+  "description": "Canonical standard data point definitions for par Noir (catalog + JSON API helpers)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prepare": "npm run build"
+  },
+  "license": "UNLICENSED",
+  "files": ["dist", "src"]
+}

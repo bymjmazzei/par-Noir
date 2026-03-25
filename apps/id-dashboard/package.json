@@ -35,6 +35,7 @@
   },
   "dependencies": {
     "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
+    "@par-noir/standard-data-points": "file:../../packages/standard-data-points",
     "@bytetrade/capacitor-native-biometric": "^6.0.5",
     "@capacitor/app": "^6.0.0",
     "@capacitor/camera": "^6.0.0",
