@@ -14,6 +14,7 @@ import { PN_CLIENT_ID } from '../config/client';
 const STORAGE_ACCESS = 'dev_portal_access_token';
 const STORAGE_REFRESH = 'dev_portal_refresh_token';
 const STORAGE_OAUTH_CTX = 'dev_portal_oauth';
+const STORAGE_POPUP_STATE = 'pn_oauth_state';
 
 export function getAccessToken(): string | null {
   if (typeof sessionStorage === 'undefined') return null;
@@ -97,12 +98,14 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const completePortalOAuth = useCallback(async (result: PnOAuthPopupResult) => {
     if (result.error) {
       setError(result.error_description || result.error);
+      sessionStorage.removeItem(STORAGE_POPUP_STATE);
       return;
     }
     if (!result.code) return;
     const raw = sessionStorage.getItem(STORAGE_OAUTH_CTX);
     if (!raw) {
       setError('OAuth session expired. Try unlocking again.');
+      sessionStorage.removeItem(STORAGE_POPUP_STATE);
       return;
     }
     let ctx: { state: string; clientId: string; redirectUri: string };
@@ -110,10 +113,12 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       ctx = JSON.parse(raw) as { state: string; clientId: string; redirectUri: string };
     } catch {
       setError('Invalid OAuth context');
+      sessionStorage.removeItem(STORAGE_POPUP_STATE);
       return;
     }
     if (result.state !== undefined && result.state !== ctx.state) {
       setError('Invalid OAuth state');
+      sessionStorage.removeItem(STORAGE_POPUP_STATE);
       return;
     }
     const body: Record<string, unknown> = {
@@ -138,6 +143,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     };
     if (!tokenRes.ok) {
       setError(data.error_description || data.error || 'Token exchange failed');
+      sessionStorage.removeItem(STORAGE_POPUP_STATE);
       return;
     }
     if (data.access_token) {
@@ -147,6 +153,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       sessionStorage.setItem(STORAGE_REFRESH, data.refresh_token);
     }
     sessionStorage.removeItem(STORAGE_OAUTH_CTX);
+    sessionStorage.removeItem(STORAGE_POPUP_STATE);
     setToken(data.access_token ?? null);
     setError(null);
   }, []);
@@ -242,6 +249,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       STORAGE_OAUTH_CTX,
       JSON.stringify({ api: API_ENDPOINT, clientId: PN_CLIENT_ID, state, nonce, redirectUri })
     );
+    sessionStorage.setItem(STORAGE_POPUP_STATE, state);
   }, []);
 
   const signOut = useCallback(async () => {
@@ -258,6 +266,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       }
     }
     clearSession();
+    sessionStorage.removeItem(STORAGE_POPUP_STATE);
     setToken(null);
     setUser(null);
     setKeys([]);

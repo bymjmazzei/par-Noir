@@ -127,7 +127,7 @@ export function ProposalsPage() {
               redirectUri: `${window.location.origin}/oauth-callback.html`,
               scope: ['openid', 'profile']
             }}
-            onBeforeUnlock={handleBeforeUnlock}
+            onBeforeNavigate={handleBeforeUnlock}
             onPopupResult={onPopupResult}
             onPopupFlowFailed={(msg) => setError(msg)}
             className="dev-btn dev-btn-unlock dev-btn-unlock--large"

@@ -70,7 +70,7 @@ export function HomePage() {
               redirectUri: `${window.location.origin}/oauth-callback.html`,
               scope: ['openid', 'profile']
             }}
-            onBeforeUnlock={(state, nonce) => {
+            onBeforeNavigate={(state, nonce) => {
               setError(null);
               setMessage(null);
               handleBeforeUnlock(state, nonce);
