@@ -1,6 +1,8 @@
 # Production readiness: close the “disagree” gaps
 
-This document is the **in-repo** copy of the production readiness plan. Cursor’s **Build Plan** UI may point at a separate file under `~/.cursor/plans/`; that file does not update when code merges unless someone edits it. **Truth for shipped work:** `git log` and the paths below.
+**Engineering track:** **complete** (passes 1–2 shipped on `main`: `d182f55f`, `17794200`). What is left is **operational execution** (backup drill, external monitors, store listings, sign-off) — see [GO_NO_GO_LAUNCH.md](./GO_NO_GO_LAUNCH.md).
+
+This document is the **in-repo** copy of the plan. Cursor’s **Build Plan** UI reads `~/.cursor/plans/*.md` YAML todos; those must be updated separately or only the first todo will show struck through. **Truth for shipped work:** `git log` and the tables below.
 
 ## Shipped — pass 1
 
