@@ -12,12 +12,15 @@ interface CloudflareUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUploadComplete: (file: StorageFile) => void;
+  /** Owner DID or pN identifier for provenance (pass from authenticated session). */
+  ownerDid: string;
 }
 
 export const CloudflareUploadModal: React.FC<CloudflareUploadModalProps> = ({
   isOpen,
   onClose,
   onUploadComplete,
+  ownerDid,
 }) => {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [dragActive, setDragActive] = useState(false);
@@ -128,8 +131,8 @@ export const CloudflareUploadModal: React.FC<CloudflareUploadModalProps> = ({
 
       try {
         const uploadedFile = await cloudflareR2Service.uploadFile(
-          file, 
-          'current-user-did', // TODO: Get from auth context
+          file,
+          ownerDid.trim() || 'unknown',
           options,
           (progress) => {
             setUploadProgress(prev => {

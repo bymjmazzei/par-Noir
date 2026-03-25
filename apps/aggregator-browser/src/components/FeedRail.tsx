@@ -345,7 +345,8 @@ export function buildFeedRailItems(
     {
       feedId: 'public',
       name: 'PUBLIC',
-      isActive: activeFeedId === 'public'
+      isActive: activeFeedId === 'public',
+      isNew: hasNewThirdPartyContent
     }
   ];
 

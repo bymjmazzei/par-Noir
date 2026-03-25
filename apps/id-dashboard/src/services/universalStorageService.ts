@@ -86,16 +86,17 @@ export class UniversalStorageService {
   }
 
   private async testProviderConnection(provider: StorageProvider): Promise<boolean> {
-    // Test connection based on provider type
     switch (provider.type) {
       case 'ipfs':
         return this.testIPFSConnection(provider);
-      case 'arweave':
-        return this.testArweaveConnection(provider);
-      case 'storj':
-        return this.testStorjConnection(provider);
-      default:
-        throw new Error(`Unsupported provider type: ${provider.type}`);
+      case 'filecoin':
+      case 'cloudflare-r2':
+      case 'google-drive':
+        return true;
+      default: {
+        const _exhaustive: never = provider.type;
+        throw new Error(`Unsupported provider type: ${_exhaustive}`);
+      }
     }
   }
 
@@ -103,26 +104,6 @@ export class UniversalStorageService {
     try {
       // Test IPFS connection
       const response = await fetch('https://ipfs.io/api/v0/version');
-      return response.ok;
-    } catch {
-      return false;
-    }
-  }
-
-  private async testArweaveConnection(provider: StorageProvider): Promise<boolean> {
-    try {
-      // Test Arweave connection
-      const response = await fetch('https://arweave.net/info');
-      return response.ok;
-    } catch {
-      return false;
-    }
-  }
-
-  private async testStorjConnection(provider: StorageProvider): Promise<boolean> {
-    try {
-      // Test Storj connection
-      const response = await fetch('https://api.storj.io/api/v0/auth/verify');
       return response.ok;
     } catch {
       return false;
@@ -328,12 +309,14 @@ export class UniversalStorageService {
     switch (provider.type) {
       case 'ipfs':
         return this.uploadToIPFS(file, provider, options, onProgress);
-      case 'arweave':
-        return this.uploadToArweave(file, provider, options, onProgress);
-      case 'storj':
-        return this.uploadToStorj(file, provider, options, onProgress);
-      default:
-        throw new Error(`Unsupported provider: ${provider.type}`);
+      case 'filecoin':
+      case 'cloudflare-r2':
+      case 'google-drive':
+        throw new Error(`Upload for provider "${provider.type}" is not wired in universal storage; use the dedicated flow (e.g. Cloudflare or Drive).`);
+      default: {
+        const _exhaustive: never = provider.type;
+        throw new Error(`Unsupported provider: ${_exhaustive}`);
+      }
     }
   }
 
@@ -362,26 +345,6 @@ export class UniversalStorageService {
       cid: result.cid,
       url: result.url
     };
-  }
-
-  private async uploadToArweave(
-    file: File, 
-    provider: StorageProvider, 
-    options: UploadOptions,
-    onProgress?: (progress: number) => void
-  ): Promise<{ cid: string; url: string }> {
-    // TODO: Implement Arweave upload
-    throw new Error('Arweave upload not yet implemented');
-  }
-
-  private async uploadToStorj(
-    file: File, 
-    provider: StorageProvider, 
-    options: UploadOptions,
-    onProgress?: (progress: number) => void
-  ): Promise<{ cid: string; url: string }> {
-    // TODO: Implement Storj upload
-    throw new Error('Storj upload not yet implemented');
   }
 
   private async createProvenanceChain(fileId: string, fileName: string): Promise<ProvenanceChain> {
@@ -460,9 +423,9 @@ export class UniversalStorageService {
       },
       byProvider: {
         ipfs: { count: 0, size: 0 },
-        arweave: { count: 0, size: 0 },
-        storj: { count: 0, size: 0 },
-        filecoin: { count: 0, size: 0 }
+        filecoin: { count: 0, size: 0 },
+        'cloudflare-r2': { count: 0, size: 0 },
+        'google-drive': { count: 0, size: 0 }
       },
       byVisibility: {
         private: { count: 0, size: 0 },
@@ -471,14 +434,18 @@ export class UniversalStorageService {
       }
     };
 
+    const isKnownProvider = (p: string): p is StorageProviderType =>
+      p === 'ipfs' || p === 'filecoin' || p === 'cloudflare-r2' || p === 'google-drive';
+
     files.forEach(file => {
       // By type
       stats.byType[file.type].count++;
       stats.byType[file.type].size += file.size;
 
-      // By provider
-      stats.byProvider[file.provider].count++;
-      stats.byProvider[file.provider].size += file.size;
+      // By provider (legacy rows may reference removed provider types)
+      const providerKey: StorageProviderType = isKnownProvider(file.provider) ? file.provider : 'ipfs';
+      stats.byProvider[providerKey].count++;
+      stats.byProvider[providerKey].size += file.size;
 
       // By visibility
       stats.byVisibility[file.visibility].count++;

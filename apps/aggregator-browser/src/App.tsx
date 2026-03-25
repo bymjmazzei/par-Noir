@@ -24,7 +24,8 @@ import { useFeedNavigation } from './hooks/useFeedNavigation';
 import { useEngagement } from './hooks/useEngagement';
 import { useToast } from './hooks/useToast';
 import { useURLParams } from './hooks/useURLParams';
-import { markFeedAsViewed } from './utils/feedUtils';
+import { markFeedAsViewed, hasNewContent } from './utils/feedUtils';
+import { isThirdPartyFileForViewer } from './utils/contentClass';
 import { FeedService } from './services/feedService';
 import { AppLayout } from './components/AppLayout';
 import { useAppContext } from './hooks/useAppContext';
@@ -403,12 +404,22 @@ function App() {
     }
   }, [activeFeedId]);
 
-  // Check for new third-party content
+  // Third-party aggregate: clear "new" when user opens discovery or public (mixed-creator feeds).
+  useEffect(() => {
+    if (
+      userState.isUnlocked &&
+      (activeFeedId === 'discovery' || activeFeedId === 'public')
+    ) {
+      setFeedViewedTimestamps(prev => markFeedAsViewed('thirdParty', prev));
+    }
+  }, [activeFeedId, userState.isUnlocked]);
+
   const hasNewThirdPartyContent = useMemo(() => {
-    // TODO: Filter for third-party content and check if it's new
-    // For now, return false - will be implemented when third-party API is ready
-    return false;
-  }, [indexedFiles, feedViewedTimestamps]);
+    const viewerPn = userState.pnIdentifier;
+    if (!userState.isUnlocked || !viewerPn) return false;
+    const thirdParty = indexedFiles.filter(f => isThirdPartyFileForViewer(f, viewerPn));
+    return hasNewContent('thirdParty', thirdParty, feedViewedTimestamps);
+  }, [indexedFiles, feedViewedTimestamps, userState.isUnlocked, userState.pnIdentifier]);
 
   // Build feed rail items - Always show DISCOVER, PUBLIC, ARTS, SPORTS, MUSIC (TikTok style)
   // Only show subscribed feeds and CURATED feed when user is unlocked

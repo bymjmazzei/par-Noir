@@ -46,8 +46,9 @@ export class BiometricCredentialStorage {
       // For now, we'll store in IndexedDB using a custom object store
       // This is a temporary solution - ideally SecureStorage should support custom stores
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(existing));
-      
-      // TODO: Migrate to IndexedDB when SecureStorage supports custom object stores
+
+      // NOTE: Prefer IndexedDB for this payload once SecureStorage exposes a generic key-value or
+      // object-store API; today the class uses localStorage as the portable store.
     } catch (error) {
       throw new Error(`Failed to store biometric credential: ${error}`);
     }

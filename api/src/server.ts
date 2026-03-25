@@ -11364,10 +11364,68 @@ class ProductionServer {
         if (!userPnIdentifier) {
           return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
-        // TODO: Implement message requests retrieval from Google Drive
-        return res.json({ requests: [] });
+
+        const { MessageRequestSheetsService } = await import('./server/modules/messageRequestSheetsService');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const pnIdentifier = userPnIdentifier;
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.json({ requests: [] });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts ||
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ requests: [] });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = this.extractAccountId(account);
+        const token = {
+          access_token: account.access_token || account.accessToken,
+          refresh_token: account.refresh_token || account.refreshToken,
+          expires_at: account.expires_at,
+          expires_in: account.expires_in
+        };
+
+        const metadataFolder = await this.getMetadataFolder(token, pnIdentifier, accountId);
+        if (!metadataFolder) {
+          return res.json({ requests: [] });
+        }
+
+        const sheetId = await MessageRequestSheetsService.findRequestsSpreadsheetId(
+          token,
+          metadataFolder.metadataFolderId,
+          pnIdentifier,
+          accountId
+        );
+        if (!sheetId) {
+          return res.json({ requests: [] });
+        }
+
+        const rows = await MessageRequestSheetsService.listRequests(token, sheetId, pnIdentifier, accountId);
+        const requests = rows.map(r => ({
+          requestId: r.requestId,
+          fromPnIdentifier: r.fromPnIdentifier,
+          toPnIdentifier: r.toPnIdentifier,
+          content: r.content,
+          timestamp: r.timestamp,
+          status: r.status
+        }));
+
+        return res.json({ requests });
       } catch (error: any) {
         console.error('Error getting message requests:', error);
+        if (error.message?.includes('authentication failed') ||
+            error?.response?.status === 401 ||
+            error?.code === 401) {
+          return res.status(401).json({
+            error: 'Google Drive authentication failed',
+            code: 'DRIVE_AUTH_FAILED',
+            message: 'Please reconnect your Google Drive account in the dashboard.'
+          });
+        }
         return res.status(500).json({
           error: 'Failed to get message requests',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get message requests'
@@ -12927,20 +12985,75 @@ class ProductionServer {
         if (!fromPnIdentifier || !toPnIdentifier || !content) {
           return res.status(400).json({ error: 'fromPnIdentifier, toPnIdentifier, and content are required' });
         }
-        // TODO: Implement message request creation in Google Drive
+
+        const { MessageRequestSheetsService } = await import('./server/modules/messageRequestSheetsService');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const recipientCredentials = await storageCredentialsService.getCredentials(toPnIdentifier);
+        if (!recipientCredentials?.credentials) {
+          return res.status(404).json({ error: 'Recipient credentials not found' });
+        }
+
+        const recipientGoogleDriveAccounts = recipientCredentials.credentials.googleDriveAccounts ||
+          (recipientCredentials.credentials.googleDrive ? [recipientCredentials.credentials.googleDrive] : []);
+        if (recipientGoogleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'Recipient has no Google Drive connected' });
+        }
+
+        const recipientAccount = recipientGoogleDriveAccounts[0];
+        const recipientAccountId = this.extractAccountId(recipientAccount);
+        const recipientToken = {
+          access_token: recipientAccount.access_token || recipientAccount.accessToken,
+          refresh_token: recipientAccount.refresh_token || recipientAccount.refreshToken,
+          expires_at: recipientAccount.expires_at,
+          expires_in: recipientAccount.expires_in
+        };
+
+        const recipientMetadata = await this.getMetadataFolder(recipientToken, toPnIdentifier, recipientAccountId);
+        if (!recipientMetadata) {
+          return this.driveNotInitialized(res);
+        }
+
+        const spreadsheetId = await MessageRequestSheetsService.getOrCreateSpreadsheet(
+          recipientToken,
+          recipientMetadata.metadataFolderId,
+          toPnIdentifier,
+          recipientAccountId
+        );
+
+        const requestId = `req_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
+        const timestamp = new Date().toISOString();
+
+        await MessageRequestSheetsService.appendRequest(
+          recipientToken,
+          spreadsheetId,
+          { requestId, fromPn: fromPnIdentifier, toPn: toPnIdentifier, content },
+          toPnIdentifier,
+          recipientAccountId
+        );
+
         return res.json({
           success: true,
           request: {
-            requestId: `req_${Date.now()}`,
+            requestId,
             fromPnIdentifier,
             toPnIdentifier,
             content,
-            timestamp: new Date().toISOString(),
-            status: 'pending'
+            timestamp,
+            status: 'pending' as const
           }
         });
       } catch (error: any) {
         console.error('Error sending message request:', error);
+        if (error.message?.includes('authentication failed') ||
+            error?.response?.status === 401 ||
+            error?.code === 401) {
+          return res.status(401).json({
+            error: 'Google Drive authentication failed',
+            code: 'DRIVE_AUTH_FAILED',
+            message: 'Please reconnect your Google Drive account in the dashboard.'
+          });
+        }
         return res.status(500).json({
           error: 'Failed to send message request',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to send message request'
@@ -12955,10 +13068,75 @@ class ProductionServer {
         if (!requestId || !userPnIdentifier || typeof accept !== 'boolean') {
           return res.status(400).json({ error: 'requestId, userPnIdentifier, and accept are required' });
         }
-        // TODO: Implement message request response in Google Drive
+
+        const { MessageRequestSheetsService } = await import('./server/modules/messageRequestSheetsService');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const pnIdentifier = userPnIdentifier;
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts ||
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = this.extractAccountId(account);
+        const token = {
+          access_token: account.access_token || account.accessToken,
+          refresh_token: account.refresh_token || account.refreshToken,
+          expires_at: account.expires_at,
+          expires_in: account.expires_in
+        };
+
+        const metadataFolder = await this.getMetadataFolder(token, pnIdentifier, accountId);
+        if (!metadataFolder) {
+          return this.driveNotInitialized(res);
+        }
+
+        const sheetId = await MessageRequestSheetsService.findRequestsSpreadsheetId(
+          token,
+          metadataFolder.metadataFolderId,
+          pnIdentifier,
+          accountId
+        );
+        if (!sheetId) {
+          return res.status(404).json({ error: 'Request not found' });
+        }
+
+        const status = accept ? 'accepted' : 'declined';
+        try {
+          await MessageRequestSheetsService.setRequestStatus(
+            token,
+            sheetId,
+            requestId,
+            status,
+            pnIdentifier,
+            accountId
+          );
+        } catch (e: any) {
+          if (e?.message === 'Request not found') {
+            return res.status(404).json({ error: 'Request not found' });
+          }
+          throw e;
+        }
+
         return res.json({ success: true });
       } catch (error: any) {
         console.error('Error responding to message request:', error);
+        if (error.message?.includes('authentication failed') ||
+            error?.response?.status === 401 ||
+            error?.code === 401) {
+          return res.status(401).json({
+            error: 'Google Drive authentication failed',
+            code: 'DRIVE_AUTH_FAILED',
+            message: 'Please reconnect your Google Drive account in the dashboard.'
+          });
+        }
         return res.status(500).json({
           error: 'Failed to respond to message request',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to respond to message request'
@@ -13083,10 +13261,97 @@ class ProductionServer {
         if (!messageId || !userPnIdentifier) {
           return res.status(400).json({ error: 'messageId and userPnIdentifier are required' });
         }
-        // TODO: Implement message deletion from Google Drive
+
+        const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const pnIdentifier = userPnIdentifier;
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts ||
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = this.extractAccountId(account);
+        const token = {
+          access_token: account.access_token || account.accessToken,
+          refresh_token: account.refresh_token || account.refreshToken,
+          expires_at: account.expires_at,
+          expires_in: account.expires_in
+        };
+
+        const pnFolderName = `par Noir - ${pnIdentifier}`;
+        const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const foldersResponse = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
+          { headers: { 'Authorization': `Bearer ${token.access_token}` } }
+        );
+
+        if (!foldersResponse.ok) {
+          return res.status(500).json({ error: 'Failed to find user folder' });
+        }
+
+        const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
+        const pnFolder = foldersData.files?.[0];
+        if (!pnFolder) {
+          return res.status(500).json({ error: 'User folder not found' });
+        }
+
+        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+          token,
+          pnFolder.id,
+          pnIdentifier,
+          accountId
+        );
+
+        const conversations = await MessageSheetsService.getConversations(
+          token,
+          messagesFolderId,
+          pnIdentifier,
+          accountId
+        );
+
+        let deleted = false;
+        for (const conv of conversations) {
+          try {
+            await MessageSheetsService.deleteMessageFromConversation(
+              token,
+              conv.spreadsheetId,
+              messageId,
+              pnIdentifier,
+              accountId
+            );
+            deleted = true;
+            break;
+          } catch (e: any) {
+            if (e?.message !== 'Message not found') {
+              throw e;
+            }
+          }
+        }
+
+        if (!deleted) {
+          return res.status(404).json({ error: 'Message not found' });
+        }
+
         return res.json({ success: true });
       } catch (error: any) {
         console.error('Error deleting message:', error);
+        if (error.message?.includes('authentication failed') ||
+            error?.response?.status === 401 ||
+            error?.code === 401) {
+          return res.status(401).json({
+            error: 'Google Drive authentication failed',
+            code: 'DRIVE_AUTH_FAILED',
+            message: 'Please reconnect your Google Drive account in the dashboard.'
+          });
+        }
         return res.status(500).json({
           error: 'Failed to delete message',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to delete message'

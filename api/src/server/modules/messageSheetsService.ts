@@ -779,6 +779,60 @@ export class MessageSheetsService {
   }
 
   /**
+   * Delete a message row from a conversation sheet (matches Message ID in column D).
+   */
+  static async deleteMessageFromConversation(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    messageId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Messages!A2:F'
+    });
+
+    const rows = response.data.values || [];
+    const rowIndex = rows.findIndex(row => row[3] === messageId);
+
+    if (rowIndex === -1) {
+      throw new Error('Message not found');
+    }
+
+    const spreadsheet = await sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: 'sheets.properties'
+    });
+    const messagesSheet = spreadsheet.data.sheets?.find(s => s.properties?.title === 'Messages');
+    const sheetId = messagesSheet?.properties?.sheetId;
+    if (sheetId === undefined || sheetId === null) {
+      throw new Error('Messages sheet not found');
+    }
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId,
+                dimension: 'ROWS',
+                startIndex: rowIndex + 1,
+                endIndex: rowIndex + 2
+              }
+            }
+          }
+        ]
+      }
+    });
+  }
+
+  /**
    * Get all conversation sheets for a user
    */
   static async getConversations(

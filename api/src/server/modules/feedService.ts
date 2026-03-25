@@ -549,17 +549,9 @@ export class FeedService {
         WHERE feed_id = $1
       `, [feedId]);
 
-      // Trigger notification for feed subscribers
-      // Note: Notification now requires subscriber credentials, so this is handled
-      // by the API endpoint that has access to subscriber data
-      // TODO: Update feed post endpoint to handle notifications with subscriber credentials
-      try {
-        // Notifications will be sent when subscribers access their notifications
-        // or can be handled by a background job that has access to subscriber credentials
-      } catch (error) {
-        console.warn('Feed notification handling:', error);
-        // Don't fail the operation if notification fails
-      }
+      // NOTE: Subscriber push from this path is intentionally deferred. This method has no
+      // subscriber Google credentials; notifications are surfaced when subscribers pull (e.g.
+      // inbox/notifications endpoints) or via a future background job that resolves credentials.
 
       return true;
     } catch (error) {
@@ -852,7 +844,7 @@ export class FeedService {
         
         // Generate key pair for feed sub-pN
         const { generateKeyPairSync } = crypto;
-        const { publicKey, privateKey } = generateKeyPairSync('rsa', {
+        const { publicKey } = generateKeyPairSync('rsa', {
           modulusLength: 2048,
           publicKeyEncoding: { type: 'spki', format: 'pem' },
           privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
@@ -869,18 +861,9 @@ export class FeedService {
         // Extract creator's pN identifier from credentials
         const ownerPnIdentifier = creatorCredentials.identityId;
         
-        // Store feed tokens (will be encrypted at rest by database)
-        // TODO: Add proper encryption using creator's pN credentials
-        // For now, storing encrypted JSON (will be properly encrypted later)
-        const tokenData = {
-          pnName: feedPnName,
-          passcode: feedPasscode,
-          publicKey: publicKey
-        };
-        
-        // Simple base64 encoding for now (will be replaced with proper encryption)
-        const encryptedPnName = Buffer.from(feedPnName).toString('base64');
-        const encryptedPasscode = Buffer.from(feedPasscode).toString('base64');
+        const { encryptFeedTokenField } = await import('./feedTokenCrypto');
+        const encryptedPnName = encryptFeedTokenField(feedPnName);
+        const encryptedPasscode = encryptFeedTokenField(feedPasscode);
         
         // Store feed tokens (owned by creator's pN)
         await db.query(`

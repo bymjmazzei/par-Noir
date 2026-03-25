@@ -21,8 +21,8 @@
 
 **Summary**
 
-- **Security:** One critical finding (API returns decrypted pn name/passcode). Auth middleware logs sensitive identifiers in dev; WebSockets have no token verification; API key rate limiting is unimplemented; XSS risk on feed content; REACT_APP_* and API fallback violate project rules.
-- **Scaling:** Unbounded list queries (limit 999999) in connections and notifications; API key rate limit TODO; DB pool is bounded and documented.
+- **Security:** One critical finding (API returns decrypted pn name/passcode). Auth middleware logs sensitive identifiers in dev; WebSockets have no token verification; XSS risk on feed content; REACT_APP_* and API fallback violate project rules. **Update:** API key requests are rate-limited in `ApiKeyService.checkRateLimit()` (in-memory per key, minute/day windows).
+- **Scaling:** Unbounded list queries (limit 999999) in connections and notifications; DB pool is bounded and documented.
 - **Mobile/PWA:** id-dashboard has PWA manifest and Capacitor but service worker disabled; CORS does not list Capacitor/origin for native WebView; aggregator-browser has no PWA manifest; prism/licensing use VITE fallback.
 - **Consistency:** REACT_APP_* vs VITE_* and scattered API defaults; SHARED_CODE_RULES references `packages/` but repo uses `core/` and `sdk/`.
 
@@ -56,12 +56,12 @@
 - **Severity:** High
 - **Evidence:** `this.io.on('connection', (socket) => { ... });` with no `socket.handshake.auth` or token check.
 
-#### S4 — API key rate limiting not implemented (High)
+#### S4 — API key rate limiting (High) — **addressed in code**
 
-- **Issue:** `ApiKeyService.checkRateLimit()` is TODO and always returns `{ allowed: true }`. API-key–based clients are not rate limited, enabling abuse and cost/load risk.
-- **Location:** `api/src/server/modules/apiKeyService.ts` (lines 76–85).
-- **Severity:** High
-- **Evidence:** `// TODO: Implement rate limiting logic` and `return { allowed: true };`
+- **Issue (historical):** API-key–authenticated clients needed per-key rate limits to reduce abuse and cost/load risk.
+- **Current behavior:** `ApiKeyService.checkRateLimit()` enforces per–API-key minute and day counts in an in-memory store, using limits from the key record or defaults (`DEFAULT_REQUESTS_PER_MINUTE` / `DEFAULT_REQUESTS_PER_DAY`). Returns `allowed`, `remaining`, and `resetAt`.
+- **Location:** `api/src/server/modules/apiKeyService.ts` (`checkRateLimit`, `rateLimitState` map).
+- **Severity:** High (if missing); mitigated while the in-memory implementation is deployed (multi-instance deployments may need a shared store).
 
 #### S5 — Feed content rendered with dangerouslySetInnerHTML without sanitization (High)
 
@@ -102,9 +102,10 @@
 - **Severity:** High
 - **Evidence:** `this.getConnections(..., { limit: 999999, offset: 0 })`, `limit: 999999`.
 
-#### SC2 — API key rate limit unimplemented (Medium — same as S4)
+#### SC2 — API key rate limit (Medium — same as S4) — **addressed in code**
 
-- **Issue:** Same as security finding S4; from a scaling/abuse perspective, API key clients are not throttled.
+- **Issue (historical):** API key clients were not throttled.
+- **Current behavior:** Same as S4: in-memory per-key limits in `checkRateLimit()`.
 - **Location:** `api/src/server/modules/apiKeyService.ts`.
 - **Severity:** Medium
 
@@ -211,7 +212,7 @@ Actions are ordered by priority; dependencies are noted.
 | 1 | **Stop returning decrypted pn name/passcode in GET /api/feeds/tokens.** Redesign so the client never receives plaintext credentials (e.g. return only opaque tokens or server-side-only operations that use decrypted values). | Security | S1 |
 | 2 | **Remove or redact auth logging of DID and pnIdentifier.** Do not log identity identifiers in any environment; at most log a non-reversible hash or “authenticated” for debugging. | Security | S2 |
 | 3 | **Define WebSocket auth policy.** If sockets are used for user-scoped or sensitive data, require Bearer token on connection (e.g. socket.handshake.auth.token) and validate via pnOAuthService; otherwise document that sockets are public/unauthenticated. | Security | S3 |
-| 4 | **Implement API key rate limiting.** In ApiKeyService.checkRateLimit(), enforce per–api_key limits (e.g. per minute/day) using DB or in-memory store; return allowed/remaining/resetAt. Apply before processing API-key–authenticated requests. | Security / Scaling | S4, SC2 |
+| 4 | **API key rate limiting.** Implemented in `ApiKeyService.checkRateLimit()` (in-memory per key). Optional follow-up: shared store (e.g. Redis) for multi-instance APIs. | Security / Scaling | S4, SC2 |
 | 5 | **Sanitize feed post content before render.** In id-dashboard FeedPage, run post.content through a sanitizer (e.g. DOMPurify) before passing to dangerouslySetInnerHTML, or render as plain text. Prefer server-side sanitization at ingestion as well. | Security | S5 |
 | 6 | **Require VITE_API_ENDPOINT in production.** In id-dashboard, aggregator-browser, and prism config/api.ts, in production build throw or fail fast if import.meta.env.VITE_API_ENDPOINT is missing; remove hardcoded 'https://api.parnoir.com' fallback. | Security / Consistency | S6, M4 |
 | 7 | **Migrate id-dashboard from REACT_APP_* to VITE_*.** Replace all process.env.REACT_APP_* with import.meta.env.VITE_* (or a single config module that reads VITE_*). Update IntegrationConfigManager and any build/deploy docs. Provide .env.example with VITE_* only. | Security / Consistency | S7, C1 |
