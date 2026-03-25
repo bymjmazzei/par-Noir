@@ -10,7 +10,7 @@ This document is the **in-repo** copy of the plan. Cursor’s **Build Plan** UI 
 
 | Theme | What landed | Where |
 |-------|-------------|--------|
-| VITE API URL | Production fails if `VITE_API_ENDPOINT` unset; dev → `http://127.0.0.1:3001` | `apps/*/src/config/api.ts` (dashboard, aggregator-browser, prism, developer-portal) |
+| VITE API URL | Required at **build time**; root **`./deploy.sh`** exports default `https://api.parnoir.com`. Dev → `http://127.0.0.1:3001` | `apps/*/src/config/api.ts`, root `deploy.sh` |
 | WebSockets | Optional `SOCKET_REQUIRE_AUTH=true` | `api/src/server.ts` |
 | Sentry (API) | Optional `SENTRY_DSN` | `api/src/server/utils/sentry.ts` |
 | Access logs | `X-Request-Id`, JSON lines (`ACCESS_LOG_JSON` in prod) | `api/src/server.ts` |

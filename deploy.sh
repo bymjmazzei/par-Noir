@@ -6,6 +6,7 @@ echo "🚀 Starting deployment..."
 # All Vite apps require VITE_API_ENDPOINT in production builds (see apps/*/src/config/api.ts).
 # Export once so every `npm run build` inherits it. Override for staging: VITE_API_ENDPOINT=https://… ./deploy.sh
 export VITE_API_ENDPOINT="${VITE_API_ENDPOINT:-https://api.parnoir.com}"
+echo "📌 Using VITE_API_ENDPOINT=$VITE_API_ENDPOINT (set env before ./deploy.sh to override)"
 
 # Build id-dashboard
 echo "📦 Building id-dashboard..."

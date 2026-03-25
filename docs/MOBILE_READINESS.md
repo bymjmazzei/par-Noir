@@ -4,7 +4,7 @@ Summary of mobile/PWA readiness and deployment requirements. For the full audit 
 
 ## Environment variables
 
-Production builds **require** `VITE_API_ENDPOINT` to be set; apps will throw at load if it is missing in production. Do not rely on hardcoded fallbacks.
+Production builds **require** `VITE_API_ENDPOINT` at **build time** (Vite inlines it). If it is missing, the app throws on load. **You do not need to configure this by hand for standard Firebase deploys:** from the repo root, **`./deploy.sh` exports `VITE_API_ENDPOINT`** with default `https://api.parnoir.com`. Override: `VITE_API_ENDPOINT=https://your-api ./deploy.sh`. For ad-hoc `npm run build` inside an app, add `VITE_API_ENDPOINT=…` to that app’s `.env` or export it in your shell.
 
 ### id-dashboard
 
@@ -45,4 +45,4 @@ If present in the repo: require `VITE_API_ENDPOINT` in production and list any a
 
 ---
 
-See root or per-app `deploy.sh` and `.env.example` (where available) for deploy-time values. Production checklist: set `VITE_API_ENDPOINT` (and any required integration vars) before building each front-end app.
+See root **`deploy.sh`** (sets `VITE_API_ENDPOINT` for all Vite apps) and per-app `.env.example` where present. For integration keys (SendGrid, etc.), still configure per app as needed.

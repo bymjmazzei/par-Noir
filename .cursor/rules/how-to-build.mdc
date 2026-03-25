@@ -15,7 +15,7 @@ alwaysApply: true
 - **id-dashboard:** May use API and/or direct Google; do not replicate that pattern in aggregator-browser.
 - **We are in development.** Do not prioritize backwards compatibility. Prefer correct, simple behavior over preserving legacy or broken behavior.
 - **Do not patch symptoms.** Find the root cause and fix it. Avoid workarounds, compatibility shims, or "quick fixes" that hide the real bug.
-- **API base URL:** One config module (e.g. config/api.ts), one env var (VITE_API_ENDPOINT), one default in that module only. Do not scatter process.env.REACT_APP_* or inline API URLs.
+- **API base URL:** One config module per app (e.g. `config/api.ts`), one env var **`VITE_API_ENDPOINT`**. At **production build time** that value must be defined (Vite inlines it). There is **no** secret default inside the bundle for prod—wrong URLs are worse than a failed build. **Root `./deploy.sh` exports `VITE_API_ENDPOINT` for you** (default `https://api.parnoir.com`; override: `VITE_API_ENDPOINT=https://… ./deploy.sh`). If you run `npm run build` inside an app without `./deploy.sh`, put `VITE_API_ENDPOINT=…` in that app’s `.env` or export it in the shell first. Do not scatter `REACT_APP_*` or inline API URLs.
 - **Secrets:** Do not commit .env, API keys, or secrets to git. Do not add hardcoded API keys or client IDs as fallbacks; use VITE_* only; fail when unset. Pre-commit runs scripts/check-secrets.sh; do not bypass it.
 - **Sensitive data:** Never expose in plain text pn name, passcode, Google Drive account, age, email, or anything the identity protocol and ZKPs protect—not in code, logs, or console. Encrypt or ZKP; never raw.
 - **Feature hierarchy:** Identity-direct → dashboard + API; browser-only → browser only.
@@ -36,7 +36,8 @@ alwaysApply: true
    - `git push` to `main` (or the project’s deploy branch). If the remote rejects, fix and push again.
 
 3. **Deploy to Firebase**
-   - Build what you changed: e.g. `npm run build` in the app(s) you edited, or root `npm run build`.
-   - Deploy to Firebase: `./deploy.sh` or `firebase deploy --only hosting`. `deploy.sh` builds id-dashboard and runs `firebase deploy --only hosting`; if you changed aggregator-browser, build it (`cd apps/aggregator-browser && npm run build`) then run `firebase deploy --only hosting` so both targets (id-dashboard, aggregator-browser) are included.
+   - Prefer **repo root `./deploy.sh`**: it exports **`VITE_API_ENDPOINT`** (default `https://api.parnoir.com`) for every Vite production build, then builds dashboard, oauth-ui, aggregator (browse + messaging), prism, licensing-portal, developer-portal, and runs `firebase deploy --only hosting`.
+   - If you build manually: set **`VITE_API_ENDPOINT`** in the environment or the app’s `.env` before `npm run build`, or the production bundle will throw at runtime.
+   - If you only run `firebase deploy --only hosting` without rebuilding, ensure `dist/` folders were built with `VITE_API_ENDPOINT` set.
 
 **If you cannot push** (e.g. no write access, or deploy requires secrets only the user has): before finishing, tell the user explicitly: “Changes are ready but not pushed or deployed. You need to: 1) `git add` / `git commit` / `git push`, 2) run `./deploy.sh` or `firebase deploy --only hosting` to deploy to Firebase.”
