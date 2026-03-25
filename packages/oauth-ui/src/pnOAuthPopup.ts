@@ -185,6 +185,37 @@ function readLatestOAuthStoragePayloadDirect(): Record<string, unknown> | null {
   return null;
 }
 
+/** Drop leftover bridge keys so a new flow does not immediately consume a stale callback. */
+function clearStaleOAuthBridgeKeys(): void {
+  try {
+    localStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
+    localStorage.removeItem(PN_OAUTH_STORAGE_LATEST_KEY);
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('pn_oauth_callback_')) {
+        toRemove.push(key);
+      }
+    }
+    for (const key of toRemove) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function defaultPopupName(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `pn-oauth-${crypto.randomUUID()}`;
+    }
+  } catch {
+    /* ignore */
+  }
+  return `pn-oauth-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 /**
  * Opens consent URL in a popup and resolves when oauth_callback is received
  * (postMessage, BroadcastChannel, or localStorage poll).
@@ -196,7 +227,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     origin = typeof window !== 'undefined' ? window.location.origin : '',
     allowedMessageOrigins = [],
     timeoutMs = 300_000,
-    popupName = 'pn-oauth',
+    popupName = defaultPopupName(),
     popupFeatures = DEFAULT_POPUP_FEATURES,
     completeViaParentNavigation = false,
   } = options;
@@ -215,6 +246,8 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       reject(new Error('POPUP_BLOCKED'));
       return;
     }
+
+    clearStaleOAuthBridgeKeys();
 
     let settled = false;
     let pollInterval: ReturnType<typeof setInterval> | undefined;
@@ -416,6 +449,10 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
             tryAcceptFromOpenerUrl();
             if (!settled) fail(new Error('POPUP_CLOSED'));
           }
+        } else {
+          // Cross-origin OAuth navigations can briefly report closed; reset so we only fail after
+          // a sustained closed period while the window was previously observable as open.
+          popupClosedTime = null;
         }
       } catch {
         /* COOP may throw */
