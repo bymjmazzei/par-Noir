@@ -10,6 +10,9 @@ import { getPrismRedirectUri, PRISM_CLIENT_ID } from '../utils/oauth';
 const CLIENT_ID = PRISM_CLIENT_ID;
 const SESSION_KEY = 'prism_session';
 
+/** Serialize refresh so two parallel getSession() calls cannot reuse the same refresh_token (fatal when rotation is on). */
+let refreshInFlight: Promise<PrismSession | null> | null = null;
+
 export interface PrismSession {
   accessToken: string;
   refreshToken?: string;
@@ -79,13 +82,22 @@ export async function refreshParNoirSession(refreshToken: string): Promise<Prism
       client_id: CLIENT_ID,
     }),
   });
-  if (!response.ok) return null;
+  if (!response.ok) {
+    // 400 invalid_grant: stale or already-rotated token (common with rotation + parallel refresh). Clear so user can sign in again.
+    if (response.status === 400) {
+      await clearSession();
+    }
+    return null;
+  }
   const data = (await response.json()) as {
     access_token?: string;
     refresh_token?: string;
     expires_in?: number;
   };
-  if (!data.access_token) return null;
+  if (!data.access_token) {
+    await clearSession();
+    return null;
+  }
   const expiresAt = Date.now() + (data.expires_in || 3600) * 1000;
   const userRes = await fetch(`${API_ENDPOINT}/oauth/userinfo`, {
     headers: { Authorization: `Bearer ${data.access_token}` },
@@ -98,6 +110,19 @@ export async function refreshParNoirSession(refreshToken: string): Promise<Prism
     did: user.sub || user.did || '',
     pnIdentifier: user.pn_identifier,
   };
+  if (!session.did && userRes.ok === false) {
+    // Keep prior DID if userinfo fails transiently (token is still valid).
+    try {
+      const raw = await secureStorageAdapter.getItem(SESSION_KEY);
+      if (raw) {
+        const prev = JSON.parse(raw) as PrismSession;
+        if (prev.did) session.did = prev.did;
+        if (prev.pnIdentifier) session.pnIdentifier = prev.pnIdentifier;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
   await saveSession(session);
   return session;
 }
@@ -111,7 +136,12 @@ export async function getSession(): Promise<PrismSession | null> {
     const bufferMs = 60000;
     if (s.expiresAt && s.expiresAt > Date.now() + bufferMs) return s;
     if (s.refreshToken) {
-      const refreshed = await refreshParNoirSession(s.refreshToken);
+      if (!refreshInFlight) {
+        refreshInFlight = refreshParNoirSession(s.refreshToken).finally(() => {
+          refreshInFlight = null;
+        });
+      }
+      const refreshed = await refreshInFlight;
       if (refreshed) return refreshed;
     }
     return null;
