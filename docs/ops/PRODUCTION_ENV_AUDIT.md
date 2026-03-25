@@ -19,6 +19,7 @@ Use this before calling a release “production ready.”
 
 ## Related docs
 
+- [OAUTH_AND_PRODUCTION_ROLLOUT_CHECKLIST.md](./OAUTH_AND_PRODUCTION_ROLLOUT_CHECKLIST.md) (ordered rollout: refresh rotation, signing, admin, KMS)
 - [BACKUP_AND_RESTORE_RUNBOOK.md](./BACKUP_AND_RESTORE_RUNBOOK.md)
 - [GO_NO_GO_LAUNCH.md](./GO_NO_GO_LAUNCH.md)
 - [api/README.md](../../api/README.md) (Environment)
