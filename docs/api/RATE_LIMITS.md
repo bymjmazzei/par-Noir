@@ -29,6 +29,7 @@ Larger bodies receive 413 or body-parser errors.
 When using API-key authentication (e.g. `X-API-Key` or equivalent), limits are enforced **per API key** in addition to any per-IP limits:
 
 - **Default:** 60 requests per minute, 10 000 requests per day (configurable per key in the database).
+- **Process vs cluster:** With a single API process, counts are held in memory. When **`REDIS_URL` is set** and Redis connects successfully at startup, the same limits are enforced using Redis so **multiple API instances** share one counter per key (fixed clock-minute and calendar-day buckets).
 - On exceed: 429 with `Retry-After` (or standard rate-limit headers).
 
 See API key management docs for per-key overrides.

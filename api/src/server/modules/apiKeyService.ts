@@ -4,7 +4,9 @@
  */
 
 import crypto from 'crypto';
+import type { RedisClientType } from 'redis';
 import { getDatabasePool } from '../utils/database';
+import { getCacheClient } from '../utils/cache';
 import { appendAuditEvent } from './auditService';
 import { isPnRevokedForNetwork } from './identitySuccessionService';
 
@@ -208,8 +210,9 @@ export class ApiKeyService {
   }
 
   /**
-   * Check rate limit for an API key (in-memory sliding window).
-   * Uses per-key limits from apiKeyData or defaults.
+   * Check rate limit for an API key.
+   * When Redis is connected (see cache / REDIS_URL), counts are shared across API instances.
+   * Otherwise uses in-memory state (single-process only).
    */
   static async checkRateLimit(
     apiKeyId: string,
@@ -222,45 +225,93 @@ export class ApiKeyService {
     const now = Date.now();
     const perMinute = limits?.requestsPerMinute ?? DEFAULT_REQUESTS_PER_MINUTE;
     const perDay = limits?.requestsPerDay ?? DEFAULT_REQUESTS_PER_DAY;
-    const oneMinuteMs = 60 * 1000;
-    const oneDayMs = 24 * 60 * 60 * 1000;
-
-    let state = rateLimitState.get(apiKeyId);
-    if (!state) {
-      state = { minuteCount: 0, minuteStart: now, dayCount: 0, dayStart: now };
-      rateLimitState.set(apiKeyId, state);
+    const redis = getCacheClient();
+    if (redis) {
+      return checkRateLimitRedis(redis, apiKeyId, perMinute, perDay, now);
     }
-
-    if (now - state.minuteStart >= oneMinuteMs) {
-      state.minuteCount = 0;
-      state.minuteStart = now;
-    }
-    if (now - state.dayStart >= oneDayMs) {
-      state.dayCount = 0;
-      state.dayStart = now;
-    }
-
-    state.minuteCount += 1;
-    state.dayCount += 1;
-
-    const overMinute = state.minuteCount > perMinute;
-    const overDay = state.dayCount > perDay;
-    const allowed = !overMinute && !overDay;
-
-    const resetAt = overMinute
-      ? state.minuteStart + oneMinuteMs
-      : overDay
-        ? state.dayStart + oneDayMs
-        : state.minuteStart + oneMinuteMs;
-
-    const remaining = allowed
-      ? Math.min(perMinute - state.minuteCount, perDay - state.dayCount)
-      : 0;
-
-    return {
-      allowed,
-      remaining: Math.max(0, remaining),
-      resetAt
-    };
+    return checkRateLimitMemory(apiKeyId, perMinute, perDay, now);
   }
+}
+
+const oneMinuteMs = 60 * 1000;
+const oneDayMs = 24 * 60 * 60 * 1000;
+
+function checkRateLimitMemory(
+  apiKeyId: string,
+  perMinute: number,
+  perDay: number,
+  now: number
+): { allowed: boolean; remaining?: number; resetAt?: number } {
+  let state = rateLimitState.get(apiKeyId);
+  if (!state) {
+    state = { minuteCount: 0, minuteStart: now, dayCount: 0, dayStart: now };
+    rateLimitState.set(apiKeyId, state);
+  }
+
+  if (now - state.minuteStart >= oneMinuteMs) {
+    state.minuteCount = 0;
+    state.minuteStart = now;
+  }
+  if (now - state.dayStart >= oneDayMs) {
+    state.dayCount = 0;
+    state.dayStart = now;
+  }
+
+  state.minuteCount += 1;
+  state.dayCount += 1;
+
+  const overMinute = state.minuteCount > perMinute;
+  const overDay = state.dayCount > perDay;
+  const allowed = !overMinute && !overDay;
+
+  const resetAt = overMinute
+    ? state.minuteStart + oneMinuteMs
+    : overDay
+      ? state.dayStart + oneDayMs
+      : state.minuteStart + oneMinuteMs;
+
+  const remaining = allowed ? Math.min(perMinute - state.minuteCount, perDay - state.dayCount) : 0;
+
+  return {
+    allowed,
+    remaining: Math.max(0, remaining),
+    resetAt
+  };
+}
+
+async function checkRateLimitRedis(
+  client: RedisClientType,
+  apiKeyId: string,
+  perMinute: number,
+  perDay: number,
+  now: number
+): Promise<{ allowed: boolean; remaining?: number; resetAt?: number }> {
+  const minuteBucket = Math.floor(now / oneMinuteMs);
+  const dayBucket = Math.floor(now / oneDayMs);
+  const mKey = `pn:apirl:m:${apiKeyId}:${minuteBucket}`;
+  const dKey = `pn:apirl:d:${apiKeyId}:${dayBucket}`;
+
+  const mCount = await client.incr(mKey);
+  if (mCount === 1) {
+    await client.expire(mKey, 120);
+  }
+  const dCount = await client.incr(dKey);
+  if (dCount === 1) {
+    await client.expire(dKey, 172800);
+  }
+
+  const overMinute = mCount > perMinute;
+  const overDay = dCount > perDay;
+  const allowed = !overMinute && !overDay;
+  const minuteEnd = (minuteBucket + 1) * oneMinuteMs;
+  const dayEnd = (dayBucket + 1) * oneDayMs;
+  const resetAt = overMinute ? minuteEnd : overDay ? dayEnd : minuteEnd;
+
+  const remaining = allowed ? Math.min(perMinute - mCount, perDay - dCount) : 0;
+
+  return {
+    allowed,
+    remaining: Math.max(0, remaining),
+    resetAt
+  };
 }

@@ -275,6 +275,14 @@ This API server supports the **"MARK I"** identity - the first real identity cre
 | `ADMIN_API_KEY` | Protects `POST /oauth/clients` (admin), `POST /api/admin/api-keys`, `POST /api/admin/identity/succession`, `GET /api/admin/audit-events` (`X-Admin-Key` or `Authorization: Bearer`). Do not use from browser apps. |
 | `DEVELOPER_PORTAL_CLIENT_ID` | Optional; defaults to **`developer-portal`**. OAuth access tokens for this client id are required for `/api/developer/*` self-service routes. |
 | `AUDIT_RETENTION_DAYS` | Optional; defaults to **365** for `audit_events` pruning helper |
+| `REDIS_URL` | Optional; enables distributed cache and **shared API-key rate limits** across multiple API processes (see `docs/api/RATE_LIMITS.md`) |
+| `SENTRY_DSN` | Optional; server-side error reporting (`SENTRY_TRACES_SAMPLE_RATE` 0–1, default 0) |
+| `ACCESS_LOG_JSON` | Set to `true` to emit one JSON access line per request in production (on by default in development only) |
+| `SOCKET_REQUIRE_AUTH` | Set to `true` to require a valid OAuth access token on Socket.IO handshakes |
+
+**Health:** `GET /health` (liveness). `GET /health/ready` returns 503 if `DATABASE_URL` is set but the database is unreachable.
+
+**Operations (checklist):** (1) Configure automated Postgres backups and run a restore drill on your provider. (2) Set `SENTRY_DSN` or another APM path you own. (3) For more than one API instance, set `REDIS_URL` so per–API-key limits stay global. (4) Native apps: privacy policy URL, support contact, OAuth redirect / `VITE_PN_CLIENT_ID` per app, TestFlight or Play internal track before wide release.
 
 See `docs/developer/INTEGRATOR_IDENTITY_SUCCESSION.md` for public succession reads (`GET /api/v1/identity/successor`).
 

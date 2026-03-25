@@ -1,3 +1,8 @@
-/** Single default lives here; override with VITE_API_ENDPOINT in .env when pointing at another host. */
+/** Override with VITE_API_ENDPOINT. Production builds require it (no public API URL fallback). */
 const envEndpoint = import.meta.env.VITE_API_ENDPOINT;
-export const API_ENDPOINT = (envEndpoint && String(envEndpoint).trim()) || 'https://api.parnoir.com';
+if (import.meta.env.PROD && (!envEndpoint || String(envEndpoint).trim() === '')) {
+  throw new Error('VITE_API_ENDPOINT is required in production. Set it in your environment or .env.');
+}
+const DEV_API_DEFAULT = 'http://127.0.0.1:3001';
+export const API_ENDPOINT =
+  (envEndpoint && String(envEndpoint).trim()) || (import.meta.env.DEV ? DEV_API_DEFAULT : '');

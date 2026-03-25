@@ -23,6 +23,7 @@ import path from 'path';
 import { determineFileType, getFileTypeFromMime, determineContentClass } from './server/utils/fileTypeUtils';
 import { isOAuthBrowserHtmlEntryGet } from './server/utils/oauthBrowserHtmlEntry';
 import { safeClientErrorMessage } from './server/utils/safeError';
+import { captureApiRouteError, initApiSentry } from './server/utils/sentry';
 import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modules/adminDeveloperRoutes';
 import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSelfServiceRoutes';
 import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
@@ -581,6 +582,7 @@ class ProductionServer {
     // SECURITY FIX: Restrict no-origin requests to prevent CSRF attacks
     const publicNoOriginPaths = [
       '/health',
+      '/health/ready',
       '/favicon.ico',
       '/api/aggregator/metadata-index', 
       '/api/aggregator/nsfw-index',
@@ -651,6 +653,34 @@ class ProductionServer {
 
     // Compression
     this.app.use(compression());
+
+    // Request id + structured access log (no query string — may contain tokens)
+    this.app.use((req, res, next) => {
+      const incoming = req.headers['x-request-id'];
+      const requestId =
+        typeof incoming === 'string' && incoming.trim() ? incoming.trim() : crypto.randomUUID();
+      (req as express.Request & { requestId?: string }).requestId = requestId;
+      res.setHeader('X-Request-Id', requestId);
+      const started = Date.now();
+      res.on('finish', () => {
+        const pathOnly = req.path || req.url?.split('?')[0] || '';
+        const enableAccessLog =
+          NODE_ENV === 'development' || process.env.ACCESS_LOG_JSON === 'true';
+        if (enableAccessLog) {
+          console.log(
+            JSON.stringify({
+              level: 'access',
+              requestId,
+              method: req.method,
+              path: pathOnly,
+              status: res.statusCode,
+              ms: Date.now() - started
+            })
+          );
+        }
+      });
+      next();
+    });
 
     // Rate limiting - apply general limiter to most routes
     // Aggregator endpoints get a more lenient limiter (applied specifically)
@@ -1666,6 +1696,33 @@ class ProductionServer {
         uptime: process.uptime(),
         environment: NODE_ENV
       });
+    });
+
+    // Readiness: DB when DATABASE_URL is set (for load balancers / k8s)
+    this.app.get('/health/ready', async (_req, res) => {
+      if (!process.env.DATABASE_URL) {
+        return res.json({
+          ready: true,
+          database: 'not_configured',
+          timestamp: new Date().toISOString()
+        });
+      }
+      try {
+        const { getDatabasePool } = await import('./server/utils/database');
+        const pool = getDatabasePool();
+        await pool.query('SELECT 1');
+        return res.json({
+          ready: true,
+          database: 'ok',
+          timestamp: new Date().toISOString()
+        });
+      } catch {
+        return res.status(503).json({
+          ready: false,
+          database: 'unavailable',
+          timestamp: new Date().toISOString()
+        });
+      }
     });
 
     // API status endpoint
@@ -9927,11 +9984,15 @@ class ProductionServer {
 
     // Error handling middleware
     this.app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      captureApiRouteError(err, req);
+      const rid =
+        (req as express.Request & { requestId?: string }).requestId ||
+        (typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : 'unknown');
       const errorResponse = {
         error: 'Internal Server Error',
         status: 500,
         timestamp: new Date().toISOString(),
-        requestId: req.headers['x-request-id'] || 'unknown'
+        requestId: rid
       };
 
       if (NODE_ENV === 'development') {
@@ -9954,12 +10015,37 @@ class ProductionServer {
 
   /**
    * WebSocket (Socket.IO) setup.
-   * SECURITY: Connections are currently unauthenticated. Do not use for user-scoped or
-   * sensitive data. If adding notification or private messaging over sockets, require
-   * Bearer token in handshake (e.g. socket.handshake.auth.token) and validate via
-   * PNOAuthService.validateAccessToken before attaching user to socket.data.
+   * Set SOCKET_REQUIRE_AUTH=true in production to require a valid OAuth access token
+   * (socket.handshake.auth.token or Authorization: Bearer header). Otherwise connections
+   * are anonymous; keep handlers public / non-sensitive only.
    */
   private setupWebSockets(): void {
+    if (process.env.SOCKET_REQUIRE_AUTH === 'true') {
+      const { PNOAuthService } = require('./server/modules/pnOAuthService');
+      this.io.use((socket, next) => {
+        try {
+          const auth = socket.handshake.auth as { token?: string } | undefined;
+          const header = socket.handshake.headers.authorization;
+          const raw =
+            (auth?.token && String(auth.token).trim()) ||
+            (typeof header === 'string' && header.startsWith('Bearer ')
+              ? header.slice(7).trim()
+              : '');
+          if (!raw) {
+            return next(new Error('Unauthorized'));
+          }
+          const tokenPayload = PNOAuthService.validateAccessToken(raw);
+          if (!tokenPayload) {
+            return next(new Error('Unauthorized'));
+          }
+          (socket.data as { oauth?: typeof tokenPayload }).oauth = tokenPayload;
+          return next();
+        } catch {
+          return next(new Error('Unauthorized'));
+        }
+      });
+    }
+
     this.io.on('connection', (socket) => {
       if (process.env.NODE_ENV === 'development') {
         console.log(`Client connected: ${socket.id}`);
@@ -17879,6 +17965,7 @@ class ProductionServer {
   }
 
   public async start(): Promise<void> {
+    initApiSentry();
     // Setup routes (async imports)
     await this.setupRoutes();
     
