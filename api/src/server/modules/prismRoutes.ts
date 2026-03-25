@@ -4,6 +4,7 @@
  */
 
 import { Request, Response } from 'express';
+import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { getPendingQueueItems, getPendingQueueItemsForRay, submitVote, addToPrismQueue, getQueueStats, seedDemoQueueItems, getQueueItemById } from './prismQueueService';
 import { isPrismAdmin, isBootstrapMode } from './prismAdminService';
 import { getReputationScore, submitRayApplication } from './prismReputationService';
@@ -18,13 +19,7 @@ export function setupPrismRoutes(app: any): void {
    */
   app.post('/api/reports', async (req: Request, res: Response) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const payload = PNOAuthService.validateAccessToken(token);
+      const payload = getBearerTokenPayload(req);
       if (!payload?.pnIdentifier) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -66,13 +61,7 @@ export function setupPrismRoutes(app: any): void {
    */
   app.get('/api/prism/queue', async (req: Request, res: Response) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const payload = PNOAuthService.validateAccessToken(token);
+      const payload = getBearerTokenPayload(req);
       if (!payload?.pnIdentifier) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -108,13 +97,7 @@ export function setupPrismRoutes(app: any): void {
    */
   app.post('/api/prism/vote', async (req: Request, res: Response) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const payload = PNOAuthService.validateAccessToken(token);
+      const payload = getBearerTokenPayload(req);
       if (!payload?.pnIdentifier) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -146,13 +129,7 @@ export function setupPrismRoutes(app: any): void {
    */
   app.get('/api/prism/preview', async (req: Request, res: Response) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const payload = PNOAuthService.validateAccessToken(token);
+      const payload = getBearerTokenPayload(req);
       if (!payload?.pnIdentifier) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -204,13 +181,7 @@ export function setupPrismRoutes(app: any): void {
    */
   app.post('/api/prism/apply', async (req: Request, res: Response) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const payload = PNOAuthService.validateAccessToken(token);
+      const payload = getBearerTokenPayload(req);
       if (!payload?.pnIdentifier) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -238,13 +209,7 @@ export function setupPrismRoutes(app: any): void {
    */
   app.get('/api/prism/reputation', async (req: Request, res: Response) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const payload = PNOAuthService.validateAccessToken(token);
+      const payload = getBearerTokenPayload(req);
       if (!payload?.pnIdentifier) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -262,13 +227,7 @@ export function setupPrismRoutes(app: any): void {
    */
   app.get('/api/prism/admin/reputation/:pnIdentifier', async (req: Request, res: Response) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const payload = PNOAuthService.validateAccessToken(token);
+      const payload = getBearerTokenPayload(req);
       if (!payload?.pnIdentifier || !isPrismAdmin(payload.pnIdentifier)) {
         return res.status(403).json({ error: 'Admin required' });
       }
@@ -290,13 +249,7 @@ export function setupPrismRoutes(app: any): void {
    */
   app.get('/api/prism/admin/check', async (req: Request, res: Response) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const payload = PNOAuthService.validateAccessToken(token);
+      const payload = getBearerTokenPayload(req);
       if (!payload?.pnIdentifier) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -316,13 +269,7 @@ export function setupPrismRoutes(app: any): void {
    */
   app.post('/api/prism/admin/ensure-prism-ledgers', async (req: Request, res: Response) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const payload = PNOAuthService.validateAccessToken(token);
+      const payload = getBearerTokenPayload(req);
       if (!payload?.pnIdentifier || !isPrismAdmin(payload.pnIdentifier)) {
         return res.status(403).json({ error: 'Admin required' });
       }
@@ -345,13 +292,7 @@ export function setupPrismRoutes(app: any): void {
    */
   app.post('/api/prism/admin/seed-demo', async (req: Request, res: Response) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const payload = PNOAuthService.validateAccessToken(token);
+      const payload = getBearerTokenPayload(req);
       if (!payload?.pnIdentifier || !isPrismAdmin(payload.pnIdentifier)) {
         return res.status(403).json({ error: 'Admin required' });
       }
@@ -378,13 +319,7 @@ export function setupPrismRoutes(app: any): void {
    */
   app.get('/api/prism/admin/stats', async (req: Request, res: Response) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const payload = PNOAuthService.validateAccessToken(token);
+      const payload = getBearerTokenPayload(req);
       if (!payload?.pnIdentifier || !isPrismAdmin(payload.pnIdentifier)) {
         return res.status(403).json({ error: 'Admin required' });
       }

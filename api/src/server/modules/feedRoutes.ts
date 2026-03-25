@@ -4,6 +4,7 @@
  */
 
 import { Request, Response } from 'express';
+import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { FeedService, Feed, FeedRow } from './feedService';
 import { getDatabasePool } from '../utils/database';
 
@@ -57,16 +58,7 @@ export function setupFeedRoutes(app: any) {
       const { feedId } = req.params;
       const { fileId, addedBy, content, media, buttons, polls, forms, isTopPost } = req.body;
 
-      // Get authenticated user from token
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const tokenPayload = PNOAuthService.validateAccessToken(token);
-
+      const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -219,16 +211,7 @@ export function setupFeedRoutes(app: any) {
       const { feedId, fileId } = req.params;
       const { creatorDid } = req.body;
 
-      // Get authenticated user from token
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const tokenPayload = PNOAuthService.validateAccessToken(token);
-
+      const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -329,16 +312,7 @@ export function setupFeedRoutes(app: any) {
       const { feedId } = req.params;
       const { content, media, buttons, polls, forms } = req.body;
 
-      // Get authenticated user
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const tokenPayload = PNOAuthService.validateAccessToken(token);
-
+      const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -444,16 +418,7 @@ export function setupFeedRoutes(app: any) {
       const { feedId } = req.params;
       const { billingCycle, checkoutId, checkoutUrl } = req.body;
 
-      // Get authenticated user
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const tokenPayload = PNOAuthService.validateAccessToken(token);
-
+      const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -505,16 +470,7 @@ export function setupFeedRoutes(app: any) {
     try {
       const { feedId } = req.params;
 
-      // Get authenticated user
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const tokenPayload = PNOAuthService.validateAccessToken(token);
-
+      const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -539,16 +495,7 @@ export function setupFeedRoutes(app: any) {
    */
   app.get('/api/subscriptions', async (req: Request, res: Response) => {
     try {
-      // Get authenticated user
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const tokenPayload = PNOAuthService.validateAccessToken(token);
-
+      const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -586,16 +533,7 @@ export function setupFeedRoutes(app: any) {
     try {
       const { checkoutId } = req.body;
 
-      // Get authenticated user
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const tokenPayload = PNOAuthService.validateAccessToken(token);
-
+      const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -656,16 +594,7 @@ export function setupFeedRoutes(app: any) {
     try {
       const { checkoutId } = req.params;
 
-      // Get authenticated user
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const tokenPayload = PNOAuthService.validateAccessToken(token);
-
+      const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -712,16 +641,7 @@ export function setupFeedRoutes(app: any) {
       const { feedId } = req.params;
       const { delegateDid, permissions } = req.body;
 
-      // Get authenticated user
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const tokenPayload = PNOAuthService.validateAccessToken(token);
-
+      const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -793,16 +713,7 @@ export function setupFeedRoutes(app: any) {
     try {
       const { feedId } = req.params;
 
-      // Get authenticated user
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const tokenPayload = PNOAuthService.validateAccessToken(token);
-
+      const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -846,16 +757,7 @@ export function setupFeedRoutes(app: any) {
     try {
       const { feedId, delegationId } = req.params;
 
-      // Get authenticated user
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const tokenPayload = PNOAuthService.validateAccessToken(token);
-
+      const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -891,16 +793,7 @@ export function setupFeedRoutes(app: any) {
     try {
       const { userPnIdentifier } = req.params;
 
-      // Get authenticated user
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const tokenPayload = PNOAuthService.validateAccessToken(token);
-
+      const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -966,16 +859,7 @@ export function setupFeedRoutes(app: any) {
    */
   app.get('/api/feeds/tokens', async (req: Request, res: Response) => {
     try {
-      // Get authenticated user
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const tokenPayload = PNOAuthService.validateAccessToken(token);
-
+      const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
@@ -1021,16 +905,7 @@ export function setupFeedRoutes(app: any) {
     try {
       const { checkoutId, verificationId, verifiedZKPs } = req.body;
 
-      // Get authenticated user
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = authHeader.substring(7);
-      const { PNOAuthService } = await import('./pnOAuthService');
-      const tokenPayload = PNOAuthService.validateAccessToken(token);
-
+      const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }

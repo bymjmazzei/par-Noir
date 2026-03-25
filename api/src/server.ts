@@ -28,6 +28,7 @@ import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modul
 import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSelfServiceRoutes';
 import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
 import { hashIdentifier, safeLogger } from './utils/logger';
+import { getBearerTokenPayload } from './server/middleware/authMiddleware';
 
 // Environment configuration
 const PORT = process.env.PORT || 3001;
@@ -2111,18 +2112,7 @@ class ProductionServer {
     this.app.get('/api/aggregator/my-files', async (req, res) => {
       try {
         // Require authentication
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({
-            error: 'unauthorized',
-            error_description: 'Missing or invalid Authorization header'
-          });
-        }
-
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const tokenPayload = PNOAuthService.validateAccessToken(token);
-        
+        const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload) {
           return res.status(401).json({
             error: 'unauthorized',
@@ -2511,30 +2501,15 @@ class ProductionServer {
         }
 
         // STEP 0: Validate token and get user identifier
-        const authHeader = req.headers.authorization;
-        let tokenPayload = null;
-        let userIdentifier: string | null = null;
-        let pnIdentifier: string | null = null;
-        
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-          const token = authHeader.substring(7);
-          const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-          tokenPayload = PNOAuthService.validateAccessToken(token);
-          if (tokenPayload) {
-            userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
-            pnIdentifier = tokenPayload.pnIdentifier || null;
-          } else {
-            return res.status(401).json({
-              error: 'unauthorized',
-              error_description: 'Invalid or expired access token'
-            });
-          }
-        } else {
+        const tokenPayload = getBearerTokenPayload(req);
+        if (!tokenPayload) {
           return res.status(401).json({
             error: 'unauthorized',
-            error_description: 'Missing or invalid Authorization header'
+            error_description: 'Invalid or expired access token'
           });
         }
+        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+        const pnIdentifier = tokenPayload.pnIdentifier || null;
 
         // CRITICAL: Only thumbnails have metadata
         // If fileId is a main file, find the thumbnail that references it
@@ -2958,14 +2933,7 @@ class ProductionServer {
         const service = AggregatorMetadataServiceDB.getInstance();
 
         // Get auth token
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({ error: 'Missing or invalid Authorization header' });
-        }
-
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload) {
           return res.status(401).json({ error: 'Invalid or expired access token' });
         }
@@ -3206,13 +3174,7 @@ class ProductionServer {
     // Content notices (DMCA / index removal - in-app only)
     this.app.get('/api/content-notices', async (req, res) => {
       try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader?.startsWith('Bearer ')) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const payload = PNOAuthService.validateAccessToken(token);
+        const payload = getBearerTokenPayload(req);
         if (!payload?.pnIdentifier) {
           return res.status(401).json({ error: 'Invalid token' });
         }
@@ -3239,13 +3201,7 @@ class ProductionServer {
     // POST /api/dmca/counter-notice - Submit counter-notice (auth required; content owner only)
     this.app.post('/api/dmca/counter-notice', express.json(), async (req, res) => {
       try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader?.startsWith('Bearer ')) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const payload = PNOAuthService.validateAccessToken(token);
+        const payload = getBearerTokenPayload(req);
         if (!payload?.pnIdentifier) {
           return res.status(401).json({ error: 'Invalid token' });
         }
@@ -3280,14 +3236,8 @@ class ProductionServer {
     // POST /api/dmca/counter-notices/process-restores - Admin: restore content after counter-notice window
     this.app.post('/api/dmca/counter-notices/process-restores', express.json(), async (req, res) => {
       try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader?.startsWith('Bearer ')) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
         const { isPrismAdmin } = await import('./server/modules/prismAdminService');
-        const payload = PNOAuthService.validateAccessToken(token);
+        const payload = getBearerTokenPayload(req);
         if (!payload?.pnIdentifier || !isPrismAdmin(payload.pnIdentifier)) {
           return res.status(403).json({ error: 'Admin only' });
         }
@@ -3318,14 +3268,8 @@ class ProductionServer {
     // PUT /api/dmca/counter-notices/:id/forward - Admin: mark counter-notice as forwarded to claimant
     this.app.put('/api/dmca/counter-notices/:id/forward', express.json(), async (req, res) => {
       try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader?.startsWith('Bearer ')) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
         const { isPrismAdmin } = await import('./server/modules/prismAdminService');
-        const payload = PNOAuthService.validateAccessToken(token);
+        const payload = getBearerTokenPayload(req);
         if (!payload?.pnIdentifier || !isPrismAdmin(payload.pnIdentifier)) {
           return res.status(403).json({ error: 'Admin only' });
         }
@@ -3343,14 +3287,8 @@ class ProductionServer {
     // POST /api/dmca/takedown/:id/process - Admin: accept claimant takedown and execute (remove from index)
     this.app.post('/api/dmca/takedown/:id/process', express.json(), async (req, res) => {
       try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader?.startsWith('Bearer ')) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
         const { isPrismAdmin } = await import('./server/modules/prismAdminService');
-        const payload = PNOAuthService.validateAccessToken(token);
+        const payload = getBearerTokenPayload(req);
         if (!payload?.pnIdentifier || !isPrismAdmin(payload.pnIdentifier)) {
           return res.status(403).json({ error: 'Admin only' });
         }
@@ -3587,18 +3525,7 @@ class ProductionServer {
         console.log(`[MetadataIndex PUT] Existing entry check for ${fileId} (actualFileId: ${actualFileId}): ${current ? 'found' : 'not found'}, existedBefore: ${fileExistedBefore}`);
         
         // Get auth token for operations (needed for both new and existing files)
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({
-            error: 'unauthorized',
-            error_description: 'Missing or invalid Authorization header'
-          });
-        }
-
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const tokenPayload = PNOAuthService.validateAccessToken(token);
-        
+        const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload) {
           return res.status(401).json({
             error: 'unauthorized',
@@ -4163,12 +4090,8 @@ class ProductionServer {
           
           console.log(`[MetadataIndex PUT] File ${fileId} is new - creating companion metadata (visibility=${finalVisibility})...`);
           try {
-            const authHeader = req.headers.authorization;
-            if (authHeader && authHeader.startsWith('Bearer ')) {
-              const token = authHeader.substring(7);
-              const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-              const tokenPayload = PNOAuthService.validateAccessToken(token);
-              
+            {
+              const tokenPayload = getBearerTokenPayload(req);
               if (tokenPayload) {
                 const pnIdentifier = tokenPayload.pnIdentifier;
                 if (!pnIdentifier) {
@@ -4475,12 +4398,8 @@ class ProductionServer {
         // This ensures companion metadata is always authoritative for metadata fields
         if (name || description || keywords || tags || genre || category || locationCreated || license) {
           try {
-            const authHeader = req.headers.authorization;
-            if (authHeader && authHeader.startsWith('Bearer ')) {
-              const token = authHeader.substring(7);
-              const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-              const tokenPayload = PNOAuthService.validateAccessToken(token);
-              
+            {
+              const tokenPayload = getBearerTokenPayload(req);
               if (tokenPayload) {
                 const pnIdentifier = tokenPayload.pnIdentifier;
                 if (pnIdentifier) {
@@ -4776,12 +4695,8 @@ class ProductionServer {
           // Use current metadata if available, otherwise use updated metadata from updateMetadata() call
           const metadataForCompanion = current?.metadata || updated;
           try {
-            const authHeader = req.headers.authorization;
-            if (authHeader && authHeader.startsWith('Bearer ')) {
-              const token = authHeader.substring(7);
-              const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-              const tokenPayload = PNOAuthService.validateAccessToken(token);
-              
+            {
+              const tokenPayload = getBearerTokenPayload(req);
               if (tokenPayload) {
                 const pnIdentifier = tokenPayload.pnIdentifier;
                 if (!pnIdentifier) {
@@ -4930,12 +4845,8 @@ class ProductionServer {
         if (isPublic === true && current) {
           try {
             // Get token payload for submitMetadata
-            const authHeader = req.headers.authorization;
-            if (authHeader && authHeader.startsWith('Bearer ')) {
-              const token = authHeader.substring(7);
-              const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-              const submitTokenPayload = PNOAuthService.validateAccessToken(token);
-              
+            {
+              const submitTokenPayload = getBearerTokenPayload(req);
               if (submitTokenPayload) {
                 // Determine fileType and contentClass from current metadata
                 const metadataForType = (current.metadata || {}) as any;
@@ -6212,31 +6123,19 @@ class ProductionServer {
           // DID format - we can't convert this to pn identifier without additional info
           // But credentials are stored under pn identifier, so we need to get it from the token
           // For now, try to get it from the Authorization header token
-          const authHeader = req.headers.authorization;
-          if (authHeader && authHeader.startsWith('Bearer ')) {
-            const token = authHeader.substring(7);
-            try {
-              const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-              const tokenPayload = PNOAuthService.validateAccessToken(token);
-              if (tokenPayload?.pnIdentifier) {
-                pnIdentifier = tokenPayload.pnIdentifier;
-              } else {
-                // Fallback: return empty accounts if we can't determine pn identifier
-                if (NODE_ENV === 'development') {
-                  console.warn(`[StorageAccounts] Cannot determine pn identifier from DID: ${identityId}`);
-                }
-                return res.json({ success: true, accounts: [] });
-              }
-            } catch (tokenError) {
+          try {
+            const tokenPayload = getBearerTokenPayload(req);
+            if (tokenPayload?.pnIdentifier) {
+              pnIdentifier = tokenPayload.pnIdentifier;
+            } else {
               if (NODE_ENV === 'development') {
-                console.warn(`[StorageAccounts] Failed to validate token:`, tokenError);
+                console.warn(`[StorageAccounts] Cannot determine pn identifier from DID: ${identityId}`);
               }
               return res.json({ success: true, accounts: [] });
             }
-          } else {
-            // No token provided, can't determine pn identifier
+          } catch (tokenError) {
             if (NODE_ENV === 'development') {
-              console.warn(`[StorageAccounts] No Authorization header provided for DID: ${identityId}`);
+              console.warn(`[StorageAccounts] Failed to validate token:`, tokenError);
             }
             return res.json({ success: true, accounts: [] });
           }
@@ -8340,13 +8239,7 @@ class ProductionServer {
     // GET /api/users/:userPnIdentifier/storage-tier - Get encryption limit (derived from feed creator tier)
     this.app.get('/api/users/:userPnIdentifier/storage-tier', async (req, res) => {
       try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader?.startsWith('Bearer ')) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const payload = PNOAuthService.validateAccessToken(token);
+        const payload = getBearerTokenPayload(req);
         if (!payload?.pnIdentifier) {
           return res.status(401).json({ error: 'Invalid token' });
         }
@@ -8705,14 +8598,7 @@ class ProductionServer {
         const db = (await import('./server/utils/database')).getDatabasePool();
 
         // Get auth token
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({ error: 'Missing or invalid Authorization header' });
-        }
-
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload) {
           return res.status(401).json({ error: 'Invalid or expired access token' });
         }
@@ -8909,16 +8795,7 @@ class ProductionServer {
     // POST /api/auth/google-oauth/refresh - Refresh access token using refresh token
     this.app.post('/api/auth/google-oauth/refresh', async (req, res) => {
       try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({
-            error: 'unauthorized',
-            error_description: 'Missing or invalid Authorization header'
-          });
-        }
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload) {
           return res.status(401).json({
             error: 'unauthorized',
@@ -9040,18 +8917,7 @@ class ProductionServer {
     this.app.get('/api/drive/files', async (req, res) => {
       try {
         // Extract pN OAuth token from Authorization header
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({
-            error: 'unauthorized',
-            error_description: 'Missing or invalid Authorization header'
-          });
-        }
-
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const tokenPayload = PNOAuthService.validateAccessToken(token);
-        
+        const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload) {
           return res.status(401).json({
             error: 'unauthorized',
@@ -9193,18 +9059,7 @@ class ProductionServer {
     this.app.post('/api/drive/files', async (req, res) => {
       try {
         // Extract pN OAuth token from Authorization header
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({
-            error: 'unauthorized',
-            error_description: 'Missing or invalid Authorization header'
-          });
-        }
-
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const tokenPayload = PNOAuthService.validateAccessToken(token);
-        
+        const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload) {
           return res.status(401).json({
             error: 'unauthorized',
@@ -9352,18 +9207,7 @@ class ProductionServer {
     this.app.post('/api/drive/folders', async (req, res) => {
       try {
         // Extract pN OAuth token from Authorization header
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({
-            error: 'unauthorized',
-            error_description: 'Missing or invalid Authorization header'
-          });
-        }
-
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const tokenPayload = PNOAuthService.validateAccessToken(token);
-        
+        const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload) {
           return res.status(401).json({
             error: 'unauthorized',
@@ -9567,18 +9411,7 @@ class ProductionServer {
     this.app.get('/api/drive/files/:fileId', async (req, res) => {
       try {
         // Extract pN OAuth token from Authorization header
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({
-            error: 'unauthorized',
-            error_description: 'Missing or invalid Authorization header'
-          });
-        }
-
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const tokenPayload = PNOAuthService.validateAccessToken(token);
-        
+        const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload) {
           return res.status(401).json({
             error: 'unauthorized',
@@ -9740,19 +9573,12 @@ class ProductionServer {
       
       try {
         // STEP 0: Validate token FIRST (but don't delete yet)
-        const authHeader = req.headers.authorization;
-        let tokenPayload = null;
+        const tokenPayload = getBearerTokenPayload(req);
         let userIdentifier: string | null = null;
         let pnIdentifier: string | null = null;
-        
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-          const token = authHeader.substring(7);
-          const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-          tokenPayload = PNOAuthService.validateAccessToken(token);
         if (tokenPayload) {
           userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
           pnIdentifier = tokenPayload.pnIdentifier || null;
-        }
         }
         
         // STEP 1: Read companion metadata to get mainFileId connection
@@ -9961,18 +9787,7 @@ class ProductionServer {
     // PUT /api/drive/files/:fileId - Update file metadata in Google Drive
     this.app.put('/api/drive/files/:fileId', async (req, res) => {
       try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({
-            error: 'unauthorized',
-            error_description: 'Missing or invalid Authorization header'
-          });
-        }
-
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const tokenPayload = PNOAuthService.validateAccessToken(token);
-        
+        const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload) {
           return res.status(401).json({
             error: 'unauthorized',
@@ -10717,17 +10532,7 @@ class ProductionServer {
     // NEVER returns pN File, pN Name, or passcode
     this.app.get('/oauth/zkp-data-points', async (req, res) => {
       try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({
-            error: 'invalid_token',
-            error_description: 'Missing or invalid authorization header'
-          });
-        }
-
-        const accessToken = authHeader.substring(7);
-        const tokenPayload = PNOAuthService.validateAccessToken(accessToken);
-
+        const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload) {
           return res.status(401).json({
             error: 'invalid_token',
@@ -10927,17 +10732,7 @@ class ProductionServer {
     // NEVER returns pN File, pN Name, or passcode
     this.app.get('/oauth/userinfo', async (req, res) => {
       try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({
-            error: 'invalid_token',
-            error_description: 'Missing or invalid authorization header'
-          });
-        }
-
-        const accessToken = authHeader.substring(7);
-        const tokenPayload = PNOAuthService.validateAccessToken(accessToken);
-
+        const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload) {
           return res.status(401).json({
             error: 'invalid_token',
@@ -17950,13 +17745,7 @@ class ProductionServer {
     // POST /api/push/register - Register device token for push notifications
     this.app.post('/api/push/register', async (req, res) => {
       try {
-        const authHeader = req.headers.authorization;
-        const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-        if (!token) {
-          return res.status(401).json({ error: 'unauthorized', error_description: 'Bearer token required' });
-        }
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload?.pnIdentifier) {
           return res.status(401).json({ error: 'unauthorized', error_description: 'Invalid or expired token' });
         }
@@ -17979,13 +17768,7 @@ class ProductionServer {
     // DELETE /api/push/register - Unregister device token
     this.app.delete('/api/push/register', async (req, res) => {
       try {
-        const authHeader = req.headers.authorization;
-        const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-        if (!token) {
-          return res.status(401).json({ error: 'unauthorized', error_description: 'Bearer token required' });
-        }
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        const tokenPayload = getBearerTokenPayload(req);
         if (!tokenPayload?.pnIdentifier) {
           return res.status(401).json({ error: 'unauthorized', error_description: 'Invalid or expired token' });
         }

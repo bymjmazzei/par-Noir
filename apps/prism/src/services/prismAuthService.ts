@@ -67,14 +67,54 @@ export async function saveSession(session: PrismSession): Promise<void> {
   }
 }
 
+/**
+ * Refresh par Noir OAuth tokens; persists new refresh_token when API rotates (rotation-safe).
+ */
+export async function refreshParNoirSession(refreshToken: string): Promise<PrismSession | null> {
+  const response = await fetch(`${API_ENDPOINT}/oauth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      refresh_token: refreshToken,
+      client_id: CLIENT_ID,
+    }),
+  });
+  if (!response.ok) return null;
+  const data = (await response.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+  };
+  if (!data.access_token) return null;
+  const expiresAt = Date.now() + (data.expires_in || 3600) * 1000;
+  const userRes = await fetch(`${API_ENDPOINT}/oauth/userinfo`, {
+    headers: { Authorization: `Bearer ${data.access_token}` },
+  });
+  const user = userRes.ok ? await userRes.json() : {};
+  const session: PrismSession = {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? refreshToken,
+    expiresAt,
+    did: user.sub || user.did || '',
+    pnIdentifier: user.pn_identifier,
+  };
+  await saveSession(session);
+  return session;
+}
+
 export async function getSession(): Promise<PrismSession | null> {
   try {
     await secureStorageAdapter.migrateFromLocalStorage(SESSION_KEY);
     const raw = await secureStorageAdapter.getItem(SESSION_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as PrismSession;
-    if (s.expiresAt && s.expiresAt < Date.now() + 60000) return null; // Expired or about to
-    return s;
+    const bufferMs = 60000;
+    if (s.expiresAt && s.expiresAt > Date.now() + bufferMs) return s;
+    if (s.refreshToken) {
+      const refreshed = await refreshParNoirSession(s.refreshToken);
+      if (refreshed) return refreshed;
+    }
+    return null;
   } catch {
     return null;
   }

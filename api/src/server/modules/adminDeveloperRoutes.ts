@@ -11,7 +11,7 @@ import { registerSuccession } from './identitySuccessionService';
 import { appendAuditEvent } from './auditService';
 import { securityFlags, isProduction } from '../utils/securityFlags';
 import { appendSecurityAuditEvent } from './auditService';
-import { hashIdentifier } from '../../utils/logger';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -45,7 +45,7 @@ export function requireAdminApiKey(req: Request, res: Response, next: NextFuncti
       });
       return;
     }
-    console.warn('[admin] ADMIN_API_KEY unset — allowing admin route in non-production due to explicit bypass flag');
+    safeLogger.warn('[admin] ADMIN_API_KEY unset — allowing admin route in non-production due to explicit bypass flag');
     next();
     return;
   }

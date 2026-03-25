@@ -8,6 +8,18 @@
 import { Request, Response, NextFunction } from 'express';
 import { PNOAuthService, TokenPayload } from '../modules/pnOAuthService';
 
+/**
+ * Single entry point for Bearer extraction + OAuth validation (use in route handlers instead of
+ * duplicating PNOAuthService.validateAccessToken + header parsing).
+ */
+export function getBearerTokenPayload(req: Request): TokenPayload | null {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  const token = authHeader.substring(7).trim();
+  if (!token) return null;
+  return PNOAuthService.validateAccessToken(token);
+}
+
 export interface AuthenticatedRequest extends Request {
   user?: {
     did: string;
@@ -49,19 +61,7 @@ export const authenticateToken = async (
       return next();
     }
     
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    
-    // SECURITY: Basic token format validation
-    if (!token || token.trim().length === 0) {
-      return next();
-    }
-    
-    // ✅ INTEGRATION: Full token verification using OAuth service
-    // This validates:
-    // - Token signature (prevents tampering)
-    // - Token expiration (prevents use of expired tokens)
-    // - Token existence (prevents fake tokens)
-    const tokenPayload: TokenPayload | null = PNOAuthService.validateAccessToken(token);
+    const tokenPayload = getBearerTokenPayload(req);
     
     if (!tokenPayload) {
       // Token is invalid (expired, wrong signature, doesn't exist, etc.)
@@ -72,6 +72,8 @@ export const authenticateToken = async (
       }
       return next();
     }
+
+    const token = authHeader.substring(7).trim();
     
     // ✅ Token is valid! Populate user info from token payload
     req.user = {
@@ -113,37 +115,18 @@ export const requireAuth = async (
 ): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({ 
-        error: 'Authentication required',
-        message: 'Please provide a valid Bearer token in the Authorization header'
-      });
-      return;
-    }
-    
-    const token = authHeader.substring(7);
-    
-    if (!token || token.trim().length === 0) {
-      res.status(401).json({ 
-        error: 'Invalid token',
-        message: 'Token cannot be empty'
-      });
-      return;
-    }
-    
-    // ✅ INTEGRATION: Full token verification using OAuth service
-    const tokenPayload: TokenPayload | null = PNOAuthService.validateAccessToken(token);
-    
-    if (!tokenPayload) {
-      // Token is invalid, expired, or tampered with
-      res.status(401).json({ 
+    const tokenPayload = getBearerTokenPayload(req);
+
+    if (!authHeader?.startsWith('Bearer ') || !tokenPayload) {
+      res.status(401).json({
         error: 'Invalid or expired token',
         message: 'The provided token is invalid, expired, or has been tampered with. Please authenticate again.'
       });
       return;
     }
-    
+
+    const token = authHeader.substring(7).trim();
+
     // ✅ Token is valid! Populate user info from token payload
     req.user = {
       did: tokenPayload.did,

@@ -280,11 +280,46 @@ This API server supports the **"MARK I"** identity - the first real identity cre
 | `ACCESS_LOG_JSON` | Set to `true` to emit one JSON access line per request in production (on by default in development only) |
 | `SOCKET_REQUIRE_AUTH` | Set to `true` to require a valid OAuth access token on Socket.IO handshakes |
 
+### OAuth access tokens (production)
+
+Choose **one** signing posture and keep `issuer` / `audience` consistent everywhere tokens are minted and verified. If `iss` or `aud` in the JWT does not match `PN_OAUTH_ISSUER` / `PN_OAUTH_AUDIENCE`, `validateAccessToken` rejects the token (401 on protected routes).
+
+| Posture | Required env | Notes |
+|--------|----------------|-------|
+| **HS256 (default)** | `PN_OAUTH_SECRET` — strong, unique secret; required in production | Symmetric signing. No JWKS required for verification on the API itself. |
+| **RS256 + PEM** | `PN_OAUTH_ACCESS_TOKEN_ALG=RS256`, `PN_OAUTH_PRIVATE_KEY_PEM`, `PN_OAUTH_PUBLIC_KEY_PEM` (or `PN_OAUTH_JWKS_JSON`), optional `PN_OAUTH_KEY_ID` | Verifiers use public key / JWKS. Serve `GET /.well-known/jwks.json` for integrators. |
+| **RS256 + GCP KMS** | `PN_OAUTH_ACCESS_TOKEN_ALG=RS256`, `PN_OAUTH_KMS_KEY_VERSION`, plus public side (`PN_OAUTH_PUBLIC_KEY_PEM` / `PN_OAUTH_JWKS_JSON`) for verification | Private key never leaves KMS; align `kid` with JWKS. |
+
+**Always set for minted JWTs (defaults shown):** `PN_OAUTH_ISSUER` (default `par-noir-api`), `PN_OAUTH_AUDIENCE` (default `par-noir-clients`).
+
+**Refresh token rotation:** `PN_OAUTH_ENFORCE_REFRESH_ROTATION=true` causes `/oauth/refresh` to return a **new** `refresh_token` and invalidate the previous one. **All clients** (aggregator, developer portal, Prism, etc.) must persist `refresh_token` from every `/oauth/token` and `/oauth/refresh` response before enabling this in staging, then production.
+
+### Storage credentials envelope (optional)
+
+| Variable | Purpose |
+|----------|---------|
+| `STORAGE_CREDENTIALS_SECRET` | Required to encrypt stored storage credentials |
+| `STORAGE_CREDENTIALS_ENVELOPE_V2` | Set to `true` to use v2 envelope (KMS-wrapped DEK when `STORAGE_CREDENTIALS_KMS_KEY` is set) |
+| `STORAGE_CREDENTIALS_KMS_KEY` | Full GCP KMS crypto key resource name for envelope v2 |
+
+Enable v2 in **staging** first; verify read/write of credentials; then production. Misconfigured KMS can lock users out—test restore.
+
+### Admin API (no long-lived shared key in production)
+
+| Variable | Purpose |
+|----------|---------|
+| `ADMIN_IDENTITY_HEADERS_ENABLED` | When `true`, trust gateway identity headers (`x-admin-principal`, `x-goog-authenticated-user-email`, etc.) |
+| `ADMIN_ALLOWED_PRINCIPALS` | Comma-separated list of allowed principal values (e.g. IAP user emails) |
+| `ADMIN_DISABLE_LEGACY_API_KEY` | When `true`, reject legacy `ADMIN_API_KEY` auth in production (use identity headers or automation with the right principal) |
+| `ADMIN_API_KEY` | Legacy shared secret; avoid in production once headers + `ADMIN_DISABLE_LEGACY_API_KEY` are on |
+
+**Scripts and automation** should call admin routes from a trusted network (see `api/nginx.conf` `/api/admin/` allowlist) or through IAP/Cloud Load Balancer that injects identity headers. Do not put `ADMIN_API_KEY` in browser or public repos. See [docs/ops/ADMIN_AUTHENTICATION.md](../docs/ops/ADMIN_AUTHENTICATION.md).
+
 **Health:** `GET /health` (liveness). `GET /health/ready` returns 503 if `DATABASE_URL` is set but the database is unreachable. Quick check: `API_BASE_URL=https://your-api npm run smoke:health` (from `api/`).
 
 **Runbooks:** [docs/ops/BACKUP_AND_RESTORE_RUNBOOK.md](../docs/ops/BACKUP_AND_RESTORE_RUNBOOK.md), [docs/ops/GO_NO_GO_LAUNCH.md](../docs/ops/GO_NO_GO_LAUNCH.md), [docs/ops/CDN_AND_PROXY_LIMITS.md](../docs/ops/CDN_AND_PROXY_LIMITS.md).
 
-**Operations (checklist):** (1) Configure automated Postgres backups and run a restore drill on your provider. (2) Set `SENTRY_DSN` or another APM path you own. (3) For more than one API instance, set `REDIS_URL` so per–API-key limits stay global. (4) Native apps: privacy policy URL, support contact, OAuth redirect / `VITE_PN_CLIENT_ID` per app, TestFlight or Play internal track before wide release. Full phased plan and “what shipped” vs open items: [docs/ops/PRODUCTION_READINESS_PLAN.md](../docs/ops/PRODUCTION_READINESS_PLAN.md).
+**Operations (checklist):** (1) Configure automated Postgres backups and run a restore drill on your provider. (2) Set `SENTRY_DSN` or another APM path you own. (3) For more than one API instance, set `REDIS_URL` so per–API-key limits stay global. (4) Native apps: privacy policy URL, support contact, OAuth redirect / `VITE_PN_CLIENT_ID` per app, TestFlight or Play internal track before wide release. Env audit: [docs/ops/PRODUCTION_ENV_AUDIT.md](../docs/ops/PRODUCTION_ENV_AUDIT.md). Full phased plan: [docs/ops/PRODUCTION_READINESS_PLAN.md](../docs/ops/PRODUCTION_READINESS_PLAN.md).
 
 See `docs/developer/INTEGRATOR_IDENTITY_SUCCESSION.md` for public succession reads (`GET /api/v1/identity/successor`).
 

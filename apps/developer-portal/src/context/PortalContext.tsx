@@ -89,6 +89,29 @@ interface PortalContextValue {
 
 const PortalContext = createContext<PortalContextValue | null>(null);
 
+/** Persist access + refresh from /oauth/refresh (required when API rotates refresh tokens). */
+async function tryRefreshDeveloperPortalAccessToken(): Promise<string | null> {
+  if (typeof sessionStorage === 'undefined') return null;
+  const refresh = sessionStorage.getItem(STORAGE_REFRESH);
+  if (!refresh?.trim()) return null;
+  const res = await fetch(`${API_ENDPOINT}/oauth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      refresh_token: refresh.trim(),
+      client_id: PN_CLIENT_ID
+    })
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { access_token?: string; refresh_token?: string };
+  if (!data.access_token) return null;
+  sessionStorage.setItem(STORAGE_ACCESS, data.access_token);
+  if (data.refresh_token) {
+    sessionStorage.setItem(STORAGE_REFRESH, data.refresh_token);
+  }
+  return data.access_token;
+}
+
 export function PortalProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => getAccessToken());
   const [user, setUser] = useState<UserInfo | null>(null);
@@ -171,7 +194,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshDashboard = useCallback(async () => {
-    const t = getAccessToken();
+    let t = getAccessToken();
     if (!t) {
       setUser(null);
       setKeys([]);
@@ -181,11 +204,20 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     }
     setToken(t);
     try {
-      const [uRes, kRes, cRes] = await Promise.all([
-        fetch(`${API_ENDPOINT}/oauth/userinfo`, { headers: { Authorization: `Bearer ${t}` } }),
-        fetch(`${API_ENDPOINT}/api/developer/api-keys`, { headers: { Authorization: `Bearer ${t}` } }),
-        fetch(`${API_ENDPOINT}/api/developer/oauth-clients`, { headers: { Authorization: `Bearer ${t}` } })
-      ]);
+      const fetchAll = (access: string) =>
+        Promise.all([
+          fetch(`${API_ENDPOINT}/oauth/userinfo`, { headers: { Authorization: `Bearer ${access}` } }),
+          fetch(`${API_ENDPOINT}/api/developer/api-keys`, { headers: { Authorization: `Bearer ${access}` } }),
+          fetch(`${API_ENDPOINT}/api/developer/oauth-clients`, { headers: { Authorization: `Bearer ${access}` } })
+        ]);
+      let [uRes, kRes, cRes] = await fetchAll(t);
+      if (uRes.status === 401) {
+        const newAccess = await tryRefreshDeveloperPortalAccessToken();
+        if (newAccess) {
+          setToken(newAccess);
+          [uRes, kRes, cRes] = await fetchAll(newAccess);
+        }
+      }
       if (uRes.status === 401) {
         clearSession();
         setUser(null);

@@ -97,8 +97,10 @@ setInterval(() => {
   }
   
   // Clean expired refresh tokens from database (async, don't wait)
-  PNOAuthService.cleanupExpiredRefreshTokens().catch(err => {
-    console.error('[OAuth] Error in scheduled refresh token cleanup:', err);
+  PNOAuthService.cleanupExpiredRefreshTokens().catch((err: unknown) => {
+    safeLogger.error('[OAuth] Error in scheduled refresh token cleanup', {
+      err: err instanceof Error ? err.message : String(err),
+    });
   });
 }, 5 * 60 * 1000);
 
@@ -234,7 +236,10 @@ export class PNOAuthService {
     const normalizedRedirectUri = params.redirectUri.replace(/\/$/, '');
     
     if (process.env.NODE_ENV === 'development') {
-      console.log('[OAuth] Generating authorization code:', { clientId: params.clientId, pnIdSuffix: params.pnIdentifier ? params.pnIdentifier.slice(-8) : 'none' });
+      safeLogger.info('[OAuth] Generating authorization code', {
+        clientId: params.clientId,
+        pnIdSuffix: params.pnIdentifier ? params.pnIdentifier.slice(-8) : 'none',
+      });
     }
     
     authorizationCodes.set(code, {
@@ -267,7 +272,7 @@ export class PNOAuthService {
     const existingExchange = codeToTokenMap.get(params.code);
     if (existingExchange && existingExchange.expiresAt > Date.now()) {
       if (process.env.NODE_ENV === 'development') {
-        console.log('[OAuth] Code already exchanged, returning cached token (idempotent)');
+        safeLogger.info('[OAuth] Code already exchanged, returning cached token (idempotent)');
       }
       return existingExchange.token;
     }
@@ -279,17 +284,20 @@ export class PNOAuthService {
       // Check if it was recently exchanged (within last 30 seconds)
       if (existingExchange) {
         if (process.env.NODE_ENV === 'development') {
-          console.log('[OAuth] Code was already exchanged, returning cached token');
+          safeLogger.info('[OAuth] Code was already exchanged, returning cached token');
         }
         return existingExchange.token;
       }
-      console.error('[OAuth] Code not found:', params.code.substring(0, 8) + '...');
+      safeLogger.warn('[OAuth] Code not found', { codePrefix: `${params.code.substring(0, 8)}...` });
       return null;
     }
 
     // Verify code hasn't expired
     if (authCode.expiresAt < Date.now()) {
-      console.error('[OAuth] Code expired. ExpiresAt:', new Date(authCode.expiresAt).toISOString(), 'Now:', new Date().toISOString());
+      safeLogger.warn('[OAuth] Code expired', {
+        expiresAt: new Date(authCode.expiresAt).toISOString(),
+        now: new Date().toISOString(),
+      });
       authorizationCodes.delete(params.code);
       return null;
     }
@@ -299,16 +307,17 @@ export class PNOAuthService {
     const providedRedirectUri = params.redirectUri.replace(/\/$/, '');
 
     if (process.env.NODE_ENV === 'development') {
-      console.log('[OAuth] Comparing redirect URIs:');
-      console.log('  Stored:', storedRedirectUri);
-      console.log('  Provided:', providedRedirectUri);
-      console.log('  Match:', storedRedirectUri === providedRedirectUri);
-      console.log('  Client ID match:', authCode.clientId === params.clientId);
+      safeLogger.info('[OAuth] Comparing redirect URIs', {
+        storedRedirectUri,
+        providedRedirectUri,
+        uriMatch: storedRedirectUri === providedRedirectUri,
+        clientIdMatch: authCode.clientId === params.clientId,
+      });
     }
 
     // Verify client ID and redirect URI match
     if (authCode.clientId !== params.clientId || storedRedirectUri !== providedRedirectUri) {
-      console.error('[OAuth] Redirect URI or Client ID mismatch');
+      safeLogger.warn('[OAuth] Redirect URI or Client ID mismatch');
       return null;
     }
 
@@ -385,7 +394,7 @@ export class PNOAuthService {
   ): Promise<string | undefined> {
     try {
       if (!did) {
-        console.error('[OAuth] No DID provided for pN identifier derivation');
+        safeLogger.warn('[OAuth] No DID provided for pN identifier derivation');
         return undefined;
       }
       
@@ -393,7 +402,7 @@ export class PNOAuthService {
       const publicKeyToUse = publicKey || (did.startsWith('did:key:') ? did.substring(8) : undefined);
       
       if (!publicKeyToUse) {
-        console.error('[OAuth] No publicKey available for pN identifier derivation');
+        safeLogger.warn('[OAuth] No publicKey available for pN identifier derivation');
         return undefined;
       }
       
@@ -414,7 +423,7 @@ export class PNOAuthService {
         const pnIdentifier = `pn-${shortHash}`;
         
         if (process.env.NODE_ENV === 'development') {
-          console.log('[OAuth] pN identifier derived (VolumeIdGenerator):', pnIdentifier);
+          safeLogger.info('[OAuth] pN identifier derived (VolumeIdGenerator)', { pnIdentifier });
         }
         
         return pnIdentifier;
@@ -429,12 +438,14 @@ export class PNOAuthService {
       const pnIdentifier = `pn-${shortHash}`; // Add prefix for consistency
       
       if (process.env.NODE_ENV === 'development') {
-        console.log('[OAuth] pN identifier derived (fallback):', pnIdentifier);
+        safeLogger.info('[OAuth] pN identifier derived (fallback)', { pnIdentifier });
       }
       
       return pnIdentifier;
     } catch (error) {
-      console.error('[OAuth] Failed to derive pN identifier:', error);
+      safeLogger.error('[OAuth] Failed to derive pN identifier', {
+        err: error instanceof Error ? error.message : String(error),
+      });
       return undefined;
     }
   }
@@ -457,7 +468,7 @@ export class PNOAuthService {
     const pnIdentifier = params.pnIdentifier;
     
     if (!pnIdentifier) {
-      console.warn('[OAuth] No pN identifier provided - token will not include pnIdentifier');
+      safeLogger.warn('[OAuth] No pN identifier provided - token will not include pnIdentifier');
     }
     
     const now = Math.floor(Date.now() / 1000);
@@ -539,7 +550,9 @@ export class PNOAuthService {
         [tokenHash, params.did, pnIdentifier, params.publicKey, params.clientId, params.scope, expiresAt, familyId, jti, params.parentTokenHash || null]
       );
     } catch (error) {
-      console.error('[OAuth] Failed to store refresh token in database:', error);
+      safeLogger.error('[OAuth] Failed to store refresh token in database', {
+        err: error instanceof Error ? error.message : String(error),
+      });
       throw new Error('Failed to generate refresh token');
     }
     
@@ -563,7 +576,7 @@ export class PNOAuthService {
       );
 
       if (result.rows.length === 0) {
-        console.warn('[OAuth] Refresh token not found in database');
+        safeLogger.warn('[OAuth] Refresh token not found in database');
         return null;
       }
 
@@ -572,7 +585,7 @@ export class PNOAuthService {
       // Check if token is expired
       const expiresAt = new Date(tokenData.expires_at);
       if (expiresAt.getTime() < Date.now()) {
-        console.warn('[OAuth] Refresh token has expired');
+        safeLogger.warn('[OAuth] Refresh token has expired');
         // Clean up expired token
         await db.query('DELETE FROM oauth_refresh_tokens WHERE refresh_token = $1', [tokenHash]);
         return null;
@@ -580,7 +593,7 @@ export class PNOAuthService {
 
       // Verify client ID matches
       if (tokenData.client_id !== clientId) {
-        console.warn('[OAuth] Client ID mismatch for refresh token');
+        safeLogger.warn('[OAuth] Client ID mismatch for refresh token');
         return null;
       }
       if (tokenData.revoked_at) {
@@ -649,7 +662,9 @@ export class PNOAuthService {
         scope: (tokenData.scope || []).join(' ')
       };
     } catch (error) {
-      console.error('[OAuth] Error refreshing access token:', error);
+      safeLogger.error('[OAuth] Error refreshing access token', {
+        err: error instanceof Error ? error.message : String(error),
+      });
       return null;
     }
   }
@@ -725,7 +740,9 @@ export class PNOAuthService {
       );
       return (result.rowCount ?? 0) > 0;
     } catch (error) {
-      console.error('[OAuth] Error revoking refresh token:', error);
+      safeLogger.error('[OAuth] Error revoking refresh token', {
+        err: error instanceof Error ? error.message : String(error),
+      });
       return false;
     }
   }
@@ -742,11 +759,13 @@ export class PNOAuthService {
       );
       const deletedCount = result.rowCount ?? 0;
       if (deletedCount > 0) {
-        console.log(`🧹 Cleaned up ${deletedCount} expired refresh token(s)`);
+        safeLogger.info('[OAuth] Cleaned up expired refresh tokens', { deletedCount });
       }
       return deletedCount;
     } catch (error) {
-      console.error('[OAuth] Error cleaning up expired refresh tokens:', error);
+      safeLogger.error('[OAuth] Error cleaning up expired refresh tokens', {
+        err: error instanceof Error ? error.message : String(error),
+      });
       return 0;
     }
   }
