@@ -234,7 +234,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     })();
   }, [refreshDashboard, completePortalOAuth]);
 
-  const handleBeforeUnlock = useCallback((state: string, _nonce: string) => {
+  const handleBeforeUnlock = useCallback((state: string, nonce: string) => {
     setError(null);
     setMessage(null);
     const redirectUri = `${window.location.origin}/oauth-callback.html`;
