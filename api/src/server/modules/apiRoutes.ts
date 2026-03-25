@@ -4,7 +4,7 @@
  */
 
 import { Request, Response } from 'express';
-import { getStandardDataPointsPublic, DATA_POINT_CATEGORIES } from '@par-noir/standard-data-points';
+import { getStandardDataPointsPublic, DATA_POINT_CATEGORIES } from './standardDataPointsCatalog';
 import { ApiKeyService } from './apiKeyService';
 import { PNOAuthService } from './pnOAuthService';
 
