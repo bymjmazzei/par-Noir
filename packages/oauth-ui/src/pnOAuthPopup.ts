@@ -12,6 +12,9 @@ import { pushPnOAuthDebug } from './pnOAuthDebug';
  * Contract:
  * - Callback page posts message: { type: 'oauth_callback', code?, state?, error?, age_shared?, timestamp? }
  * - Callback page sets localStorage: pn_oauth_pending, pn_oauth_latest_key, pn_oauth_callback_<ts>
+ * - With pn_popup=1 (API adds this when authorize uses popup=true): the callback must NOT navigate the
+ *   opener away first — only postMessage/BroadcastChannel/storage — so the opener can resolve
+ *   startPnOAuthPopup. Third-party integrators should use the same authorize URL shape as buildOAuthConsentUrl.
  * - With pn_popup=1, callback may close without loading the SPA when opener is missing.
  */
 

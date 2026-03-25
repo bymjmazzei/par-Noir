@@ -129,12 +129,15 @@
       var resumeUrl = buildResumeUrl();
 
       /**
-       * Navigate opener to /?oauth_resume=1&code=... — most reliable handoff vs postMessage/storage.
-       * Do NOT read window.opener.location first: accessing opener's document can throw (COOP,
-       * cross-origin intermediate OAuth redirects, Safari) even when replace() to our app origin works.
+       * Popup OAuth (pn_popup=1 from API when authorize used popup=true): do NOT navigate the opener.
+       * opener.location.replace unloads the parent that is running startPnOAuthPopup — the promise never
+       * settles and users see POPUP_CLOSED. Third-party embedders rely on postMessage / BroadcastChannel / storage.
+       * Non-popup flows with opener: keep replace as a handoff fallback when pn_popup is absent.
        */
       var handedOffViaOpenerNav = false;
-      if (window.opener && !window.opener.closed) {
+      if (window.opener && !window.opener.closed && pnPopupFlow) {
+        deliverHandshake();
+      } else if (window.opener && !window.opener.closed) {
         try {
           window.opener.location.replace(resumeUrl);
           handedOffViaOpenerNav = true;
