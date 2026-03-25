@@ -52,6 +52,25 @@ function normalizeVisibility(value: any): 'public' | 'private' | 'friends' {
   return 'private';
 }
 
+/** API and legacy rows may use snake_case OAuth fields; dashboard code expects camelCase. */
+function driveAccountTokens(account: Record<string, unknown> | null | undefined): {
+  accessToken: string | null;
+  refreshToken: string | null;
+} {
+  if (!account || typeof account !== 'object') {
+    return { accessToken: null, refreshToken: null };
+  }
+  const access =
+    (typeof account.accessToken === 'string' && account.accessToken) ||
+    (typeof account.access_token === 'string' && account.access_token) ||
+    null;
+  const refresh =
+    (typeof account.refreshToken === 'string' && account.refreshToken) ||
+    (typeof account.refresh_token === 'string' && account.refresh_token) ||
+    null;
+  return { accessToken: access, refreshToken: refresh };
+}
+
 interface DriveAccountState {
   backendId: string;
   keyPrefix: string;
@@ -2045,12 +2064,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
 
         for (const account of accountsToActuallyHydrate) {
-          const token = account?.accessToken;
+          const { accessToken: token, refreshToken: rt } = driveAccountTokens(
+            account as Record<string, unknown>
+          );
           if (!token) {
             continue;
           }
           const email = account?.email || null;
-          const refreshToken = account?.refreshToken || null;
+          const refreshToken = rt;
           const storedBackendId = typeof account?.backendId === 'string' ? account.backendId : null;
           const storedKeyPrefix = typeof account?.keyPrefix === 'string' ? account.keyPrefix : null;
           const identifiers = storedBackendId && storedKeyPrefix
@@ -2329,20 +2350,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
 
         for (const creds of deduplicatedCreds) {
-          const token = creds?.accessToken;
+          const { accessToken: token, refreshToken } = driveAccountTokens(
+            creds as Record<string, unknown>
+          );
           if (!token) {
             continue;
           }
 
           const email = creds.email || null;
-          const refreshToken = creds.refreshToken || null;
           const identifiers = resolveIdentifiersForEmail(email);
 
           const backend = await upsertDriveAccount({
             backendId: identifiers.backendId,
             keyPrefix: identifiers.keyPrefix,
             token,
-            refreshToken,
+            refreshToken: refreshToken || null,
             email
           });
 

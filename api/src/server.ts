@@ -5679,7 +5679,7 @@ class ProductionServer {
               }
             }
           }
-          record = await storageCredentialsService.getCredentials(identityId);
+          record = await storageCredentialsService.getCredentials(pnIdentifier);
         }
 
         if (!record) {
