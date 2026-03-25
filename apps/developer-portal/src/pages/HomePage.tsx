@@ -61,9 +61,11 @@ export function HomePage() {
             Unlock pN to continue
           </h2>
           <p className="dev-unlock-hero-desc">
-            Opens the secure par Noir authorize flow. When you are done, you will return here with a session.
+            Opens the par Noir authorize flow in this window. You will return here automatically when sign-in
+            completes.
           </p>
           <UnlockButton
+            forceRedirect
             config={{
               clientId,
               apiEndpoint,

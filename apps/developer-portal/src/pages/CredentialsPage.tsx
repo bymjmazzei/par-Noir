@@ -113,6 +113,7 @@ export function CredentialsPage() {
         <section className="dev-unlock-hero">
           <h2 className="dev-unlock-hero-title">Unlock required</h2>
           <UnlockButton
+            forceRedirect
             config={{
               clientId,
               apiEndpoint,

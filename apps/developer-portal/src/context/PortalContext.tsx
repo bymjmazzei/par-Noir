@@ -16,6 +16,17 @@ const STORAGE_REFRESH = 'dev_portal_refresh_token';
 const STORAGE_OAUTH_CTX = 'dev_portal_oauth';
 const STORAGE_POPUP_STATE = 'pn_oauth_state';
 
+function oauthStatesMatch(incoming: string, expected: string): boolean {
+  const a = incoming.trim();
+  const b = expected.trim();
+  if (a === b) return true;
+  try {
+    return decodeURIComponent(a) === decodeURIComponent(b);
+  } catch {
+    return false;
+  }
+}
+
 export function getAccessToken(): string | null {
   if (typeof sessionStorage === 'undefined') return null;
   const t = sessionStorage.getItem(STORAGE_ACCESS);
@@ -26,6 +37,7 @@ export function clearSession(): void {
   sessionStorage.removeItem(STORAGE_ACCESS);
   sessionStorage.removeItem(STORAGE_REFRESH);
   sessionStorage.removeItem(STORAGE_OAUTH_CTX);
+  sessionStorage.removeItem(STORAGE_POPUP_STATE);
 }
 
 export interface UserInfo {
@@ -266,7 +278,6 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       }
     }
     clearSession();
-    sessionStorage.removeItem(STORAGE_POPUP_STATE);
     setToken(null);
     setUser(null);
     setKeys([]);

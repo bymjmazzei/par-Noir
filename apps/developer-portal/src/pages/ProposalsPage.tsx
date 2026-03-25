@@ -121,6 +121,7 @@ export function ProposalsPage() {
       {!signedIn && !loadingSession && (
         <section className="dev-unlock-hero">
           <UnlockButton
+            forceRedirect
             config={{
               clientId,
               apiEndpoint,

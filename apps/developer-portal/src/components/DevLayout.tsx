@@ -48,6 +48,7 @@ export function DevLayout() {
               </>
             ) : (
               <UnlockButton
+                forceRedirect
                 config={{
                   clientId,
                   apiEndpoint,
