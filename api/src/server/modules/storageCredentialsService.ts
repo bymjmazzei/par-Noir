@@ -1,10 +1,19 @@
 import crypto from 'crypto';
+import { GoogleAuth } from 'google-auth-library';
 import { getDatabasePool } from '../utils/database';
+import { securityFlags } from '../utils/securityFlags';
+import { appendSecurityAuditEvent } from './auditService';
 
 interface EncryptedPayload {
   iv: string;
   authTag: string;
   ciphertext: string;
+}
+
+interface EncryptedEnvelopeV2 extends EncryptedPayload {
+  v: 2;
+  wrappedDek: string;
+  wrapMethod: 'kms' | 'local';
 }
 
 function redactIdentityIdentifier(value?: string): string {
@@ -25,6 +34,7 @@ export class StorageCredentialsService {
   private static instance: StorageCredentialsService;
   private readonly algorithm = 'aes-256-gcm';
   private readonly key: Buffer;
+  private readonly kmsKeyName?: string;
 
   private constructor() {
     const secret = process.env.STORAGE_CREDENTIALS_SECRET;
@@ -34,6 +44,7 @@ export class StorageCredentialsService {
       );
     }
     this.key = crypto.createHash('sha256').update(secret).digest();
+    this.kmsKeyName = process.env.STORAGE_CREDENTIALS_KMS_KEY;
   }
 
   static getInstance(): StorageCredentialsService {
@@ -43,10 +54,48 @@ export class StorageCredentialsService {
     return StorageCredentialsService.instance;
   }
 
-  private encryptPayload(plaintext: string): EncryptedPayload {
+  private async wrapDek(dek: Buffer): Promise<{ wrappedDek: string; wrapMethod: 'kms' | 'local' }> {
+    if (this.kmsKeyName && securityFlags.enableStorageEnvelopeV2) {
+      const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
+      const client = await auth.getClient();
+      const res = await client.request<{ ciphertext?: string }>({
+        url: `https://cloudkms.googleapis.com/v1/${this.kmsKeyName}:encrypt`,
+        method: 'POST',
+        data: { plaintext: dek.toString('base64') },
+      });
+      if (!res.data.ciphertext) {
+        throw new Error('KMS encrypt returned no ciphertext');
+      }
+      return { wrappedDek: res.data.ciphertext, wrapMethod: 'kms' };
+    }
+    const wrapped = this.encryptWithKey(dek, this.key);
+    return { wrappedDek: Buffer.from(JSON.stringify(wrapped)).toString('base64'), wrapMethod: 'local' };
+  }
+
+  private async unwrapDek(wrappedDek: string, wrapMethod: 'kms' | 'local'): Promise<Buffer> {
+    if (wrapMethod === 'kms') {
+      if (!this.kmsKeyName) throw new Error('KMS key not configured for unwrap');
+      const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
+      const client = await auth.getClient();
+      const res = await client.request<{ plaintext?: string }>({
+        url: `https://cloudkms.googleapis.com/v1/${this.kmsKeyName}:decrypt`,
+        method: 'POST',
+        data: { ciphertext: wrappedDek },
+      });
+      if (!res.data.plaintext) throw new Error('KMS decrypt returned no plaintext');
+      return Buffer.from(res.data.plaintext, 'base64');
+    }
+    const payload = JSON.parse(Buffer.from(wrappedDek, 'base64').toString('utf8')) as EncryptedPayload;
+    return this.decryptWithKey(payload, this.key);
+  }
+
+  private encryptWithKey(plaintext: Buffer | string, key: Buffer): EncryptedPayload {
     const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv(this.algorithm, this.key, iv);
-    const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+    const cipher = crypto.createCipheriv(this.algorithm, key, iv);
+    const ciphertext = Buffer.concat([
+      cipher.update(typeof plaintext === 'string' ? Buffer.from(plaintext, 'utf8') : plaintext),
+      cipher.final(),
+    ]);
     const authTag = cipher.getAuthTag();
 
     return {
@@ -56,16 +105,39 @@ export class StorageCredentialsService {
     };
   }
 
-  private decryptPayload(payload: EncryptedPayload): string {
+  private decryptWithKey(payload: EncryptedPayload, key: Buffer): Buffer {
     const iv = Buffer.from(payload.iv, 'base64');
     const authTag = Buffer.from(payload.authTag, 'base64');
     const ciphertext = Buffer.from(payload.ciphertext, 'base64');
 
-    const decipher = crypto.createDecipheriv(this.algorithm, this.key, iv);
+    const decipher = crypto.createDecipheriv(this.algorithm, key, iv);
     decipher.setAuthTag(authTag);
 
-    const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-    return decrypted.toString('utf8');
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  }
+
+  private async encryptPayload(plaintext: string): Promise<EncryptedPayload | EncryptedEnvelopeV2> {
+    if (securityFlags.enableStorageEnvelopeV2) {
+      const dek = crypto.randomBytes(32);
+      const encryptedPayload = this.encryptWithKey(plaintext, dek);
+      const wrapped = await this.wrapDek(dek);
+      return {
+        ...encryptedPayload,
+        v: 2,
+        wrappedDek: wrapped.wrappedDek,
+        wrapMethod: wrapped.wrapMethod,
+      };
+    }
+    return this.encryptWithKey(plaintext, this.key);
+  }
+
+  private async decryptPayload(payload: EncryptedPayload | EncryptedEnvelopeV2): Promise<string> {
+    if ((payload as EncryptedEnvelopeV2).v === 2) {
+      const p = payload as EncryptedEnvelopeV2;
+      const dek = await this.unwrapDek(p.wrappedDek, p.wrapMethod);
+      return this.decryptWithKey(p, dek).toString('utf8');
+    }
+    return this.decryptWithKey(payload as EncryptedPayload, this.key).toString('utf8');
   }
 
   /** Fix 4: Enforce single Drive account when returning credentials (handles legacy duplicates) */
@@ -150,7 +222,7 @@ export class StorageCredentialsService {
 
     const db = getDatabasePool();
     const serialized = JSON.stringify(credentials);
-    const encryptedPayload = this.encryptPayload(serialized);
+    const encryptedPayload = await this.encryptPayload(serialized);
 
     const result = await db.query(
       `
@@ -215,15 +287,16 @@ export class StorageCredentialsService {
         throw new Error('Encrypted payload missing required fields');
       }
 
-      const decrypted = this.decryptPayload(encryptedPayload);
+      const decrypted = await this.decryptPayload(encryptedPayload as EncryptedPayload | EncryptedEnvelopeV2);
       credentials = JSON.parse(decrypted);
     } catch (error) {
       console.warn(`⚠️ Failed to decrypt storage credentials for identity ${identityId}:`, error);
-      try {
-        await this.deleteCredentials(identityId);
-      } catch (cleanupError) {
-        console.warn(`⚠️ Failed to clean up corrupted credentials for identity ${identityId}:`, cleanupError);
-      }
+      void appendSecurityAuditEvent({
+        eventType: 'storage_credentials.decrypt_failed',
+        severity: 'high',
+        subjectPnIdentifier: identityId,
+        metadata: { reason: (error as Error).message },
+      });
       return null;
     }
 
@@ -287,7 +360,7 @@ export class StorageCredentialsService {
               throw new Error('Encrypted payload missing required fields');
             }
 
-            const decrypted = this.decryptPayload(encryptedPayload);
+            const decrypted = await this.decryptPayload(encryptedPayload as EncryptedPayload | EncryptedEnvelopeV2);
             credentials = JSON.parse(decrypted);
           } catch (error) {
             console.warn(

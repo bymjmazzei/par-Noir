@@ -9,20 +9,43 @@ import { ApiKeyService } from './apiKeyService';
 import { safeClientErrorMessage } from '../utils/safeError';
 import { registerSuccession } from './identitySuccessionService';
 import { appendAuditEvent } from './auditService';
+import { securityFlags, isProduction } from '../utils/securityFlags';
+import { appendSecurityAuditEvent } from './auditService';
+import { hashIdentifier } from '../../utils/logger';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 export function requireAdminApiKey(req: Request, res: Response, next: NextFunction): void {
   const expected = process.env.ADMIN_API_KEY?.trim();
+  const allowedPrincipals = (process.env.ADMIN_ALLOWED_PRINCIPALS || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const assertedPrincipal =
+    (req.headers['x-admin-principal'] as string) ||
+    (req.headers['x-goog-authenticated-user-email'] as string) ||
+    '';
+
+  if (securityFlags.enableAdminIdentityHeaders && assertedPrincipal && allowedPrincipals.includes(assertedPrincipal)) {
+    return next();
+  }
+
   if (!expected) {
-    if (NODE_ENV === 'production') {
+    if (NODE_ENV === 'production' || securityFlags.disableLegacyAdminApiKey) {
       res.status(503).json({
         error: 'service_unavailable',
         error_description: 'Admin operations are not configured'
       });
       return;
     }
-    console.warn('[admin] ADMIN_API_KEY unset — allowing admin route in non-production');
+    if (!securityFlags.allowUnsafeDevAdminBypass) {
+      res.status(503).json({
+        error: 'service_unavailable',
+        error_description: 'Admin bypass disabled; set ALLOW_UNSAFE_DEV_ADMIN_BYPASS=true for local dev only',
+      });
+      return;
+    }
+    console.warn('[admin] ADMIN_API_KEY unset — allowing admin route in non-production due to explicit bypass flag');
     next();
     return;
   }
@@ -34,6 +57,15 @@ export function requireAdminApiKey(req: Request, res: Response, next: NextFuncti
   }
 
   if (provided !== expected) {
+    void appendSecurityAuditEvent({
+      eventType: 'admin.auth.failed',
+      severity: isProduction() ? 'high' : 'medium',
+      actorHint: 'admin',
+      metadata: {
+        principalHash: hashIdentifier(assertedPrincipal || 'missing'),
+        source: securityFlags.enableAdminIdentityHeaders ? 'identity_headers_or_legacy' : 'legacy_admin_key',
+      },
+    });
     res.status(401).json({
       error: 'unauthorized',
       error_description: 'Invalid or missing admin key (use X-Admin-Key or Authorization: Bearer)'

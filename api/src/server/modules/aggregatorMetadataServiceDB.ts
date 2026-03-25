@@ -16,6 +16,7 @@
 import { getDatabasePool } from '../utils/database';
 import { isDriveFileUrlDead } from '../utils/driveUrlCheck';
 import { PublicMetadata, CentralIndexEntry, CentralIndexResponse, EngagementMetrics } from './aggregatorMetadataService';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 
 export class AggregatorMetadataServiceDB {
   private static instance: AggregatorMetadataServiceDB;
@@ -308,14 +309,15 @@ export class AggregatorMetadataServiceDB {
       const hasThought = !!(validatedMetadata as any).thought;
       const fileType = validatedMetadata.fileType;
       const contentClass = (validatedMetadata as any).contentClass;
-      console.log(`✅ Added public metadata for file: ${validatedMetadata.fileId} (${displayTitle}) by ${authorDisplay}`, {
+      safeLogger.info('Added public metadata', {
+        fileIdHash: hashIdentifier(validatedMetadata.fileId),
         fileType,
         contentClass,
         hasTextPost,
         hasThought,
         isThoughtThumbnail: !!(validatedMetadata as any).isThoughtThumbnail,
-        textPostKeys: hasTextPost ? Object.keys((validatedMetadata as any).textPost || {}) : [],
-        thoughtKeys: hasThought ? Object.keys((validatedMetadata as any).thought || {}) : []
+        textPostKeysCount: hasTextPost ? Object.keys((validatedMetadata as any).textPost || {}).length : 0,
+        thoughtKeysCount: hasThought ? Object.keys((validatedMetadata as any).thought || {}).length : 0
       });
 
       await this.syncFileVisibilityOverrides(validatedMetadata.fileId, validatedMetadata.indexingPermissions);
@@ -326,11 +328,11 @@ export class AggregatorMetadataServiceDB {
         await invalidateIndexCache();
         console.log(`🗑️ [submitMetadata] Invalidated index cache after metadata update`);
       } catch (error) {
-        console.warn('⚠️ [submitMetadata] Cache invalidation failed (non-critical):', error);
+        safeLogger.warn('[submitMetadata] Cache invalidation failed (non-critical)', { error: error as Error });
         // Continue even if cache invalidation fails
       }
     } catch (error) {
-      console.error(`❌ Failed to submit metadata for file ${validatedMetadata.fileId}:`, error);
+      safeLogger.error('Failed to submit metadata', { fileIdHash: hashIdentifier(validatedMetadata.fileId), error: error as Error });
       throw error;
     }
   }
@@ -386,10 +388,10 @@ export class AggregatorMetadataServiceDB {
         console.warn('⚠️ [removeAllMetadataForUser] Cache invalidation failed (non-critical):', error);
       }
 
-      console.log(`🗑️ [removeAllMetadataForUser] Removed ${totalRemoved} file(s) for pnIdentifier: ${pnIdentifier}`);
+      safeLogger.info('[removeAllMetadataForUser] Removed files for user', { removed: totalRemoved, pnHash: hashIdentifier(pnIdentifier) });
       return totalRemoved;
     } catch (error) {
-      console.error(`❌ Failed to remove all metadata for pnIdentifier ${pnIdentifier}:`, error);
+      safeLogger.error('Failed to remove all metadata for user', { pnHash: hashIdentifier(pnIdentifier), error: error as Error });
       throw error;
     }
   }

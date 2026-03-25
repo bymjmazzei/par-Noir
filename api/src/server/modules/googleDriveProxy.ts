@@ -5,6 +5,7 @@
 
 import { storageCredentialsService } from './storageCredentialsService';
 import { PNOAuthService } from './pnOAuthService';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 
 export interface GoogleDriveToken {
   access_token: string;
@@ -35,7 +36,7 @@ export class GoogleDriveProxyService {
    * Handles token refresh if needed
    */
   async getAccessToken(userPnIdentifier: string, accountId?: string, additionalCandidates?: string[]): Promise<string> {
-    console.log(`[GoogleDriveProxy] getAccessToken called`);
+    safeLogger.info('[GoogleDriveProxy] getAccessToken called');
     
     // CRITICAL: Use ONLY the pn identifier (first candidate)
     // Dashboard stores credentials under pn identifier only, so we should only try that
@@ -43,7 +44,7 @@ export class GoogleDriveProxyService {
     const pnIdentifier = userPnIdentifier?.startsWith('pn-') ? userPnIdentifier : (additionalCandidates?.[0] || userPnIdentifier);
     
     if (!pnIdentifier || !pnIdentifier.startsWith('pn-')) {
-      console.error(`[GoogleDriveProxy] Invalid pn identifier: ${pnIdentifier}. Expected format: pn-{hash}`);
+      safeLogger.error('[GoogleDriveProxy] Invalid pn identifier');
       throw new Error('Google Drive not connected. Please connect in the dashboard.');
     }
 
@@ -62,13 +63,19 @@ export class GoogleDriveProxyService {
       }
     }
     
-    console.log(`[GoogleDriveProxy] Resolving credentials by identifier candidate`);
+    safeLogger.info('[GoogleDriveProxy] Resolving credentials by identifier candidate', {
+      subjectHash: hashIdentifier(userPnIdentifier),
+      candidates: identifierCandidates.length,
+    });
     
     // Try to find credentials using only the pn identifier
     const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(identifierCandidates);
     
     if (!credentialsRecord) {
-      console.error(`[GoogleDriveProxy] No credentials record found for userPnIdentifier: ${userPnIdentifier} (tried: ${identifierCandidates.filter(Boolean).join(', ')})`);
+      safeLogger.warn('[GoogleDriveProxy] No credentials record found', {
+        subjectHash: hashIdentifier(userPnIdentifier),
+        candidates: identifierCandidates.length,
+      });
       throw new Error('Google Drive not connected. Please connect in the dashboard.');
     }
     
@@ -148,7 +155,7 @@ export class GoogleDriveProxyService {
     const expiresSoon = expiresAt < now + 300000; // 5 minutes
     const shouldRefresh = isExpired || expiresSoon;
     
-    console.log(`[GoogleDriveProxy] Token check`, { shouldRefresh, isExpired, expiresSoon });
+    safeLogger.info('[GoogleDriveProxy] Token check', { shouldRefresh, isExpired, expiresSoon });
     
     // Only refresh if token is expired or about to expire
     // Don't refresh unnecessarily - the stored token is valid if it's not expired
@@ -233,7 +240,9 @@ export class GoogleDriveProxyService {
         
         return refreshedToken.access_token;
       } catch (error: any) {
-        console.error(`[GoogleDriveProxy] Failed to refresh Google Drive token:`, error.message || error);
+        safeLogger.error('[GoogleDriveProxy] Failed to refresh Google Drive token', {
+          message: error.message || String(error),
+        });
         
         // If refresh fails and token is expired, throw error immediately
         // Don't try to use expired token - user needs to reconnect

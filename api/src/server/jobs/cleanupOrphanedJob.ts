@@ -7,6 +7,7 @@ export async function runCleanupOrphaned(): Promise<{ checked: number; removed: 
   const { AggregatorMetadataServiceDB } = await import('../modules/aggregatorMetadataServiceDB');
   const { isDriveFileUrlDead } = await import('../utils/driveUrlCheck');
   const { getDatabasePool } = await import('../utils/database');
+  const { hashIdentifier, safeLogger } = await import('../../utils/logger');
 
   const service = AggregatorMetadataServiceDB.getInstance();
   const db = getDatabasePool();
@@ -20,7 +21,7 @@ export async function runCleanupOrphaned(): Promise<{ checked: number; removed: 
       for (const row of result.rows) {
         try {
           if (!row.metadata) {
-            console.warn(`[CleanupOrphaned] Skipping row with null metadata in ${table}: ${row.file_id}`);
+            safeLogger.warn('[CleanupOrphaned] Skipping row with null metadata', { table, fileIdHash: hashIdentifier(row.file_id) });
             continue;
           }
           let metadata: any = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
@@ -29,15 +30,15 @@ export async function runCleanupOrphaned(): Promise<{ checked: number; removed: 
           if (!googleDriveFileId) continue;
           allEntries.push({ fileId: row.file_id, metadata, googleDriveFileId });
         } catch (rowError) {
-          console.error(`[CleanupOrphaned] Error processing row ${row.file_id} in ${table}:`, rowError);
+          safeLogger.error('[CleanupOrphaned] Error processing row', { table, fileIdHash: hashIdentifier(row.file_id), error: rowError as Error });
         }
       }
     } catch (tableError) {
-      console.error(`[CleanupOrphaned] Error querying table ${table}:`, tableError);
+      safeLogger.error('[CleanupOrphaned] Error querying table', { table, error: tableError as Error });
     }
   }
 
-  console.log(`[CleanupOrphaned] Found ${allEntries.length} Google Drive file(s) to verify`);
+  safeLogger.info('[CleanupOrphaned] Found files to verify', { count: allEntries.length });
 
   const filesToRemove: string[] = [];
   const batchSize = 10;
@@ -48,12 +49,12 @@ export async function runCleanupOrphaned(): Promise<{ checked: number; removed: 
         try {
           const dead = await isDriveFileUrlDead(entry.googleDriveFileId);
           if (dead) {
-            console.log(`[CleanupOrphaned] File ${entry.googleDriveFileId} is dead (deleted/not found): ${entry.metadata?.name || 'unknown'}`);
+            safeLogger.info('[CleanupOrphaned] Drive file missing', { fileIdHash: hashIdentifier(entry.googleDriveFileId) });
             return entry.fileId;
           }
           return null;
         } catch (error) {
-          console.warn(`[CleanupOrphaned] Error verifying ${entry.googleDriveFileId}:`, error);
+          safeLogger.warn('[CleanupOrphaned] Error verifying file', { fileIdHash: hashIdentifier(entry.googleDriveFileId), error: error as Error });
           return null;
         }
       })
@@ -70,10 +71,10 @@ export async function runCleanupOrphaned(): Promise<{ checked: number; removed: 
     try {
       if (await service.removeMetadata(fileId)) removedCount++;
     } catch (error) {
-      console.error(`[CleanupOrphaned] Failed to remove metadata for ${fileId}:`, error);
+      safeLogger.error('[CleanupOrphaned] Failed to remove metadata', { fileIdHash: hashIdentifier(fileId), error: error as Error });
     }
   }
 
-  console.log(`[CleanupOrphaned] Removed ${removedCount} orphaned metadata entry/entries`);
+  safeLogger.info('[CleanupOrphaned] Removed orphaned entries', { removedCount });
   return { checked: allEntries.length, removed: removedCount };
 }

@@ -22,6 +22,7 @@ import { GoogleAuth } from 'google-auth-library';
 import { AggregatorMetadataServiceDB } from './aggregatorMetadataServiceDB';
 import { PublicMetadata } from './aggregatorMetadataService';
 import { getFileTypeFromMime } from '../utils/fileTypeUtils';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 
 export class GoogleDriveSyncService {
   private static instance: GoogleDriveSyncService;
@@ -50,7 +51,7 @@ export class GoogleDriveSyncService {
 
     const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
     if (!serviceAccountKey) {
-      console.warn('⚠️ GOOGLE_SERVICE_ACCOUNT_KEY not set - Google Drive sync will be disabled');
+      safeLogger.warn('GOOGLE_SERVICE_ACCOUNT_KEY not set - Google Drive sync disabled');
       return;
     }
 
@@ -60,9 +61,9 @@ export class GoogleDriveSyncService {
         credentials,
         scopes: ['https://www.googleapis.com/auth/drive.readonly']
       });
-      console.log('✅ Google Drive service account authenticated');
+      safeLogger.info('Google Drive service account authenticated');
     } catch (error) {
-      console.error('❌ Failed to initialize Google Auth:', error);
+      safeLogger.error('Failed to initialize Google Auth', { error: error as Error });
       throw error;
     }
   }
@@ -110,14 +111,17 @@ export class GoogleDriveSyncService {
 
       if (response.status === 404) {
         // File doesn't exist
-        console.log(`🗑️ [verifyFileExists] File ${googleDriveFileId} not found (404)`);
+        safeLogger.info('[verifyFileExists] File not found', { fileIdHash: hashIdentifier(googleDriveFileId), status: 404 });
         return false;
       }
 
       if (response.status === 403 || response.status === 401) {
         // Permission denied - file might be private or service account doesn't have access
         // For now, assume it exists (service account should have access to pN folders)
-        console.warn(`⚠️ [verifyFileExists] Permission denied for ${googleDriveFileId} (${response.status}) - assuming exists`);
+        safeLogger.warn('[verifyFileExists] Permission denied, assuming exists', {
+          fileIdHash: hashIdentifier(googleDriveFileId),
+          status: response.status,
+        });
         return true;
       }
 

@@ -27,6 +27,7 @@ import { captureApiRouteError, initApiSentry } from './server/utils/sentry';
 import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modules/adminDeveloperRoutes';
 import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSelfServiceRoutes';
 import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
+import { hashIdentifier, safeLogger } from './utils/logger';
 
 // Environment configuration
 const PORT = process.env.PORT || 3001;
@@ -2179,7 +2180,7 @@ class ProductionServer {
     this.app.post('/api/aggregator/metadata-index', async (req, res) => {
       let requestId = Math.random().toString(36).substring(7);
       try {
-        console.log(`📥 [${requestId}] [POST /api/aggregator/metadata-index] Received request`);
+        safeLogger.info('[POST /api/aggregator/metadata-index] Received request', { requestId });
         
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
         const service = AggregatorMetadataServiceDB.getInstance();
@@ -2190,13 +2191,16 @@ class ProductionServer {
         const metadata = file?.metadata || req.body.metadata;
         
         // Log incoming request for debugging
-        console.log(`📥 [${requestId}] Request body keys:`, Object.keys(req.body));
-        console.log(`📥 [${requestId}] Metadata keys:`, metadata ? Object.keys(metadata) : 'No metadata');
-        console.log(`📥 [${requestId}] File type:`, metadata?.fileType || metadata?.mimeType || 'unknown');
+        safeLogger.info('[metadata-index] request summary', {
+          requestId,
+          bodyKeys: Object.keys(req.body || {}),
+          metadataKeyCount: metadata ? Object.keys(metadata).length : 0,
+          fileType: metadata?.fileType || metadata?.mimeType || 'unknown',
+        });
         
         // Validate metadata structure
         if (!metadata) {
-          console.error(`❌ [${requestId}] No metadata object received`);
+          safeLogger.warn('[metadata-index] No metadata object', { requestId });
           return res.status(400).json({ 
             error: 'Missing metadata object',
             requestId
@@ -2204,8 +2208,11 @@ class ProductionServer {
         }
 
         if (!metadata.fileId) {
-          console.error(`❌ [${requestId}] Missing fileId`);
-          console.error(`❌ [${requestId}] Metadata received:`, JSON.stringify(metadata, null, 2));
+          safeLogger.warn('[metadata-index] Missing fileId', {
+            requestId,
+            metadataKeys: Object.keys(metadata || {}),
+            pnHash: hashIdentifier(pnIdentifier),
+          });
           return res.status(400).json({ 
             error: 'Missing required field: fileId',
             requestId,
@@ -2230,7 +2237,7 @@ class ProductionServer {
 
         // Only require fileId - other fields can be optional
         if (!validatedMetadata.fileId) {
-          console.error(`❌ [${requestId}] Missing fileId after validation`);
+          safeLogger.warn('[metadata-index] Missing fileId after validation', { requestId });
           return res.status(400).json({ 
             error: 'Missing required field: fileId after validation',
             requestId
@@ -10130,6 +10137,11 @@ class ProductionServer {
   private setupPNOAuthEndpoints(): void {
     // Dynamic import to avoid circular dependencies
     const PNOAuthService = require('./server/modules/pnOAuthService').PNOAuthService;
+
+    this.app.get('/.well-known/jwks.json', (_req, res) => {
+      const jwks = PNOAuthService.getJwks();
+      return res.json(jwks);
+    });
 
     // GET /oauth/authorize - Authorization endpoint
     // This endpoint initiates the OAuth flow

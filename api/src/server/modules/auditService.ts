@@ -3,6 +3,7 @@
  */
 
 import { getDatabasePool } from '../utils/database';
+import { securityLogger } from '../../utils/logger';
 
 const DEFAULT_RETENTION_DAYS = parseInt(process.env.AUDIT_RETENTION_DAYS || '365', 10) || 365;
 
@@ -27,6 +28,31 @@ export async function appendAuditEvent(params: {
   } catch (err) {
     console.warn('[audit] appendAuditEvent failed (non-fatal):', (err as Error).message);
   }
+}
+
+export async function appendSecurityAuditEvent(params: {
+  eventType: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  actorHint?: string;
+  subjectPnIdentifier?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  await appendAuditEvent({
+    eventType: params.eventType,
+    actorHint: params.actorHint,
+    subjectPnIdentifier: params.subjectPnIdentifier,
+    metadata: {
+      severity: params.severity,
+      ...(params.metadata || {}),
+    },
+  });
+  securityLogger.securityEvent({
+    type: params.eventType,
+    severity: params.severity,
+    message: params.eventType,
+    userId: params.subjectPnIdentifier,
+    details: params.metadata,
+  });
 }
 
 /** Best-effort purge of old rows; safe to run periodically */

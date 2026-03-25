@@ -5,8 +5,13 @@
  */
 
 import crypto from 'crypto';
+import jwt, { JwtHeader, JwtPayload } from 'jsonwebtoken';
+import { GoogleAuth } from 'google-auth-library';
 import { getDatabasePool } from '../utils/database';
 import { isDidRevokedForNetwork, isPnRevokedForNetwork } from './identitySuccessionService';
+import { appendSecurityAuditEvent } from './auditService';
+import { securityFlags } from '../utils/securityFlags';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 
 export interface AuthorizationCode {
   code: string;
@@ -38,6 +43,25 @@ export interface TokenPayload {
   scope: string[];
   issuedAt: number;
   expiresAt: number;
+  jti?: string;
+  iss?: string;
+  aud?: string;
+  nbf?: number;
+}
+
+interface RefreshTokenRecord {
+  refresh_token: string;
+  did: string;
+  pn_identifier?: string;
+  client_id: string;
+  scope: string[];
+  expires_at: Date;
+  family_id?: string;
+  jti?: string;
+  used_at?: Date | null;
+  replaced_by?: string | null;
+  revoked_at?: Date | null;
+  reuse_detected_at?: Date | null;
 }
 
 // In-memory storage for authorization codes and access tokens (short-lived)
@@ -90,9 +114,90 @@ export class PNOAuthService {
     }
     return crypto.randomBytes(32).toString('hex');
   })();
+  private static readonly TOKEN_ISSUER = process.env.PN_OAUTH_ISSUER || 'par-noir-api';
+  private static readonly TOKEN_AUDIENCE = process.env.PN_OAUTH_AUDIENCE || 'par-noir-clients';
+  private static readonly ACCESS_TOKEN_ALG = (process.env.PN_OAUTH_ACCESS_TOKEN_ALG || 'HS256').toUpperCase();
+  private static readonly JWT_KID = process.env.PN_OAUTH_KEY_ID || 'legacy-hs256';
+  private static readonly JWT_PRIVATE_KEY = process.env.PN_OAUTH_PRIVATE_KEY_PEM?.replace(/\\n/g, '\n');
+  private static readonly JWT_PUBLIC_KEY = process.env.PN_OAUTH_PUBLIC_KEY_PEM?.replace(/\\n/g, '\n');
+  private static readonly KMS_KEY_VERSION = process.env.PN_OAUTH_KMS_KEY_VERSION;
 
   private static hashRefreshToken(token: string): string {
     return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
+  }
+
+  private static getCurrentAlgorithm(): 'HS256' | 'RS256' {
+    if (this.KMS_KEY_VERSION || this.ACCESS_TOKEN_ALG === 'RS256' || securityFlags.enableAsymmetricTokens) {
+      return 'RS256';
+    }
+    return 'HS256';
+  }
+
+  private static async signJwt(payload: Record<string, unknown>): Promise<string> {
+    const algorithm = this.getCurrentAlgorithm();
+    const header: JwtHeader = { alg: algorithm, typ: 'JWT', kid: this.JWT_KID };
+    if (algorithm === 'HS256') {
+      return jwt.sign(payload, this.TOKEN_SECRET, {
+        algorithm: 'HS256',
+        header,
+      });
+    }
+
+    if (this.KMS_KEY_VERSION) {
+      return this.signJwtWithKms(payload, header);
+    }
+
+    if (!this.JWT_PRIVATE_KEY) {
+      throw new Error('PN_OAUTH_PRIVATE_KEY_PEM is required for RS256');
+    }
+    return jwt.sign(payload, this.JWT_PRIVATE_KEY, { algorithm: 'RS256', header });
+  }
+
+  private static async signJwtWithKms(payload: Record<string, unknown>, header: JwtHeader): Promise<string> {
+    const kmsKey = this.KMS_KEY_VERSION;
+    if (!kmsKey) throw new Error('PN_OAUTH_KMS_KEY_VERSION not configured');
+    const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
+    const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const signingInput = `${encodedHeader}.${encodedPayload}`;
+    const digest = crypto.createHash('sha256').update(signingInput).digest('base64');
+    const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
+    const client = await auth.getClient();
+    const url = `https://cloudkms.googleapis.com/v1/${kmsKey}:asymmetricSign`;
+    const res = await client.request<{ signature?: string }>({
+      url,
+      method: 'POST',
+      data: { digest: { sha256: digest } },
+    });
+    const sig = res.data.signature;
+    if (!sig) throw new Error('KMS asymmetricSign returned no signature');
+    return `${signingInput}.${Buffer.from(sig, 'base64').toString('base64url')}`;
+  }
+
+  static getJwks(): { keys: Array<Record<string, unknown>> } {
+    if (!this.JWT_PUBLIC_KEY && !process.env.PN_OAUTH_JWKS_JSON) {
+      return { keys: [] };
+    }
+    if (process.env.PN_OAUTH_JWKS_JSON) {
+      try {
+        const parsed = JSON.parse(process.env.PN_OAUTH_JWKS_JSON);
+        if (parsed?.keys) return parsed;
+      } catch {
+        return { keys: [] };
+      }
+    }
+    if (!this.JWT_PUBLIC_KEY) return { keys: [] };
+    const x5c = Buffer.from(this.JWT_PUBLIC_KEY).toString('base64');
+    return {
+      keys: [
+        {
+          kty: 'RSA',
+          alg: 'RS256',
+          use: 'sig',
+          kid: this.JWT_KID,
+          x5c: [x5c],
+        },
+      ],
+    };
   }
 
   /**
@@ -355,6 +460,7 @@ export class PNOAuthService {
       console.warn('[OAuth] No pN identifier provided - token will not include pnIdentifier');
     }
     
+    const now = Math.floor(Date.now() / 1000);
     const payload: TokenPayload = {
       did: params.did,
       // SECURITY: pN name is NEVER stored - it's a secret
@@ -362,18 +468,26 @@ export class PNOAuthService {
       clientId: params.clientId,
       scope: params.scope,
       issuedAt: Date.now(),
-      expiresAt: Date.now() + this.ACCESS_TOKEN_EXPIRY
+      expiresAt: Date.now() + this.ACCESS_TOKEN_EXPIRY,
+      jti: crypto.randomUUID(),
+      iss: this.TOKEN_ISSUER,
+      aud: this.TOKEN_AUDIENCE,
+      nbf: now
     };
-
-    // Create JWT-like token (simplified - in production use proper JWT library)
-    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-    const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
-    const signature = crypto
-      .createHmac('sha256', this.TOKEN_SECRET)
-      .update(`${header}.${payloadB64}`)
-      .digest('base64url');
-
-    const token = `${header}.${payloadB64}.${signature}`;
+    const token = await this.signJwt({
+      did: payload.did,
+      pnIdentifier: payload.pnIdentifier,
+      clientId: payload.clientId,
+      scope: payload.scope,
+      jti: payload.jti,
+      iss: payload.iss,
+      aud: payload.aud,
+      iat: now,
+      nbf: now,
+      exp: now + Math.floor(this.ACCESS_TOKEN_EXPIRY / 1000),
+      issuedAt: payload.issuedAt,
+      expiresAt: payload.expiresAt,
+    });
     
     // Store token payload for validation
     accessTokens.set(token, payload);
@@ -393,10 +507,14 @@ export class PNOAuthService {
     pnIdentifier?: string; // pN identifier (derived client-side)
     clientId: string; 
     scope: string[] 
+    familyId?: string;
+    parentTokenHash?: string;
   }): Promise<string> {
     const token = crypto.randomBytes(32).toString('hex');
     const tokenHash = this.hashRefreshToken(token);
     const expiresAt = new Date(Date.now() + this.REFRESH_TOKEN_EXPIRY);
+    const familyId = params.familyId || crypto.randomUUID();
+    const jti = crypto.randomUUID();
     
     // Use provided pN identifier (derived client-side)
     // SECURITY: Never derive from secrets - pnName and passcode are never accepted
@@ -405,8 +523,8 @@ export class PNOAuthService {
     const db = getDatabasePool();
     try {
       await db.query(
-        `INSERT INTO oauth_refresh_tokens (refresh_token, did, pn_identifier, public_key, client_id, scope, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO oauth_refresh_tokens (refresh_token, did, pn_identifier, public_key, client_id, scope, expires_at, family_id, jti, previous_token_hash)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (refresh_token) 
          DO UPDATE SET 
            did = $2,
@@ -414,8 +532,11 @@ export class PNOAuthService {
            public_key = $4,
            client_id = $5,
            scope = $6,
-           expires_at = $7`,
-        [tokenHash, params.did, pnIdentifier, params.publicKey, params.clientId, params.scope, expiresAt]
+           expires_at = $7,
+           family_id = $8,
+           jti = $9,
+           previous_token_hash = $10`,
+        [tokenHash, params.did, pnIdentifier, params.publicKey, params.clientId, params.scope, expiresAt, familyId, jti, params.parentTokenHash || null]
       );
     } catch (error) {
       console.error('[OAuth] Failed to store refresh token in database:', error);
@@ -435,7 +556,7 @@ export class PNOAuthService {
     try {
       // Query refresh token from database
       const result = await db.query(
-        `SELECT did, pn_identifier, client_id, scope, expires_at 
+        `SELECT refresh_token, did, pn_identifier, client_id, scope, expires_at, family_id, jti, used_at, replaced_by, revoked_at, reuse_detected_at
          FROM oauth_refresh_tokens 
          WHERE refresh_token = $1`,
         [tokenHash]
@@ -446,7 +567,7 @@ export class PNOAuthService {
         return null;
       }
 
-      const tokenData = result.rows[0];
+      const tokenData = result.rows[0] as RefreshTokenRecord;
 
       // Check if token is expired
       const expiresAt = new Date(tokenData.expires_at);
@@ -460,6 +581,27 @@ export class PNOAuthService {
       // Verify client ID matches
       if (tokenData.client_id !== clientId) {
         console.warn('[OAuth] Client ID mismatch for refresh token');
+        return null;
+      }
+      if (tokenData.revoked_at) {
+        return null;
+      }
+      if (tokenData.used_at) {
+        await db.query(
+          `UPDATE oauth_refresh_tokens
+           SET revoked_at = NOW(), reuse_detected_at = NOW(), revoked_reason = 'reuse_detected'
+           WHERE family_id = $1`,
+          [tokenData.family_id || tokenHash]
+        );
+        await appendSecurityAuditEvent({
+          eventType: 'oauth.refresh_token_reuse_detected',
+          severity: 'high',
+          subjectPnIdentifier: tokenData.pn_identifier,
+          metadata: {
+            clientIdHash: hashIdentifier(clientId),
+            familyId: tokenData.family_id,
+          },
+        });
         return null;
       }
 
@@ -478,11 +620,28 @@ export class PNOAuthService {
         scope: tokenData.scope || []
       });
 
+      const nextRefreshToken = await this.generateRefreshToken({
+        did: tokenData.did,
+        publicKey: undefined,
+        pnIdentifier: tokenData.pn_identifier,
+        clientId: clientId,
+        scope: tokenData.scope || [],
+        familyId: tokenData.family_id || tokenHash,
+        parentTokenHash: tokenHash,
+      });
+
+      await db.query(
+        `UPDATE oauth_refresh_tokens
+         SET used_at = NOW(), replaced_by = $2
+         WHERE refresh_token = $1`,
+        [tokenHash, this.hashRefreshToken(nextRefreshToken)]
+      );
+
       return {
         access_token: accessToken,
         token_type: 'Bearer',
         expires_in: Math.floor(this.ACCESS_TOKEN_EXPIRY / 1000),
-        refresh_token: refreshToken, // Return same refresh token
+        refresh_token: nextRefreshToken,
         scope: (tokenData.scope || []).join(' ')
       };
     } catch (error) {
@@ -505,32 +664,30 @@ export class PNOAuthService {
       return cached;
     }
 
-    // Validate JWT-like token
+    // Validate JWT token
     try {
-      const parts = token.split('.');
-      if (parts.length !== 3) {
-        return null;
-      }
+      const algorithm = this.getCurrentAlgorithm();
+      const verifyKey = algorithm === 'HS256'
+        ? this.TOKEN_SECRET
+        : (this.JWT_PUBLIC_KEY || this.JWT_PRIVATE_KEY || this.TOKEN_SECRET);
+      const decoded = jwt.verify(token, verifyKey, {
+        algorithms: algorithm === 'HS256' ? ['HS256'] : ['RS256'],
+        issuer: this.TOKEN_ISSUER,
+        audience: this.TOKEN_AUDIENCE,
+      }) as JwtPayload & TokenPayload;
 
-      const [headerB64, payloadB64, signature] = parts;
-      
-      // Verify signature
-      const expectedSignature = crypto
-        .createHmac('sha256', this.TOKEN_SECRET)
-        .update(`${headerB64}.${payloadB64}`)
-        .digest('base64url');
-
-      if (signature !== expectedSignature) {
-        return null;
-      }
-
-      // Parse payload
-      const payload: TokenPayload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
-
-      // Check expiration
-      if (payload.expiresAt < Date.now()) {
-        return null;
-      }
+      const payload: TokenPayload = {
+        did: String(decoded.did || ''),
+        pnIdentifier: decoded.pnIdentifier,
+        clientId: String(decoded.clientId || ''),
+        scope: Array.isArray(decoded.scope) ? decoded.scope as string[] : [],
+        issuedAt: Number(decoded.issuedAt || (decoded.iat ? decoded.iat * 1000 : Date.now())),
+        expiresAt: Number(decoded.expiresAt || (decoded.exp ? decoded.exp * 1000 : Date.now())),
+        jti: typeof decoded.jti === 'string' ? decoded.jti : undefined,
+        iss: typeof decoded.iss === 'string' ? decoded.iss : undefined,
+        aud: typeof decoded.aud === 'string' ? decoded.aud : undefined,
+      };
+      if (!payload.did || !payload.clientId) return null;
 
       if (isPnRevokedForNetwork(payload.pnIdentifier) || isDidRevokedForNetwork(payload.did)) {
         return null;
@@ -541,6 +698,11 @@ export class PNOAuthService {
 
       return payload;
     } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        safeLogger.warn('[OAuth] validateAccessToken failed', {
+          message: (error as Error).message,
+        });
+      }
       return null;
     }
   }
