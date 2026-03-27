@@ -6,7 +6,7 @@ interface PicturePreviewProps {
   onImageError: () => void;
 }
 
-export const PicturePreview: React.FC = ({ isOpen, onClose, settings, onSettingsChange }) => {
+export const PicturePreview: React.FC<PicturePreviewProps> = ({
   previewUrl,
   onImageError
 }) => {

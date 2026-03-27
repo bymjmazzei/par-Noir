@@ -7,7 +7,7 @@ interface EmojiSelectorProps {
   onEmojiSelect: (emoji: string) => void;
 }
 
-export const EmojiSelector: React.FC = ({ isOpen, onClose, settings, onSettingsChange }) => {
+export const EmojiSelector: React.FC<EmojiSelectorProps> = ({
   emojiSearch,
   onEmojiSearchChange,
   onEmojiSelect

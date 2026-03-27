@@ -17,7 +17,7 @@ interface WizardProgressProps {
   completedSteps: Set<string>;
 }
 
-export const WizardProgress: React.FC = ({ isOpen, onClose, settings, onSettingsChange }) => {
+export const WizardProgress: React.FC<WizardProgressProps> = ({
   steps,
   currentStep,
   completedSteps

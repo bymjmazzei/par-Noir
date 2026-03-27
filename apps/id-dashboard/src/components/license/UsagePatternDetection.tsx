@@ -11,7 +11,7 @@ interface UsagePatternDetectionProps {
   onResetAll: () => void;
 }
 
-export const UsagePatternDetection: React.FC = ({ isOpen, onClose, settings, onSettingsChange }) => {
+export const UsagePatternDetection: React.FC<UsagePatternDetectionProps> = ({
   usagePattern,
   licenseInfo,
   onTestDetection,

@@ -4,7 +4,7 @@ interface LicenseFeaturesProps {
   licenseType: string;
 }
 
-export const LicenseFeatures: React.FC = ({ isOpen, onClose, settings, onSettingsChange }) => {
+export const LicenseFeatures: React.FC<LicenseFeaturesProps> = ({ licenseType }) => {
   const getFeatures = (type: string) => {
     switch (type) {
       case 'free':

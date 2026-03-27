@@ -8,7 +8,7 @@ interface DetectionModalProps {
   onUpgrade: () => void;
 }
 
-export const DetectionModal: React.FC = ({ isOpen, onClose, settings, onSettingsChange }) => {
+export const DetectionModal: React.FC<DetectionModalProps> = ({
   isOpen,
   usagePattern,
   onClose,

@@ -9,19 +9,22 @@ import { FeedService, Feed } from '../../services/feeds/FeedService';
 import { IdentityVerificationModal } from '../IdentityVerificationModal';
 import { CoinbaseProxy, CheckoutRequest } from '../../utils/coinbaseProxy';
 import { API_ENDPOINT } from '../../config/api';
+import type { EncryptedIdentity } from '../../types/crypto';
 
 interface FeedCreatorProps {
   isOpen: boolean;
   onClose: () => void;
   onFeedCreated?: (feed: Feed) => void;
   authenticatedUser: { id: string } | null;
+  encryptedIdentity?: EncryptedIdentity;
 }
 
 export const FeedCreator: React.FC<FeedCreatorProps> = ({
   isOpen,
   onClose,
   onFeedCreated,
-  authenticatedUser
+  authenticatedUser,
+  encryptedIdentity
 }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -230,6 +233,7 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
           }}
           onVerificationComplete={handleVerificationComplete}
           identityId={authenticatedUser.id}
+          encryptedIdentity={encryptedIdentity}
         />
       )}
     </div>

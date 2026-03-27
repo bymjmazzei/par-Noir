@@ -4,15 +4,18 @@ import { GlobalPrivacySettings } from '../types/privacy';
 import { IdentityVerificationModal } from './IdentityVerificationModal';
 import { VerifiedIdentityData } from '../types/verifiedIdentity';
 import { verifiedIdentityManager } from '../services/verifiedIdentityManager';
+import type { EncryptedIdentity } from '../types/crypto';
 
 interface PrivacyControlsProps {
   identityId?: string;
+  encryptedIdentity?: EncryptedIdentity;
   onPrivacyUpdate?: (settings: GlobalPrivacySettings) => void;
   onDataAccessRequest?: (request: any) => void;
 }
 
 export const PrivacyControls: React.FC<PrivacyControlsProps> = React.memo(({
   identityId,
+  encryptedIdentity,
   onPrivacyUpdate,
   onDataAccessRequest
 }) => {
@@ -555,6 +558,7 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = React.memo(({
         onClose={() => setShowVerificationModal(false)}
         onVerificationComplete={handleVerificationComplete}
         identityId={identityId}
+        encryptedIdentity={encryptedIdentity}
       />
     </div>
   );

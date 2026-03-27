@@ -1,6 +1,7 @@
 // Standardized Data Points System — shared catalog types from @par-noir/standard-data-points
 import type { StandardDataPoint, ZKPType } from '@par-noir/standard-data-points';
-export type { StandardDataPoint, ZKPType };
+import type { EncryptedIdentity } from './crypto';
+export type { StandardDataPoint, ZKPType, EncryptedIdentity };
 
 /** Dashboard-only validation helpers (e.g. custom checks) layered on catalog rows */
 export interface DataValidation {
@@ -16,6 +17,10 @@ export interface ZKPGenerationRequest {
   userData: any;
   verificationLevel: 'basic' | 'enhanced' | 'verified';
   expirationDays?: number;
+  /** Session DID — must match SecureCredentialManager credentials */
+  identityId: string;
+  /** Encrypted identity blob (public key + ciphertext) for ML-DSA signing */
+  encryptedIdentity: EncryptedIdentity;
 }
 
 export interface ZKPProof {

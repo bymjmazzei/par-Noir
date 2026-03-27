@@ -1,12 +1,12 @@
-import { cryptoWorkerManager } from '../utils/cryptoWorkerManager';
 import { ZKPGenerator } from '../utils/ZKPGenerator';
-import { 
-  VerifiedIdentityData, 
-  VerifiedDataPoint, 
+import type { EncryptedIdentity } from '../types/crypto';
+import {
+  VerifiedIdentityData,
+  VerifiedDataPoint,
   StoredVerifiedIdentity,
   VerificationRequest,
   VerificationResult,
-  VerifiedZKPProof
+  VerifiedZKPProof,
 } from '../types/verifiedIdentity';
 import { identityVerificationService } from './identityVerificationService';
 import { verificationPaymentHandler } from './verificationPaymentHandler';
@@ -73,8 +73,28 @@ export class VerifiedIdentityManager {
       const result = await identityVerificationService.verifyIdentity(request);
 
       if (result.success) {
-        // Generate ZKPs for all verified data points
-        const verifiedData = await this.generateVerifiedIdentityData(result, request.identityId);
+        if (!request.encryptedIdentity) {
+          return {
+            success: false,
+            verificationId: '',
+            extractedData: {} as VerificationResult['extractedData'],
+            fraudPrevention: {
+              livenessCheck: false,
+              documentAuthenticity: false,
+              biometricMatch: false,
+              riskScore: 1,
+              fraudIndicators: ['Missing encrypted identity for ZKP signing'],
+              confidence: 0,
+              timestamp: new Date().toISOString(),
+            },
+            error: 'encryptedIdentity is required to generate ZK v1 proofs.',
+          };
+        }
+        const verifiedData = await this.generateVerifiedIdentityData(
+          result,
+          request.identityId,
+          request.encryptedIdentity
+        );
         
         // Store the verified identity data
         await this.storeVerifiedIdentity(verifiedData);
@@ -91,10 +111,12 @@ export class VerifiedIdentityManager {
    */
   private async generateVerifiedIdentityData(
     verificationResult: VerificationResult,
-    identityId: string
+    identityId: string,
+    encryptedIdentity: EncryptedIdentity
   ): Promise<VerifiedIdentityData> {
     const { extractedData, fraudPrevention, verificationId } = verificationResult;
-    
+    const zkCtx = { identityId, encryptedIdentity };
+
     // Generate ZKPs for each data point
     const dataPoints: { [key: string]: VerifiedDataPoint } = {};
 
@@ -108,7 +130,8 @@ export class VerifiedIdentityManager {
           middleName: extractedData.middleName || ''
         },
         verificationId,
-        fraudPrevention.riskScore
+        fraudPrevention.riskScore,
+        zkCtx
       );
 
       dataPoints.identity_attestation = {
@@ -139,7 +162,8 @@ export class VerifiedIdentityManager {
           dateOfBirth: extractedData.dateOfBirth
         },
         verificationId,
-        fraudPrevention.riskScore
+        fraudPrevention.riskScore,
+        zkCtx
       );
 
       dataPoints.age_attestation = {
@@ -169,7 +193,8 @@ export class VerifiedIdentityManager {
           postalCode: extractedData.postalCode || ''
         },
         verificationId,
-        fraudPrevention.riskScore
+        fraudPrevention.riskScore,
+        zkCtx
       );
 
       dataPoints.location_verification = {
@@ -194,39 +219,42 @@ export class VerifiedIdentityManager {
       };
     }
 
-    // Document Verification ZKP (custom data point)
-    const documentZKP = await this.generateVerifiedZKP(
-      'document_verification',
-      {
-        documentType: extractedData.documentType,
-        documentNumber: extractedData.documentNumber,
-        issuingAuthority: extractedData.issuingAuthority || '',
-        expirationDate: extractedData.expirationDate || ''
-      },
-      verificationId,
-      fraudPrevention.riskScore
-    );
+    // Document Verification ZKP (only when document fields present; must exist in standard catalog)
+    if (extractedData.documentNumber && extractedData.documentType) {
+      const documentZKP = await this.generateVerifiedZKP(
+        'document_verification',
+        {
+          documentType: extractedData.documentType,
+          documentNumber: extractedData.documentNumber,
+          issuingAuthority: extractedData.issuingAuthority || '',
+          expirationDate: extractedData.expirationDate || ''
+        },
+        verificationId,
+        fraudPrevention.riskScore,
+        zkCtx
+      );
 
-    dataPoints.document_verification = {
-      value: {
-        documentType: extractedData.documentType,
-        documentNumber: extractedData.documentNumber,
-        issuingAuthority: extractedData.issuingAuthority || '',
-        expirationDate: extractedData.expirationDate || ''
-      },
-      zkpProof: documentZKP.proof,
-      verified: true,
-      verificationLevel: 'verified',
-      verifiedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year
-      dataPointId: 'document_verification',
-      originalValue: {
-        documentType: extractedData.documentType,
-        documentNumber: extractedData.documentNumber,
-        issuingAuthority: extractedData.issuingAuthority || '',
-        expirationDate: extractedData.expirationDate || ''
-      }
-    };
+      dataPoints.document_verification = {
+        value: {
+          documentType: extractedData.documentType,
+          documentNumber: extractedData.documentNumber,
+          issuingAuthority: extractedData.issuingAuthority || '',
+          expirationDate: extractedData.expirationDate || ''
+        },
+        zkpProof: documentZKP.proof,
+        verified: true,
+        verificationLevel: 'verified',
+        verifiedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year
+        dataPointId: 'document_verification',
+        originalValue: {
+          documentType: extractedData.documentType,
+          documentNumber: extractedData.documentNumber,
+          issuingAuthority: extractedData.issuingAuthority || '',
+          expirationDate: extractedData.expirationDate || ''
+        }
+      };
+    }
 
     return {
       id: identityId,
@@ -264,14 +292,16 @@ export class VerifiedIdentityManager {
     dataPointId: string,
     userData: any,
     verificationId: string,
-    riskScore: number
+    riskScore: number,
+    ctx: { identityId: string; encryptedIdentity: EncryptedIdentity }
   ): Promise<VerifiedZKPProof> {
-    // Generate standard ZKP
     const standardZKP = await ZKPGenerator.generateZKP({
       dataPointId,
       userData,
       verificationLevel: 'verified',
-      expirationDays: 365
+      expirationDays: 365,
+      identityId: ctx.identityId,
+      encryptedIdentity: ctx.encryptedIdentity,
     });
 
     // Enhance with verification-specific metadata

@@ -13,7 +13,7 @@ export class IndexedDBManager {
       request.onerror = () => reject(new Error('Failed to open IndexedDB'));
       request.onsuccess = () => {
         const db = request.result;
-        const transaction = db.transaction((['identities'], 'readwrite');
+        const transaction = db.transaction(['identities'], 'readwrite');
         const store = transaction.objectStore('identities');
 
         const storeData = {
@@ -40,7 +40,7 @@ export class IndexedDBManager {
       request.onerror = () => reject(new Error('Failed to open IndexedDB'));
       request.onsuccess = () => {
         const db = request.result;
-        const transaction = db.transaction((['identities'], 'readonly');
+        const transaction = db.transaction(['identities'], 'readonly');
         const store = transaction.objectStore('identities');
 
         const getRequest = store.get(key);
@@ -66,7 +66,7 @@ export class IndexedDBManager {
       request.onerror = () => reject(new Error('Failed to open IndexedDB'));
       request.onsuccess = () => {
         const db = request.result;
-        const transaction = db.transaction((['identities'], 'readwrite');
+        const transaction = db.transaction(['identities'], 'readwrite');
         const store = transaction.objectStore('identities');
 
         const deleteRequest = store.delete(key);
@@ -86,7 +86,7 @@ export class IndexedDBManager {
       request.onerror = () => reject(new Error('Failed to open IndexedDB'));
       request.onsuccess = () => {
         const db = request.result;
-        const transaction = db.transaction((['identities'], 'readonly');
+        const transaction = db.transaction(['identities'], 'readonly');
         const store = transaction.objectStore('identities');
 
         const getAllKeysRequest = store.getAllKeys();
@@ -108,7 +108,7 @@ export class IndexedDBManager {
       request.onerror = () => reject(new Error('Failed to open IndexedDB'));
       request.onsuccess = () => {
         const db = request.result;
-        const transaction = db.transaction((['identities'], 'readwrite');
+        const transaction = db.transaction(['identities'], 'readwrite');
         const store = transaction.objectStore('identities');
 
         const clearRequest = store.clear();
@@ -128,7 +128,7 @@ export class IndexedDBManager {
       request.onerror = () => reject(new Error('Failed to open IndexedDB'));
       request.onsuccess = () => {
         const db = request.result;
-        const transaction = db.transaction((['identities'], 'readonly');
+        const transaction = db.transaction(['identities'], 'readonly');
         const store = transaction.objectStore('identities');
 
         const getAllRequest = store.getAll();

@@ -4,6 +4,28 @@
   "description": "PQC primitives for par Noir identity (ML-DSA-65, ML-KEM-768) and wire helpers",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./encoding": {
+      "types": "./dist/encoding.d.ts",
+      "import": "./dist/encoding.js",
+      "require": "./dist/encoding.js"
+    },
+    "./ml-dsa": {
+      "types": "./dist/mlDsa.d.ts",
+      "import": "./dist/mlDsa.js",
+      "require": "./dist/mlDsa.js"
+    },
+    "./constants": {
+      "types": "./dist/constants.d.ts",
+      "import": "./dist/constants.js",
+      "require": "./dist/constants.js"
+    }
+  },
   "files": [
     "dist"
   ],

@@ -131,31 +131,26 @@ describe('IdentitySDK', () => {
   });
 
   describe('Zero-Knowledge Proofs', () => {
-    it('generateProof schnorr / pedersen', async () => {
-      const s = await sdk.generateProof('schnorr', { privateKey: {} as CryptoKey });
-      expect(s).toBeDefined();
-      const p = await sdk.generateProof('pedersen', { publicPNId: 'pn-x' });
-      expect(p).toBeDefined();
+    it('generateProof schnorr / pedersen throw (ZK v1 is dashboard-only)', async () => {
+      await expect(sdk.generateProof('schnorr', { privateKey: {} as CryptoKey })).rejects.toThrow();
+      await expect(sdk.generateProof('pedersen', { publicPNId: 'pn-x' })).rejects.toThrow();
     });
 
     it('throws for unknown proof type', async () => {
       await expect(sdk.generateProof('unknown', {})).rejects.toThrow('Unknown proof type');
     });
 
-    it('verifyProof returns boolean', async () => {
-      const proof = await sdk.generateProof('schnorr', { privateKey: {} as CryptoKey });
-      const ok = await sdk.verifyProof(proof, 'schnorr');
+    it('verifyProof returns boolean for string proofs', async () => {
+      const ok = await sdk.verifyProof('x'.repeat(50), 'schnorr');
       expect(typeof ok).toBe('boolean');
     });
 
-    it('generateDataPointProof', async () => {
-      const proof = await sdk.generateDataPointProof('email', 'u1');
-      expect(proof.dataPointId).toBe('email');
+    it('generateDataPointProof throws', async () => {
+      await expect(sdk.generateDataPointProof('email', 'u1')).rejects.toThrow(/not supported/);
     });
 
-    it('generateOwnershipProof', async () => {
-      const proof = await sdk.generateOwnershipProof({ owner: 'a', asset: 'b' });
-      expect(proof.proof).toBeDefined();
+    it('generateOwnershipProof throws', async () => {
+      await expect(sdk.generateOwnershipProof({ owner: 'a', asset: 'b' })).rejects.toThrow(/not implemented/);
     });
   });
 

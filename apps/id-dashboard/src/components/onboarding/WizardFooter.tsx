@@ -9,7 +9,7 @@ interface WizardFooterProps {
   onNext: () => void;
 }
 
-export const WizardFooter: React.FC = ({ isOpen, onClose, settings, onSettingsChange }) => {
+export const WizardFooter: React.FC<WizardFooterProps> = ({
   isFirstStep,
   isLastStep,
   onSkip,

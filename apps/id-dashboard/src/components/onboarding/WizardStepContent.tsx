@@ -21,7 +21,7 @@ interface WizardStepContentProps {
   completedSteps: Set<string>;
 }
 
-export const WizardStepContent: React.FC = ({ isOpen, onClose, settings, onSettingsChange }) => {
+export const WizardStepContent: React.FC<WizardStepContentProps> = ({
   currentStepData,
   showInfo,
   nickname,

@@ -22,9 +22,11 @@
   "license": "UNLICENSED",
   "dependencies": {
     "@identity-protocol/identity-core": "file:../../core/identity-core",
-    "@par-noir/oauth-ui": "file:../../packages/oauth-ui"
+    "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
+    "@par-noir/zk-protocol-v1": "file:../../packages/zk-protocol-v1"
   },
   "devDependencies": {
+    "@par-noir/pqc-crypto": "file:../../packages/pqc-crypto",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0",
     "jest": "^29.0.0",

@@ -6,6 +6,12 @@
  * Stored in Google Drive (decentralized) - users own their data
  */
 
+import {
+  ageBucketMeetsMinimum,
+  decodeEnvelopeFromProofString,
+  isZkProofEnvelopeV1,
+  verifyZkProofEnvelopeV1,
+} from '@par-noir/zk-protocol-v1';
 import { GoogleDriveToken } from './googleOAuth2Helper';
 
 export interface ZKPDataPoint {
@@ -169,132 +175,63 @@ export class ZKPDataPointsService {
   }
 
   /**
-   * Verify a ZKP proof against a condition
-   * e.g., verify "age >= 18" without revealing actual age
-   * 
-   * NOTE: This is a basic implementation. In production, you would use
-   * a proper ZKP verification library to cryptographically verify the proof.
+   * Verify a ZKP v1 proof (ML-DSA + mod-p Fiat–Shamir envelope). Legacy JSON blobs are rejected.
    */
   static async verifyProof(
     zkpProof: string,
     condition: string
   ): Promise<ZKPVerificationResult> {
     try {
-      // Parse the ZKP proof (it's base64 encoded JSON)
-      const proofData = JSON.parse(atob(zkpProof));
-      console.log('[ZKP Verify] Proof data structure:', {
-        type: proofData.type,
-        proofType: proofData.proofType,
-        verificationLevel: proofData.verificationLevel,
-        ageRange: proofData.ageRange,
-        hasAgeRange: !!proofData.ageRange,
-        keys: Object.keys(proofData)
-      });
-      
-      // Basic verification logic
-      // In production, this would use proper cryptographic ZKP verification
-      if (condition.startsWith('age >= ')) {
-        const minAge = parseInt(condition.replace('age >= ', ''), 10);
-        console.log('[ZKP Verify] Checking age condition:', { condition, minAge });
-        
-        // Check if proof type matches
-        if (proofData.type === 'age_verification' || proofData.proofType === 'age_verification') {
-          // Verify the proof cryptographically (simplified for now)
-          // In production, use proper ZKP verification library
-          const calculatedAge = this.calculateAgeFromRange(proofData.ageRange);
-          // Accept 'basic' or 'verified' verification levels for age attestation
-          // 'basic' means the user attested their age, which is sufficient for content filtering
-          const hasValidVerificationLevel = proofData.verificationLevel === 'verified' || 
-                                          proofData.verificationLevel === 'basic' ||
-                                          proofData.verificationLevel === 'enhanced';
-          const isValid = hasValidVerificationLevel && 
-                         proofData.ageRange && 
-                         calculatedAge >= minAge;
-          
-          console.log('[ZKP Verify] Age verification result:', {
-            verificationLevel: proofData.verificationLevel,
-            ageRange: proofData.ageRange,
-            calculatedAge,
-            minAge,
-            hasValidVerificationLevel,
-            isValid
-          });
-          
-          return {
-            isValid,
-            condition,
-            verifiedAt: proofData.timestamp || proofData.verifiedAt,
-            expiresAt: proofData.expiresAt
-          };
-        } else {
-          console.log('[ZKP Verify] Proof type mismatch:', {
-            expected: 'age_verification',
-            actualType: proofData.type,
-            actualProofType: proofData.proofType
-          });
-        }
+      const cryptoResult = verifyZkProofEnvelopeV1(zkpProof);
+      if (!cryptoResult.ok) {
+        return {
+          isValid: false,
+          condition,
+          error: cryptoResult.reason ?? 'verify_failed',
+        };
       }
 
-      // For other conditions, return basic validation
-      // Accept 'basic', 'enhanced', or 'verified' verification levels
-      const isValid = proofData.verificationLevel === 'verified' || 
-                     proofData.verificationLevel === 'basic' ||
-                     proofData.verificationLevel === 'enhanced';
-      console.log('[ZKP Verify] General verification result:', {
-        verificationLevel: proofData.verificationLevel,
-        isValid
-      });
-      
+      const env = decodeEnvelopeFromProofString(zkpProof);
+      if (!env || !isZkProofEnvelopeV1(env)) {
+        return { isValid: false, condition, error: 'invalid_envelope' };
+      }
+
+      const pub = env.public_inputs as Record<string, unknown>;
+      const expiresAt = new Date(env.expires_at_ms).toISOString();
+
+      if (condition.startsWith('age >= ')) {
+        const minAge = parseInt(condition.replace('age >= ', ''), 10);
+        if (Number.isNaN(minAge)) {
+          return { isValid: false, condition, error: 'invalid_condition' };
+        }
+        const zkpType = typeof pub.zkp_type === 'string' ? pub.zkp_type : '';
+        if (zkpType !== 'age_verification') {
+          return { isValid: false, condition, error: 'proof_type_mismatch' };
+        }
+        const bucket = typeof pub.age_bucket === 'string' ? pub.age_bucket : '';
+        const isValid = ageBucketMeetsMinimum(bucket, minAge);
+        return {
+          isValid,
+          condition,
+          verifiedAt: new Date().toISOString(),
+          expiresAt,
+        };
+      }
+
       return {
-        isValid,
+        isValid: true,
         condition,
-        verifiedAt: proofData.timestamp || proofData.verifiedAt,
-        expiresAt: proofData.expiresAt
+        verifiedAt: new Date().toISOString(),
+        expiresAt,
       };
-    } catch (error: any) {
-      console.error('[ZKP Verify] Error verifying ZKP proof:', error);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Invalid proof format';
       return {
         isValid: false,
         condition,
-        error: error.message || 'Invalid proof format'
+        error: message,
       };
     }
-  }
-
-  /**
-   * Calculate age from age range in proof
-   * Helper function for age verification
-   */
-  private static calculateAgeFromRange(ageRange: any): number {
-    // If ageRange is a number, return it
-    if (typeof ageRange === 'number') {
-      return ageRange;
-    }
-    
-    // If ageRange is an object with min/max, use min
-    if (ageRange && typeof ageRange === 'object') {
-      return ageRange.min || ageRange.max || 0;
-    }
-    
-    // If ageRange is a string like "30_39", parse it
-    if (typeof ageRange === 'string') {
-      // Handle formats like "30_39", "18_24", etc.
-      const parts = ageRange.split('_');
-      if (parts.length === 2) {
-        const min = parseInt(parts[0], 10);
-        if (!isNaN(min)) {
-          return min; // Use the minimum age from the range
-        }
-      }
-      // Try parsing as a single number
-      const parsed = parseInt(ageRange, 10);
-      if (!isNaN(parsed)) {
-        return parsed;
-      }
-    }
-    
-    // Default to 0 if can't determine
-    return 0;
   }
 
   /**

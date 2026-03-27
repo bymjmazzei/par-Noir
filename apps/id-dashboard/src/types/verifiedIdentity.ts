@@ -1,6 +1,8 @@
 // Verified Identity Types
 // Defines the structure for verified identity data and ZKP proofs
 
+import type { EncryptedIdentity } from './crypto';
+
 export interface VerifiedIdentityData {
   id: string;
   verificationId: string;
@@ -56,6 +58,8 @@ export interface VerificationRequest {
   selfie: File;
   livenessCheck: boolean;
   identityId: string;
+  /** Required for ZKP v1 generation (ML-DSA signing). */
+  encryptedIdentity: EncryptedIdentity;
   requestedDataPoints?: string[];
 }
 

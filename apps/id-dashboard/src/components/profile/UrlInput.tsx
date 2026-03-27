@@ -5,7 +5,7 @@ interface UrlInputProps {
   onUrlChange: (url: string) => void;
 }
 
-export const UrlInput: React.FC = ({ isOpen, onClose, settings, onSettingsChange }) => {
+export const UrlInput: React.FC<UrlInputProps> = ({
   pictureUrl,
   onUrlChange
 }) => {

@@ -10,7 +10,7 @@ interface LicenseVerificationProps {
   onDownloadReceipt: () => void;
 }
 
-export const LicenseVerification: React.FC = ({ isOpen, onClose, settings, onSettingsChange }) => {
+export const LicenseVerification: React.FC<LicenseVerificationProps> = ({
   licenseProof,
   receipt,
   licenseKey,

@@ -10,19 +10,22 @@ import { Key, Shield, CheckCircle, X, Copy, ExternalLink, AlertCircle } from 'lu
 import { apiKeyService, ApiKey } from '../services/api/ApiKeyService';
 import { IdentityVerificationModal } from './IdentityVerificationModal';
 import type { VerifiedIdentityData } from './IdentityVerificationModal';
+import type { EncryptedIdentity } from '../types/crypto';
 
 interface LicenseModalProps {
   isOpen: boolean;
   onClose: () => void;
   authenticatedUser: { id: string } | null;
   onApiKeyActivated?: (apiKey: ApiKey) => void;
+  encryptedIdentity?: EncryptedIdentity;
 }
 
 export const LicenseModal: React.FC<LicenseModalProps> = ({
   isOpen,
   onClose,
   authenticatedUser,
-  onApiKeyActivated
+  onApiKeyActivated,
+  encryptedIdentity
 }) => {
   const [apiKey, setApiKey] = useState<ApiKey | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -290,6 +293,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
           onClose={() => setShowVerification(false)}
           onVerificationComplete={handleVerificationComplete}
           identityId={authenticatedUser?.id}
+          encryptedIdentity={encryptedIdentity}
         />
       )}
     </>

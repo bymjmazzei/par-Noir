@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StandardDataPoint, ZKPGenerator, ZKPGenerationRequest } from '../types/standardDataPoints';
+import type { EncryptedIdentity } from '../types/crypto';
 import { VerificationModal } from './VerificationModal';
 
 interface DataPointInputModalProps {
@@ -9,6 +10,7 @@ interface DataPointInputModalProps {
   existingData?: any;
   onComplete: (proofs: any[], userData: any) => void;
   identityId?: string;
+  encryptedIdentity?: EncryptedIdentity;
 }
 
 export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
@@ -17,7 +19,8 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
   dataPoint,
   existingData,
   onComplete,
-  identityId
+  identityId,
+  encryptedIdentity
 }) => {
   const [userData, setUserData] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
@@ -141,11 +144,18 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
 
     try {
       // Generate ZKP
+      if (!identityId || !encryptedIdentity) {
+        alert('Unlock your identity and select a stored profile to generate ZK proofs.');
+        return;
+      }
+
       const zkpRequest: ZKPGenerationRequest = {
         dataPointId: dataPoint.id,
         userData: userData,
         verificationLevel: 'basic',
-        expirationDays: 365
+        expirationDays: 365,
+        identityId,
+        encryptedIdentity
       };
 
       console.log('🔄 [DataPointInputModal] Generating ZKP with request:', zkpRequest);

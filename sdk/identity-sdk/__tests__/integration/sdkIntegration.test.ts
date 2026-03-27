@@ -94,24 +94,22 @@ describe('SDK Integration Tests', () => {
   });
 
   describe('Zero-Knowledge Proof Integration', () => {
-    it('runs schnorr + pedersen generate/verify', async () => {
-      const schnorrProof = await sdk.generateProof('schnorr', { privateKey: {} as CryptoKey });
-      expect(await sdk.verifyProof(schnorrProof, 'schnorr')).toBe(true);
-
-      const pedersenProof = await sdk.generateProof('pedersen', { publicPNId: 'test-public-id' });
-      expect(await sdk.verifyProof(pedersenProof, 'pedersen')).toBe(true);
+    it('verify accepts v1-shaped proof strings (mocked in tests)', async () => {
+      const proof = 'v1-mock-proof-string-'.padEnd(50, '0');
+      expect(await sdk.verifyProof(proof, 'schnorr')).toBe(true);
     });
 
-    it('generates data point and ownership proofs', async () => {
-      const dataPointProof = await sdk.generateDataPointProof('email', 'test-user-id');
-      expect(dataPointProof).toBeDefined();
-
-      const ownershipProof = await sdk.generateOwnershipProof({
-        owner: 'test-user-id',
-        asset: 'email-data',
-        timestamp: Date.now(),
-      });
-      expect(ownershipProof).toBeDefined();
+    it('legacy generate paths are disabled (ZK v1 in dashboard)', async () => {
+      await expect(sdk.generateProof('schnorr', { privateKey: {} as CryptoKey })).rejects.toThrow();
+      await expect(sdk.generateProof('pedersen', { publicPNId: 'test-public-id' })).rejects.toThrow();
+      await expect(sdk.generateDataPointProof('email', 'test-user-id')).rejects.toThrow();
+      await expect(
+        sdk.generateOwnershipProof({
+          owner: 'test-user-id',
+          asset: 'email-data',
+          timestamp: Date.now(),
+        })
+      ).rejects.toThrow();
     });
   });
 

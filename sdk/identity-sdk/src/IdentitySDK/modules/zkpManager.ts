@@ -1,160 +1,64 @@
-import { cryptoWorkerManager } from '@identity-protocol/identity-core/src/encryption/cryptoWorkerManager';
-import { 
-  StandardDataPointRequest, 
-  StandardDataPointResponse,
-  DataPointProposalRequest,
-  DataPointProposalResponse,
-  VoteRequest,
-  VoteResponse,
-  AccessRequestResponse,
-  OwnershipProof,
-  AccessGrantResponse,
-  EcosystemDataResponse
-} from '../types';
-import { 
-  ZKPProofData, 
-  PedersenProofData 
-} from '../types/identitySDK';
+import { verifyZkProofEnvelopeV1 } from '@par-noir/zk-protocol-v1';
 import { ZKP_PROOF_TYPES } from '../constants/sdkConstants';
 
+/**
+ * ZKP verification for v1 envelopes (base64 JSON). Legacy object-shaped “proofs” are rejected.
+ * Proof generation with ML-DSA keys is performed in the id-dashboard / @par-noir/zk-protocol-v1.
+ */
 export class ZKPManager {
   /**
-   * Generate Schnorr zero-knowledge proof
+   * @deprecated Legacy Schnorr placeholder removed — use v1 envelope generation in the dashboard.
    */
-  async generateSchnorrProof(privateKey: CryptoKey): Promise<ZKPProofData> {
-    // This would use your authentic Schnorr implementation
-    // For now, returning a placeholder structure
-    return {
-      R: this.generateHex(32),
-      c: this.generateHex(32),
-      s: this.generateHex(32)
-    };
+  async generateSchnorrProof(_privateKey: CryptoKey): Promise<never> {
+    throw new Error('Legacy Schnorr proofs removed; use @par-noir/zk-protocol-v1 generateZkProofEnvelopeV1 with ML-DSA keys.');
   }
 
   /**
-   * Generate Pedersen commitment proof
+   * @deprecated Legacy Pedersen placeholder removed.
    */
-  async generatePedersenProof(publicPNId: string): Promise<PedersenProofData> {
-    // This would use your authentic Pedersen commitment implementation
-    // For now, returning a placeholder structure
-    return {
-      commitment: this.generateHex(32),
-      proof: this.generateHex(64)
-    };
+  async generatePedersenProof(_publicPNId: string): Promise<never> {
+    throw new Error('Legacy Pedersen proofs removed; use ZK v1 envelope generation.');
   }
 
   /**
-   * Sign proof with private key
+   * @deprecated Not used for v1 envelopes (ML-DSA signature is inside the envelope).
    */
-  async signProof(privateKey: CryptoKey): Promise<string> {
-    // This would use your authentic signature implementation
-    // For now, returning a placeholder signature
-    return this.generateHex(64);
+  async signProof(_privateKey: CryptoKey): Promise<never> {
+    throw new Error('Use generateZkProofEnvelopeV1; signing is embedded in the v1 envelope.');
   }
 
   /**
-   * Verify zero-knowledge proof
+   * Verify a v1 proof string. For non-string payloads, returns false.
    */
-  async verifyProof(proof: any, type: string): Promise<boolean> {
+  async verifyProof(proof: unknown, type?: string): Promise<boolean> {
     try {
-      switch (type) {
-        case ZKP_PROOF_TYPES.SCHNORR:
-          return await this.verifySchnorrProof(proof);
-        case ZKP_PROOF_TYPES.PEDERSEN:
-          return await this.verifyPedersenProof(proof);
-        case ZKP_PROOF_TYPES.SIGMA:
-          return await this.verifySigmaProof(proof);
-        default:
-          throw new Error(`Unknown proof type: ${type}`);
+      if (typeof proof !== 'string') {
+        return false;
       }
-    } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        // Proof verification error
+      const result = verifyZkProofEnvelopeV1(proof);
+      if (!result.ok) {
+        return false;
       }
+      if (type === ZKP_PROOF_TYPES.SCHNORR || type === ZKP_PROOF_TYPES.PEDERSEN || type === ZKP_PROOF_TYPES.SIGMA) {
+        return true;
+      }
+      return type === undefined || type === '';
+    } catch {
       return false;
     }
   }
 
   /**
-   * Verify Schnorr proof
+   * @deprecated Use dashboard ZKP flows for v1 data-point proofs.
    */
-  private async verifySchnorrProof(proof: ZKPProofData): Promise<boolean> {
-    // This would use your authentic Schnorr verification implementation
-    // For now, returning a placeholder verification
-    return !!(proof.R && proof.c && proof.s);
+  async generateDataPointProof(_dataPointId: string, _userId: string): Promise<never> {
+    throw new Error('generateDataPointProof is not supported in SDK; use id-dashboard ZKPGenerator.');
   }
 
   /**
-   * Verify Pedersen proof
+   * @deprecated Ownership proof shape is not ZK v1; integrate via API/dashboard when needed.
    */
-  private async verifyPedersenProof(proof: PedersenProofData): Promise<boolean> {
-    // This would use your authentic Pedersen verification implementation
-    // For now, returning a placeholder verification
-    return !!(proof.commitment && proof.proof);
-  }
-
-  /**
-   * Verify Sigma protocol proof
-   */
-  private async verifySigmaProof(proof: any): Promise<boolean> {
-    // This would use your authentic Sigma protocol verification implementation
-    // For now, returning a placeholder verification
-    return proof && typeof proof === 'object';
-  }
-
-  /**
-   * Generate proof for data point access
-   */
-  async generateDataPointProof(dataPointId: string, userId: string): Promise<any> {
-    try {
-      // This would generate a proof that the user has access to the data point
-      // For now, returning a placeholder proof structure
-      return {
-        type: 'data_point_access',
-        dataPointId,
-        userId,
-        timestamp: new Date().toISOString(),
-        proof: this.generateHex(64),
-        signature: this.generateHex(64)
-      };
-    } catch (error) {
-      throw new Error(`Failed to generate data point proof: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  /**
-   * Generate ownership proof
-   */
-  async generateOwnershipProof(data: any): Promise<OwnershipProof> {
-    try {
-      const ts = new Date().toISOString();
-      const expiresAt = new Date(Date.now() + 3600000).toISOString();
-      return {
-        proofId: this.generateHex(16),
-        statement: 'ownership_attestation',
-        proof: {
-          schnorrProof: this.generateHex(64),
-          pedersenProof: this.generateHex(64)
-        },
-        publicInputs: {
-          ecosystemId: typeof data?.ecosystemId === 'string' ? data.ecosystemId : '',
-          requestedData: Array.isArray(data?.requestedData) ? data.requestedData : [],
-          timestamp: ts,
-          expiresAt
-        },
-        signature: this.generateHex(64)
-      };
-    } catch (error) {
-      throw new Error(`Failed to generate ownership proof: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  /**
-   * Generate hex string of specified length
-   */
-  private generateHex(length: number): string {
-    const bytes = new Uint8Array(length);
-    cryptoWorkerManager.generateRandom(bytes);
-    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  async generateOwnershipProof(_data: unknown): Promise<never> {
+    throw new Error('generateOwnershipProof is not implemented for ZK v1; use API or dashboard flows.');
   }
 }

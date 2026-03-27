@@ -13,7 +13,7 @@ interface WizardHeaderProps {
   onClose: () => void;
 }
 
-export const WizardHeader: React.FC = ({ isOpen, onClose, settings, onSettingsChange }) => {
+export const WizardHeader: React.FC<WizardHeaderProps> = ({
   currentStepData,
   currentStep,
   totalSteps,

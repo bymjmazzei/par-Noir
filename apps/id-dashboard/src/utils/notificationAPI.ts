@@ -184,11 +184,9 @@ export class NotificationAPI {
       // to work with the existing pN metadata infrastructure
       
       if (process.env.NODE_ENV === 'development') {
-        // Storing notification in metadata
-          targetIdentityId,
-          notificationId: notificationEvent.id,
-          type: notificationEvent.type
-        });
+        // Storing notification in metadata (placeholder for metadata integration)
+        void targetIdentityId;
+        void notificationEvent;
       }
 
       // Metadata storage integration - would use SecureMetadataStorage

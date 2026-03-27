@@ -1,0 +1,22 @@
+{
+  "name": "@par-noir/zk-protocol-v1",
+  "version": "0.1.0",
+  "description": "ZK proof envelope v1: RFC5114 mod-p Fiat-Shamir Schnorr + ML-DSA-65 binding",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/zk.test.cjs",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.0.0",
+    "@par-noir/pqc-crypto": "file:../pqc-crypto"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

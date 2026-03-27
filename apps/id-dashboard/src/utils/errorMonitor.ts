@@ -83,8 +83,9 @@ class ErrorMonitor {
   }
 
   private generateSessionId(): string {
-    return Array.from(crypto.getRandomValues(new Uint8Array(1)))[0] / 255.toString(36).substring(2, 15) + 
-           Array.from(crypto.getRandomValues(new Uint8Array(1)))[0] / 255.toString(36).substring(2, 15);
+    const a = (Array.from(crypto.getRandomValues(new Uint8Array(1)))[0] / 255).toString(36).substring(2, 15);
+    const b = (Array.from(crypto.getRandomValues(new Uint8Array(1)))[0] / 255).toString(36).substring(2, 15);
+    return a + b;
   }
 
   private async sendToMonitoringService(_errorEvent: ErrorEvent): Promise<void> {

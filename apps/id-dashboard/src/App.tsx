@@ -7019,7 +7019,21 @@ This invitation expires in 24 hours.`;
                   dataPoint={currentDataPoint}
                   existingData={currentDataPointExistingData}
                   onComplete={handleDataPointInputComplete}
-                  identityId={authenticatedUser?.id}
+                  identityId={authenticatedUser?.id ?? selectedStoredIdentity?.id}
+                  encryptedIdentity={
+                    selectedStoredIdentity?.encryptedData &&
+                    selectedStoredIdentity?.publicKey &&
+                    selectedStoredIdentity?.iv &&
+                    selectedStoredIdentity?.salt
+                      ? {
+                          publicKey: selectedStoredIdentity.publicKey,
+                          mlKemPublicKey: selectedStoredIdentity.mlKemPublicKey,
+                          encryptedData: selectedStoredIdentity.encryptedData,
+                          iv: selectedStoredIdentity.iv,
+                          salt: selectedStoredIdentity.salt,
+                        }
+                      : undefined
+                  }
                 />
               )}
 
@@ -7175,7 +7189,21 @@ This invitation expires in 24 hours.`;
             }
           }
         }}
-        identityId={selectedStoredIdentity?.id || 'default'}
+        identityId={authenticatedUser?.id ?? selectedStoredIdentity?.id ?? 'default'}
+        encryptedIdentity={
+          selectedStoredIdentity?.encryptedData &&
+          selectedStoredIdentity?.publicKey &&
+          selectedStoredIdentity?.iv &&
+          selectedStoredIdentity?.salt
+            ? {
+                publicKey: selectedStoredIdentity.publicKey,
+                mlKemPublicKey: selectedStoredIdentity.mlKemPublicKey,
+                encryptedData: selectedStoredIdentity.encryptedData,
+                iv: selectedStoredIdentity.iv,
+                salt: selectedStoredIdentity.salt,
+              }
+            : undefined
+        }
       />
 
     </div>

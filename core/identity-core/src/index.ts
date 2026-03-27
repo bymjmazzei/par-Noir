@@ -27,6 +27,9 @@ export { EventManager } from './core/modules/eventManager';
 // PQC identity (ML-DSA / ML-KEM) — canonical new stack
 export * from './pqc/parNoirPqcIdentity';
 
+// ZK envelope v1 (ML-DSA binding + mod-p NIZK)
+export * from './zk/zkProtocolV1';
+
 // Re-export other core modules
 export { CryptoManager } from './encryption/crypto';
 export { IndexedDBStorage } from './storage/indexeddb';

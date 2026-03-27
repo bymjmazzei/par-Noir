@@ -132,6 +132,19 @@ const CATALOG_ROWS: Array<
     optionalFields: ['city', 'postalCode', 'coordinates'],
     defaultPrivacy: 'private',
     examples: ['Geographic verification', 'Regional compliance', 'Location-based services']
+  },
+  {
+    id: 'document_verification',
+    name: 'Document Verification',
+    description: 'Government ID document metadata for verification flows',
+    category: 'verification',
+    dataType: 'object',
+    zkpType: 'identity_verification',
+    validation: { required: true },
+    requiredFields: ['documentType', 'documentNumber'],
+    optionalFields: ['issuingAuthority', 'expirationDate'],
+    defaultPrivacy: 'private',
+    examples: ['KYC', 'Compliance', 'Document-bound attestations']
   }
 ];
 

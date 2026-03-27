@@ -31,10 +31,7 @@ interface IntegrationSettingsManagerProps {
   onClose: () => void;
 }
 
-export const IntegrationSettingsManager: React.FC = React.memo(({ isOpen, onClose, settings, onSettingsChange }) => {
-  isOpen,
-  onClose
-}) => {
+export const IntegrationSettingsManager = React.memo<IntegrationSettingsManagerProps>(({ isOpen, onClose }) => {
   const [integrations, setIntegrations] = useState<{ [key: string]: IntegrationConfig }>({});
   const [showPasswords, setShowPasswords] = useState<{ [key: string]: boolean }>({});
   const [testingStatus, setTestingStatus] = useState<{ [key: string]: 'idle' | 'testing' | 'success' | 'error' }>({});
@@ -279,9 +276,8 @@ export const IntegrationSettingsManager: React.FC = React.memo(({ isOpen, onClos
       </div>
     </div>
   );
-
+});
 
 IntegrationSettingsManager.displayName = 'IntegrationSettingsManager';
-}, []);));
 
 export default IntegrationSettingsManager;

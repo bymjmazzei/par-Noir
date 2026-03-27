@@ -7,7 +7,7 @@ interface LicenseInfoDisplayProps {
   onRemoveLicense: () => void;
 }
 
-export const LicenseInfoDisplay: React.FC = ({ isOpen, onClose, settings, onSettingsChange }) => {
+export const LicenseInfoDisplay: React.FC<LicenseInfoDisplayProps> = ({
   licenseInfo,
   licenseKey,
   onRemoveLicense

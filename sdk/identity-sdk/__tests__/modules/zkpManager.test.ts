@@ -4,79 +4,42 @@ import { ZKP_PROOF_TYPES } from '../../src/IdentitySDK/constants/sdkConstants';
 describe('ZKPManager', () => {
   let zkpManager: ZKPManager;
 
-  const mockPrivateKey = {} as CryptoKey;
-
   beforeEach(() => {
     zkpManager = new ZKPManager();
-  });
-
-  afterEach(() => {
-    jest.clearAllMocks();
   });
 
   it('initializes', () => {
     expect(zkpManager).toBeInstanceOf(ZKPManager);
   });
 
-  describe('Schnorr', () => {
-    it('generates Schnorr-shaped proof (R, c, s)', async () => {
-      const proof = await zkpManager.generateSchnorrProof(mockPrivateKey);
-      expect(proof.R).toMatch(/^[0-9a-f]+$/);
-      expect(proof.c).toMatch(/^[0-9a-f]+$/);
-      expect(proof.s).toMatch(/^[0-9a-f]+$/);
-    });
-
-    it('verifies Schnorr proof via verifyProof', async () => {
-      const proof = await zkpManager.generateSchnorrProof(mockPrivateKey);
-      await expect(zkpManager.verifyProof(proof, ZKP_PROOF_TYPES.SCHNORR)).resolves.toBe(true);
-    });
+  it('verifies long proof string via mocked zk-protocol-v1', async () => {
+    const proof = 'a'.repeat(50);
+    await expect(zkpManager.verifyProof(proof, ZKP_PROOF_TYPES.SCHNORR)).resolves.toBe(true);
   });
 
-  describe('Pedersen', () => {
-    it('generates Pedersen-shaped proof', async () => {
-      const proof = await zkpManager.generatePedersenProof('pn-test');
-      expect(proof.commitment).toMatch(/^[0-9a-f]+$/);
-      expect(proof.proof).toMatch(/^[0-9a-f]+$/);
-    });
-
-    it('verifies Pedersen proof via verifyProof', async () => {
-      const proof = await zkpManager.generatePedersenProof('pn-test');
-      await expect(zkpManager.verifyProof(proof, ZKP_PROOF_TYPES.PEDERSEN)).resolves.toBe(true);
-    });
+  it('returns false for short proof string', async () => {
+    await expect(zkpManager.verifyProof('short', ZKP_PROOF_TYPES.SCHNORR)).resolves.toBe(false);
   });
 
-  describe('Data point & ownership', () => {
-    it('generates data point proof payload', async () => {
-      const proof = await zkpManager.generateDataPointProof('email', 'user-1');
-      expect(proof.dataPointId).toBe('email');
-      expect(proof.userId).toBe('user-1');
-      expect(proof.type).toBe('data_point_access');
-    });
-
-    it('generates ownership proof payload', async () => {
-      const proof = await zkpManager.generateOwnershipProof({ owner: 'a', asset: 'b' });
-      expect(proof.proofId).toBeDefined();
-      expect(proof.proof.schnorrProof).toBeDefined();
-      expect(proof.proof.pedersenProof).toBeDefined();
-      expect(proof.publicInputs.timestamp).toBeDefined();
-    });
+  it('returns false for legacy object-shaped proof', async () => {
+    await expect(zkpManager.verifyProof({ type: 'age_verification' }, ZKP_PROOF_TYPES.SCHNORR)).resolves.toBe(
+      false
+    );
   });
 
-  describe('verifyProof', () => {
-    it('returns false for unknown proof type (no throw)', async () => {
-      await expect(zkpManager.verifyProof({ x: 1 }, 'unknown-type')).resolves.toBe(false);
-    });
-
-    it('returns false for malformed Schnorr proof', async () => {
-      await expect(zkpManager.verifyProof({ R: '' }, ZKP_PROOF_TYPES.SCHNORR)).resolves.toBe(false);
-    });
+  it('generateSchnorrProof throws', async () => {
+    await expect(zkpManager.generateSchnorrProof({} as CryptoKey)).rejects.toThrow(/Legacy Schnorr/);
   });
 
-  describe('Security', () => {
-    it('generates distinct Schnorr proofs across calls', async () => {
-      const a = await zkpManager.generateSchnorrProof(mockPrivateKey);
-      const b = await zkpManager.generateSchnorrProof(mockPrivateKey);
-      expect(a).not.toEqual(b);
-    });
+  it('generatePedersenProof throws', async () => {
+    await expect(zkpManager.generatePedersenProof('pn-test')).rejects.toThrow(/Legacy Pedersen/);
+  });
+
+  it('generateDataPointProof throws', async () => {
+    await expect(zkpManager.generateDataPointProof('email', 'u1')).rejects.toThrow(/not supported/);
+  });
+
+  it('generateOwnershipProof throws', async () => {
+    await expect(zkpManager.generateOwnershipProof({})).rejects.toThrow(/not implemented/);
   });
 });

@@ -6,7 +6,7 @@ interface FileUploadProps {
   onFileUpload: (file: File | null) => void;
 }
 
-export const FileUpload: React.FC = ({ isOpen, onClose, settings, onSettingsChange }) => {
+export const FileUpload: React.FC<FileUploadProps> = ({
   uploadedFile,
   onFileUpload
 }) => {

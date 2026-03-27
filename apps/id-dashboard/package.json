@@ -35,6 +35,7 @@
   },
   "dependencies": {
     "@par-noir/pqc-crypto": "file:../../packages/pqc-crypto",
+    "@par-noir/zk-protocol-v1": "file:../../packages/zk-protocol-v1",
     "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
     "@par-noir/standard-data-points": "file:../../packages/standard-data-points",
     "@bytetrade/capacitor-native-biometric": "^6.0.5",

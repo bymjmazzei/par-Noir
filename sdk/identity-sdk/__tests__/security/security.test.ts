@@ -86,7 +86,7 @@ describe('SDK Security Tests', () => {
 
   describe('Zero-Knowledge Proof Security', () => {
     it('verifyProof returns booleans for repeated checks', async () => {
-      const proof = await sdk.generateProof('schnorr', { privateKey: {} as CryptoKey });
+      const proof = 'z'.repeat(50);
       expect(typeof (await sdk.verifyProof(proof, 'schnorr'))).toBe('boolean');
       expect(typeof (await sdk.verifyProof(proof, 'schnorr'))).toBe('boolean');
     });
@@ -106,11 +106,8 @@ describe('SDK Security Tests', () => {
       }
     });
 
-    it('does not embed private key strings in generated proof JSON', async () => {
-      const privateKey = 'secret-private-key-12345';
-      const proof = await sdk.generateProof('schnorr', { privateKey: privateKey as unknown as CryptoKey });
-      const proofString = JSON.stringify(proof);
-      expect(proofString).not.toContain(privateKey);
+    it('generateProof no longer returns local Schnorr payloads (ZK v1 is dashboard-only)', async () => {
+      await expect(sdk.generateProof('schnorr', { privateKey: {} as CryptoKey })).rejects.toThrow();
     });
   });
 
@@ -200,13 +197,12 @@ describe('SDK Security Tests', () => {
   });
 
   describe('Cryptographic Security', () => {
-    it('uses randomness so proofs differ across calls', async () => {
-      const proof1 = await sdk.generateProof('schnorr', { privateKey: {} as CryptoKey });
-      const proof2 = await sdk.generateProof('schnorr', { privateKey: {} as CryptoKey });
-      expect(proof1).not.toEqual(proof2);
+    it('generateProof rejects legacy schnorr path consistently', async () => {
+      await expect(sdk.generateProof('schnorr', { privateKey: {} as CryptoKey })).rejects.toThrow();
+      await expect(sdk.generateProof('schnorr', { privateKey: {} as CryptoKey })).rejects.toThrow();
     });
 
-    it('placeholder generator accepts varied inputs without throwing', async () => {
+    it('generateProof rejects varied legacy inputs without returning proofs', async () => {
       const inputs = [
         { privateKey: '' as unknown as CryptoKey },
         { privateKey: null as unknown as CryptoKey },
@@ -214,8 +210,7 @@ describe('SDK Security Tests', () => {
       ];
 
       for (const input of inputs) {
-        const proof = await sdk.generateProof('schnorr', input);
-        expect(proof).toBeDefined();
+        await expect(sdk.generateProof('schnorr', input)).rejects.toThrow();
       }
     });
   });

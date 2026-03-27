@@ -5,12 +5,15 @@ import { STANDARD_DATA_POINTS } from '../types/StandardDataPointsRegistry';
 import { CoinbaseProxy, CoinbaseCheckout, CheckoutRequest } from '../utils/coinbaseProxy';
 import { verificationPaymentHandler } from '../services/verificationPaymentHandler';
 import { API_ENDPOINT } from '../config/api';
+import type { EncryptedIdentity } from '../types/crypto';
 
 interface IdentityVerificationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onVerificationComplete: (verifiedData: VerifiedIdentityData) => void;
   identityId?: string;
+  /** Required to mint ZK v1 proofs (ML-DSA). */
+  encryptedIdentity?: EncryptedIdentity;
 }
 
 interface VerifiedIdentityData {
@@ -46,7 +49,8 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
   isOpen,
   onClose,
   onVerificationComplete,
-  identityId
+  identityId,
+  encryptedIdentity
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -345,6 +349,12 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
   const generateZKProofs = async (extractedData: any) => {
     const zkpProofs: { [key: string]: { value: any; zkpProof: string; verified: boolean; expirationDate?: string } } = {};
 
+    if (!identityId || !encryptedIdentity) {
+      throw new Error('Identity context missing: unlock and select a stored identity to generate ZK proofs.');
+    }
+
+    const zkBase = { identityId, encryptedIdentity };
+
     // Calculate ID expiration days for dynamic data
     const idExpirationDate = extractedData.expirationDate;
     const idExpirationDays = idExpirationDate 
@@ -357,6 +367,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
     // Generate ZKPs for identity attestation (perpetual)
     if (extractedData.firstName && extractedData.lastName) {
       const identityProof = await ZKPGenerator.generateZKP({
+        ...zkBase,
         dataPointId: 'identity_attestation',
         userData: {
           firstName: extractedData.firstName,
@@ -382,6 +393,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
     // Generate ZKP for age attestation (perpetual)
     if (extractedData.dateOfBirth) {
       const ageProof = await ZKPGenerator.generateZKP({
+        ...zkBase,
         dataPointId: 'age_attestation',
         userData: {
           dateOfBirth: extractedData.dateOfBirth
@@ -403,6 +415,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
     // Generate ZKP for location verification (ID-based expiration)
     if (extractedData.country && extractedData.state) {
       const locationProof = await ZKPGenerator.generateZKP({
+        ...zkBase,
         dataPointId: 'location_verification',
         userData: {
           country: extractedData.country,
@@ -430,6 +443,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
     // Generate ZKP for document verification (ID-based expiration)
     if (extractedData.documentNumber && extractedData.documentType) {
       const documentProof = await ZKPGenerator.generateZKP({
+        ...zkBase,
         dataPointId: 'document_verification',
         userData: {
           documentType: extractedData.documentType,

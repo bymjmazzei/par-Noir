@@ -6,6 +6,20 @@ jest.mock('@par-noir/oauth-ui', () => ({
   startPnOAuthPopup: jest.fn(),
 }));
 
+/** Avoid loading @noble/post-quantum ESM in JSDOM; unit tests assert wiring only. */
+jest.mock('@par-noir/zk-protocol-v1', () => ({
+  verifyZkProofEnvelopeV1: jest.fn((s: string) =>
+    typeof s === 'string' && s.length > 40 ? { ok: true } : { ok: false, reason: 'mock' }
+  ),
+  decodeEnvelopeFromProofString: jest.fn(() => null),
+  isZkProofEnvelopeV1: jest.fn(() => false),
+  ageBucketMeetsMinimum: jest.fn(() => false),
+  generateZkProofEnvelopeV1: jest.fn(() => {
+    throw new Error('use id-dashboard for proof generation');
+  }),
+  ZK_PROOF_TYPE_V1: 'modp_fs_nizk_ml_dsa_binding_v1',
+}));
+
 // Mock crypto worker manager
 jest.mock('@identity-protocol/identity-core/src/encryption/cryptoWorkerManager', () => ({
   cryptoWorkerManager: {
