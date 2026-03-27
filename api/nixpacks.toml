@@ -1,5 +1,8 @@
 # ffmpeg: runtime (mediaSamplingService). Keep — required at run, not for compile.
 # Large tsc (server.ts ~18k lines): use heap + skip .d.ts in tsconfig.build.json to avoid OOM / "stuck" builds.
+#
+# When Railway "Root Directory" is the repository root (recommended for file:../../packages/* deps),
+# Nixpacks uses /nixpacks.toml instead. This file applies when Root Directory is set to `api` only.
 [phases.setup]
 nixPkgs = ["nodejs_20", "npm-9_x", "ffmpeg"]
 
