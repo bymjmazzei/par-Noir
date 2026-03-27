@@ -24,6 +24,9 @@ export { DIDManager } from './core/modules/didManager';
 export { AuthenticationManager } from './core/modules/authenticationManager';
 export { EventManager } from './core/modules/eventManager';
 
+// PQC identity (ML-DSA / ML-KEM) — canonical new stack
+export * from './pqc/parNoirPqcIdentity';
+
 // Re-export other core modules
 export { CryptoManager } from './encryption/crypto';
 export { IndexedDBStorage } from './storage/indexeddb';

@@ -14,6 +14,8 @@ export interface DIDKeyPair {
     publicKey: string;
     privateKey: string;
     did: string;
+    mlKemPublicKey: string;
+    mlKemSecretKey: string;
 }
 
 export interface AuthSession {
@@ -52,6 +54,7 @@ export interface EncryptedData {
 
 export interface EncryptedIdentity {
     publicKey: string;
+    mlKemPublicKey?: string;
     encryptedData: string;
     iv: string;
     salt: string;

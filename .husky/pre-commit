@@ -5,6 +5,9 @@ if [ -f scripts/check-secrets.sh ]; then
   bash scripts/check-secrets.sh || { echo "❌ check-secrets.sh: possible secret in staged changes. Do not commit .env, API keys, or secrets."; exit 1; }
 fi
 
+if [ -f scripts/check-quantum-imports.sh ]; then
+  bash scripts/check-quantum-imports.sh || { echo "❌ check-quantum-imports: do not import quarantined identity-core quantum path from apps/sdk/oauth-ui."; exit 1; }
+fi
 
 echo "🔒 Running security audit before commit..."
 

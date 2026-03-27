@@ -1,44 +1,20 @@
-// Key Generation for DIDs
-import { cryptoWorkerManager } from '../cryptoWorkerManager';
-import { CryptoUtils } from './cryptoUtils';
+// Key Generation for DIDs — ML-DSA-65 + ML-KEM-768 (@par-noir/pqc-crypto)
+import { mlDsa65Keygen, mlKem768Keygen, bytesToBase64 } from '@par-noir/pqc-crypto';
 
 export class KeyGenerator {
-  /**
-   * Generate a new key pair for DID using Ed25519 (more secure than RSA-2048)
-   */
-  static async generateKeyPair(): Promise<{ publicKey: string; privateKey: string }> {
-    try {
-      // Use Web Worker for non-blocking key generation
-      const keyPair = await cryptoWorkerManager.generateKey('Ed25519', true, ['sign', 'verify']);
-
-      const publicKeyBuffer = await cryptoWorkerManager.exportKey('spki', keyPair.publicKey);
-      const privateKeyBuffer = await cryptoWorkerManager.exportKey('pkcs8', keyPair.privateKey);
-
-      return {
-        publicKey: CryptoUtils.arrayBufferToBase64(publicKeyBuffer),
-        privateKey: CryptoUtils.arrayBufferToBase64(privateKeyBuffer),
-      };
-    } catch (error) {
-      // Fallback to main thread if worker fails
-      try {
-        const keyPair = await cryptoWorkerManager.generateKey(
-          {
-            name: 'Ed25519',
-          },
-          true,
-          ['sign', 'verify']
-        );
-
-        const publicKeyBuffer = await cryptoWorkerManager.exportKey('spki', keyPair.publicKey);
-        const privateKeyBuffer = await cryptoWorkerManager.exportKey('pkcs8', keyPair.privateKey);
-
-        return {
-          publicKey: CryptoUtils.arrayBufferToBase64(publicKeyBuffer),
-          privateKey: CryptoUtils.arrayBufferToBase64(privateKeyBuffer),
-        };
-      } catch (fallbackError) {
-        throw new Error(`Failed to generate Ed25519 key pair: ${fallbackError}. Please ensure your browser supports Ed25519.`);
-      }
-    }
+  static generateKeyPair(): {
+    publicKey: string;
+    privateKey: string;
+    mlKemPublicKey: string;
+    mlKemSecretKey: string;
+  } {
+    const dsa = mlDsa65Keygen();
+    const kem = mlKem768Keygen();
+    return {
+      publicKey: bytesToBase64(dsa.publicKey),
+      privateKey: bytesToBase64(dsa.secretKey),
+      mlKemPublicKey: bytesToBase64(kem.publicKey),
+      mlKemSecretKey: bytesToBase64(kem.secretKey),
+    };
   }
 }

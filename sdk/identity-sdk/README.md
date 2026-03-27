@@ -1,18 +1,15 @@
-# 🎖️ Identity Protocol SDK - Military-Grade Quantum-Resistant Cryptography
+# Identity Protocol SDK
 
-A **military-grade quantum-resistant identity SDK** that enables users to create their own identities with **authentic zero-knowledge proofs** and **NIST PQC Round 3 algorithms**. Users control what personal data they share with third parties, providing **OAuth-like authentication** with **FIPS 140-3 Level 4** equivalent security.
+TypeScript SDK for **par Noir** identity flows: **pN OAuth**, session helpers, and related APIs. Cryptography follows [`docs/security/IDENTITY_PQC_DECISIONS.md`](../../docs/security/IDENTITY_PQC_DECISIONS.md): **ML-DSA-65**, **ML-KEM-768**, and **SHA-3** for protocol hashing. PQ-aligned ZK is a **separate phase** (see that document §6); do not treat interim ECC-oriented ZK paths as the long-term stack.
 
-## 🚀 Features
+## Features
 
-- **🎖️ Military-Grade Security**: FIPS 140-3 Level 4 equivalent with quantum resistance
-- **🔐 Authentic ZK Proofs**: Real zero-knowledge protocols (not simulations)
-- **🛡️ Quantum-Resistant**: NIST PQC Round 3 algorithms for future-proof security
-- **👤 User-Owned Identities**: Users create and control their own identities
-- **🔑 Access Token Management**: Identities serve as access tokens for third parties
-- **🛡️ Controlled Data Sharing**: Users decide what data to share with each platform
-- **🔄 OAuth-Like Flow**: Familiar authentication patterns for developers
-- **📋 Compliance Ready**: Request additional data collection from users
-- **📱 Cross-Platform**: Works in browsers, mobile apps, and desktop applications
+- **Post-quantum asymmetric crypto (target stack)**: ML-DSA-65 / ML-KEM-768 per project decisions
+- **User-owned identities** and OAuth-style authorization code flow against the par Noir API
+- **Access tokens** and refresh handling (see API and `PNOAuthClient`)
+- **Cross-platform**: browsers, mobile, and desktop where the runtime is supported
+
+Older marketing claims elsewhere in this file (e.g. “military-grade”, “FIPS Level 4”, “PQC Round 3” as product guarantees) are **deprecated**; trust the linked security docs and source.
 
 ## 📦 Installation
 

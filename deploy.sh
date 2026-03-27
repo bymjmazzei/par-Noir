@@ -8,9 +8,18 @@ echo "🚀 Starting deployment..."
 export VITE_API_ENDPOINT="${VITE_API_ENDPOINT:-https://api.parnoir.com}"
 echo "📌 Using VITE_API_ENDPOINT=$VITE_API_ENDPOINT (set env before ./deploy.sh to override)"
 
+# PQC crypto (dashboard + API + apps depend on dist/)
+echo "📦 Building packages/pqc-crypto..."
+cd packages/pqc-crypto
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ pqc-crypto build failed"
+    exit 1
+fi
+
 # Shared catalog (API server + workspace consumers use dist/)
 echo "📦 Building packages/standard-data-points..."
-cd packages/standard-data-points
+cd ../standard-data-points
 npm run build
 if [ $? -ne 0 ]; then
     echo "❌ standard-data-points build failed"

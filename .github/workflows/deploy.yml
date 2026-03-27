@@ -24,8 +24,9 @@ jobs:
         uses: actions/checkout@v4
       - name: Guardrails check
         run: |
-          chmod +x scripts/check-secrets.sh
+          chmod +x scripts/check-secrets.sh scripts/check-quantum-imports.sh
           PN_STRICT_GUARDRAILS=1 scripts/check-secrets.sh
+          scripts/check-quantum-imports.sh
       - name: Setup Pages
         uses: actions/configure-pages@v4
       - name: Prepare site

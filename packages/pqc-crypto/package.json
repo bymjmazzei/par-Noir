@@ -1,0 +1,27 @@
+{
+  "name": "@par-noir/pqc-crypto",
+  "version": "0.1.0",
+  "description": "PQC primitives for par Noir identity (ML-DSA-65, ML-KEM-768) and wire helpers",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.0.0",
+    "@noble/post-quantum": "^0.5.4",
+    "cborg": "^4.2.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

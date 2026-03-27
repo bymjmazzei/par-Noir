@@ -1,5 +1,8 @@
 // import { cryptoWorkerManager } from './encryption/cryptoWorkerManager';
 /**
+ * @deprecatedPath ECC/secp256k1-oriented ZK scaffolding — **not** the long-term PQ-aligned ZK stack.
+ * See `docs/security/IDENTITY_PQC_DECISIONS.md` §6 and Phase 5 implementation plan. Do not extend for production.
+ *
  * Enhanced ZK Proof Manager
  * Provi timestamped proofs with replay attack prevention
  * Runs automatically without user interaction

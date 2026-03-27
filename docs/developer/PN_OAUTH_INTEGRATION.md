@@ -32,6 +32,10 @@ Popup-based UX (e.g. `@par-noir/oauth-ui` or the identity SDK with `usePopup: tr
 
 **Legacy:** `GET /oauth/popup-bridge` on the API host is **removed** (responds with `410 Gone`). Do not depend on it.
 
+### Public key in the authorize / consent flow (PQC)
+
+When the client sends **`public_key`** (or equivalent) to the authorization server, it must be **standard base64** encoding of the raw **ML-DSA-65 public key** (**1952 bytes** after base64 decode). Shorter keys (e.g. legacy Ed25519) are rejected. See `docs/security/IDENTITY_PQC_DECISIONS.md` and `docs/standards/IDENTITY_WIRE_FORMAT.md`.
+
 ---
 
 ## Quick Start

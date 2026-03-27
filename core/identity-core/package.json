@@ -39,6 +39,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@par-noir/pqc-crypto": "file:../../packages/pqc-crypto",
     "@azure/identity": "^4.11.1",
     "@azure/keyvault-keys": "^4.10.0",
     "@noble/secp256k1": "^2.3.0",

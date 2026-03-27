@@ -1,10 +1,17 @@
 // Self-contained cryptographic utilities
+import { mlDsa65Keygen, mlKem768Keygen, bytesToBase64 } from '@par-noir/pqc-crypto';
 import { getAssetUrl } from './assetPaths';
 
 export interface DIDKeyPair {
+  /** ML-DSA-65 public key (base64). */
   publicKey: string;
+  /** ML-DSA-65 secret key (base64) — stored only inside encrypted identity payload. */
   privateKey: string;
   did: string;
+  /** ML-KEM-768 public key (base64), plaintext alongside ML-DSA public key. */
+  mlKemPublicKey: string;
+  /** ML-KEM-768 secret key (base64) — stored only inside encrypted identity payload. */
+  mlKemSecretKey: string;
 }
 
 export interface EncryptedData {
@@ -14,8 +21,11 @@ export interface EncryptedData {
 }
 
 export interface EncryptedIdentity {
-  publicKey: string; // Only public key is in plain text - this is public
-  encryptedData: string; // Contains ALL sensitive data: DID, username, nickname, email, phone, recoveryEmail, recoveryPhone, profilePicture, createdAt, status, custodiansRequired, custodiansSetup
+  /** ML-DSA-65 public key (base64) — API / OAuth binding. */
+  publicKey: string;
+  /** ML-KEM-768 public key (base64) — optional on legacy files; required for new PQC identities. */
+  mlKemPublicKey?: string;
+  encryptedData: string; // Contains ALL sensitive data including PQC secret keys, DID, username, ...
   iv: string;
   salt: string;
 }
@@ -37,48 +47,24 @@ export class IdentityCrypto {
   private static readonly TOKEN_EXPIRY = 3600; // 1 hour
 
   /**
-   * Generate a real DID with Ed25519 key pair
+   * Generate a DID with ML-DSA-65 + ML-KEM-768 (see docs/security/IDENTITY_PQC_DECISIONS.md).
    */
   static async generateDID(): Promise<DIDKeyPair> {
     try {
-      const keyPair = await this.generateKeyPair();
-      const did = this.DID_PREFIX + await this.generateDIDIdentifier(keyPair.publicKey);
-      
+      const dsa = mlDsa65Keygen();
+      const kem = mlKem768Keygen();
+      const publicKey = bytesToBase64(dsa.publicKey);
+      const did = this.DID_PREFIX + (await this.generateDIDIdentifier(publicKey));
+
       return {
-        publicKey: keyPair.publicKey,
-        privateKey: keyPair.privateKey,
-        did
+        publicKey,
+        privateKey: bytesToBase64(dsa.secretKey),
+        did,
+        mlKemPublicKey: bytesToBase64(kem.publicKey),
+        mlKemSecretKey: bytesToBase64(kem.secretKey),
       };
     } catch (error) {
       throw new Error(`Failed to generate DID: ${error}`);
-    }
-  }
-
-  /**
-   * Generate a new key pair for DID
-   */
-  private static async generateKeyPair(): Promise<{ publicKey: string; privateKey: string }> {
-    try {
-      const keyPair = await window.crypto.subtle.generateKey(
-        {
-          name: 'RSA-OAEP',
-          modulusLength: 2048,
-          publicExponent: new Uint8Array([1, 0, 1]),
-          hash: 'SHA-256',
-        },
-        true,
-        ['encrypt', 'decrypt']
-      );
-
-      const publicKeyBuffer = await window.crypto.subtle.exportKey('spki', keyPair.publicKey);
-      const privateKeyBuffer = await window.crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
-
-      return {
-        publicKey: this.arrayBufferToBase64(publicKeyBuffer),
-        privateKey: this.arrayBufferToBase64(privateKeyBuffer),
-      };
-    } catch (error) {
-      throw new Error(`Failed to generate key pair: ${error}`);
     }
   }
 
@@ -114,7 +100,11 @@ export class IdentityCrypto {
         status: 'active',
         custodiansRequired: true,
         custodiansSetup: false,
-        recoveryKeys: recoveryKeys // Recovery keys are encrypted and stored in ID file
+        recoveryKeys: recoveryKeys, // Recovery keys are encrypted and stored in ID file
+        pqcSecrets: {
+          mlDsaSecretKey: didKeyPair.privateKey,
+          mlKemSecretKey: didKeyPair.mlKemSecretKey,
+        },
       };
 
       // Encrypt ALL sensitive identity data including DID and recovery keys
@@ -127,7 +117,8 @@ export class IdentityCrypto {
       );
 
       return {
-        publicKey: didKeyPair.publicKey, // Only public key is in plain text
+        publicKey: didKeyPair.publicKey,
+        mlKemPublicKey: didKeyPair.mlKemPublicKey,
         encryptedData: encryptedData.encrypted,
         iv: encryptedData.iv,
         salt: encryptedData.salt

@@ -1,26 +1,10 @@
-# 🎖️ Identity Protocol API - Military-Grade Quantum-Resistant Cryptography
+# Identity Protocol API
 
-A **military-grade quantum-resistant API server** that provides **authentic zero-knowledge proof verification** and **quantum-resistant authentication** for the Identity Protocol system.
+Production API for par Noir: OAuth-style flows for pN identity, API keys, and related services.
 
-## 🏆 **Military-Grade Security Features**
+**Cryptography (current target):** Client identities use **NIST ML-DSA-65** public keys for OAuth binding (see `docs/security/IDENTITY_PQC_DECISIONS.md` and `@par-noir/pqc-crypto`). Access tokens may be HS256 or RS256 depending on deployment. ZK verification paths are evolving separately.
 
-### 🔐 **Authentic Zero-Knowledge Proof Verification**
-- **Real Schnorr signature verification** over secp256k1
-- **Authentic Pedersen commitment verification** with proof of knowledge
-- **Real Sigma protocol verification** for interactive/non-interactive proofs
-- **Fiat-Shamir transform verification** for non-interactive ZK proofs
-
-### 🛡️ **Quantum-Resistant Authentication**
-- **NIST PQC Round 3 algorithms**: CRYSTALS-Kyber, FALCON, SPHINCS+
-- **Real discrete Gaussian sampling** verification
-- **Authentic polynomial operations** verification in ring R_q
-- **192-bit quantum security** (Level 3) with hybrid cryptography
-
-### 🎖️ **Military-Grade Standards**
-- **FIPS 140-3 Level 4** equivalent security
-- **NIST SP 800-56A** key agreement standards
-- **NIST SP 800-57** key management standards
-- **384-bit classical security** with P-384 elliptic curve
+Older README claims below are **deprecated**; do not treat them as accurate deployment guarantees.
 
 ## 🚀 **Quick Start**
 

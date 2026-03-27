@@ -2,6 +2,7 @@ import { cryptoWorkerManager } from './cryptoWorkerManager';
 // Core Identity Operations
 import { DIDKeyPair, EncryptedIdentity, AuthSession } from '../../types/crypto';
 import { KeyGenerator } from './keyGenerator';
+import { CryptoUtils } from './cryptoUtils';
 import { RecoveryKeyManager } from './recoveryKeyManager';
 import { EncryptionManager } from './encryptionManager';
 import { TokenManager } from './tokenManager';
@@ -17,13 +18,15 @@ export class IdentityOperations {
    */
   static async generateDID(): Promise<DIDKeyPair> {
     try {
-      const keyPair = await KeyGenerator.generateKeyPair();
-      const did = this.DID_PREFIX + await KeyGenerator.generateDIDIdentifier(keyPair.publicKey);
+      const keyPair = KeyGenerator.generateKeyPair();
+      const did = this.DID_PREFIX + (await CryptoUtils.generateDIDIdentifier(keyPair.publicKey));
       
       return {
         publicKey: keyPair.publicKey,
         privateKey: keyPair.privateKey,
-        did
+        did,
+        mlKemPublicKey: keyPair.mlKemPublicKey,
+        mlKemSecretKey: keyPair.mlKemSecretKey,
       };
     } catch (error) {
       throw new Error(`Failed to generate DID: ${error}`);
@@ -62,7 +65,11 @@ export class IdentityOperations {
         status: 'active',
         custodiansRequired: true,
         custodiansSetup: false,
-        recoveryKeys: recoveryKeys // Recovery keys are encrypted and stored in ID file
+        recoveryKeys: recoveryKeys, // Recovery keys are encrypted and stored in ID file
+        pqcSecrets: {
+          mlDsaSecretKey: didKeyPair.privateKey,
+          mlKemSecretKey: didKeyPair.mlKemSecretKey,
+        },
       };
 
       // Encrypt ALL sensitive identity data including DID and recovery keys
@@ -72,7 +79,8 @@ export class IdentityOperations {
       );
 
       return {
-        publicKey: didKeyPair.publicKey, // Only public key is in plain text
+        publicKey: didKeyPair.publicKey,
+        mlKemPublicKey: didKeyPair.mlKemPublicKey,
         encryptedData: encryptedData.encrypted,
         iv: encryptedData.iv,
         salt: encryptedData.salt
