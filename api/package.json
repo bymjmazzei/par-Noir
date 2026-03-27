@@ -4,7 +4,8 @@
   "description": "Production API server for Identity Protocol",
   "main": "dist/server.js",
   "scripts": {
-    "build": "node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc -p tsconfig.build.json && rm -rf dist/migrations dist/templates dist/static && mkdir -p dist/migrations dist/templates dist/static && cp -R migrations/. dist/migrations/ && cp -R src/templates/. dist/templates/ && cp -R src/static/. dist/static/",
+    "build:deps": "cd ../packages/pqc-crypto && npm install && npm run build && cd ../zk-protocol-v1 && npm install && npm run build",
+    "build": "npm run build:deps && node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc -p tsconfig.build.json && rm -rf dist/migrations dist/templates dist/static && mkdir -p dist/migrations dist/templates dist/static && cp -R migrations/. dist/migrations/ && cp -R src/templates/. dist/templates/ && cp -R src/static/. dist/static/",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
     "auth:dev": "ts-node decentralized-auth-server.ts",

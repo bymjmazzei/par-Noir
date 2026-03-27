@@ -2,6 +2,7 @@
 # Set Railway "Root Directory" to the repository root (empty or "."), NOT `api/`.
 # Reason: `api` depends on `file:../../packages/zk-protocol-v1`, which requires `packages/`
 # in the build context. Install must use `api/package-lock.json` via `cd api && npm ci`.
+# `npm run build` runs `build:deps` first (pqc-crypto + zk-protocol-v1 `tsc`) so `dist/` exists for TS resolve.
 [phases.setup]
 nixPkgs = ["nodejs_20", "npm-9_x", "ffmpeg"]
 
