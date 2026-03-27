@@ -5,8 +5,8 @@
  */
 
 import crypto from 'crypto';
-import { ML_DSA_65_PUBLIC_KEY_LENGTH } from '@par-noir/pqc-crypto';
 import jwt, { JwtHeader, JwtPayload } from 'jsonwebtoken';
+import { ML_DSA_65_PUBLIC_KEY_LENGTH } from '../constants/mlDsaPublicKey';
 import { GoogleAuth } from 'google-auth-library';
 import { getDatabasePool } from '../utils/database';
 import { isDidRevokedForNetwork, isPnRevokedForNetwork } from './identitySuccessionService';

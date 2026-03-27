@@ -2,7 +2,7 @@
 
 Production API for par Noir: OAuth-style flows for pN identity, API keys, and related services.
 
-**Cryptography (current target):** Client identities use **NIST ML-DSA-65** public keys for OAuth binding (see `docs/security/IDENTITY_PQC_DECISIONS.md` and `@par-noir/pqc-crypto`). Access tokens may be HS256 or RS256 depending on deployment. ZK verification paths are evolving separately.
+**Cryptography (current target):** Client identities use **NIST ML-DSA-65** public keys for OAuth binding (see `docs/security/IDENTITY_PQC_DECISIONS.md`; clients use `@par-noir/pqc-crypto` in the monorepo). The API validates **public key byte length** only (`src/server/constants/mlDsaPublicKey.ts`). Access tokens may be HS256 or RS256 depending on deployment. ZK verification paths are evolving separately.
 
 Older README claims below are **deprecated**; do not treat them as accurate deployment guarantees.
 

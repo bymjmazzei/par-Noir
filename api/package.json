@@ -24,7 +24,6 @@
   "author": "Identity Protocol Team",
   "license": "UNLICENSED",
   "dependencies": {
-    "@par-noir/pqc-crypto": "file:../packages/pqc-crypto",
     "@google/generative-ai": "^0.24.1",
     "@sentry/node": "^8.55.0",
     "bcryptjs": "^2.4.3",

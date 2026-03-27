@@ -2,14 +2,8 @@
  * @jest-environment node
  */
 // OAuth PQC: ML-DSA-65 public key length validation and authorize → token flow.
-// pnOAuthService imports @par-noir/pqc-crypto, which loads ESM @noble under Jest CJS — stub the package.
-jest.mock('@par-noir/pqc-crypto', () => ({
-  ML_DSA_65_PUBLIC_KEY_LENGTH: 1952,
-}));
-
+import { ML_DSA_65_PUBLIC_KEY_LENGTH } from '../constants/mlDsaPublicKey';
 import { PNOAuthService } from '../modules/pnOAuthService';
-
-const ML_DSA_65_PUBLIC_KEY_LENGTH = 1952;
 
 function fakeMlDsa65PublicKeyBase64(): string {
   return Buffer.alloc(ML_DSA_65_PUBLIC_KEY_LENGTH, 0x42).toString('base64');
