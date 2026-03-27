@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <!-- Primary Meta Tags -->
-    <title>Technical White Paper - par Noir: A Protocol for Sovereign Identity</title>
-    <meta name="title" content="Technical White Paper - par Noir: A Protocol for Sovereign Identity">
-    <meta name="description" content="Comprehensive technical whitepaper for par Noir - an open-source protocol for sovereign identity with zero-knowledge proofs, continuing the legacy of freedom in the digital age.">
-    <meta name="keywords" content="par noir whitepaper, sovereign identity protocol, zero-knowledge proofs, digital identity, blockchain identity, self-sovereign identity, technical documentation">
+    <title>Technical White Paper — par Noir: Sovereign Identity and Network Ecosystem</title>
+    <meta name="title" content="Technical White Paper — par Noir: Sovereign Identity and Network Ecosystem">
+    <meta name="description" content="Technical overview of par Noir: decentralized identity protocol, layered product stack (dashboard, API, aggregator browser, messaging, Prism auditors, developer portal), and licensing.">
+    <meta name="keywords" content="par noir, sovereign identity, zero-knowledge proofs, digital identity, self-sovereign identity, decentralized identity, par noir ecosystem">
     <meta name="author" content="par Noir Protocol Team">
     <meta name="robots" content="index, follow">
     <meta name="language" content="English">
@@ -16,21 +16,22 @@
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="article">
     <meta property="og:url" content="https://parnoir.com/whitepaper.html">
-    <meta property="og:title" content="Technical White Paper - par Noir: A Protocol for Sovereign Identity">
-    <meta property="og:description" content="Comprehensive technical overview of the par Noir protocol, its architecture, implementation details, and vision for decentralized identity sovereignty.">
+    <meta property="og:title" content="Technical White Paper — par Noir: Sovereign Identity and Network Ecosystem">
+    <meta property="og:description" content="Protocol foundations and current ecosystem: identity, dashboard, API, aggregator browser, messaging, Prism content auditing, and developer portal.">
     <meta property="og:image" content="https://parnoir.com/branding/Par-Noir-Logo-White.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:site_name" content="par Noir">
     <meta property="og:locale" content="en_US">
     <meta property="article:published_time" content="2024-01-01T00:00:00Z">
+    <meta property="article:modified_time" content="2026-03-26T00:00:00Z">
     <meta property="article:author" content="par Noir Protocol Team">
     
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://parnoir.com/whitepaper.html">
-    <meta property="twitter:title" content="Technical White Paper - par Noir: A Protocol for Sovereign Identity">
-    <meta property="twitter:description" content="Comprehensive technical overview of the par Noir protocol, its architecture, implementation details, and vision for decentralized identity sovereignty.">
+    <meta property="twitter:title" content="Technical White Paper — par Noir: Sovereign Identity and Network Ecosystem">
+    <meta property="twitter:description" content="Protocol foundations and current ecosystem: identity, dashboard, API, browser, messaging, Prism, developer portal.">
     <meta property="twitter:image" content="https://parnoir.com/branding/Par-Noir-Logo-White.png">
     
     <!-- Additional Meta Tags -->
@@ -57,8 +58,8 @@
     {
       "@context": "https://schema.org",
       "@type": "TechArticle",
-      "headline": "par Noir: A Protocol for Sovereign Identity",
-      "description": "Comprehensive technical overview of the par Noir protocol, its architecture, implementation details, and vision for decentralized identity sovereignty.",
+      "headline": "par Noir: Sovereign Identity and Network Ecosystem",
+      "description": "Technical overview of the par Noir identity protocol and the layered product stack: dashboard, API, aggregator browser, messaging, Prism auditors, and developer portal.",
       "author": {
         "@type": "Organization",
         "name": "par Noir Protocol Team"
@@ -72,13 +73,13 @@
         }
       },
       "datePublished": "2024-01-01T00:00:00Z",
-      "dateModified": "2024-01-01T00:00:00Z",
+      "dateModified": "2026-03-26T00:00:00Z",
       "mainEntityOfPage": {
         "@type": "WebPage",
         "@id": "https://parnoir.com/whitepaper.html"
       },
       "image": "https://parnoir.com/branding/Par-Noir-Logo-White.png",
-      "keywords": "par noir, sovereign identity, zero-knowledge proofs, digital identity, blockchain, privacy"
+      "keywords": "par noir, sovereign identity, zero-knowledge proofs, digital identity, self-sovereign identity, par noir ecosystem"
     }
     </script>
 </head>
@@ -97,9 +98,10 @@
             <div class="nav-menu-section">
                 <a href="index.html" class="nav-menu-link">Home</a>
                 <a href="#abstract" class="nav-menu-link">Abstract</a>
-                <a href="#introduction" class="nav-menu-link">Introduction</a>
-                <a href="#architecture" class="nav-menu-link">Architecture</a>
+                <a href="#ecosystem" class="nav-menu-link">Ecosystem</a>
+                <a href="#protocol" class="nav-menu-link">Protocol</a>
                 <a href="#implementation" class="nav-menu-link">Implementation</a>
+                <a href="#licensing" class="nav-menu-link">Licensing</a>
                 <a href="developer-portal.html" class="nav-menu-link nav-developers">Developers</a>
             </div>
             <button class="nav-mobile-toggle" onclick="toggleMobileMenu()">
@@ -115,9 +117,10 @@
         <button class="nav-mobile-close" onclick="toggleMobileMenu()">×</button>
         <a href="index.html" onclick="toggleMobileMenu()">Home</a>
         <a href="#abstract" onclick="toggleMobileMenu()">Abstract</a>
-        <a href="#introduction" onclick="toggleMobileMenu()">Introduction</a>
-        <a href="#architecture" onclick="toggleMobileMenu()">Architecture</a>
+        <a href="#ecosystem" onclick="toggleMobileMenu()">Ecosystem</a>
+        <a href="#protocol" onclick="toggleMobileMenu()">Protocol</a>
         <a href="#implementation" onclick="toggleMobileMenu()">Implementation</a>
+        <a href="#licensing" onclick="toggleMobileMenu()">Licensing</a>
         <a href="developer-portal.html" onclick="toggleMobileMenu()">Developers</a>
     </div>
 
@@ -127,11 +130,11 @@
             <div class="whitepaper-hero-content">
                 <div class="hero-badge">Technical White Paper</div>
                 <h1 class="hero-title">
-                    par Noir: A Protocol for <span class="hero-highlight">Sovereign Identity</span>
+                    par Noir: <span class="hero-highlight">Sovereign Identity</span> and Network Ecosystem
                 </h1>
                 <p class="hero-subtitle">
-                    A comprehensive technical overview of the par Noir protocol, its architecture, 
-                    implementation details, and vision for decentralized identity sovereignty.
+                    A technical overview of the par Noir identity protocol and the layered applications that implement it:
+                    identity core, dashboard, hosted API, aggregator browser, messaging, Prism content auditing, and the developer portal for integrators.
                 </p>
                 <div class="hero-actions">
                     <a href="#abstract" class="btn btn-primary btn-large">
@@ -155,19 +158,23 @@
                 <h2 class="section-title">Abstract</h2>
                 <div class="paper-content">
                     <p class="lead-text">
-                        The current paradigm of digital identity is fundamentally broken. Users surrender control of their 
-                        most valuable asset—their identity—to centralized entities that can revoke, modify, or exploit it at will. 
-                        This paper presents par Noir, a protocol for sovereign identity that returns ownership and control to the individual.
+                        The current paradigm of digital identity is fundamentally broken. Users surrender control of their
+                        most valuable asset—their identity—to centralized entities that can revoke, modify, or exploit it at will.
+                        par Noir is a protocol for sovereign identity that returns ownership and control to the individual,
+                        implemented as a <strong>layered network</strong>: cryptographic identity and proofs, a user-facing dashboard,
+                        a hosted API that connects tools, an aggregator browser for public feeds, encrypted messaging, a
+                        community content-auditing program (Prism), and a developer portal for third-party integrations.
                     </p>
                     <p>
-                        par Noir combines cryptographic identity verification, zero-knowledge proofs, and decentralized storage 
-                        to create a system where users maintain complete sovereignty over their digital identity. The protocol 
-                        ensures privacy by design, interoperability across platforms, and resistance to censorship while maintaining 
-                        usability for everyday applications.
+                        The cryptographic asset is <strong>decentralized identity</strong>, not a blockchain token. Verification is
+                        mathematical (identity file, name, and passcode); there is no central issuer. par Noir combines
+                        strong client-side cryptography with user-owned storage patterns and zero-knowledge directions so users
+                        can prove claims without unnecessarily exposing raw data.
                     </p>
                     <p>
-                        This work demonstrates how cryptographic primitives, when properly orchestrated, can create a new foundation 
-                        for digital identity that serves human freedom rather than corporate control.
+                        This paper summarizes protocol foundations and <a href="#ecosystem">how the ecosystem is structured today</a>,
+                        points to <a href="#implementation">reference implementations</a> in the open repository, and states
+                        <a href="#licensing">licensing terms</a> for non-commercial versus commercial use.
                     </p>
                 </div>
             </section>
@@ -178,275 +185,270 @@
                 <div class="paper-content">
                     <h3>1.1 The Current Crisis</h3>
                     <p>
-                        Digital identity today exists in a state of feudalism. Users are digital serfs, granted temporary 
-                        access to services in exchange for surrendering fundamental rights to their identity data. This 
-                        system creates multiple critical vulnerabilities:
+                        Digital identity today often exists in a state of dependency. Users are granted access to services
+                        in exchange for surrendering fundamental control over identity data. That model creates critical
+                        vulnerabilities:
                     </p>
                     <ul>
                         <li><strong>Single Points of Failure:</strong> Centralized identity providers create honeypots for attackers</li>
                         <li><strong>Surveillance Capitalism:</strong> User data becomes the product, not the service</li>
                         <li><strong>Identity Fragmentation:</strong> Users must maintain multiple incompatible identity profiles</li>
-                        <li><strong>Revocation Risk:</strong> Centralized authorities can eliminate digital existence instantly</li>
+                        <li><strong>Revocation Risk:</strong> Centralized authorities can eliminate digital presence instantly</li>
                     </ul>
 
-                    <h3>1.2 The Philosophical Foundation</h3>
+                    <h3>1.2 Design Goal: User-Owned Infrastructure</h3>
                     <p>
-                        The par Noir protocol is built upon a simple principle articulated in the Declaration of Independence: 
-                        "All men are created equal." In the digital realm, this translates to a fundamental right to 
-                        self-sovereignty—the ability to exist digitally without permission from centralized authorities.
+                        par Noir treats identity as <strong>user-owned infrastructure</strong>: the user creates and holds keys,
+                        the dashboard and API connect that identity to cloud storage and applications, and the aggregator
+                        browser surfaces user-published public content into feeds—without the browser talking to cloud
+                        providers directly; storage flows through the par Noir API.
                     </p>
                     <p>
-                        True digital freedom requires three core guarantees:
+                        Third parties integrate via OAuth and HTTP APIs (Layer 5), using the same patterns as the hosted
+                        developer console at <a href="https://developers.parnoir.com" rel="noopener noreferrer">developers.parnoir.com</a>.
                     </p>
-                    <ol>
-                        <li><strong>Self-Ownership:</strong> Users must own their identity completely</li>
-                        <li><strong>Self-Determination:</strong> Users must control how their identity is used</li>
-                        <li><strong>Self-Recovery:</strong> Users must be able to recover their identity without third-party dependency</li>
-                    </ol>
-
-                    <h3>1.3 Technical Requirements</h3>
-                    <p>
-                        To achieve true sovereignty, an identity protocol must satisfy the following technical requirements:
-                    </p>
-                    <ul>
-                        <li><strong>Decentralization:</strong> No single point of control or failure</li>
-                        <li><strong>Privacy by Design:</strong> Zero-knowledge verification of identity claims</li>
-                        <li><strong>Interoperability:</strong> Work across any platform or service</li>
-                        <li><strong>Recoverability:</strong> Social recovery mechanisms without centralized authority</li>
-                        <li><strong>Usability:</strong> Simple enough for everyday users</li>
-                    </ul>
                 </div>
             </section>
 
-            <!-- Architecture -->
-            <section id="architecture" class="paper-section">
-                <h2 class="section-title">2. System Architecture</h2>
+            <!-- Ecosystem -->
+            <section id="ecosystem" class="paper-section">
+                <h2 class="section-title">2. Ecosystem Architecture (Current)</h2>
                 <div class="paper-content">
-                    <h3>2.1 Core Components</h3>
                     <p>
-                        The par Noir protocol consists of four primary components working in concert:
+                        The following layers describe how components fit together. They align with the implementation in the
+                        par Noir monorepo: shared cryptography and types in <code>core/</code> and <code>sdk/</code>, applications under <code>apps/</code>,
+                        and the hosted API under <code>api/</code>.
                     </p>
 
-                    <div class="architecture-component">
-                        <h4>2.1.1 Identity Core</h4>
-                        <p>
-                            The identity core manages cryptographic key generation, identity creation, and basic 
-                            authentication operations. It utilizes elliptic curve cryptography (secp256k1) for 
-                            key generation and digital signatures, ensuring compatibility with existing blockchain 
-                            infrastructure while maintaining quantum-resistance roadmap compatibility.
-                        </p>
-                        <div class="code-block">
-                            <pre><code>// Identity creation process
-const identity = await IdentityCore.create({
-  pnName: "alice",
-  entropy: secureRandomBytes(32),
-  derivationPath: "m/44'/0'/0'/0/0"
-});</code></pre>
-                        </div>
-                    </div>
-
-                    <div class="architecture-component">
-                        <h4>2.1.2 Storage Layer</h4>
-                        <p>
-                            The storage layer provides encrypted, distributed storage for identity data using IPFS 
-                            as the primary backend. Data is encrypted client-side using AES-256-GCM before distribution, 
-                            ensuring that storage providers cannot access identity information.
-                        </p>
-                        <div class="code-block">
-                            <pre><code>// Encrypted storage operation
-const encryptedData = await encrypt(identityData, userKey);
-const ipfsHash = await ipfs.add(encryptedData);
-const storageProof = await generateStorageProof(ipfsHash);</code></pre>
-                        </div>
-                    </div>
-
-                    <div class="architecture-component">
-                        <h4>2.1.3 Zero-Knowledge Layer</h4>
-                        <p>
-                            The zero-knowledge layer enables users to prove facts about their identity without 
-                            revealing the underlying data. This utilizes zk-SNARKs for age verification, 
-                            qualification proofs, and other privacy-preserving identity assertions.
-                        </p>
-                        <div class="code-block">
-                            <pre><code>// Zero-knowledge age proof
-const ageProof = await zkProofs.generateAgeProof({
-  birthDate: user.birthDate,
-  minimumAge: 21,
-  nonce: randomNonce()
-});
-// Verifier can confirm age ≥ 21 without learning birth date</code></pre>
-                        </div>
-                    </div>
-
-                    <div class="architecture-component">
-                        <h4>2.1.4 Recovery Network</h4>
-                        <p>
-                            The recovery network implements Shamir's Secret Sharing for social recovery, 
-                            allowing users to recover their identity through trusted custodians without 
-                            any single party having control.
-                        </p>
-                        <div class="code-block">
-                            <pre><code>// Social recovery setup
-const recoveryShares = shamirSecretSharing.split(masterKey, {
-  threshold: 3,
-  shares: 5,
-  custodians: trustedCustodians
-});</code></pre>
-                        </div>
-                    </div>
-
-                    <h3>2.2 Security Model</h3>
+                    <h3>2.1 Layer 1 — Identity</h3>
                     <p>
-                        The par Noir security model is designed around the principle of defense in depth:
+                        <strong>Role:</strong> Proof-of-work identity creation, three-factor unlock (identity file, name, passcode),
+                        and cryptographic operations. There is no central authority that “issues” a par Noir identity; the user
+                        generates and holds the material.
                     </p>
+                    <p>
+                        <strong>Implementation:</strong> <code>core/identity-core</code> and related packages; consumed by the dashboard,
+                        API, and clients.
+                    </p>
+
+                    <h3>2.2 Layer 2 — Dashboard</h3>
+                    <p>
+                        <strong>Role:</strong> Where users create and manage identity, connect secure cloud storage, and use
+                        identity-direct features (recovery, settings, integrations that require the user’s keys or consent).
+                    </p>
+                    <p>
+                        <strong>Hosted application:</strong> <a href="https://pn.parnoir.com" rel="noopener noreferrer">pn.parnoir.com</a>
+                        (<code>apps/id-dashboard</code>).
+                    </p>
+
+                    <h3>2.3 Layer 3 — API</h3>
+                    <p>
+                        <strong>Role:</strong> Connects the dashboard and other clients to shared services: OAuth, storage
+                        mediation, aggregator indexing, messaging transport, and integrator endpoints. The API is the
+                        supported path for the aggregator browser to access storage (no direct Google OAuth or Drive APIs in the browser app).
+                    </p>
+                    <p>
+                        <strong>Base URL:</strong> <a href="https://api.parnoir.com" rel="noopener noreferrer">api.parnoir.com</a>
+                        (<code>api/</code>).
+                    </p>
+
+                    <h3>2.4 Layer 4 — Aggregator Browser</h3>
+                    <p>
+                        <strong>Role:</strong> Aggregates public files from users’ storage into feeds and browsing experiences.
+                        Storage operations go through the par Noir API only, consistent with the project’s security and
+                        architecture rules.
+                    </p>
+                    <p>
+                        <strong>Hosted application:</strong> <a href="https://browse.parnoir.com" rel="noopener noreferrer">browse.parnoir.com</a>
+                        (<code>apps/aggregator-browser</code>).
+                    </p>
+
+                    <h3>2.5 Layer 5 — Third Parties and Developers</h3>
+                    <p>
+                        <strong>Role:</strong> Products and services that call par Noir with user consent—OAuth unlock,
+                        standard data points, HTTP APIs. Integrators register OAuth clients and manage backend API keys
+                        through the developer portal.
+                    </p>
+                    <p>
+                        <strong>Hosted application:</strong> <a href="https://developers.parnoir.com" rel="noopener noreferrer">developers.parnoir.com</a>
+                        (<code>apps/developer-portal</code>) — credentials, standard data point catalog, integration guides,
+                        Layer 5 documentation, and OpenAPI reference.
+                    </p>
+
+                    <h3>2.6 Messaging</h3>
+                    <p>
+                        <strong>Role:</strong> Encrypted, user-owned messaging: messages live in users’ cloud storage areas,
+                        coordinated through the API. There is no central message store of plaintext content at par Noir;
+                        delivery and folder operations are mediated by the API.
+                    </p>
+                    <p>
+                        <strong>Hosted application:</strong> <a href="https://messaging.parnoir.com" rel="noopener noreferrer">messaging.parnoir.com</a>
+                        (messaging build of the aggregator app, <code>apps/aggregator-browser</code> / <code>dist-messaging</code>).
+                    </p>
+
+                    <h3>2.7 Auditing — Prism</h3>
+                    <p>
+                        <strong>Role:</strong> <em>Content</em> auditing, not generic IT security auditing. Prism is the par Noir
+                        auditor program: trained reviewers (“Rays”) evaluate DMCA-flagged or reported content and reach
+                        consensus before content is approved for indexing. Two Rays must agree to approve or deny; no single
+                        reviewer controls visibility alone.
+                    </p>
+                    <p>
+                        <strong>Hosted application:</strong> <a href="https://prism.parnoir.com" rel="noopener noreferrer">prism.parnoir.com</a>
+                        (<code>apps/prism</code>).
+                    </p>
+
+                    <h3>2.8 Commercial Licensing Portal</h3>
+                    <p>
+                        Organizations that need commercial terms use the licensing portal at
+                        <a href="https://licensing.parnoir.com" rel="noopener noreferrer">licensing.parnoir.com</a>
+                        (<code>apps/licensing-portal</code>), which aligns with written agreements such as
+                        <a href="licensing/annual-agreement.html">annual</a> and
+                        <a href="licensing/perpetual-agreement.html">perpetual</a> commercial license pages on this site.
+                    </p>
+                </div>
+            </section>
+
+            <!-- Protocol foundations -->
+            <section id="protocol" class="paper-section">
+                <h2 class="section-title">3. Protocol Foundations</h2>
+                <div class="paper-content">
+                    <p>
+                        The ecosystem above rests on a small set of protocol ideas: client-held keys, encrypted artifacts,
+                        publication of non-sensitive metadata where appropriate, and privacy-preserving proofs over time.
+                        Exact file formats, curves, and proof systems evolve in the repository; this section states intent,
+                        not every on-wire byte.
+                    </p>
+
+                    <h3>3.1 Identity and Keys</h3>
+                    <p>
+                        Identity material is derived and used client-side. Industry-standard primitives (for example,
+                        elliptic-curve signing and AEAD for encrypted payloads) are composed so that servers do not need
+                        access to passcodes or raw identity secrets.
+                    </p>
+
+                    <h3>3.2 Storage and Metadata</h3>
+                    <p>
+                        User data is encrypted before leaving the client where applicable; metadata may be published to
+                        decentralized or operator-hosted indexes for discoverability, without placing secrets in plain text
+                        in logs or public fields.
+                    </p>
+
+                    <h3>3.3 Zero-Knowledge and Claims</h3>
+                    <p>
+                        The protocol direction includes proving properties of identity and attributes (for example, age
+                        thresholds) without revealing underlying raw values. Specific proof systems and circuits ship in
+                        the codebase over time; integrators should follow published APIs and SDK releases rather than this
+                        paper for exact parameters.
+                    </p>
+
+                    <h3>3.4 Recovery</h3>
+                    <p>
+                        Social and policy-based recovery features are implemented in the dashboard and supporting services
+                        so users can regain access without a single central authority “resetting” identity—subject to the
+                        user’s chosen recovery configuration.
+                    </p>
+
+                    <h3>3.5 Security Model (Summary)</h3>
                     <ul>
-                        <li><strong>Cryptographic Security:</strong> All operations use industry-standard cryptographic primitives</li>
-                        <li><strong>Network Security:</strong> Distributed storage prevents single points of failure</li>
-                        <li><strong>Privacy Security:</strong> Zero-knowledge proofs prevent data leakage</li>
-                        <li><strong>Recovery Security:</strong> Social recovery requires threshold consensus</li>
+                        <li><strong>Cryptographic security:</strong> Standard, auditable primitives composed carefully</li>
+                        <li><strong>Privacy:</strong> Minimize exposure of sensitive fields; prefer proofs and encryption</li>
+                        <li><strong>API boundary:</strong> Browser and third-party apps use the API for storage and integrator flows</li>
+                        <li><strong>Recovery:</strong> Threshold and custodian models where the product exposes them</li>
                     </ul>
                 </div>
             </section>
 
             <!-- Implementation -->
             <section id="implementation" class="paper-section">
-                <h2 class="section-title">3. Implementation Details</h2>
+                <h2 class="section-title">4. Reference Implementation</h2>
                 <div class="paper-content">
-                    <h3>3.1 Protocol Flow</h3>
                     <p>
-                        The complete par Noir protocol follows this implementation flow:
+                        The canonical open-source implementation lives in the par Noir monorepo. High-level mapping:
                     </p>
-                    
-                    <div class="protocol-flow">
-                        <div class="flow-step">
-                            <div class="step-number">1</div>
-                            <div class="step-content">
-                                <h4>Identity Creation</h4>
-                                <p>User generates cryptographic identity locally using secure random entropy</p>
-                            </div>
-                        </div>
-                        <div class="flow-step">
-                            <div class="step-number">2</div>
-                            <div class="step-content">
-                                <h4>Data Encryption</h4>
-                                <p>Identity data is encrypted client-side using user-controlled keys</p>
-                            </div>
-                        </div>
-                        <div class="flow-step">
-                            <div class="step-number">3</div>
-                            <div class="step-content">
-                                <h4>Distributed Storage</h4>
-                                <p>Encrypted data is distributed across IPFS network</p>
-                            </div>
-                        </div>
-                        <div class="flow-step">
-                            <div class="step-number">4</div>
-                            <div class="step-content">
-                                <h4>Recovery Setup</h4>
-                                <p>Social recovery shares are distributed to trusted custodians</p>
-                            </div>
-                        </div>
-                        <div class="flow-step">
-                            <div class="step-number">5</div>
-                            <div class="step-content">
-                                <h4>Identity Usage</h4>
-                                <p>User can authenticate and prove identity claims across any supporting platform</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <h3>3.2 Cryptographic Primitives</h3>
-                    <p>
-                        par Noir leverages the following cryptographic primitives:
-                    </p>
-                    <ul>
-                        <li><strong>ECDSA (secp256k1):</strong> Digital signatures and identity verification</li>
-                        <li><strong>AES-256-GCM:</strong> Symmetric encryption for data storage</li>
-                        <li><strong>PBKDF2:</strong> Key derivation from user passphrases</li>
-                        <li><strong>Shamir's Secret Sharing:</strong> Social recovery implementation</li>
-                        <li><strong>zk-SNARKs:</strong> Zero-knowledge proof generation and verification</li>
-                        <li><strong>SHA-3:</strong> Cryptographic hashing and integrity verification</li>
+                    <ul class="whitepaper-list">
+                        <li><strong>Identity / crypto:</strong> <code>core/identity-core</code>, <code>sdk/identity-sdk</code></li>
+                        <li><strong>Dashboard (L2):</strong> <code>apps/id-dashboard</code></li>
+                        <li><strong>API (L3):</strong> <code>api/</code></li>
+                        <li><strong>Aggregator browser (L4):</strong> <code>apps/aggregator-browser</code></li>
+                        <li><strong>Developer portal (L5):</strong> <code>apps/developer-portal</code></li>
+                        <li><strong>Prism:</strong> <code>apps/prism</code></li>
+                        <li><strong>Licensing portal:</strong> <code>apps/licensing-portal</code></li>
                     </ul>
-
-                    <h3>3.3 SDK Implementation</h3>
                     <p>
-                        The par Noir SDK provides developers with simple APIs for integration:
+                        Client applications load a single configured API base URL at build time (for example
+                        <code>VITE_API_ENDPOINT</code> pointing at <a href="https://api.parnoir.com" rel="noopener noreferrer">api.parnoir.com</a>
+                        in production builds). Integrators should use the OAuth UI package and identity SDK workspaces
+                        published from the repository rather than copying outdated snippets.
                     </p>
-                    <div class="code-block">
-                        <pre><code>// Initialize the SDK
-import { ParNoirSDK } from 'par-noir-sdk';
+                </div>
+            </section>
 
-const sdk = new ParNoirSDK({
-  network: 'mainnet',
-  storage: 'ipfs',
-  zkProvider: 'default'
-});
-
-// Authenticate user
-const user = await sdk.authenticate(identityFile, passphrase);
-
-// Generate zero-knowledge proof
-const proof = await sdk.zkProofs.generateAgeProof(user, 21);
-
-// Verify the proof
-const isValid = await sdk.zkProofs.verifyAgeProof(proof, 21);</code></pre>
-                    </div>
+            <!-- Licensing -->
+            <section id="licensing" class="paper-section">
+                <h2 class="section-title">5. Licensing and Use of par Noir Software</h2>
+                <div class="paper-content">
+                    <p>
+                        par Noir software is provided under <strong>All Rights Reserved</strong> terms. The source is available
+                        for review; copying, redistribution, modification, and derivative works are not permitted except as
+                        stated in writing (see the <a href="https://github.com/bymjmazzei/par-Noir/blob/main/LICENSE" rel="noopener noreferrer">LICENSE</a>
+                        file in the repository and the site <a href="terms.html">Terms of Service</a>).
+                    </p>
+                    <p>
+                        <strong>Non-commercial freeware.</strong> You may use par Noir software without charge to learn, experiment,
+                        and build <strong>non-commercial</strong> applications and integrations—personal projects, research, education,
+                        and other uses that are not primarily intended for commercial advantage or monetary compensation.
+                    </p>
+                    <p>
+                        <strong>Commercial use requires a license.</strong> If you build or operate a product or service that is
+                        commercial in nature, or you deploy par Noir–based software for commercial advantage, you must obtain
+                        a commercial license. Commercial terms are described in the
+                        <a href="licensing/annual-agreement.html">Annual Commercial License Agreement</a> and
+                        <a href="licensing/perpetual-agreement.html">Perpetual Commercial License Agreement</a>, and through
+                        <a href="https://licensing.parnoir.com" rel="noopener noreferrer">licensing.parnoir.com</a>.
+                        For licensing inquiries:
+                        <a href="mailto:licensing@parnoir.com">licensing@parnoir.com</a>.
+                    </p>
+                    <p>
+                        Nothing in this paper waives reserved rights; for permissions beyond non-commercial use as described
+                        here, contact licensing.
+                    </p>
                 </div>
             </section>
 
             <!-- Future Work -->
             <section id="future" class="paper-section">
-                <h2 class="section-title">4. Future Work and Roadmap</h2>
+                <h2 class="section-title">6. Future Work</h2>
                 <div class="paper-content">
-                    <h3>4.1 Technical Enhancements</h3>
+                    <h3>6.1 Technical Enhancements</h3>
                     <ul>
-                        <li><strong>Quantum Resistance:</strong> Migration to post-quantum cryptographic algorithms</li>
-                        <li><strong>Mobile Integration:</strong> Native iOS and Android SDK implementations</li>
-                        <li><strong>Hardware Security:</strong> TEE and hardware wallet integration</li>
-                        <li><strong>Performance Optimization:</strong> Proof generation acceleration through specialized hardware</li>
+                        <li><strong>Post-quantum readiness:</strong> Migration path for post-quantum algorithms where standards stabilize</li>
+                        <li><strong>Mobile and embedded:</strong> Broader client coverage where product priorities align</li>
+                        <li><strong>Hardware-backed keys:</strong> Optional integration with secure elements and hardware wallets</li>
+                        <li><strong>Performance:</strong> Faster proof generation and indexing where bottlenecks appear</li>
                     </ul>
 
-                    <h3>4.2 Ecosystem Development</h3>
+                    <h3>6.2 Standards and Interoperability</h3>
                     <ul>
-                        <li><strong>Universal Compatibility:</strong> Integration with major identity providers and platforms</li>
-                        <li><strong>Developer Tools:</strong> Enhanced SDKs, testing frameworks, and development environments</li>
-                        <li><strong>Standards Compliance:</strong> W3C DID specification and Verifiable Credentials compatibility</li>
-                        <li><strong>Governance Framework:</strong> Decentralized governance for protocol evolution</li>
-                    </ul>
-
-                    <h3>4.3 The Vision: Internet of Trust</h3>
-                    <p>
-                        The ultimate goal of par Noir extends beyond individual identity sovereignty to enable 
-                        an Internet of Trust—a network where every interaction, device, and service can be 
-                        authenticated without sacrificing privacy or freedom.
-                    </p>
-                    <p>
-                        This vision includes:
-                    </p>
-                    <ul>
-                        <li><strong>Semantic Web Integration:</strong> Identity-aware data portability across all platforms</li>
-                        <li><strong>AI Sovereignty:</strong> Personal AI assistants controlled entirely by users</li>
-                        <li><strong>Device Authentication:</strong> IoT devices with cryptographic identity verification</li>
-                        <li><strong>Trusted Communications:</strong> End-to-end encrypted, identity-verified messaging</li>
+                        <li><strong>Interoperability:</strong> Continued alignment with common identity and credential patterns where they serve users</li>
+                        <li><strong>Documentation:</strong> Developer-facing docs and OpenAPI kept current with the API</li>
                     </ul>
                 </div>
             </section>
 
             <!-- Conclusion -->
-            <section class="paper-section">
-                <h2 class="section-title">5. Conclusion</h2>
+            <section id="conclusion" class="paper-section">
+                <h2 class="section-title">7. Conclusion</h2>
                 <div class="paper-content">
                     <p>
-                        par Noir represents a fundamental shift from the current feudal model of digital identity 
-                        to a truly sovereign system that serves human freedom. By combining proven cryptographic 
-                        primitives with innovative zero-knowledge techniques and decentralized storage, the protocol 
-                        creates a foundation for digital identity that cannot be revoked, censored, or exploited.
+                        par Noir combines a sovereign identity protocol with a concrete stack of applications: dashboard,
+                        hosted API, aggregator browser, messaging, Prism content auditing, and a developer portal for
+                        integrators. The design keeps cryptographic control with the user while allowing a network of
+                        tools and third-party services to interoperate through documented APIs and consent flows.
                     </p>
                     <p>
-                        The protocol's design prioritizes user sovereignty without sacrificing usability, creating 
-                        a system that can scale from individual users to global platforms. As we continue to develop 
-                        and refine the implementation, par Noir moves us closer to a world where digital identity 
-                        serves humanity rather than controlling it.
+                        Non-commercial use of the software is offered as freeware under reserved rights; commercial use
+                        requires an explicit license. See <a href="#licensing">Licensing and Use of par Noir Software</a> above.
                     </p>
                     <p class="signature">
                         <em>From the shadows, into the light.</em><br>
@@ -460,20 +462,20 @@ const isValid = await sdk.zkProofs.verifyAgeProof(proof, 21);</code></pre>
                 <h2 class="section-title">Author's Note</h2>
                 <div class="paper-content">
                     <p>
-                        The par Noir protocol represents original research and development by MJ Mazzei. 
-                        This system was conceived and designed as an independent contribution to the field 
-                        of sovereign identity, drawing inspiration from the philosophical principles of freedom 
+                        The par Noir protocol represents original research and development by MJ Mazzei.
+                        This system was conceived and designed as an independent contribution to the field
+                        of sovereign identity, drawing inspiration from the philosophical principles of freedom
                         and self-determination rather than from existing academic literature.
                     </p>
                     <p>
-                        The technical approach, architectural decisions, and implementation details presented 
-                        in this paper are the result of original thinking and practical development work, 
-                        building on the principles of individual freedom and self-determination 
+                        The technical approach, architectural decisions, and implementation details presented
+                        in this paper are the result of original thinking and practical development work,
+                        building on the principles of individual freedom and self-determination
                         into the digital age.
                     </p>
                     <p>
-                        While the protocol utilizes established cryptographic primitives and distributed 
-                        systems concepts, the specific combination and application of these technologies 
+                        While the protocol utilizes established cryptographic primitives and distributed
+                        systems concepts, the specific combination and application of these technologies
                         to achieve true sovereign identity represents novel contributions to the field.
                     </p>
                 </div>
@@ -487,7 +489,7 @@ const isValid = await sdk.zkProofs.verifyAgeProof(proof, 21);</code></pre>
         <div class="container">
             <div class="cta-header">
                 <h2>Join the Sovereignty Movement</h2>
-                <p>Help us build the future of digital identity. Whether you're a developer, researcher, or advocate for digital rights.</p>
+                <p>Build on the API, read the guides, or create your identity—non-commercial use is freeware; commercial use requires a license.</p>
             </div>
             <div class="tile-carousel" data-carousel-id="whitepaper-cta">
                 <div class="tile-grid">
@@ -498,8 +500,8 @@ const isValid = await sdk.zkProofs.verifyAgeProof(proof, 21);</code></pre>
                             </svg>
                         </div>
                         <h3>Developers</h3>
-                        <p>Integrate par Noir into your applications and help build the sovereign web.</p>
-                        <a href="developer-portal.html" class="btn btn-primary">View Documentation</a>
+                        <p>Register OAuth clients, API keys, and integrate with the par Noir API.</p>
+                        <a href="developer-portal.html" class="btn btn-primary">Developer Portal</a>
                     </div>
                     <div class="tile-item">
                         <div class="tile-icon">
@@ -508,7 +510,7 @@ const isValid = await sdk.zkProofs.verifyAgeProof(proof, 21);</code></pre>
                             </svg>
                         </div>
                         <h3>Users</h3>
-                        <p>Experience true digital sovereignty. Create your first par Noir identity.</p>
+                        <p>Create and manage your par Noir identity in the dashboard.</p>
                         <a href="https://pn.parnoir.com" class="btn btn-primary">CREATE IDENTITY</a>
                     </div>
                     <div class="tile-item">
@@ -517,9 +519,9 @@ const isValid = await sdk.zkProofs.verifyAgeProof(proof, 21);</code></pre>
                                 <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
                             </svg>
                         </div>
-                        <h3>Contributors</h3>
-                        <p>Contribute to the open-source protocol and help shape the future of identity.</p>
-                        <a href="https://github.com/bymjmazzei/par-Noir" target="_blank" class="btn btn-primary">View GitHub</a>
+                        <h3>Licensing</h3>
+                        <p>Commercial terms, agreements, and contact for organizations.</p>
+                        <a href="https://licensing.parnoir.com" class="btn btn-primary">Licensing Portal</a>
                     </div>
                 </div>
             </div>
@@ -546,11 +548,13 @@ const isValid = await sdk.zkProofs.verifyAgeProof(proof, 21);</code></pre>
                     <a href="developer-portal.html">Developer Portal</a>
                     <a href="https://github.com/bymjmazzei/par-Noir">GitHub</a>
                     <a href="https://pn.parnoir.com">Create Identity</a>
+                    <a href="licensing/annual-agreement.html">Commercial License (Annual)</a>
                 </div>
                 <div class="footer-nav-column">
                     <h4>Connect</h4>
                     <a href="index.html#vision">The Vision</a>
                     <a href="index.html#features">Features</a>
+                    <a href="terms.html">Terms of Service</a>
                 </div>
             </div>
             <div class="footer-copyright">

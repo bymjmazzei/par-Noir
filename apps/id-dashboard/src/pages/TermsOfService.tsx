@@ -126,8 +126,9 @@ const TermsOfService: React.FC = () => {
               
               <h3 className="text-xl font-semibold text-text-primary mb-3">Software License</h3>
               <ul className="list-disc list-inside text-text-secondary mb-6 space-y-2">
-                <li><strong>All Rights Reserved:</strong> The Identity Protocol software is provided under "All Rights Reserved, free to use"</li>
-                <li><strong>Free to Use:</strong> This software is provided free of charge for personal and commercial use</li>
+                <li><strong>All Rights Reserved:</strong> The Identity Protocol software is provided under &quot;All Rights Reserved&quot; terms</li>
+                <li><strong>Non-Commercial Freeware:</strong> This software is provided free of charge for non-commercial use (including personal projects, research, and education that are not primarily commercial)</li>
+                <li><strong>Commercial Use:</strong> Commercial products and services require a commercial license; see licensing.parnoir.com and licensing@parnoir.com</li>
                 <li><strong>No Redistribution:</strong> You may not redistribute, modify, or create derivative works without permission</li>
                 <li><strong>Source Code:</strong> Source code is available for review, but all rights are reserved</li>
               </ul>
