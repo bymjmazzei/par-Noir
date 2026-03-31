@@ -35,7 +35,9 @@ export default defineConfig(({ mode }) => ({
     ]
   },
   build: {
-    target: 'es2015',
+    // BigInt crypto deps (ML-DSA) require modern output; downleveling to es2015 rewrites `**` to Math.pow
+    // which throws at runtime for bigint operands.
+    target: 'es2020',
     outDir: 'dist',
     sourcemap: false,
     minify: 'terser',
