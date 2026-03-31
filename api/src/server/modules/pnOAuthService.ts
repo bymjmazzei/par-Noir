@@ -6,7 +6,6 @@
 
 import crypto from 'crypto';
 import jwt, { JwtHeader, JwtPayload } from 'jsonwebtoken';
-import { ML_DSA_65_PUBLIC_KEY_LENGTH } from '../constants/mlDsaPublicKey';
 import { GoogleAuth } from 'google-auth-library';
 import { getDatabasePool } from '../utils/database';
 import { isDidRevokedForNetwork, isPnRevokedForNetwork } from './identitySuccessionService';
@@ -220,14 +219,6 @@ export class PNOAuthService {
     pnIdentifier?: string; // pN identifier (derived client-side, never derived from secrets)
     // SECURITY: pN name and passcode are NEVER accepted or stored - they're secrets
   }): string {
-    if (params.publicKey) {
-      const raw = Buffer.from(params.publicKey, 'base64');
-      if (raw.length !== ML_DSA_65_PUBLIC_KEY_LENGTH) {
-        throw new Error(
-          `invalid_public_key: ML-DSA-65 public key must be ${ML_DSA_65_PUBLIC_KEY_LENGTH} bytes (base64-decoded), got ${raw.length}`
-        );
-      }
-    }
     if (isPnRevokedForNetwork(params.pnIdentifier)) {
       const err = new Error('identity_superseded') as Error & { code: string };
       err.code = 'IDENTITY_SUPERSEDED';
