@@ -7,7 +7,7 @@
     <!-- Primary Meta Tags -->
     <title>Technical White Paper — par Noir: Sovereign Identity and Network Ecosystem</title>
     <meta name="title" content="Technical White Paper — par Noir: Sovereign Identity and Network Ecosystem">
-    <meta name="description" content="Technical overview of par Noir: decentralized identity protocol, layered product stack (dashboard, API, aggregator browser, messaging, Prism auditors, developer portal), and licensing.">
+    <meta name="description" content="Technical overview of par Noir: post-quantum identity protocol, layered product stack (dashboard, API, aggregator browser, messaging, Prism auditors, developer portal), and licensing.">
     <meta name="keywords" content="par noir, sovereign identity, zero-knowledge proofs, digital identity, self-sovereign identity, decentralized identity, par noir ecosystem">
     <meta name="author" content="par Noir Protocol Team">
     <meta name="robots" content="index, follow">
@@ -17,7 +17,7 @@
     <meta property="og:type" content="article">
     <meta property="og:url" content="https://parnoir.com/whitepaper.html">
     <meta property="og:title" content="Technical White Paper — par Noir: Sovereign Identity and Network Ecosystem">
-    <meta property="og:description" content="Protocol foundations and current ecosystem: identity, dashboard, API, aggregator browser, messaging, Prism content auditing, and developer portal.">
+    <meta property="og:description" content="Protocol foundations and current ecosystem: post-quantum identity, dashboard, API, aggregator browser, messaging, Prism content auditing, and developer portal.">
     <meta property="og:image" content="https://parnoir.com/branding/Par-Noir-Logo-White.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -31,7 +31,7 @@
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://parnoir.com/whitepaper.html">
     <meta property="twitter:title" content="Technical White Paper — par Noir: Sovereign Identity and Network Ecosystem">
-    <meta property="twitter:description" content="Protocol foundations and current ecosystem: identity, dashboard, API, browser, messaging, Prism, developer portal.">
+    <meta property="twitter:description" content="Protocol foundations and current ecosystem: post-quantum identity, dashboard, API, browser, messaging, Prism, developer portal.">
     <meta property="twitter:image" content="https://parnoir.com/branding/Par-Noir-Logo-White.png">
     
     <!-- Additional Meta Tags -->
@@ -59,7 +59,7 @@
       "@context": "https://schema.org",
       "@type": "TechArticle",
       "headline": "par Noir: Sovereign Identity and Network Ecosystem",
-      "description": "Technical overview of the par Noir identity protocol and the layered product stack: dashboard, API, aggregator browser, messaging, Prism auditors, and developer portal.",
+      "description": "Technical overview of the par Noir post-quantum identity protocol and the layered product stack: dashboard, API, aggregator browser, messaging, Prism auditors, and developer portal.",
       "author": {
         "@type": "Organization",
         "name": "par Noir Protocol Team"
@@ -168,7 +168,8 @@
                     <p>
                         The cryptographic asset is <strong>decentralized identity</strong>, not a blockchain token. Verification is
                         mathematical (identity file, name, and passcode); there is no central issuer. par Noir combines
-                        strong client-side cryptography with user-owned storage patterns and zero-knowledge directions so users
+                        strong client-side cryptography with user-owned storage patterns and a current post-quantum migration
+                        (ML-DSA and ML-KEM with SHA-3 policy) plus zero-knowledge redesign directions so users
                         can prove claims without unnecessarily exposing raw data.
                     </p>
                     <p>
@@ -322,9 +323,11 @@
 
                     <h3>3.1 Identity and Keys</h3>
                     <p>
-                        Identity material is derived and used client-side. Industry-standard primitives (for example,
-                        elliptic-curve signing and AEAD for encrypted payloads) are composed so that servers do not need
-                        access to passcodes or raw identity secrets.
+                        Identity material is derived and used client-side. The current identity decision baseline is
+                        <strong>post-quantum asymmetric cryptography</strong> for new identities:
+                        <strong>ML-DSA-65</strong> for signatures and <strong>ML-KEM-768</strong> for key encapsulation.
+                        AEAD remains in use for encrypted payloads, and servers do not require passcodes or raw identity
+                        secrets to verify protocol operations.
                     </p>
 
                     <h3>3.2 Storage and Metadata</h3>
@@ -333,13 +336,20 @@
                         decentralized or operator-hosted indexes for discoverability, without placing secrets in plain text
                         in logs or public fields.
                     </p>
+                    <p>
+                        Identity artifacts are moving to explicit, versioned wire structures with algorithm identifiers
+                        (for example format version, signature algorithm, KEM algorithm, and hash policy) so verification
+                        behavior is auditable and future migrations are deterministic.
+                    </p>
 
                     <h3>3.3 Zero-Knowledge and Claims</h3>
                     <p>
                         The protocol direction includes proving properties of identity and attributes (for example, age
-                        thresholds) without revealing underlying raw values. Specific proof systems and circuits ship in
-                        the codebase over time; integrators should follow published APIs and SDK releases rather than this
-                        paper for exact parameters.
+                        thresholds) without revealing underlying raw values. The current security roadmap keeps
+                        PQC identity and OAuth upgrades first, then completes a <strong>PQC-aligned redesign</strong> of
+                        ZK paths; interim ECC-dependent ZK paths are treated as transitional rather than the long-term root
+                        trust model. Integrators should follow published APIs and SDK releases rather than this paper for
+                        exact circuit parameters.
                     </p>
 
                     <h3>3.4 Recovery</h3>
@@ -351,7 +361,9 @@
 
                     <h3>3.5 Security Model (Summary)</h3>
                     <ul>
-                        <li><strong>Cryptographic security:</strong> Standard, auditable primitives composed carefully</li>
+                        <li><strong>Post-quantum asymmetric baseline:</strong> ML-DSA (signing) and ML-KEM (encapsulation) for new identity paths</li>
+                        <li><strong>Hashing policy:</strong> SHA-3 family for protocol-level hashing policy, with standard-mandated internals where required</li>
+                        <li><strong>Implementation path:</strong> PQC operations are executed through vetted WASM-backed libraries in browser and server runtimes</li>
                         <li><strong>Privacy:</strong> Minimize exposure of sensitive fields; prefer proofs and encryption</li>
                         <li><strong>API boundary:</strong> Browser and third-party apps use the API for storage and integrator flows</li>
                         <li><strong>Recovery:</strong> Threshold and custodian models where the product exposes them</li>
@@ -422,7 +434,7 @@
                 <div class="paper-content">
                     <h3>6.1 Technical Enhancements</h3>
                     <ul>
-                        <li><strong>Post-quantum readiness:</strong> Migration path for post-quantum algorithms where standards stabilize</li>
+                        <li><strong>Post-quantum hardening:</strong> Performance tuning, verification coverage, and operational maturity for the PQC stack</li>
                         <li><strong>Mobile and embedded:</strong> Broader client coverage where product priorities align</li>
                         <li><strong>Hardware-backed keys:</strong> Optional integration with secure elements and hardware wallets</li>
                         <li><strong>Performance:</strong> Faster proof generation and indexing where bottlenecks appear</li>
