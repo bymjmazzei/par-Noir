@@ -33,6 +33,7 @@
     "security:check": "npm run security:audit && npm run security:test && npm run lint",
     "performance:optimize": "node scripts/performance-optimizer.js",
     "integration:test": "node scripts/integration-tester.js",
+    "smoke:auth-surfaces": "bash scripts/smoke-auth-surfaces.sh",
     "check:route-manifest": "node scripts/check-route-manifest.mjs",
     "test:all": "npm run test && npm run security:comprehensive && npm run performance:optimize && npm run integration:test"
   },

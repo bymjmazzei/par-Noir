@@ -47,3 +47,22 @@ test('tampered proof fails', () => {
   const broken = proof.slice(0, -4) + 'AAAA';
   assert.strictEqual(verifyZkProofEnvelopeV1(broken).ok, false);
 });
+
+test('non-base64 input fails verification', () => {
+  assert.strictEqual(verifyZkProofEnvelopeV1('{not-base64}').ok, false);
+});
+
+test('wrong envelope type is rejected (downgrade resistance)', () => {
+  const kp = mlDsa65Keygen();
+  const proof = generateZkProofEnvelopeV1({
+    mlDsaSecretKey: kp.secretKey,
+    mlDsaPublicKey: kp.publicKey,
+    context: 'par_noir:test:ctx',
+    public_inputs: { data_point_id: 'age_attestation', zkp_type: 'age_verification', verification_level: 'verified' },
+    expiresAtMs: Date.now() + 3600_000,
+  });
+  const env = JSON.parse(Buffer.from(proof, 'base64').toString('utf8'));
+  env.type = 'legacy_or_unknown_type';
+  const downgraded = Buffer.from(JSON.stringify(env), 'utf8').toString('base64');
+  assert.strictEqual(verifyZkProofEnvelopeV1(downgraded).ok, false);
+});

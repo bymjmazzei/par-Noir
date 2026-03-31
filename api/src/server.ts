@@ -10216,8 +10216,9 @@ class ProductionServer {
                 }
               }
             }
-          } catch (permError) {
-            console.log('[OAuth Auth] Could not check third-party-permissions (Drive not connected or sheet missing):', permError);
+          } catch (permError: unknown) {
+            const msg = permError instanceof Error ? permError.message : String(permError);
+            console.log('[OAuth Auth] Could not check third-party-permissions (Drive not connected or sheet missing):', msg);
           }
 
           // Fire-and-forget: check if user has age_attestation ZKP (for logging only)
@@ -10285,9 +10286,10 @@ class ProductionServer {
                   }
                 }
               }
-            } catch (ageCheckError: any) {
+            } catch (ageCheckError: unknown) {
               // Log but don't fail - age check is optional
-              console.log('[OAuth Auth] Could not check for age ZKP (async):', ageCheckError?.message || ageCheckError);
+              const msg = ageCheckError instanceof Error ? ageCheckError.message : String(ageCheckError);
+              console.log('[OAuth Auth] Could not check for age ZKP (async):', msg);
             }
           })().catch(err => console.error('[OAuth Auth] Age ZKP check failed (async):', err));
         }
@@ -10298,8 +10300,9 @@ class ProductionServer {
           existingPermissions,
           availableOptionalDataPoints: undefined
         });
-      } catch (error: any) {
-        console.error('OAuth authentication error:', error);
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('OAuth authentication error:', msg);
         return res.status(500).json({
           error: 'server_error',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Authentication failed'

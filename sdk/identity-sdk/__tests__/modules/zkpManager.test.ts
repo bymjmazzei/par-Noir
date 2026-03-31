@@ -1,5 +1,6 @@
 import { ZKPManager } from '../../src/IdentitySDK/modules/zkpManager';
 import { ZKP_PROOF_TYPES } from '../../src/IdentitySDK/constants/sdkConstants';
+import { verifyZkProofEnvelopeV1 } from '@par-noir/zk-protocol-v1';
 
 describe('ZKPManager', () => {
   let zkpManager: ZKPManager;
@@ -19,6 +20,11 @@ describe('ZKPManager', () => {
 
   it('returns false for short proof string', async () => {
     await expect(zkpManager.verifyProof('short', ZKP_PROOF_TYPES.SCHNORR)).resolves.toBe(false);
+  });
+
+  it('returns false when protocol verifier rejects (downgrade/tamper)', async () => {
+    (verifyZkProofEnvelopeV1 as jest.Mock).mockReturnValueOnce({ ok: false, reason: 'tampered' });
+    await expect(zkpManager.verifyProof('a'.repeat(80), ZKP_PROOF_TYPES.SCHNORR)).resolves.toBe(false);
   });
 
   it('returns false for legacy object-shaped proof', async () => {

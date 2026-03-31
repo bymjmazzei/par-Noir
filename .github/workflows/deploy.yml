@@ -23,10 +23,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Guardrails check
+        env:
+          PN_OAUTH_SECRET: ${{ secrets.PN_OAUTH_SECRET }}
+          PN_OAUTH_PRIVATE_KEY_PEM: ${{ secrets.PN_OAUTH_PRIVATE_KEY_PEM }}
+          PN_OAUTH_KMS_KEY_VERSION: ${{ secrets.PN_OAUTH_KMS_KEY_VERSION }}
+          PN_OAUTH_ISSUER: ${{ vars.PN_OAUTH_ISSUER }}
+          PN_OAUTH_AUDIENCE: ${{ vars.PN_OAUTH_AUDIENCE }}
+          ALLOW_UNSAFE_DEV_ADMIN_BYPASS: ${{ vars.ALLOW_UNSAFE_DEV_ADMIN_BYPASS }}
         run: |
-          chmod +x scripts/check-secrets.sh scripts/check-quantum-imports.sh
+          chmod +x scripts/check-secrets.sh scripts/check-quantum-imports.sh scripts/check-production-flags.sh
           PN_STRICT_GUARDRAILS=1 scripts/check-secrets.sh
           scripts/check-quantum-imports.sh
+          PN_STRICT_GUARDRAILS=1 scripts/check-production-flags.sh
+      - name: Protocol regression tests
+        run: |
+          npm run test:zk
+          cd api && npm test -- zkpDataPointsService.verify.test.ts
+          cd ../sdk/identity-sdk && npm test -- __tests__/modules/zkpManager.test.ts
       - name: Setup Pages
         uses: actions/configure-pages@v4
       - name: Prepare site
