@@ -15,6 +15,7 @@ export interface ExtensionWarning {
 export class ExtensionDetector {
   private static warnings: ExtensionWarning[] = [];
   private static isMonitoring: boolean = false;
+  private static monitorIntervalId: ReturnType<typeof setInterval> | null = null;
 
   /**
    * Start monitoring for suspicious extension behavior
@@ -26,11 +27,14 @@ export class ExtensionDetector {
 
     this.isMonitoring = true;
     this.checkForSuspiciousActivity();
-    
-    // Re-check periodically
-    setInterval(() => {
+
+    if (this.monitorIntervalId !== null) {
+      clearInterval(this.monitorIntervalId);
+      this.monitorIntervalId = null;
+    }
+    this.monitorIntervalId = setInterval(() => {
       this.checkForSuspiciousActivity();
-    }, 30000); // Check every 30 seconds
+    }, 30000);
   }
 
   /**
@@ -38,6 +42,10 @@ export class ExtensionDetector {
    */
   static stopMonitoring(): void {
     this.isMonitoring = false;
+    if (this.monitorIntervalId !== null) {
+      clearInterval(this.monitorIntervalId);
+      this.monitorIntervalId = null;
+    }
   }
 
   /**
