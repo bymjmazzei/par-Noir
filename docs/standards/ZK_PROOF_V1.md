@@ -1,6 +1,6 @@
 # ZK proof envelope v1 (par Noir)
 
-**Status:** Implemented by `@par-noir/zk-protocol-v1`.  
+**Status:** Implemented by `@par-noir/zk-protocol-v1` (verification of **legacy stored proofs** only). **New issuance** uses [ZK_PROOF_V2.md](ZK_PROOF_V2.md) (`@par-noir/zk-protocol-v2`).  
 **Hash policy:** SHA3-384 (see `IDENTITY_PQC_DECISIONS.md` §4).  
 **Binding:** ML-DSA-65 signature over a canonical digest of the envelope body (excluding the signature field).
 

@@ -16,7 +16,7 @@
     "test:identity": "cd core/identity-core && npm test",
     "test:sdk": "cd sdk/identity-sdk && npm test",
     "test:pqc": "cd packages/pqc-crypto && npm test",
-    "test:zk": "cd packages/zk-protocol-v1 && npm test",
+    "test:zk": "cd packages/zk-protocol-v1 && npm test && cd ../zk-protocol-v2 && npm test",
     "lint": "npm run lint:identity",
     "lint:identity": "cd core/identity-core && npm run lint",
     "clean": "npm run clean:identity",

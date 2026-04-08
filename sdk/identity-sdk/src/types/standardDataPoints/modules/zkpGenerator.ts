@@ -1,13 +1,22 @@
-import { verifyZkProofEnvelopeV1 } from '@par-noir/zk-protocol-v1';
+import {
+  decodeEnvelopeFromProofString,
+  isZkProofEnvelopeV1,
+  verifyZkProofEnvelopeV1,
+} from '@par-noir/zk-protocol-v1';
+import { isZkProofEnvelopeV2, verifyZkProofEnvelopeV2 } from '@par-noir/zk-protocol-v2';
 import type { StandardDataPoint, ZKPGenerationRequest, ZKPProof, ZKPType } from '../types/standardDataPoints';
 import { STANDARD_DATA_POINTS } from '../constants/dataPointRegistry';
 
 /**
- * SDK stub: ZKP v1 proofs are generated in the id-dashboard with ML-DSA keys.
+ * SDK stub: ZKP v2 proofs are generated in the id-dashboard with ML-DSA keys.
  * Use {@link verifyEnvelope} to verify proof strings from the wire.
  */
 export class ZKPGenerator {
   static verifyEnvelope(proof: string) {
+    const env = decodeEnvelopeFromProofString(proof);
+    if (env && isZkProofEnvelopeV2(env)) {
+      return verifyZkProofEnvelopeV2(proof);
+    }
     return verifyZkProofEnvelopeV1(proof);
   }
 
@@ -19,8 +28,8 @@ export class ZKPGenerator {
     const zt: ZKPType | undefined = dataPoint?.zkpType;
     void zt;
     throw new Error(
-      'ZKP v1 proofs must be generated in the par Noir id-dashboard (ML-DSA keys in encrypted identity). ' +
-        'For verification, use ZKPGenerator.verifyEnvelope(proofString) or @par-noir/zk-protocol-v1.'
+      'ZKP v2 proofs must be generated in the par Noir id-dashboard (ML-DSA keys in encrypted identity). ' +
+        'For verification, use ZKPGenerator.verifyEnvelope(proofString) or @par-noir/zk-protocol-v2.'
     );
   }
 

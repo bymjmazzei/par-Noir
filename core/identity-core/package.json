@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "@par-noir/zk-protocol-v1": "file:../../packages/zk-protocol-v1",
+    "@par-noir/zk-protocol-v2": "file:../../packages/zk-protocol-v2",
     "@par-noir/pqc-crypto": "file:../../packages/pqc-crypto",
     "@azure/identity": "^4.11.1",
     "@azure/keyvault-keys": "^4.10.0",

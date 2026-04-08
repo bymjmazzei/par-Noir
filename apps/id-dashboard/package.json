@@ -34,10 +34,6 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
-    "@par-noir/pqc-crypto": "file:../../packages/pqc-crypto",
-    "@par-noir/zk-protocol-v1": "file:../../packages/zk-protocol-v1",
-    "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
-    "@par-noir/standard-data-points": "file:../../packages/standard-data-points",
     "@bytetrade/capacitor-native-biometric": "^6.0.5",
     "@capacitor/app": "^6.0.0",
     "@capacitor/camera": "^6.0.0",
@@ -51,9 +47,15 @@
     "@capacitor/status-bar": "^6.0.0",
     "@exxili/capacitor-nfc": "^0.0.13",
     "@google/generative-ai": "^0.24.1",
+    "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
+    "@par-noir/pqc-crypto": "file:../../packages/pqc-crypto",
+    "@par-noir/standard-data-points": "file:../../packages/standard-data-points",
+    "@par-noir/zk-protocol-v1": "file:../../packages/zk-protocol-v1",
+    "@par-noir/zk-protocol-v2": "file:../../packages/zk-protocol-v2",
     "@sendgrid/mail": "^8.1.5",
     "@types/qrcode": "^1.5.5",
     "axios": "^1.11.0",
+    "buffer": "^6.0.3",
     "capacitor-secure-storage-plugin": "^0.10.0",
     "dompurify": "^3.3.3",
     "firebase": "^12.1.0",
@@ -100,7 +102,8 @@
     "tailwindcss": "^3.3.0",
     "terser": "^5.43.1",
     "typescript": "^5.0.2",
-    "vite": "^7.1.1"
+    "vite": "^7.1.1",
+    "vite-plugin-node-polyfills": "^0.26.0"
   },
   "engines": {
     "node": "18.x",

@@ -1,16 +1,21 @@
-import { verifyZkProofEnvelopeV1 } from '@par-noir/zk-protocol-v1';
+import {
+  decodeEnvelopeFromProofString,
+  isZkProofEnvelopeV1,
+  verifyZkProofEnvelopeV1,
+} from '@par-noir/zk-protocol-v1';
+import { isZkProofEnvelopeV2, verifyZkProofEnvelopeV2 } from '@par-noir/zk-protocol-v2';
 import { ZKP_PROOF_TYPES } from '../constants/sdkConstants';
 
 /**
- * ZKP verification for v1 envelopes (base64 JSON). Legacy object-shaped “proofs” are rejected.
- * Proof generation with ML-DSA keys is performed in the id-dashboard / @par-noir/zk-protocol-v1.
+ * ZKP verification for v2 (preferred) and v1 envelopes (base64 JSON). Legacy object-shaped “proofs” are rejected.
+ * Proof generation with ML-DSA keys is performed in the id-dashboard (@par-noir/zk-protocol-v2).
  */
 export class ZKPManager {
   /**
    * @deprecated Legacy Schnorr placeholder removed — use v1 envelope generation in the dashboard.
    */
   async generateSchnorrProof(_privateKey: CryptoKey): Promise<never> {
-    throw new Error('Legacy Schnorr proofs removed; use @par-noir/zk-protocol-v1 generateZkProofEnvelopeV1 with ML-DSA keys.');
+    throw new Error('Legacy Schnorr proofs removed; use @par-noir/zk-protocol-v2 generateZkProofEnvelopeV2 with ML-DSA keys.');
   }
 
   /**
@@ -24,18 +29,24 @@ export class ZKPManager {
    * @deprecated Not used for v1 envelopes (ML-DSA signature is inside the envelope).
    */
   async signProof(_privateKey: CryptoKey): Promise<never> {
-    throw new Error('Use generateZkProofEnvelopeV1; signing is embedded in the v1 envelope.');
+    throw new Error('Use generateZkProofEnvelopeV2; signing is embedded in the envelope.');
   }
 
   /**
-   * Verify a v1 proof string. For non-string payloads, returns false.
+   * Verify a v2 or v1 proof string. For non-string payloads, returns false.
    */
   async verifyProof(proof: unknown, type?: string): Promise<boolean> {
     try {
       if (typeof proof !== 'string') {
         return false;
       }
-      const result = verifyZkProofEnvelopeV1(proof);
+      const env = decodeEnvelopeFromProofString(proof);
+      const result =
+        env && isZkProofEnvelopeV2(env)
+          ? verifyZkProofEnvelopeV2(proof)
+          : env && isZkProofEnvelopeV1(env)
+            ? verifyZkProofEnvelopeV1(proof)
+            : { ok: false as const };
       if (!result.ok) {
         return false;
       }

@@ -5,7 +5,7 @@ This plan implements **`docs/security/IDENTITY_PQC_DECISIONS.md`** (canonical cr
 | Field | Value |
 |-------|--------|
 | **Depends on** | [IDENTITY_PQC_DECISIONS.md](./IDENTITY_PQC_DECISIONS.md) (complete) |
-| **Last updated** | 2026-03-26 |
+| **Last updated** | 2026-04-07 |
 
 ---
 
@@ -82,6 +82,7 @@ Use this as a checklist when changing behavior:
 1. **Deliverable:** PQ-aligned ZK consistent with ML-DSA / ML-KEM identity; interim ECC-based ZK removed or strictly non-production until replaced.
 2. **Scheduling:** Starts **after** Phases 0–4 (and typically before or in parallel with hardening as capacity allows) — Phases 0–4 **do not** wait on ZK.
 3. **Planning:** Separate technical spec when Phase 5 kicks off (research-shaped scope).
+4. **Status (2026-04-07):** **Shipped** as `@par-noir/zk-protocol-v2` + [ZK_PROOF_V2.md](../standards/ZK_PROOF_V2.md): STARK inner proof (genSTARK) replaces **issuance** of v1 `sigma`; API verifies **v1 and v2**; dashboard emits **v2** only. See [ZK_PHASE5_SPIKE.md](ZK_PHASE5_SPIKE.md).
 
 ### Phase 6 — Hardening
 
@@ -132,3 +133,4 @@ Per **`IDENTITY_PQC_DECISIONS.md` §1 (PQC-only, no classical compat)** and the 
 | 2026-03-26 | Clarify §6 ZK: Phase 5 = committed redesign; “defer” = schedule order vs Phases 0–4 |
 | 2026-03-26 | Note: classical test pN fixtures invalid after PQC-only; regenerate |
 | 2026-03-26 | Explicit: **no** temporary dual verifier; single PQC path |
+| 2026-04-07 | Phase 5 **delivered**: `zk-protocol-v2` + dual ZK verify (v1/v2) in API; dashboard issues v2 |

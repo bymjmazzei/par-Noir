@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { nodePolyfills } from 'vite-plugin-node-polyfills'
 import { resolve, normalize } from 'path'
 
 /** Only our app config — NOT `node_modules/.../src/config/...` (e.g. ipfs-http-client), which would break the bundle with TDZ errors */
@@ -8,7 +9,11 @@ const APP_CONFIG_DIR = normalize(resolve(__dirname, 'src/config')).replace(/\\/g
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   base: './', // Required for Capacitor: assets load from file:// in WebView
-  plugins: [react()],
+  plugins: [
+    react(),
+    // genSTARK / AirScript pull Node builtins (`fs`, `crypto`, …); required for ZK v2 in the browser bundle
+    nodePolyfills({ include: ['buffer', 'process', 'crypto', 'stream', 'util', 'path', 'fs'] }),
+  ],
   worker: {
     format: 'es',
   },
@@ -23,6 +28,7 @@ export default defineConfig(({ mode }) => ({
       '@par-noir/pqc-crypto/ml-dsa': resolve(__dirname, '../../packages/pqc-crypto/src/mlDsa.ts'),
       '@par-noir/pqc-crypto/constants': resolve(__dirname, '../../packages/pqc-crypto/src/constants.ts'),
       '@par-noir/zk-protocol-v1': resolve(__dirname, '../../packages/zk-protocol-v1/src/index.ts'),
+      '@par-noir/zk-protocol-v2': resolve(__dirname, '../../packages/zk-protocol-v2/src/index.ts'),
     },
   },
   optimizeDeps: {
@@ -31,7 +37,13 @@ export default defineConfig(({ mode }) => ({
       'react-dom',
       'lucide-react',
       'qrcode',
-      'tailwind-merge'
+      'tailwind-merge',
+      'buffer',
+      '@guildofweavers/genstark',
+      '@guildofweavers/galois',
+      '@guildofweavers/merkle',
+      '@guildofweavers/air-assembly',
+      '@guildofweavers/air-script',
     ]
   },
   build: {

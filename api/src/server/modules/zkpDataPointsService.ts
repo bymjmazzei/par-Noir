@@ -12,6 +12,7 @@ import {
   isZkProofEnvelopeV1,
   verifyZkProofEnvelopeV1,
 } from '@par-noir/zk-protocol-v1';
+import { isZkProofEnvelopeV2, verifyZkProofEnvelopeV2 } from '@par-noir/zk-protocol-v2';
 import { GoogleDriveToken } from './googleOAuth2Helper';
 
 export interface ZKPDataPoint {
@@ -175,29 +176,48 @@ export class ZKPDataPointsService {
   }
 
   /**
-   * Verify a ZKP v1 proof (ML-DSA + mod-p Fiat–Shamir envelope). Legacy JSON blobs are rejected.
+   * Verify ZKP v2 (preferred) or v1 (legacy stored proofs). Legacy unstructured JSON blobs are rejected.
    */
   static async verifyProof(
     zkpProof: string,
     condition: string
   ): Promise<ZKPVerificationResult> {
     try {
-      const cryptoResult = verifyZkProofEnvelopeV1(zkpProof);
-      if (!cryptoResult.ok) {
-        return {
-          isValid: false,
-          condition,
-          error: cryptoResult.reason ?? 'verify_failed',
-        };
-      }
-
       const env = decodeEnvelopeFromProofString(zkpProof);
-      if (!env || !isZkProofEnvelopeV1(env)) {
+      if (!env || typeof env !== 'object') {
         return { isValid: false, condition, error: 'invalid_envelope' };
       }
 
-      const pub = env.public_inputs as Record<string, unknown>;
-      const expiresAt = new Date(env.expires_at_ms).toISOString();
+      let cryptoOk: boolean;
+      let cryptoReason: string | undefined;
+      let expiresAtMs: number;
+      let pub: Record<string, unknown>;
+
+      if (isZkProofEnvelopeV2(env)) {
+        const r = verifyZkProofEnvelopeV2(zkpProof);
+        cryptoOk = r.ok;
+        cryptoReason = r.reason;
+        expiresAtMs = env.expires_at_ms;
+        pub = env.public_inputs as Record<string, unknown>;
+      } else if (isZkProofEnvelopeV1(env)) {
+        const r = verifyZkProofEnvelopeV1(zkpProof);
+        cryptoOk = r.ok;
+        cryptoReason = r.reason;
+        expiresAtMs = env.expires_at_ms;
+        pub = env.public_inputs as Record<string, unknown>;
+      } else {
+        return { isValid: false, condition, error: 'invalid_envelope' };
+      }
+
+      if (!cryptoOk) {
+        return {
+          isValid: false,
+          condition,
+          error: cryptoReason ?? 'verify_failed',
+        };
+      }
+
+      const expiresAt = new Date(expiresAtMs).toISOString();
 
       if (condition.startsWith('age >= ')) {
         const minAge = parseInt(condition.replace('age >= ', ''), 10);

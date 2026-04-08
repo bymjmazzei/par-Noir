@@ -5,7 +5,7 @@ Living reference for choices that shape the identity layer (post-quantum directi
 | Field | Value |
 |-------|--------|
 | **Status** | **Complete** — §1–§8 decided (implementation follows this doc) |
-| **Last updated** | 2026-03-26 |
+| **Last updated** | 2026-04-07 |
 
 ---
 
@@ -114,6 +114,7 @@ Living reference for choices that shape the identity layer (post-quantum directi
 - **Chosen approach:** **Redesign ZK for PQC-aligned assumptions** — the long-term target is proofs that do **not** depend on secp256k1 / classical Schnorr as the root of trust, so ZK aligns with **ML-DSA / ML-KEM** and §5 artifact versioning (explicit `zk_proof_type` or equivalent when added).
 - **Rationale:** With §1 **C** and §2–§4, identity’s asymmetric story is PQC + SHA-3. Keeping ZK permanently on ECC would split the security narrative and leave a quantum-vulnerable branch. **Redesign** is the correct end state; effort is **high** and may be **research-shaped** (choice of proof system, circuit/model, performance targets).
 - **Delivery note:** Implementation can be **phased**: ship **core identity** (ML-DSA, ML-KEM, §5 blobs) first; retire or fence legacy ECC-based ZK paths as **interim** until the new ZK design is specified and implemented. Document any interim behavior so it is not mistaken for the final protocol.
+- **Update (2026-04-07):** **ZK envelope v2** ships with a **hash-centric STARK** inner proof (genSTARK; IOP uses SHA-256) plus ML-DSA binding; see [ZK_PROOF_V2.md](../standards/ZK_PROOF_V2.md) and [ZK_PHASE5_SPIKE.md](ZK_PHASE5_SPIKE.md). **v1** (`mod-p sigma`) remains verifiable for stored proofs; **new issuance** is v2. Full **audit** of the STARK stack before high-assurance claims is still recommended (genSTARK upstream disclaimer).
 
 ---
 
@@ -191,3 +192,4 @@ Fill this table when the above sections are decided.
 | 2026-03-26 | §6: **Redesign** ZK for PQC alignment; phased vs core identity |
 | 2026-03-26 | §7: **WASM** + vetted lib (e.g. liboqs); §7 title clarified (how PQC runs in TS) |
 | 2026-03-26 | §8: **Quarantine** legacy quantum modules; no prod dependency; doc status **complete** |
+| 2026-04-07 | §6 delivery: **ZK v2** (STARK inner + ML-DSA) shipped; v1 sigma legacy verify only — see `ZK_PROOF_V2.md`, `ZK_PHASE5_SPIKE.md` |

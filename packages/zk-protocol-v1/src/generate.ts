@@ -1,3 +1,7 @@
+/**
+ * ZK proof envelope v1 (mod-p Schnorr sigma). Prefer `@par-noir/zk-protocol-v2` for new issuance;
+ * this module remains for verifying legacy proofs and tests.
+ */
 import { bytesToBase64 } from '@par-noir/pqc-crypto/encoding';
 import { mlDsa65Sign } from '@par-noir/pqc-crypto/ml-dsa';
 import {

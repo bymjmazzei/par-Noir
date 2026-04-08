@@ -8,6 +8,7 @@ Track evidence for each launch-gate control in
 | Control | Evidence | Status |
 |---|---|---|
 | ZK v1 protocol round-trip + downgrade/legacy rejection | `packages/zk-protocol-v1/test/zk.test.cjs` (`npm test`) | complete |
+| ZK v2 protocol round-trip (STARK inner + ML-DSA) | `packages/zk-protocol-v2/test/zk.test.cjs` (`npm test`) | complete |
 | API ZK verification negative tests | `api/src/server/utils/zkpDataPointsService.verify.test.ts` | complete |
 | SDK verifier downgrade/tamper rejection | `sdk/identity-sdk/__tests__/modules/zkpManager.test.ts` | complete |
 | Legacy ZK import guardrails | `scripts/check-quantum-imports.sh` (CI and local) | complete |

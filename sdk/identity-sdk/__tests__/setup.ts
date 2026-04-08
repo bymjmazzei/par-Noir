@@ -7,17 +7,49 @@ jest.mock('@par-noir/oauth-ui', () => ({
 }));
 
 /** Avoid loading @noble/post-quantum ESM in JSDOM; unit tests assert wiring only. */
+const mockV1Envelope = (s: string) =>
+  typeof s === 'string' && s.length > 40
+    ? {
+        format_version: 1,
+        zk_proof_version: 1,
+        zk_proof_type: 'modp_fs_nizk_ml_dsa_binding_v1',
+        hash_policy: 'SHA3-384',
+        context: 'c',
+        nonce: 'n',
+        expires_at_ms: Date.now() + 60_000,
+        public_inputs: {},
+        sigma: {
+          group: 'rfc5114_modp_1024_160',
+          y_hex: '1',
+          t_hex: '1',
+          s_hex: '1',
+          challenge_hex: '1',
+        },
+        ml_dsa_public_key_b64: 'a',
+        ml_dsa_signature_b64: 'b',
+      }
+    : null;
+
 jest.mock('@par-noir/zk-protocol-v1', () => ({
   verifyZkProofEnvelopeV1: jest.fn((s: string) =>
     typeof s === 'string' && s.length > 40 ? { ok: true } : { ok: false, reason: 'mock' }
   ),
-  decodeEnvelopeFromProofString: jest.fn(() => null),
-  isZkProofEnvelopeV1: jest.fn(() => false),
+  decodeEnvelopeFromProofString: jest.fn((s: string) => mockV1Envelope(s)),
+  isZkProofEnvelopeV1: jest.fn((env: unknown) => !!(env && (env as { format_version?: number }).format_version === 1)),
   ageBucketMeetsMinimum: jest.fn(() => false),
   generateZkProofEnvelopeV1: jest.fn(() => {
     throw new Error('use id-dashboard for proof generation');
   }),
   ZK_PROOF_TYPE_V1: 'modp_fs_nizk_ml_dsa_binding_v1',
+}));
+
+jest.mock('@par-noir/zk-protocol-v2', () => ({
+  verifyZkProofEnvelopeV2: jest.fn(() => ({ ok: false, reason: 'mock' })),
+  isZkProofEnvelopeV2: jest.fn(() => false),
+  generateZkProofEnvelopeV2: jest.fn(() => {
+    throw new Error('use id-dashboard for proof generation');
+  }),
+  ZK_PROOF_TYPE_V2: 'stark_genstark_sha256_ml_dsa_binding_v2',
 }));
 
 // Mock crypto worker manager

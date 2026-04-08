@@ -1,0 +1,25 @@
+{
+  "name": "@par-noir/zk-protocol-v2",
+  "version": "0.1.0",
+  "description": "ZK proof envelope v2: hash-centric STARK inner proof + ML-DSA-65 binding",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/zk.test.cjs",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@guildofweavers/genstark": "^0.7.6",
+    "@guildofweavers/galois": "^0.4.22",
+    "@noble/hashes": "^2.0.0",
+    "@par-noir/pqc-crypto": "file:../pqc-crypto",
+    "buffer": "^6.0.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
