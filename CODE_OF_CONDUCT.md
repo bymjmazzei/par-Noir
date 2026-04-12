@@ -117,8 +117,8 @@ For answers to common questions about this code of conduct, see the FAQ at https
 ## 📞 **Contact Information**
 
 ### **Community Leaders**
-- **Email**: conduct@identityprotocol.com
-- **GitHub**: @identityprotocol-maintainers
+- **Email**: conduct@parnoir.com
+- **GitHub**: [github.com/bymjmazzei/par-Noir](https://github.com/bymjmazzei/par-Noir)
 
 ### **Emergency Contacts**
 - **Security Issues**: security@parnoir.com

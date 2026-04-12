@@ -32,7 +32,7 @@ const config = createSimpleConfig(
 const sdk = createIdentitySDK(config);
 
 // Start authentication - user creates/uses their own identity
-await sdk.authenticate('identity-protocol');`,
+await sdk.authenticate('par-noir');`,
 
     react: `import { useIdentitySDK, createSimpleConfig } from '@identity-protocol/identity-sdk';
 
@@ -54,7 +54,7 @@ function MyApp() {
   if (isAuthenticated) {
     return (
       <div>
-        <p>Welcome! You're signed in with your Identity Protocol ID</p>
+        <p>Welcome! You&apos;re signed in with your par Noir ID</p>
         <p>Your identity ID: {session?.identity.id}</p>
         <button onClick={logout}>Logout</button>
       </div>
@@ -62,8 +62,8 @@ function MyApp() {
   }
 
   return (
-    <button onClick={() => authenticate('identity-protocol')}>
-      Sign in with your Identity Protocol ID
+    <button onClick={() => authenticate('par-noir')}>
+      Sign in with your par Noir ID
     </button>
   );
 }`,
@@ -144,11 +144,11 @@ const complianceData = await sdk.requestDataCollection({
             <div className="space-y-6">
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                  What is the Identity Protocol SDK?
+                  What is the par Noir identity SDK?
                 </h2>
                 <div className="prose max-w-none">
                   <p className="text-gray-600 mb-4">
-                    The Identity Protocol SDK enables users to create their own identities that serve as access tokens. 
+                    The par Noir SDK enables users to create their own identities that serve as access tokens. 
                     Users control what personal data they share with third parties, providing decentralized authentication 
                     with user-owned data.
                   </p>

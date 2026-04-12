@@ -1,5 +1,5 @@
 /**
- * Production API Server for Identity Protocol
+ * Production API server for par Noir
  * Simplified production-ready server implementation
  */
 

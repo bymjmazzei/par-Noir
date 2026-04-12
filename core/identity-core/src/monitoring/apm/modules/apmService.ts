@@ -15,7 +15,7 @@ export class APMService {
 
   constructor(config: Partial<APMConfig> = {}) {
     this.config = {
-      serviceName: 'identity-protocol',
+      serviceName: 'par-noir',
       serverUrl: 'https://apm.your-domain.com',
       enabled: false,
       debug: false,
@@ -343,7 +343,7 @@ export class APMService {
 
 // Export singleton instance
 export const apmService = new APMService({
-  serviceName: process.env.APM_SERVICE_NAME || 'identity-protocol',
+  serviceName: process.env.APM_SERVICE_NAME || 'par-noir',
   serverUrl: process.env.APM_SERVER_URL || 'https://apm.your-domain.com',
   enabled: process.env.APM_ENABLED === 'true',
   debug: process.env.NODE_ENV === 'development',

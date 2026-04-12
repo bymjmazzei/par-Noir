@@ -73,7 +73,7 @@ export class WebAuthnManager {
       rpName: 'Identity Protocol',
       rpID: window.location.hostname,
       userID: crypto.randomUUID(),
-      userName: 'user@identityprotocol.com',
+      userName: 'user@parnoir.com',
       userDisplayName: 'Identity Protocol User',
       challenge: crypto.getRandomValues(new Uint8Array(32)),
       timeout: 60000,

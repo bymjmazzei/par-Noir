@@ -2,14 +2,14 @@
 
 ## 🚀 **Getting Started**
 
-The Identity Protocol follows a **lightweight, modular development approach** where each component can run independently.
+par Noir follows a **lightweight, modular development approach** where each component can run independently.
 
 ### **Quick Start**
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd identity-protocol
+git clone https://github.com/bymjmazzei/par-Noir.git
+cd par-Noir
 
 # Install dependencies
 npm install

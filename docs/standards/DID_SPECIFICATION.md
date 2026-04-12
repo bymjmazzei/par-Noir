@@ -1,9 +1,9 @@
 # DID Specification
-## Identity Protocol - Decentralized Identifier Specification
+## par Noir - Decentralized Identifier Specification
 
 ### Abstract
 
-This document defines the Decentralized Identifier (DID) specification for the Identity Protocol, implementing W3C DID standards with additional security and privacy features. This specification ensures interoperability, security, and compliance with industry standards.
+This document defines the Decentralized Identifier (DID) specification for par Noir, implementing W3C DID standards with additional security and privacy features. This specification ensures interoperability, security, and compliance with industry standards.
 
 ### Table of Contents
 
@@ -23,7 +23,7 @@ This document defines the Decentralized Identifier (DID) specification for the I
 
 ### Purpose
 
-The Identity Protocol DID specification provides a standardized way to create, manage, and resolve decentralized identifiers that are:
+The par Noir DID specification provides a standardized way to create, manage, and resolve decentralized identifiers that are:
 
 - **Self-owned**: Users have complete control over their DIDs
 - **Portable**: DIDs can be used across different services and platforms
@@ -57,7 +57,7 @@ This specification conforms to:
 
 ### DID Format
 
-The Identity Protocol uses the following DID format:
+par Noir uses the following DID format:
 
 ```
 did:identity:<identifier>
@@ -72,7 +72,7 @@ did:identity:<identifier>
 
 #### 2. **Method**
 - **Value**: `identity`
-- **Purpose**: Identifies the Identity Protocol method
+- **Purpose**: Identifies the par Noir method
 - **Registry**: Registered with W3C DID Method Registry
 
 #### 3. **Identifier**
@@ -117,13 +117,13 @@ did:identity:QmW2WQi7j6c7UgJTarActp7tDNikE4B2qXtFCfLPdsgaTQ
 
 ### Core Structure
 
-A DID document follows the W3C DID Core specification with Identity Protocol extensions:
+A DID document follows the W3C DID Core specification with par Noir extensions:
 
 ```json
 {
   "@context": [
     "https://www.w3.org/ns/did/v1",
-    "https://identityprotocol.com/contexts/did/v1"
+    "https://parnoir.com/contexts/did/v1"
   ],
   "id": "did:identity:123456789abcdef",
   "controller": "did:identity:123456789abcdef",
@@ -171,7 +171,7 @@ A DID document follows the W3C DID Core specification with Identity Protocol ext
 - **Required**: Yes
 - **Values**: 
   - `https://www.w3.org/ns/did/v1`
-  - `https://identityprotocol.com/contexts/did/v1`
+  - `https://parnoir.com/contexts/did/v1`
 
 #### 2. **id**
 - **Purpose**: The DID identifier
@@ -341,7 +341,7 @@ A DID document follows the W3C DID Core specification with Identity Protocol ext
   "payload": {
     "iss": "did:identity:123456789abcdef",
     "sub": "did:identity:123456789abcdef",
-    "aud": "https://api.identityprotocol.com",
+    "aud": "https://api.parnoir.com",
     "iat": 1640995200,
     "exp": 1640998800,
     "nonce": "unique-nonce-value"
@@ -368,7 +368,7 @@ A DID document follows the W3C DID Core specification with Identity Protocol ext
     {
       "id": "did:identity:123456789abcdef#2fa",
       "type": "TwoFactorAuthentication",
-      "serviceEndpoint": "https://api.identityprotocol.com/2fa"
+      "serviceEndpoint": "https://api.parnoir.com/2fa"
     }
   ]
 }
@@ -772,7 +772,7 @@ const testAuthentication = async () => {
 - [W3C Verifiable Credentials](https://www.w3.org/TR/vc-data-model/)
 
 ### Implementations
-- [Identity Protocol Implementation](https://github.com/your-org/identity-protocol)
+- [par Noir implementation](https://github.com/bymjmazzei/par-Noir)
 - [DID Method Registry](https://w3c-ccg.github.io/did-method-registry/)
 
 ### Tools

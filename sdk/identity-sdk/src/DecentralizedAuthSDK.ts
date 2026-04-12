@@ -81,7 +81,7 @@ export class DecentralizedAuthSDK {
 
   constructor(config: Partial<DecentralizedAuthConfig> = {}) {
     this.config = {
-      apiUrl: config.apiUrl || 'https://api.identityprotocol.com',
+      apiUrl: config.apiUrl || 'https://api.parnoir.com',
       timeout: config.timeout || 30000,
       retryAttempts: config.retryAttempts || 3,
       enableWebSocket: config.enableWebSocket || false,

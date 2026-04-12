@@ -57,10 +57,10 @@
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/par-noir.git"
+    "url": "https://github.com/bymjmazzei/par-Noir.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/par-noir/issues"
+    "url": "https://github.com/bymjmazzei/par-Noir/issues"
   },
   "homepage": "https://parnoir.com",
   "devDependencies": {

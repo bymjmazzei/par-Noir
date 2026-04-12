@@ -39,7 +39,7 @@ export class CloudSyncManager {
 
   constructor(config: Partial<CloudSyncConfig> = {}) {
     this.config = {
-      apiEndpoint: 'https://api.identityprotocol.com/sync', // Replace with actual endpoint
+      apiEndpoint: 'https://api.parnoir.com/sync', // Override per deployment if needed
       syncInterval: 30000, // 30 seconds
       ...config
     };

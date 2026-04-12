@@ -1,4 +1,4 @@
-# Testing the Identity Protocol SDK
+# Testing the par Noir SDK
 
 This guide covers how to test the cross-platform identity SDK and its integration.
 
@@ -47,7 +47,7 @@ npm run dev:dashboard
 
 1. **Basic Authentication**
    - Configure client ID and redirect URI
-   - Click "Sign in with Identity Protocol"
+   - Click "Sign in with par Noir"
    - Verify OAuth flow starts
    - Check callback handling
 

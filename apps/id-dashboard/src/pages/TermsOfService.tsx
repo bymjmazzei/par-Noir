@@ -167,16 +167,31 @@ const TermsOfService: React.FC = () => {
               
               <h3 className="text-xl font-semibold text-text-primary mb-3">General Inquiries</h3>
               <ul className="list-none text-text-secondary mb-6 space-y-2">
-                <li><strong>Email:</strong> support@identityprotocol.com</li>
-                <li><strong>Documentation:</strong> docs.identityprotocol.com</li>
-                <li><strong>Community:</strong> community.identityprotocol.com</li>
+                <li><strong>Email:</strong> support@parnoir.com</li>
+                <li>
+                  <strong>Documentation:</strong>{' '}
+                  <a href="https://docs.parnoir.com" className="text-primary hover:underline" target="_blank" rel="noreferrer">
+                    docs.parnoir.com
+                  </a>
+                </li>
+                <li>
+                  <strong>Community:</strong>{' '}
+                  <a
+                    href="https://github.com/bymjmazzei/par-Noir"
+                    className="text-primary hover:underline"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    github.com/bymjmazzei/par-Noir
+                  </a>
+                </li>
               </ul>
 
               <h3 className="text-xl font-semibold text-text-primary mb-3">Legal Matters</h3>
               <ul className="list-none text-text-secondary mb-6 space-y-2">
-                <li><strong>Legal:</strong> legal@identityprotocol.com</li>
-                <li><strong>Privacy:</strong> privacy@identityprotocol.com</li>
-                <li><strong>Security:</strong> security@identityprotocol.com</li>
+                <li><strong>Legal:</strong> legal@parnoir.com</li>
+                <li><strong>Privacy:</strong> privacy@parnoir.com</li>
+                <li><strong>Security:</strong> security@parnoir.com</li>
               </ul>
             </section>
 

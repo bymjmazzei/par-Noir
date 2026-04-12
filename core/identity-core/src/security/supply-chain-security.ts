@@ -136,7 +136,7 @@ export class SupplyChainSecurityManager {
       ],
       'connect-src': [
         "'self'",
-        "https://api.identityprotocol.com",
+        "https://api.parnoir.com",
         "https://firebase.googleapis.com",
         "https://ipfs.infura.io"
       ],

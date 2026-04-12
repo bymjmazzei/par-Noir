@@ -1,5 +1,5 @@
 export interface IdentityDocument {
-    "@context": "https://identity-protocol.com/v1";
+    "@context": "https://parnoir.com/ns/v1#";
     id: string;
     createdAt: string;
     updatedAt: string;
@@ -164,14 +164,14 @@ export interface DeviceSyncSettings {
     maxDevices: number;
 }
 export interface DeepLinkData {
-    protocol: "identity-protocol";
+    protocol: "par-noir";
     action: "custodian-invitation" | "device-sync" | "recovery-request";
     data: CustodianInvitationData | DeviceSyncData | RecoveryRequestData;
     signature?: string;
     expiresAt: string;
 }
 export interface DeepLinkMetadata {
-    protocol: "identity-protocol";
+    protocol: "par-noir";
     action: "custodian-invitation" | "device-sync" | "recovery-request";
     data: CustodianInvitationData | DeviceSyncData | RecoveryRequestData;
     signature?: string;
@@ -237,7 +237,7 @@ export declare const isIdentityDocument: (obj: any) => obj is IdentityDocument;
 export declare const isRecoveryCustodian: (obj: any) => obj is RecoveryCustodian;
 export declare const isQRCodeData: (obj: any) => obj is QRCodeData;
 export declare const PROTOCOL_VERSION = "1.0.0";
-export declare const CONTEXT_URL = "https://identity-protocol.com/v1";
+export declare const CONTEXT_URL = "https://parnoir.com/ns/v1#";
 export declare const MAX_CUSTODIANS = 5;
 export declare const MIN_CUSTODIANS = 2;
 export declare const DEFAULT_RECOVERY_THRESHOLD = 2;

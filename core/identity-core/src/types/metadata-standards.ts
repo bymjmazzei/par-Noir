@@ -1,10 +1,9 @@
 import { cryptoWorkerManager } from '../encryption/cryptoWorkerManager';
 /**
- * Identity Protocol Metadata Standards
- * 
- * This file defines the TypeScript interfaces and utilities for the
- * Identity Protocol's metadata standards, focusing on mobile-first,
- * decentralized identity management with custodian-based recovery.
+ * par Noir metadata standards (JSON-LD context and identity document shapes).
+ *
+ * Defines TypeScript interfaces and utilities for mobile-first,
+ * user-owned identity metadata with custodian-based recovery.
  */
 
 import { SecureRandom } from '../utils/secureRandom';
@@ -14,7 +13,7 @@ import { SecureRandom } from '../utils/secureRandom';
 // ============================================================================
 
 export interface IdentityDocument {
-  "@context": "https://identity-protocol.com/v1";
+  "@context": "https://parnoir.com/ns/v1#";
   id: string; // Unique identity identifier
   createdAt: string; // ISO 8601 timestamp
   updatedAt: string; // ISO 8601 timestamp
@@ -215,7 +214,7 @@ export interface DeviceSyncSettings {
 // ============================================================================
 
 export interface DeepLinkData {
-  protocol: "identity-protocol";
+  protocol: "par-noir";
   action: "custodian-invitation" | "device-sync" | "recovery-request";
   data: CustodianInvitationData | DeviceSyncData | RecoveryRequestData;
   signature?: string; // Cryptographic signature
@@ -223,7 +222,7 @@ export interface DeepLinkData {
 }
 
 export interface DeepLinkMetadata {
-  protocol: "identity-protocol";
+  protocol: "par-noir";
   action: "custodian-invitation" | "device-sync" | "recovery-request";
   data: CustodianInvitationData | DeviceSyncData | RecoveryRequestData;
   signature?: string;
@@ -339,7 +338,7 @@ export const migrateV1_0_to_V1_1 = (oldData: any): IdentityDocument => {
   // Migration logic for v1.0 to v1.1
   return {
     ...oldData,
-    "@context": "https://identity-protocol.com/v1",
+    "@context": "https://parnoir.com/ns/v1#",
     updatedAt: new Date().toISOString()
   };
 };
@@ -415,7 +414,8 @@ export const isQRCodeData = (obj: any): obj is QRCodeData => {
 // ============================================================================
 
 export const PROTOCOL_VERSION = "1.0.0";
-export const CONTEXT_URL = "https://identity-protocol.com/v1";
+/** Canonical JSON-LD @context for par Noir metadata (aligned with API-emitted aggregator context). */
+export const CONTEXT_URL = "https://parnoir.com/ns/v1#";
 export const MAX_CUSTODIANS = 5;
 export const MIN_CUSTODIANS = 2;
 export const DEFAULT_RECOVERY_THRESHOLD = 2;

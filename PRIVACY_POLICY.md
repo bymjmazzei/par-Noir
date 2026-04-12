@@ -140,9 +140,9 @@ We do not collect, store, or process your personal information, including:
 ## 📞 **Privacy Inquiries and Requests**
 
 ### **Contact Information**
-- **Privacy Officer**: privacy@identityprotocol.com
-- **General Support**: support@identityprotocol.com
-- **Legal Matters**: legal@identityprotocol.com
+- **Privacy Officer**: privacy@parnoir.com
+- **General Support**: support@parnoir.com
+- **Legal Matters**: legal@parnoir.com
 
 ### **Response Time**
 - **Prompt Response**: We respond to privacy inquiries promptly

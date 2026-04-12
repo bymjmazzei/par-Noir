@@ -1,8 +1,8 @@
-# Identity Protocol Architecture Overview
+# par Noir Architecture Overview
 
 ## 🎯 **Core Philosophy**
 
-The Identity Protocol is built on the principle of **lightweight, modular architecture** that leverages existing infrastructure and standardized metadata to create portable, user-owned identity systems.
+par Noir is built on the principle of **lightweight, modular architecture** that leverages existing infrastructure and standardized metadata to create portable, user-owned identity systems.
 
 ### **Key Principles**
 
@@ -17,7 +17,7 @@ The Identity Protocol is built on the principle of **lightweight, modular archit
 ### **Independent Components**
 
 ```
-identity-protocol/
+par-Noir/
 ├── core/
 │   └── identity-core/          # TypeScript library (no server)
 ├── apps/

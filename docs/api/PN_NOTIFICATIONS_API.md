@@ -621,7 +621,7 @@ For API support and questions:
 - **SDK Documentation**: https://sdk.parnoir.com/notifications
 - **Support Email**: api-support@parnoir.com
 - **Status Page**: https://status.parnoir.com
-- **GitHub**: https://github.com/parnoir/notification-api
+- **GitHub**: https://github.com/bymjmazzei/par-Noir
 
 ---
 

@@ -45,10 +45,10 @@ export const createIdentitySDK = (config: SDKConfig) => {
 // Pre-configured providers for common platforms
 export const providers = {
   identityProtocol: {
-    name: 'Identity Protocol',
+    name: 'par Noir',
     type: 'oauth2' as const,
     config: {
-      name: 'Identity Protocol',
+      name: 'par Noir',
       clientId: '', // Set by developer
       redirectUri: '', // Set by developer
       scopes: ['openid', 'profile', 'email'],

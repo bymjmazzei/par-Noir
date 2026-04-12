@@ -1,9 +1,9 @@
 # Deployment Guide
-## Identity Protocol - Production Deployment Documentation
+## par Noir - Production Deployment Documentation
 
 ### Overview
 
-This guide provides comprehensive instructions for deploying the Identity Protocol to production environments. It covers infrastructure setup, configuration, security hardening, and monitoring.
+This guide provides comprehensive instructions for deploying par Noir to production environments. It covers infrastructure setup, configuration, security hardening, and monitoring.
 
 ### Prerequisites
 
@@ -54,9 +54,9 @@ This guide provides comprehensive instructions for deploying the Identity Protoc
 ```bash
 # Point domain to server IP
 # Configure subdomains:
-# - api.identityprotocol.com (API)
-# - dashboard.identityprotocol.com (Dashboard)
-# - admin.identityprotocol.com (Admin)
+# - api.parnoir.com (API)
+# - pn.parnoir.com (Dashboard)
+# - developers.parnoir.com (Developer portal)
 ```
 
 **SSL Certificate Setup:**
@@ -66,9 +66,9 @@ sudo apt update
 sudo apt install certbot python3-certbot-nginx
 
 # Obtain SSL certificate
-sudo certbot --nginx -d api.identityprotocol.com
-sudo certbot --nginx -d dashboard.identityprotocol.com
-sudo certbot --nginx -d admin.identityprotocol.com
+sudo certbot --nginx -d api.parnoir.com
+sudo certbot --nginx -d pn.parnoir.com
+sudo certbot --nginx -d developers.parnoir.com
 ```
 
 ### Database Setup
@@ -91,16 +91,16 @@ sudo -u postgres psql
 **PostgreSQL Security Configuration:**
 ```sql
 -- Create application user
-CREATE USER identity_protocol WITH PASSWORD 'secure-password';
+CREATE USER par_noir WITH PASSWORD 'secure-password';
 
 -- Create database
-CREATE DATABASE identity_protocol OWNER identity_protocol;
+CREATE DATABASE par_noir OWNER par_noir;
 
 -- Grant permissions
-GRANT ALL PRIVILEGES ON DATABASE identity_protocol TO identity_protocol;
+GRANT ALL PRIVILEGES ON DATABASE par_noir TO par_noir;
 
 -- Enable required extensions
-\c identity_protocol
+\c par_noir
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 ```
@@ -145,8 +145,8 @@ sudo systemctl enable redis
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/identity-protocol.git
-cd identity-protocol
+git clone https://github.com/bymjmazzei/par-Noir.git
+cd par-Noir
 
 # Install dependencies
 npm install
@@ -174,7 +174,7 @@ SESSION_SECRET=your-super-secure-session-secret
 ENCRYPTION_KEY=your-32-byte-encryption-key
 
 # Database
-DATABASE_URL=postgresql://identity_protocol:password@localhost:5432/identity_protocol
+DATABASE_URL=postgresql://par_noir:password@localhost:5432/par_noir
 REDIS_URL=redis://:password@localhost:6379
 
 # External Services
@@ -203,7 +203,7 @@ nano ecosystem.config.js
 ```javascript
 module.exports = {
   apps: [{
-    name: 'identity-protocol-api',
+    name: 'par-noir-api',
     script: 'dist/server.js',
     instances: 'max',
     exec_mode: 'cluster',
@@ -240,7 +240,7 @@ sudo apt update
 sudo apt install nginx
 
 # Create Nginx configuration
-sudo nano /etc/nginx/sites-available/identity-protocol
+sudo nano /etc/nginx/sites-available/par-noir
 ```
 
 **Nginx Configuration:**
@@ -265,18 +265,18 @@ upstream dashboard_servers {
 # HTTP to HTTPS redirect
 server {
     listen 80;
-    server_name api.identityprotocol.com dashboard.identityprotocol.com;
+    server_name api.parnoir.com pn.parnoir.com;
     return 301 https://$server_name$request_uri;
 }
 
 # API server
 server {
     listen 443 ssl http2;
-    server_name api.identityprotocol.com;
+    server_name api.parnoir.com;
 
     # SSL configuration
-    ssl_certificate /etc/letsencrypt/live/api.identityprotocol.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/api.identityprotocol.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/api.parnoir.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.parnoir.com/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512;
     ssl_prefer_server_ciphers off;
@@ -303,11 +303,11 @@ server {
 # Dashboard server
 server {
     listen 443 ssl http2;
-    server_name dashboard.identityprotocol.com;
+    server_name pn.parnoir.com;
 
     # SSL configuration
-    ssl_certificate /etc/letsencrypt/live/dashboard.identityprotocol.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/dashboard.identityprotocol.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/pn.parnoir.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/pn.parnoir.com/privkey.pem;
 
     # Security headers
     add_header X-Frame-Options DENY;
@@ -327,7 +327,7 @@ server {
 
 ```bash
 # Enable site
-sudo ln -s /etc/nginx/sites-available/identity-protocol /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/par-noir /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl restart nginx
 ```
@@ -410,12 +410,12 @@ pm2 set pm2-logrotate:retain 30
 sudo apt install htop iotop nethogs
 
 # Set up log rotation
-sudo nano /etc/logrotate.d/identity-protocol
+sudo nano /etc/logrotate.d/par-noir
 ```
 
 **Log Rotation Configuration:**
 ```
-/var/log/identity-protocol/*.log {
+/var/log/par-noir/*.log {
     daily
     missingok
     rotate 30
@@ -443,13 +443,13 @@ nano /opt/backup-database.sh
 #!/bin/bash
 BACKUP_DIR="/opt/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
-DB_NAME="identity_protocol"
+DB_NAME="par_noir"
 
 # Create backup directory
 mkdir -p $BACKUP_DIR
 
 # Backup database
-pg_dump -U identity_protocol -h localhost $DB_NAME > $BACKUP_DIR/db_backup_$DATE.sql
+pg_dump -U par_noir -h localhost $DB_NAME > $BACKUP_DIR/db_backup_$DATE.sql
 
 # Compress backup
 gzip $BACKUP_DIR/db_backup_$DATE.sql
@@ -482,7 +482,7 @@ nano /opt/backup-application.sh
 #!/bin/bash
 BACKUP_DIR="/opt/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
-APP_DIR="/opt/identity-protocol"
+APP_DIR="/opt/par-noir"
 
 # Create backup directory
 mkdir -p $BACKUP_DIR
@@ -500,14 +500,14 @@ find $BACKUP_DIR -name "app_backup_*.tar.gz" -mtime +7 -delete
 
 ```bash
 # Test API endpoints
-curl -k https://api.identityprotocol.com/api/health
-curl -k https://api.identityprotocol.com/api/status
+curl -k https://api.parnoir.com/health
+curl -k https://api.parnoir.com/health/ready
 
 # Test dashboard
-curl -k https://dashboard.identityprotocol.com
+curl -k https://pn.parnoir.com
 
 # Test SSL configuration
-openssl s_client -connect api.identityprotocol.com:443 -servername api.identityprotocol.com
+openssl s_client -connect api.parnoir.com:443 -servername api.parnoir.com
 ```
 
 #### 2. **Performance Testing**
@@ -517,7 +517,7 @@ openssl s_client -connect api.identityprotocol.com:443 -servername api.identityp
 npm install -g artillery
 
 # Run load tests
-artillery quick --count 100 --num 10 https://api.identityprotocol.com/api/health
+artillery quick --count 100 --num 10 https://api.parnoir.com/health
 ```
 
 ### Troubleshooting
@@ -540,7 +540,7 @@ pm2 restart all
 **Database Connection Issues:**
 ```bash
 # Test database connection
-psql -U identity_protocol -h localhost -d identity_protocol
+psql -U par_noir -h localhost -d par_noir
 
 # Check PostgreSQL status
 sudo systemctl status postgresql
@@ -619,7 +619,7 @@ sudo systemctl restart nginx postgresql redis
 pm2 stop all
 
 # Restore database
-psql -U identity_protocol -h localhost -d identity_protocol < backup_file.sql
+psql -U par_noir -h localhost -d par_noir < backup_file.sql
 
 # Start application
 pm2 start all
@@ -628,7 +628,7 @@ pm2 start all
 **Application Recovery:**
 ```bash
 # Restore application files
-tar -xzf backup_file.tar.gz -C /opt/identity-protocol/
+tar -xzf backup_file.tar.gz -C /opt/par-noir/
 
 # Restart application
 pm2 restart all

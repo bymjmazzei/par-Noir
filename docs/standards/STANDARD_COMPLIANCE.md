@@ -1,9 +1,9 @@
 # Standard Compliance
-## Identity Protocol - Industry Standards Compliance Documentation
+## par Noir - Industry Standards Compliance Documentation
 
 ### Abstract
 
-This document provides comprehensive compliance verification for the Identity Protocol against industry standards, specifications, and regulatory requirements. It ensures the protocol meets all necessary standards for production deployment and enterprise adoption.
+This document provides comprehensive compliance verification for par Noir against industry standards, specifications, and regulatory requirements. It ensures the protocol meets all necessary standards for production deployment and enterprise adoption.
 
 ### Table of Contents
 
@@ -23,7 +23,7 @@ This document provides comprehensive compliance verification for the Identity Pr
 
 ### Purpose
 
-The Identity Protocol is designed to be fully compliant with industry standards and specifications, ensuring:
+par Noir is designed to be fully compliant with industry standards and specifications, ensuring:
 
 - **Interoperability**: Works seamlessly with other DID implementations
 - **Security**: Meets enterprise-grade security requirements
@@ -559,10 +559,10 @@ npm run test:all
 
 | Role | Contact | Responsibilities |
 |------|---------|------------------|
-| **Chief Security Officer** | security@identityprotocol.com | Security compliance |
-| **Chief Privacy Officer** | privacy@identityprotocol.com | Privacy compliance |
-| **Compliance Manager** | compliance@identityprotocol.com | Regulatory compliance |
-| **Legal Counsel** | legal@identityprotocol.com | Legal compliance |
+| **Chief Security Officer** | security@parnoir.com | Security compliance |
+| **Chief Privacy Officer** | privacy@parnoir.com | Privacy compliance |
+| **Compliance Manager** | compliance@parnoir.com | Regulatory compliance |
+| **Legal Counsel** | legal@parnoir.com | Legal compliance |
 
 ### External Contacts
 
@@ -598,7 +598,7 @@ npm run test:all
 - [DID Resolver](https://github.com/decentralized-identity/did-resolver)
 - [Universal Resolver](https://github.com/decentralized-identity/universal-resolver)
 - [DID Core Test Suite](https://github.com/w3c/did-test-suite)
-- [Compliance Testing Tools](https://github.com/your-org/compliance-tools)
+- [par Noir documentation (standards)](https://github.com/bymjmazzei/par-Noir/tree/main/docs/standards)
 
 ---
 

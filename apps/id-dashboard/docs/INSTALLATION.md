@@ -1,4 +1,4 @@
-# Identity Protocol Dashboard - Installation Guide
+# par Noir Dashboard - Installation Guide
 
 ## 🚀 Quick Start
 
@@ -22,8 +22,8 @@
 
 1. **Clone the Repository**
    ```bash
-   git clone <repository-url>
-   cd identity-protocol/apps/id-dashboard
+   git clone https://github.com/bymjmazzei/par-Noir.git
+   cd par-Noir/apps/id-dashboard
    ```
 
 2. **Install Dependencies**
@@ -106,8 +106,8 @@
 
 2. **Clone the Project**
    ```bash
-   git clone <repository-url>
-   cd identity-protocol
+   git clone https://github.com/bymjmazzei/par-Noir.git
+   cd par-Noir
    ```
 
 3. **Install Dependencies**

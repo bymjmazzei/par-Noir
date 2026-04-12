@@ -191,19 +191,19 @@ You agree not to:
 ## 📞 **Contact Information**
 
 ### **General Inquiries**
-- **Email**: support@identityprotocol.com
-- **Documentation**: docs.identityprotocol.com
-- **Community**: community.identityprotocol.com
+- **Email**: support@parnoir.com
+- **Documentation**: https://docs.parnoir.com
+- **Community**: https://github.com/bymjmazzei/par-Noir
 
 ### **Legal Matters**
-- **Legal**: legal@identityprotocol.com
-- **Privacy**: privacy@identityprotocol.com
-- **Security**: security@identityprotocol.com
+- **Legal**: legal@parnoir.com
+- **Privacy**: privacy@parnoir.com
+- **Security**: security@parnoir.com
 
 ### **Technical Support**
-- **Technical Issues**: support@identityprotocol.com
-- **Bug Reports**: bugs@identityprotocol.com
-- **Feature Requests**: features@identityprotocol.com
+- **Technical Issues**: support@parnoir.com
+- **Bug Reports**: https://github.com/bymjmazzei/par-Noir/issues
+- **Feature Requests**: https://github.com/bymjmazzei/par-Noir/issues
 
 ## 📝 **Changes to Terms**
 

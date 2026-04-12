@@ -610,10 +610,10 @@ X-RateLimit-Reset: 1640995200
 ### JavaScript/TypeScript
 
 ```typescript
-import { IdentityProtocolAPI } from '@identity-protocol/sdk';
+import { IdentityProtocolAPI } from '@identity-protocol/identity-sdk';
 
 const api = new IdentityProtocolAPI({
-  baseURL: 'https://api.your-domain.com/v1',
+  baseURL: 'https://api.parnoir.com',
   token: 'your-jwt-token'
 });
 
@@ -642,7 +642,7 @@ await api.dids.updateMetadata(did.id, {
 from identity_protocol import IdentityProtocolAPI
 
 api = IdentityProtocolAPI(
-    base_url='https://api.your-domain.com/v1',
+    base_url='https://api.parnoir.com',
     token='your-jwt-token'
 )
 
@@ -665,10 +665,10 @@ auth = api.auth.login(
 
 For API support and questions:
 
-- **Documentation**: https://docs.identity-protocol.com
-- **SDK Documentation**: https://sdk.identity-protocol.com
-- **Support Email**: api-support@identity-protocol.com
-- **Status Page**: https://status.identity-protocol.com
+- **Documentation**: https://docs.parnoir.com
+- **SDK Documentation**: https://github.com/bymjmazzei/par-Noir/tree/main/sdk/identity-sdk
+- **Support Email**: api-support@parnoir.com
+- **Status Page**: https://status.parnoir.com
 
 ---
 

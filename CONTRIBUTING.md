@@ -25,8 +25,8 @@ Par Noir is a decentralized identity management system that enables users to cre
 
 1. **Clone the Repository**
 ```bash
-git clone https://github.com/yourusername/par-noir.git
-cd par-noir
+git clone https://github.com/bymjmazzei/par-Noir.git
+cd par-Noir
 ```
 
 2. **Install Dependencies**

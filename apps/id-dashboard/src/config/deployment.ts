@@ -2,19 +2,19 @@
 export const deploymentConfig = {
   // Production API endpoints
   apiEndpoints: {
-    orbitDB: 'https://api.identityprotocol.com/orbitdb',
-    websocket: 'wss://api.identityprotocol.com/socket.io',
-    cloudSync: 'https://api.identityprotocol.com/sync',
-    emailService: 'https://api.identityprotocol.com/email',
-    smsService: 'https://api.identityprotocol.com/sms',
-    ipfsService: 'https://api.identityprotocol.com/ipfs',
+    orbitDB: 'https://api.parnoir.com/orbitdb',
+    websocket: 'wss://api.parnoir.com/socket.io',
+    cloudSync: 'https://api.parnoir.com/sync',
+    emailService: 'https://api.parnoir.com/email',
+    smsService: 'https://api.parnoir.com/sms',
+    ipfsService: 'https://api.parnoir.com/ipfs',
   },
   
   // Production domain settings
   domain: {
-    main: 'https://identityprotocol.com',
-    api: 'https://api.identityprotocol.com',
-    cdn: 'https://cdn.identityprotocol.com',
+    main: 'https://parnoir.com',
+    api: 'https://api.parnoir.com',
+    cdn: 'https://parnoir.com',
   },
   
   // Production feature flags

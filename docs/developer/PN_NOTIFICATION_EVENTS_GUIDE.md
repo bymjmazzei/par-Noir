@@ -677,7 +677,7 @@ For developer support and questions:
 
 - **Documentation**: https://docs.parnoir.com/developer/events
 - **API Reference**: https://docs.parnoir.com/api/notifications
-- **GitHub**: https://github.com/parnoir/developer-docs
+- **GitHub**: https://github.com/bymjmazzei/par-Noir/tree/main/docs
 - **Support Email**: dev-support@parnoir.com
 - **Community**: https://community.parnoir.com
 

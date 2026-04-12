@@ -169,9 +169,9 @@ const PrivacyPolicy: React.FC = () => {
               
               <h3 className="text-xl font-semibold text-text-primary mb-3">Contact Information</h3>
               <ul className="list-none text-text-secondary mb-6 space-y-2">
-                <li><strong>Privacy Officer:</strong> privacy@identityprotocol.com</li>
-                <li><strong>General Support:</strong> support@identityprotocol.com</li>
-                <li><strong>Legal Matters:</strong> legal@identityprotocol.com</li>
+                <li><strong>Privacy Officer:</strong> privacy@parnoir.com</li>
+                <li><strong>General Support:</strong> support@parnoir.com</li>
+                <li><strong>Legal Matters:</strong> legal@parnoir.com</li>
               </ul>
 
               <h3 className="text-xl font-semibold text-text-primary mb-3">Response Time</h3>

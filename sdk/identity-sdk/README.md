@@ -755,10 +755,10 @@ const platformConfig = {
   redirectUri: 'https://your-app.com/callback',
   scopes: ['openid', 'profile', 'email'],
   endpoints: {
-    authorization: 'https://identity-protocol.com/oauth/authorize',
-    token: 'https://identity-protocol.com/oauth/token',
-    userInfo: 'https://identity-protocol.com/oauth/userinfo',
-    revocation: 'https://identity-protocol.com/oauth/revoke'
+    authorization: 'https://api.parnoir.com/oauth/authorize',
+    token: 'https://api.parnoir.com/oauth/token',
+    userInfo: 'https://api.parnoir.com/oauth/userinfo',
+    revocation: 'https://api.parnoir.com/oauth/revoke'
   }
 };
 ```
@@ -890,11 +890,10 @@ All Rights Reserved, free to use - see [LICENSE](../../LICENSE) for details.
 
 ## 🆘 Support
 
-- **Documentation**: [docs.identity-protocol.com](https://docs.identity-protocol.com)
-- **Issues**: [GitHub Issues](https://github.com/identity-protocol/identity-sdk/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/identity-protocol/identity-sdk/discussions)
-- **Email**: support@identity-protocol.com
+- **Documentation**: [docs.parnoir.com](https://docs.parnoir.com) and [monorepo docs](https://github.com/bymjmazzei/par-Noir/tree/main/docs)
+- **Issues**: [GitHub Issues](https://github.com/bymjmazzei/par-Noir/issues)
+- **Email**: support@parnoir.com
 
 ---
 
-**Built with ❤️ by the Identity Protocol Team** 
+**Built for par Noir** 

@@ -21,7 +21,7 @@ export const CrossPlatformAuth: React.FC<CrossPlatformAuthProps> = ({
   onCreateId,
   onImportId
 }) => {
-  const [platform, setPlatform] = useState('identity-protocol');
+  const [platform, setPlatform] = useState('par-noir');
   const [selectedId, setSelectedId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -106,7 +106,7 @@ export const CrossPlatformAuth: React.FC<CrossPlatformAuthProps> = ({
             onChange={(e) => setPlatform(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="identity-protocol">Identity Protocol</option>
+            <option value="par-noir">par Noir</option>
             <option value="google">Google</option>
             <option value="github">GitHub</option>
             <option value="facebook">Facebook</option>
@@ -215,7 +215,7 @@ const config = createSimpleConfig(
 );
 
 const sdk = createIdentitySDK(config);
-await sdk.authenticate('identity-protocol');`}
+await sdk.authenticate('par-noir');`}
           </pre>
         </div>
       </div>

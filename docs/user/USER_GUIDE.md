@@ -1,6 +1,6 @@
-# Identity Protocol - User Guide
+# par Noir - User Guide
 
-**Welcome to Identity Protocol** - Your secure, decentralized identity management solution.
+**Welcome to par Noir** - Your secure, decentralized identity management solution.
 
 ---
 
@@ -19,9 +19,9 @@
 
 ## Getting Started
 
-### What is Identity Protocol?
+### What is par Noir?
 
-Identity Protocol is a decentralized identity management system that puts you in control of your digital identity. Unlike traditional systems where your identity is stored on centralized servers, your identity data is encrypted and stored locally on your device, giving you complete ownership and control.
+par Noir is a decentralized identity management system that puts you in control of your digital identity. Unlike traditional systems where your identity is stored on centralized servers, your identity data is encrypted and stored locally on your device, giving you complete ownership and control.
 
 ### Key Features
 
@@ -46,7 +46,7 @@ Identity Protocol is a decentralized identity management system that puts you in
 
 ### Step 1: Access the Dashboard
 
-1. Open your web browser and navigate to the Identity Protocol dashboard
+1. Open your web browser and navigate to the par Noir dashboard
 2. Click "Create New Identity" to begin the setup process
 
 ### Step 2: Choose Your Username
@@ -353,7 +353,7 @@ Your dashboard provides a comprehensive view of your digital identity:
 **Connection Issues**:
 - **No Internet**: Check your connection
 - **Server Unavailable**: Try again later
-- **Firewall Blocked**: Allow Identity Protocol through firewall
+- **Firewall Blocked**: Allow par Noir through firewall
 - **Proxy Issues**: Configure proxy settings
 
 **Performance Issues**:
@@ -371,10 +371,9 @@ Your dashboard provides a comprehensive view of your digital identity:
 - **Contact Support**: Direct assistance
 
 **Contact Information**:
-- **Email**: support@identity-protocol.com
-- **Live Chat**: Available during business hours
-- **Phone**: +1-800-IDENTITY (toll-free)
-- **Social Media**: @IdentityProtocol
+- **Email**: support@parnoir.com
+- **Documentation**: https://docs.parnoir.com
+- **Source and issues**: https://github.com/bymjmazzei/par-Noir
 
 ---
 
@@ -382,11 +381,11 @@ Your dashboard provides a comprehensive view of your digital identity:
 
 ### General Questions
 
-**Q: Is Identity Protocol free to use?**
-A: Yes, Identity Protocol is completely free for personal use. Premium features are available for business users.
+**Q: Is par Noir free to use?**
+A: Yes, par Noir is completely free for personal use. Premium features are available for business users.
 
-**Q: Can I use Identity Protocol on multiple devices?**
-A: Yes, you can access your identity from any device with the Identity Protocol app or web interface.
+**Q: Can I use par Noir on multiple devices?**
+A: Yes, you can access your identity from any device with the par Noir app or web interface.
 
 **Q: What happens if I lose my device?**
 A: Your identity is backed up and can be recovered on a new device using your recovery options.
@@ -402,8 +401,8 @@ A: Your passcode is never stored or transmitted. It's used locally to encrypt/de
 **Q: What if someone steals my device?**
 A: Your data is encrypted and requires your passcode to access. Without the passcode, the data is unreadable.
 
-**Q: Can Identity Protocol be hacked?**
-A: While no system is 100% hack-proof, Identity Protocol uses military-grade encryption and security best practices.
+**Q: Can par Noir be hacked?**
+A: While no system is 100% hack-proof, par Noir uses military-grade encryption and security best practices.
 
 **Q: Do you track my activity?**
 A: No, we do not track or monitor your activity. Your privacy is our top priority.
@@ -417,16 +416,16 @@ A: Chrome 90+, Firefox 88+, Safari 14+, and Edge 90+ are fully supported.
 A: Yes, you can export your data in standard formats for backup or migration.
 
 **Q: Is the code open source?**
-A: Yes, the core Identity Protocol code is open source and available on GitHub.
+A: Yes, the core par Noir code is open source and available on GitHub.
 
-**Q: Can developers integrate with Identity Protocol?**
-A: Yes, we provide APIs and SDKs for developers to integrate Identity Protocol into their applications.
+**Q: Can developers integrate with par Noir?**
+A: Yes, we provide APIs and SDKs for developers to integrate par Noir into their applications.
 
 ---
 
 ## Conclusion
 
-Identity Protocol puts you in control of your digital identity with military-grade security and privacy by design. Your data stays on your device, encrypted and secure, while giving you the flexibility to share only what you want, when you want.
+par Noir puts you in control of your digital identity with military-grade security and privacy by design. Your data stays on your device, encrypted and secure, while giving you the flexibility to share only what you want, when you want.
 
 **Key Benefits**:
 - 🔐 **Complete Security**: Military-grade encryption
@@ -442,9 +441,9 @@ Identity Protocol puts you in control of your digital identity with military-gra
 4. Start enjoying secure, private digital interactions
 
 **Need Help?**
-- Visit our Help Center: https://help.identity-protocol.com
-- Join our Community: https://community.identity-protocol.com
-- Contact Support: support@identity-protocol.com
+- Documentation: https://docs.parnoir.com
+- Community: https://github.com/bymjmazzei/par-Noir
+- Contact Support: support@parnoir.com
 
 ---
 

@@ -278,7 +278,7 @@ export class EventManager {
   private getDefaultContexts(): SentryEvent['contexts'] {
     return {
       app: {
-        name: 'identity-protocol',
+        name: 'par-noir',
         version: '1.0.0'
       },
       device: {

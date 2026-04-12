@@ -44,15 +44,15 @@
 
 **1. Install the SDK**:
 ```bash
-npm install @identity-protocol/sdk
+npm install @identity-protocol/identity-sdk
 ```
 
 **2. Basic Integration**:
 ```typescript
-import { IdentityProtocolAPI } from '@identity-protocol/sdk';
+import { IdentityProtocolAPI } from '@identity-protocol/identity-sdk';
 
 const api = new IdentityProtocolAPI({
-  baseURL: 'https://api.identity-protocol.com/v1',
+  baseURL: 'https://api.parnoir.com',
   apiKey: 'your-api-key'
 });
 
@@ -84,8 +84,8 @@ const profile = await api.identities.getProfile();
 
 **1. Clone the Repository**:
 ```bash
-git clone https://github.com/identity-protocol/identity-protocol.git
-cd identity-protocol
+git clone https://github.com/bymjmazzei/par-Noir.git
+cd par-Noir
 ```
 
 **2. Install Dependencies**:
@@ -171,27 +171,24 @@ User Request → API Gateway → Authentication → Business Logic → Storage �
 
 **NPM Package**:
 ```bash
-npm install @identity-protocol/sdk
+npm install @identity-protocol/identity-sdk
 ```
 
 **CDN (Browser)**:
 ```html
-<script src="https://cdn.identity-protocol.com/sdk/latest/identity-protocol.min.js"></script>
+<!-- Install via npm: @identity-protocol/identity-sdk (see sdk/identity-sdk in the par Noir monorepo). -->
 ```
 
-**TypeScript Types**:
-```bash
-npm install @types/identity-protocol
-```
+**TypeScript types**: Included in `@identity-protocol/identity-sdk` when consumed from npm or the monorepo workspace.
 
 ### Basic Usage
 
 **Initialize the SDK**:
 ```typescript
-import { IdentityProtocolAPI } from '@identity-protocol/sdk';
+import { IdentityProtocolAPI } from '@identity-protocol/identity-sdk';
 
 const api = new IdentityProtocolAPI({
-  baseURL: 'https://api.identity-protocol.com/v1',
+  baseURL: 'https://api.parnoir.com',
   apiKey: 'your-api-key',
   timeout: 30000,
   retries: 3
@@ -573,7 +570,7 @@ setInterval(async () => {
 
 **3. Input Validation**:
 ```typescript
-import { validateUsername, validatePasscode } from '@identity-protocol/sdk';
+import { validateUsername, validatePasscode } from '@identity-protocol/identity-sdk';
 
 const username = validateUsername(inputUsername);
 const passcode = validatePasscode(inputPasscode);
@@ -587,7 +584,7 @@ if (!username.isValid) {
 
 **1. Encrypt Sensitive Data**:
 ```typescript
-import { CryptoManager } from '@identity-protocol/sdk';
+import { CryptoManager } from '@identity-protocol/identity-sdk';
 
 const encrypted = await CryptoManager.encrypt(
   sensitiveData,
@@ -721,7 +718,7 @@ module.exports = {
 
 **Test Identity Creation**:
 ```typescript
-import { IdentityProtocolAPI } from '@identity-protocol/sdk';
+import { IdentityProtocolAPI } from '@identity-protocol/identity-sdk';
 
 describe('Identity Management', () => {
   let api: IdentityProtocolAPI;
@@ -820,7 +817,7 @@ describe('API Endpoints', () => {
 **Enable Debug Mode**:
 ```typescript
 const api = new IdentityProtocolAPI({
-  baseURL: 'https://api.identity-protocol.com/v1',
+  baseURL: 'https://api.parnoir.com',
   debug: true // Enable debug logging
 });
 ```
@@ -844,7 +841,7 @@ const api = new IdentityProtocolAPI({
 
 **Error Tracking**:
 ```typescript
-import { ErrorTracker } from '@identity-protocol/sdk';
+import { ErrorTracker } from '@identity-protocol/identity-sdk';
 
 ErrorTracker.init({
   dsn: 'your-sentry-dsn',
@@ -954,7 +951,7 @@ volumes:
 **Health Checks**:
 ```typescript
 // health-check.ts
-import { HealthChecker } from '@identity-protocol/sdk';
+import { HealthChecker } from '@identity-protocol/identity-sdk';
 
 const healthChecker = new HealthChecker({
   checks: [
@@ -972,7 +969,7 @@ app.get('/health', async (req, res) => {
 
 **Performance Monitoring**:
 ```typescript
-import { PerformanceMonitor } from '@identity-protocol/sdk';
+import { PerformanceMonitor } from '@identity-protocol/identity-sdk';
 
 PerformanceMonitor.onMetric((metric) => {
   // Send to monitoring service
@@ -982,7 +979,7 @@ PerformanceMonitor.onMetric((metric) => {
 
 **Error Monitoring**:
 ```typescript
-import { ErrorTracker } from '@identity-protocol/sdk';
+import { ErrorTracker } from '@identity-protocol/identity-sdk';
 
 ErrorTracker.init({
   dsn: process.env.SENTRY_DSN,
@@ -998,8 +995,8 @@ ErrorTracker.init({
 
 **1. Fork the Repository**:
 ```bash
-git clone https://github.com/your-username/identity-protocol.git
-cd identity-protocol
+git clone https://github.com/bymjmazzei/par-Noir.git
+cd par-Noir
 ```
 
 **2. Create Feature Branch**:
@@ -1125,6 +1122,7 @@ Canonical lists of public HTTP routes and L5 integration topics live alongside t
 - **[ROUTE_MANIFEST.md](./ROUTE_MANIFEST.md)** — major API routes (hand-maintained; run drift check below).
 - **[third-party-sharing-and-L5.md](./third-party-sharing-and-L5.md)** — user-authorized third-party access patterns.
 - **[INTEGRATOR_IDENTITY_SUCCESSION.md](./INTEGRATOR_IDENTITY_SUCCESSION.md)** — superseded / successor pN identifiers (“picture on a wall” online).
+- **[METADATA_CONTEXT_MIGRATION.md](./METADATA_CONTEXT_MIGRATION.md)** — JSON-LD `@context` URI (`https://parnoir.com/ns/v1#`) vs legacy placeholder URIs.
 
 **Drift check (optional):** from repo root, `node scripts/check-route-manifest.mjs` compares manifest entries to `api/src/server.ts` and `api/src/server/modules/apiRoutes.ts` (substring presence).
 
@@ -1134,24 +1132,18 @@ Canonical lists of public HTTP routes and L5 integration topics live alongside t
 
 ### Documentation
 
-- **API Reference**: https://docs.identity-protocol.com/api
-- **SDK Documentation**: https://docs.identity-protocol.com/sdk
-- **User Guide**: https://docs.identity-protocol.com/user
-- **Security Guide**: https://docs.identity-protocol.com/security
+- **API and integration docs**: https://docs.parnoir.com and [docs/developer/](https://github.com/bymjmazzei/par-Noir/tree/main/docs/developer) in this repository
+- **SDK (source)**: [sdk/identity-sdk](https://github.com/bymjmazzei/par-Noir/tree/main/sdk/identity-sdk)
 
 ### Community
 
-- **GitHub**: https://github.com/identity-protocol
-- **Discord**: https://discord.gg/identity-protocol
-- **Forum**: https://community.identity-protocol.com
-- **Blog**: https://blog.identity-protocol.com
+- **GitHub**: https://github.com/bymjmazzei/par-Noir
+- **Issues**: https://github.com/bymjmazzei/par-Noir/issues
 
 ### Support
 
-- **Email**: dev-support@identity-protocol.com
-- **Slack**: #identity-protocol-dev
-- **Stack Overflow**: Tagged with `identity-protocol`
-- **Security Issues**: security@identity-protocol.com
+- **Email**: dev-support@parnoir.com
+- **Security Issues**: security@parnoir.com
 
 ---
 

@@ -308,5 +308,5 @@ Each data point generates privacy-preserving proofs:
 
 For API support and questions:
 - **Documentation**: [docs.parnoir.com](https://docs.parnoir.com)
-- **SDK Repository**: [github.com/parnoir/identity-sdk](https://github.com/parnoir/identity-sdk)
+- **Monorepo (SDK source)**: [github.com/bymjmazzei/par-Noir/tree/main/sdk/identity-sdk](https://github.com/bymjmazzei/par-Noir/tree/main/sdk/identity-sdk)
 - **API Status**: [status.parnoir.com](https://status.parnoir.com)

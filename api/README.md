@@ -1,4 +1,4 @@
-# Identity Protocol API
+# par Noir API
 
 Production API for par Noir: OAuth-style flows for pN identity, API keys, and related services.
 

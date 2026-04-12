@@ -575,4 +575,4 @@ Available webhook events:
 
 ---
 
-**For more information, visit [docs.identity-protocol.com](https://docs.identity-protocol.com)**
+**For more information, visit [docs.parnoir.com](https://docs.parnoir.com) and the [par Noir repository](https://github.com/bymjmazzei/par-Noir/tree/main/docs).**
