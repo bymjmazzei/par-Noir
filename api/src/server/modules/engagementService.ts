@@ -81,6 +81,66 @@ export class EngagementService {
     }
   }
 
+  /** Monetization maintenance SKU active (same rule as dashboard fund eligibility). */
+  private static async isMonetizationMaintenanceActive(pnIdentifier: string): Promise<boolean> {
+    const db = getDatabasePool();
+    const pn = pnIdentifier.trim();
+    if (!pn) return false;
+    try {
+      const r = await db.query(
+        `SELECT status, current_period_end FROM monetization_subscriptions WHERE pn_identifier = $1`,
+        [pn]
+      );
+      const row = r.rows[0] as { status?: string; current_period_end?: Date | string } | undefined;
+      if (!row) return false;
+      return (
+        row.status === 'active' &&
+        row.current_period_end != null &&
+        new Date(row.current_period_end as string).getTime() > Date.now()
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /** Verified identity SKU current and maintenance SKU current (witness-time for fund engagement). */
+  private static async eligibleForFundAtWitness(pnIdentifier: string): Promise<boolean> {
+    const v = await this.isUserVerified(pnIdentifier);
+    if (!v) return false;
+    return this.isMonetizationMaintenanceActive(pnIdentifier);
+  }
+
+  /** Content owner pn for bounty owner resolution (same precedence as creator-fund allocator). */
+  private static async resolveContentOwnerPnForFile(fileId: string): Promise<string | null> {
+    const db = getDatabasePool();
+    try {
+      const r = await db.query(
+        `SELECT COALESCE(
+           (SELECT pn_identifier FROM aggregator_media WHERE file_id = $1 LIMIT 1),
+           (SELECT pn_identifier FROM aggregator_thoughts WHERE file_id = $1 LIMIT 1),
+           (SELECT pn_identifier FROM aggregator_collections WHERE file_id = $1 LIMIT 1)
+         ) AS owner_pn`,
+        [fileId]
+      );
+      const raw = r.rows[0]?.owner_pn;
+      if (raw == null) return null;
+      const s = String(raw).trim();
+      return s.length > 0 ? s : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private static async computeFundMonetizableFlags(
+    actorPn: string,
+    fileId: string
+  ): Promise<{ actor: boolean; owner: boolean }> {
+    const actor = await this.eligibleForFundAtWitness(actorPn);
+    const ownerPn = await this.resolveContentOwnerPnForFile(fileId);
+    const owner = ownerPn ? await this.eligibleForFundAtWitness(ownerPn) : false;
+    return { actor, owner };
+  }
+
   /**
    * Get recent action count for rate limiting
    */
@@ -137,12 +197,22 @@ export class EngagementService {
           WHERE file_id = $1 AND user_did = $2 AND type = 'like'
         `, [fileId, userPnIdentifier]);
       } else {
-        // Like - add the engagement with verification and bot score
-        await db.query(`
-          INSERT INTO engagement (file_id, user_did, type, is_verified, bot_score)
-          VALUES ($1, $2, 'like', $3, $4)
-          ON CONFLICT (file_id, user_did, type) DO NOTHING
-        `, [fileId, userPnIdentifier, isVerified, botScore]);
+        const fundFlags = await this.computeFundMonetizableFlags(userPnIdentifier, fileId);
+        await db.query(
+          `
+          INSERT INTO engagement (
+            file_id, user_did, type, is_verified, bot_score,
+            actor_fund_monetizable, content_owner_fund_monetizable
+          )
+          VALUES ($1, $2, 'like', $3, $4, $5, $6)
+          ON CONFLICT (file_id, user_did, type) DO UPDATE SET
+            is_verified = EXCLUDED.is_verified,
+            bot_score = EXCLUDED.bot_score,
+            actor_fund_monetizable = EXCLUDED.actor_fund_monetizable,
+            content_owner_fund_monetizable = EXCLUDED.content_owner_fund_monetizable
+        `,
+          [fileId, userPnIdentifier, isVerified, botScore, fundFlags.actor, fundFlags.owner]
+        );
       }
 
       // Get updated count
@@ -305,11 +375,24 @@ export class EngagementService {
         note: 'File owner owns content; commentor references it'
       };
 
+      const fundFlags = await this.computeFundMonetizableFlags(userPnIdentifier, fileId);
+
       const result = await db.query<EngagementRow>(`
-        INSERT INTO engagement (file_id, user_did, type, content, is_verified, bot_score)
-        VALUES ($1, $2, 'comment', $3, $4, $5)
+        INSERT INTO engagement (
+          file_id, user_did, type, content, is_verified, bot_score,
+          actor_fund_monetizable, content_owner_fund_monetizable
+        )
+        VALUES ($1, $2, 'comment', $3, $4, $5, $6, $7)
         RETURNING *
-      `, [fileId, userPnIdentifier, JSON.stringify(commentData), isVerified, botScore]);
+      `, [
+        fileId,
+        userPnIdentifier,
+        JSON.stringify(commentData),
+        isVerified,
+        botScore,
+        fundFlags.actor,
+        fundFlags.owner
+      ]);
 
       const row = result.rows[0];
       const parsedContent = JSON.parse(row.content || '{}');
@@ -570,11 +653,22 @@ export class EngagementService {
         }
       }
 
-      await db.query(`
-        INSERT INTO engagement (file_id, user_did, type, is_verified, bot_score)
-        VALUES ($1, $2, 'share', $3, $4)
-        ON CONFLICT (file_id, user_did, type) DO NOTHING
-      `, [fileId, userPnIdentifier, isVerified, botScore]);
+      const fundFlags = await this.computeFundMonetizableFlags(userPnIdentifier, fileId);
+      await db.query(
+        `
+        INSERT INTO engagement (
+          file_id, user_did, type, is_verified, bot_score,
+          actor_fund_monetizable, content_owner_fund_monetizable
+        )
+        VALUES ($1, $2, 'share', $3, $4, $5, $6)
+        ON CONFLICT (file_id, user_did, type) DO UPDATE SET
+          is_verified = EXCLUDED.is_verified,
+          bot_score = EXCLUDED.bot_score,
+          actor_fund_monetizable = EXCLUDED.actor_fund_monetizable,
+          content_owner_fund_monetizable = EXCLUDED.content_owner_fund_monetizable
+      `,
+        [fileId, userPnIdentifier, isVerified, botScore, fundFlags.actor, fundFlags.owner]
+      );
 
       // Get share count
       const countResult = await db.query(`
@@ -631,12 +725,22 @@ export class EngagementService {
           WHERE file_id = $1 AND user_did = $2 AND type = 'save'
         `, [fileId, userPnIdentifier]);
       } else {
-        // Save - add the engagement with verification and bot score
-        await db.query(`
-          INSERT INTO engagement (file_id, user_did, type, is_verified, bot_score)
-          VALUES ($1, $2, 'save', $3, $4)
-          ON CONFLICT (file_id, user_did, type) DO NOTHING
-        `, [fileId, userPnIdentifier, isVerified, botScore]);
+        const fundFlags = await this.computeFundMonetizableFlags(userPnIdentifier, fileId);
+        await db.query(
+          `
+          INSERT INTO engagement (
+            file_id, user_did, type, is_verified, bot_score,
+            actor_fund_monetizable, content_owner_fund_monetizable
+          )
+          VALUES ($1, $2, 'save', $3, $4, $5, $6)
+          ON CONFLICT (file_id, user_did, type) DO UPDATE SET
+            is_verified = EXCLUDED.is_verified,
+            bot_score = EXCLUDED.bot_score,
+            actor_fund_monetizable = EXCLUDED.actor_fund_monetizable,
+            content_owner_fund_monetizable = EXCLUDED.content_owner_fund_monetizable
+        `,
+          [fileId, userPnIdentifier, isVerified, botScore, fundFlags.actor, fundFlags.owner]
+        );
       }
 
       // Get updated count
@@ -903,12 +1007,28 @@ export class EngagementService {
     
     try {
       if (liked) {
-        // Insert record to increment count
-        await db.query(`
-          INSERT INTO engagement (file_id, user_did, type)
-          VALUES ($1, $2, 'like')
-          ON CONFLICT (file_id, user_did, type) DO NOTHING
-        `, [fileId, userPnIdentifier]);
+        const isVerified = await this.isUserVerified(userPnIdentifier);
+        let botScore = 0.0;
+        if (!isVerified) {
+          const botResult = await BotDetectionService.calculateBotScore(userPnIdentifier);
+          botScore = botResult.botScore;
+        }
+        const fundFlags = await this.computeFundMonetizableFlags(userPnIdentifier, fileId);
+        await db.query(
+          `
+          INSERT INTO engagement (
+            file_id, user_did, type, is_verified, bot_score,
+            actor_fund_monetizable, content_owner_fund_monetizable
+          )
+          VALUES ($1, $2, 'like', $3, $4, $5, $6)
+          ON CONFLICT (file_id, user_did, type) DO UPDATE SET
+            is_verified = EXCLUDED.is_verified,
+            bot_score = EXCLUDED.bot_score,
+            actor_fund_monetizable = EXCLUDED.actor_fund_monetizable,
+            content_owner_fund_monetizable = EXCLUDED.content_owner_fund_monetizable
+        `,
+          [fileId, userPnIdentifier, isVerified, botScore, fundFlags.actor, fundFlags.owner]
+        );
       } else {
         // Delete record to decrement count
         await db.query(`

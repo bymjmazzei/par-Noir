@@ -1029,6 +1029,23 @@ export async function initializeDatabase(): Promise<void> {
       );
     }
 
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const engFundPath = path.join(
+        __dirname,
+        '../../migrations/add_engagement_fund_monetizable_flags.sql'
+      );
+      const engFundSql = fs.readFileSync(engFundPath, 'utf-8');
+      await db.query(engFundSql);
+      console.log('✅ engagement_fund_monetizable_flags migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ engagement_fund_monetizable_flags migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);

@@ -7,9 +7,10 @@
  * first window ends at local midnight “today”, starts `N` local calendar days earlier; later
  * windows tile from the prior `period_end` using `make_interval(days => N)`.
  *
- * Bounty allocation: **90/10** uses **engagement actor** verification (`verified_identities` on `user_did`).
- * Weights are like/comment/share/save counts per (file, actor). **Library music** (`music_registry_post_uses`
- * + active track): **75%** of that weight to the post owner, **25%** to the track’s `owner_pn_identifier`.
+ * Bounty: period dollars split **90/10** into two pools once (`bounty_verified_cents` / `bounty_unverified_cents`).
+ * Weights from engagement (like/comment/share/save) use **`is_verified` at insert** into verified vs unverified maps;
+ * only rows with **`actor_fund_monetizable` and `content_owner_fund_monetizable`** (witness-time verified + maintenance).
+ * **Library music** (`music_registry_post_uses` + active track): **75%** / **25%** on those counts per pool.
  *
  * Optional `CREATOR_FUND_PERIOD_ATTESTATION_SECRET`: HMAC-SHA256(chain_hash) on the closed row.
  * Optional `CREATOR_FUND_PERIOD_KMS_KEY_VERSION`: GCP KMS resource name; asymmetricSign over SHA-256(chain_hash).
@@ -185,7 +186,10 @@ function addWeight(m: Map<string, number>, key: string, w: number): void {
 }
 
 /**
- * Distributes bounty pools: actor-verified vs actor-unverified; per event 75/25 when a post uses an active registry track.
+ * Distributes bounty pools: period dollars are already split 90/10 (verified vs unverified cash pools).
+ * Weights: only rows where actor + content owner were fund-eligible at witness time; verified vs unverified
+ * bucket uses engagement.is_verified at insert (not verified_identities at close).
+ * Library music: 75/25 on each bucket’s counts. Rows pre-migration (fund flags false) contribute no fund weight.
  */
 async function allocateCreatorBountyShares(
   client: PoolClient,
@@ -196,56 +200,60 @@ async function allocateCreatorBountyShares(
   bountyUnverifiedCents: number
 ): Promise<void> {
   const aggRes = await client.query(
-    `WITH per_actor_file AS (
-       SELECT e.file_id, e.user_did AS actor_id, COUNT(*)::bigint AS cnt
+    `WITH keyed AS (
+       SELECT e.file_id,
+              e.user_did AS actor_id,
+              COALESCE(e.is_verified, FALSE) AS is_verified,
+              COALESCE(m.pn_identifier, t.pn_identifier, c.pn_identifier) AS owner_pn
        FROM engagement e
+       LEFT JOIN aggregator_media m ON m.file_id = e.file_id
+       LEFT JOIN aggregator_thoughts t ON t.file_id = e.file_id
+       LEFT JOIN aggregator_collections c ON c.file_id = e.file_id
        WHERE e.created_at >= $1::timestamptz AND e.created_at < $2::timestamptz
          AND e.type IN ('like', 'comment', 'share', 'save')
-       GROUP BY e.file_id, e.user_did
+         AND e.actor_fund_monetizable IS TRUE
+         AND e.content_owner_fund_monetizable IS TRUE
      ),
-     with_owner AS (
-       SELECT p.*, COALESCE(m.pn_identifier, t.pn_identifier, c.pn_identifier) AS owner_pn
-       FROM per_actor_file p
-       LEFT JOIN aggregator_media m ON m.file_id = p.file_id
-       LEFT JOIN aggregator_thoughts t ON t.file_id = p.file_id
-       LEFT JOIN aggregator_collections c ON c.file_id = p.file_id
+     per_actor_file AS (
+       SELECT file_id,
+              actor_id,
+              SUM(CASE WHEN is_verified THEN 1 ELSE 0 END)::bigint AS cnt_verified,
+              SUM(CASE WHEN NOT is_verified THEN 1 ELSE 0 END)::bigint AS cnt_unverified
+       FROM keyed
+       WHERE owner_pn IS NOT NULL AND LENGTH(TRIM(owner_pn)) > 0
+       GROUP BY file_id, actor_id
      ),
      with_track AS (
-       SELECT w.*, pu.registry_track_id, tr.owner_pn_identifier AS track_owner_pn, tr.status AS track_status,
+       SELECT p.*, pu.registry_track_id, tr.owner_pn_identifier AS track_owner_pn, tr.status AS track_status,
               tr.splits_metadata AS splits_metadata
-       FROM with_owner w
-       LEFT JOIN music_registry_post_uses pu ON pu.post_file_id = w.file_id
+       FROM per_actor_file p
+       LEFT JOIN music_registry_post_uses pu ON pu.post_file_id = p.file_id
        LEFT JOIN music_registry_tracks tr ON tr.id = pu.registry_track_id
      )
-     SELECT wt.file_id, wt.actor_id, wt.cnt, wt.owner_pn, wt.registry_track_id, wt.track_owner_pn, wt.track_status,
-       wt.splits_metadata,
+     SELECT wt.file_id, wt.actor_id, wt.cnt_verified, wt.cnt_unverified, wt.owner_pn,
+       wt.registry_track_id, wt.track_owner_pn, wt.track_status, wt.splits_metadata,
        (wt.registry_track_id IS NOT NULL AND wt.track_status = 'active' AND wt.track_owner_pn IS NOT NULL
-         AND LENGTH(TRIM(wt.track_owner_pn)) > 0) AS uses_library_music,
-       EXISTS (
-         SELECT 1 FROM verified_identities vi
-         WHERE vi.identity_id = wt.actor_id AND vi.is_active = TRUE
-       ) AS actor_verified
-     FROM with_track wt
-     WHERE wt.owner_pn IS NOT NULL AND LENGTH(TRIM(wt.owner_pn)) > 0`,
+         AND LENGTH(TRIM(wt.track_owner_pn)) > 0) AS uses_library_music
+     FROM with_track wt`,
     [periodStartIso, periodEndIso]
   );
 
   const verifiedWeights = new Map<string, number>();
   const unverifiedWeights = new Map<string, number>();
 
-  for (const row of aggRes.rows) {
-    const ownerPn = String(row.owner_pn ?? '').trim();
-    const cnt = Number(row.cnt ?? 0);
-    if (!ownerPn || !Number.isFinite(cnt) || cnt <= 0) continue;
-    const usesMusic = Boolean(row.uses_library_music);
-    const actorVerified = Boolean(row.actor_verified);
-    const trackOwnerPn = String(row.track_owner_pn ?? '').trim();
-    const splitsMeta = row.splits_metadata;
+  const addRowWeights = (
+    target: Map<string, number>,
+    cnt: number,
+    ownerPn: string,
+    usesMusic: boolean,
+    trackOwnerPn: string,
+    splitsMeta: unknown
+  ): void => {
+    if (!Number.isFinite(cnt) || cnt <= 0) return;
     const creatorMult = usesMusic ? 75 : 100;
     const musicMult = usesMusic && trackOwnerPn ? 25 : 0;
     const cW = cnt * creatorMult;
     const mW = cnt * musicMult;
-    const target = actorVerified ? verifiedWeights : unverifiedWeights;
     addWeight(target, `c:${ownerPn}`, cW);
     if (mW > 0) {
       const shares = musicPoolWeightsForRow(splitsMeta, trackOwnerPn, mW);
@@ -254,6 +262,18 @@ async function allocateCreatorBountyShares(
         if (p) addWeight(target, `m:${p}`, weight);
       }
     }
+  };
+
+  for (const row of aggRes.rows) {
+    const ownerPn = String(row.owner_pn ?? '').trim();
+    if (!ownerPn) continue;
+    const usesMusic = Boolean(row.uses_library_music);
+    const trackOwnerPn = String(row.track_owner_pn ?? '').trim();
+    const splitsMeta = row.splits_metadata;
+    const cv = Number(row.cnt_verified ?? 0);
+    const cu = Number(row.cnt_unverified ?? 0);
+    addRowWeights(verifiedWeights, cv, ownerPn, usesMusic, trackOwnerPn, splitsMeta);
+    addRowWeights(unverifiedWeights, cu, ownerPn, usesMusic, trackOwnerPn, splitsMeta);
   }
 
   const toRecipients = (m: Map<string, number>) =>
