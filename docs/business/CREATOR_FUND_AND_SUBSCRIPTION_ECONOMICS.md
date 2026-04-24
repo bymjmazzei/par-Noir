@@ -37,6 +37,7 @@ Symbols:
 - **Practically un-gameable:** **Paid verification + recurring subscription** is the **primary** defense: each coordinated identity pays monthly and passes identity checks, making **typical** collusion rings and casual sybil farms **economically costly** relative to expected bounty. **Operational backstops** (rate limits, anomaly detection, caps, audit trails) still apply as **fund size and reward density** grow.
 - **Self-sustaining:** **Gross covers variable OPEX first**; the platform **25% applies to `R`**, not to gross while hiding infra in “profit.” The **creator fund** scales with **paying verified subscribers × price**, modulo **`E`** and creator competition for the pool.
 - **Honest limits:** The model does **not** scale infinitely; see [Scaling and limits](#scaling-and-limits).
+- **Crypto without blockchain:** Fund accounting and auditability use **traditional cryptography and append-only records** (see [Ledger transparency (no blockchain)](#ledger-transparency-no-blockchain)), not a public chain for consensus or payouts.
 
 ---
 
@@ -53,6 +54,25 @@ Symbols:
 - **Bounty allocation** for a period: **90%** of the weighted bounty pool attributed to actions by **verified** accounts; **10%** attributed to actions by **unverified** accounts (same events, different **weight buckets** for fund math).
 
 **Implementation (future):** Define “attributable to verified” precisely (e.g. actor DID verified **and** subscribed at **event time**). Document edge cases: lapse mid-period, deleted accounts, automation, appeals.
+
+---
+
+## Engagement integrity and bounty inputs
+
+**Terminology:** “Unfakeable” is **not** a goal in the strict cryptographic sense for social engagement. **Colluding humans** with valid accounts can still produce **real** API calls; cryptography cannot prove **intent** or **absence of payment for engagement.**
+
+**What we optimize for**
+
+1. **Authoritative events:** Engagement used for **bounty** math should be **witnessed by the platform** from **authenticated** clients (tokens, identity binding), not taken as unverified client-only tallies.
+2. **Economic cost to scale abuse:** Paid verification + subscription (see [Fraud and collusion](#fraud-and-collusion-policy-stance)) plus rate limits and bot scoring for unverified actors.
+3. **Tamper-evidence of the record:** Once recorded, **period rules and allocations** should be **hard to rewrite silently** (see [Ledger transparency (no blockchain)](#ledger-transparency-no-blockchain)).
+
+**What does *not* alone guarantee honesty**
+
+- **Binary flags** or **dual copies** (e.g. engager + creator each storing a bit) without **cross-verified signatures** and a **single reconciliation rule** do not prevent coordinated fraud or account takeover.
+- **High view counts** remain **easier to inflate** than scarce actions (likes/comments) unless views are defined and defended carefully for fund use.
+
+**Policy line for external comms:** Engagement is **defensible for payouts** through **identity economics + server witnessing + monitoring + tamper-evident fund ledgers**—not through “impossible to fake” claims.
 
 ---
 
@@ -108,6 +128,32 @@ Include in **`E`** (subject to final finance/legal list):
 
 ---
 
+## Ledger transparency (no blockchain)
+
+par Noir’s guiding architecture is **crypto without blockchain**: decentralized **identity** and user-owned data, **without** using a public distributed ledger for creator fund consensus or payouts.
+
+**Goals**
+
+- **Detect retroactive tampering** with official numbers (`G`, `E`, `R`, allocations, payout batches).
+- **Give creators verifiable artifacts** (e.g. signed statements) without every user hosting a **global** ledger in Drive.
+
+**Recommended implementation pattern (engineering target—not yet built)**
+
+1. **Append-only platform ledger** (e.g. PostgreSQL): insert-only **facts** (`revenue_event`, `expense_line`, `period_closed`, `allocation_line`, `payout_queued`, `payout_settled`). **Corrections** are **new rows** (reversal references), not silent `UPDATE`s of amounts.
+2. **Tamper-evident chaining per stream:** each row includes **`hash(prev_row)`** or roll up to a **Merkle root** per fund period so backups or manual edits break verification.
+3. **Signed period commitments:** once a period is finalized, publish a **small signed document** (platform key in **HSM/KMS**): period id, `G`, `E`, `R`, split amounts, Merkle root of allocation leaves. Signatures are verifiable **off-chain** without a blockchain.
+4. **Optional:** **RFC 3161** (or similar) **timestamping** of the signed commitment if independent **time attestation** is required—still not a user-operated chain.
+5. **User-owned copies (optional):** push **per-creator signed receipts** (or encrypted statements) to **that creator’s** storage (e.g. Drive metadata folder) for **portability and dispute evidence**—**not** a requirement that every user replicate a **network-wide** ledger.
+
+**Explicit non-goals (unless product changes later)**
+
+- **Public global consensus** over payout state.
+- **Smart contracts** as the source of truth for subscription revenue allocation.
+
+**Trust boundary:** This model gives **“the operator cannot silently rewrite history without detection”** to anyone who verifies signatures and the hash chain. It does **not** remove the need to **trust the platform** for **which events were admitted** before sealing a period—that is addressed by **operations**, **identity economics**, and **abuse detection**, not by a chain.
+
+---
+
 ## Reference scenario (illustrative only)
 
 Not a forecast or commitment:
@@ -121,7 +167,7 @@ Not a forecast or commitment:
 
 As of this document, the repo has **no** production-complete **creator fund ledger**, no automated **G → E → R → 25/75** accounting, and verification payment handling includes **demo-oriented** paths (e.g. dashboard `VerificationPaymentHandler` local storage). API Coinbase webhooks focus on **feed creation and feed subscriptions** (`api` webhook handler), not the full economics above.
 
-Engineering should treat this file as the **policy target** and implement **ledger, metadata, and privacy** in dedicated modules when prioritized.
+Engineering should treat this file as the **policy target** and implement **ledger, metadata, and privacy** in dedicated modules when prioritized. Ledger design should follow [Ledger transparency (no blockchain)](#ledger-transparency-no-blockchain).
 
 ---
 
@@ -132,11 +178,13 @@ Engineering should treat this file as the **policy target** and implement **ledg
 3. **Music library:** Authoritative **track registry**, artist opt-in, and **on-content proof** (“this post uses library track X”) for enforcing **75/25**.
 4. **`E` transparency:** Line items **in** vs **out** of creator-facing OPEX reporting (e.g. internal dev tools).
 5. **PSP treatment:** Whether **`G`** is recorded **gross** with PSP fees inside **`E`**, or **net** at collection—must be consistent in books and dashboards.
+6. **Key management:** Which **KMS/HSM** and key rotation policy backs **period signatures** and optional timestamping.
 
 ---
 
 ## Related documentation
 
 - [IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md) (implementation phases; cost notes may evolve—**economics canonical here**)
+- [SHARED_CODE_RULES.md](../../SHARED_CODE_RULES.md) (guiding principles, including crypto without blockchain)
 - [third-party sharing and L5](../developer/third-party-sharing-and-L5.md)
 - Identity verification (product): [IDENTITY_VERIFICATION.md](../../apps/id-dashboard/docs/IDENTITY_VERIFICATION.md)
