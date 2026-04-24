@@ -967,6 +967,20 @@ export async function initializeDatabase(): Promise<void> {
       );
     }
 
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const wfPath = path.join(__dirname, '../../migrations/add_creator_fund_period_waterfall.sql');
+      const wfSql = fs.readFileSync(wfPath, 'utf-8');
+      await db.query(wfSql);
+      console.log('✅ creator_fund_period_waterfall migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ creator_fund_period_waterfall migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);

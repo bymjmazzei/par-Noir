@@ -29,6 +29,7 @@ import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSe
 import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
 import { registerMusicTrackRegistryRoutes } from './server/modules/musicTrackRegistryRoutes';
 import { registerStripeMonetizationRoutes } from './server/modules/stripeMonetizationRoutes';
+import { registerCreatorFundPeriodRoutes } from './server/modules/creatorFundPeriodRoutes';
 import { hashIdentifier, safeLogger } from './utils/logger';
 import { getBearerTokenPayload } from './server/middleware/authMiddleware';
 
@@ -716,7 +717,8 @@ class ProductionServer {
           req.path.startsWith('/api/activity-ledger') ||
           req.path.startsWith('/api/connections') ||
           req.path.startsWith('/api/messages') ||
-          req.path.startsWith('/api/monetization/status')
+          req.path.startsWith('/api/monetization/status') ||
+          req.path.startsWith('/api/creator-fund/periods/recent')
         )) ||
         (req.method === 'POST' && (
           req.path === '/api/engagement/bulk-stats'
@@ -11046,6 +11048,7 @@ class ProductionServer {
     registerOwnedAssetRoutes(this.app);
     registerMusicTrackRegistryRoutes(this.app);
     registerStripeMonetizationRoutes(this.app);
+    registerCreatorFundPeriodRoutes(this.app);
   }
 
   /**

@@ -214,7 +214,52 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
               Maintenance renewals may settle from your <strong>creator-fund balance</strong> first when sufficient;
               otherwise use card checkout. Accounting follows the creator fund economics doc.
             </p>
+            <p className="text-xs text-text-secondary pt-2 border-t border-border">
+              <strong className="text-text-primary">Fund periods (no Stripe):</strong> Platform operators close rolling
+              windows via <code className="text-text-primary">POST /api/creator-fund/periods/close</code> using{' '}
+              <code className="text-text-primary">X-Cron-Secret</code> or the admin API key. OPEX lines:{' '}
+              <code className="text-text-primary">POST /api/creator-fund/opex</code> (admin). <strong>G</strong> sums{' '}
+              <code>creator_fund_revenue_events</code> in the window (including balance-first ledger rows).
+            </p>
           </div>
+
+          {(status?.recentClosedPeriods ?? []).length > 0 && (
+            <div>
+              <h4 className="font-medium text-text-primary mb-2">Recent closed fund periods</h4>
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full text-xs sm:text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-text-secondary">
+                      <th className="p-2">End (UTC)</th>
+                      <th className="p-2">G</th>
+                      <th className="p-2">E</th>
+                      <th className="p-2">R</th>
+                      <th className="p-2">25%</th>
+                      <th className="p-2">75% fund</th>
+                      <th className="p-2">90% / 10%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(status?.recentClosedPeriods ?? []).map((p) => (
+                      <tr key={p.id} className="border-b border-border/60 last:border-0">
+                        <td className="p-2 text-text-primary whitespace-nowrap">
+                          {new Date(p.periodEnd).toLocaleDateString()}
+                        </td>
+                        <td className="p-2">${(p.gCents / 100).toFixed(2)}</td>
+                        <td className="p-2">${(p.eCents / 100).toFixed(2)}</td>
+                        <td className="p-2">${(p.rCents / 100).toFixed(2)}</td>
+                        <td className="p-2">${(p.platform25Cents / 100).toFixed(2)}</td>
+                        <td className="p-2">${(p.fund75Cents / 100).toFixed(2)}</td>
+                        <td className="p-2 text-text-secondary">
+                          ${(p.bountyVerifiedCents / 100).toFixed(2)} / ${(p.bountyUnverifiedCents / 100).toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

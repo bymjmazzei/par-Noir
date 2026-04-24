@@ -6,6 +6,7 @@
 import Stripe from 'stripe';
 import { getDatabasePool } from '../utils/database';
 import { EngagementService } from './engagementService';
+import { CreatorFundPeriodService, type ClosedFundPeriodRow } from './creatorFundPeriodService';
 
 function getStripe(): Stripe | null {
   const k = process.env.STRIPE_SECRET_KEY?.trim();
@@ -47,6 +48,8 @@ export interface MonetizationStatusDto {
   connectOnboarded: boolean;
   /** UX copy only — not a legal guarantee */
   payoutCadenceNote: string;
+  /** Last closed fund windows (G/E/R from DB; no Stripe). */
+  recentClosedPeriods: ClosedFundPeriodRow[];
 }
 
 export class MonetizationService {
@@ -101,6 +104,8 @@ export class MonetizationService {
 
     const eligibleForFundAccrual = verified && maintenanceActive;
 
+    const recentClosedPeriods = await CreatorFundPeriodService.listRecentClosed(4);
+
     return {
       verified,
       maintenanceActive,
@@ -112,7 +117,8 @@ export class MonetizationService {
       stripeCustomerId: row?.stripe_customer_id ?? null,
       connectOnboarded,
       payoutCadenceNote:
-        'Payouts are payee-initiated on typical schedule 1st and 15th Eastern; 45-day hold, $10 minimum, US-only Connect v1 — see creator fund policy.'
+        'Payouts are payee-initiated on typical schedule 1st and 15th Eastern; 45-day hold, $10 minimum, US-only Connect v1 — see creator fund policy.',
+      recentClosedPeriods
     };
   }
 

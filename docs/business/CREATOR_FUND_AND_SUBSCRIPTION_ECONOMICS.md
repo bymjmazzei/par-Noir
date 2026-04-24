@@ -1,6 +1,6 @@
 # Creator fund and subscription economics
 
-**Status:** Policy source of truth (principles and formulas). **Implementation** (ledger, webhooks, entitlements) is not yet wired in production; see [Relationship to codebase](#relationship-to-codebase).
+**Status:** Policy source of truth (principles and formulas). **Implementation** status: see [Relationship to codebase](#relationship-to-codebase) (partial API + dashboard; period close and Stripe paths are optional to each other).
 
 **Audience:** Product, legal/compliance review, and engineering when building payouts and reporting.
 
@@ -340,7 +340,7 @@ Not a forecast or commitment:
 
 ## Relationship to codebase
 
-As of this document, the repo ships an **initial Stripe + dashboard Monetization tab** path (API: Checkout, Customer Portal, Connect onboarding link, signed webhooks, **`creator_fund_*`** tables, balance-first renewal endpoint); **no** production-complete **`G` → `E` → `R` allocator**, **no** signed **KMS period** blobs, and **no** payee-initiated **Connect payout** execution—configure Stripe secrets and Price ids in the deployment environment, then run counsel/CPA review before treating numbers as production-official. Verification payment handling includes **demo-oriented** paths (e.g. dashboard `VerificationPaymentHandler` local storage). API **Coinbase** webhooks today cover **feed creation and feed subscriptions**—those remain **separate** from creator-fund **`G`** until feeds migrate to Stripe (optional future). The **licensing portal** ships **intake + track registry CRUD** ([`apps/licensing-portal`](../../apps/licensing-portal)); **post→track** attach and **fund ledger** reads (**C/D**) are **not** built yet.
+As of this document, the repo ships a **dashboard Monetization tab**, **Stripe** paths when keys are set (Checkout, Customer Portal, Connect onboarding link, signed webhooks, balance-first renewal), **`creator_fund_*`** tables, and a **DB-only rolling period close** (`POST /api/creator-fund/periods/close` with `X-Cron-Secret` or admin key) that computes **`G`** from `creator_fund_revenue_events`, **`E`** from `creator_fund_opex_events`, **`R`**, **25/75**, and **90/10 bounty split of the fund slice**—**no** Stripe call required for that close. **Still missing:** engagement-weighted allocation to **individual** creators, **signed KMS period** artifacts, and **Connect payout** execution—run counsel/CPA before treating numbers as production-official. Verification payment handling includes **demo-oriented** paths (e.g. dashboard `VerificationPaymentHandler` local storage). API **Coinbase** webhooks today cover **feed creation and feed subscriptions**—those remain **separate** from creator-fund **`G`** until feeds migrate to Stripe (optional future). The **licensing portal** ships **intake + track registry CRUD** ([`apps/licensing-portal`](../../apps/licensing-portal)); **post→track** attach and **fund ledger** reads (**C/D**) are **not** built yet.
 
 Engineering should treat this file as the **policy target**: **Stripe** for **inbound** maintenance **shortfall/full** cash and **Stripe Connect** as the **only** creator-fund **payout** rail; ledger per [Ledger transparency (no blockchain)](#ledger-transparency-no-blockchain); go-live per [Production readiness checklist](#production-readiness-checklist-before-launch).
 

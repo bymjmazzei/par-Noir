@@ -1,5 +1,21 @@
 import { API_ENDPOINT } from '../../config/api';
 
+export interface FundPeriodSummary {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  status: string;
+  closedAt: string | null;
+  gCents: number;
+  eCents: number;
+  rCents: number;
+  platform25Cents: number;
+  fund75Cents: number;
+  bountyVerifiedCents: number;
+  bountyUnverifiedCents: number;
+  chainHash: string | null;
+}
+
 export interface MonetizationStatusResponse {
   verified: boolean;
   maintenanceActive: boolean;
@@ -11,6 +27,7 @@ export interface MonetizationStatusResponse {
   stripeCustomerId: string | null;
   connectOnboarded: boolean;
   payoutCadenceNote: string;
+  recentClosedPeriods: FundPeriodSummary[];
 }
 
 function authHeaders(accessToken: string): HeadersInit {
