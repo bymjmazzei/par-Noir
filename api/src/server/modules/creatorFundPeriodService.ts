@@ -17,6 +17,7 @@
 import crypto from 'crypto';
 import type { PoolClient } from 'pg';
 import { getDatabasePool } from '../utils/database';
+import { musicPoolWeightsForRow } from './musicRegistrySplits';
 
 const DEFAULT_WINDOW_DAYS = 30;
 
@@ -146,12 +147,14 @@ async function allocateCreatorBountyShares(
        LEFT JOIN aggregator_collections c ON c.file_id = p.file_id
      ),
      with_track AS (
-       SELECT w.*, pu.registry_track_id, tr.owner_pn_identifier AS track_owner_pn, tr.status AS track_status
+       SELECT w.*, pu.registry_track_id, tr.owner_pn_identifier AS track_owner_pn, tr.status AS track_status,
+              tr.splits_metadata AS splits_metadata
        FROM with_owner w
        LEFT JOIN music_registry_post_uses pu ON pu.post_file_id = w.file_id
        LEFT JOIN music_registry_tracks tr ON tr.id = pu.registry_track_id
      )
      SELECT wt.file_id, wt.actor_id, wt.cnt, wt.owner_pn, wt.registry_track_id, wt.track_owner_pn, wt.track_status,
+       wt.splits_metadata,
        (wt.registry_track_id IS NOT NULL AND wt.track_status = 'active' AND wt.track_owner_pn IS NOT NULL
          AND LENGTH(TRIM(wt.track_owner_pn)) > 0) AS uses_library_music,
        EXISTS (
@@ -173,6 +176,7 @@ async function allocateCreatorBountyShares(
     const usesMusic = Boolean(row.uses_library_music);
     const actorVerified = Boolean(row.actor_verified);
     const trackOwnerPn = String(row.track_owner_pn ?? '').trim();
+    const splitsMeta = row.splits_metadata;
     const creatorMult = usesMusic ? 75 : 100;
     const musicMult = usesMusic && trackOwnerPn ? 25 : 0;
     const cW = cnt * creatorMult;
@@ -180,7 +184,11 @@ async function allocateCreatorBountyShares(
     const target = actorVerified ? verifiedWeights : unverifiedWeights;
     addWeight(target, `c:${ownerPn}`, cW);
     if (mW > 0) {
-      addWeight(target, `m:${trackOwnerPn}`, mW);
+      const shares = musicPoolWeightsForRow(splitsMeta, trackOwnerPn, mW);
+      for (const { pn, weight } of shares) {
+        const p = pn.trim();
+        if (p) addWeight(target, `m:${p}`, weight);
+      }
     }
   }
 

@@ -294,6 +294,17 @@ async function processFileUpload(
     }, accessToken);
   }
 
+  if (file.type.startsWith('audio/') && task.metadata?.registryTrackId?.trim()) {
+    try {
+      const { attachPostToRegistryTrack } = await import('./musicRegistryApi');
+      await attachPostToRegistryTrack(fileId, task.metadata.registryTrackId.trim());
+    } catch (regErr) {
+      if (import.meta.env.DEV) {
+        console.warn('[UploadProcessor] Licensed track attach failed after upload:', regErr);
+      }
+    }
+  }
+
   uploadQueueService.setTaskResult(task.id, {
     fileId,
     thumbnailFileId,

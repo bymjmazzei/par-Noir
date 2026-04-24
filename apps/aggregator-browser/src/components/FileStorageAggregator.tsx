@@ -22,6 +22,7 @@ import { ThumbnailImage } from './file/ThumbnailImage';
 import { useDriveAccounts } from '../hooks/useDriveAccounts';
 import type { DriveAccount, DriveFile } from './storage/storageTypes';
 import { API_ENDPOINT } from '../config/api';
+import { fetchMusicRegistryCatalog, type CatalogTrack } from '../services/musicRegistryApi';
 import { Capacitor } from '@capacitor/core';
 import { pickImageFromNative } from '../hooks/useNativeFilePicker';
 
@@ -561,10 +562,32 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [pendingCollectionData, setPendingCollectionData] = useState<{ accountId: string; fileIds: string[] } | null>(null);
   const [showUnencryptedAlert, setShowUnencryptedAlert] = useState(false);
   const [pendingUnencryptedUpload, setPendingUnencryptedUpload] = useState<{ file: File; accountId: string; limitMb: number } | null>(null);
+  const [musicCatalog, setMusicCatalog] = useState<CatalogTrack[]>([]);
+  const [nextAudioRegistryTrackId, setNextAudioRegistryTrackId] = useState('');
   const fileInputRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
   const addButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
+
+  useEffect(() => {
+    if (!authenticatedUser?.id || !userState.isUnlocked) {
+      setMusicCatalog([]);
+      setNextAudioRegistryTrackId('');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await fetchMusicRegistryCatalog();
+        if (!cancelled) setMusicCatalog(list);
+      } catch {
+        if (!cancelled) setMusicCatalog([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticatedUser?.id, userState.isUnlocked]);
 
   // Subscribe to upload queue for optimistic UI updates
   useEffect(() => {
@@ -2710,6 +2733,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const addUploadTask = (file: File, accountId: string, encrypt: boolean) => {
     const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     const taskType = isPDF ? 'pdf' : 'file';
+    const isAudio = file.type.startsWith('audio/');
+    const registryTrackId =
+      isAudio && nextAudioRegistryTrackId.trim().length > 0 ? nextAudioRegistryTrackId.trim() : undefined;
     uploadQueueService.addTask({
       type: taskType,
       file,
@@ -2722,6 +2748,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         isPublic: false,
         isNSFW: false,
         encrypt,
+        registryTrackId,
       },
       onComplete: () => {
         if (import.meta.env.DEV) console.log('✅ [Upload] File upload completed');
@@ -2856,6 +2883,29 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       {/* File List - One section per account */}
       {hasConnectedBackends && (
         <div className="space-y-6">
+          {authenticatedUser?.id && userState.isUnlocked && musicCatalog.length > 0 && (
+            <div className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-4 py-3">
+              <label className="block text-xs font-medium text-neutral-300 mb-1">
+                Licensed library track (optional)
+              </label>
+              <p className="text-[11px] text-neutral-500 mb-2 max-w-xl">
+                Applies to the next audio upload from this screen. Links the post to the registry for creator-fund
+                75/25 splits. You can change it later in Edit.
+              </p>
+              <select
+                value={nextAudioRegistryTrackId}
+                onChange={(e) => setNextAudioRegistryTrackId(e.target.value)}
+                className="w-full max-w-md rounded border border-neutral-600 bg-neutral-800 px-2 py-1.5 text-sm text-white"
+              >
+                <option value="">None</option>
+                {musicCatalog.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {(t.displayArtist ? `${t.displayArtist} — ` : '') + t.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {driveAccounts.map((account, index) => {
             const accountFiles = filesByAccount.get(account.accountId) || [];
 

@@ -114,6 +114,13 @@ export function TrackLibraryPanel() {
           Registered tracks power the licensed library and creator-fund music pool. Rows are scoped to your
           signed-in par Noir identity.
         </p>
+        <p className="text-neutral-500 text-xs mt-2 max-w-2xl">
+          Optional multiparty splits (PATCH track with JSON):{' '}
+          <code className="text-neutral-300">splits_metadata</code> may include{' '}
+          <code className="text-neutral-300">payees</code>: array of{' '}
+          <code className="text-neutral-300">&#123; &quot;pn_identifier&quot;: &quot;…&quot;, &quot;basis_points&quot;: 6000 &#125;</code>{' '}
+          summing to 10_000 (100%). Omitted or invalid → 100% to the track owner for the music-pool share.
+        </p>
       </div>
 
       {loadError && (

@@ -18,6 +18,8 @@ export interface UploadMetadata {
   isNSFW?: boolean;
   /** When false, upload raw file without encryption (for video/audio over tier limit) */
   encrypt?: boolean;
+  /** Active `music_registry_tracks.id` to attach after audio upload (creator-fund 75/25). */
+  registryTrackId?: string;
   [key: string]: any;
 }
 
