@@ -69,6 +69,8 @@ This comprehensive upgrade introduces four major features to the par Noir ecosys
 - **Feed Subscription**: $5/month or $50/year - Internal curation service
 - **API Activation**: Free (after verification) - External hosting capability
 
+**Creator fund and subscription economics** (waterfall, bounty weighting, eligibility, OPEX philosophy): see [Creator fund and subscription economics](./docs/business/CREATOR_FUND_AND_SUBSCRIPTION_ECONOMICS.md).
+
 ---
 
 ## 🏗️ Architecture Overview
@@ -938,6 +940,7 @@ VITE_SUBDOMAIN_DOMAIN=parnoir.com
 
 - [Gemini API Documentation](https://ai.google.dev/docs)
 - [Veriff Integration Guide](./apps/id-dashboard/docs/IDENTITY_VERIFICATION.md)
+- [Creator fund and subscription economics](./docs/business/CREATOR_FUND_AND_SUBSCRIPTION_ECONOMICS.md)
 - [API Reference](./docs/api/API_REFERENCE.md)
 - [Architecture Overview](./docs/architecture/overview.md)
 
