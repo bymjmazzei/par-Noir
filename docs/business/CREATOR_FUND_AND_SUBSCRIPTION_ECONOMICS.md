@@ -131,7 +131,24 @@ Without it, “this post used licensed track X” is **not** enforceable at scal
 
 **Policy:** Anyone receiving **creator fund** disbursements (**creator bounty** or **music pool**) must be **identity-verified** (third-party, with **re-verification** on expiry or material ID change) and complete **Stripe Connect** (**US-only** v1—see [Payouts](#payouts-and-tax-compliance-stripe-connect)). **Monetization maintenance** is billed to the **same identity that accrues** the line item (**individual** or **feed pN** business). **Enrollment** is **contract + licensing portal** (authenticated catalog sync on the roadmap).
 
-**Product surface:** The **licensing portal** ([`apps/licensing-portal`](../../apps/licensing-portal)) is **today** a **rights-holder intake form** (mailto inquiry). **Roadmap:** authenticated flows to **register/sync** the **registry**—**no** second payout vendor; **Stripe Connect** only.
+**Product surface:** The **licensing portal** ([`apps/licensing-portal`](../../apps/licensing-portal)) is **today** a **rights-holder intake form** (mailto inquiry). **Next:** build out **pN sign-in** and **track library** management per [Track registry and licensing portal (build plan)](#track-registry-and-licensing-portal-build-plan)—**no** second payout vendor; **Stripe Connect** only.
+
+### Track registry and licensing portal (build plan)
+
+**Goal:** Rights holders **connect their par Noir identity** (same **OAuth** pattern as other first-party web apps), then **add, edit, and retire** rows in **their** licensed **track library** so the platform has an authoritative **registry** for **75/25** and music-pool payouts (see [What is the track registry](#what-is-the-track-registry)). **Intake mailto** can remain for **cold** partner inquiries; **catalog** is for **authenticated** identities only.
+
+**Principles:** **API-only** persistence (licensing portal does **not** talk to Google for catalog); **Bearer**-authenticated routes; **owner** of each track row is the **token’s `pn_identifier`** (**individual** or **feed pN** when that identity completes OAuth). **No** sensitive PII in logs.
+
+| Phase | Deliverable |
+|-------|-------------|
+| **A — Identity + API contract** | Register **`licensing-portal`** OAuth **client** (redirect URIs for `licensing.parnoir.com` / Firebase hosting + local dev). **REST** namespace e.g. `/api/v1/music/registry/tracks` (**list/create/update**, soft-delete via **status**). **PostgreSQL** table(s) for **registry rows** (stable id, `owner_pn_identifier`, title, display artist, optional ISRC, status, splits metadata JSON, timestamps). Wire **migration** + **pool** startup like other API modules. |
+| **B — Licensing portal UI** | [`apps/licensing-portal`](../../apps/licensing-portal): **`@par-noir/oauth-ui`** **Unlock** flow, **`VITE_API_ENDPOINT`** + **`VITE_OAUTH_CLIENT_ID`** (prod build must set endpoint per [how-to-build](../../.cursor/rules/how-to-build.mdc)). **Track library** screen: list tracks, **add** row, **edit**, set **active/draft/retired**. Optional: link to **open** intake form in footer. |
+| **C — Library / feed presentation** | **Paid feed** or catalog UI may **surface** tracks for discovery (**opt-in** visibility per policy); **canonical attach** path for posts still **references registry track id** (product choice: **aggregator-browser** composer vs dashboard—**browser-only** presentation stays in browser). |
+| **D — Payouts + enforcement** | Ledger / fund allocator **reads** registry for **music pool** splits; **on-content proof** (post → track id) required before **75/25** applies (**ties** to monetization / fund periods work). |
+
+**Dependencies:** Phase **A/B** can ship **before** full creator-fund Stripe work; Phase **D** needs **fund ledger** milestones from the **dashboard monetization** program. **Order:** **A → B** in parallel with early monetization schema is fine; **C/D** after registry data exists.
+
+**Engineering checklist (non-code here):** unit tests for authz (cannot mutate another owner’s rows); idempotent creates if needed; rate limits on write routes.
 
 ---
 
@@ -306,7 +323,7 @@ Use this as a **go-live gate** alongside engineering QA—not legal advice.
 | **Identity / subscription** | **Server-side** entitlement for “verified + subscribed”; **remove demo-only** client paths for any payment that gates eligibility. |
 | **Accounting** | **`G`** **net** of maintenance Stripe fees; **`E`** excludes those same fees; **balance-first** counts toward **`G`** per **Symbols**; CPA confirms **1099** posture. |
 | **Periods** | **30-day** rolling accrual, **`America/New_York`** for boundaries and finalization. |
-| **Music** | **Track registry** shipped for v1 (may be a **separate engineering plan**); **on-content** track proof for **75/25**. |
+| **Music** | **Track registry** + **licensing portal** phases **A–B** minimum for v1 catalog writes; **on-content** track proof (**C/D**) per [build plan](#track-registry-and-licensing-portal-build-plan). |
 | **Legal** | Counsel sign-off on **Connect** agreement, **payout classification**, **US-only** launch posture, **escheatment** when law applies ([Dormancy and escheatment](#dormancy-and-escheatment)). |
 | **Observability** | Alerts on webhook failures, payout failures, ledger imbalance; **no** sensitive PII in logs. |
 
@@ -345,7 +362,7 @@ Enough to classify flows: **entity type**, **who** sells maintenance (**MoR** qu
 
 1. **Stripe Connect mode:** **Express vs Standard vs Custom** for **payee-initiated** payouts—choose when Stripe is configured (**US-only** v1).
 2. **Cloud KMS details:** **Hyperscaler** and **region** (e.g. AWS KMS vs GCP Cloud KMS; same region as prod data where practical), plus **rotation** cadence for the period-signing key—or **defer** published signed period artifacts until after the v1 ledger.
-3. **Track registry build plan:** **Separate** engineering plan for **registry DB + licensing portal sync + post→track references**—this doc defines **what** the registry is (see [What is the track registry](#what-is-the-track-registry)); engineering plans **how** to build it.
+3. **Track registry execution:** Implement phases **A–D** in [Track registry and licensing portal (build plan)](#track-registry-and-licensing-portal-build-plan); Cursor **dashboard monetization** plan links the same program for scheduling.
 
 ---
 

@@ -69,7 +69,7 @@ This comprehensive upgrade introduces four major features to the par Noir ecosys
 - **Feed Subscription**: $5/month or $50/year - Internal curation service
 - **API Activation**: Free (after verification) - External hosting capability
 
-**Creator fund and subscription economics** (waterfall, bounty weighting, eligibility, OPEX philosophy): see [Creator fund and subscription economics](./docs/business/CREATOR_FUND_AND_SUBSCRIPTION_ECONOMICS.md).
+**Creator fund and subscription economics** (waterfall, bounty weighting, eligibility, OPEX philosophy): see [Creator fund and subscription economics](./docs/business/CREATOR_FUND_AND_SUBSCRIPTION_ECONOMICS.md). **Track registry + licensing portal** (pN sign-in, track library, API phases A–D): same doc, section *Track registry and licensing portal (build plan)*; Cursor plan *dashboard monetization* lists linked engineering todos.
 
 ---
 
