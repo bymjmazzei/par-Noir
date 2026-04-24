@@ -103,7 +103,8 @@ Include in **`E`** (subject to final finance/legal list):
 - API hosting, database, egress (e.g. Railway-class compute).
 - Static hosting / CDN (e.g. Firebase Hosting).
 - Identity verification vendor (e.g. Veriff)—**per-check** and/or minimum commit.
-- Payment service provider fees (% of volume).
+- **Incoming** payment service provider fees (% of volume), e.g. subscription collection (Coinbase Commerce).
+- **Outgoing** creator **payout partner** fees (per [Payouts and tax compliance (third-party)](#payouts-and-tax-compliance-third-party)), if billed separately from subscription PSP.
 - Trust, safety, and support directly tied to operating the network.
 - Compliance and security tooling required to run production.
 
@@ -152,6 +153,35 @@ par Noir’s guiding architecture is **crypto without blockchain**: decentralize
 
 **Trust boundary:** This model gives **“the operator cannot silently rewrite history without detection”** to anyone who verifies signatures and the hash chain. It does **not** remove the need to **trust the platform** for **which events were admitted** before sealing a period—that is addressed by **operations**, **identity economics**, and **abuse detection**, not by a chain.
 
+**Interaction with payouts:** The internal ledger records **accrual**, **allocation**, and **payout batch instructions** (amounts, payee references, batch ids). **Movement of money to creators’ bank accounts or wallets** and **tax information collection** are performed by the **third-party payout provider** below—not by re-implementing global withholding and IRS form logic in par Noir.
+
+---
+
+## Payouts and tax compliance (third-party)
+
+**Policy:** par Noir uses a **qualified third-party payout / tax partner** (e.g. marketplace payout or Connect-style products—**vendor TBD**) to execute **creator disbursements** and to handle **creator tax information** and **regulatory workflows** the partner supports (for example **W‑9** / **W‑8BEN** / **W‑8BEN‑E** collection, **KYC** for payouts, **withholding** and **information reporting** such as **1099** / **1042‑S** where applicable, and **sanctions screening**).
+
+**Rationale**
+
+- A **US-based** company paying **US and international** creators faces **material tax and withholding complexity** (including **Chapter 3** rules for payees outside the US). Building and maintaining that stack in-house is **high risk** and **slow** relative to using a **specialized provider** under **legal and finance oversight**.
+- **Identity verification** (e.g. Veriff) for **trust** is **complementary** but **not a substitute** for **taxpayer identification and certification** flows the payout vendor provides for **IRS and cross-border** compliance.
+
+**Division of responsibility (target)**
+
+| Area | par Noir (product + API + ledger) | Third-party payout partner |
+|------|-----------------------------------|----------------------------|
+| Who earned what | Accrual, period close, **90/10** bounty math, music splits, eligibility rules | Executes transfer per **approved batch** |
+| User trust / identity gate | Verification + subscription policy aligned with this doc | Payee onboarding, **bank/tax identity** for money movement |
+| Tax forms & withholding | **Does not** replace vendor; may **embed** or **link** vendor UI / APIs | **W‑9 / W‑8** flows, withholding, **1099 / 1042‑S** as product supports |
+| Ledger of record | Append-only **accrual and payout status** (`payout_queued`, `payout_settled`, external batch id) | Their ledger for settlement rails |
+
+**Operational rules (product)**
+
+- **Minimum payout threshold**, **hold periods**, and **clawback / chargeback** policy should be documented alongside the vendor’s rules.
+- **Creators** complete payout onboarding **before** first disbursement; **no raw tax IDs or full bank details** in par Noir logs (follow existing **no sensitive data in plain text** rules).
+
+**Disclaimer:** This section is **policy intent**, not tax or legal advice. **Vendor selection**, **merchant-of-record** treatment, and **classification** of payments (e.g. nonemployee compensation vs other categories) require **qualified counsel and CPA** review.
+
 ---
 
 ## Reference scenario (illustrative only)
@@ -167,7 +197,7 @@ Not a forecast or commitment:
 
 As of this document, the repo has **no** production-complete **creator fund ledger**, no automated **G → E → R → 25/75** accounting, and verification payment handling includes **demo-oriented** paths (e.g. dashboard `VerificationPaymentHandler` local storage). API Coinbase webhooks focus on **feed creation and feed subscriptions** (`api` webhook handler), not the full economics above.
 
-Engineering should treat this file as the **policy target** and implement **ledger, metadata, and privacy** in dedicated modules when prioritized. Ledger design should follow [Ledger transparency (no blockchain)](#ledger-transparency-no-blockchain).
+Engineering should treat this file as the **policy target** and implement **ledger, metadata, and privacy** in dedicated modules when prioritized. Ledger design should follow [Ledger transparency (no blockchain)](#ledger-transparency-no-blockchain). **Payout execution and tax collection** should follow [Payouts and tax compliance (third-party)](#payouts-and-tax-compliance-third-party)—no in-house substitute for the vendor’s regulated flows.
 
 ---
 
@@ -179,6 +209,7 @@ Engineering should treat this file as the **policy target** and implement **ledg
 4. **`E` transparency:** Line items **in** vs **out** of creator-facing OPEX reporting (e.g. internal dev tools).
 5. **PSP treatment:** Whether **`G`** is recorded **gross** with PSP fees inside **`E`**, or **net** at collection—must be consistent in books and dashboards.
 6. **Key management:** Which **KMS/HSM** and key rotation policy backs **period signatures** and optional timestamping.
+7. **Payout vendor:** Which third-party provider (e.g. Stripe Connect, PayPal, Tipalti-class, or other), **contractual roles** (merchant of record vs pass-through), and **jurisdictions** supported at launch vs later.
 
 ---
 
