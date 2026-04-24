@@ -981,6 +981,23 @@ export async function initializeDatabase(): Promise<void> {
       );
     }
 
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const allocPath = path.join(
+        __dirname,
+        '../../migrations/add_creator_fund_allocations_payouts_attestation_post_uses.sql'
+      );
+      const allocSql = fs.readFileSync(allocPath, 'utf-8');
+      await db.query(allocSql);
+      console.log('✅ creator_fund_allocations_payouts_attestation_post_uses migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ creator_fund_allocations_payouts_attestation_post_uses migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);

@@ -5,9 +5,14 @@
  * Window boundaries are **contiguous UTC** slices (`CREATOR_FUND_PERIOD_DAYS`, default 30).
  * Policy text references America/New_York for payouts and ops cadence — aligning period cutovers
  * to Eastern is a later refinement (allocator cron can switch to TZ-aware boundaries).
+ *
+ * After close: bounty pools split to **content owners** (aggregator pn_identifier) weighted by
+ * like/comment/share/save engagement on their public files in the window (verified_identities for bucket).
+ * Optional `CREATOR_FUND_PERIOD_ATTESTATION_SECRET`: stores HMAC-SHA256(chain_hash) on the closed row.
  */
 
 import crypto from 'crypto';
+import type { PoolClient } from 'pg';
 import { getDatabasePool } from '../utils/database';
 
 const DEFAULT_WINDOW_DAYS = 30;
@@ -33,6 +38,8 @@ export interface ClosedFundPeriodRow {
   bountyVerifiedCents: number;
   bountyUnverifiedCents: number;
   chainHash: string | null;
+  /** Present when CREATOR_FUND_PERIOD_ATTESTATION_SECRET is set at close time. */
+  periodAttestationHmac: string | null;
 }
 
 function rowToDto(r: Record<string, unknown>): ClosedFundPeriodRow {
@@ -49,7 +56,9 @@ function rowToDto(r: Record<string, unknown>): ClosedFundPeriodRow {
     fund75Cents: Number(r.fund_75_cents ?? 0),
     bountyVerifiedCents: Number(r.bounty_verified_cents ?? 0),
     bountyUnverifiedCents: Number(r.bounty_unverified_cents ?? 0),
-    chainHash: r.chain_hash != null ? String(r.chain_hash) : null
+    chainHash: r.chain_hash != null ? String(r.chain_hash) : null,
+    periodAttestationHmac:
+      r.period_attestation_hmac != null ? String(r.period_attestation_hmac) : null
   };
 }
 
@@ -57,6 +66,119 @@ function sha256Hex(parts: string[]): string {
   const h = crypto.createHash('sha256');
   for (const p of parts) h.update(p, 'utf8');
   return h.digest('hex');
+}
+
+function periodAttestationHmac(chainHashHex: string): string | null {
+  const secret = process.env.CREATOR_FUND_PERIOD_ATTESTATION_SECRET?.trim();
+  if (!secret) return null;
+  return crypto.createHmac('sha256', secret).update(chainHashHex, 'utf8').digest('hex');
+}
+
+function allocateProportional(
+  poolCents: number,
+  recipients: Array<{ id: string; weight: number }>
+): Map<string, number> {
+  const out = new Map<string, number>();
+  const pool = Math.floor(Number(poolCents));
+  if (pool <= 0 || recipients.length === 0) return out;
+  const total = recipients.reduce((a, r) => a + r.weight, 0);
+  if (!Number.isFinite(total) || total <= 0) return out;
+  const sorted = [...recipients].sort((a, b) => a.id.localeCompare(b.id));
+  let allocated = 0;
+  const shares = sorted.map((r) => ({
+    id: r.id,
+    share: Math.floor((pool * r.weight) / total)
+  }));
+  for (const s of shares) {
+    out.set(s.id, s.share);
+    allocated += s.share;
+  }
+  let rem = pool - allocated;
+  let i = 0;
+  while (rem > 0) {
+    const id = sorted[i % sorted.length].id;
+    out.set(id, (out.get(id) || 0) + 1);
+    rem--;
+    i++;
+  }
+  return out;
+}
+
+/**
+ * Distributes bounty verified / unverified pools to creators (content owners) by engagement weight.
+ */
+async function allocateCreatorBountyShares(
+  client: PoolClient,
+  periodId: string,
+  periodStartIso: string,
+  periodEndIso: string,
+  bountyVerifiedCents: number,
+  bountyUnverifiedCents: number
+): Promise<void> {
+  const aggRes = await client.query(
+    `WITH per_file AS (
+       SELECT e.file_id, COUNT(*)::bigint AS cnt
+       FROM engagement e
+       WHERE e.created_at >= $1::timestamptz AND e.created_at < $2::timestamptz
+         AND e.type IN ('like', 'comment', 'share', 'save')
+       GROUP BY e.file_id
+     ),
+     owners AS (
+       SELECT pf.file_id, pf.cnt, COALESCE(m.pn_identifier, t.pn_identifier, c.pn_identifier) AS owner_pn
+       FROM per_file pf
+       LEFT JOIN aggregator_media m ON m.file_id = pf.file_id
+       LEFT JOIN aggregator_thoughts t ON t.file_id = pf.file_id
+       LEFT JOIN aggregator_collections c ON c.file_id = pf.file_id
+     )
+     SELECT o.owner_pn AS recipient_identity_id,
+            SUM(o.cnt)::bigint AS units,
+            BOOL_OR(vi.identity_id IS NOT NULL) AS is_verified
+     FROM owners o
+     LEFT JOIN verified_identities vi ON vi.identity_id = o.owner_pn AND vi.is_active = TRUE
+     WHERE o.owner_pn IS NOT NULL AND LENGTH(TRIM(o.owner_pn)) > 0
+     GROUP BY o.owner_pn`,
+    [periodStartIso, periodEndIso]
+  );
+
+  const verifiedRecipients: Array<{ id: string; weight: number }> = [];
+  const unverifiedRecipients: Array<{ id: string; weight: number }> = [];
+  for (const row of aggRes.rows) {
+    const id = String(row.recipient_identity_id).trim();
+    const units = Number(row.units ?? 0);
+    if (!id || !Number.isFinite(units) || units <= 0) continue;
+    if (row.is_verified === true) {
+      verifiedRecipients.push({ id, weight: units });
+    } else {
+      unverifiedRecipients.push({ id, weight: units });
+    }
+  }
+
+  const vMap = allocateProportional(bountyVerifiedCents, verifiedRecipients);
+  const uMap = allocateProportional(bountyUnverifiedCents, unverifiedRecipients);
+
+  const weightByIdVerified = new Map(verifiedRecipients.map((r) => [r.id, r.weight]));
+  const weightByIdUnverified = new Map(unverifiedRecipients.map((r) => [r.id, r.weight]));
+
+  for (const [recipientId, cents] of vMap) {
+    if (cents <= 0) continue;
+    const w = weightByIdVerified.get(recipientId) ?? 0;
+    await client.query(
+      `INSERT INTO creator_fund_period_creator_allocations (
+         period_id, recipient_identity_id, bucket, engagement_units, allocation_cents
+       ) VALUES ($1::uuid, $2, 'verified', $3, $4)`,
+      [periodId, recipientId, w, cents]
+    );
+  }
+  for (const [recipientId, cents] of uMap) {
+    if (cents <= 0) continue;
+    const w = weightByIdUnverified.get(recipientId) ?? 0;
+    await client.query(
+      `INSERT INTO creator_fund_period_creator_allocations (
+         period_id, recipient_identity_id, bucket, engagement_units, allocation_cents
+       ) VALUES ($1::uuid, $2, 'unverified', $3, $4)`,
+      [periodId, recipientId, w, cents]
+    );
+  }
 }
 
 export class CreatorFundPeriodService {
@@ -161,14 +283,15 @@ export class CreatorFundPeriodService {
         bountyUnverifiedCents
       });
       const chainHash = sha256Hex([chainPrev, canonical]);
+      const attestationHmac = periodAttestationHmac(chainHash);
 
       const ins = await client.query(
         `INSERT INTO creator_fund_periods (
            period_start, period_end, status, closed_at,
            g_cents, e_cents, r_cents, platform_25_cents, fund_75_cents,
            bounty_verified_cents, bounty_unverified_cents,
-           chain_prev_hash, chain_hash
-         ) VALUES ($1, $2, 'closed', NOW(), $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           chain_prev_hash, chain_hash, period_attestation_hmac
+         ) VALUES ($1, $2, 'closed', NOW(), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING *`,
         [
           periodStart.toISOString(),
@@ -181,8 +304,19 @@ export class CreatorFundPeriodService {
           bountyVerifiedCents,
           bountyUnverifiedCents,
           chainPrev || null,
-          chainHash
+          chainHash,
+          attestationHmac
         ]
+      );
+
+      const periodId = String(ins.rows[0].id);
+      await allocateCreatorBountyShares(
+        client,
+        periodId,
+        periodStart.toISOString(),
+        periodEnd.toISOString(),
+        bountyVerifiedCents,
+        bountyUnverifiedCents
       );
 
       await client.query('COMMIT');

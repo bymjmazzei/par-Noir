@@ -182,4 +182,49 @@ export class MusicTrackRegistryService {
     if (res.rows.length === 0) return null;
     return rowToTrack(res.rows[0]);
   }
+
+  static async getActiveTrackById(trackId: string): Promise<MusicRegistryTrackRow | null> {
+    const res = await this.pool().query(
+      `SELECT * FROM music_registry_tracks WHERE id = $1::uuid AND status = 'active'`,
+      [trackId]
+    );
+    if (res.rows.length === 0) return null;
+    return rowToTrack(res.rows[0]);
+  }
+
+  /**
+   * Links a public aggregator post (file_id) to an active registry track for fund / royalty attribution.
+   * Caller must own the post (aggregator row pn_identifier matches claimant).
+   */
+  static async attachPublicPostToTrack(
+    claimantPn: string,
+    postFileId: string,
+    registryTrackId: string
+  ): Promise<{ postFileId: string; registryTrackId: string }> {
+    const fileId = postFileId.trim();
+    if (!fileId) {
+      throw new Error('post_file_id_required');
+    }
+    const track = await this.getActiveTrackById(registryTrackId);
+    if (!track) {
+      throw new Error('track_not_found_or_inactive');
+    }
+    const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
+    const agg = AggregatorMetadataServiceDB.getInstance();
+    const meta = await agg.getFileMetadata(fileId);
+    const owner = meta?.pnIdentifier?.trim();
+    if (!owner || owner !== claimantPn.trim()) {
+      throw new Error('not_post_owner');
+    }
+    await this.pool().query(
+      `INSERT INTO music_registry_post_uses (post_file_id, registry_track_id, claimant_pn_identifier, updated_at)
+       VALUES ($1, $2::uuid, $3, NOW())
+       ON CONFLICT (post_file_id) DO UPDATE SET
+         registry_track_id = EXCLUDED.registry_track_id,
+         claimant_pn_identifier = EXCLUDED.claimant_pn_identifier,
+         updated_at = NOW()`,
+      [fileId, registryTrackId, claimantPn.trim()]
+    );
+    return { postFileId: fileId, registryTrackId };
+  }
 }

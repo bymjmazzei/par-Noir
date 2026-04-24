@@ -7,10 +7,13 @@ export interface MonetizationTabProps {
   showSuccessMessage: (message: string) => void;
 }
 
+const MIN_PAYOUT_CENTS = 1000;
+
 export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMessage }: MonetizationTabProps) {
   const [status, setStatus] = useState<MonetizationStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [payoutAmountUsd, setPayoutAmountUsd] = useState('10');
 
   const returnBase = typeof window !== 'undefined' ? window.location.origin : 'https://pn.parnoir.com';
 
@@ -100,6 +103,30 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
     }
   };
 
+  const onRequestPayout = async () => {
+    if (!accessToken) return;
+    const parsed = parseFloat(payoutAmountUsd);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      showErrorMessage('Enter a valid payout amount in USD.');
+      return;
+    }
+    const amountCents = Math.round(parsed * 100);
+    if (amountCents < MIN_PAYOUT_CENTS) {
+      showErrorMessage('Minimum payout is 10.00 USD.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const out = await MonetizationService.requestCreatorFundPayout(accessToken, amountCents);
+      showSuccessMessage(`Transfer initiated (${(out.amountCents / 100).toFixed(2)} USD).`);
+      await load();
+    } catch (e) {
+      showErrorMessage(e instanceof Error ? e.message : 'Payout request failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-12">
@@ -152,6 +179,35 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
               <div className="text-xs text-text-secondary uppercase tracking-wide">Eligible for fund accrual</div>
               <div className="mt-1 font-medium">{status?.eligibleForFundAccrual ? 'Yes' : 'No'}</div>
             </div>
+            <div className="rounded-lg border border-border bg-secondary p-4 sm:col-span-2">
+              <div className="text-xs text-text-secondary uppercase tracking-wide">Creator bounty (after policy hold)</div>
+              <div className="mt-1 grid gap-2 sm:grid-cols-3 text-sm">
+                <div>
+                  <span className="text-text-secondary">Available to pay out</span>
+                  <div className="font-medium text-text-primary">
+                    {status != null
+                      ? `${((status.creatorFundPayoutAvailableCents ?? 0) / 100).toFixed(2)} USD`
+                      : '—'}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-text-secondary">Still in hold</span>
+                  <div className="font-medium text-text-primary">
+                    {status != null
+                      ? `${((status.creatorFundPayoutInHoldCents ?? 0) / 100).toFixed(2)} USD`
+                      : '—'}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-text-secondary">Paid out (transfers)</span>
+                  <div className="font-medium text-text-primary">
+                    {status != null
+                      ? `${((status.creatorFundPaidOutCents ?? 0) / 100).toFixed(2)} USD`
+                      : '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {!status?.stripeConfigured && (
@@ -203,6 +259,29 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
               >
                 {status.connectOnboarded ? 'Refresh Connect status' : 'Stripe Connect onboarding'}
               </button>
+            )}
+            {status?.stripeConfigured && status.connectOnboarded && (status.creatorFundPayoutAvailableCents ?? 0) >= MIN_PAYOUT_CENTS && (
+              <div className="flex flex-wrap items-end gap-2 w-full sm:w-auto">
+                <label className="flex flex-col text-xs text-text-secondary">
+                  Payout (USD)
+                  <input
+                    type="number"
+                    min={MIN_PAYOUT_CENTS / 100}
+                    step="0.01"
+                    value={payoutAmountUsd}
+                    onChange={(ev) => setPayoutAmountUsd(ev.target.value)}
+                    className="mt-1 w-32 rounded border border-border bg-secondary px-2 py-1 text-sm text-text-primary"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void onRequestPayout()}
+                  className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                >
+                  Request bounty payout
+                </button>
+              </div>
             )}
           </div>
 

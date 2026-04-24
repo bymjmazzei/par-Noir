@@ -14,6 +14,7 @@ export interface FundPeriodSummary {
   bountyVerifiedCents: number;
   bountyUnverifiedCents: number;
   chainHash: string | null;
+  periodAttestationHmac?: string | null;
 }
 
 export interface MonetizationStatusResponse {
@@ -28,6 +29,9 @@ export interface MonetizationStatusResponse {
   connectOnboarded: boolean;
   payoutCadenceNote: string;
   recentClosedPeriods: FundPeriodSummary[];
+  creatorFundPayoutAvailableCents?: number;
+  creatorFundPayoutInHoldCents?: number;
+  creatorFundPaidOutCents?: number;
 }
 
 function authHeaders(accessToken: string): HeadersInit {
@@ -127,5 +131,28 @@ export class MonetizationService {
       return { url: '', alreadyOnboarded: true };
     }
     return { url: data.url || '', alreadyOnboarded: false };
+  }
+
+  static async requestCreatorFundPayout(
+    accessToken: string,
+    amountCents: number
+  ): Promise<{ transferId: string; amountCents: number }> {
+    const res = await fetch(`${API_ENDPOINT}/api/monetization/request-payout`, {
+      method: 'POST',
+      headers: authHeaders(accessToken),
+      body: JSON.stringify({ amount_cents: amountCents })
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      transferId?: string;
+      amountCents?: number;
+      error_description?: string;
+    };
+    if (!res.ok) {
+      throw new Error(data.error_description || `Payout failed (${res.status})`);
+    }
+    return {
+      transferId: String(data.transferId ?? ''),
+      amountCents: Number(data.amountCents ?? amountCents)
+    };
   }
 }

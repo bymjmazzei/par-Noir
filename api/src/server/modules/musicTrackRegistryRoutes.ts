@@ -37,6 +37,48 @@ function parseStatus(q: unknown): MusicTrackStatus | undefined {
 export function registerMusicTrackRegistryRoutes(app: Application): void {
   const chain = [requireAuth, requireLicensingPortalClient];
 
+  app.post('/api/v1/music/registry/post-uses', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const pn = req.user?.pnIdentifier?.trim();
+      if (!pn) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Missing pn identifier on token'
+        });
+      }
+      const body = req.body || {};
+      const postFileId = body.post_file_id != null ? String(body.post_file_id) : '';
+      const trackId = body.registry_track_id != null ? String(body.registry_track_id) : '';
+      if (!postFileId.trim() || !trackId.trim()) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'post_file_id and registry_track_id are required'
+        });
+      }
+      const out = await MusicTrackRegistryService.attachPublicPostToTrack(pn, postFileId, trackId);
+      return res.status(201).json(out);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '';
+      if (msg === 'post_file_id_required' || msg === 'track_not_found_or_inactive') {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: msg === 'track_not_found_or_inactive' ? 'Track not found or not active' : 'post_file_id required'
+        });
+      }
+      if (msg === 'not_post_owner') {
+        return res.status(403).json({
+          error: 'forbidden',
+          error_description: 'You can only attach registry tracks to posts you own.'
+        });
+      }
+      console.error('[music-registry] post-uses:', e);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
+      });
+    }
+  });
+
   app.get('/api/v1/music/registry/tracks', ...chain, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pn = req.user?.pnIdentifier?.trim();

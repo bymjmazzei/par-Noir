@@ -4,9 +4,73 @@
  */
 
 import Stripe from 'stripe';
+import type { Pool } from 'pg';
 import { getDatabasePool } from '../utils/database';
 import { EngagementService } from './engagementService';
 import { CreatorFundPeriodService, type ClosedFundPeriodRow } from './creatorFundPeriodService';
+
+type DbQueryable = Pick<Pool, 'query'>;
+
+const MIN_CREATOR_PAYOUT_CENTS = 1000;
+
+function payoutHoldDays(): number {
+  const raw = process.env.CREATOR_FUND_PAYOUT_HOLD_DAYS?.trim();
+  if (raw) {
+    const n = parseInt(raw, 10);
+    if (!Number.isNaN(n) && n >= 0 && n <= 3650) return n;
+  }
+  return 45;
+}
+
+async function creatorPayoutLedgerSnapshot(
+  db: DbQueryable,
+  pn: string
+): Promise<{
+  payableEarnedCents: number;
+  inHoldEarnedCents: number;
+  paidOutCents: number;
+  processingReservedCents: number;
+}> {
+  const days = payoutHoldDays();
+  const past = await db.query(
+    `SELECT COALESCE(SUM(a.allocation_cents), 0)::bigint AS s
+     FROM creator_fund_period_creator_allocations a
+     INNER JOIN creator_fund_periods p ON p.id = a.period_id
+     WHERE a.recipient_identity_id = $1
+       AND p.status = 'closed'
+       AND p.closed_at IS NOT NULL
+       AND p.closed_at + ($2::int * INTERVAL '1 day') <= NOW()`,
+    [pn, days]
+  );
+  const hold = await db.query(
+    `SELECT COALESCE(SUM(a.allocation_cents), 0)::bigint AS s
+     FROM creator_fund_period_creator_allocations a
+     INNER JOIN creator_fund_periods p ON p.id = a.period_id
+     WHERE a.recipient_identity_id = $1
+       AND p.status = 'closed'
+       AND p.closed_at IS NOT NULL
+       AND p.closed_at + ($2::int * INTERVAL '1 day') > NOW()`,
+    [pn, days]
+  );
+  const paid = await db.query(
+    `SELECT COALESCE(SUM(amount_cents), 0)::bigint AS s
+     FROM creator_fund_payout_requests
+     WHERE pn_identifier = $1 AND status = 'paid'`,
+    [pn]
+  );
+  const processing = await db.query(
+    `SELECT COALESCE(SUM(amount_cents), 0)::bigint AS s
+     FROM creator_fund_payout_requests
+     WHERE pn_identifier = $1 AND status = 'processing'`,
+    [pn]
+  );
+  return {
+    payableEarnedCents: Number(past.rows[0]?.s ?? 0),
+    inHoldEarnedCents: Number(hold.rows[0]?.s ?? 0),
+    paidOutCents: Number(paid.rows[0]?.s ?? 0),
+    processingReservedCents: Number(processing.rows[0]?.s ?? 0)
+  };
+}
 
 function getStripe(): Stripe | null {
   const k = process.env.STRIPE_SECRET_KEY?.trim();
@@ -50,6 +114,12 @@ export interface MonetizationStatusDto {
   payoutCadenceNote: string;
   /** Last closed fund windows (G/E/R from DB; no Stripe). */
   recentClosedPeriods: ClosedFundPeriodRow[];
+  /** Bounty allocations past payout hold, minus paid and in-flight processing. */
+  creatorFundPayoutAvailableCents: number;
+  /** Allocated bounty still inside the post-close hold window. */
+  creatorFundPayoutInHoldCents: number;
+  /** Sum of completed Connect transfers for this identity. */
+  creatorFundPaidOutCents: number;
 }
 
 export class MonetizationService {
@@ -106,6 +176,22 @@ export class MonetizationService {
 
     const recentClosedPeriods = await CreatorFundPeriodService.listRecentClosed(4);
 
+    let ledgerSnap = {
+      payableEarnedCents: 0,
+      inHoldEarnedCents: 0,
+      paidOutCents: 0,
+      processingReservedCents: 0
+    };
+    try {
+      ledgerSnap = await creatorPayoutLedgerSnapshot(pool, pn);
+    } catch {
+      /* tables may be absent until migration on older deployments */
+    }
+    const creatorFundPayoutAvailableCents = Math.max(
+      0,
+      ledgerSnap.payableEarnedCents - ledgerSnap.paidOutCents - ledgerSnap.processingReservedCents
+    );
+
     return {
       verified,
       maintenanceActive,
@@ -118,7 +204,10 @@ export class MonetizationService {
       connectOnboarded,
       payoutCadenceNote:
         'Payouts are payee-initiated on typical schedule 1st and 15th Eastern; 45-day hold, $10 minimum, US-only Connect v1 — see creator fund policy.',
-      recentClosedPeriods
+      recentClosedPeriods,
+      creatorFundPayoutAvailableCents,
+      creatorFundPayoutInHoldCents: ledgerSnap.inHoldEarnedCents,
+      creatorFundPaidOutCents: ledgerSnap.paidOutCents
     };
   }
 
@@ -349,6 +438,84 @@ export class MonetizationService {
     );
   }
 
+  /**
+   * Stripe Connect transfer to the user’s connected account (creator-fund bounty balance).
+   * Uses a single DB transaction including the Stripe call and `pg_advisory_xact_lock` per identity.
+   */
+  static async requestCreatorFundPayout(
+    pnIdentifier: string,
+    amountCents: number
+  ): Promise<{ transferId: string; amountCents: number }> {
+    const stripe = getStripe();
+    if (!stripe) throw new Error('stripe_not_configured');
+    const pn = pnIdentifier.trim();
+    const amt = Math.floor(Number(amountCents));
+    if (!Number.isFinite(amt) || amt < MIN_CREATOR_PAYOUT_CENTS) {
+      throw new Error('payout_amount_invalid');
+    }
+
+    await this.syncConnectStatus(pn);
+    const pool = getDatabasePool();
+    const destRes = await pool.query(
+      `SELECT stripe_account_id, payouts_enabled FROM creator_fund_connect_accounts WHERE pn_identifier = $1`,
+      [pn]
+    );
+    if (!destRes.rows[0]?.stripe_account_id || !destRes.rows[0]?.payouts_enabled) {
+      throw new Error('connect_payouts_not_ready');
+    }
+    const destination = destRes.rows[0].stripe_account_id as string;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('cf_payout:' || $1::text))`, [pn]);
+      const snap = await creatorPayoutLedgerSnapshot(client, pn);
+      const available = Math.max(
+        0,
+        snap.payableEarnedCents - snap.paidOutCents - snap.processingReservedCents
+      );
+      if (amt > available) {
+        await client.query('ROLLBACK');
+        throw new Error('payout_exceeds_available');
+      }
+
+      const insertRes = await client.query(
+        `INSERT INTO creator_fund_payout_requests (pn_identifier, amount_cents, status)
+         VALUES ($1, $2, 'processing')
+         RETURNING id`,
+        [pn, amt]
+      );
+      const payoutRowId = String(insertRes.rows[0].id);
+
+      const transfer = await stripe.transfers.create({
+        amount: amt,
+        currency: 'usd',
+        destination,
+        metadata: {
+          payout_request_id: payoutRowId,
+          purpose: 'creator_fund_bounty'
+        }
+      });
+
+      await client.query(
+        `UPDATE creator_fund_payout_requests SET
+           status = 'paid',
+           stripe_transfer_id = $2,
+           updated_at = NOW()
+         WHERE id = $1::uuid AND status = 'processing'`,
+        [payoutRowId, transfer.id]
+      );
+
+      await client.query('COMMIT');
+      return { transferId: transfer.id, amountCents: amt };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
   static constructWebhookEvent(rawBody: Buffer, signature: string | undefined): Stripe.Event {
     const stripe = getStripe();
     const wh = process.env.STRIPE_WEBHOOK_SECRET?.trim();
@@ -437,8 +604,22 @@ export class MonetizationService {
         }
         break;
       }
-      default:
+      default: {
+        const evType = event.type as string;
+        if (evType === 'transfer.failed' || evType === 'transfer.reversed') {
+          const tr = event.data.object as Stripe.Transfer;
+          const tid = tr.id;
+          if (tid) {
+            const st = evType === 'transfer.reversed' ? 'reversed' : 'failed';
+            await pool.query(
+              `UPDATE creator_fund_payout_requests SET status = $2::varchar, updated_at = NOW()
+               WHERE stripe_transfer_id = $1 AND status = 'paid'`,
+              [tid, st]
+            );
+          }
+        }
         break;
+      }
     }
   }
 }

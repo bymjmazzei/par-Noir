@@ -152,6 +152,53 @@ export function registerStripeMonetizationRoutes(app: Application): void {
     }
   });
 
+  app.post('/api/monetization/request-payout', ...auth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const pn = pnFromReq(req);
+      if (!pn) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Missing pn identifier on token'
+        });
+      }
+      if (!isStripeMonetizationConfigured()) {
+        return res.status(503).json({
+          error: 'service_unavailable',
+          error_description: 'Monetization billing is not configured on this server.'
+        });
+      }
+      const raw = (req.body as { amount_cents?: unknown })?.amount_cents;
+      const amountCents = typeof raw === 'number' ? raw : parseInt(String(raw ?? ''), 10);
+      const out = await MonetizationService.requestCreatorFundPayout(pn, amountCents);
+      return res.json(out);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '';
+      if (msg === 'payout_amount_invalid') {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Minimum payout is 10.00 USD (1000 cents); pass amount_cents as an integer at least that value.'
+        });
+      }
+      if (msg === 'connect_payouts_not_ready') {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Complete Stripe Connect onboarding with payouts enabled before requesting a transfer.'
+        });
+      }
+      if (msg === 'payout_exceeds_available') {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Requested amount exceeds available bounty balance (after hold and prior payouts).'
+        });
+      }
+      console.error('[monetization] request-payout:', e);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
+      });
+    }
+  });
+
   app.post('/api/monetization/create-connect-account-link', ...auth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pn = pnFromReq(req);
