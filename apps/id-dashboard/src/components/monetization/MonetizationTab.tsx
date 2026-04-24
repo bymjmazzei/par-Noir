@@ -298,7 +298,10 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
               windows via <code className="text-text-primary">POST /api/creator-fund/periods/close</code> using{' '}
               <code className="text-text-primary">X-Cron-Secret</code> or the admin API key. OPEX lines:{' '}
               <code className="text-text-primary">POST /api/creator-fund/opex</code> (admin). <strong>G</strong> sums{' '}
-              <code>creator_fund_revenue_events</code> in the window (including balance-first ledger rows).
+              <code>creator_fund_revenue_events</code> in the window (including balance-first ledger rows). Windows use{' '}
+              <code className="text-text-primary">CREATOR_FUND_PERIOD_TZ</code> (default America/New_York; set{' '}
+              <code className="text-text-primary">UTC</code> for legacy contiguous UTC slices). Allocations export:{' '}
+              <code className="text-text-primary">GET /api/creator-fund/periods/:id/allocations</code> (cron or admin).
             </p>
           </div>
 
@@ -309,7 +312,7 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
                 <table className="w-full text-xs sm:text-sm">
                   <thead>
                     <tr className="border-b border-border text-left text-text-secondary">
-                      <th className="p-2">End (UTC)</th>
+                      <th className="p-2">End</th>
                       <th className="p-2">G</th>
                       <th className="p-2">E</th>
                       <th className="p-2">R</th>
@@ -322,7 +325,12 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
                     {(status?.recentClosedPeriods ?? []).map((p) => (
                       <tr key={p.id} className="border-b border-border/60 last:border-0">
                         <td className="p-2 text-text-primary whitespace-nowrap">
-                          {new Date(p.periodEnd).toLocaleDateString()}
+                          <span>{new Date(p.periodEnd).toLocaleDateString()}</span>
+                          {p.periodTz ? (
+                            <span className="block text-text-secondary text-[10px]">{p.periodTz}</span>
+                          ) : (
+                            <span className="block text-text-secondary text-[10px]">UTC window</span>
+                          )}
                         </td>
                         <td className="p-2">${(p.gCents / 100).toFixed(2)}</td>
                         <td className="p-2">${(p.eCents / 100).toFixed(2)}</td>

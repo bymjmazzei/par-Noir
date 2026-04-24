@@ -4,6 +4,8 @@ export interface FundPeriodSummary {
   id: string;
   periodStart: string;
   periodEnd: string;
+  /** IANA zone for window math when non-UTC; absent or null for legacy UTC windows. */
+  periodTz?: string | null;
   status: string;
   closedAt: string | null;
   gCents: number;

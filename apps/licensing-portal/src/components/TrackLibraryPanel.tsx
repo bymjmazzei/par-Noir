@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { API_ENDPOINT } from '../config/api';
 import { useLicensingSession } from '../context/LicensingSessionContext';
 
@@ -16,6 +16,23 @@ export interface RegistryTrack {
   updatedAt: string;
 }
 
+export type MusicPayeeFormRow = { pn_identifier: string; basis_points: number };
+
+function parsePayeesFromMetadata(meta: Record<string, unknown>): MusicPayeeFormRow[] {
+  const raw = meta.payees;
+  if (!Array.isArray(raw)) return [];
+  const out: MusicPayeeFormRow[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const o = item as Record<string, unknown>;
+    const pn = String(o.pn_identifier ?? o.identity_id ?? '').trim();
+    const bp = Math.floor(Number(o.basis_points ?? o.basisPoints ?? 0));
+    if (!pn || !Number.isFinite(bp) || bp <= 0) continue;
+    out.push({ pn_identifier: pn, basis_points: bp });
+  }
+  return out;
+}
+
 export function TrackLibraryPanel() {
   const { authHeaders, signedIn, refreshUser } = useLicensingSession();
   const [tracks, setTracks] = useState<RegistryTrack[]>([]);
@@ -26,6 +43,8 @@ export function TrackLibraryPanel() {
   const [isrc, setIsrc] = useState('');
   const [newStatus, setNewStatus] = useState<TrackStatus>('draft');
   const [saving, setSaving] = useState(false);
+  const [splitsTrackId, setSplitsTrackId] = useState<string | null>(null);
+  const [payeeRows, setPayeeRows] = useState<MusicPayeeFormRow[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -106,6 +125,63 @@ export function TrackLibraryPanel() {
     }
   };
 
+  const openSplitsEditor = (t: RegistryTrack) => {
+    setSplitsTrackId(t.id);
+    setPayeeRows(parsePayeesFromMetadata(t.splitsMetadata));
+  };
+
+  const cancelSplitsEditor = () => {
+    setSplitsTrackId(null);
+    setPayeeRows([]);
+  };
+
+  const saveSplitsMetadata = async (t: RegistryTrack) => {
+    const normalized: MusicPayeeFormRow[] = payeeRows
+      .map((r) => ({
+        pn_identifier: r.pn_identifier.trim(),
+        basis_points: Math.floor(Number(r.basis_points))
+      }))
+      .filter((r) => r.pn_identifier.length > 0 && Number.isFinite(r.basis_points) && r.basis_points > 0);
+
+    if (normalized.length > 0) {
+      const sum = normalized.reduce((a, r) => a + r.basis_points, 0);
+      if (sum !== 10000) {
+        setLoadError(`Payee basis_points must sum to 10_000 (currently ${sum}).`);
+        return;
+      }
+    }
+
+    setSaving(true);
+    setLoadError(null);
+    try {
+      const nextMeta: Record<string, unknown> = { ...t.splitsMetadata };
+      if (normalized.length === 0) {
+        delete nextMeta.payees;
+      } else {
+        nextMeta.payees = normalized.map((r) => ({
+          pn_identifier: r.pn_identifier,
+          basis_points: r.basis_points
+        }));
+      }
+      const res = await fetch(`${API_ENDPOINT}/api/v1/music/registry/tracks/${encodeURIComponent(t.id)}`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({ splitsMetadata: nextMeta })
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error_description?: string };
+        throw new Error(j.error_description || `HTTP ${res.status}`);
+      }
+      cancelSplitsEditor();
+      await load();
+      await refreshUser();
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <section className="max-w-4xl mx-auto px-6 py-10 text-left space-y-8">
       <div>
@@ -115,11 +191,11 @@ export function TrackLibraryPanel() {
           signed-in par Noir identity.
         </p>
         <p className="text-neutral-500 text-xs mt-2 max-w-2xl">
-          Optional multiparty splits (PATCH track with JSON):{' '}
-          <code className="text-neutral-300">splits_metadata</code> may include{' '}
-          <code className="text-neutral-300">payees</code>: array of{' '}
-          <code className="text-neutral-300">&#123; &quot;pn_identifier&quot;: &quot;…&quot;, &quot;basis_points&quot;: 6000 &#125;</code>{' '}
-          summing to 10_000 (100%). Omitted or invalid → 100% to the track owner for the music-pool share.
+          Optional multiparty splits: use the table editor below or PATCH{' '}
+          <code className="text-neutral-300">splitsMetadata</code> with{' '}
+          <code className="text-neutral-300">payees</code> — each{' '}
+          <code className="text-neutral-300">&#123; pn_identifier, basis_points &#125;</code>, summing to 10_000 (100%).
+          Cleared list → 100% to the track owner for the music-pool share.
         </p>
       </div>
 
@@ -205,34 +281,142 @@ export function TrackLibraryPanel() {
                   <th className="p-3 font-medium">Artist</th>
                   <th className="p-3 font-medium">ISRC</th>
                   <th className="p-3 font-medium">Status</th>
-                  <th className="p-3 font-medium w-40">Actions</th>
+                  <th className="p-3 font-medium w-52">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {tracks.map((t) => (
-                  <tr key={t.id} className="border-b border-white/5 last:border-0">
-                    <td className="p-3 text-white">{t.title}</td>
-                    <td className="p-3 text-neutral-300">{t.displayArtist || '—'}</td>
-                    <td className="p-3 text-neutral-400 font-mono text-xs">{t.isrc || '—'}</td>
-                    <td className="p-3">
-                      <span className="text-neutral-300">{t.status}</span>
-                    </td>
-                    <td className="p-3">
-                      <div className="flex flex-wrap gap-1">
-                        {(['draft', 'active', 'retired'] as const).map((s) => (
+                  <Fragment key={t.id}>
+                    <tr className="border-b border-white/5">
+                      <td className="p-3 text-white">{t.title}</td>
+                      <td className="p-3 text-neutral-300">{t.displayArtist || '—'}</td>
+                      <td className="p-3 text-neutral-400 font-mono text-xs">{t.isrc || '—'}</td>
+                      <td className="p-3">
+                        <span className="text-neutral-300">{t.status}</span>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex flex-col gap-2">
+                          <div className="flex flex-wrap gap-1">
+                            {(['draft', 'active', 'retired'] as const).map((s) => (
+                              <button
+                                key={s}
+                                type="button"
+                                disabled={saving || t.status === s}
+                                onClick={() => void patchStatus(t.id, s)}
+                                className="px-2 py-1 rounded text-xs border border-white/15 hover:bg-white/10 disabled:opacity-40"
+                              >
+                                {s}
+                              </button>
+                            ))}
+                          </div>
                           <button
-                            key={s}
                             type="button"
-                            disabled={saving || t.status === s}
-                            onClick={() => void patchStatus(t.id, s)}
-                            className="px-2 py-1 rounded text-xs border border-white/15 hover:bg-white/10 disabled:opacity-40"
+                            disabled={saving}
+                            onClick={() =>
+                              splitsTrackId === t.id ? cancelSplitsEditor() : openSplitsEditor(t)
+                            }
+                            className="text-left text-xs text-neutral-400 hover:text-white underline-offset-2 hover:underline"
                           >
-                            {s}
+                            {splitsTrackId === t.id ? 'Close splits' : 'Edit music-pool splits'}
                           </button>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
+                        </div>
+                      </td>
+                    </tr>
+                    {splitsTrackId === t.id && (
+                      <tr className="border-b border-white/5 bg-neutral-950/60">
+                        <td colSpan={5} className="p-4 space-y-3">
+                          <p className="text-xs text-neutral-500">
+                            Music-pool (25%) multiparty payees. Basis points must total 10_000. Leave empty for 100% to
+                            you (track owner).
+                          </p>
+                          <div className="space-y-2">
+                            {payeeRows.length === 0 ? (
+                              <p className="text-sm text-neutral-400">No co-payees — owner receives full music share.</p>
+                            ) : (
+                              payeeRows.map((row, idx) => (
+                                <div key={idx} className="flex flex-wrap gap-2 items-end">
+                                  <div className="flex-1 min-w-[12rem]">
+                                    <label className="block text-[10px] text-neutral-500 mb-0.5">pn_identifier</label>
+                                    <input
+                                      value={row.pn_identifier}
+                                      onChange={(e) => {
+                                        const next = [...payeeRows];
+                                        next[idx] = { ...next[idx], pn_identifier: e.target.value };
+                                        setPayeeRows(next);
+                                      }}
+                                      className="w-full px-2 py-1.5 rounded bg-neutral-900 border border-white/15 text-sm text-white"
+                                      placeholder="Identity id"
+                                    />
+                                  </div>
+                                  <div className="w-28">
+                                    <label className="block text-[10px] text-neutral-500 mb-0.5">basis_points</label>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={10000}
+                                      value={row.basis_points || ''}
+                                      onChange={(e) => {
+                                        const next = [...payeeRows];
+                                        next[idx] = {
+                                          ...next[idx],
+                                          basis_points: parseInt(e.target.value, 10) || 0
+                                        };
+                                        setPayeeRows(next);
+                                      }}
+                                      className="w-full px-2 py-1.5 rounded bg-neutral-900 border border-white/15 text-sm text-white"
+                                    />
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPayeeRows(payeeRows.filter((_, i) => i !== idx))}
+                                    className="px-2 py-1.5 text-xs text-red-300 hover:text-red-200"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2 items-center">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPayeeRows([...payeeRows, { pn_identifier: '', basis_points: 0 }])
+                              }
+                              className="px-3 py-1.5 rounded text-xs border border-white/20 hover:bg-white/10"
+                            >
+                              Add payee
+                            </button>
+                            {payeeRows.length > 0 && (
+                              <span className="text-xs text-neutral-500">
+                                Sum:{' '}
+                                {payeeRows.reduce((a, r) => a + (Number.isFinite(r.basis_points) ? r.basis_points : 0), 0)}{' '}
+                                / 10_000
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              disabled={saving}
+                              onClick={() => void saveSplitsMetadata(t)}
+                              className="px-3 py-1.5 rounded text-sm border border-white/30 text-white hover:bg-white/10 disabled:opacity-50"
+                            >
+                              Save splits
+                            </button>
+                            <button
+                              type="button"
+                              disabled={saving}
+                              onClick={cancelSplitsEditor}
+                              className="px-3 py-1.5 rounded text-sm text-neutral-400 hover:text-white"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

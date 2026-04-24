@@ -73,4 +73,28 @@ export function registerCreatorFundPeriodRoutes(app: Application): void {
       });
     }
   });
+
+  /** JSON export for a closed period (ledger / reporting). Cron secret or admin API key. */
+  app.get('/api/creator-fund/periods/:periodId/allocations', requireCronOrAdmin, async (req: Request, res: Response) => {
+    try {
+      const periodId = String(req.params.periodId || '').trim();
+      if (!periodId) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'periodId required' });
+      }
+      const out = await CreatorFundPeriodService.getClosedPeriodAllocationsExport(periodId);
+      if (!out) {
+        return res.status(404).json({
+          error: 'not_found',
+          error_description: 'Closed period not found'
+        });
+      }
+      return res.json(out);
+    } catch (e: unknown) {
+      console.error('[creator-fund] period allocations export:', e);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
+      });
+    }
+  });
 }

@@ -2,9 +2,10 @@
  * Creator fund rolling period close — G/E/R from DB only (no Stripe API).
  * Policy: CREATOR_FUND_AND_SUBSCRIPTION_ECONOMICS.md (waterfall, 90/10 on fund slice).
  *
- * Window boundaries are **contiguous UTC** slices (`CREATOR_FUND_PERIOD_DAYS`, default 30).
- * Policy text references America/New_York for payouts and ops cadence — aligning period cutovers
- * to Eastern is a later refinement (allocator cron can switch to TZ-aware boundaries).
+ * Window boundaries: `CREATOR_FUND_PERIOD_DAYS` (default 30). Set `CREATOR_FUND_PERIOD_TZ=UTC`
+ * for legacy contiguous UTC windows; otherwise an IANA zone (default **America/New_York**):
+ * first window ends at local midnight “today”, starts `N` local calendar days earlier; later
+ * windows tile from the prior `period_end` using `make_interval(days => N)`.
  *
  * Bounty allocation: **90/10** uses **engagement actor** verification (`verified_identities` on `user_did`).
  * Weights are like/comment/share/save counts per (file, actor). **Library music** (`music_registry_post_uses`
@@ -20,6 +21,7 @@ import { getDatabasePool } from '../utils/database';
 import { musicPoolWeightsForRow } from './musicRegistrySplits';
 
 const DEFAULT_WINDOW_DAYS = 30;
+const DEFAULT_FUND_PERIOD_TZ = 'America/New_York';
 
 function periodDays(): number {
   const raw = process.env.CREATOR_FUND_PERIOD_DAYS?.trim();
@@ -28,12 +30,73 @@ function periodDays(): number {
   return !Number.isNaN(n) && n > 0 && n <= 366 ? n : DEFAULT_WINDOW_DAYS;
 }
 
+/** `UTC` → legacy JS 86400 ms steps; else IANA zone (parameterized in SQL). */
+function fundPeriodZone(): 'UTC' | string {
+  const raw = process.env.CREATOR_FUND_PERIOD_TZ?.trim();
+  if (raw && raw.toUpperCase() === 'UTC') return 'UTC';
+  const z = raw || DEFAULT_FUND_PERIOD_TZ;
+  if (!/^[A-Za-z0-9_/+-]+$/.test(z)) {
+    console.warn('[creator-fund] invalid CREATOR_FUND_PERIOD_TZ; using America/New_York');
+    return DEFAULT_FUND_PERIOD_TZ;
+  }
+  return z;
+}
+
+async function computeFundPeriodWindow(
+  client: PoolClient,
+  lastPeriodEnd: Date | null,
+  days: number,
+  zone: 'UTC' | string
+): Promise<{ periodStart: Date; periodEnd: Date }> {
+  if (zone === 'UTC') {
+    let periodStart: Date;
+    if (!lastPeriodEnd) {
+      periodStart = new Date(Date.now() - days * 86400000);
+    } else {
+      periodStart = lastPeriodEnd;
+    }
+    const periodEnd = new Date(periodStart.getTime() + days * 86400000);
+    return { periodStart, periodEnd };
+  }
+
+  if (!lastPeriodEnd) {
+    const r = await client.query(
+      `SELECT
+         (
+           (date_trunc('day', now() AT TIME ZONE $1::text) AT TIME ZONE $1::text)::timestamptz
+           - make_interval(days => $2::int)
+         ) AS period_start,
+         (
+           (date_trunc('day', now() AT TIME ZONE $1::text) AT TIME ZONE $1::text)::timestamptz
+         ) AS period_end`,
+      [zone, days]
+    );
+    return {
+      periodStart: new Date(r.rows[0].period_start as string),
+      periodEnd: new Date(r.rows[0].period_end as string)
+    };
+  }
+
+  const r = await client.query(
+    `SELECT
+       $1::timestamptz AS period_start,
+       ($1::timestamptz + make_interval(days => $2::int)) AS period_end`,
+    [lastPeriodEnd.toISOString(), days]
+  );
+  return {
+    periodStart: new Date(r.rows[0].period_start as string),
+    periodEnd: new Date(r.rows[0].period_end as string)
+  };
+}
+
 export interface ClosedFundPeriodRow {
   id: string;
   periodStart: string;
   periodEnd: string;
   status: string;
   closedAt: string | null;
+  /** IANA zone when non-UTC windows were used; null for legacy UTC closes. */
+  periodTz: string | null;
   gCents: number;
   eCents: number;
   rCents: number;
@@ -56,6 +119,7 @@ function rowToDto(r: Record<string, unknown>): ClosedFundPeriodRow {
     periodEnd: new Date(r.period_end as string).toISOString(),
     status: String(r.status),
     closedAt: r.closed_at ? new Date(r.closed_at as string).toISOString() : null,
+    periodTz: r.period_tz != null ? String(r.period_tz) : null,
     gCents: Number(r.g_cents ?? 0),
     eCents: Number(r.e_cents ?? 0),
     rCents: Number(r.r_cents ?? 0),
@@ -241,7 +305,7 @@ export class CreatorFundPeriodService {
   }
 
   /**
-   * Close the next due window if `now >= period_end` (fixed-width contiguous windows in UTC).
+   * Close the next due window if `now >= period_end`.
    * Idempotent: skips if no window is due yet.
    */
   static async closeIfDue(): Promise<{
@@ -251,6 +315,7 @@ export class CreatorFundPeriodService {
   }> {
     const pool = getDatabasePool();
     const days = periodDays();
+    const zone = fundPeriodZone();
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -262,13 +327,9 @@ export class CreatorFundPeriodService {
          LIMIT 1
          FOR UPDATE`
       );
-      let periodStart: Date;
-      if (lastRes.rows.length === 0) {
-        periodStart = new Date(Date.now() - days * 86400000);
-      } else {
-        periodStart = new Date(lastRes.rows[0].period_end as string);
-      }
-      const periodEnd = new Date(periodStart.getTime() + days * 86400000);
+      const lastEnd =
+        lastRes.rows.length > 0 ? new Date(lastRes.rows[0].period_end as string) : null;
+      const { periodStart, periodEnd } = await computeFundPeriodWindow(client, lastEnd, days, zone);
       if (Date.now() < periodEnd.getTime()) {
         await client.query('ROLLBACK');
         return {
@@ -339,18 +400,20 @@ export class CreatorFundPeriodService {
         kmsKeyVer = fundKms;
       }
 
+      const periodTzStored = zone === 'UTC' ? null : zone;
       const ins = await client.query(
         `INSERT INTO creator_fund_periods (
-           period_start, period_end, status, closed_at,
+           period_start, period_end, status, closed_at, period_tz,
            g_cents, e_cents, r_cents, platform_25_cents, fund_75_cents,
            bounty_verified_cents, bounty_unverified_cents,
            chain_prev_hash, chain_hash, period_attestation_hmac,
            period_attestation_kms_signature, period_attestation_kms_key_version
-         ) VALUES ($1, $2, 'closed', NOW(), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         ) VALUES ($1, $2, 'closed', NOW(), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
          RETURNING *`,
         [
           periodStart.toISOString(),
           periodEnd.toISOString(),
+          periodTzStored,
           gCents,
           eCents,
           rCents,
@@ -384,6 +447,39 @@ export class CreatorFundPeriodService {
     } finally {
       client.release();
     }
+  }
+
+  /** Ops / finance export: closed period + per-recipient allocation rows (no Stripe). */
+  static async getClosedPeriodAllocationsExport(periodId: string): Promise<{
+    period: ClosedFundPeriodRow;
+    allocations: Array<{
+      recipientIdentityId: string;
+      bucket: string;
+      engagementUnits: number;
+      allocationCents: number;
+    }>;
+  } | null> {
+    const pool = getDatabasePool();
+    const pRes = await pool.query(
+      `SELECT * FROM creator_fund_periods
+       WHERE id = $1::uuid AND status = 'closed' AND g_cents IS NOT NULL`,
+      [periodId]
+    );
+    if (pRes.rows.length === 0) return null;
+    const aRes = await pool.query(
+      `SELECT recipient_identity_id, bucket, engagement_units, allocation_cents
+       FROM creator_fund_period_creator_allocations
+       WHERE period_id = $1::uuid
+       ORDER BY recipient_identity_id ASC, bucket ASC`,
+      [periodId]
+    );
+    const allocations = aRes.rows.map((r) => ({
+      recipientIdentityId: String(r.recipient_identity_id),
+      bucket: String(r.bucket),
+      engagementUnits: Number(r.engagement_units ?? 0),
+      allocationCents: Number(r.allocation_cents ?? 0)
+    }));
+    return { period: rowToDto(pRes.rows[0] as Record<string, unknown>), allocations };
   }
 
   static async recordOpex(input: {
