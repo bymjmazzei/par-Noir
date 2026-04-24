@@ -37,7 +37,7 @@ par Noir is intended as **infrastructure** (identity → dashboard → API → b
 | **Who may earn from the fund** | Identity **verified** **and** paying the **monthly subscription** that **maintains** monetization eligibility. If either lapses, **no new accrual** from the fund until restored. |
 | **Engagement** | **All** engagement counts for product/analytics. **Bounty** (fund allocation) weight: **90%** from engagement **by verified** accounts, **10%** from engagement **by unverified** accounts. |
 | **Cash waterfall** | **Gross** `G` → pay **`E`** (monthly OPEX) → **`R = max(0, G - E)`** → **25%** of **`R`** to platform / **75%** of **`R`** to the **creator fund**. On each piece of content, **library music** applies **75% creator / 25% music pool** to the **creator’s** share of that reward (see Music). |
-| **Creator payouts** | **45-day** hold after the **relevant accrual period is finalized**; transfers on **calendar 1st and 15th**; **$10 USD** minimum per payout; **balances carry forward** with no product-side expiration (details under [Payouts](#payouts-and-tax-compliance-stripe-connect)). |
+| **Creator payouts** | **45-day** hold after the **relevant rolling accrual period is finalized**; **payee-initiated** Stripe Connect payouts on **1st and 15th** (US **Eastern**); **$10 USD** minimum; balances **carry forward**; **24-month dormancy** trigger for counsel-led review (details under [Payouts](#payouts-and-tax-compliance-stripe-connect)). |
 | **Payments rail (creator fund)** | **Stripe only** for **monetization maintenance** (money **in**) and for **all** creator-fund **payouts** (money **out** via **Stripe Connect**). **Paid feed** products may continue to use **other** collectors (e.g. Coinbase) until migrated—they stay **out of this `G`** per [Scope](#scope-creator-fund-vs-other-paid-surfaces). |
 
 Symbols:
@@ -100,6 +100,12 @@ Symbols:
 |---------|------------------------------------------------------|
 | **No** licensed library music | **100%** to creator |
 | **Uses** music from the **licensed library** | **75%** creator / **25%** to music rights pool (per-track split among artists—**registry and proof TBD**; see [Open decisions](#open-decisions)) |
+
+### Music rights holders (licensing portal)
+
+**Policy:** Parties who earn from the **music pool** (library **25%**) use the **same payout rail** as creators: **verified par Noir identity**, **Stripe Connect** onboarding and tax flows (**US-only** at launch—see [Payouts](#payouts-and-tax-compliance-stripe-connect)). **Enrollment** is through **contract + licensing portal** (catalog sync on the roadmap); **whether** a rights holder must also hold **monetization maintenance** subscription when they are **not** earning creator bounty is a **SKU decision**—if exempt, document it explicitly so engineering does not infer a second payout vendor.
+
+**Product surface:** The **licensing portal** ([`apps/licensing-portal`](../../apps/licensing-portal)) is **today** a **rights-holder intake form** (mailto inquiry). **Roadmap:** authenticated portal flows to **register catalog**, **sync** track metadata and usage, and **align splits** with the ledger—**no** separate “shadow” payout vendor; **Stripe Connect** remains the **sole** outbound rail for these payees.
 
 ---
 
@@ -198,21 +204,27 @@ par Noir’s guiding architecture is **crypto without blockchain**: decentralize
 
 | Area | par Noir (product + API + ledger) | Stripe (Connect + Tax as applicable) |
 |------|-----------------------------------|----------------------------------------|
-| Who earned what | Accrual, period close, **90/10** bounty math, music splits, eligibility rules | Executes **Transfer / Payout** per **approved batch** |
+| Who earned what | Accrual, **rolling** period close (**America/New_York**), **90/10** bounty math, music splits, eligibility rules | Executes **Transfer / Payout** when the **payee initiates** a payout (after hold, minimum, and **US-only** Connect rules at launch) |
 | User trust / identity gate | Verification + subscription policy aligned with this doc | Connected account onboarding, **bank / wallet**, **tax** collection per Stripe capabilities |
 | Tax forms & withholding | **Does not** reimplement IRS logic; use **Stripe-hosted** or **Stripe Tax / reporting** products where applicable | **W‑9 / W‑8** flows, withholding, **1099 / 1042‑S** per Stripe support for your setup |
 | Ledger of record | Append-only **accrual and payout status** (`payout_queued`, `payout_settled`, Stripe transfer/payout ids) | Stripe’s settlement records as source for **rails** |
 
+### Accrual calendar (confirmed)
+
+- **Rolling periods:** **`G`**, **`E`**, and bounty **accrual** use **rolling** fund periods (exact window length—e.g. 7 vs 30 days—is an **implementation** choice; boundaries and **finalization** timestamps are computed in **`America/New_York` (US Eastern)**).
+- **Payout rail geography (launch):** **United States only** for **Connect** payees and bank payouts at v1; expand countries only after policy + Stripe capabilities are updated.
+
 ### Payout timing and thresholds (confirmed)
 
-- **45-day hold:** Creator share from a given **closed fund / accrual period** becomes **eligible for disbursement** only after **45 calendar days** have passed since **that period’s balances were finalized** (time to absorb **chargebacks**, **subscription reversals**, **fraud or data corrections**, and to stabilize the **creator pool** before cash leaves the platform). Until then, amounts remain **pending payout** in the internal ledger.
-- **Disbursement schedule:** Payout batches run on the **1st** and **15th** of each calendar month. Each run pays out **eligible** balances (cleared the 45-day hold, met **Stripe Connect** onboarding and capability rules) via **Stripe**.
-- **Minimum payout:** **$10 USD** (or whole-currency equivalent per payout rail when non-USD is supported) per **transfer**; if a creator’s **eligible** balance is below the minimum, **no transfer** is initiated that window and the balance **accumulates**.
-- **Carryover:** Accrued creator balances **do not expire** for product purposes; sub-minimum and not-yet-held amounts **carry forward** to the next accrual periods and future **1st / 15th** windows until paid or adjusted by **clawback / reversal** ledger entries.
+- **45-day hold:** Creator (or music-pool) share from a given **closed rolling accrual period** becomes **eligible for disbursement** only after **45 calendar days** have passed since **that period’s balances were finalized** in **Eastern Time** (time to absorb **chargebacks**, **subscription reversals**, **fraud or data corrections**, and to stabilize the pool before cash leaves the platform). Until then, amounts remain **pending payout** in the internal ledger.
+- **Payee-initiated payouts:** The **platform does not** silently sweep all balances. Each **payee** (**creator** or **rights holder** on the music pool) **initiates** their **Stripe Connect** payout from **dashboard or licensing portal** when **eligible**. **Product cadence:** surface **1st** and **15th** of each month (**Eastern**) as the standard **payout days** when users should initiate (UX and ops may still allow initiation **outside** those dates if Stripe and risk policy allow—engineering documents the chosen rule).
+- **Minimum payout:** **$10 USD** per **transfer** at US launch; if **eligible** balance is below the minimum, **no transfer** and the balance **accumulates**.
+- **Carryover:** Sub-minimum and not-yet-held amounts **carry forward** across rolling periods until paid or adjusted by **clawback / reversal** ledger entries.
+- **24-month dormancy (product):** If **24 consecutive months** elapse **without** a **settled payee-initiated payout** while the payee had **eligible** balance **at or above** the **minimum** and **completed Connect onboarding**, treat the account as **dormant** for **workflow purposes**: **notify** the payee and start **counsel-approved** **escheatment / unclaimed-property** review per applicable law. This is **not** “automatic forfeiture at 24 months”—**legal outcome** depends on jurisdiction and facts. Sub-minimum balances continue to **accumulate** until they reach **$10**; the **24-month** clock is tied to **avoidable dormancy** (eligible + onboarded + no successful payout), not to raw “last login.”
 
-**Engineering (target):** Model states such as **pending_hold**, **eligible**, **queued**, **settled**, and **reversed**; each accrual line should carry **`period_id`** and **`available_after`** (or derive from period close + 45 days).
+**Engineering (target):** Model states such as **pending_hold**, **eligible**, **queued**, **settled**, and **reversed**; each accrual line should carry **`period_id`** and **`available_after`** (or derive from period close + 45 days); store payee **timezone policy** as **`America/New_York`** for period math at launch.
 
-**Legal / finance (TBD with counsel):** Unclaimed property (**escheatment**), dormant-account policy, and alignment with **Stripe’s** **minimum transfer** and **currency** rules (may be stricter than $10).
+**Legal / finance (TBD with counsel):** Escheatment filing obligations, notice content, and alignment with **Stripe’s** **minimum transfer** rules (may be stricter than $10).
 
 **Operational rules (product)**
 
@@ -231,13 +243,13 @@ Use this as a **go-live gate** alongside engineering QA—not legal advice.
 |------|----------------|
 | **Stripe** | Production **API keys**; **Connect** application approved; **webhook endpoints** deployed with **signature verification**; test **subscription lifecycle** (success, failure, cancel, chargeback simulation). |
 | **Inbound `G`** | Only **monetization maintenance** Stripe events append to **`creator_fund_revenue_events`**; **no** feed or other SKU leakage. |
-| **Payouts** | **Connect** onboarding live for creators; **1st/15th** job in **declared timezone**; **45-day** hold logic matches ledger fields; **$10** minimum enforced; **reversal** rows tested. |
+| **Payouts** | **Connect** onboarding live (**US-only** v1); **payee-initiated** flows tested; **1st/15th Eastern** UX/cadence; **45-day** hold matches ledger; **$10** minimum; **24-month dormancy** workflow stubbed; **reversal** rows tested. |
 | **Stablecoin** | If offered: **Stripe** program **explicitly** enabled for your **platform country** and **payee** types; otherwise **disable** crypto payout UI until enabled. |
 | **Identity / subscription** | **Server-side** entitlement for “verified + subscribed”; **remove demo-only** client paths for any payment that gates eligibility. |
 | **Accounting** | Resolve open **`G` gross vs net** and **`E`** treatment with finance; export matches internal **`R`**. |
-| **Periods** | Resolve **calendar vs rolling** accrual boundaries; document **period finalization** timestamp used for **45-day** clock. |
+| **Periods** | **Rolling** accrual, **`America/New_York`** for boundaries and finalization; document **exact rolling window length** in implementation. |
 | **Music** | v1 can ship **without** library 75/25 enforcement **or** ship registry—**choose** so engineering does not guess. |
-| **Legal** | Counsel sign-off on **Connect** agreement, **payout classification**, **international** payees, **escheatment** (#8). |
+| **Legal** | Counsel sign-off on **Connect** agreement, **payout classification**, **US-only** launch posture, **escheatment** and **24-month dormancy** workflow (#8). |
 | **Observability** | Alerts on webhook failures, payout failures, ledger imbalance; **no** sensitive PII in logs. |
 
 ---
@@ -253,7 +265,7 @@ Not a forecast or commitment:
 
 ## Relationship to codebase
 
-As of this document, the repo has **no** production-complete **creator fund ledger**, no automated **G → E → R → 25/75** accounting, and **no** **Stripe** integration for **monetization maintenance**. Verification payment handling includes **demo-oriented** paths (e.g. dashboard `VerificationPaymentHandler` local storage). API **Coinbase** webhooks today cover **feed creation and feed subscriptions**—those remain **separate** from creator-fund **`G`** until feeds migrate to Stripe (optional future).
+As of this document, the repo has **no** production-complete **creator fund ledger**, no automated **G → E → R → 25/75** accounting, and **no** **Stripe** integration for **monetization maintenance**. Verification payment handling includes **demo-oriented** paths (e.g. dashboard `VerificationPaymentHandler` local storage). API **Coinbase** webhooks today cover **feed creation and feed subscriptions**—those remain **separate** from creator-fund **`G`** until feeds migrate to Stripe (optional future). The **licensing portal** app is an **intake form** only ([`apps/licensing-portal`](../../apps/licensing-portal)); **catalog sync** and **authenticated** rights-holder flows are **not** built yet.
 
 Engineering should treat this file as the **policy target**: **Stripe** for **inbound** maintenance revenue and **Stripe Connect** as the **only** creator-fund **payout** rail; ledger per [Ledger transparency (no blockchain)](#ledger-transparency-no-blockchain); go-live per [Production readiness checklist](#production-readiness-checklist-before-launch).
 
@@ -262,13 +274,14 @@ Engineering should treat this file as the **policy target**: **Stripe** for **in
 ## Open decisions
 
 1. **SKUs:** Single **“verification + monetization maintenance”** subscription vs separate **identity verification** and **creator eligibility** products—pricing, naming, **Stripe** Price/Product ids and **metadata** for API entitlements.
-2. **Period boundaries:** Calendar month vs rolling window for **`G`**, **`E`**, and bounty accrual; **timezone** for **1st/15th** payout runs.
+2. **Rolling window length:** e.g. **7-day** vs **30-day** rolling fund periods (boundaries and finalization use **`America/New_York`**—see [Payouts](#payouts-and-tax-compliance-stripe-connect)).
 3. **Music library:** Authoritative **track registry**, artist opt-in, and **on-content proof** (“this post uses library track X”) for enforcing **75/25**—or **defer** v1 to “no library split” until registry exists.
 4. **`E` transparency:** Line items **in** vs **out** of creator-facing OPEX reporting (e.g. internal dev tools).
 5. **PSP treatment:** Whether **`G`** is recorded **gross** with **Stripe** fees inside **`E`**, or **net** at collection—must be consistent in books and dashboards.
 6. **Key management:** Which **KMS/HSM** and key rotation policy backs **period signatures** and optional timestamping.
-7. **Stripe Connect mode:** **Express vs Standard vs Custom** connected accounts; **who** triggers payouts (platform-only transfers vs automatic); **countries** at launch.
-8. **Dormant balances:** Escheatment / unclaimed-property handling for long-inactive payees (product says no expiration; **law** may still impose duties).
+7. **Stripe Connect mode:** **Express vs Standard vs Custom** for **payee-initiated** payouts (**US-only** v1—international expansion later).
+8. **Dormant balances:** Operational detail of the **24-month** dormancy workflow (notices, data retention, handoff to counsel)—**escheatment** remains **law-driven** once triggered.
+9. **Music-pool-only payees:** Whether licensors who **only** receive **library pool** shares must hold **monetization maintenance** subscription (same as posting creators) or may use **verified identity + Connect + contract** alone—pick explicitly for v1.
 
 ---
 
