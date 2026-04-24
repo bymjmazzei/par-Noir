@@ -104,7 +104,7 @@ Symbols:
 
 ## Music
 
-**v1:** Ship **with** an authoritative **track registry**—implementation may follow a **separate build plan**; economics and **75/25** enforcement **depend** on it.
+**v1:** Ship **with** an authoritative **track registry** (phases **A–D** in [Track registry and licensing portal (build plan)](#track-registry-and-licensing-portal-build-plan)); economics and **75/25** enforcement **depend** on it.
 
 ### What is the track registry
 
