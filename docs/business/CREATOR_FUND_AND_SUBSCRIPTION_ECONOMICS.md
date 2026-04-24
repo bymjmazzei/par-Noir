@@ -34,18 +34,25 @@ par Noir is intended as **infrastructure** (identity → dashboard → API → b
 
 | Rule | Definition |
 |------|------------|
-| **Who may earn from the fund** | Identity **verified** **and** paying the **monthly subscription** that **maintains** monetization eligibility. If either lapses, **no new accrual** from the fund until restored. |
+| **Who may earn from the fund** | **Identity verification** SKU **current** **and** **monetization maintenance** SKU **active** (see [SKUs](#skus-and-identity-locked)). If either lapses, **no new accrual** until restored. |
 | **Engagement** | **All** engagement counts for product/analytics. **Bounty** (fund allocation) weight: **90%** from engagement **by verified** accounts, **10%** from engagement **by unverified** accounts. |
-| **Cash waterfall** | **Gross** `G` → pay **`E`** (monthly OPEX) → **`R = max(0, G - E)`** → **25%** of **`R`** to platform / **75%** of **`R`** to the **creator fund**. On each piece of content, **library music** applies **75% creator / 25% music pool** to the **creator’s** share of that reward (see Music). |
+| **Cash waterfall** | Collect **`G`** (definition under **Symbols**) → pay **`E`** (platform OPEX—see [OPEX](#opex-categories-policy-draft)) → **`R = max(0, G - E)`** → **25%** of **`R`** to platform / **75%** of **`R`** to the **creator fund**. On each piece of content, **library music** applies **75% creator / 25% music pool** to the **creator’s** share of that reward (see Music). |
 | **Creator payouts** | **45-day** hold after the **relevant rolling accrual period is finalized**; **payee-initiated** Stripe Connect payouts on **1st and 15th** (US **Eastern**); **$10 USD** minimum; balances **carry forward** (details under [Payouts](#payouts-and-tax-compliance-stripe-connect)). **Escheatment** is **law-driven** only—see [Dormancy and escheatment](#dormancy-and-escheatment). |
 | **Payments rail (creator fund)** | **Stripe only** for **monetization maintenance** (money **in** via card/bank payers) and for **all** creator-fund **payouts** (money **out** via **Stripe Connect**). **Paid feed** products may continue to use **other** collectors (e.g. Coinbase) until migrated—they stay **out of this `G`** per [Scope](#scope-creator-fund-vs-other-paid-surfaces). |
-| **Maintenance renewal (default)** | At each renewal, **apply eligible creator-fund balance first** (ledger debit), then charge **Stripe** only for the **shortfall** (or the **full** price if balance is insufficient). **Minimizes** Stripe **inbound** transaction count and fees versus defaulting every renewal to card. **No** non-Stripe PSP; balance leg is **internal settlement**—see [Balance-first renewal](#balance-first-maintenance-renewal-default). |
+| **Maintenance renewal (balance-first)** | At each renewal, **apply eligible creator-fund balance first** (ledger debit), then charge **Stripe** only for the **shortfall**. If eligible balance **covers the full renewal price**, **the entire renewal settles from balance**—**no** card charge that period (**no** “always charge card” override). See [Balance-first renewal](#balance-first-maintenance-renewal-default). |
 
 Symbols:
 
-- **`G`**: Gross receipts **for this creator fund waterfall only**—**monetization maintenance** for each period, whether collected as **cash through Stripe** (shortfall or full amount) or **settled from payee balance** per [Balance-first renewal](#balance-first-maintenance-renewal-default)—**how** the balance-funded portion maps into **`G`** for the **`G` → `E` → `R`** waterfall is an **accounting open decision** (see [Open decisions](#open-decisions)). **Not in `G` here:** paid **feed** subscription revenue (separate product/ledger), creator-run **private subscriptions / paywalls** (third-party or future add-on), or other creator commerce—see [Scope](#scope-creator-fund-vs-other-paid-surfaces). Define whether **card-paid** amounts are **gross** with Stripe fees in **`E`** or **net** at collection (open decision).
+- **`G`**: **Monetization maintenance** receipts for this waterfall **only**, **after** **Stripe processing fees** on **card/ACH** maintenance charges (**net** of those PSP fees—do **not** book the same fees again inside **`E`**). **Balance-first** legs (eligible ledger debit) count toward the **same `G`** at **cash-equivalent fair value** (same line as card proceeds for the period). **Not in `G` here:** paid **feed** subscription revenue (separate product/ledger), creator-run **private subscriptions / paywalls** (third-party or future add-on), or other creator commerce—see [Scope](#scope-creator-fund-vs-other-paid-surfaces).
 - **`E`**: Monthly operating expenses charged **before** the 25/75 split (see [OPEX categories](#opex-categories-policy-draft)).
 - **`R`**: Remainder after OPEX: `max(0, G - E)`.
+
+### SKUs and identity (locked)
+
+| SKU | What it is |
+|-----|----------------|
+| **Identity verification** | **Third-party** identity checks (current vendor paths in product). **Re-verification** is required whenever **credential or policy TTL expires** or **documented identity inputs materially change**—per vendor rules and dashboard UX. Gates **trust** and **payout readiness**; **not** interchangeable with maintenance. |
+| **Monetization maintenance** | **Monthly** subscription (and **balance-first** settlement per this doc) that keeps **creator-fund participation** active for the **billing identity**. Billed via **Stripe** for any **cash shortfall** after balance application. |
 
 ---
 
@@ -54,7 +61,7 @@ Symbols:
 - **Fair:** Same rules for everyone who qualifies; music rights honored when library audio is used.
 - **Separation:** The **creator fund** pool is **not commingled** with **paid feed** revenue or with **creators’ own** subscription/paywall products (see [Scope](#scope-creator-fund-vs-other-paid-surfaces)).
 - **Practically un-gameable:** **Paid verification + recurring subscription** is the **primary** defense: each coordinated identity pays monthly and passes identity checks, making **typical** collusion rings and casual sybil farms **economically costly** relative to expected bounty. **Operational backstops** (rate limits, anomaly detection, caps, audit trails) still apply as **fund size and reward density** grow.
-- **Self-sustaining:** **Gross covers variable OPEX first**; the platform **25% applies to `R`**, not to gross while hiding infra in “profit.” The **creator fund** scales with **paying verified subscribers × price**, modulo **`E`** and creator competition for the pool.
+- **Self-sustaining:** **`G`** (as defined—maintenance proceeds **net** of Stripe **processing** on **card** legs, plus **cash-equivalent** balance-first legs) **covers variable OPEX (`E`) next**; the platform **25% applies to `R`**, not while hiding infra in “profit.” The **creator fund** scales with **paying verified subscribers × price**, modulo **`E`** and creator competition for the pool.
 - **Honest limits:** The model does **not** scale infinitely; see [Scaling and limits](#scaling-and-limits).
 - **Crypto without blockchain:** Fund accounting and auditability use **traditional cryptography and append-only records** (see [Ledger transparency (no blockchain)](#ledger-transparency-no-blockchain)), not a public chain for consensus or payouts.
 
@@ -62,8 +69,8 @@ Symbols:
 
 ## Eligibility (who earns from the creator fund)
 
-1. **Identity verified** via the trust / identity verification path used for feeds and API context. This is **not** pn name, passcode, or raw PII in logs.
-2. **Active paid monthly subscription** required to **maintain** verified + monetization status. **Lapse** → no new fund accrual until both conditions are met again.
+1. **Identity verification** SKU satisfied: **third-party** verification **current** (re-run when **TTL expires** or **ID material changes**—see [SKUs](#skus-and-identity-locked)). This is **not** pn name, passcode, or raw PII in logs.
+2. **Monetization maintenance** SKU **active** (monthly entitlement, including **balance-first** renewals). **Lapse** of maintenance → **no new accrual** until restored. **Verification** and **maintenance** are **separate** products.
 
 ---
 
@@ -97,22 +104,29 @@ Symbols:
 
 ## Music
 
+**v1:** Ship **with** an authoritative **track registry** (rights, splits, IDs)—implementation may follow a **separate build plan**; economics and **75/25** enforcement **depend** on it.
+
 | Content | Creator share of that content’s creator-side reward |
 |---------|------------------------------------------------------|
 | **No** licensed library music | **100%** to creator |
-| **Uses** music from the **licensed library** | **75%** creator / **25%** to music rights pool (per-track split among artists—**registry and proof TBD**; see [Open decisions](#open-decisions)) |
+| **Uses** music from the **licensed library** | **75%** creator / **25%** to music rights pool (per-track split from **registry**; **on-content proof** that post **N** uses track **T** is required for enforcement) |
+
+### Identity hierarchy (individual vs business feed)
+
+- **Individual pN:** The **person** identity; used for **personal** creator activity and bounty accrual tied to that human.
+- **Feed pN (business):** A **business** identity (label, publisher, catalog owner, etc.). **Music rights** and **catalog** are registered under this **feed pN**. **Tracks** may also appear on that feed’s **paid feed** product for **marketing/discovery** (**visibility** is **opt-in** / configurable); the **library** is the **canonical catalog** for **attaching** licensed audio to posts and for **75/25** math.
 
 ### Music rights holders (licensing portal)
 
-**Policy:** Parties who earn from the **music pool** (library **25%**) use the **same payout rail** as creators: **verified par Noir identity**, **Stripe Connect** onboarding and tax flows (**US-only** at launch—see [Payouts](#payouts-and-tax-compliance-stripe-connect)). **Enrollment** is through **contract + licensing portal** (catalog sync on the roadmap); **whether** a rights holder must also hold **monetization maintenance** subscription when they are **not** earning creator bounty is a **SKU decision**—if exempt, document it explicitly so engineering does not infer a second payout vendor.
+**Policy:** Anyone receiving **creator fund** disbursements (**creator bounty** or **music pool**) must be **identity-verified** (third-party, with **re-verification** on expiry or material ID change) and complete **Stripe Connect** (**US-only** v1—see [Payouts](#payouts-and-tax-compliance-stripe-connect)). **Monetization maintenance** is billed to the **same identity that accrues** the line item (**individual** or **feed pN** business). **Enrollment** is **contract + licensing portal** (authenticated catalog sync on the roadmap).
 
-**Product surface:** The **licensing portal** ([`apps/licensing-portal`](../../apps/licensing-portal)) is **today** a **rights-holder intake form** (mailto inquiry). **Roadmap:** authenticated portal flows to **register catalog**, **sync** track metadata and usage, and **align splits** with the ledger—**no** separate “shadow” payout vendor; **Stripe Connect** remains the **sole** outbound rail for these payees.
+**Product surface:** The **licensing portal** ([`apps/licensing-portal`](../../apps/licensing-portal)) is **today** a **rights-holder intake form** (mailto inquiry). **Roadmap:** authenticated flows to **register/sync** the **registry**—**no** second payout vendor; **Stripe Connect** only.
 
 ---
 
 ## Revenue waterfall
 
-1. Collect **`G`** (subscriptions and other in-scope gross as defined in accounting policy).
+1. Collect **`G`** (in-scope **monetization maintenance** per **Symbols**—**net** of Stripe **processing** fees on card legs; **balance-first** legs at **cash-equivalent** value).
 2. Pay **`E`** (monthly OPEX; transparent categories).
 3. Compute **`R = max(0, G - E)`**.
 4. **Platform:** `0.25 × R`. **Creator fund:** `0.75 × R`, then distributed using engagement + music rules.
@@ -123,17 +137,18 @@ Symbols:
 
 ## OPEX categories (policy draft)
 
-Include in **`E`** (subject to final finance/legal list):
+Include in **`E`** (creator-facing / “**keep the platform online**” spend):
 
 - API hosting, database, egress (e.g. Railway-class compute).
 - Static hosting / CDN (e.g. Firebase Hosting).
 - Identity verification vendor (e.g. Veriff)—**per-check** and/or minimum commit.
-- **Incoming** **Stripe** processing fees (% + fixed per txn) for **monetization maintenance** subscription charges (count toward **`E`** or net-`G` per accounting open decision).
-- **Outgoing** **Stripe Connect** payout fees (per [Payouts](#payouts-and-tax-compliance-stripe-connect)), if billed separately from card-present charges.
+- **Outgoing** **Stripe Connect** payout fees (per [Payouts](#payouts-and-tax-compliance-stripe-connect)), if billed separately from maintenance card charges.
 - Trust, safety, and support directly tied to operating the network.
 - Compliance and security tooling required to run production.
 
-**Optional / reporting choice:** **Exclude** or **separately tag** internal dev tooling (e.g. IDE subscriptions) so **creator-facing** “OPEX” reflects **platform delivery** cost only. Document the choice under **`E` transparency** in [Open decisions](#open-decisions).
+**Locked:** **Stripe processing fees** on **monetization maintenance** **card** charges are **deducted before `G`** is recorded (see **Symbols**); they are **not** also line-itemed in **`E`** (avoids **double-count**).
+
+**Reporting:** **Exclude** or **separately tag** purely **internal** dev tooling (e.g. IDE subscriptions) from **creator-facing** **`E`** buckets so “OPEX” means **costs to run the live product**, not internal R&D overhead—**tag in dashboards**, not an open policy question.
 
 **Architecture note:** User-owned storage (e.g. Google Drive for public index and user content) keeps **baseline media/storage OPEX** lower than fully hosted UGC platforms; **`E` is still not zero** at scale (API, DB, verification, PSP, moderation).
 
@@ -167,7 +182,11 @@ par Noir’s guiding architecture is **crypto without blockchain**: decentralize
 
 1. **Append-only platform ledger** (e.g. PostgreSQL): insert-only **facts** (`revenue_event`, `expense_line`, `period_closed`, `allocation_line`, `payout_queued`, `payout_settled`). **Corrections** are **new rows** (reversal references), not silent `UPDATE`s of amounts.
 2. **Tamper-evident chaining per stream:** each row includes **`hash(prev_row)`** or roll up to a **Merkle root** per fund period so backups or manual edits break verification.
-3. **Signed period commitments:** once a period is finalized, publish a **small signed document** (platform key in **HSM/KMS**): period id, `G`, `E`, `R`, split amounts, Merkle root of allocation leaves. Signatures are verifiable **off-chain** without a blockchain.
+3. **Signed period commitments:** once a period is finalized, publish a **small signed document** (platform key in **HSM/KMS**—see [KMS (plain language)](#kms-plain-language)): period id, `G`, `E`, `R`, split amounts, Merkle root of allocation leaves. Signatures are verifiable **off-chain** without a blockchain.
+
+### KMS (plain language)
+
+**KMS** (“**Key Management Service**”) is a **cloud vault** (e.g. AWS KMS, GCP Cloud KMS, HashiCorp Vault) where the **platform’s signing key** lives so it is **not** copied onto laptops or into git. **HSM**-backed keys are even stronger: the private key **never leaves** tamper-resistant hardware. **Why it matters:** the **signed period statement** creators can verify is only trustworthy if the key is **protected** and **rotated** on a written schedule. **Which vendor/region and rotation policy** remain an **engineering + security** choice ([Open decisions](#open-decisions)); v1 can **delay** published signatures until after ledger shipping if product agrees.
 4. **Optional:** **RFC 3161** (or similar) **timestamping** of the signed commitment if independent **time attestation** is required—still not a user-operated chain.
 5. **User-owned copies (optional):** push **per-creator signed receipts** (or encrypted statements) to **that creator’s** storage (e.g. Drive metadata folder) for **portability and dispute evidence**—**not** a requirement that every user replicate a **network-wide** ledger.
 
@@ -192,9 +211,7 @@ par Noir’s guiding architecture is **crypto without blockchain**: decentralize
 
 ### Balance-first maintenance renewal (default)
 
-**Policy:** **By default**, each **monetization maintenance** renewal **debits eligible creator-fund balance first** up to the **renewal price**, then bills the **Stripe** payment method only for the **remainder** (including when balance is **zero**—then Stripe carries the **full** price). **Rationale:** Fewer **PSP** transactions and **lower aggregate processing fees** on maintenance, while keeping **Stripe** as the **only** external money-in rail for cash shortfalls and for payees who never accrue balance.
-
-**Optional override (product):** Allow a payee to choose **“Always charge my card”** (e.g. for points or simplicity) if you ship it; document so entitlement logic stays auditable.
+**Policy:** Each renewal **debits eligible creator-fund balance first** up to the **renewal price**, then bills **Stripe** only for the **shortfall**. If eligible balance **≥ full renewal price**, **the whole renewal is balance-only**—**no** card charge that period (**no** “always charge card” product path). **Rationale:** Fewer **PSP** transactions and **lower fees**, while **Stripe** remains the **only** external money-in rail for shortfalls.
 
 **Eligibility (product defaults—tune with risk):**
 
@@ -208,9 +225,7 @@ par Noir’s guiding architecture is **crypto without blockchain**: decentralize
 - **Entitlement:** Server-side **active maintenance** updated **only** after the **combined** settlement commits; **idempotent** renewals.
 - **Relationship to Connect:** Balance legs are **internal** settlement. **Stripe** Billing / invoices should reflect **shortfall** amounts cleanly for reconciliation—**finance + engineering** pick one source of truth (e.g. invoice with **two** line items vs customer balance credit patterns).
 
-**Accounting (`G`)—must match books:** Same as before: balance-funded portion vs **`G`** line—**pick with CPA** (see [Open decisions](#open-decisions)).
-
-**Disclaimer:** Balance-funded renewal may affect **1099 / reporting** characterization vs card-funded maintenance; **counsel and CPA** sign off before launch.
+**Accounting (`G`)—locked:** Balance-funded renewals **count toward the same `G`** as cash at **equivalent value** (see **Symbols**). **Disclaimer:** **Counsel/CPA** still confirm **1099 / reporting** treatment in your entity setup before launch.
 
 ---
 
@@ -234,7 +249,7 @@ par Noir’s guiding architecture is **crypto without blockchain**: decentralize
 
 ### Accrual calendar (confirmed)
 
-- **Rolling periods:** **`G`**, **`E`**, and bounty **accrual** use **rolling** fund periods (exact window length—e.g. 7 vs 30 days—is an **implementation** choice; boundaries and **finalization** timestamps are computed in **`America/New_York` (US Eastern)**).
+- **Rolling periods:** **`G`**, **`E`**, and bounty **accrual** use **rolling** **30-day** fund periods; boundaries and **finalization** timestamps are computed in **`America/New_York` (US Eastern)**.
 - **Payout rail geography (launch):** **United States only** for **Connect** payees and bank payouts at v1; expand countries only after policy + Stripe capabilities are updated.
 
 ### Payout timing and thresholds (confirmed)
@@ -246,9 +261,11 @@ par Noir’s guiding architecture is **crypto without blockchain**: decentralize
 
 ### Dormancy and escheatment
 
-**Policy:** There is **no** product-defined **“dormancy clock”** (such as the prior **24-month** rule) tied to **not** initiating a **Connect** payout. **Default [balance-first renewal](#balance-first-maintenance-renewal-default)** means active subscribers **regularly** apply **eligible** balance to maintenance, which is **explicit use** of accrued funds and **reduces** idle “never touched” balances.
+**What you already “resolved” in product:** There is **no** par Noir–defined **timer** (e.g. the old **24-month** rule) that **forces** payouts or **declares** balances forfeited. **Balance-first renewal** is **regular use** of the ledger.
 
-**Escheatment / unclaimed property** still applies **where state law requires** it; thresholds, dormancy periods, and **reporting/remittance** obligations are **not** waived by this doc—**counsel** defines the **operational playbook** when law applies (e.g. long-inactive identities with **positive** balances and **no** qualifying activity). **Engineering** supports **ledger exports** and **notices** per counsel; **does not** invent forfeiture timelines.
+**What that does *not* remove:** **Escheatment** is **state unclaimed-property law**: if money is **owed** to someone and **abandoned** under that state’s rules, the company may have to **report/remit**. Product cannot “resolve” that away—**counsel** says **if/when** it applies; engineering **exports data** and sends **notices** counsel approves.
+
+**Policy:** **No** product dormancy clock tied only to “never clicked payout.” **Escheatment** playbook is **law-driven** when triggered.
 
 **Engineering (target):** Model states such as **pending_hold**, **eligible**, **queued**, **settled**, and **reversed**; each accrual line should carry **`period_id`** and **`available_after`** (or derive from period close + 45 days); store payee **timezone policy** as **`America/New_York`** for period math at launch.
 
@@ -274,10 +291,10 @@ Use this as a **go-live gate** alongside engineering QA—not legal advice.
 | **Payouts** | **Connect** onboarding live (**US-only** v1); **payee-initiated** flows tested; **1st/15th Eastern** UX/cadence; **45-day** hold matches ledger; **$10** minimum; **reversal** rows tested. |
 | **Stablecoin** | If offered: **Stripe** program **explicitly** enabled for your **platform country** and **payee** types; otherwise **disable** crypto payout UI until enabled. |
 | **Identity / subscription** | **Server-side** entitlement for “verified + subscribed”; **remove demo-only** client paths for any payment that gates eligibility. |
-| **Accounting** | Resolve open **`G` gross vs net** and **`E`** treatment with finance; export matches internal **`R`**. |
-| **Periods** | **Rolling** accrual, **`America/New_York`** for boundaries and finalization; document **exact rolling window length** in implementation. |
-| **Music** | v1 can ship **without** library 75/25 enforcement **or** ship registry—**choose** so engineering does not guess. |
-| **Legal** | Counsel sign-off on **Connect** agreement, **payout classification**, **US-only** launch posture, **escheatment** playbook ([Dormancy and escheatment](#dormancy-and-escheatment), open #10), **balance-first renewal** reporting (#6). |
+| **Accounting** | **`G`** **net** of maintenance Stripe fees; **`E`** excludes those same fees; **balance-first** counts toward **`G`** per **Symbols**; CPA confirms **1099** posture. |
+| **Periods** | **30-day** rolling accrual, **`America/New_York`** for boundaries and finalization. |
+| **Music** | **Track registry** shipped for v1 (may be a **separate engineering plan**); **on-content** track proof for **75/25**. |
+| **Legal** | Counsel sign-off on **Connect** agreement, **payout classification**, **US-only** launch posture, **escheatment** when law applies ([Dormancy and escheatment](#dormancy-and-escheatment)). |
 | **Observability** | Alerts on webhook failures, payout failures, ledger imbalance; **no** sensitive PII in logs. |
 
 ---
@@ -293,24 +310,29 @@ Not a forecast or commitment:
 
 ## Relationship to codebase
 
-As of this document, the repo has **no** production-complete **creator fund ledger**, no automated **G → E → R → 25/75** accounting, and **no** **Stripe** integration for **monetization maintenance**. Verification payment handling includes **demo-oriented** paths (e.g. dashboard `VerificationPaymentHandler` local storage). API **Coinbase** webhooks today cover **feed creation and feed subscriptions**—those remain **separate** from creator-fund **`G`** until feeds migrate to Stripe (optional future). The **licensing portal** app is an **intake form** only ([`apps/licensing-portal`](../../apps/licensing-portal)); **catalog sync** and **authenticated** rights-holder flows are **not** built yet.
+As of this document, the repo has **no** production-complete **creator fund ledger**, no automated **G → E → R → 25/75** accounting, and **no** **Stripe** integration for **monetization maintenance**—**Stripe** is **deferred** until operators configure accounts, **Price/Product** ids, and webhooks in deployment environments. Verification payment handling includes **demo-oriented** paths (e.g. dashboard `VerificationPaymentHandler` local storage). API **Coinbase** webhooks today cover **feed creation and feed subscriptions**—those remain **separate** from creator-fund **`G`** until feeds migrate to Stripe (optional future). The **licensing portal** app is an **intake form** only ([`apps/licensing-portal`](../../apps/licensing-portal)); **catalog sync** and **authenticated** rights-holder flows are **not** built yet.
 
-Engineering should treat this file as the **policy target**: **Stripe** for **inbound** maintenance revenue and **Stripe Connect** as the **only** creator-fund **payout** rail; ledger per [Ledger transparency (no blockchain)](#ledger-transparency-no-blockchain); go-live per [Production readiness checklist](#production-readiness-checklist-before-launch).
+Engineering should treat this file as the **policy target**: **Stripe** for **inbound** maintenance **shortfall/full** cash and **Stripe Connect** as the **only** creator-fund **payout** rail; ledger per [Ledger transparency (no blockchain)](#ledger-transparency-no-blockchain); go-live per [Production readiness checklist](#production-readiness-checklist-before-launch).
 
 ---
 
-## Open decisions
+## What you still provide (non-code)
 
-1. **SKUs:** Single **“verification + monetization maintenance”** subscription vs separate **identity verification** and **creator eligibility** products—pricing, naming, **Stripe** Price/Product ids and **metadata** for API entitlements.
-2. **Rolling window length:** e.g. **7-day** vs **30-day** rolling fund periods (boundaries and finalization use **`America/New_York`**—see [Payouts](#payouts-and-tax-compliance-stripe-connect)).
-3. **Music library:** Authoritative **track registry**, artist opt-in, and **on-content proof** (“this post uses library track X”) for enforcing **75/25**—or **defer** v1 to “no library split” until registry exists.
-4. **`E` transparency:** Line items **in** vs **out** of creator-facing OPEX reporting (e.g. internal dev tools).
-5. **PSP treatment:** Whether **`G`** is recorded **gross** with **Stripe** fees inside **`E`**, or **net** at collection—must be consistent in books and dashboards.
-6. **Balance-funded maintenance vs `G`:** Whether renewals paid from **creator balance** count toward the same **`G`** line as Stripe card revenue (**fair-value non-cash** adjustment), are **excluded from `G`** with a separate reporting series, or use another **CPA-approved** mapping—drives dashboards and period seals.
-7. **Key management:** Which **KMS/HSM** and key rotation policy backs **period signatures** and optional timestamping.
-8. **Stripe Connect mode:** **Express vs Standard vs Custom** for **payee-initiated** payouts (**US-only** v1—international expansion later).
-9. **Music-pool-only payees:** Whether licensors who **only** receive **library pool** shares must hold **monetization maintenance** subscription (same as posting creators) or may use **verified identity + Connect + contract** alone—pick explicitly for v1.
-10. **Escheatment operations:** Notice templates, reporting cadence, and remittance handoffs when **state law** applies—**counsel-owned**; engineering supplies **ledger exports** only ([Dormancy and escheatment](#dormancy-and-escheatment)).
+### Stripe (when you are ready)
+
+Production or test **account**, **API keys**, **Connect** application, **webhook** endpoint + signing secret, **Price** and **Product** ids for **monetization maintenance** (and metadata binding to **par Noir identity**), and **US-only** Connect settings for v1. **Identity verification** is billed **through the third-party verifier** unless product later moves it onto Stripe—**do not** conflate verifier SKUs with Stripe Product ids.
+
+### Counsel and CPA (what they need from you)
+
+Enough to classify flows: **entity type**, **who** sells maintenance (**MoR** question), sample **ledger export** (showing **`G`**, balance-first debits, payouts), **payout** types (individual vs **feed pN**), and **states** where you have payees or users. They return: **1099 / reporting** treatment for balance vs card maintenance, **Connect** agreement choice, and **escheatment** steps **if** law applies—not something you “fill in” in this markdown; you **run the conversation** with the artifacts engineering will produce.
+
+---
+
+## Open decisions (remaining)
+
+1. **Stripe Connect mode:** **Express vs Standard vs Custom** for **payee-initiated** payouts—choose when Stripe is configured (**US-only** v1).
+2. **KMS vendor and rotation:** e.g. AWS / GCP / Vault; key **rotation** calendar for **period signatures** (or **defer** published signatures until post–v1 ledger).
+3. **Track registry build plan:** **Separate** engineering plan for **registry + licensing portal + post attachment proof**—this doc only **requires** the outcome for **v1 music economics**.
 
 ---
 
