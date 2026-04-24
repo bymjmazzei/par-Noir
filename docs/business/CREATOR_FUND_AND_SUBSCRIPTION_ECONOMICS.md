@@ -15,6 +15,21 @@ par Noir is intended as **infrastructure** (identity → dashboard → API → b
 
 ---
 
+## Scope: creator fund vs other paid surfaces
+
+**Policy:** The **creator fund** waterfall in this document (**`G` → `E` → `R` → 75% fund**) applies **only** to **in-scope platform revenue** tied to **monetization maintenance** (and any future SKUs **explicitly listed** in this doc). par Noir **does not commingle** that pool with **individual creators’ own paid products** or with **paid feed** economics.
+
+| Surface | Relationship to this creator fund |
+|---------|-------------------------------------|
+| **Monetization maintenance** (platform subscription for eligibility + fund) | **In `G`** for this waterfall (subject to accounting definitions). Drives **75%** pool and engagement bounty. |
+| **Paid feed subscriptions** (existing feed product: subscribers pay for a **feed** on par Noir) | **Separate** commercial line—**not** counted in this doc’s **`G`** for the engagement bounty pool. Own checkout, webhook, and economics; **do not merge** into creator fund ledger lines. |
+| **Creator private subscriptions, paywalls, “VIP” tiers, coaching, etc.** | **Out of par Noir billing for v1.** Creators who want that use **paid feeds** (or public index) **plus** their **own third-party** tool for access control, subscriber lists, and fees—or a **future optional add-on / L5 partner**. Revenue from those tools **does not** enter the creator fund **`G`**. |
+| **Future par Noir add-on** for creator billing | Possible **later** product; until adopted, treat as **third-party** for scope purposes. Must **not** silently mix ledgers with the fund when built. |
+
+**Rationale:** Keeps **chargeback, tax, and payout** characterization for the **platform pool** separate from **creator-operated commerce**, reduces product and legal ambiguity, and matches the goal that **users manage their own** premium access stacks unless par Noir ships a dedicated, **non-commingled** product.
+
+---
+
 ## Locked product rules (confirmed)
 
 | Rule | Definition |
@@ -26,7 +41,7 @@ par Noir is intended as **infrastructure** (identity → dashboard → API → b
 
 Symbols:
 
-- **`G`**: In-scope gross receipts for the period (e.g. subscription fees collected; define whether net of PSP fees at collection time in accounting policy).
+- **`G`**: Gross receipts **for this creator fund waterfall only**—**primarily monetization maintenance** subscription fees. **Not in `G` here:** paid **feed** subscription revenue (separate product/ledger), creator-run **private subscriptions / paywalls** (third-party or future add-on), or other creator commerce—see [Scope](#scope-creator-fund-vs-other-paid-surfaces). Define whether amounts are **gross** with PSP fees in **`E`** or **net** at collection (open decision).
 - **`E`**: Monthly operating expenses charged **before** the 25/75 split (see [OPEX categories](#opex-categories-policy-draft)).
 - **`R`**: Remainder after OPEX: `max(0, G - E)`.
 
@@ -35,6 +50,7 @@ Symbols:
 ## Ideology
 
 - **Fair:** Same rules for everyone who qualifies; music rights honored when library audio is used.
+- **Separation:** The **creator fund** pool is **not commingled** with **paid feed** revenue or with **creators’ own** subscription/paywall products (see [Scope](#scope-creator-fund-vs-other-paid-surfaces)).
 - **Practically un-gameable:** **Paid verification + recurring subscription** is the **primary** defense: each coordinated identity pays monthly and passes identity checks, making **typical** collusion rings and casual sybil farms **economically costly** relative to expected bounty. **Operational backstops** (rate limits, anomaly detection, caps, audit trails) still apply as **fund size and reward density** grow.
 - **Self-sustaining:** **Gross covers variable OPEX first**; the platform **25% applies to `R`**, not to gross while hiding infra in “profit.” The **creator fund** scales with **paying verified subscribers × price**, modulo **`E`** and creator competition for the pool.
 - **Honest limits:** The model does **not** scale infinitely; see [Scaling and limits](#scaling-and-limits).
