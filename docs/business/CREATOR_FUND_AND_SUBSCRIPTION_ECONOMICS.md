@@ -104,7 +104,18 @@ Symbols:
 
 ## Music
 
-**v1:** Ship **with** an authoritative **track registry** (rights, splits, IDs)—implementation may follow a **separate build plan**; economics and **75/25** enforcement **depend** on it.
+**v1:** Ship **with** an authoritative **track registry**—implementation may follow a **separate build plan**; economics and **75/25** enforcement **depend** on it.
+
+### What is the track registry
+
+The **track registry** is the **single system of record** for **licensed library music**: every row is **one** licensable **track** (or stem) the platform is allowed to use. It stores at least:
+
+- A **stable platform id** for that track (so posts and payouts reference the same thing forever).
+- **Who** gets paid from the **music pool** (links to **feed pN** / rights-holder identities) and **how** the **25%** is split when multiple parties share a track.
+- **Legal / commercial status** (active, takedown, contract end date—whatever product and counsel require).
+- **Proof hooks** for the app: when a post **uses** library audio, the post must reference **this** id so the ledger can apply **75/25** to the right creators and rights holders.
+
+Without it, “this post used licensed track X” is **not** enforceable at scale—the **library UI**, **licensing portal sync**, and **payout math** all read from here (or a projection of it).
 
 | Content | Creator share of that content’s creator-side reward |
 |---------|------------------------------------------------------|
@@ -182,13 +193,15 @@ par Noir’s guiding architecture is **crypto without blockchain**: decentralize
 
 1. **Append-only platform ledger** (e.g. PostgreSQL): insert-only **facts** (`revenue_event`, `expense_line`, `period_closed`, `allocation_line`, `payout_queued`, `payout_settled`). **Corrections** are **new rows** (reversal references), not silent `UPDATE`s of amounts.
 2. **Tamper-evident chaining per stream:** each row includes **`hash(prev_row)`** or roll up to a **Merkle root** per fund period so backups or manual edits break verification.
-3. **Signed period commitments:** once a period is finalized, publish a **small signed document** (platform key in **HSM/KMS**—see [KMS (plain language)](#kms-plain-language)): period id, `G`, `E`, `R`, split amounts, Merkle root of allocation leaves. Signatures are verifiable **off-chain** without a blockchain.
+3. **Signed period commitments:** once a period is finalized, publish a **small signed document** (platform key in **[cloud KMS](#kms-plain-language)**): period id, `G`, `E`, `R`, split amounts, Merkle root of allocation leaves. Signatures are verifiable **off-chain** without a blockchain.
+4. **Optional:** **RFC 3161** (or similar) **timestamping** of the signed commitment if independent **time attestation** is required—still not a user-operated chain.
+5. **User-owned copies (optional):** push **per-creator signed receipts** (or encrypted statements) to **that creator’s** storage (e.g. Drive metadata folder) for **portability and dispute evidence**—**not** a requirement that every user replicate a **network-wide** ledger.
 
 ### KMS (plain language)
 
-**KMS** (“**Key Management Service**”) is a **cloud vault** (e.g. AWS KMS, GCP Cloud KMS, HashiCorp Vault) where the **platform’s signing key** lives so it is **not** copied onto laptops or into git. **HSM**-backed keys are even stronger: the private key **never leaves** tamper-resistant hardware. **Why it matters:** the **signed period statement** creators can verify is only trustworthy if the key is **protected** and **rotated** on a written schedule. **Which vendor/region and rotation policy** remain an **engineering + security** choice ([Open decisions](#open-decisions)); v1 can **delay** published signatures until after ledger shipping if product agrees.
-4. **Optional:** **RFC 3161** (or similar) **timestamping** of the signed commitment if independent **time attestation** is required—still not a user-operated chain.
-5. **User-owned copies (optional):** push **per-creator signed receipts** (or encrypted statements) to **that creator’s** storage (e.g. Drive metadata folder) for **portability and dispute evidence**—**not** a requirement that every user replicate a **network-wide** ledger.
+**Policy:** Period-signing keys live in a **cloud-based KMS**—a **managed** key service from your **cloud provider** (e.g. **AWS KMS**, **GCP Cloud KMS**, Azure Key Vault)—**not** in application env vars, **not** in git, and **not** on a self-run “key server under someone’s desk.” **HSM-backed** keys, when used, are still **cloud** offerings (e.g. managed HSM tiers) where the provider runs the hardware; that satisfies the same intent.
+
+**Why it matters:** the **signed period statement** creators can verify is only trustworthy if the signing key is **created, stored, and rotated** in that vault. **Still to pick in implementation:** which **provider/region** and **rotation** cadence ([Open decisions](#open-decisions-remaining)); v1 may **defer** publishing signed blobs until after the core ledger ships.
 
 **Explicit non-goals (unless product changes later)**
 
@@ -331,8 +344,8 @@ Enough to classify flows: **entity type**, **who** sells maintenance (**MoR** qu
 ## Open decisions (remaining)
 
 1. **Stripe Connect mode:** **Express vs Standard vs Custom** for **payee-initiated** payouts—choose when Stripe is configured (**US-only** v1).
-2. **KMS vendor and rotation:** e.g. AWS / GCP / Vault; key **rotation** calendar for **period signatures** (or **defer** published signatures until post–v1 ledger).
-3. **Track registry build plan:** **Separate** engineering plan for **registry + licensing portal + post attachment proof**—this doc only **requires** the outcome for **v1 music economics**.
+2. **Cloud KMS details:** **Hyperscaler** and **region** (e.g. AWS KMS vs GCP Cloud KMS; same region as prod data where practical), plus **rotation** cadence for the period-signing key—or **defer** published signed period artifacts until after the v1 ledger.
+3. **Track registry build plan:** **Separate** engineering plan for **registry DB + licensing portal sync + post→track references**—this doc defines **what** the registry is (see [What is the track registry](#what-is-the-track-registry)); engineering plans **how** to build it.
 
 ---
 
