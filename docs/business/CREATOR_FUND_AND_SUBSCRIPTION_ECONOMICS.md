@@ -37,13 +37,13 @@ par Noir is intended as **infrastructure** (identity → dashboard → API → b
 | **Who may earn from the fund** | Identity **verified** **and** paying the **monthly subscription** that **maintains** monetization eligibility. If either lapses, **no new accrual** from the fund until restored. |
 | **Engagement** | **All** engagement counts for product/analytics. **Bounty** (fund allocation) weight: **90%** from engagement **by verified** accounts, **10%** from engagement **by unverified** accounts. |
 | **Cash waterfall** | **Gross** `G` → pay **`E`** (monthly OPEX) → **`R = max(0, G - E)`** → **25%** of **`R`** to platform / **75%** of **`R`** to the **creator fund**. On each piece of content, **library music** applies **75% creator / 25% music pool** to the **creator’s** share of that reward (see Music). |
-| **Creator payouts** | **45-day** hold after the **relevant rolling accrual period is finalized**; **payee-initiated** Stripe Connect payouts on **1st and 15th** (US **Eastern**); **$10 USD** minimum; balances **carry forward**; **24-month dormancy** trigger for counsel-led review (details under [Payouts](#payouts-and-tax-compliance-stripe-connect)). |
+| **Creator payouts** | **45-day** hold after the **relevant rolling accrual period is finalized**; **payee-initiated** Stripe Connect payouts on **1st and 15th** (US **Eastern**); **$10 USD** minimum; balances **carry forward** (details under [Payouts](#payouts-and-tax-compliance-stripe-connect)). **Escheatment** is **law-driven** only—see [Dormancy and escheatment](#dormancy-and-escheatment). |
 | **Payments rail (creator fund)** | **Stripe only** for **monetization maintenance** (money **in** via card/bank payers) and for **all** creator-fund **payouts** (money **out** via **Stripe Connect**). **Paid feed** products may continue to use **other** collectors (e.g. Coinbase) until migrated—they stay **out of this `G`** per [Scope](#scope-creator-fund-vs-other-paid-surfaces). |
-| **Pay maintenance from balance (optional)** | Verified subscribers may **optionally** renew **monetization maintenance** by **debiting** accrued **creator-fund balance** on the **platform ledger** instead of a **Stripe** card charge for that period—see [Inbound payments](#inbound-payments-stripe-for-monetization-maintenance). **No** non-Stripe PSP for this path; it is **not** a second money-in rail, only **internal settlement** of amounts already in the fund’s liability to the payee. |
+| **Maintenance renewal (default)** | At each renewal, **apply eligible creator-fund balance first** (ledger debit), then charge **Stripe** only for the **shortfall** (or the **full** price if balance is insufficient). **Minimizes** Stripe **inbound** transaction count and fees versus defaulting every renewal to card. **No** non-Stripe PSP; balance leg is **internal settlement**—see [Balance-first renewal](#balance-first-maintenance-renewal-default). |
 
 Symbols:
 
-- **`G`**: Gross receipts **for this creator fund waterfall only**—**monetization maintenance** for each period, whether collected as **cash through Stripe** (Checkout, Billing, or equivalent) or **settled from payee balance** per [Pay from balance](#paying-maintenance-from-creator-balance-optional-product)—**how** the latter maps into **`G`** for the **`G` → `E` → `R`** waterfall is an **accounting open decision** (see [Open decisions](#open-decisions)). **Not in `G` here:** paid **feed** subscription revenue (separate product/ledger), creator-run **private subscriptions / paywalls** (third-party or future add-on), or other creator commerce—see [Scope](#scope-creator-fund-vs-other-paid-surfaces). Define whether **card-paid** amounts are **gross** with Stripe fees in **`E`** or **net** at collection (open decision).
+- **`G`**: Gross receipts **for this creator fund waterfall only**—**monetization maintenance** for each period, whether collected as **cash through Stripe** (shortfall or full amount) or **settled from payee balance** per [Balance-first renewal](#balance-first-maintenance-renewal-default)—**how** the balance-funded portion maps into **`G`** for the **`G` → `E` → `R`** waterfall is an **accounting open decision** (see [Open decisions](#open-decisions)). **Not in `G` here:** paid **feed** subscription revenue (separate product/ledger), creator-run **private subscriptions / paywalls** (third-party or future add-on), or other creator commerce—see [Scope](#scope-creator-fund-vs-other-paid-surfaces). Define whether **card-paid** amounts are **gross** with Stripe fees in **`E`** or **net** at collection (open decision).
 - **`E`**: Monthly operating expenses charged **before** the 25/75 split (see [OPEX categories](#opex-categories-policy-draft)).
 - **`R`**: Remainder after OPEX: `max(0, G - E)`.
 
@@ -184,29 +184,31 @@ par Noir’s guiding architecture is **crypto without blockchain**: decentralize
 
 ## Inbound payments (Stripe) for monetization maintenance
 
-**Policy:** All **monetization maintenance** subscription charges that count toward this doc’s **`G`** are processed by **Stripe** (e.g. **Stripe Billing** recurring subscriptions and/or **Checkout** for payment collection—exact product to match engineering and finance). **Webhook-verified** payment success is the **source of truth** for crediting **`creator_fund_revenue_events`** and entitlement rows.
+**Policy:** **Cash** portions of **monetization maintenance** (the amount **after** [balance-first](#balance-first-maintenance-renewal-default) ledger settlement) are collected by **Stripe** (e.g. **Stripe Billing** and/or **Checkout**—exact product to match engineering and finance). **Webhook-verified** payment success is the **source of truth** for those **card/ACH** legs in **`creator_fund_revenue_events`** (and reconciliation with entitlements). **Balance** legs are **ledger-only** per the same section.
 
 - **Secrets:** Use **Stripe webhook signing** (`STRIPE_WEBHOOK_SECRET` or platform equivalent); never trust unsigned callbacks.
 - **Identity binding:** Each subscription or customer object must map to a stable **par Noir identity** id in metadata for reconciliation.
 - **Separation:** Do **not** route **paid feed** or **other** Coinbase (or non-Stripe) charges into this **`G`** stream—those products keep their own integration until a deliberate migration.
 
-### Paying maintenance from creator balance (optional product)
+### Balance-first maintenance renewal (default)
 
-**Policy:** The dashboard (or API) may offer **“Pay my monetization maintenance from my creator balance”** so a payee applies **accrued fund balance** toward the **next** maintenance period instead of charging their **Stripe** payment method for that period.
+**Policy:** **By default**, each **monetization maintenance** renewal **debits eligible creator-fund balance first** up to the **renewal price**, then bills the **Stripe** payment method only for the **remainder** (including when balance is **zero**—then Stripe carries the **full** price). **Rationale:** Fewer **PSP** transactions and **lower aggregate processing fees** on maintenance, while keeping **Stripe** as the **only** external money-in rail for cash shortfalls and for payees who never accrue balance.
+
+**Optional override (product):** Allow a payee to choose **“Always charge my card”** (e.g. for points or simplicity) if you ship it; document so entitlement logic stays auditable.
 
 **Eligibility (product defaults—tune with risk):**
 
-- Same **identity verification** and **subscription entitlement** rules as card payers; this option **extends** renewal, it does **not** replace verification.
-- Debit only from balance that is **eligible under the same (or stricter) rules as payee-initiated payouts**—e.g. **after** the **45-day** hold and **not** in dispute—so subscription is not funded with amounts that could still be **clawed back** as easily. (Stricter alternative: only amounts that would already meet the **$10** payout threshold logic—document whichever you ship.)
-- **Sufficient** balance to cover the **full** maintenance price for the renewal window (no **partial** balance + card split in **v1** unless product explicitly adds it later).
+- Same **identity verification** rules; renewal **extends** entitlement whether the leg is balance, Stripe, or **split**.
+- Debit only from balance that is **eligible under the same (or stricter) rules as payee-initiated payouts**—e.g. **after** the **45-day** hold and **not** in dispute—so maintenance is not funded with amounts still at high **clawback** risk. (Stricter alternative: only amounts that would meet the **$10** payout threshold logic—document whichever you ship.)
+- **Split renewal (default):** If eligible balance is **positive** but **less** than the renewal price, apply **all** eligible balance and **Stripe** for the **shortfall** in one renewal transaction (not “balance-only or card-only” in v1 unless you explicitly remove splits).
 
 **Ledger (engineering target):**
 
-- **Append-only:** `subscription_balance_debit` (or equivalent) row: identity id, amount, period covered, reference to pricing, **no** raw payment details.
-- **Entitlement:** Server-side **active maintenance** flag / period end updated **only** after the debit commits; **idempotent** so double-clicks do not double-charge the balance.
-- **Relationship to Connect:** This is **not** a Connect payout; it is **internal** settlement (reduce **liability** to the payee, recognize subscription). **Stripe** subscription objects may still be used for **card** payers—balance payers need a **documented** pattern (e.g. **parallel** entitlement table with Stripe subscription **paused** or absent for that identity, or **Stripe Customer balance** / **$0 invoice** patterns—**finance + engineering** choose one source of truth).
+- **Append-only:** `subscription_balance_debit` (or equivalent) row(s): identity id, amount, period covered, reference to pricing, **no** raw payment details; plus Stripe charge / invoice rows for any **shortfall**.
+- **Entitlement:** Server-side **active maintenance** updated **only** after the **combined** settlement commits; **idempotent** renewals.
+- **Relationship to Connect:** Balance legs are **internal** settlement. **Stripe** Billing / invoices should reflect **shortfall** amounts cleanly for reconciliation—**finance + engineering** pick one source of truth (e.g. invoice with **two** line items vs customer balance credit patterns).
 
-**Accounting (`G`)—must match books:** Either (a) record a **`G`-equivalent** non-cash line so **`G` → `E` → `R`** denominators stay comparable to “everyone paid cash,” or (b) exclude balance-funded renewals from **`G`** and track **cash `G`** separately in dashboards—**pick with CPA** (see [Open decisions](#open-decisions)).
+**Accounting (`G`)—must match books:** Same as before: balance-funded portion vs **`G`** line—**pick with CPA** (see [Open decisions](#open-decisions)).
 
 **Disclaimer:** Balance-funded renewal may affect **1099 / reporting** characterization vs card-funded maintenance; **counsel and CPA** sign off before launch.
 
@@ -241,7 +243,12 @@ par Noir’s guiding architecture is **crypto without blockchain**: decentralize
 - **Payee-initiated payouts:** The **platform does not** silently sweep all balances. Each **payee** (**creator** or **rights holder** on the music pool) **initiates** their **Stripe Connect** payout from **dashboard or licensing portal** when **eligible**. **Product cadence:** surface **1st** and **15th** of each month (**Eastern**) as the standard **payout days** when users should initiate (UX and ops may still allow initiation **outside** those dates if Stripe and risk policy allow—engineering documents the chosen rule).
 - **Minimum payout:** **$10 USD** per **transfer** at US launch; if **eligible** balance is below the minimum, **no transfer** and the balance **accumulates**.
 - **Carryover:** Sub-minimum and not-yet-held amounts **carry forward** across rolling periods until paid or adjusted by **clawback / reversal** ledger entries.
-- **24-month dormancy (product):** If **24 consecutive months** elapse **without** a **settled payee-initiated payout** while the payee had **eligible** balance **at or above** the **minimum** and **completed Connect onboarding**, treat the account as **dormant** for **workflow purposes**: **notify** the payee and start **counsel-approved** **escheatment / unclaimed-property** review per applicable law. This is **not** “automatic forfeiture at 24 months”—**legal outcome** depends on jurisdiction and facts. Sub-minimum balances continue to **accumulate** until they reach **$10**; the **24-month** clock is tied to **avoidable dormancy** (eligible + onboarded + no successful payout), not to raw “last login.”
+
+### Dormancy and escheatment
+
+**Policy:** There is **no** product-defined **“dormancy clock”** (such as the prior **24-month** rule) tied to **not** initiating a **Connect** payout. **Default [balance-first renewal](#balance-first-maintenance-renewal-default)** means active subscribers **regularly** apply **eligible** balance to maintenance, which is **explicit use** of accrued funds and **reduces** idle “never touched” balances.
+
+**Escheatment / unclaimed property** still applies **where state law requires** it; thresholds, dormancy periods, and **reporting/remittance** obligations are **not** waived by this doc—**counsel** defines the **operational playbook** when law applies (e.g. long-inactive identities with **positive** balances and **no** qualifying activity). **Engineering** supports **ledger exports** and **notices** per counsel; **does not** invent forfeiture timelines.
 
 **Engineering (target):** Model states such as **pending_hold**, **eligible**, **queued**, **settled**, and **reversed**; each accrual line should carry **`period_id`** and **`available_after`** (or derive from period close + 45 days); store payee **timezone policy** as **`America/New_York`** for period math at launch.
 
@@ -263,14 +270,14 @@ Use this as a **go-live gate** alongside engineering QA—not legal advice.
 | Area | Must be true |
 |------|----------------|
 | **Stripe** | Production **API keys**; **Connect** application approved; **webhook endpoints** deployed with **signature verification**; test **subscription lifecycle** (success, failure, cancel, chargeback simulation). |
-| **Inbound `G`** | Only **monetization maintenance** Stripe events append to **`creator_fund_revenue_events`**; **no** feed or other SKU leakage. **Balance-funded** renewals append **only** per the **ledger + `G` policy** in [Pay from balance](#paying-maintenance-from-creator-balance-optional-product)—no fake Stripe webhooks. |
-| **Payouts** | **Connect** onboarding live (**US-only** v1); **payee-initiated** flows tested; **1st/15th Eastern** UX/cadence; **45-day** hold matches ledger; **$10** minimum; **24-month dormancy** workflow stubbed; **reversal** rows tested. |
+| **Inbound `G`** | Only **monetization maintenance** Stripe events (including **shortfall** charges) append per reconciliation rules; **no** feed or other SKU leakage. **Balance-first** legs append **only** per [Balance-first renewal](#balance-first-maintenance-renewal-default)—no fake Stripe webhooks. |
+| **Payouts** | **Connect** onboarding live (**US-only** v1); **payee-initiated** flows tested; **1st/15th Eastern** UX/cadence; **45-day** hold matches ledger; **$10** minimum; **reversal** rows tested. |
 | **Stablecoin** | If offered: **Stripe** program **explicitly** enabled for your **platform country** and **payee** types; otherwise **disable** crypto payout UI until enabled. |
 | **Identity / subscription** | **Server-side** entitlement for “verified + subscribed”; **remove demo-only** client paths for any payment that gates eligibility. |
 | **Accounting** | Resolve open **`G` gross vs net** and **`E`** treatment with finance; export matches internal **`R`**. |
 | **Periods** | **Rolling** accrual, **`America/New_York`** for boundaries and finalization; document **exact rolling window length** in implementation. |
 | **Music** | v1 can ship **without** library 75/25 enforcement **or** ship registry—**choose** so engineering does not guess. |
-| **Legal** | Counsel sign-off on **Connect** agreement, **payout classification**, **US-only** launch posture, **escheatment** and **24-month dormancy** workflow (#9), **balance-funded renewal** reporting (#6). |
+| **Legal** | Counsel sign-off on **Connect** agreement, **payout classification**, **US-only** launch posture, **escheatment** playbook ([Dormancy and escheatment](#dormancy-and-escheatment), open #10), **balance-first renewal** reporting (#6). |
 | **Observability** | Alerts on webhook failures, payout failures, ledger imbalance; **no** sensitive PII in logs. |
 
 ---
@@ -302,8 +309,8 @@ Engineering should treat this file as the **policy target**: **Stripe** for **in
 6. **Balance-funded maintenance vs `G`:** Whether renewals paid from **creator balance** count toward the same **`G`** line as Stripe card revenue (**fair-value non-cash** adjustment), are **excluded from `G`** with a separate reporting series, or use another **CPA-approved** mapping—drives dashboards and period seals.
 7. **Key management:** Which **KMS/HSM** and key rotation policy backs **period signatures** and optional timestamping.
 8. **Stripe Connect mode:** **Express vs Standard vs Custom** for **payee-initiated** payouts (**US-only** v1—international expansion later).
-9. **Dormant balances:** Operational detail of the **24-month** dormancy workflow (notices, data retention, handoff to counsel)—**escheatment** remains **law-driven** once triggered.
-10. **Music-pool-only payees:** Whether licensors who **only** receive **library pool** shares must hold **monetization maintenance** subscription (same as posting creators) or may use **verified identity + Connect + contract** alone—pick explicitly for v1.
+9. **Music-pool-only payees:** Whether licensors who **only** receive **library pool** shares must hold **monetization maintenance** subscription (same as posting creators) or may use **verified identity + Connect + contract** alone—pick explicitly for v1.
+10. **Escheatment operations:** Notice templates, reporting cadence, and remittance handoffs when **state law** applies—**counsel-owned**; engineering supplies **ledger exports** only ([Dormancy and escheatment](#dormancy-and-escheatment)).
 
 ---
 
