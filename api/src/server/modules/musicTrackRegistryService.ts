@@ -1,0 +1,185 @@
+/**
+ * Track registry rows for licensed library music (API persistence only).
+ */
+
+import type { Pool } from 'pg';
+import { getDatabasePool } from '../utils/database';
+
+export type MusicTrackStatus = 'draft' | 'active' | 'retired';
+
+export interface MusicRegistryTrackRow {
+  id: string;
+  ownerPnIdentifier: string;
+  title: string;
+  displayArtist: string | null;
+  isrc: string | null;
+  status: MusicTrackStatus;
+  splitsMetadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function rowToTrack(r: Record<string, unknown>): MusicRegistryTrackRow {
+  const splits = r.splits_metadata;
+  return {
+    id: String(r.id),
+    ownerPnIdentifier: String(r.owner_pn_identifier),
+    title: String(r.title),
+    displayArtist: r.display_artist != null ? String(r.display_artist) : null,
+    isrc: r.isrc != null ? String(r.isrc) : null,
+    status: String(r.status) as MusicTrackStatus,
+    splitsMetadata:
+      splits && typeof splits === 'object' && !Array.isArray(splits)
+        ? (splits as Record<string, unknown>)
+        : {},
+    createdAt: new Date(r.created_at as string).toISOString(),
+    updatedAt: new Date(r.updated_at as string).toISOString()
+  };
+}
+
+function normalizeSplits(input: unknown): Record<string, unknown> {
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
+    return input as Record<string, unknown>;
+  }
+  return {};
+}
+
+export class MusicTrackRegistryService {
+  static pool(): Pool {
+    return getDatabasePool();
+  }
+
+  static async listByOwner(
+    ownerPn: string,
+    opts?: { status?: MusicTrackStatus; limit?: number; offset?: number }
+  ): Promise<MusicRegistryTrackRow[]> {
+    const limit = Math.min(Math.max(opts?.limit ?? 100, 1), 500);
+    const offset = Math.max(opts?.offset ?? 0, 0);
+    const status = opts?.status;
+    const pool = this.pool();
+    if (status) {
+      const res = await pool.query(
+        `SELECT * FROM music_registry_tracks
+         WHERE owner_pn_identifier = $1 AND status = $2
+         ORDER BY updated_at DESC
+         LIMIT $3 OFFSET $4`,
+        [ownerPn, status, limit, offset]
+      );
+      return res.rows.map(rowToTrack);
+    }
+    const res = await pool.query(
+      `SELECT * FROM music_registry_tracks
+       WHERE owner_pn_identifier = $1
+       ORDER BY updated_at DESC
+       LIMIT $2 OFFSET $3`,
+      [ownerPn, limit, offset]
+    );
+    return res.rows.map(rowToTrack);
+  }
+
+  static async create(
+    ownerPn: string,
+    input: {
+      title: string;
+      displayArtist?: string | null;
+      isrc?: string | null;
+      status?: MusicTrackStatus;
+      splitsMetadata?: unknown;
+    }
+  ): Promise<MusicRegistryTrackRow> {
+    const title = input.title.trim();
+    if (!title) {
+      throw new Error('title_required');
+    }
+    const status = input.status ?? 'draft';
+    if (!['draft', 'active', 'retired'].includes(status)) {
+      throw new Error('invalid_status');
+    }
+    const splits = normalizeSplits(input.splitsMetadata);
+    const res = await this.pool().query(
+      `INSERT INTO music_registry_tracks
+       (owner_pn_identifier, title, display_artist, isrc, status, splits_metadata)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+       RETURNING *`,
+      [
+        ownerPn,
+        title,
+        input.displayArtist?.trim() || null,
+        input.isrc?.trim() || null,
+        status,
+        JSON.stringify(splits)
+      ]
+    );
+    return rowToTrack(res.rows[0]);
+  }
+
+  static async getByIdForOwner(
+    trackId: string,
+    ownerPn: string
+  ): Promise<MusicRegistryTrackRow | null> {
+    const res = await this.pool().query(
+      `SELECT * FROM music_registry_tracks WHERE id = $1::uuid AND owner_pn_identifier = $2`,
+      [trackId, ownerPn]
+    );
+    if (res.rows.length === 0) return null;
+    return rowToTrack(res.rows[0]);
+  }
+
+  static async update(
+    trackId: string,
+    ownerPn: string,
+    patch: {
+      title?: string;
+      displayArtist?: string | null;
+      isrc?: string | null;
+      status?: MusicTrackStatus;
+      splitsMetadata?: unknown;
+    }
+  ): Promise<MusicRegistryTrackRow | null> {
+    const existing = await this.getByIdForOwner(trackId, ownerPn);
+    if (!existing) return null;
+
+    const title =
+      patch.title !== undefined ? patch.title.trim() : existing.title;
+    if (!title) {
+      throw new Error('title_required');
+    }
+    const displayArtist =
+      patch.displayArtist !== undefined
+        ? patch.displayArtist?.trim() || null
+        : existing.displayArtist;
+    const isrc =
+      patch.isrc !== undefined ? patch.isrc?.trim() || null : existing.isrc;
+    let status = patch.status !== undefined ? patch.status : existing.status;
+    if (!['draft', 'active', 'retired'].includes(status)) {
+      throw new Error('invalid_status');
+    }
+    const splitsMetadata =
+      patch.splitsMetadata !== undefined
+        ? normalizeSplits(patch.splitsMetadata)
+        : existing.splitsMetadata;
+
+    const res = await this.pool().query(
+      `UPDATE music_registry_tracks SET
+         title = $3,
+         display_artist = $4,
+         isrc = $5,
+         status = $6,
+         splits_metadata = $7::jsonb,
+         updated_at = NOW()
+       WHERE id = $1::uuid AND owner_pn_identifier = $2
+       RETURNING *`,
+      [
+        trackId,
+        ownerPn,
+        title,
+        displayArtist,
+        isrc,
+        status,
+        JSON.stringify(splitsMetadata)
+      ]
+    );
+    if (res.rows.length === 0) return null;
+    return rowToTrack(res.rows[0]);
+  }
+}

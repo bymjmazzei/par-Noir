@@ -73,7 +73,7 @@ fi
 # Build licensing-portal (licensing target)
 echo "📦 Building licensing-portal..."
 cd ../licensing-portal
-npm run build
+VITE_PN_CLIENT_ID="${VITE_PN_CLIENT_ID:-licensing-portal}" npm run build
 if [ $? -ne 0 ]; then
     echo "❌ licensing-portal build failed"
     exit 1

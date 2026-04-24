@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<!-- Canonical pN OAuth popup bridge; keep in sync with apps/aggregator-browser/public/oauth-callback.html -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authorizing...</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #000;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+
+    .container {
+      text-align: center;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(59, 130, 246, 0.2);
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .message {
+      color: #9ca3af;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="spinner"></div>
+    <div class="message">Completing authorization...</div>
+  </div>
+
+  <script>
+    (function () {
+      var DEBUG_KEY = 'pn_debug_oauth';
+      function oauthDbg(phase, data) {
+        try {
+          if (localStorage.getItem(DEBUG_KEY) !== '1') return;
+          var entry = { t: Date.now(), loc: 'oauth-callback', phase: phase };
+          if (data) {
+            for (var k in data) {
+              if (Object.prototype.hasOwnProperty.call(data, k)) entry[k] = data[k];
+            }
+          }
+          if (!window.__PN_OAUTH_DEBUG__) window.__PN_OAUTH_DEBUG__ = [];
+          window.__PN_OAUTH_DEBUG__.push(entry);
+          if (window.opener && !window.opener.closed) {
+            try {
+              if (!window.opener.__PN_OAUTH_DEBUG__) window.opener.__PN_OAUTH_DEBUG__ = [];
+              window.opener.__PN_OAUTH_DEBUG__.push(entry);
+            } catch (e) {}
+          }
+        } catch (e) {}
+      }
+
+      var BC_NAME = 'par-noir-oauth-v1';
+      var urlParams = new URLSearchParams(window.location.search);
+      var pnPopupFlow = urlParams.get('pn_popup') === '1';
+      var code = urlParams.get('code');
+      var state = urlParams.get('state');
+      var error = urlParams.get('error');
+      var ageShared = urlParams.get('age_shared');
+
+      oauthDbg('callback_start', {
+        hasCode: !!code,
+        hasError: !!error,
+        pnPopupFlow: pnPopupFlow
+      });
+
+      var oauthData = {
+        type: 'oauth_callback',
+        code: code,
+        state: state,
+        error: error,
+        age_shared: ageShared,
+        timestamp: Date.now()
+      };
+
+      var callbackKey = 'pn_oauth_callback_' + Date.now();
+      try {
+        localStorage.setItem(callbackKey, JSON.stringify(oauthData));
+        localStorage.setItem('pn_oauth_pending', 'true');
+        localStorage.setItem('pn_oauth_latest_key', callbackKey);
+      } catch (e) {
+        console.warn('localStorage failed', e);
+      }
+
+      function getOpenerTargetOrigin() {
+        var o = window.location.origin;
+        try {
+          if (window.opener && !window.opener.closed && window.opener.location && window.opener.location.origin) {
+            o = window.opener.location.origin;
+          }
+        } catch (e) {
+        }
+        return o;
+      }
+
+      function postToBroadcastChannel() {
+        try {
+          var ch = new BroadcastChannel(BC_NAME);
+          ch.postMessage(oauthData);
+          ch.close();
+        } catch (e) {}
+      }
+
+      function postToOpener(targetOrigin) {
+        if (!window.opener || window.opener.closed) return;
+        try {
+          window.opener.postMessage(oauthData, targetOrigin);
+        } catch (e) {
+          try {
+            window.opener.postMessage(oauthData, window.location.origin);
+          } catch (e2) {}
+        }
+      }
+
+      function deliverHandshake() {
+        var targetOrigin = getOpenerTargetOrigin();
+        var delays = [0, 30, 80, 150, 300, 600, 1200, 2000];
+        for (var i = 0; i < delays.length; i++) {
+          (function (ms) {
+            setTimeout(function () {
+              postToBroadcastChannel();
+              postToOpener(targetOrigin);
+            }, ms);
+          })(delays[i]);
+        }
+      }
+
+      function buildResumeUrl() {
+        var q = new URLSearchParams(window.location.search);
+        q.set('oauth_resume', '1');
+        return window.location.origin + '/?' + q.toString();
+      }
+      var resumeUrl = buildResumeUrl();
+
+      var handedOffViaOpenerNav = false;
+      if (window.opener && !window.opener.closed && pnPopupFlow) {
+        deliverHandshake();
+      } else if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.location.replace(resumeUrl);
+          handedOffViaOpenerNav = true;
+        } catch (e) {
+          deliverHandshake();
+        }
+      } else {
+        deliverHandshake();
+      }
+
+      oauthDbg('callback_handoff', {
+        handedOffViaOpenerNav: handedOffViaOpenerNav,
+        hasOpener: !!(window.opener && !window.opener.closed)
+      });
+
+      var lackOpener = !window.opener || window.opener.closed;
+
+      function tryClosePopup() {
+        var base = handedOffViaOpenerNav ? 400 : 2600;
+        for (var i = 1; i <= 20; i++) {
+          setTimeout(function () {
+            try {
+              if (!window.closed) window.close();
+            } catch (e) {}
+          }, base + i * 150);
+        }
+      }
+
+      if (handedOffViaOpenerNav) {
+        tryClosePopup();
+      } else if (lackOpener) {
+        if (pnPopupFlow) {
+          tryClosePopup();
+        } else {
+          window.location.replace(resumeUrl);
+        }
+      } else {
+        tryClosePopup();
+      }
+    })();
+  </script>
+</body>
+</html>

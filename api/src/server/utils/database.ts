@@ -939,6 +939,20 @@ export async function initializeDatabase(): Promise<void> {
       );
     }
 
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const musicPath = path.join(__dirname, '../../migrations/add_music_track_registry.sql');
+      const musicSql = fs.readFileSync(musicPath, 'utf-8');
+      await db.query(musicSql);
+      console.log('✅ music_registry_tracks migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ music_registry_tracks migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);

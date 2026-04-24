@@ -27,6 +27,7 @@ import { captureApiRouteError, initApiSentry } from './server/utils/sentry';
 import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modules/adminDeveloperRoutes';
 import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSelfServiceRoutes';
 import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
+import { registerMusicTrackRegistryRoutes } from './server/modules/musicTrackRegistryRoutes';
 import { hashIdentifier, safeLogger } from './utils/logger';
 import { getBearerTokenPayload } from './server/middleware/authMiddleware';
 
@@ -56,7 +57,10 @@ const DEFAULT_ORIGINS = [
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:5174',
+  'http://localhost:5175',
+  'http://127.0.0.1:5175',
   'http://localhost:5176',
+  'https://licensing-parnoir.web.app',
   // API-hosted OAuth consent page uses fetch() same-origin; browsers send Origin: https://api.parnoir.com
   'https://api.parnoir.com',
 ];
@@ -11032,6 +11036,7 @@ class ProductionServer {
     registerAdminDeveloperRoutes(this.app);
     registerDeveloperSelfServiceRoutes(this.app);
     registerOwnedAssetRoutes(this.app);
+    registerMusicTrackRegistryRoutes(this.app);
   }
 
   /**

@@ -27,6 +27,6 @@ echo "[5/6] developer-portal build"
 (cd apps/developer-portal && VITE_API_ENDPOINT="$API_ENDPOINT" npm run build)
 
 echo "[6/6] licensing-portal build"
-(cd apps/licensing-portal && VITE_API_ENDPOINT="$API_ENDPOINT" npm run build)
+(cd apps/licensing-portal && VITE_API_ENDPOINT="$API_ENDPOINT" VITE_PN_CLIENT_ID="${VITE_PN_CLIENT_ID:-licensing-portal}" npm run build)
 
 echo "Auth surface smoke builds completed."

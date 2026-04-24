@@ -115,6 +115,20 @@ export class ClientRegistrationService {
           'http://127.0.0.1:5176/oauth-callback.html'
         ],
         scopes: ['openid', 'profile', 'zkp:age_attestation']
+      },
+      {
+        clientId: 'licensing-portal',
+        name: 'par Noir Licensing',
+        description: 'Rights-holder track library for the licensed music registry',
+        redirectUris: [
+          'https://licensing.parnoir.com/oauth-callback.html',
+          'https://licensing.parnoir.com/',
+          'https://licensing-parnoir.web.app/oauth-callback.html',
+          'https://licensing-parnoir.web.app/',
+          'http://localhost:5175/oauth-callback.html',
+          'http://127.0.0.1:5175/oauth-callback.html'
+        ],
+        scopes: ['openid', 'profile', 'zkp:age_attestation']
       }
     ];
 

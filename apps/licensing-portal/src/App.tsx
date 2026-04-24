@@ -1,10 +1,15 @@
 /**
  * Licensing — par Noir
- * Splash page for rights holders. Deployed at licensing.parnoir.com
+ * Rights-holder intake + authenticated track registry (creator fund / music pool).
  */
 
 import React, { useState } from 'react';
-import { FileCheck, Percent, Shield } from 'lucide-react';
+import { FileCheck, Percent, Shield, LogOut } from 'lucide-react';
+import { UnlockButton } from '@par-noir/oauth-ui';
+import { API_ENDPOINT } from './config/api';
+import { PN_CLIENT_ID } from './config/client';
+import { LicensingSessionProvider, useLicensingSession } from './context/LicensingSessionContext';
+import { TrackLibraryPanel } from './components/TrackLibraryPanel';
 
 const PARTNER_TYPES = [
   'Label',
@@ -12,16 +17,27 @@ const PARTNER_TYPES = [
   'Independent Artist',
   'Catalog Owner',
   'Distributor',
-  'Other',
+  'Other'
 ];
 
-export default function App() {
+function getLicensingOAuthConfig() {
+  return {
+    clientId: PN_CLIENT_ID,
+    apiEndpoint: API_ENDPOINT,
+    redirectUri: `${typeof window !== 'undefined' ? window.location.origin : ''}/oauth-callback.html`,
+    scope: ['openid', 'profile', 'zkp:age_attestation'] as const
+  };
+}
+
+function LicensingShell() {
+  const { loadingSession, signedIn, error, setError, handleBeforeUnlock, onPopupResult, signOut } =
+    useLicensingSession();
   const [form, setForm] = useState({
     name: '',
     partnerType: '',
     title: '',
     phone: '',
-    email: '',
+    email: ''
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -31,7 +47,7 @@ export default function App() {
       `Partner type: ${form.partnerType || '(not selected)'}`,
       `Title: ${form.title}`,
       `Phone: ${form.phone}`,
-      `Email: ${form.email}`,
+      `Email: ${form.email}`
     ].join('\n');
     const mailto = `mailto:parnoirdashboard@gmail.com?subject=Licensing partner inquiry&body=${encodeURIComponent(body)}`;
     window.location.href = mailto;
@@ -43,20 +59,19 @@ export default function App() {
       style={{
         backgroundImage: 'url(/branding/Par-Noir-Background-Dark.png)',
         backgroundSize: 'cover',
-        backgroundPosition: 'center',
+        backgroundPosition: 'center'
       }}
     >
       <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
       <div className="relative z-10">
-        {/* Header */}
         <header className="border-b border-white/10 px-6 py-4 backdrop-blur-sm">
-          <div className="max-w-4xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
               <a
                 href="https://parnoir.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-3 hover:opacity-90 transition-opacity"
+                className="flex items-center gap-3 hover:opacity-90 transition-opacity shrink-0"
               >
                 <img
                   src="/branding/Par-Noir-Logo-White.png"
@@ -64,24 +79,58 @@ export default function App() {
                   className="h-8 object-contain"
                 />
               </a>
-              <span className="text-xl font-semibold tracking-tight">Licensing</span>
+              <span className="text-xl font-semibold tracking-tight truncate">Licensing</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {loadingSession ? (
+                <span className="text-sm text-neutral-400">Loading…</span>
+              ) : signedIn ? (
+                <>
+                  <span className="text-xs text-neutral-400 hidden sm:inline">Signed in</span>
+                  <button
+                    type="button"
+                    onClick={() => void signOut()}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/20 text-sm text-white/90 hover:bg-white/10"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </button>
+                </>
+              ) : (
+                <UnlockButton
+                  config={getLicensingOAuthConfig()}
+                  onBeforeNavigate={handleBeforeUnlock}
+                  onPopupResult={(r) => void onPopupResult(r)}
+                  onPopupFlowFailed={() => setError('Sign-in window was blocked or closed.')}
+                  className="px-4 py-2 rounded-lg border border-white/30 text-sm font-medium text-white hover:bg-white/10"
+                >
+                  Sign in with pN
+                </UnlockButton>
+              )}
             </div>
           </div>
         </header>
 
-        {/* Hero */}
+        {error && (
+          <div className="max-w-4xl mx-auto px-6 pt-4">
+            <div className="rounded-lg border border-amber-500/40 bg-amber-950/40 px-4 py-3 text-sm text-amber-100">
+              {error}
+            </div>
+          </div>
+        )}
+
+        {signedIn && <TrackLibraryPanel />}
+
         <main className="max-w-2xl mx-auto px-6 py-16 md:py-24">
           <div className="text-center space-y-8">
             <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
               License your music and sounds for the par Noir ecosystem.
             </h1>
             <p className="text-lg text-neutral-300 leading-relaxed">
-              Rights holders grant use of their media in exchange for a share of
-              each post&apos;s monetization. One agreement, clear terms, automated
-              reporting.
+              Rights holders grant use of their media in exchange for a share of each post&apos;s
+              monetization. One agreement, clear terms, automated reporting.
             </p>
 
-            {/* Feature tiles: 2-col per tile — icon left, title+text right */}
             <div className="grid gap-4 py-8 md:grid-cols-3 text-left">
               <div className="bg-neutral-900/60 border border-white/10 rounded-lg p-4 backdrop-blur-sm flex items-center gap-3">
                 <div className="flex-shrink-0 w-10">
@@ -90,8 +139,7 @@ export default function App() {
                 <div className="min-w-0 flex-1">
                   <h2 className="font-semibold mb-1">License your media</h2>
                   <p className="text-sm text-neutral-400 leading-snug">
-                    Contribute tracks to the licensed library; clear terms, one
-                    agreement.
+                    Contribute tracks to the licensed library; clear terms, one agreement.
                   </p>
                 </div>
               </div>
@@ -113,20 +161,19 @@ export default function App() {
                 <div className="min-w-0 flex-1">
                   <h2 className="font-semibold mb-1">Built on par Noir</h2>
                   <p className="text-sm text-neutral-400 leading-snug">
-                    User-owned identity and content; transparent, automated
-                    reporting.
+                    User-owned identity and content; transparent, automated reporting.
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Contact form */}
-            <section className="pt-8 border-t border-white/10">
-              <h2 className="text-xl font-semibold mb-4">Get in touch</h2>
-              <form
-                onSubmit={handleSubmit}
-                className="space-y-4 max-w-md mx-auto text-left"
-              >
+            <section id="partner-inquiry" className="pt-8 border-t border-white/10 text-left">
+              <h2 className="text-xl font-semibold mb-4 text-center">Get in touch</h2>
+              <p className="text-sm text-neutral-400 mb-4 text-center">
+                New partnership or contract questions? Use this form. Catalog updates use{' '}
+                <strong className="text-neutral-200">Sign in with pN</strong> above.
+              </p>
+              <form onSubmit={handleSubmit} className="space-y-4 max-w-md mx-auto">
                 <div>
                   <label htmlFor="name" className="block text-sm text-neutral-400 mb-1">
                     Name
@@ -228,9 +275,20 @@ export default function App() {
             >
               browse.parnoir.com
             </a>
+            <a href="#partner-inquiry" className="hover:text-neutral-300 transition-colors">
+              Partner inquiry
+            </a>
           </div>
         </footer>
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <LicensingSessionProvider>
+      <LicensingShell />
+    </LicensingSessionProvider>
   );
 }
