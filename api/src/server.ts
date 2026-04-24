@@ -28,6 +28,7 @@ import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modul
 import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSelfServiceRoutes';
 import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
 import { registerMusicTrackRegistryRoutes } from './server/modules/musicTrackRegistryRoutes';
+import { registerStripeMonetizationRoutes } from './server/modules/stripeMonetizationRoutes';
 import { hashIdentifier, safeLogger } from './utils/logger';
 import { getBearerTokenPayload } from './server/middleware/authMiddleware';
 
@@ -596,7 +597,8 @@ class ProductionServer {
       '/api/aggregator/metadata-index', 
       '/api/aggregator/nsfw-index',
       '/api/aggregator/fix-feeds',
-      '/api/aggregator/metadata-index/debug'
+      '/api/aggregator/metadata-index/debug',
+      '/api/monetization/stripe-webhook'
     ];
     const isPublicNoOriginPath = (path: string): boolean =>
       publicNoOriginPaths.some((p) => path === p || path.startsWith(p));
@@ -713,7 +715,8 @@ class ProductionServer {
           req.path.startsWith('/api/notifications') ||
           req.path.startsWith('/api/activity-ledger') ||
           req.path.startsWith('/api/connections') ||
-          req.path.startsWith('/api/messages')
+          req.path.startsWith('/api/messages') ||
+          req.path.startsWith('/api/monetization/status')
         )) ||
         (req.method === 'POST' && (
           req.path === '/api/engagement/bulk-stats'
@@ -726,8 +729,13 @@ class ProductionServer {
 
     // Body parsing - SECURITY FIX: Reduced limit to prevent DoS attacks
     // Exception: POST /api/drive/files needs 200mb for video/encrypted uploads (free tier 100MB raw)
+    // Exception: Stripe webhooks require raw body for signature verification
     this.app.use((req, res, next) => {
-      const limit = req.method === 'POST' && req.path === '/api/drive/files' ? '200mb' : '10mb';
+      const p = req.path || req.url?.split('?')[0] || '';
+      if (req.method === 'POST' && p === '/api/monetization/stripe-webhook') {
+        return express.raw({ type: 'application/json', limit: '1mb' })(req, res, next);
+      }
+      const limit = req.method === 'POST' && p === '/api/drive/files' ? '200mb' : '10mb';
       return express.json({ limit })(req, res, next);
     });
     this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -11037,6 +11045,7 @@ class ProductionServer {
     registerDeveloperSelfServiceRoutes(this.app);
     registerOwnedAssetRoutes(this.app);
     registerMusicTrackRegistryRoutes(this.app);
+    registerStripeMonetizationRoutes(this.app);
   }
 
   /**

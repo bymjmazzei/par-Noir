@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense, useRef, useCallback } from 'react';
-import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown, Users, Layers } from 'lucide-react';
+import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown, Users, Layers, Wallet } from 'lucide-react';
 import Header from './components/Header';
 import { QRCodeManager } from './utils/qrCode';
   import { QRCodeScanner } from './components/QRCodeScanner';
@@ -49,6 +49,7 @@ import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import DmcaPolicy from './pages/DmcaPolicy';
 import { MainDashboard } from './components/app/MainDashboard';
+import { MonetizationTab } from './components/monetization/MonetizationTab';
 import { DelegationModal } from './components/DelegationModal';
 import { SubPnTab } from './components/subpn/SubPnTab';
 import { IdentityVerificationModal } from './components/IdentityVerificationModal';
@@ -6189,6 +6190,18 @@ This invitation expires in 24 hours.`;
                         Services
                       </button>
 
+                      <button
+                        onClick={() => setActiveTab('monetization')}
+                        className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 flex items-center gap-1 ${
+                          activeTab === 'monetization'
+                            ? 'border-primary text-primary'
+                            : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
+                        }`}
+                      >
+                        <Wallet className="w-4 h-4" />
+                        Monetization
+                      </button>
+
                   </nav>
               </div>
 
@@ -6619,6 +6632,17 @@ This invitation expires in 24 hours.`;
                     <DeveloperPortal authenticatedUser={authenticatedUser} />
                   )}
 
+                  {activeTab === 'monetization' && (
+                    <MonetizationTab
+                      accessToken={
+                        authenticatedUser?.accessToken ||
+                        (authenticatedUser as { authToken?: string } | undefined)?.authToken ||
+                        ''
+                      }
+                      showErrorMessage={showErrorMessage}
+                      showSuccessMessage={showSuccessMessage}
+                    />
+                  )}
 
                   {/* Delegation Tab */}
                   {activeTab === 'subpn' && (

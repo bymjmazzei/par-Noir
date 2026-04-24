@@ -971,5 +971,19 @@ export class EngagementService {
       // Don't throw - counting is best effort
     }
   }
+
+  /** Creator fund / monetization: same rule as engagement — active row in verified_identities. */
+  static async isIdentityVerifiedForMonetization(pnIdentifier: string): Promise<boolean> {
+    const db = getDatabasePool();
+    try {
+      const result = await db.query(
+        `SELECT 1 FROM verified_identities WHERE identity_id = $1 AND is_active = TRUE LIMIT 1`,
+        [pnIdentifier.trim()]
+      );
+      return result.rows.length > 0;
+    } catch {
+      return false;
+    }
+  }
 }
 
