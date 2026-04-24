@@ -22,6 +22,7 @@ par Noir is intended as **infrastructure** (identity → dashboard → API → b
 | **Who may earn from the fund** | Identity **verified** **and** paying the **monthly subscription** that **maintains** monetization eligibility. If either lapses, **no new accrual** from the fund until restored. |
 | **Engagement** | **All** engagement counts for product/analytics. **Bounty** (fund allocation) weight: **90%** from engagement **by verified** accounts, **10%** from engagement **by unverified** accounts. |
 | **Cash waterfall** | **Gross** `G` → pay **`E`** (monthly OPEX) → **`R = max(0, G - E)`** → **25%** of **`R`** to platform / **75%** of **`R`** to the **creator fund**. On each piece of content, **library music** applies **75% creator / 25% music pool** to the **creator’s** share of that reward (see Music). |
+| **Creator payouts** | **45-day** hold after the **relevant accrual period is finalized**; transfers on **calendar 1st and 15th**; **$10 USD** minimum per payout; **balances carry forward** with no product-side expiration (details under [Payouts](#payouts-and-tax-compliance-third-party)). |
 
 Symbols:
 
@@ -175,9 +176,20 @@ par Noir’s guiding architecture is **crypto without blockchain**: decentralize
 | Tax forms & withholding | **Does not** replace vendor; may **embed** or **link** vendor UI / APIs | **W‑9 / W‑8** flows, withholding, **1099 / 1042‑S** as product supports |
 | Ledger of record | Append-only **accrual and payout status** (`payout_queued`, `payout_settled`, external batch id) | Their ledger for settlement rails |
 
+### Payout timing and thresholds (confirmed)
+
+- **45-day hold:** Creator share from a given **closed fund / accrual period** becomes **eligible for disbursement** only after **45 calendar days** have passed since **that period’s balances were finalized** (time to absorb **chargebacks**, **subscription reversals**, **fraud or data corrections**, and to stabilize the **creator pool** before cash leaves the platform). Until then, amounts remain **pending payout** in the internal ledger.
+- **Disbursement schedule:** Payout batches run on the **1st** and **15th** of each calendar month. Each run pays out **eligible** balances (cleared the 45-day hold, met onboarding and partner rules) to the **third-party payout partner** for settlement.
+- **Minimum payout:** **$10 USD** (or whole-currency equivalent per payout rail when non-USD is supported) per **transfer**; if a creator’s **eligible** balance is below the minimum, **no transfer** is initiated that window and the balance **accumulates**.
+- **Carryover:** Accrued creator balances **do not expire** for product purposes; sub-minimum and not-yet-held amounts **carry forward** to the next accrual periods and future **1st / 15th** windows until paid or adjusted by **clawback / reversal** ledger entries.
+
+**Engineering (target):** Model states such as **pending_hold**, **eligible**, **queued**, **settled**, and **reversed**; each accrual line should carry **`period_id`** and **`available_after`** (or derive from period close + 45 days).
+
+**Legal / finance (TBD with counsel):** Unclaimed property (**escheatment**), dormant-account policy, and alignment with the payout vendor’s **minimum transfer** and **currency** rules (may be stricter than $10).
+
 **Operational rules (product)**
 
-- **Minimum payout threshold**, **hold periods**, and **clawback / chargeback** policy should be documented alongside the vendor’s rules.
+- **Clawback / chargeback:** Subscription and payment partners may still reverse income **after** accrual; ledger must support **reversal rows** that reduce pending or eligible balances. The **45-day hold** is a **risk buffer**, not a guarantee that all disputes have ended.
 - **Creators** complete payout onboarding **before** first disbursement; **no raw tax IDs or full bank details** in par Noir logs (follow existing **no sensitive data in plain text** rules).
 
 **Disclaimer:** This section is **policy intent**, not tax or legal advice. **Vendor selection**, **merchant-of-record** treatment, and **classification** of payments (e.g. nonemployee compensation vs other categories) require **qualified counsel and CPA** review.
@@ -210,6 +222,7 @@ Engineering should treat this file as the **policy target** and implement **ledg
 5. **PSP treatment:** Whether **`G`** is recorded **gross** with PSP fees inside **`E`**, or **net** at collection—must be consistent in books and dashboards.
 6. **Key management:** Which **KMS/HSM** and key rotation policy backs **period signatures** and optional timestamping.
 7. **Payout vendor:** Which third-party provider (e.g. Stripe Connect, PayPal, Tipalti-class, or other), **contractual roles** (merchant of record vs pass-through), and **jurisdictions** supported at launch vs later.
+8. **Dormant balances:** Escheatment / unclaimed-property handling for long-inactive payees (product says no expiration; **law** may still impose duties).
 
 ---
 
