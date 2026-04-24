@@ -8,6 +8,18 @@ import { X, Globe, Lock, Users, Star } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { uploadQueueService } from '../services/uploadQueueService';
+import {
+  attachPostToRegistryTrack,
+  clearRegistryTrackForPost,
+  fetchMusicRegistryCatalog,
+  fetchPostRegistryTrack,
+  type CatalogTrack
+} from '../services/musicRegistryApi';
+
+function isAudioFile(file: IndexedFile): boolean {
+  const ft = (file.metadata.fileType || '').toLowerCase();
+  return ft === 'audio' || ft === 'music';
+}
 
 interface EditFileModalProps {
   file: IndexedFile;
@@ -27,15 +39,68 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
   const [isTopPost, setIsTopPost] = useState(file.metadata.isTopPost || false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const audio = isAudioFile(file);
+  const [catalog, setCatalog] = useState<CatalogTrack[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [attachedTrackId, setAttachedTrackId] = useState<string>('');
 
-  const handleSave = () => {
+  const fileId = file.metadata.fileId || file.metadata.backendFileId || '';
+
+  useEffect(() => {
+    if (!audio || !userState.isUnlocked || !fileId) return;
+    let cancelled = false;
+    (async () => {
+      setCatalogLoading(true);
+      try {
+        const [list, current] = await Promise.all([
+          fetchMusicRegistryCatalog(),
+          fetchPostRegistryTrack(fileId)
+        ]);
+        if (!cancelled) {
+          setCatalog(list);
+          setAttachedTrackId(current ?? '');
+        }
+      } catch {
+        if (!cancelled) {
+          setCatalog([]);
+          setAttachedTrackId('');
+        }
+      } finally {
+        if (!cancelled) setCatalogLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [audio, userState.isUnlocked, fileId]);
+
+  const handleSave = async () => {
     if (!userState.isUnlocked || !userState.pnIdentifier) {
       setError('You must be unlocked to edit files');
       return;
     }
 
     setError(null);
-    const fileId = file.metadata.fileId || file.metadata.backendFileId;
+    if (!fileId) {
+      setError('Missing file id');
+      return;
+    }
+
+    if (audio) {
+      setSaving(true);
+      try {
+        if (attachedTrackId) {
+          await attachPostToRegistryTrack(fileId, attachedTrackId);
+        } else {
+          await clearRegistryTrackForPost(fileId);
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Licensed music link failed');
+        setSaving(false);
+        return;
+      }
+      setSaving(false);
+    }
 
     // Optimistically update local file state
     const updatedFile: IndexedFile = {
@@ -220,6 +285,33 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
             </button>
           </div>
 
+          {audio && userState.isUnlocked && (
+            <div>
+              <label className="block text-white font-medium mb-2">Licensed library track</label>
+              <p className="text-xs text-neutral-400 mb-2">
+                If this post uses par Noir licensed library audio, link the registry track for creator-fund 75/25
+                splits. Optional.
+              </p>
+              {catalogLoading ? (
+                <p className="text-sm text-neutral-500">Loading catalog…</p>
+              ) : (
+                <select
+                  value={attachedTrackId}
+                  onChange={(e) => setAttachedTrackId(e.target.value)}
+                  className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">None (not using licensed library on this post)</option>
+                  {catalog.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.displayArtist ? `${t.displayArtist} — ` : ''}
+                      {t.title}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
           {/* Top Post */}
           <div>
             <label className="block text-white font-medium mb-3">Top Post</label>
@@ -261,7 +353,8 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
             Cancel
           </button>
           <button
-            onClick={handleSave}
+            type="button"
+            onClick={() => void handleSave()}
             disabled={saving}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >

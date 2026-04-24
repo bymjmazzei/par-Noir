@@ -37,6 +37,77 @@ function parseStatus(q: unknown): MusicTrackStatus | undefined {
 export function registerMusicTrackRegistryRoutes(app: Application): void {
   const chain = [requireAuth, requireLicensingPortalClient];
 
+  app.get('/api/v1/music/registry/catalog', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const pn = req.user?.pnIdentifier?.trim();
+      if (!pn) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Missing pn identifier on token'
+        });
+      }
+      const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : undefined;
+      const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+      const tracks = await MusicTrackRegistryService.listActiveCatalog({ limit, q });
+      return res.json({ tracks });
+    } catch (e: unknown) {
+      console.error('[music-registry] catalog:', e);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
+      });
+    }
+  });
+
+  app.get('/api/v1/music/registry/post-uses/:postFileId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const pn = req.user?.pnIdentifier?.trim();
+      if (!pn) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Missing pn identifier on token'
+        });
+      }
+      const postFileId = decodeURIComponent(String(req.params.postFileId || ''));
+      const row = await MusicTrackRegistryService.getPostUseForOwner(pn, postFileId);
+      return res.json({ registry_track_id: row?.registryTrackId ?? null });
+    } catch (e: unknown) {
+      console.error('[music-registry] get post-use:', e);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
+      });
+    }
+  });
+
+  app.delete('/api/v1/music/registry/post-uses/:postFileId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const pn = req.user?.pnIdentifier?.trim();
+      if (!pn) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Missing pn identifier on token'
+        });
+      }
+      const postFileId = decodeURIComponent(String(req.params.postFileId || ''));
+      if (!postFileId.trim()) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'postFileId required' });
+      }
+      const removed = await MusicTrackRegistryService.detachPostFromRegistry(pn, postFileId);
+      return res.json({ removed });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '';
+      if (msg === 'post_file_id_required') {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'post_file_id required' });
+      }
+      console.error('[music-registry] delete post-use:', e);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
+      });
+    }
+  });
+
   app.post('/api/v1/music/registry/post-uses', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pn = req.user?.pnIdentifier?.trim();

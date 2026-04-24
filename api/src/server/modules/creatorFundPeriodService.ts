@@ -6,9 +6,12 @@
  * Policy text references America/New_York for payouts and ops cadence — aligning period cutovers
  * to Eastern is a later refinement (allocator cron can switch to TZ-aware boundaries).
  *
- * After close: bounty pools split to **content owners** (aggregator pn_identifier) weighted by
- * like/comment/share/save engagement on their public files in the window (verified_identities for bucket).
- * Optional `CREATOR_FUND_PERIOD_ATTESTATION_SECRET`: stores HMAC-SHA256(chain_hash) on the closed row.
+ * Bounty allocation: **90/10** uses **engagement actor** verification (`verified_identities` on `user_did`).
+ * Weights are like/comment/share/save counts per (file, actor). **Library music** (`music_registry_post_uses`
+ * + active track): **75%** of that weight to the post owner, **25%** to the track’s `owner_pn_identifier`.
+ *
+ * Optional `CREATOR_FUND_PERIOD_ATTESTATION_SECRET`: HMAC-SHA256(chain_hash) on the closed row.
+ * Optional `CREATOR_FUND_PERIOD_KMS_KEY_VERSION`: GCP KMS resource name; asymmetricSign over SHA-256(chain_hash).
  */
 
 import crypto from 'crypto';
@@ -40,6 +43,9 @@ export interface ClosedFundPeriodRow {
   chainHash: string | null;
   /** Present when CREATOR_FUND_PERIOD_ATTESTATION_SECRET is set at close time. */
   periodAttestationHmac: string | null;
+  /** Base64 signature when CREATOR_FUND_PERIOD_KMS_KEY_VERSION is set at close time. */
+  periodAttestationKmsSignature: string | null;
+  periodAttestationKmsKeyVersion: string | null;
 }
 
 function rowToDto(r: Record<string, unknown>): ClosedFundPeriodRow {
@@ -58,7 +64,11 @@ function rowToDto(r: Record<string, unknown>): ClosedFundPeriodRow {
     bountyUnverifiedCents: Number(r.bounty_unverified_cents ?? 0),
     chainHash: r.chain_hash != null ? String(r.chain_hash) : null,
     periodAttestationHmac:
-      r.period_attestation_hmac != null ? String(r.period_attestation_hmac) : null
+      r.period_attestation_hmac != null ? String(r.period_attestation_hmac) : null,
+    periodAttestationKmsSignature:
+      r.period_attestation_kms_signature != null ? String(r.period_attestation_kms_signature) : null,
+    periodAttestationKmsKeyVersion:
+      r.period_attestation_kms_key_version != null ? String(r.period_attestation_kms_key_version) : null
   };
 }
 
@@ -104,8 +114,13 @@ function allocateProportional(
   return out;
 }
 
+function addWeight(m: Map<string, number>, key: string, w: number): void {
+  if (!Number.isFinite(w) || w <= 0) return;
+  m.set(key, (m.get(key) || 0) + w);
+}
+
 /**
- * Distributes bounty verified / unverified pools to creators (content owners) by engagement weight.
+ * Distributes bounty pools: actor-verified vs actor-unverified; per event 75/25 when a post uses an active registry track.
  */
 async function allocateCreatorBountyShares(
   client: PoolClient,
@@ -116,67 +131,89 @@ async function allocateCreatorBountyShares(
   bountyUnverifiedCents: number
 ): Promise<void> {
   const aggRes = await client.query(
-    `WITH per_file AS (
-       SELECT e.file_id, COUNT(*)::bigint AS cnt
+    `WITH per_actor_file AS (
+       SELECT e.file_id, e.user_did AS actor_id, COUNT(*)::bigint AS cnt
        FROM engagement e
        WHERE e.created_at >= $1::timestamptz AND e.created_at < $2::timestamptz
          AND e.type IN ('like', 'comment', 'share', 'save')
-       GROUP BY e.file_id
+       GROUP BY e.file_id, e.user_did
      ),
-     owners AS (
-       SELECT pf.file_id, pf.cnt, COALESCE(m.pn_identifier, t.pn_identifier, c.pn_identifier) AS owner_pn
-       FROM per_file pf
-       LEFT JOIN aggregator_media m ON m.file_id = pf.file_id
-       LEFT JOIN aggregator_thoughts t ON t.file_id = pf.file_id
-       LEFT JOIN aggregator_collections c ON c.file_id = pf.file_id
+     with_owner AS (
+       SELECT p.*, COALESCE(m.pn_identifier, t.pn_identifier, c.pn_identifier) AS owner_pn
+       FROM per_actor_file p
+       LEFT JOIN aggregator_media m ON m.file_id = p.file_id
+       LEFT JOIN aggregator_thoughts t ON t.file_id = p.file_id
+       LEFT JOIN aggregator_collections c ON c.file_id = p.file_id
+     ),
+     with_track AS (
+       SELECT w.*, pu.registry_track_id, tr.owner_pn_identifier AS track_owner_pn, tr.status AS track_status
+       FROM with_owner w
+       LEFT JOIN music_registry_post_uses pu ON pu.post_file_id = w.file_id
+       LEFT JOIN music_registry_tracks tr ON tr.id = pu.registry_track_id
      )
-     SELECT o.owner_pn AS recipient_identity_id,
-            SUM(o.cnt)::bigint AS units,
-            BOOL_OR(vi.identity_id IS NOT NULL) AS is_verified
-     FROM owners o
-     LEFT JOIN verified_identities vi ON vi.identity_id = o.owner_pn AND vi.is_active = TRUE
-     WHERE o.owner_pn IS NOT NULL AND LENGTH(TRIM(o.owner_pn)) > 0
-     GROUP BY o.owner_pn`,
+     SELECT wt.file_id, wt.actor_id, wt.cnt, wt.owner_pn, wt.registry_track_id, wt.track_owner_pn, wt.track_status,
+       (wt.registry_track_id IS NOT NULL AND wt.track_status = 'active' AND wt.track_owner_pn IS NOT NULL
+         AND LENGTH(TRIM(wt.track_owner_pn)) > 0) AS uses_library_music,
+       EXISTS (
+         SELECT 1 FROM verified_identities vi
+         WHERE vi.identity_id = wt.actor_id AND vi.is_active = TRUE
+       ) AS actor_verified
+     FROM with_track wt
+     WHERE wt.owner_pn IS NOT NULL AND LENGTH(TRIM(wt.owner_pn)) > 0`,
     [periodStartIso, periodEndIso]
   );
 
-  const verifiedRecipients: Array<{ id: string; weight: number }> = [];
-  const unverifiedRecipients: Array<{ id: string; weight: number }> = [];
+  const verifiedWeights = new Map<string, number>();
+  const unverifiedWeights = new Map<string, number>();
+
   for (const row of aggRes.rows) {
-    const id = String(row.recipient_identity_id).trim();
-    const units = Number(row.units ?? 0);
-    if (!id || !Number.isFinite(units) || units <= 0) continue;
-    if (row.is_verified === true) {
-      verifiedRecipients.push({ id, weight: units });
-    } else {
-      unverifiedRecipients.push({ id, weight: units });
+    const ownerPn = String(row.owner_pn ?? '').trim();
+    const cnt = Number(row.cnt ?? 0);
+    if (!ownerPn || !Number.isFinite(cnt) || cnt <= 0) continue;
+    const usesMusic = Boolean(row.uses_library_music);
+    const actorVerified = Boolean(row.actor_verified);
+    const trackOwnerPn = String(row.track_owner_pn ?? '').trim();
+    const creatorMult = usesMusic ? 75 : 100;
+    const musicMult = usesMusic && trackOwnerPn ? 25 : 0;
+    const cW = cnt * creatorMult;
+    const mW = cnt * musicMult;
+    const target = actorVerified ? verifiedWeights : unverifiedWeights;
+    addWeight(target, `c:${ownerPn}`, cW);
+    if (mW > 0) {
+      addWeight(target, `m:${trackOwnerPn}`, mW);
     }
   }
 
-  const vMap = allocateProportional(bountyVerifiedCents, verifiedRecipients);
-  const uMap = allocateProportional(bountyUnverifiedCents, unverifiedRecipients);
+  const toRecipients = (m: Map<string, number>) =>
+    [...m.entries()].map(([id, weight]) => ({ id, weight }));
 
-  const weightByIdVerified = new Map(verifiedRecipients.map((r) => [r.id, r.weight]));
-  const weightByIdUnverified = new Map(unverifiedRecipients.map((r) => [r.id, r.weight]));
+  const vMap = allocateProportional(bountyVerifiedCents, toRecipients(verifiedWeights));
+  const uMap = allocateProportional(bountyUnverifiedCents, toRecipients(unverifiedWeights));
 
-  for (const [recipientId, cents] of vMap) {
+  for (const [key, cents] of vMap) {
     if (cents <= 0) continue;
-    const w = weightByIdVerified.get(recipientId) ?? 0;
+    const isMusic = key.startsWith('m:');
+    const recipientId = key.slice(2);
+    const bucket = isMusic ? 'music_verified' : 'verified';
+    const w = verifiedWeights.get(key) ?? 0;
     await client.query(
       `INSERT INTO creator_fund_period_creator_allocations (
          period_id, recipient_identity_id, bucket, engagement_units, allocation_cents
-       ) VALUES ($1::uuid, $2, 'verified', $3, $4)`,
-      [periodId, recipientId, w, cents]
+       ) VALUES ($1::uuid, $2, $3::varchar, $4, $5)`,
+      [periodId, recipientId, bucket, w, cents]
     );
   }
-  for (const [recipientId, cents] of uMap) {
+  for (const [key, cents] of uMap) {
     if (cents <= 0) continue;
-    const w = weightByIdUnverified.get(recipientId) ?? 0;
+    const isMusic = key.startsWith('m:');
+    const recipientId = key.slice(2);
+    const bucket = isMusic ? 'music_unverified' : 'unverified';
+    const w = unverifiedWeights.get(key) ?? 0;
     await client.query(
       `INSERT INTO creator_fund_period_creator_allocations (
          period_id, recipient_identity_id, bucket, engagement_units, allocation_cents
-       ) VALUES ($1::uuid, $2, 'unverified', $3, $4)`,
-      [periodId, recipientId, w, cents]
+       ) VALUES ($1::uuid, $2, $3::varchar, $4, $5)`,
+      [periodId, recipientId, bucket, w, cents]
     );
   }
 }
@@ -284,14 +321,24 @@ export class CreatorFundPeriodService {
       });
       const chainHash = sha256Hex([chainPrev, canonical]);
       const attestationHmac = periodAttestationHmac(chainHash);
+      let kmsSig: string | null = null;
+      let kmsKeyVer: string | null = null;
+      const fundKms = process.env.CREATOR_FUND_PERIOD_KMS_KEY_VERSION?.trim();
+      if (fundKms) {
+        const digest = crypto.createHash('sha256').update(chainHash, 'utf8').digest('base64');
+        const { gcpKmsAsymmetricSignSha256Digest } = await import('../utils/gcpKmsAsymmetricSign');
+        kmsSig = await gcpKmsAsymmetricSignSha256Digest(fundKms, digest);
+        kmsKeyVer = fundKms;
+      }
 
       const ins = await client.query(
         `INSERT INTO creator_fund_periods (
            period_start, period_end, status, closed_at,
            g_cents, e_cents, r_cents, platform_25_cents, fund_75_cents,
            bounty_verified_cents, bounty_unverified_cents,
-           chain_prev_hash, chain_hash, period_attestation_hmac
-         ) VALUES ($1, $2, 'closed', NOW(), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+           chain_prev_hash, chain_hash, period_attestation_hmac,
+           period_attestation_kms_signature, period_attestation_kms_key_version
+         ) VALUES ($1, $2, 'closed', NOW(), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING *`,
         [
           periodStart.toISOString(),
@@ -305,7 +352,9 @@ export class CreatorFundPeriodService {
           bountyUnverifiedCents,
           chainPrev || null,
           chainHash,
-          attestationHmac
+          attestationHmac,
+          kmsSig,
+          kmsKeyVer
         ]
       );
 

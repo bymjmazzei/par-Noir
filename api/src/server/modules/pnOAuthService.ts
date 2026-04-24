@@ -6,7 +6,6 @@
 
 import crypto from 'crypto';
 import jwt, { JwtHeader, JwtPayload } from 'jsonwebtoken';
-import { GoogleAuth } from 'google-auth-library';
 import { getDatabasePool } from '../utils/database';
 import { isDidRevokedForNetwork, isPnRevokedForNetwork } from './identitySuccessionService';
 import { appendSecurityAuditEvent } from './auditService';
@@ -162,16 +161,8 @@ export class PNOAuthService {
     const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
     const signingInput = `${encodedHeader}.${encodedPayload}`;
     const digest = crypto.createHash('sha256').update(signingInput).digest('base64');
-    const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
-    const client = await auth.getClient();
-    const url = `https://cloudkms.googleapis.com/v1/${kmsKey}:asymmetricSign`;
-    const res = await client.request<{ signature?: string }>({
-      url,
-      method: 'POST',
-      data: { digest: { sha256: digest } },
-    });
-    const sig = res.data.signature;
-    if (!sig) throw new Error('KMS asymmetricSign returned no signature');
+    const { gcpKmsAsymmetricSignSha256Digest } = await import('../utils/gcpKmsAsymmetricSign');
+    const sig = await gcpKmsAsymmetricSignSha256Digest(kmsKey, digest);
     return `${signingInput}.${Buffer.from(sig, 'base64').toString('base64url')}`;
   }
 

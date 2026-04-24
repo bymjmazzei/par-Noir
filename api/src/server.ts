@@ -718,7 +718,9 @@ class ProductionServer {
           req.path.startsWith('/api/connections') ||
           req.path.startsWith('/api/messages') ||
           req.path.startsWith('/api/monetization/status') ||
-          req.path.startsWith('/api/creator-fund/periods/recent')
+          req.path.startsWith('/api/creator-fund/periods/recent') ||
+          req.path.startsWith('/api/v1/music/registry/catalog') ||
+          (req.method === 'GET' && req.path.startsWith('/api/v1/music/registry/post-uses/'))
         )) ||
         (req.method === 'POST' && (
           req.path === '/api/engagement/bulk-stats'

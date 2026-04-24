@@ -49,6 +49,45 @@ export class MusicTrackRegistryService {
     return getDatabasePool();
   }
 
+  /** Active tracks for attach UI (any authenticated client; titles only). */
+  static async listActiveCatalog(opts?: {
+    limit?: number;
+    q?: string;
+  }): Promise<Array<{ id: string; title: string; displayArtist: string | null }>> {
+    const limit = Math.min(Math.max(opts?.limit ?? 80, 1), 200);
+    const rawQ = opts?.q?.trim().slice(0, 80) ?? '';
+    const q = rawQ.replace(/[%_\\]/g, '');
+    const pool = this.pool();
+    if (q.length > 0) {
+      const pattern = `%${q}%`;
+      const res = await pool.query(
+        `SELECT id, title, display_artist FROM music_registry_tracks
+         WHERE status = 'active'
+           AND (title ILIKE $1 OR COALESCE(display_artist, '') ILIKE $1 OR COALESCE(isrc, '') ILIKE $1)
+         ORDER BY updated_at DESC
+         LIMIT $2`,
+        [pattern, limit]
+      );
+      return res.rows.map((r) => ({
+        id: String(r.id),
+        title: String(r.title),
+        displayArtist: r.display_artist != null ? String(r.display_artist) : null
+      }));
+    }
+    const res = await pool.query(
+      `SELECT id, title, display_artist FROM music_registry_tracks
+       WHERE status = 'active'
+       ORDER BY updated_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+    return res.rows.map((r) => ({
+      id: String(r.id),
+      title: String(r.title),
+      displayArtist: r.display_artist != null ? String(r.display_artist) : null
+    }));
+  }
+
   static async listByOwner(
     ownerPn: string,
     opts?: { status?: MusicTrackStatus; limit?: number; offset?: number }
@@ -226,5 +265,30 @@ export class MusicTrackRegistryService {
       [fileId, registryTrackId, claimantPn.trim()]
     );
     return { postFileId: fileId, registryTrackId };
+  }
+
+  static async getPostUseForOwner(
+    claimantPn: string,
+    postFileId: string
+  ): Promise<{ registryTrackId: string } | null> {
+    const fileId = postFileId.trim();
+    if (!fileId) return null;
+    const res = await this.pool().query(
+      `SELECT registry_track_id FROM music_registry_post_uses
+       WHERE post_file_id = $1 AND claimant_pn_identifier = $2`,
+      [fileId, claimantPn.trim()]
+    );
+    if (res.rows.length === 0) return null;
+    return { registryTrackId: String(res.rows[0].registry_track_id) };
+  }
+
+  static async detachPostFromRegistry(claimantPn: string, postFileId: string): Promise<boolean> {
+    const fileId = postFileId.trim();
+    if (!fileId) throw new Error('post_file_id_required');
+    const res = await this.pool().query(
+      `DELETE FROM music_registry_post_uses WHERE post_file_id = $1 AND claimant_pn_identifier = $2`,
+      [fileId, claimantPn.trim()]
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 }
