@@ -38,11 +38,12 @@ par Noir is intended as **infrastructure** (identity → dashboard → API → b
 | **Engagement** | **All** engagement counts for product/analytics. **Bounty** (fund allocation) weight: **90%** from engagement **by verified** accounts, **10%** from engagement **by unverified** accounts. |
 | **Cash waterfall** | **Gross** `G` → pay **`E`** (monthly OPEX) → **`R = max(0, G - E)`** → **25%** of **`R`** to platform / **75%** of **`R`** to the **creator fund**. On each piece of content, **library music** applies **75% creator / 25% music pool** to the **creator’s** share of that reward (see Music). |
 | **Creator payouts** | **45-day** hold after the **relevant rolling accrual period is finalized**; **payee-initiated** Stripe Connect payouts on **1st and 15th** (US **Eastern**); **$10 USD** minimum; balances **carry forward**; **24-month dormancy** trigger for counsel-led review (details under [Payouts](#payouts-and-tax-compliance-stripe-connect)). |
-| **Payments rail (creator fund)** | **Stripe only** for **monetization maintenance** (money **in**) and for **all** creator-fund **payouts** (money **out** via **Stripe Connect**). **Paid feed** products may continue to use **other** collectors (e.g. Coinbase) until migrated—they stay **out of this `G`** per [Scope](#scope-creator-fund-vs-other-paid-surfaces). |
+| **Payments rail (creator fund)** | **Stripe only** for **monetization maintenance** (money **in** via card/bank payers) and for **all** creator-fund **payouts** (money **out** via **Stripe Connect**). **Paid feed** products may continue to use **other** collectors (e.g. Coinbase) until migrated—they stay **out of this `G`** per [Scope](#scope-creator-fund-vs-other-paid-surfaces). |
+| **Pay maintenance from balance (optional)** | Verified subscribers may **optionally** renew **monetization maintenance** by **debiting** accrued **creator-fund balance** on the **platform ledger** instead of a **Stripe** card charge for that period—see [Inbound payments](#inbound-payments-stripe-for-monetization-maintenance). **No** non-Stripe PSP for this path; it is **not** a second money-in rail, only **internal settlement** of amounts already in the fund’s liability to the payee. |
 
 Symbols:
 
-- **`G`**: Gross receipts **for this creator fund waterfall only**—**monetization maintenance** fees collected through **Stripe** (Checkout, Billing, or equivalent—**product choice** in implementation). **Not in `G` here:** paid **feed** subscription revenue (separate product/ledger), creator-run **private subscriptions / paywalls** (third-party or future add-on), or other creator commerce—see [Scope](#scope-creator-fund-vs-other-paid-surfaces). Define whether amounts are **gross** with Stripe fees in **`E`** or **net** at collection (open decision).
+- **`G`**: Gross receipts **for this creator fund waterfall only**—**monetization maintenance** for each period, whether collected as **cash through Stripe** (Checkout, Billing, or equivalent) or **settled from payee balance** per [Pay from balance](#paying-maintenance-from-creator-balance-optional-product)—**how** the latter maps into **`G`** for the **`G` → `E` → `R`** waterfall is an **accounting open decision** (see [Open decisions](#open-decisions)). **Not in `G` here:** paid **feed** subscription revenue (separate product/ledger), creator-run **private subscriptions / paywalls** (third-party or future add-on), or other creator commerce—see [Scope](#scope-creator-fund-vs-other-paid-surfaces). Define whether **card-paid** amounts are **gross** with Stripe fees in **`E`** or **net** at collection (open decision).
 - **`E`**: Monthly operating expenses charged **before** the 25/75 split (see [OPEX categories](#opex-categories-policy-draft)).
 - **`R`**: Remainder after OPEX: `max(0, G - E)`.
 
@@ -189,6 +190,26 @@ par Noir’s guiding architecture is **crypto without blockchain**: decentralize
 - **Identity binding:** Each subscription or customer object must map to a stable **par Noir identity** id in metadata for reconciliation.
 - **Separation:** Do **not** route **paid feed** or **other** Coinbase (or non-Stripe) charges into this **`G`** stream—those products keep their own integration until a deliberate migration.
 
+### Paying maintenance from creator balance (optional product)
+
+**Policy:** The dashboard (or API) may offer **“Pay my monetization maintenance from my creator balance”** so a payee applies **accrued fund balance** toward the **next** maintenance period instead of charging their **Stripe** payment method for that period.
+
+**Eligibility (product defaults—tune with risk):**
+
+- Same **identity verification** and **subscription entitlement** rules as card payers; this option **extends** renewal, it does **not** replace verification.
+- Debit only from balance that is **eligible under the same (or stricter) rules as payee-initiated payouts**—e.g. **after** the **45-day** hold and **not** in dispute—so subscription is not funded with amounts that could still be **clawed back** as easily. (Stricter alternative: only amounts that would already meet the **$10** payout threshold logic—document whichever you ship.)
+- **Sufficient** balance to cover the **full** maintenance price for the renewal window (no **partial** balance + card split in **v1** unless product explicitly adds it later).
+
+**Ledger (engineering target):**
+
+- **Append-only:** `subscription_balance_debit` (or equivalent) row: identity id, amount, period covered, reference to pricing, **no** raw payment details.
+- **Entitlement:** Server-side **active maintenance** flag / period end updated **only** after the debit commits; **idempotent** so double-clicks do not double-charge the balance.
+- **Relationship to Connect:** This is **not** a Connect payout; it is **internal** settlement (reduce **liability** to the payee, recognize subscription). **Stripe** subscription objects may still be used for **card** payers—balance payers need a **documented** pattern (e.g. **parallel** entitlement table with Stripe subscription **paused** or absent for that identity, or **Stripe Customer balance** / **$0 invoice** patterns—**finance + engineering** choose one source of truth).
+
+**Accounting (`G`)—must match books:** Either (a) record a **`G`-equivalent** non-cash line so **`G` → `E` → `R`** denominators stay comparable to “everyone paid cash,” or (b) exclude balance-funded renewals from **`G`** and track **cash `G`** separately in dashboards—**pick with CPA** (see [Open decisions](#open-decisions)).
+
+**Disclaimer:** Balance-funded renewal may affect **1099 / reporting** characterization vs card-funded maintenance; **counsel and CPA** sign off before launch.
+
 ---
 
 ## Payouts and tax compliance (Stripe Connect)
@@ -242,14 +263,14 @@ Use this as a **go-live gate** alongside engineering QA—not legal advice.
 | Area | Must be true |
 |------|----------------|
 | **Stripe** | Production **API keys**; **Connect** application approved; **webhook endpoints** deployed with **signature verification**; test **subscription lifecycle** (success, failure, cancel, chargeback simulation). |
-| **Inbound `G`** | Only **monetization maintenance** Stripe events append to **`creator_fund_revenue_events`**; **no** feed or other SKU leakage. |
+| **Inbound `G`** | Only **monetization maintenance** Stripe events append to **`creator_fund_revenue_events`**; **no** feed or other SKU leakage. **Balance-funded** renewals append **only** per the **ledger + `G` policy** in [Pay from balance](#paying-maintenance-from-creator-balance-optional-product)—no fake Stripe webhooks. |
 | **Payouts** | **Connect** onboarding live (**US-only** v1); **payee-initiated** flows tested; **1st/15th Eastern** UX/cadence; **45-day** hold matches ledger; **$10** minimum; **24-month dormancy** workflow stubbed; **reversal** rows tested. |
 | **Stablecoin** | If offered: **Stripe** program **explicitly** enabled for your **platform country** and **payee** types; otherwise **disable** crypto payout UI until enabled. |
 | **Identity / subscription** | **Server-side** entitlement for “verified + subscribed”; **remove demo-only** client paths for any payment that gates eligibility. |
 | **Accounting** | Resolve open **`G` gross vs net** and **`E`** treatment with finance; export matches internal **`R`**. |
 | **Periods** | **Rolling** accrual, **`America/New_York`** for boundaries and finalization; document **exact rolling window length** in implementation. |
 | **Music** | v1 can ship **without** library 75/25 enforcement **or** ship registry—**choose** so engineering does not guess. |
-| **Legal** | Counsel sign-off on **Connect** agreement, **payout classification**, **US-only** launch posture, **escheatment** and **24-month dormancy** workflow (#8). |
+| **Legal** | Counsel sign-off on **Connect** agreement, **payout classification**, **US-only** launch posture, **escheatment** and **24-month dormancy** workflow (#9), **balance-funded renewal** reporting (#6). |
 | **Observability** | Alerts on webhook failures, payout failures, ledger imbalance; **no** sensitive PII in logs. |
 
 ---
@@ -278,10 +299,11 @@ Engineering should treat this file as the **policy target**: **Stripe** for **in
 3. **Music library:** Authoritative **track registry**, artist opt-in, and **on-content proof** (“this post uses library track X”) for enforcing **75/25**—or **defer** v1 to “no library split” until registry exists.
 4. **`E` transparency:** Line items **in** vs **out** of creator-facing OPEX reporting (e.g. internal dev tools).
 5. **PSP treatment:** Whether **`G`** is recorded **gross** with **Stripe** fees inside **`E`**, or **net** at collection—must be consistent in books and dashboards.
-6. **Key management:** Which **KMS/HSM** and key rotation policy backs **period signatures** and optional timestamping.
-7. **Stripe Connect mode:** **Express vs Standard vs Custom** for **payee-initiated** payouts (**US-only** v1—international expansion later).
-8. **Dormant balances:** Operational detail of the **24-month** dormancy workflow (notices, data retention, handoff to counsel)—**escheatment** remains **law-driven** once triggered.
-9. **Music-pool-only payees:** Whether licensors who **only** receive **library pool** shares must hold **monetization maintenance** subscription (same as posting creators) or may use **verified identity + Connect + contract** alone—pick explicitly for v1.
+6. **Balance-funded maintenance vs `G`:** Whether renewals paid from **creator balance** count toward the same **`G`** line as Stripe card revenue (**fair-value non-cash** adjustment), are **excluded from `G`** with a separate reporting series, or use another **CPA-approved** mapping—drives dashboards and period seals.
+7. **Key management:** Which **KMS/HSM** and key rotation policy backs **period signatures** and optional timestamping.
+8. **Stripe Connect mode:** **Express vs Standard vs Custom** for **payee-initiated** payouts (**US-only** v1—international expansion later).
+9. **Dormant balances:** Operational detail of the **24-month** dormancy workflow (notices, data retention, handoff to counsel)—**escheatment** remains **law-driven** once triggered.
+10. **Music-pool-only payees:** Whether licensors who **only** receive **library pool** shares must hold **monetization maintenance** subscription (same as posting creators) or may use **verified identity + Connect + contract** alone—pick explicitly for v1.
 
 ---
 
