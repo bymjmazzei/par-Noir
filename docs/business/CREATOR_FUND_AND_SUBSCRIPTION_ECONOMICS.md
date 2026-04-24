@@ -37,11 +37,12 @@ par Noir is intended as **infrastructure** (identity → dashboard → API → b
 | **Who may earn from the fund** | Identity **verified** **and** paying the **monthly subscription** that **maintains** monetization eligibility. If either lapses, **no new accrual** from the fund until restored. |
 | **Engagement** | **All** engagement counts for product/analytics. **Bounty** (fund allocation) weight: **90%** from engagement **by verified** accounts, **10%** from engagement **by unverified** accounts. |
 | **Cash waterfall** | **Gross** `G` → pay **`E`** (monthly OPEX) → **`R = max(0, G - E)`** → **25%** of **`R`** to platform / **75%** of **`R`** to the **creator fund**. On each piece of content, **library music** applies **75% creator / 25% music pool** to the **creator’s** share of that reward (see Music). |
-| **Creator payouts** | **45-day** hold after the **relevant accrual period is finalized**; transfers on **calendar 1st and 15th**; **$10 USD** minimum per payout; **balances carry forward** with no product-side expiration (details under [Payouts](#payouts-and-tax-compliance-third-party)). |
+| **Creator payouts** | **45-day** hold after the **relevant accrual period is finalized**; transfers on **calendar 1st and 15th**; **$10 USD** minimum per payout; **balances carry forward** with no product-side expiration (details under [Payouts](#payouts-and-tax-compliance-stripe-connect)). |
+| **Payments rail (creator fund)** | **Stripe only** for **monetization maintenance** (money **in**) and for **all** creator-fund **payouts** (money **out** via **Stripe Connect**). **Paid feed** products may continue to use **other** collectors (e.g. Coinbase) until migrated—they stay **out of this `G`** per [Scope](#scope-creator-fund-vs-other-paid-surfaces). |
 
 Symbols:
 
-- **`G`**: Gross receipts **for this creator fund waterfall only**—**primarily monetization maintenance** subscription fees. **Not in `G` here:** paid **feed** subscription revenue (separate product/ledger), creator-run **private subscriptions / paywalls** (third-party or future add-on), or other creator commerce—see [Scope](#scope-creator-fund-vs-other-paid-surfaces). Define whether amounts are **gross** with PSP fees in **`E`** or **net** at collection (open decision).
+- **`G`**: Gross receipts **for this creator fund waterfall only**—**monetization maintenance** fees collected through **Stripe** (Checkout, Billing, or equivalent—**product choice** in implementation). **Not in `G` here:** paid **feed** subscription revenue (separate product/ledger), creator-run **private subscriptions / paywalls** (third-party or future add-on), or other creator commerce—see [Scope](#scope-creator-fund-vs-other-paid-surfaces). Define whether amounts are **gross** with Stripe fees in **`E`** or **net** at collection (open decision).
 - **`E`**: Monthly operating expenses charged **before** the 25/75 split (see [OPEX categories](#opex-categories-policy-draft)).
 - **`R`**: Remainder after OPEX: `max(0, G - E)`.
 
@@ -120,8 +121,8 @@ Include in **`E`** (subject to final finance/legal list):
 - API hosting, database, egress (e.g. Railway-class compute).
 - Static hosting / CDN (e.g. Firebase Hosting).
 - Identity verification vendor (e.g. Veriff)—**per-check** and/or minimum commit.
-- **Incoming** payment service provider fees (% of volume), e.g. subscription collection (Coinbase Commerce).
-- **Outgoing** creator **payout partner** fees (per [Payouts and tax compliance (third-party)](#payouts-and-tax-compliance-third-party)), if billed separately from subscription PSP.
+- **Incoming** **Stripe** processing fees (% + fixed per txn) for **monetization maintenance** subscription charges (count toward **`E`** or net-`G` per accounting open decision).
+- **Outgoing** **Stripe Connect** payout fees (per [Payouts](#payouts-and-tax-compliance-stripe-connect)), if billed separately from card-present charges.
 - Trust, safety, and support directly tied to operating the network.
 - Compliance and security tooling required to run production.
 
@@ -170,45 +171,74 @@ par Noir’s guiding architecture is **crypto without blockchain**: decentralize
 
 **Trust boundary:** This model gives **“the operator cannot silently rewrite history without detection”** to anyone who verifies signatures and the hash chain. It does **not** remove the need to **trust the platform** for **which events were admitted** before sealing a period—that is addressed by **operations**, **identity economics**, and **abuse detection**, not by a chain.
 
-**Interaction with payouts:** The internal ledger records **accrual**, **allocation**, and **payout batch instructions** (amounts, payee references, batch ids). **Movement of money to creators’ bank accounts or wallets** and **tax information collection** are performed by the **third-party payout provider** below—not by re-implementing global withholding and IRS form logic in par Noir.
+**Interaction with payouts:** The internal ledger records **accrual**, **allocation**, and **payout batch instructions** (amounts, payee references, batch ids). **Movement of money to creators’ bank accounts** (and **stablecoin** payouts **only where Stripe Connect supports** the platform and payee profile) plus **tax information collection** are performed by **Stripe**—not by re-implementing global withholding and IRS form logic in par Noir.
 
 ---
 
-## Payouts and tax compliance (third-party)
+## Inbound payments (Stripe) for monetization maintenance
 
-**Policy:** par Noir uses a **qualified third-party payout / tax partner** (e.g. marketplace payout or Connect-style products—**vendor TBD**) to execute **creator disbursements** and to handle **creator tax information** and **regulatory workflows** the partner supports (for example **W‑9** / **W‑8BEN** / **W‑8BEN‑E** collection, **KYC** for payouts, **withholding** and **information reporting** such as **1099** / **1042‑S** where applicable, and **sanctions screening**).
+**Policy:** All **monetization maintenance** subscription charges that count toward this doc’s **`G`** are processed by **Stripe** (e.g. **Stripe Billing** recurring subscriptions and/or **Checkout** for payment collection—exact product to match engineering and finance). **Webhook-verified** payment success is the **source of truth** for crediting **`creator_fund_revenue_events`** and entitlement rows.
+
+- **Secrets:** Use **Stripe webhook signing** (`STRIPE_WEBHOOK_SECRET` or platform equivalent); never trust unsigned callbacks.
+- **Identity binding:** Each subscription or customer object must map to a stable **par Noir identity** id in metadata for reconciliation.
+- **Separation:** Do **not** route **paid feed** or **other** Coinbase (or non-Stripe) charges into this **`G`** stream—those products keep their own integration until a deliberate migration.
+
+---
+
+## Payouts and tax compliance (Stripe Connect)
+
+**Policy:** **Stripe Connect** is the **sole** payout rail for creator fund disbursements: **fiat** payouts to bank accounts as the default path, and **stablecoin (e.g. USDC)** payouts **only** where **Stripe’s Connect payout product** supports the **platform entity**, **payee type**, and **geography** for your account (availability evolves—confirm in Stripe Dashboard / account manager before marketing “crypto payouts”). No parallel **non-Stripe** crypto rail is required for v1 if Stripe coverage is sufficient; if not, extend policy before launch.
 
 **Rationale**
 
-- A **US-based** company paying **US and international** creators faces **material tax and withholding complexity** (including **Chapter 3** rules for payees outside the US). Building and maintaining that stack in-house is **high risk** and **slow** relative to using a **specialized provider** under **legal and finance oversight**.
-- **Identity verification** (e.g. Veriff) for **trust** is **complementary** but **not a substitute** for **taxpayer identification and certification** flows the payout vendor provides for **IRS and cross-border** compliance.
+- A **US-based** company paying **US and international** creators faces **material tax and withholding complexity** (including **Chapter 3** rules for payees outside the US). **Stripe Connect** (and Stripe’s tax/reporting products where used) is the **designated** way to handle rails and payee compliance instead of building withholding in-house—still subject to **legal and finance oversight**.
+- **Identity verification** (e.g. Veriff) for **trust** is **complementary** but **not a substitute** for **taxpayer identification and certification** flows **Stripe** provides for **IRS and cross-border** compliance where applicable.
 
 **Division of responsibility (target)**
 
-| Area | par Noir (product + API + ledger) | Third-party payout partner |
-|------|-----------------------------------|----------------------------|
-| Who earned what | Accrual, period close, **90/10** bounty math, music splits, eligibility rules | Executes transfer per **approved batch** |
-| User trust / identity gate | Verification + subscription policy aligned with this doc | Payee onboarding, **bank/tax identity** for money movement |
-| Tax forms & withholding | **Does not** replace vendor; may **embed** or **link** vendor UI / APIs | **W‑9 / W‑8** flows, withholding, **1099 / 1042‑S** as product supports |
-| Ledger of record | Append-only **accrual and payout status** (`payout_queued`, `payout_settled`, external batch id) | Their ledger for settlement rails |
+| Area | par Noir (product + API + ledger) | Stripe (Connect + Tax as applicable) |
+|------|-----------------------------------|----------------------------------------|
+| Who earned what | Accrual, period close, **90/10** bounty math, music splits, eligibility rules | Executes **Transfer / Payout** per **approved batch** |
+| User trust / identity gate | Verification + subscription policy aligned with this doc | Connected account onboarding, **bank / wallet**, **tax** collection per Stripe capabilities |
+| Tax forms & withholding | **Does not** reimplement IRS logic; use **Stripe-hosted** or **Stripe Tax / reporting** products where applicable | **W‑9 / W‑8** flows, withholding, **1099 / 1042‑S** per Stripe support for your setup |
+| Ledger of record | Append-only **accrual and payout status** (`payout_queued`, `payout_settled`, Stripe transfer/payout ids) | Stripe’s settlement records as source for **rails** |
 
 ### Payout timing and thresholds (confirmed)
 
 - **45-day hold:** Creator share from a given **closed fund / accrual period** becomes **eligible for disbursement** only after **45 calendar days** have passed since **that period’s balances were finalized** (time to absorb **chargebacks**, **subscription reversals**, **fraud or data corrections**, and to stabilize the **creator pool** before cash leaves the platform). Until then, amounts remain **pending payout** in the internal ledger.
-- **Disbursement schedule:** Payout batches run on the **1st** and **15th** of each calendar month. Each run pays out **eligible** balances (cleared the 45-day hold, met onboarding and partner rules) to the **third-party payout partner** for settlement.
+- **Disbursement schedule:** Payout batches run on the **1st** and **15th** of each calendar month. Each run pays out **eligible** balances (cleared the 45-day hold, met **Stripe Connect** onboarding and capability rules) via **Stripe**.
 - **Minimum payout:** **$10 USD** (or whole-currency equivalent per payout rail when non-USD is supported) per **transfer**; if a creator’s **eligible** balance is below the minimum, **no transfer** is initiated that window and the balance **accumulates**.
 - **Carryover:** Accrued creator balances **do not expire** for product purposes; sub-minimum and not-yet-held amounts **carry forward** to the next accrual periods and future **1st / 15th** windows until paid or adjusted by **clawback / reversal** ledger entries.
 
 **Engineering (target):** Model states such as **pending_hold**, **eligible**, **queued**, **settled**, and **reversed**; each accrual line should carry **`period_id`** and **`available_after`** (or derive from period close + 45 days).
 
-**Legal / finance (TBD with counsel):** Unclaimed property (**escheatment**), dormant-account policy, and alignment with the payout vendor’s **minimum transfer** and **currency** rules (may be stricter than $10).
+**Legal / finance (TBD with counsel):** Unclaimed property (**escheatment**), dormant-account policy, and alignment with **Stripe’s** **minimum transfer** and **currency** rules (may be stricter than $10).
 
 **Operational rules (product)**
 
 - **Clawback / chargeback:** Subscription and payment partners may still reverse income **after** accrual; ledger must support **reversal rows** that reduce pending or eligible balances. The **45-day hold** is a **risk buffer**, not a guarantee that all disputes have ended.
 - **Creators** complete payout onboarding **before** first disbursement; **no raw tax IDs or full bank details** in par Noir logs (follow existing **no sensitive data in plain text** rules).
 
-**Disclaimer:** This section is **policy intent**, not tax or legal advice. **Vendor selection**, **merchant-of-record** treatment, and **classification** of payments (e.g. nonemployee compensation vs other categories) require **qualified counsel and CPA** review.
+**Disclaimer:** This section is **policy intent**, not tax or legal advice. **Stripe account structure** (e.g. Connect configuration), **merchant-of-record** treatment, and **classification** of payments (e.g. nonemployee compensation vs other categories) require **qualified counsel and CPA** review.
+
+---
+
+## Production readiness checklist (before launch)
+
+Use this as a **go-live gate** alongside engineering QA—not legal advice.
+
+| Area | Must be true |
+|------|----------------|
+| **Stripe** | Production **API keys**; **Connect** application approved; **webhook endpoints** deployed with **signature verification**; test **subscription lifecycle** (success, failure, cancel, chargeback simulation). |
+| **Inbound `G`** | Only **monetization maintenance** Stripe events append to **`creator_fund_revenue_events`**; **no** feed or other SKU leakage. |
+| **Payouts** | **Connect** onboarding live for creators; **1st/15th** job in **declared timezone**; **45-day** hold logic matches ledger fields; **$10** minimum enforced; **reversal** rows tested. |
+| **Stablecoin** | If offered: **Stripe** program **explicitly** enabled for your **platform country** and **payee** types; otherwise **disable** crypto payout UI until enabled. |
+| **Identity / subscription** | **Server-side** entitlement for “verified + subscribed”; **remove demo-only** client paths for any payment that gates eligibility. |
+| **Accounting** | Resolve open **`G` gross vs net** and **`E`** treatment with finance; export matches internal **`R`**. |
+| **Periods** | Resolve **calendar vs rolling** accrual boundaries; document **period finalization** timestamp used for **45-day** clock. |
+| **Music** | v1 can ship **without** library 75/25 enforcement **or** ship registry—**choose** so engineering does not guess. |
+| **Legal** | Counsel sign-off on **Connect** agreement, **payout classification**, **international** payees, **escheatment** (#8). |
+| **Observability** | Alerts on webhook failures, payout failures, ledger imbalance; **no** sensitive PII in logs. |
 
 ---
 
@@ -223,21 +253,21 @@ Not a forecast or commitment:
 
 ## Relationship to codebase
 
-As of this document, the repo has **no** production-complete **creator fund ledger**, no automated **G → E → R → 25/75** accounting, and verification payment handling includes **demo-oriented** paths (e.g. dashboard `VerificationPaymentHandler` local storage). API Coinbase webhooks focus on **feed creation and feed subscriptions** (`api` webhook handler), not the full economics above.
+As of this document, the repo has **no** production-complete **creator fund ledger**, no automated **G → E → R → 25/75** accounting, and **no** **Stripe** integration for **monetization maintenance**. Verification payment handling includes **demo-oriented** paths (e.g. dashboard `VerificationPaymentHandler` local storage). API **Coinbase** webhooks today cover **feed creation and feed subscriptions**—those remain **separate** from creator-fund **`G`** until feeds migrate to Stripe (optional future).
 
-Engineering should treat this file as the **policy target** and implement **ledger, metadata, and privacy** in dedicated modules when prioritized. Ledger design should follow [Ledger transparency (no blockchain)](#ledger-transparency-no-blockchain). **Payout execution and tax collection** should follow [Payouts and tax compliance (third-party)](#payouts-and-tax-compliance-third-party)—no in-house substitute for the vendor’s regulated flows.
+Engineering should treat this file as the **policy target**: **Stripe** for **inbound** maintenance revenue and **Stripe Connect** as the **only** creator-fund **payout** rail; ledger per [Ledger transparency (no blockchain)](#ledger-transparency-no-blockchain); go-live per [Production readiness checklist](#production-readiness-checklist-before-launch).
 
 ---
 
 ## Open decisions
 
-1. **SKUs:** Single **“verification + monetization maintenance”** subscription vs separate **identity verification** and **creator eligibility** products—pricing, naming, Coinbase metadata, and API entitlements.
-2. **Period boundaries:** Calendar month vs rolling window for **`G`**, **`E`**, and bounty accrual.
-3. **Music library:** Authoritative **track registry**, artist opt-in, and **on-content proof** (“this post uses library track X”) for enforcing **75/25**.
+1. **SKUs:** Single **“verification + monetization maintenance”** subscription vs separate **identity verification** and **creator eligibility** products—pricing, naming, **Stripe** Price/Product ids and **metadata** for API entitlements.
+2. **Period boundaries:** Calendar month vs rolling window for **`G`**, **`E`**, and bounty accrual; **timezone** for **1st/15th** payout runs.
+3. **Music library:** Authoritative **track registry**, artist opt-in, and **on-content proof** (“this post uses library track X”) for enforcing **75/25**—or **defer** v1 to “no library split” until registry exists.
 4. **`E` transparency:** Line items **in** vs **out** of creator-facing OPEX reporting (e.g. internal dev tools).
-5. **PSP treatment:** Whether **`G`** is recorded **gross** with PSP fees inside **`E`**, or **net** at collection—must be consistent in books and dashboards.
+5. **PSP treatment:** Whether **`G`** is recorded **gross** with **Stripe** fees inside **`E`**, or **net** at collection—must be consistent in books and dashboards.
 6. **Key management:** Which **KMS/HSM** and key rotation policy backs **period signatures** and optional timestamping.
-7. **Payout vendor:** Which third-party provider (e.g. Stripe Connect, PayPal, Tipalti-class, or other), **contractual roles** (merchant of record vs pass-through), and **jurisdictions** supported at launch vs later.
+7. **Stripe Connect mode:** **Express vs Standard vs Custom** connected accounts; **who** triggers payouts (platform-only transfers vs automatic); **countries** at launch.
 8. **Dormant balances:** Escheatment / unclaimed-property handling for long-inactive payees (product says no expiration; **law** may still impose duties).
 
 ---
