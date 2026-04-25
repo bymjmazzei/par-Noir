@@ -1,5 +1,6 @@
 import type { DashboardData, TimeWindow } from '../types';
 import { ViewFrame } from './ViewFrame';
+import { criticalCountKpiClass, cx } from '../statusUi';
 
 type Props = {
   data: DashboardData;
@@ -20,12 +21,30 @@ export function InvestorViewPanel({ data, window }: Props) {
   return (
     <ViewFrame view="investor" title="Investor View" window={window} data={data}>
       <div className="kpi-grid">
-        <div className="kpi-card"><span className="kpi-label">Gross fund (recent)</span><strong>{money(gross)}</strong></div>
-        <div className="kpi-card"><span className="kpi-label">Net fund (recent)</span><strong>{money(net)}</strong></div>
-        <div className="kpi-card"><span className="kpi-label">Payout available</span><strong>{money(payoutAvailable)}</strong></div>
-        <div className="kpi-card"><span className="kpi-label">Payout in hold</span><strong>{money(payoutHold)}</strong></div>
-        <div className="kpi-card"><span className="kpi-label">Payout paid</span><strong>{money(payoutPaid)}</strong></div>
-        <div className="kpi-card"><span className="kpi-label">Critical anomalies</span><strong>{data.anomalies.filter((a) => a.severity === 'critical').length}</strong></div>
+        <div className="kpi-card kpi-card--neutral">
+          <span className="kpi-label">Gross fund (recent)</span>
+          <strong>{money(gross)}</strong>
+        </div>
+        <div className="kpi-card kpi-card--neutral">
+          <span className="kpi-label">Net fund (recent)</span>
+          <strong>{money(net)}</strong>
+        </div>
+        <div className="kpi-card kpi-card--neutral">
+          <span className="kpi-label">Payout available</span>
+          <strong>{money(payoutAvailable)}</strong>
+        </div>
+        <div className={cx('kpi-card', payoutHold > 0 ? 'kpi-card--warn' : 'kpi-card--ok')}>
+          <span className="kpi-label">Payout in hold</span>
+          <strong>{money(payoutHold)}</strong>
+        </div>
+        <div className={cx('kpi-card', payoutPaid > 0 ? 'kpi-card--ok' : 'kpi-card--neutral')}>
+          <span className="kpi-label">Payout paid</span>
+          <strong>{money(payoutPaid)}</strong>
+        </div>
+        <div className={cx('kpi-card', criticalCountKpiClass(data.anomalies.filter((a) => a.severity === 'critical').length))}>
+          <span className="kpi-label">Critical anomalies</span>
+          <strong>{data.anomalies.filter((a) => a.severity === 'critical').length}</strong>
+        </div>
       </div>
     </ViewFrame>
   );

@@ -1,5 +1,6 @@
 import type { DashboardData, TimeWindow } from '../types';
 import { ViewFrame } from './ViewFrame';
+import { allocationRowClass } from '../statusUi';
 
 type Props = {
   data: DashboardData;
@@ -55,11 +56,19 @@ export function FinancialsViewPanel({ data, window }: Props) {
             </thead>
             <tbody>
               {Object.values(data.allocationByPeriod).map((a) => (
-                <tr key={a.periodId}>
+                <tr key={a.periodId} className={allocationRowClass(a.anomalyFlags)}>
                   <td>{a.periodId.slice(0, 8)}...</td>
                   <td>{a.allocationRows}</td>
                   <td>{money(a.totalAllocationCents)}</td>
-                  <td>{a.anomalyFlags.join(', ') || 'none'}</td>
+                  <td>
+                    {a.anomalyFlags.length === 0 ? (
+                      <span className="text-ok">none</span>
+                    ) : (
+                      <span className={a.anomalyFlags.some((f) => f.startsWith('fetch_failed')) ? 'text-bad' : 'text-warn'}>
+                        {a.anomalyFlags.join(', ')}
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
               {Object.keys(data.allocationByPeriod).length === 0 && (

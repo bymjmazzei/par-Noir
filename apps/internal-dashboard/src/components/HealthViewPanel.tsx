@@ -1,5 +1,6 @@
 import type { DashboardData, TimeWindow } from '../types';
 import { ViewFrame } from './ViewFrame';
+import { probeRowClass } from '../statusUi';
 
 type Props = {
   data: DashboardData;
@@ -23,9 +24,15 @@ export function HealthViewPanel({ data, window }: Props) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={`${r.endpoint}-${r.timestamp}`}>
+              <tr key={`${r.endpoint}-${r.timestamp}`} className={probeRowClass(r.ok)}>
                 <td>{r.endpoint}</td>
-                <td>{r.ok ? 'ok' : `fail (${r.status ?? 'network'})`}</td>
+                <td>
+                  {r.ok ? (
+                    <span className="pill pill--ok">ok</span>
+                  ) : (
+                    <span className="pill pill--bad">fail ({r.status ?? 'network'})</span>
+                  )}
+                </td>
                 <td>{r.latencyMs} ms</td>
                 <td>{new Date(r.timestamp).toLocaleTimeString()}</td>
               </tr>

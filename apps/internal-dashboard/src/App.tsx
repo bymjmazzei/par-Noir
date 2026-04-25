@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DashboardData, TimeWindow, TopLevelView } from './types';
+import { cx, ecosystemRollup } from './statusUi';
 import { loadDashboardData } from './services/internalDashboardApi';
 import { loadQueryableErrors } from './services/sentryIngestion';
 import { FounderViewPanel } from './components/FounderViewPanel';
@@ -45,6 +46,18 @@ export function App() {
   const [data, setData] = useState<DashboardData>(emptyData());
 
   const credentials = useMemo(() => ({ adminApiKey }), [adminApiKey]);
+
+  const rollup = useMemo(
+    () => ecosystemRollup(data, Boolean(queryableError)),
+    [data, queryableError]
+  );
+
+  const rollupLabel =
+    rollup === 'ok'
+      ? 'Ecosystem: all clear'
+      : rollup === 'warn'
+        ? 'Ecosystem: warnings'
+        : 'Ecosystem: attention required';
 
   const refresh = async () => {
     setLoading(true);
@@ -97,7 +110,15 @@ export function App() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <h1>par Noir Internal Dashboard (Local)</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <h1>par Noir Internal Dashboard (Local)</h1>
+          {!error && (
+            <span className={cx('status-chip', rollup === 'ok' ? 'status-chip--ok' : rollup === 'warn' ? 'status-chip--warn' : 'status-chip--bad')}>
+              {rollupLabel}
+            </span>
+          )}
+          {error && <span className={cx('status-chip', 'status-chip--bad')}>Load failed</span>}
+        </div>
         <div className="controls">
           <input
             type="password"
@@ -116,6 +137,13 @@ export function App() {
       </header>
 
       {error && <p className="error-banner">Load error: {error}</p>}
+      {!error &&
+        rollup === 'ok' &&
+        !queryableError &&
+        !loading &&
+        [...data.health.probes, ...Object.values(data.moduleProbes).flat()].length > 0 && (
+          <p className="success-banner">Last refresh completed with no probe failures or open anomalies.</p>
+        )}
       {queryableError && <p className="warn-banner">Queryable error ingestion issue: {queryableError}</p>}
 
       <nav className="tabs">

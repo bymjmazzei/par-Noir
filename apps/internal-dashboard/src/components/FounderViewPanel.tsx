@@ -1,5 +1,6 @@
 import type { DashboardData, TimeWindow } from '../types';
 import { ViewFrame } from './ViewFrame';
+import { severityPillClass, severityRowClass } from '../statusUi';
 
 type Props = {
   data: DashboardData;
@@ -22,16 +23,20 @@ export function FounderViewPanel({ data, window }: Props) {
           </thead>
           <tbody>
             {data.anomalies.slice(0, 12).map((a) => (
-              <tr key={a.id}>
-                <td>{a.severity}</td>
+              <tr key={a.id} className={severityRowClass(a.severity)}>
+                <td>
+                  <span className={severityPillClass(a.severity)}>{a.severity}</span>
+                </td>
                 <td>{a.category}</td>
                 <td>{a.title}</td>
                 <td>{new Date(a.detectedAt).toLocaleString()}</td>
               </tr>
             ))}
             {data.anomalies.length === 0 && (
-              <tr>
-                <td colSpan={4}>No active anomalies.</td>
+              <tr className="tr-status-ok">
+                <td colSpan={4}>
+                  <span className="text-ok">No active anomalies.</span>
+                </td>
               </tr>
             )}
           </tbody>

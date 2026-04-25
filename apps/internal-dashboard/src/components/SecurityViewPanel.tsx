@@ -26,15 +26,19 @@ export function SecurityViewPanel({ data, window }: Props) {
             </thead>
             <tbody>
               {permissionFailures.map((r) => (
-                <tr key={`${r.endpoint}-${r.timestamp}`}>
+                <tr key={`${r.endpoint}-${r.timestamp}`} className="tr-status-bad">
                   <td>{r.endpoint}</td>
-                  <td>{r.status}</td>
+                  <td>
+                    <span className="pill pill--bad">{r.status}</span>
+                  </td>
                   <td>{r.latencyMs} ms</td>
                 </tr>
               ))}
               {permissionFailures.length === 0 && (
-                <tr>
-                  <td colSpan={3}>No permission failures in current probe window.</td>
+                <tr className="tr-status-ok">
+                  <td colSpan={3}>
+                    <span className="text-ok">No permission failures in current probe window.</span>
+                  </td>
                 </tr>
               )}
             </tbody>
