@@ -5,6 +5,8 @@ type Credentials = {
   adminApiKey: string;
 };
 
+let socialMetricsEndpointSupported = true;
+
 async function requestJson(
   path: string,
   creds: Credentials,
@@ -107,6 +109,12 @@ export async function loadDashboardData(creds: Credentials): Promise<DashboardDa
   const statusRes = await requestJson('/api/status', creds);
   const periodsRes = await requestJson('/api/admin/creator-fund/periods/recent?limit=8', creds, { admin: true });
   const auditRes = await requestJson('/api/admin/audit-events?limit=100', creds, { admin: true });
+  const socialMetricsRes = socialMetricsEndpointSupported
+    ? await requestJson('/api/admin/social/metrics', creds, { admin: true })
+    : null;
+  if (socialMetricsRes?.status === 404) {
+    socialMetricsEndpointSupported = false;
+  }
 
   const healthProbes = [
     toProbe('/health', healthRes),
@@ -164,6 +172,32 @@ export async function loadDashboardData(creds: Credentials): Promise<DashboardDa
     periods,
     allocationByPeriod,
     auditEvents: Array.isArray(auditRes.data?.events) ? (auditRes.data.events as Array<Record<string, unknown>>) : [],
-    anomalies
+    anomalies,
+    socialMetrics: socialMetricsRes?.ok
+      ? {
+          totalUsers: Number(socialMetricsRes.data?.totals?.users?.total ?? 0),
+          verifiedUsers: Number(socialMetricsRes.data?.totals?.users?.verified ?? 0),
+          unverifiedUsers: Number(socialMetricsRes.data?.totals?.users?.unverified ?? 0),
+          totalPosts: Number(socialMetricsRes.data?.totals?.posts?.total ?? 0),
+          totalViews: Number(socialMetricsRes.data?.totals?.engagement?.views ?? 0),
+          totalLikes: Number(socialMetricsRes.data?.totals?.engagement?.likes ?? 0),
+          totalComments: Number(socialMetricsRes.data?.totals?.engagement?.comments ?? 0),
+          totalShares: Number(socialMetricsRes.data?.totals?.engagement?.shares ?? 0),
+          postsByType: {
+            text: Number(socialMetricsRes.data?.totals?.posts?.byType?.text ?? 0),
+            media: Number(socialMetricsRes.data?.totals?.posts?.byType?.media ?? 0),
+            poll: Number(socialMetricsRes.data?.totals?.posts?.byType?.poll ?? 0),
+            form: Number(socialMetricsRes.data?.totals?.posts?.byType?.form ?? 0),
+            top: Number(socialMetricsRes.data?.totals?.posts?.byType?.top ?? 0),
+            fileLinked: Number(socialMetricsRes.data?.totals?.posts?.byType?.fileLinked ?? 0),
+          },
+        }
+      : null,
+    socialMetricsStatus:
+      socialMetricsRes?.status === 404
+        ? 'Social metrics disabled: connected API does not expose /api/admin/social/metrics yet.'
+        : !socialMetricsEndpointSupported
+          ? 'Social metrics disabled for this session (endpoint unsupported on connected API).'
+          : null
   };
 }

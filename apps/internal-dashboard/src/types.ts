@@ -64,4 +64,23 @@ export interface DashboardData {
   allocationByPeriod: Record<string, AllocationSummary>;
   auditEvents: Array<Record<string, unknown>>;
   anomalies: AuditAnomaly[];
+  socialMetrics: {
+    totalUsers: number;
+    verifiedUsers: number;
+    unverifiedUsers: number;
+    totalPosts: number;
+    totalViews: number;
+    totalLikes: number;
+    totalComments: number;
+    totalShares: number;
+    postsByType: {
+      text: number;
+      media: number;
+      poll: number;
+      form: number;
+      top: number;
+      fileLinked: number;
+    };
+  } | null;
+  socialMetricsStatus: string | null;
 }

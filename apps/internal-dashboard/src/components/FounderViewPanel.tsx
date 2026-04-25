@@ -8,8 +8,18 @@ type Props = {
 };
 
 export function FounderViewPanel({ data, window }: Props) {
+  const social = data.socialMetrics;
   return (
     <ViewFrame view="founder" title="Founder View" window={window} data={data}>
+      {social && (
+        <div className="kpi-grid">
+          <div className="kpi-card kpi-card--neutral"><span className="kpi-label">Total users</span><strong>{social.totalUsers}</strong></div>
+          <div className="kpi-card kpi-card--neutral"><span className="kpi-label">Verified users</span><strong>{social.verifiedUsers}</strong></div>
+          <div className="kpi-card kpi-card--neutral"><span className="kpi-label">Unverified users</span><strong>{social.unverifiedUsers}</strong></div>
+          <div className="kpi-card kpi-card--neutral"><span className="kpi-label">Total post volume</span><strong>{social.totalPosts}</strong></div>
+          <div className="kpi-card kpi-card--neutral"><span className="kpi-label">Total views</span><strong>{social.totalViews}</strong></div>
+        </div>
+      )}
       <div className="table-wrap">
         <h3>Top Risks</h3>
         <table>

@@ -32,7 +32,9 @@ function emptyData(): DashboardData {
     periods: [],
     allocationByPeriod: {},
     auditEvents: [],
-    anomalies: []
+    anomalies: [],
+    socialMetrics: null,
+    socialMetricsStatus: null
   };
 }
 
@@ -145,6 +147,7 @@ export function App() {
           <p className="success-banner">Last refresh completed with no probe failures or open anomalies.</p>
         )}
       {queryableError && <p className="warn-banner">Queryable error ingestion issue: {queryableError}</p>}
+      {!error && data.socialMetricsStatus && <p className="warn-banner">{data.socialMetricsStatus}</p>}
 
       <nav className="tabs">
         {VIEWS.map((v) => (

@@ -203,4 +203,103 @@ export function registerAdminDeveloperRoutes(app: Application): void {
       });
     }
   });
+
+  app.get('/api/admin/social/metrics', requireAdminApiKey, async (_req: Request, res: Response) => {
+    try {
+      const { getDatabasePool } = await import('../utils/database');
+      const db = getDatabasePool();
+
+      const [usersRes, postsRes, engagementRes] = await Promise.all([
+        db.query(`
+          SELECT
+            COUNT(*)::bigint AS total_users,
+            (
+              SELECT COUNT(*)::bigint
+              FROM user_profiles up
+              WHERE EXISTS (
+                SELECT 1
+                FROM verified_identities vi
+                WHERE vi.identity_id = up.pn_identifier
+                  AND vi.is_active = TRUE
+              )
+            ) AS verified_users
+          FROM user_profiles
+        `),
+        db.query(`
+          SELECT
+            COUNT(*)::bigint AS total_posts,
+            COUNT(*) FILTER (WHERE COALESCE(NULLIF(TRIM(content), ''), '') <> '')::bigint AS text_posts,
+            COUNT(*) FILTER (
+              WHERE CASE WHEN jsonb_typeof(media) = 'array' THEN jsonb_array_length(media) ELSE 0 END > 0
+            )::bigint AS media_posts,
+            COUNT(*) FILTER (
+              WHERE CASE WHEN jsonb_typeof(polls) = 'array' THEN jsonb_array_length(polls) ELSE 0 END > 0
+            )::bigint AS poll_posts,
+            COUNT(*) FILTER (
+              WHERE CASE WHEN jsonb_typeof(forms) = 'array' THEN jsonb_array_length(forms) ELSE 0 END > 0
+            )::bigint AS form_posts,
+            COUNT(*) FILTER (WHERE is_top_post = TRUE)::bigint AS top_posts,
+            COUNT(*) FILTER (WHERE file_id IS NOT NULL)::bigint AS file_linked_posts
+          FROM feed_posts
+        `),
+        db.query(`
+          SELECT
+            COALESCE(SUM(COALESCE((metadata->'engagement'->>'views')::bigint, 0)), 0)::bigint AS total_views,
+            COALESCE(SUM(COALESCE((metadata->'engagement'->>'likes')::bigint, 0)), 0)::bigint AS total_likes,
+            COALESCE(SUM(COALESCE((metadata->'engagement'->>'comments')::bigint, 0)), 0)::bigint AS total_comments,
+            COALESCE(SUM(COALESCE((metadata->'engagement'->>'shares')::bigint, 0)), 0)::bigint AS total_shares
+          FROM (
+            SELECT metadata FROM aggregator_media
+            UNION ALL
+            SELECT metadata FROM aggregator_thoughts
+            UNION ALL
+            SELECT metadata FROM aggregator_collections
+          ) AS all_content
+        `),
+      ]);
+
+      const usersRow = usersRes.rows[0] || {};
+      const postsRow = postsRes.rows[0] || {};
+      const engagementRow = engagementRes.rows[0] || {};
+
+      const totalUsers = Number(usersRow.total_users ?? 0);
+      const verifiedUsers = Number(usersRow.verified_users ?? 0);
+      const unverifiedUsers = Math.max(0, totalUsers - verifiedUsers);
+
+      return res.json({
+        generatedAt: new Date().toISOString(),
+        totals: {
+          users: {
+            total: totalUsers,
+            verified: verifiedUsers,
+            unverified: unverifiedUsers,
+          },
+          posts: {
+            total: Number(postsRow.total_posts ?? 0),
+            byType: {
+              text: Number(postsRow.text_posts ?? 0),
+              media: Number(postsRow.media_posts ?? 0),
+              poll: Number(postsRow.poll_posts ?? 0),
+              form: Number(postsRow.form_posts ?? 0),
+              top: Number(postsRow.top_posts ?? 0),
+              fileLinked: Number(postsRow.file_linked_posts ?? 0),
+            },
+          },
+          engagement: {
+            views: Number(engagementRow.total_views ?? 0),
+            likes: Number(engagementRow.total_likes ?? 0),
+            comments: Number(engagementRow.total_comments ?? 0),
+            shares: Number(engagementRow.total_shares ?? 0),
+          },
+        },
+      });
+    } catch (error: unknown) {
+      console.error('[admin] social metrics:', error);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description:
+          safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to load social metrics',
+      });
+    }
+  });
 }

@@ -17,6 +17,7 @@ export function InvestorViewPanel({ data, window }: Props) {
   const payoutAvailable = Number(data.monetizationStatus?.creatorFundPayoutAvailableCents ?? 0);
   const payoutHold = Number(data.monetizationStatus?.creatorFundPayoutInHoldCents ?? 0);
   const payoutPaid = Number(data.monetizationStatus?.creatorFundPaidOutCents ?? 0);
+  const social = data.socialMetrics;
 
   return (
     <ViewFrame view="investor" title="Investor View" window={window} data={data}>
@@ -45,6 +46,24 @@ export function InvestorViewPanel({ data, window }: Props) {
           <span className="kpi-label">Critical anomalies</span>
           <strong>{data.anomalies.filter((a) => a.severity === 'critical').length}</strong>
         </div>
+        {social && (
+          <div className="kpi-card kpi-card--neutral">
+            <span className="kpi-label">Social reach (total views)</span>
+            <strong>{social.totalViews}</strong>
+          </div>
+        )}
+        {social && (
+          <div className="kpi-card kpi-card--neutral">
+            <span className="kpi-label">User base (verified / total)</span>
+            <strong>{social.verifiedUsers} / {social.totalUsers}</strong>
+          </div>
+        )}
+        {social && (
+          <div className="kpi-card kpi-card--neutral">
+            <span className="kpi-label">Content inventory (posts)</span>
+            <strong>{social.totalPosts}</strong>
+          </div>
+        )}
       </div>
     </ViewFrame>
   );
