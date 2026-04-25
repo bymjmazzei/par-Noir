@@ -656,7 +656,7 @@ class ProductionServer {
         },
         credentials: true,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-Admin-Key'],
         exposedHeaders: ['Content-Type'],
         maxAge: 86400, // 24 hours
         preflightContinue: false, // Handle preflight immediately
