@@ -17,7 +17,7 @@ async function requestJson(
     headers.Authorization = `Bearer ${creds.bearerToken.trim()}`;
   }
   if (opts?.admin && creds.adminApiKey.trim()) {
-    headers['X-Admin-API-Key'] = creds.adminApiKey.trim();
+    headers['X-Admin-Key'] = creds.adminApiKey.trim();
   }
   const start = performance.now();
   try {
