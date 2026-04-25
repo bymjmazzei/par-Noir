@@ -24,12 +24,12 @@ Create `apps/internal-dashboard/.env` from `.env.example`:
 
 ## Auth inputs
 
-The dashboard accepts credentials in the UI:
+The dashboard is admin-key unlocked:
 
-- Bearer token for protected read endpoints
-- Admin API key for admin/audit/fund export endpoints
+- Admin API key is required in the UI.
+- Without a valid key, dashboard data fetch is blocked.
 
-These are used in-memory for local calls and are not sent anywhere other than the configured API endpoint.
+The key is used in-memory for local calls and is not sent anywhere other than the configured API endpoint.
 
 ## No deploy integration
 

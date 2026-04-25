@@ -2,20 +2,16 @@ import { API_ENDPOINT } from '../config/api';
 import type { AllocationSummary, AuditAnomaly, DashboardData, PeriodSummary, ProbeResult } from '../types';
 
 type Credentials = {
-  bearerToken: string;
   adminApiKey: string;
 };
 
 async function requestJson(
   path: string,
   creds: Credentials,
-  opts?: { admin?: boolean; auth?: boolean }
+  opts?: { admin?: boolean }
 ): Promise<{ ok: boolean; status: number | null; data: any; latencyMs: number; error?: string }> {
   const url = `${API_ENDPOINT}${path}`;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (opts?.auth && creds.bearerToken.trim()) {
-    headers.Authorization = `Bearer ${creds.bearerToken.trim()}`;
-  }
   if (opts?.admin && creds.adminApiKey.trim()) {
     headers['X-Admin-Key'] = creds.adminApiKey.trim();
   }
@@ -98,11 +94,18 @@ function buildAnomalies(periods: PeriodSummary[], allocations: Record<string, Al
 }
 
 export async function loadDashboardData(creds: Credentials): Promise<DashboardData> {
+  if (!creds.adminApiKey.trim()) {
+    throw new Error('Admin API key required');
+  }
+  const adminCheck = await requestJson('/api/admin/audit-events?limit=1', creds, { admin: true });
+  if (!adminCheck.ok) {
+    throw new Error(`Admin key rejected (status ${adminCheck.status ?? 'network'})`);
+  }
+
   const healthRes = await requestJson('/health', creds);
   const readyRes = await requestJson('/health/ready', creds);
   const statusRes = await requestJson('/api/status', creds);
-  const monetizationRes = await requestJson('/api/monetization/status', creds, { auth: true });
-  const periodsRes = await requestJson('/api/creator-fund/periods/recent?limit=8', creds, { auth: true });
+  const periodsRes = await requestJson('/api/admin/creator-fund/periods/recent?limit=8', creds, { admin: true });
   const auditRes = await requestJson('/api/admin/audit-events?limit=100', creds, { admin: true });
 
   const healthProbes = [
@@ -111,17 +114,17 @@ export async function loadDashboardData(creds: Credentials): Promise<DashboardDa
     toProbe('/api/status', statusRes)
   ];
 
-  const moduleProbeDefs: Array<{ bucket: string; path: string; auth?: boolean; admin?: boolean }> = [
-    { bucket: 'identity', path: '/api/monetization/status', auth: true },
+  const moduleProbeDefs: Array<{ bucket: string; path: string; admin?: boolean }> = [
+    { bucket: 'identity', path: '/api/admin/audit-events?limit=5', admin: true },
     { bucket: 'content_social', path: '/api/feeds' },
-    { bucket: 'messaging', path: '/api/messages', auth: true },
-    { bucket: 'monetization', path: '/api/creator-fund/periods/recent?limit=4', auth: true },
+    { bucket: 'messaging', path: '/api/status' },
+    { bucket: 'monetization', path: '/api/admin/creator-fund/periods/recent?limit=4', admin: true },
     { bucket: 'security', path: '/api/admin/audit-events?limit=20', admin: true }
   ];
 
   const moduleProbes: Record<string, ProbeResult[]> = {};
   for (const def of moduleProbeDefs) {
-    const out = await requestJson(def.path, creds, { auth: def.auth, admin: def.admin });
+    const out = await requestJson(def.path, creds, { admin: def.admin });
     const pr = toProbe(def.path, out);
     if (!moduleProbes[def.bucket]) moduleProbes[def.bucket] = [];
     moduleProbes[def.bucket].push(pr);
@@ -157,9 +160,7 @@ export async function loadDashboardData(creds: Credentials): Promise<DashboardDa
       probes: healthProbes
     },
     moduleProbes,
-    monetizationStatus: monetizationRes.ok && monetizationRes.data && typeof monetizationRes.data === 'object'
-      ? (monetizationRes.data as Record<string, unknown>)
-      : null,
+    monetizationStatus: null,
     periods,
     allocationByPeriod,
     auditEvents: Array.isArray(auditRes.data?.events) ? (auditRes.data.events as Array<Record<string, unknown>>) : [],

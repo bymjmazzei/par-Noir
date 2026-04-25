@@ -74,6 +74,21 @@ export function registerCreatorFundPeriodRoutes(app: Application): void {
     }
   });
 
+  /** Admin-only recent periods for internal ops dashboards (no user bearer token needed). */
+  app.get('/api/admin/creator-fund/periods/recent', requireAdminApiKey, async (req: Request, res: Response) => {
+    try {
+      const limit = parseInt(String(req.query.limit || '6'), 10);
+      const rows = await CreatorFundPeriodService.listRecentClosed(Number.isFinite(limit) ? limit : 6);
+      return res.json({ periods: rows });
+    } catch (e: unknown) {
+      console.error('[creator-fund] admin recent periods:', e);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
+      });
+    }
+  });
+
   /** JSON export for a closed period (ledger / reporting). Cron secret or admin API key. */
   app.get('/api/creator-fund/periods/:periodId/allocations', requireCronOrAdmin, async (req: Request, res: Response) => {
     try {

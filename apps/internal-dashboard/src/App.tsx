@@ -38,14 +38,13 @@ function emptyData(): DashboardData {
 export function App() {
   const [view, setView] = useState<TopLevelView>('founder');
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('24h');
-  const [bearerToken, setBearerToken] = useState('');
   const [adminApiKey, setAdminApiKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [queryableError, setQueryableError] = useState<string | null>(null);
   const [data, setData] = useState<DashboardData>(emptyData());
 
-  const credentials = useMemo(() => ({ bearerToken, adminApiKey }), [bearerToken, adminApiKey]);
+  const credentials = useMemo(() => ({ adminApiKey }), [adminApiKey]);
 
   const refresh = async () => {
     setLoading(true);
@@ -102,13 +101,7 @@ export function App() {
         <div className="controls">
           <input
             type="password"
-            placeholder="Bearer token (optional)"
-            value={bearerToken}
-            onChange={(e) => setBearerToken(e.target.value)}
-          />
-          <input
-            type="password"
-            placeholder="Admin API key (optional)"
+            placeholder="Admin API key (required to unlock)"
             value={adminApiKey}
             onChange={(e) => setAdminApiKey(e.target.value)}
           />
