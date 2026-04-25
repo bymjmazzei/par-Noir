@@ -68,22 +68,34 @@ function buildExportPayload(view: TopLevelView, data: DashboardData, window: Tim
   const base = {
     meta: metaFor(view, window),
     kpis,
+    analyticsV2: data.analyticsV2,
     sourceMap: {
       health: ['/health', '/health/ready', '/api/status'],
       monetization: ['/api/monetization/status', '/api/creator-fund/periods/recent'],
-      audits: ['/api/admin/audit-events']
+      audits: ['/api/admin/audit-events'],
+      dashboardV2: ['/api/admin/dashboard/v2']
     }
   };
 
   if (view === 'health') {
-    return { ...base, endpointHealthRows: [...data.health.probes, ...Object.values(data.moduleProbes).flat()] };
+    return {
+      ...base,
+      endpointHealthRows: [...data.health.probes, ...Object.values(data.moduleProbes).flat()],
+      cohorts: data.analyticsV2?.cohorts.weekly ?? [],
+      reliability: data.analyticsV2?.reliability ?? null
+    };
   }
   if (view === 'security') {
     const permissionFailures = Object.values(data.moduleProbes).flat().filter((p) => p.status === 401 || p.status === 403);
-    return { ...base, permissionFailures, riskEvents: data.auditEvents.slice(0, 50) };
+    return { ...base, permissionFailures, riskEvents: data.auditEvents.slice(0, 50), quality: data.analyticsV2?.quality ?? null };
   }
   if (view === 'financials') {
-    return { ...base, periods: data.periods, allocationSummary: Object.values(data.allocationByPeriod) };
+    return {
+      ...base,
+      periods: data.periods,
+      allocationSummary: Object.values(data.allocationByPeriod),
+      economics: data.analyticsV2?.economics ?? null
+    };
   }
   if (view === 'investor') {
     return {
@@ -93,11 +105,19 @@ function buildExportPayload(view: TopLevelView, data: DashboardData, window: Tim
         { label: 'Net Fund (cents)', value: kpis.fund_net_cents_recent, trend: 'n/a', status: 'ok' },
         { label: 'Critical Anomalies', value: kpis.integrity_critical_count, trend: 'n/a', status: 'watch' }
       ],
-      riskSummary: summarizeRisk(data.anomalies)
+      riskSummary: summarizeRisk(data.anomalies),
+      funnel: data.analyticsV2?.funnel ?? null,
+      reliability: data.analyticsV2?.reliability ?? null
     };
   }
   if (view === 'founder') {
-    return { ...base, topRisks: data.anomalies.slice(0, 20) };
+    return {
+      ...base,
+      topRisks: data.anomalies.slice(0, 20),
+      funnel: data.analyticsV2?.funnel ?? null,
+      cohorts: data.analyticsV2?.cohorts.weekly ?? [],
+      kpiRegistry: data.analyticsV2?.kpiRegistry ?? []
+    };
   }
   return base;
 }

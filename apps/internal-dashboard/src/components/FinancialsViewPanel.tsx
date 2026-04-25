@@ -12,8 +12,33 @@ function money(cents: number): string {
 }
 
 export function FinancialsViewPanel({ data, window }: Props) {
+  const economics = data.analyticsV2?.economics;
   return (
     <ViewFrame view="financials" title="Financials View" window={window} data={data}>
+      {economics && (
+        <div className="kpi-grid">
+          <div className="kpi-card kpi-card--neutral">
+            <span className="kpi-label">Payout Hold Ratio</span>
+            <strong>{(economics.payoutHoldRatio * 100).toFixed(2)}%</strong>
+          </div>
+          <div className="kpi-card kpi-card--neutral">
+            <span className="kpi-label">Median Allocation</span>
+            <strong>{money(economics.medianAllocationCents)}</strong>
+          </div>
+          <div className="kpi-card kpi-card--neutral">
+            <span className="kpi-label">P90 Allocation</span>
+            <strong>{money(economics.p90AllocationCents)}</strong>
+          </div>
+          <div className="kpi-card kpi-card--neutral">
+            <span className="kpi-label">Top-10 Concentration</span>
+            <strong>{(economics.allocationConcentrationTop10Share * 100).toFixed(2)}%</strong>
+          </div>
+          <div className="kpi-card kpi-card--neutral">
+            <span className="kpi-label">Net Fund Volatility</span>
+            <strong>{economics.netFundVolatility.toFixed(2)}</strong>
+          </div>
+        </div>
+      )}
       <div className="split-grid">
         <div className="table-wrap">
           <h3>Recent Fund Periods</h3>

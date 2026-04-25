@@ -67,6 +67,38 @@ export function ViewFrame({ view, title, window, data, children }: Props) {
           <strong>{data.anomalies.filter((a) => a.severity === 'warning').length}</strong>
         </div>
       </div>
+      {data.analyticsV2 && (
+        <div className="panel" style={{ marginTop: '0.65rem' }}>
+          <h3 style={{ marginTop: 0 }}>KPI Registry Snapshot ({data.analyticsV2.metricVersion})</h3>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>KPI</th>
+                  <th>Value</th>
+                  <th>Tone</th>
+                  <th>Owner</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.analyticsV2.kpiRegistry.map((kpi) => {
+                  const value = data.analyticsV2?.kpiValues[kpi.id];
+                  return (
+                    <tr key={kpi.id} className={value?.tone === 'bad' ? 'tr-status-bad' : value?.tone === 'warn' ? 'tr-status-warn' : value?.tone === 'ok' ? 'tr-status-ok' : 'tr-status-info'}>
+                      <td>{kpi.label}</td>
+                      <td>{value ? value.value : 0}</td>
+                      <td>{value?.tone ?? 'neutral'}</td>
+                      <td>{kpi.owner}</td>
+                      <td>{kpi.decisionPlaybook}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {children}
     </section>
   );

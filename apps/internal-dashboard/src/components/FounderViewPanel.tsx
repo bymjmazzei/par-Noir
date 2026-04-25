@@ -9,6 +9,7 @@ type Props = {
 
 export function FounderViewPanel({ data, window }: Props) {
   const social = data.socialMetrics;
+  const funnel = data.analyticsV2?.funnel.steps ?? [];
   return (
     <ViewFrame view="founder" title="Founder View" window={window} data={data}>
       {social && (
@@ -18,6 +19,29 @@ export function FounderViewPanel({ data, window }: Props) {
           <div className="kpi-card kpi-card--neutral"><span className="kpi-label">Unverified users</span><strong>{social.unverifiedUsers}</strong></div>
           <div className="kpi-card kpi-card--neutral"><span className="kpi-label">Total post volume</span><strong>{social.totalPosts}</strong></div>
           <div className="kpi-card kpi-card--neutral"><span className="kpi-label">Total views</span><strong>{social.totalViews}</strong></div>
+        </div>
+      )}
+      {funnel.length > 0 && (
+        <div className="table-wrap">
+          <h3>Activation Funnel</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Step</th>
+                <th>Users</th>
+                <th>Conversion From Previous</th>
+              </tr>
+            </thead>
+            <tbody>
+              {funnel.map((s) => (
+                <tr key={s.key}>
+                  <td>{s.label}</td>
+                  <td>{s.value}</td>
+                  <td>{s.conversionFromPrev == null ? '-' : `${(s.conversionFromPrev * 100).toFixed(2)}%`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
       <div className="table-wrap">

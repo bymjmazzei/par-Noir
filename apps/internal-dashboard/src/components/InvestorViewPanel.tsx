@@ -18,6 +18,8 @@ export function InvestorViewPanel({ data, window }: Props) {
   const payoutHold = Number(data.monetizationStatus?.creatorFundPayoutInHoldCents ?? 0);
   const payoutPaid = Number(data.monetizationStatus?.creatorFundPaidOutCents ?? 0);
   const social = data.socialMetrics;
+  const rel = data.analyticsV2?.reliability;
+  const funnel = data.analyticsV2?.funnel;
 
   return (
     <ViewFrame view="investor" title="Investor View" window={window} data={data}>
@@ -64,7 +66,22 @@ export function InvestorViewPanel({ data, window }: Props) {
             <strong>{social.totalPosts}</strong>
           </div>
         )}
+        {rel && (
+          <div className={cx('kpi-card', rel.apiSuccessRate >= 0.98 ? 'kpi-card--ok' : rel.apiSuccessRate >= 0.95 ? 'kpi-card--warn' : 'kpi-card--bad')}>
+            <span className="kpi-label">API success rate (24h)</span>
+            <strong>{(rel.apiSuccessRate * 100).toFixed(2)}%</strong>
+          </div>
+        )}
+        {funnel && (
+          <div className="kpi-card kpi-card--neutral">
+            <span className="kpi-label">Largest funnel drop</span>
+            <strong>{funnel.biggestDropStep ?? 'n/a'}</strong>
+          </div>
+        )}
       </div>
+      {rel && (
+        <p className="text-muted-soft">User impact summary: {rel.userImpactSummary}</p>
+      )}
     </ViewFrame>
   );
 }

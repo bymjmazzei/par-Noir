@@ -34,7 +34,9 @@ function emptyData(): DashboardData {
     auditEvents: [],
     anomalies: [],
     socialMetrics: null,
-    socialMetricsStatus: null
+    socialMetricsStatus: null,
+    analyticsV2: null,
+    analyticsV2Status: null
   };
 }
 
@@ -148,6 +150,7 @@ export function App() {
         )}
       {queryableError && <p className="warn-banner">Queryable error ingestion issue: {queryableError}</p>}
       {!error && data.socialMetricsStatus && <p className="warn-banner">{data.socialMetricsStatus}</p>}
+      {!error && data.analyticsV2Status && <p className="warn-banner">{data.analyticsV2Status}</p>}
 
       <nav className="tabs">
         {VIEWS.map((v) => (

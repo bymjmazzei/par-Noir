@@ -10,10 +10,20 @@ export function SecurityViewPanel({ data, window }: Props) {
   const permissionFailures = Object.values(data.moduleProbes)
     .flat()
     .filter((p) => p.status === 401 || p.status === 403);
+  const quality = data.analyticsV2?.quality;
 
   return (
     <ViewFrame view="security" title="Security View" window={window} data={data}>
       <div className="split-grid">
+        {quality && (
+          <div className="panel">
+            <h3>Integrity KPIs</h3>
+            <p>Verified engagement share: {(quality.verifiedEngagementShare * 100).toFixed(2)}%</p>
+            <p>Suspicious engagement ratio: {(quality.suspiciousEngagementRatio * 100).toFixed(2)}%</p>
+            <p>Unique engager ratio: {(quality.uniqueEngagerRatio * 100).toFixed(2)}%</p>
+            <p>Anomaly confidence score: {(quality.anomalyConfidenceScore * 100).toFixed(2)}%</p>
+          </div>
+        )}
         <div className="table-wrap">
           <h3>Permission Failures</h3>
           <table>

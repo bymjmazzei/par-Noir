@@ -7,6 +7,7 @@ Local-only ecosystem monitoring and audit dashboard for par Noir.
 - Monitor full ecosystem status locally (founder, health, security, financials, investor views)
 - Pull raw operational and financial data from local API server
 - Export per-view CSV/JSON packets for reporting
+- Run V2 analytics intelligence (KPI registry, funnel, cohorts, quality, economics, reliability) from API aggregates
 
 ## Location
 
@@ -31,9 +32,35 @@ The dashboard is admin-key unlocked:
 
 The key is used in-memory for local calls and is not sent anywhere other than the configured API endpoint.
 
+## V2 analytics endpoints
+
+The dashboard attempts the following admin endpoints:
+
+- `GET /api/admin/social/metrics`
+- `GET /api/admin/dashboard/v2`
+
+If an endpoint is not available on the connected API deployment, the UI degrades gracefully and displays a warning banner.
+
+## KPI model and cadence
+
+V2 analytics returns:
+
+- `metricVersion`, `generatedAt`, `dataLagSec`
+- `completeness` (missing endpoints/metrics + notes)
+- KPI registry definitions (`id`, `formula`, `owner`, `thresholds`, `decisionPlaybook`)
+- computed KPI values with tones (`ok`, `warn`, `bad`, `neutral`)
+
+Refresh cadence remains every 60 seconds in the dashboard.
+
 ## No deploy integration
 
 This app is local by design:
 
 - It is not included in Firebase hosting deploy workflow
 - It is intended for local ops/investor packet generation and internal diagnostics
+
+## Export-first workflow (no local persistence)
+
+- Dashboard does not persist snapshots to localStorage/IndexedDB or create a local database.
+- Exports are generated as downloadable files (CSV/JSON).
+- Save export files into project root (or any local path you choose) for reporting/versioned archives.

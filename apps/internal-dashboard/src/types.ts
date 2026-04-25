@@ -1,6 +1,7 @@
 export type TimeWindow = '1h' | '24h' | '7d' | '30d' | 'custom';
 export type Severity = 'info' | 'warning' | 'critical';
 export type TopLevelView = 'founder' | 'health' | 'security' | 'financials' | 'investor';
+export type MetricTone = 'ok' | 'warn' | 'bad' | 'neutral';
 
 export interface ProbeResult {
   endpoint: string;
@@ -83,4 +84,76 @@ export interface DashboardData {
     };
   } | null;
   socialMetricsStatus: string | null;
+  analyticsV2: {
+    metricVersion: string;
+    generatedAt: string;
+    dataLagSec: number;
+    completeness: {
+      status: 'complete' | 'partial' | 'unavailable';
+      missingEndpoints: string[];
+      missingMetrics: string[];
+      notes: string[];
+    };
+    kpiRegistry: Array<{
+      id: string;
+      label: string;
+      owner: string;
+      formula: string;
+      source: string[];
+      freshnessSlaSec: number;
+      thresholds: {
+        goodGte?: number;
+        warnGte?: number;
+        badLt?: number;
+      };
+      decisionPlaybook: string;
+    }>;
+    kpiValues: Record<string, {
+      value: number;
+      tone: MetricTone;
+      stale: boolean;
+      notes?: string;
+    }>;
+    funnel: {
+      steps: Array<{
+        key: string;
+        label: string;
+        value: number;
+        conversionFromPrev: number | null;
+      }>;
+      biggestDropStep: string | null;
+    };
+    cohorts: {
+      weekly: Array<{
+        cohortWeek: string;
+        size: number;
+        d1: number;
+        d7: number;
+        d30: number;
+      }>;
+    };
+    quality: {
+      verifiedEngagementShare: number;
+      uniqueEngagerRatio: number;
+      topCreatorShareViews: number;
+      suspiciousEngagementRatio: number;
+      anomalyConfidenceScore: number;
+    };
+    economics: {
+      payoutHoldRatio: number;
+      medianAllocationCents: number;
+      p90AllocationCents: number;
+      allocationConcentrationTop10Share: number;
+      netFundVolatility: number;
+    };
+    reliability: {
+      apiSuccessRate: number;
+      p95LatencyMs: number;
+      p99LatencyMs: number;
+      adminProbeFailureRate: number;
+      incidentCount24h: number;
+      userImpactSummary: string;
+    };
+  } | null;
+  analyticsV2Status: string | null;
 }

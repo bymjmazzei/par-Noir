@@ -6,6 +6,7 @@ type Credentials = {
 };
 
 let socialMetricsEndpointSupported = true;
+let analyticsV2EndpointSupported = true;
 
 async function requestJson(
   path: string,
@@ -112,8 +113,14 @@ export async function loadDashboardData(creds: Credentials): Promise<DashboardDa
   const socialMetricsRes = socialMetricsEndpointSupported
     ? await requestJson('/api/admin/social/metrics', creds, { admin: true })
     : null;
+  const analyticsV2Res = analyticsV2EndpointSupported
+    ? await requestJson('/api/admin/dashboard/v2', creds, { admin: true })
+    : null;
   if (socialMetricsRes?.status === 404) {
     socialMetricsEndpointSupported = false;
+  }
+  if (analyticsV2Res?.status === 404) {
+    analyticsV2EndpointSupported = false;
   }
 
   const healthProbes = [
@@ -198,6 +205,98 @@ export async function loadDashboardData(creds: Credentials): Promise<DashboardDa
         ? 'Social metrics disabled: connected API does not expose /api/admin/social/metrics yet.'
         : !socialMetricsEndpointSupported
           ? 'Social metrics disabled for this session (endpoint unsupported on connected API).'
-          : null
+          : null,
+    analyticsV2: analyticsV2Res?.ok
+      ? {
+          metricVersion: String(analyticsV2Res.data?.metricVersion ?? 'v2'),
+          generatedAt: String(analyticsV2Res.data?.generatedAt ?? new Date().toISOString()),
+          dataLagSec: Number(analyticsV2Res.data?.dataLagSec ?? 0),
+          completeness: {
+            status: (analyticsV2Res.data?.completeness?.status as 'complete' | 'partial' | 'unavailable') ?? 'partial',
+            missingEndpoints: Array.isArray(analyticsV2Res.data?.completeness?.missingEndpoints) ? analyticsV2Res.data.completeness.missingEndpoints.map(String) : [],
+            missingMetrics: Array.isArray(analyticsV2Res.data?.completeness?.missingMetrics) ? analyticsV2Res.data.completeness.missingMetrics.map(String) : [],
+            notes: Array.isArray(analyticsV2Res.data?.completeness?.notes) ? analyticsV2Res.data.completeness.notes.map(String) : [],
+          },
+          kpiRegistry: Array.isArray(analyticsV2Res.data?.kpiRegistry)
+            ? analyticsV2Res.data.kpiRegistry.map((k: any) => ({
+                id: String(k.id),
+                label: String(k.label),
+                owner: String(k.owner),
+                formula: String(k.formula),
+                source: Array.isArray(k.source) ? k.source.map(String) : [],
+                freshnessSlaSec: Number(k.freshnessSlaSec ?? 3600),
+                thresholds: {
+                  goodGte: k.thresholds?.goodGte != null ? Number(k.thresholds.goodGte) : undefined,
+                  warnGte: k.thresholds?.warnGte != null ? Number(k.thresholds.warnGte) : undefined,
+                  badLt: k.thresholds?.badLt != null ? Number(k.thresholds.badLt) : undefined,
+                },
+                decisionPlaybook: String(k.decisionPlaybook ?? ''),
+              }))
+            : [],
+          kpiValues: typeof analyticsV2Res.data?.kpiValues === 'object' && analyticsV2Res.data?.kpiValues
+            ? Object.fromEntries(
+                Object.entries(analyticsV2Res.data.kpiValues).map(([key, value]) => [
+                  key,
+                  {
+                    value: Number((value as any)?.value ?? 0),
+                    tone: (String((value as any)?.tone ?? 'neutral') as 'ok' | 'warn' | 'bad' | 'neutral'),
+                    stale: Boolean((value as any)?.stale),
+                    notes: (value as any)?.notes != null ? String((value as any).notes) : undefined,
+                  },
+                ]),
+              )
+            : {},
+          funnel: {
+            steps: Array.isArray(analyticsV2Res.data?.funnel?.steps)
+              ? analyticsV2Res.data.funnel.steps.map((s: any) => ({
+                  key: String(s.key),
+                  label: String(s.label),
+                  value: Number(s.value ?? 0),
+                  conversionFromPrev: s.conversionFromPrev == null ? null : Number(s.conversionFromPrev),
+                }))
+              : [],
+            biggestDropStep: analyticsV2Res.data?.funnel?.biggestDropStep != null ? String(analyticsV2Res.data.funnel.biggestDropStep) : null,
+          },
+          cohorts: {
+            weekly: Array.isArray(analyticsV2Res.data?.cohorts?.weekly)
+              ? analyticsV2Res.data.cohorts.weekly.map((c: any) => ({
+                  cohortWeek: String(c.cohortWeek),
+                  size: Number(c.size ?? 0),
+                  d1: Number(c.d1 ?? 0),
+                  d7: Number(c.d7 ?? 0),
+                  d30: Number(c.d30 ?? 0),
+                }))
+              : [],
+          },
+          quality: {
+            verifiedEngagementShare: Number(analyticsV2Res.data?.quality?.verifiedEngagementShare ?? 0),
+            uniqueEngagerRatio: Number(analyticsV2Res.data?.quality?.uniqueEngagerRatio ?? 0),
+            topCreatorShareViews: Number(analyticsV2Res.data?.quality?.topCreatorShareViews ?? 0),
+            suspiciousEngagementRatio: Number(analyticsV2Res.data?.quality?.suspiciousEngagementRatio ?? 0),
+            anomalyConfidenceScore: Number(analyticsV2Res.data?.quality?.anomalyConfidenceScore ?? 0),
+          },
+          economics: {
+            payoutHoldRatio: Number(analyticsV2Res.data?.economics?.payoutHoldRatio ?? 0),
+            medianAllocationCents: Number(analyticsV2Res.data?.economics?.medianAllocationCents ?? 0),
+            p90AllocationCents: Number(analyticsV2Res.data?.economics?.p90AllocationCents ?? 0),
+            allocationConcentrationTop10Share: Number(analyticsV2Res.data?.economics?.allocationConcentrationTop10Share ?? 0),
+            netFundVolatility: Number(analyticsV2Res.data?.economics?.netFundVolatility ?? 0),
+          },
+          reliability: {
+            apiSuccessRate: Number(analyticsV2Res.data?.reliability?.apiSuccessRate ?? 0),
+            p95LatencyMs: Number(analyticsV2Res.data?.reliability?.p95LatencyMs ?? 0),
+            p99LatencyMs: Number(analyticsV2Res.data?.reliability?.p99LatencyMs ?? 0),
+            adminProbeFailureRate: Number(analyticsV2Res.data?.reliability?.adminProbeFailureRate ?? 0),
+            incidentCount24h: Number(analyticsV2Res.data?.reliability?.incidentCount24h ?? 0),
+            userImpactSummary: String(analyticsV2Res.data?.reliability?.userImpactSummary ?? 'n/a'),
+          },
+        }
+      : null,
+    analyticsV2Status:
+      analyticsV2Res?.status === 404
+        ? 'Dashboard V2 analytics disabled: connected API does not expose /api/admin/dashboard/v2 yet.'
+        : !analyticsV2EndpointSupported
+          ? 'Dashboard V2 analytics disabled for this session (endpoint unsupported on connected API).'
+          : null,
   };
 }
