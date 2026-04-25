@@ -131,6 +131,11 @@ export class EngagementService {
     }
   }
 
+  /**
+   * Witness-time flags for engagement rows. Period close still allocates bounty when
+   * `actor` is true and `owner` is false **if** the post has an active registry track (orphan creator leg);
+   * see `docs/business/CREATOR_FUND_AND_SUBSCRIPTION_ECONOMICS.md`.
+   */
   private static async computeFundMonetizableFlags(
     actorPn: string,
     fileId: string
