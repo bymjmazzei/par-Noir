@@ -1,6 +1,8 @@
 /**
- * Paid feed subscriptions are not a par Noir product surface (no platform-hosted
- * subscriber billing). Policy: docs/business/FEEDS_AND_THIRD_PARTY_MONETIZATION.md
+ * Viewer paid subscriptions *to a feed* (charging other users via par Noir checkout)
+ * are not a product surface. Creator **feed ownership / tier** pricing (`feeds.is_paid`,
+ * monthly/annual, feed_creation) is separate. Policy:
+ * docs/business/FEEDS_AND_THIRD_PARTY_MONETIZATION.md
  */
 
 export const FEED_PAID_SUBSCRIPTIONS_DOC_PATH =

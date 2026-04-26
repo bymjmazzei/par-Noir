@@ -114,9 +114,9 @@ export class FeedService {
       data.creatorTier || 'free',
       JSON.stringify([]), // Legacy field - always empty now
       JSON.stringify(data.branding || {}),
-      false,
-      null,
-      null,
+      data.isPaid || false,
+      data.monthlyPrice ?? null,
+      data.annualPrice ?? null,
       data.subdomain || null
     ]);
 

@@ -6,6 +6,10 @@
 
 Feeds are for **discovery, organization, collaboration, and the public index** (see layer model in repo rules). Users can **follow** feeds through normal product flows (e.g. subscribe in the sense of **following** a feed in the aggregator) without the platform acting as **merchant of record** for **paid access** to a feed.
 
+## Creator paid feed tier (owner)
+
+Database fields such as **`feeds.is_paid`**, **`monthly_price`**, and **`annual_price`**, and flows like **Coinbase `feed_creation`** after payment, refer to the **creator’s paid feed / ownership plan** (paying for or operating a feed tier on par Noir). They are **not** used to run **viewer → creator** “subscribe to this feed for money” checkout on the platform.
+
 ## What par Noir does not do
 
 **par Noir does not host, process, or settle end-user paid subscriptions to feeds** (no recurring or term-based “pay here to unlock this feed” product run by par Noir). That avoids platform liability for **payments, refunds, chargebacks, tax characterization, and subscriber access disputes** for creator–subscriber relationships.
