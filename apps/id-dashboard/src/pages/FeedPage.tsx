@@ -7,7 +7,6 @@ import React, { useState, useEffect } from 'react';
 import DOMPurify from 'dompurify';
 import { ArrowLeft, Users, Star, Calendar, Link as LinkIcon, Share2, Heart, MessageCircle, MoreVertical } from 'lucide-react';
 import { FeedService, Feed, FeedPost } from '../services/feeds/FeedService';
-import { FeedSubscriptionService } from '../services/feeds/FeedSubscriptionService';
 import { EnhancedPostContent } from '../components/feeds/EnhancedThoughtCreator';
 import { useParams, useNavigate } from 'react-router-dom';
 
@@ -18,13 +17,9 @@ export const FeedPage: React.FC = () => {
   const [topPost, setTopPost] = useState<FeedPost | null>(null);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isSubscribed, setIsSubscribed] = useState(false);
-  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
-
   useEffect(() => {
     if (feedId) {
       loadFeed();
-      checkSubscription();
     }
   }, [feedId]);
 
@@ -52,25 +47,6 @@ export const FeedPage: React.FC = () => {
       console.error('Failed to load feed:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const checkSubscription = async () => {
-    if (!feedId) return;
-    const subscribed = await FeedSubscriptionService.isSubscribed(feedId);
-    setIsSubscribed(subscribed);
-  };
-
-  const handleSubscribe = async () => {
-    if (!feed) return;
-
-    try {
-      const result = await FeedSubscriptionService.subscribeToFeed(feed.feedId, 'monthly');
-      if (result.success && result.checkoutUrl) {
-        window.open(result.checkoutUrl, '_blank');
-      }
-    } catch (error) {
-      console.error('Subscription error:', error);
     }
   };
 
@@ -313,23 +289,9 @@ export const FeedPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Subscribe Button */}
-            <div>
-              {isSubscribed ? (
-                <button
-                  disabled
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg font-medium opacity-50 cursor-not-allowed"
-                >
-                  Subscribed
-                </button>
-              ) : (
-                <button
-                  onClick={handleSubscribe}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                >
-                  Subscribe ${feed.monthlyPrice?.toFixed(2) || '5.00'}/month
-                </button>
-              )}
+            <div className="max-w-xs text-right text-sm text-neutral-400">
+              Paid access and subscriber billing are not sold through par Noir. Use the aggregator
+              browser to follow feeds, or the creator&apos;s own checkout link if they offer one.
             </div>
           </div>
         </div>

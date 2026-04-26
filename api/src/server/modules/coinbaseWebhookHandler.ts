@@ -1,6 +1,7 @@
 /**
  * Coinbase Commerce Webhook Handler
- * Handles payment confirmations for feed subscriptions
+ * Handles payment confirmations (e.g. feed creation). Platform-hosted paid
+ * feed subscriptions are disabled; see feedSubscriptionPolicy.
  */
 
 import { Request, Response } from 'express';
@@ -116,9 +117,9 @@ export class CoinbaseWebhookHandler {
           metadata.feedDescription || null,
           creatorDid,
           'feed',
-          true,
-          parseFloat(metadata.monthlyPrice || '5.00'),
-          parseFloat(metadata.annualPrice || '50.00'),
+          false,
+          null,
+          null,
           metadata.subdomain || null,
           JSON.stringify({}),
           now,
@@ -148,49 +149,16 @@ export class CoinbaseWebhookHandler {
         return;
       }
 
-      // Handle feed subscription payment
-      const result = await db.query(`
-        SELECT * FROM feed_subscriptions 
-        WHERE checkout_id = $1 AND status = 'pending'
-        LIMIT 1
-      `, [checkoutId]);
-
-      if (result.rows.length === 0) {
-        console.warn(`⚠️ [CoinbaseWebhook] No pending subscription found for checkout ${checkoutId}`);
-        return;
+      // Platform-hosted paid feed subscriptions are not offered (no Coinbase activation).
+      const pendingSub = await db.query(
+        `SELECT 1 FROM feed_subscriptions WHERE checkout_id = $1 AND status = 'pending' LIMIT 1`,
+        [checkoutId]
+      );
+      if (pendingSub.rows.length > 0) {
+        console.warn(
+          '[CoinbaseWebhook] Ignoring feed subscription payment; platform-hosted feed subscriptions are disabled'
+        );
       }
-
-      const subscription = result.rows[0];
-      const billingCycle = subscription.billing_cycle;
-      const now = new Date();
-      const expiresAt = new Date(now);
-      
-      if (billingCycle === 'monthly') {
-        expiresAt.setMonth(expiresAt.getMonth() + 1);
-      } else {
-        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-      }
-
-      // Activate subscription
-      await db.query(`
-        UPDATE feed_subscriptions 
-        SET status = 'active', 
-            expires_at = $1, 
-            next_billing_date = $2, 
-            activated_at = NOW(),
-            payment_id = $3
-        WHERE subscription_id = $4
-      `, [
-        expiresAt.toISOString(),
-        expiresAt.toISOString(),
-        charge.id,
-        subscription.subscription_id
-      ]);
-
-      // Subscribe to feed
-      await FeedService.subscribeToFeed(subscription.feed_id, subscription.user_did);
-
-      console.log(`✅ [CoinbaseWebhook] Subscription activated: ${subscription.subscription_id}`);
     } catch (error) {
       console.error('❌ [CoinbaseWebhook] Error handling payment confirmed:', error);
     }

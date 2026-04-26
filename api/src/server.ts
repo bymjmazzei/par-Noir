@@ -7939,18 +7939,8 @@ class ProductionServer {
     this.app.post('/api/feeds', async (req, res) => {
       try {
         const { FeedService } = await import('./server/modules/feedService');
-        const { 
-          feedName, 
-          feedCategory, 
-          feedDescription, 
-          creatorDid, 
-          creatorTier, 
-          branding,
-          isPaid,
-          monthlyPrice,
-          annualPrice,
-          subdomain
-        } = req.body;
+        const { feedName, feedCategory, feedDescription, creatorDid, creatorTier, branding, subdomain } =
+          req.body;
 
         if (!feedName || !creatorDid) {
           return res.status(400).json({ error: 'feedName and creatorDid are required' });
@@ -7979,57 +7969,16 @@ class ProductionServer {
           branding
         });
 
-        // Update feed with paid subscription info if provided
-        if (isPaid !== undefined || monthlyPrice !== undefined || annualPrice !== undefined || subdomain) {
+        // Optional subdomain only (platform does not host paid feed subscriptions).
+        if (subdomain !== undefined && subdomain !== null && String(subdomain).trim() !== '') {
           const db = (await import('./server/utils/database')).getDatabasePool();
-          const updates: string[] = [];
-          const params: any[] = [];
-          let paramCount = 0;
-
-          if (isPaid !== undefined) {
-            paramCount++;
-            updates.push(`is_paid = $${paramCount}`);
-            params.push(isPaid);
-          }
-          if (monthlyPrice !== undefined) {
-            paramCount++;
-            updates.push(`monthly_price = $${paramCount}`);
-            params.push(monthlyPrice);
-          }
-          if (annualPrice !== undefined) {
-            paramCount++;
-            updates.push(`annual_price = $${paramCount}`);
-            params.push(annualPrice);
-          }
-          if (subdomain !== undefined) {
-            paramCount++;
-            updates.push(`subdomain = $${paramCount}`);
-            params.push(subdomain || null);
-          }
-
-          if (updates.length > 0) {
-            paramCount++;
-            updates.push(`updated_at = NOW()`);
-            paramCount++;
-            params.push(feed.feedId);
-            
-            await db.query(`
-              UPDATE feeds 
-              SET ${updates.join(', ')}
-              WHERE feed_id = $${paramCount}
-            `, params);
-
-            // Reload feed to get updated data
-            const updatedFeed = await FeedService.getFeedById(feed.feedId);
-            if (updatedFeed) {
-              return res.status(201).json({
-                ...updatedFeed,
-                isPaid: isPaid !== undefined ? isPaid : updatedFeed.isPaid,
-                monthlyPrice: monthlyPrice !== undefined ? monthlyPrice : updatedFeed.monthlyPrice,
-                annualPrice: annualPrice !== undefined ? annualPrice : updatedFeed.annualPrice,
-                subdomain: subdomain !== undefined ? subdomain : updatedFeed.subdomain
-              });
-            }
+          await db.query(
+            `UPDATE feeds SET subdomain = $1, updated_at = NOW() WHERE feed_id = $2`,
+            [subdomain || null, feed.feedId]
+          );
+          const updatedFeed = await FeedService.getFeedById(feed.feedId);
+          if (updatedFeed) {
+            return res.status(201).json(updatedFeed);
           }
         }
 

@@ -7,6 +7,7 @@ import { Request, Response } from 'express';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { FeedService, Feed, FeedRow } from './feedService';
 import { getDatabasePool } from '../utils/database';
+import { feedPlatformSubscriptionsDisabledPayload } from '../utils/feedSubscriptionPolicy';
 
 export interface FeedPost {
   id: string;
@@ -411,179 +412,38 @@ export function setupFeedRoutes(app: any) {
 
   /**
    * POST /api/feeds/:feedId/subscriptions
-   * Subscribe to a feed
+   * (Deprecated) Platform-hosted paid feed subscriptions are not offered.
    */
-  app.post('/api/feeds/:feedId/subscriptions', async (req: Request, res: Response) => {
-    try {
-      const { feedId } = req.params;
-      const { billingCycle, checkoutId, checkoutUrl } = req.body;
-
-      const tokenPayload = getBearerTokenPayload(req);
-      if (!tokenPayload) {
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-
-      // Verify feed exists
-      const feed = await FeedService.getFeedById(feedId);
-      if (!feed) {
-        return res.status(404).json({ error: 'Feed not found' });
-      }
-
-      if (!feed.isPaid) {
-        return res.status(400).json({ error: 'Feed is not a paid feed' });
-      }
-
-      // Create pending subscription
-      const subscriptionId = `sub_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const now = new Date().toISOString();
-
-      await db.query(`
-        INSERT INTO feed_subscriptions (
-          subscription_id, feed_id, user_did, billing_cycle, status, checkout_id, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-      `, [
-        subscriptionId,
-        feedId,
-        tokenPayload.did,
-        billingCycle || 'monthly',
-        'pending',
-        checkoutId,
-        now
-      ]);
-
-      return res.json({
-        subscriptionId,
-        checkoutUrl,
-        status: 'pending'
-      });
-    } catch (error) {
-      console.error('Create subscription error:', error);
-      return res.status(500).json({ error: 'Failed to create subscription' });
-    }
+  app.post('/api/feeds/:feedId/subscriptions', async (_req: Request, res: Response) => {
+    return res.status(410).json(feedPlatformSubscriptionsDisabledPayload());
   });
 
   /**
    * DELETE /api/feeds/:feedId/subscriptions
-   * Cancel subscription
+   * (Deprecated) No-op success — platform does not host paid feed subscriptions.
    */
-  app.delete('/api/feeds/:feedId/subscriptions', async (req: Request, res: Response) => {
-    try {
-      const { feedId } = req.params;
-
-      const tokenPayload = getBearerTokenPayload(req);
-      if (!tokenPayload) {
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-
-      // Cancel subscription
-      await db.query(`
-        UPDATE feed_subscriptions 
-        SET status = 'cancelled', cancelled_at = NOW()
-        WHERE feed_id = $1 AND user_did = $2 AND status = 'active'
-      `, [feedId, tokenPayload.did]);
-
-      return res.json({ success: true });
-    } catch (error) {
-      console.error('Cancel subscription error:', error);
-      return res.status(500).json({ error: 'Failed to cancel subscription' });
-    }
+  app.delete('/api/feeds/:feedId/subscriptions', async (_req: Request, res: Response) => {
+    return res.json({ success: true });
   });
 
   /**
    * GET /api/subscriptions
-   * Get user's subscriptions
+   * Platform-hosted paid feed subscriptions are not offered; list is always empty.
    */
   app.get('/api/subscriptions', async (req: Request, res: Response) => {
-    try {
-      const tokenPayload = getBearerTokenPayload(req);
-      if (!tokenPayload) {
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-
-      const result = await db.query(`
-        SELECT * FROM feed_subscriptions 
-        WHERE user_did = $1
-        ORDER BY created_at DESC
-      `, [tokenPayload.did]);
-
-      const subscriptions = result.rows.map(row => ({
-        id: row.subscription_id,
-        feedId: row.feed_id,
-        subscriberId: row.user_did,
-        billingCycle: row.billing_cycle,
-        status: row.status,
-        createdAt: row.created_at,
-        expiresAt: row.expires_at,
-        nextBillingDate: row.next_billing_date,
-        paymentId: row.payment_id
-      }));
-
-      return res.json({ subscriptions });
-    } catch (error) {
-      console.error('Get subscriptions error:', error);
-      return res.status(500).json({ error: 'Failed to fetch subscriptions' });
+    const tokenPayload = getBearerTokenPayload(req);
+    if (!tokenPayload) {
+      return res.status(401).json({ error: 'Invalid token' });
     }
+    return res.json({ subscriptions: [] });
   });
 
   /**
    * POST /api/subscriptions/confirm
-   * Confirm subscription after payment
+   * (Deprecated) Platform-hosted paid feed subscriptions are not offered.
    */
-  app.post('/api/subscriptions/confirm', async (req: Request, res: Response) => {
-    try {
-      const { checkoutId } = req.body;
-
-      const tokenPayload = getBearerTokenPayload(req);
-      if (!tokenPayload) {
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-
-      // Find subscription by checkout ID
-      const result = await db.query(`
-        SELECT * FROM feed_subscriptions 
-        WHERE checkout_id = $1 AND user_did = $2
-        LIMIT 1
-      `, [checkoutId, tokenPayload.did]);
-
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Subscription not found' });
-      }
-
-      const subscription = result.rows[0];
-      const billingCycle = subscription.billing_cycle;
-      const now = new Date();
-      const expiresAt = new Date(now);
-      
-      if (billingCycle === 'monthly') {
-        expiresAt.setMonth(expiresAt.getMonth() + 1);
-      } else {
-        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-      }
-
-      // Activate subscription
-      await db.query(`
-        UPDATE feed_subscriptions 
-        SET status = 'active', expires_at = $1, next_billing_date = $2, activated_at = NOW()
-        WHERE subscription_id = $3
-      `, [expiresAt.toISOString(), expiresAt.toISOString(), subscription.subscription_id]);
-
-      // Subscribe to feed
-      await FeedService.subscribeToFeed(subscription.feed_id, tokenPayload.did);
-
-      return res.json({
-        id: subscription.subscription_id,
-        feedId: subscription.feed_id,
-        subscriberId: subscription.user_did,
-        billingCycle: subscription.billing_cycle,
-        status: 'active',
-        createdAt: subscription.created_at,
-        expiresAt: expiresAt.toISOString(),
-        nextBillingDate: expiresAt.toISOString()
-      });
-    } catch (error) {
-      console.error('Confirm subscription error:', error);
-      return res.status(500).json({ error: 'Failed to confirm subscription' });
-    }
+  app.post('/api/subscriptions/confirm', async (_req: Request, res: Response) => {
+    return res.status(410).json(feedPlatformSubscriptionsDisabledPayload());
   });
 
   /**
