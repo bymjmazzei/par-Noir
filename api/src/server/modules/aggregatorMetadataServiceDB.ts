@@ -15,8 +15,47 @@
 
 import { getDatabasePool } from '../utils/database';
 import { isDriveFileUrlDead } from '../utils/driveUrlCheck';
-import { PublicMetadata, CentralIndexEntry, CentralIndexResponse, EngagementMetrics } from './aggregatorMetadataService';
+import { PublicMetadata, CentralIndexEntry, CentralIndexResponse } from './aggregatorMetadataService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
+import { EngagementService, type EngagementMetrics } from './engagementService';
+import { computePublicRankFromMetrics } from './discoveryRank';
+
+/**
+ * Sort merged index rows by public discovery score (verified-weighted engagement + recency).
+ * Mutates rows with `_publicRankScore` for mapping into `CentralIndexEntry`.
+ */
+async function sortRowsByPublicRank(allFiles: any[]): Promise<void> {
+  if (allFiles.length === 0) return;
+  const ids = allFiles.map((r) => String(r.file_id));
+  const metricsByFile = await EngagementService.getEngagementMetricsBatch(ids);
+  const emptyMetrics = (): EngagementMetrics => ({
+    total: { likes: 0, comments: 0, shares: 0, saves: 0 },
+    verified: { likes: 0, comments: 0, shares: 0, saves: 0 },
+    unverified: { likes: 0, comments: 0, shares: 0, saves: 0 },
+    recommendationScore: 0
+  });
+
+  for (const row of allFiles) {
+    const id = String(row.file_id);
+    const m = metricsByFile.get(id) ?? emptyMetrics();
+    const rawUpload = row.metadata?.uploadDate
+      ? new Date(row.metadata.uploadDate).getTime()
+      : new Date(row.submitted_at).getTime();
+    const uploadMs = Number.isFinite(rawUpload) ? rawUpload : Date.now();
+    const { score } = computePublicRankFromMetrics(m, uploadMs, {});
+    row._publicRankScore = score;
+  }
+
+  allFiles.sort((a, b) => {
+    const sb = Number(b._publicRankScore ?? 0);
+    const sa = Number(a._publicRankScore ?? 0);
+    if (sb !== sa) return sb - sa;
+    const tb = new Date(b.metadata?.updated_at || b.submitted_at).getTime();
+    const ta = new Date(a.metadata?.updated_at || a.submitted_at).getTime();
+    if (tb !== ta) return tb - ta;
+    return String(b.file_id).localeCompare(String(a.file_id));
+  });
+}
 
 export class AggregatorMetadataServiceDB {
   private static instance: AggregatorMetadataServiceDB;
@@ -714,12 +753,7 @@ export class AggregatorMetadataServiceDB {
       }
       allFiles = Array.from(uniqueFiles.values());
 
-      // Sort by updated_at descending
-      allFiles.sort((a, b) => {
-        const aTime = new Date(a.metadata?.updated_at || a.submitted_at).getTime();
-        const bTime = new Date(b.metadata?.updated_at || b.submitted_at).getTime();
-        return bTime - aTime;
-      });
+      await sortRowsByPublicRank(allFiles);
 
       // Apply pagination after merging
       const paginatedFiles = allFiles.slice(offset, offset + limit);
@@ -732,12 +766,17 @@ export class AggregatorMetadataServiceDB {
         if (row.feed_ids && row.feed_ids.length > 0) {
           metadata.feedIds = row.feed_ids.map((id: string) => id.toString());
         }
-        
+        const pr = typeof row._publicRankScore === 'number' ? row._publicRankScore : undefined;
+        if (pr !== undefined) {
+          metadata.publicRankScore = pr;
+        }
+
         return {
           fileId: row.file_id,
           metadata,
           submittedAt: row.submitted_at.toISOString(),
-          pnIdentifier: row.pn_identifier
+          pnIdentifier: row.pn_identifier,
+          publicRankScore: pr
         };
       });
 
@@ -914,12 +953,7 @@ export class AggregatorMetadataServiceDB {
       }
       allFiles = Array.from(uniqueFiles.values());
 
-      // Sort by updated_at descending
-      allFiles.sort((a, b) => {
-        const aTime = new Date(a.metadata?.updated_at || a.submitted_at).getTime();
-        const bTime = new Date(b.metadata?.updated_at || b.submitted_at).getTime();
-        return bTime - aTime;
-      });
+      await sortRowsByPublicRank(allFiles);
 
       // Apply pagination after merging
       const paginatedFiles = allFiles.slice(offset, offset + limit);
@@ -931,11 +965,16 @@ export class AggregatorMetadataServiceDB {
         if (row.feed_ids && row.feed_ids.length > 0) {
           metadata.feedIds = row.feed_ids.map((id: string) => id.toString());
         }
+        const pr = typeof row._publicRankScore === 'number' ? row._publicRankScore : undefined;
+        if (pr !== undefined) {
+          metadata.publicRankScore = pr;
+        }
         return {
           fileId: row.file_id,
           metadata,
           submittedAt: row.submitted_at.toISOString(),
-          pnIdentifier: row.pn_identifier
+          pnIdentifier: row.pn_identifier,
+          publicRankScore: pr
         };
       });
 
@@ -1037,13 +1076,8 @@ export class AggregatorMetadataServiceDB {
       for (const result of results) {
         allRows.push(...result.rows);
       }
-      
-      // Sort by updated_at descending
-      allRows.sort((a, b) => {
-        const aTime = new Date(a.updated_at || a.submitted_at).getTime();
-        const bTime = new Date(b.updated_at || b.submitted_at).getTime();
-        return bTime - aTime;
-      });
+
+      await sortRowsByPublicRank(allRows);
       
       // Get feed_ids for each file
       const fileIds = allRows.map((row: any) => row.file_id);
@@ -1069,11 +1103,16 @@ export class AggregatorMetadataServiceDB {
         if (feedIds.length > 0) {
           metadata.feedIds = feedIds;
         }
+        const pr = typeof row._publicRankScore === 'number' ? row._publicRankScore : undefined;
+        if (pr !== undefined) {
+          metadata.publicRankScore = pr;
+        }
         return {
           fileId: row.file_id,
           metadata,
           submittedAt: row.submitted_at.toISOString(),
-          pnIdentifier: row.pn_identifier
+          pnIdentifier: row.pn_identifier,
+          publicRankScore: pr
         };
       });
 
@@ -1324,17 +1363,7 @@ export class AggregatorMetadataServiceDB {
           return bDate - aDate;
         });
       } else if (options?.sortBy === 'popularity') {
-        allFiles.sort((a, b) => {
-          const aLikes = parseInt(a.metadata?.engagement?.likes || '0', 10);
-          const bLikes = parseInt(b.metadata?.engagement?.likes || '0', 10);
-          if (aLikes !== bLikes) return bLikes - aLikes;
-          const aViews = parseInt(a.metadata?.engagement?.views || '0', 10);
-          const bViews = parseInt(b.metadata?.engagement?.views || '0', 10);
-          if (aViews !== bViews) return bViews - aViews;
-          const aTime = new Date(a.metadata?.updated_at || a.submitted_at).getTime();
-          const bTime = new Date(b.metadata?.updated_at || b.submitted_at).getTime();
-          return bTime - aTime;
-        });
+        await sortRowsByPublicRank(allFiles);
       } else {
         // Relevance sorting
         if (searchQuery) {
@@ -1378,11 +1407,16 @@ export class AggregatorMetadataServiceDB {
         if (row.feed_ids && row.feed_ids.length > 0) {
           metadata.feedIds = row.feed_ids.map((id: string) => id.toString());
         }
+        const pr = typeof row._publicRankScore === 'number' ? row._publicRankScore : undefined;
+        if (pr !== undefined) {
+          metadata.publicRankScore = pr;
+        }
         return {
           fileId: row.file_id,
           metadata,
           submittedAt: row.submitted_at.toISOString(),
-          pnIdentifier: row.pn_identifier
+          pnIdentifier: row.pn_identifier,
+          publicRankScore: pr
         };
       });
 
@@ -2125,19 +2159,21 @@ export class AggregatorMetadataServiceDB {
         allRows.push(...result.rows);
       }
 
-      // Sort by updated_at descending
-      allRows.sort((a, b) => {
-        const aTime = new Date(a.updated_at || a.submitted_at).getTime();
-        const bTime = new Date(b.updated_at || b.submitted_at).getTime();
-        return bTime - aTime;
-      });
+      await sortRowsByPublicRank(allRows);
 
-      return allRows.map(row => ({
-        fileId: row.file_id,
-        metadata: row.metadata as PublicMetadata,
-        submittedAt: row.submitted_at.toISOString(),
-        pnIdentifier: row.pn_identifier
-      }));
+      return allRows.map(row => {
+        const metadata = row.metadata as PublicMetadata;
+        const pr = typeof row._publicRankScore === 'number' ? row._publicRankScore : undefined;
+        const metaOut =
+          pr !== undefined ? { ...metadata, publicRankScore: pr } : { ...metadata };
+        return {
+          fileId: row.file_id,
+          metadata: metaOut,
+          submittedAt: row.submitted_at.toISOString(),
+          pnIdentifier: row.pn_identifier,
+          publicRankScore: pr
+        };
+      });
     } catch (error) {
       console.error(`❌ Failed to get curated feed for DID ${did}:`, error);
       throw error;

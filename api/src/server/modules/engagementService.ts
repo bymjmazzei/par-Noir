@@ -869,7 +869,7 @@ export class EngagementService {
       });
 
       // Calculate recommendation score using weighted algorithm
-      metrics.recommendationScore = this.calculateRecommendationScore(metrics);
+      metrics.recommendationScore = this.computeRecommendationScore(metrics);
 
       return metrics;
     } catch (error) {
@@ -884,10 +884,86 @@ export class EngagementService {
   }
 
   /**
-   * Calculate recommendation score using weighted algorithm
-   * Verified engagement weighted 10-15x, unverified weighted 0.5-1x
+   * Batch engagement metrics for many files (single round-trip).
+   * Same verified / unverified / bot_score rules as getEngagementMetrics.
    */
-  private static calculateRecommendationScore(metrics: EngagementMetrics): number {
+  static async getEngagementMetricsBatch(fileIds: string[]): Promise<Map<string, EngagementMetrics>> {
+    const out = new Map<string, EngagementMetrics>();
+    if (!fileIds.length) return out;
+
+    const unique = [...new Set(fileIds.map((id) => id.trim()).filter(Boolean))];
+    for (const id of unique) {
+      out.set(id, {
+        total: { likes: 0, comments: 0, shares: 0, saves: 0 },
+        verified: { likes: 0, comments: 0, shares: 0, saves: 0 },
+        unverified: { likes: 0, comments: 0, shares: 0, saves: 0 },
+        recommendationScore: 0
+      });
+    }
+
+    const db = getDatabasePool();
+    try {
+      const result = await db.query(
+        `
+        SELECT 
+          file_id,
+          type,
+          COUNT(*) FILTER (WHERE is_verified = TRUE) AS verified_count,
+          COUNT(*) FILTER (WHERE is_verified = FALSE AND bot_score < 0.5) AS unverified_count,
+          COUNT(*)::int AS total_count
+        FROM engagement
+        WHERE file_id = ANY($1::text[])
+        GROUP BY file_id, type
+        `,
+        [unique]
+      );
+
+      for (const row of result.rows) {
+        const fileId = String(row.file_id);
+        const metrics = out.get(fileId);
+        if (!metrics) continue;
+
+        const type = row.type as string;
+        const verifiedCount = parseInt(row.verified_count, 10) || 0;
+        const unverifiedCount = parseInt(row.unverified_count, 10) || 0;
+        const totalCount = parseInt(row.total_count, 10) || 0;
+
+        if (type === 'like') {
+          metrics.total.likes = totalCount;
+          metrics.verified.likes = verifiedCount;
+          metrics.unverified.likes = unverifiedCount;
+        } else if (type === 'comment') {
+          metrics.total.comments = totalCount;
+          metrics.verified.comments = verifiedCount;
+          metrics.unverified.comments = unverifiedCount;
+        } else if (type === 'share') {
+          metrics.total.shares = totalCount;
+          metrics.verified.shares = verifiedCount;
+          metrics.unverified.shares = unverifiedCount;
+        } else if (type === 'save') {
+          metrics.total.saves = totalCount;
+          metrics.verified.saves = verifiedCount;
+          metrics.unverified.saves = unverifiedCount;
+        }
+      }
+
+      for (const id of unique) {
+        const m = out.get(id)!;
+        m.recommendationScore = this.computeRecommendationScore(m);
+      }
+
+      return out;
+    } catch (error) {
+      console.error('Failed to get batch engagement metrics:', error);
+      return out;
+    }
+  }
+
+  /**
+   * Recommendation score using weighted algorithm (verified vs unverified).
+   * Used by single-file metrics, batch metrics, and discovery rank.
+   */
+  static computeRecommendationScore(metrics: EngagementMetrics): number {
     // Weight configuration
     const WEIGHTS = {
       verified: {

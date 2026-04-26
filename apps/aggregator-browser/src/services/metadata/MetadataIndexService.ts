@@ -98,9 +98,15 @@ export class MetadataIndexService {
             }
           }
           
+          const publicRankScore =
+            typeof (entry as { publicRankScore?: number }).publicRankScore === 'number'
+              ? (entry as { publicRankScore?: number }).publicRankScore
+              : undefined;
+
           return {
             metadata: {
               ...metadata,
+              ...(publicRankScore !== undefined ? { publicRankScore } : {}),
               // CRITICAL FIX: Ensure fileId is set from entry-level fileId if missing in metadata
               // This handles cases where metadata.fileId might be missing after upgrade
               fileId: metadata.fileId || entry.fileId,

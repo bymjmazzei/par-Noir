@@ -197,7 +197,7 @@ export async function getCachedIndex(
     offset?: number;
   }
 ): Promise<any | null> {
-  const key = generateCacheKey('metadata:index', filters);
+  const key = generateCacheKey('metadata:index:pubrank-v1', filters);
   return getCache(key);
 }
 
@@ -217,7 +217,7 @@ export async function setCachedIndex(
   value: any,
   ttlSeconds: number = 300 // 5 minutes default
 ): Promise<void> {
-  const key = generateCacheKey('metadata:index', filters);
+  const key = generateCacheKey('metadata:index:pubrank-v1', filters);
   await setCache(key, value, ttlSeconds);
 }
 

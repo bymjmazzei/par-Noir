@@ -12,6 +12,7 @@ import { getUserProfile } from '../services/profileService';
 import { cleanTitle } from '../utils/cleanTitle';
 import { isNSFWContent } from '../constants/contentRatings';
 import { ShareToken } from '../utils/tokenDecryption';
+import { sortIndexedFilesForDiscovery } from '../utils/discoverySort';
 
 interface DiscoveryPageProps {
   files: IndexedFile[];
@@ -209,82 +210,15 @@ export function DiscoveryPage({
     return true;
   };
 
-  // Helper to calculate client-side recommendation score
-  // For public feed: uses public algorithm only (engagement + recency)
-  // For personalized feeds: uses full algorithm (public + user preferences)
-  const calculateClientScore = (file: IndexedFile, usePersonalization: boolean = false): number => {
-    // Use recommendationScore from metadata if available
-    if ((file.metadata as any).recommendationScore !== undefined) {
-      return (file.metadata as any).recommendationScore;
-    }
-
-    // Fallback: simple client-side calculation
-    const engagement = file.metadata.engagement;
-    const engagementScore = (engagement?.likes || 0) + 
-                            (engagement?.comments || 0) * 2 + 
-                            (engagement?.shares || 0) * 1.5;
-
-    // Recency score (decay by 2 points per day)
-    const uploadDate = file.metadata.uploadDate 
-      ? new Date(file.metadata.uploadDate).getTime()
-      : Date.now();
-    const daysSinceUpload = (Date.now() - uploadDate) / (1000 * 60 * 60 * 24);
-    const recencyScore = Math.max(0, 100 - (daysSinceUpload * 2));
-
-    // Combine engagement (70%) and recency (30%)
-    let score = (engagementScore * 0.7) + (recencyScore * 0.3);
-
-    // Add personalization adjustments if enabled
-    if (usePersonalization && userState.isUnlocked) {
-      // Boost for subscribed subjects
-      const fileSubjects = (file.metadata.subjects || []).map(s => s.toLowerCase().trim());
-      const subscribedSubjects = (userState.preferences.subscribedSubjects || []).map(s => s.toLowerCase().trim());
-      if (subscribedSubjects.length > 0 && fileSubjects.some(s => subscribedSubjects.includes(s))) {
-        score += 15;
-      }
-
-      // Penalty for blocked subjects
-      const blockedSubjects = (userState.preferences.blockedSubjects || []).map(s => s.toLowerCase().trim());
-      if (blockedSubjects.length > 0 && fileSubjects.some(s => blockedSubjects.includes(s))) {
-        score -= 30;
-      }
-
-      // Boost for subscribed feeds
-      const subscribedFeedIds = userState.preferences.subscribedFeedIds || [];
-      if (subscribedFeedIds.length > 0 && file.metadata.feedIds?.some(id => subscribedFeedIds.includes(id))) {
-        score += 15;
-      }
-    }
-
-    return Math.max(0, score);
+  const discoverySortCtx = {
+    isUnlocked: Boolean(userState.isUnlocked),
+    subscribedSubjects: userState.preferences.subscribedSubjects,
+    blockedSubjects: userState.preferences.blockedSubjects,
+    subscribedFeedIds: userState.preferences.subscribedFeedIds
   };
 
-  // Helper to sort files by recommendation score
-  const sortByScore = (files: IndexedFile[], usePersonalization: boolean = false): IndexedFile[] => {
-    return [...files].sort((a, b) => {
-      const scoreA = calculateClientScore(a, usePersonalization);
-      const scoreB = calculateClientScore(b, usePersonalization);
-      return scoreB - scoreA; // Descending order (highest first)
-    });
-  };
-
-  // Get trending files (most engagement, using recommendation scores if available)
-  const trendingFiles = useMemo(() => {
-    return [...files]
-      .sort((a, b) => {
-        // Use recommendationScore if available (from weighted algorithm), otherwise fallback to simple engagement
-        const aScore = (a.metadata as any).recommendationScore || 
-          ((a.metadata.engagement?.likes || 0) + 
-           (a.metadata.engagement?.comments || 0) + 
-           (a.metadata.engagement?.shares || 0));
-        const bScore = (b.metadata as any).recommendationScore || 
-          ((b.metadata.engagement?.likes || 0) + 
-           (b.metadata.engagement?.comments || 0) + 
-           (b.metadata.engagement?.shares || 0));
-        return bScore - aScore;
-      })
-      .slice(0, 20);
-  }, [files]);
+  const sortByScore = (indexed: IndexedFile[], usePersonalization: boolean = false): IndexedFile[] =>
+    sortIndexedFilesForDiscovery(indexed, usePersonalization, discoverySortCtx);
 
   // Get new creators (recent uploads from new creators)
   const newCreators = useMemo(() => {
@@ -380,11 +314,11 @@ export function DiscoveryPage({
       case 'all':
         // "All" feed: Show all files (already filtered by NSFW and niche if selected)
         // Apply scoring algorithm based on user lock state
-        filtered = sortByScore(filtered, userState.isUnlocked);
+        filtered = sortByScore(filtered, Boolean(userState.isUnlocked));
         break;
       case 'trending':
-        // Trending: Sort by score and take top 100
-        filtered = sortByScore(filtered, userState.isUnlocked).slice(0, 100);
+        // Trending: server-aligned rank, no personalization nudges
+        filtered = sortByScore(filtered, false).slice(0, 100);
         break;
       case 'featured':
         // Featured feeds with most content
@@ -397,7 +331,7 @@ export function DiscoveryPage({
           file.metadata.feedIds?.some(feedId => featuredFeedIds.includes(feedId))
         );
         // Apply scoring algorithm
-        filtered = sortByScore(filtered, userState.isUnlocked);
+        filtered = sortByScore(filtered, Boolean(userState.isUnlocked));
         break;
       case 'classics':
         filtered = filtered.filter(file => {
@@ -406,7 +340,7 @@ export function DiscoveryPage({
           return daysOld > 30; // At least 30 days old
         });
         // Apply scoring algorithm and take top 100
-        filtered = sortByScore(filtered, userState.isUnlocked).slice(0, 100);
+        filtered = sortByScore(filtered, Boolean(userState.isUnlocked)).slice(0, 100);
         break;
     }
     
@@ -416,10 +350,12 @@ export function DiscoveryPage({
   // Helper to check if file is a collection
   const isCollection = (file: IndexedFile): boolean => {
     const collectionData = file.metadata?.collection;
-    return file.metadata.fileType === 'collection' && 
-           collectionData?.collectionFileIds && 
-           Array.isArray(collectionData.collectionFileIds) &&
-           collectionData.collectionFileIds.length > 0;
+    return Boolean(
+      file.metadata.fileType === 'collection' &&
+        collectionData?.collectionFileIds &&
+        Array.isArray(collectionData.collectionFileIds) &&
+        collectionData.collectionFileIds.length > 0
+    );
   };
 
   // Helper to get thumbnail URL for a file

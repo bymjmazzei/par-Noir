@@ -7,6 +7,7 @@ import { getDatabasePool } from '../utils/database';
 import { CentralIndexEntry } from './aggregatorMetadataService';
 import { UserPreferenceService } from './userPreferenceService';
 import { EngagementService } from './engagementService';
+import { computePublicRankFromMetrics } from './discoveryRank';
 
 export interface RecommendationScore {
   fileId: string;
@@ -46,33 +47,19 @@ export class RecommendationService {
   ): Promise<{ score: number; reasons: string[] }> {
     const reasons: string[] = [];
 
-    // Get weighted engagement metrics (verified vs unverified)
     const engagementMetrics = await EngagementService.getEngagementMetrics(file.fileId);
-    
-    // Use recommendation score from weighted algorithm
-    // This already accounts for verified (10-15x) vs unverified (0.5-1x) weights
-    // and filters out bot engagement (bot_score >= 0.5)
-    const weightedEngagementScore = engagementMetrics.recommendationScore;
-    
-    // Normalize engagement score (log scale to prevent outliers from dominating)
-    const normalizedEngagement = Math.log10(weightedEngagementScore + 1) * 10;
-    
-    // Recency score (0-100, based on upload date)
-    const uploadDate = file.metadata.uploadDate 
+
+    const uploadMs = file.metadata.uploadDate
       ? new Date(file.metadata.uploadDate).getTime()
-      : file.submittedAt 
+      : file.submittedAt
         ? new Date(file.submittedAt).getTime()
         : Date.now();
-    
-    const daysSinceUpload = (Date.now() - uploadDate) / (1000 * 60 * 60 * 24);
-    const recencyScore = Math.max(0, 100 - (daysSinceUpload * 2)); // Decay by 2 points per day
-    
-    // Combine engagement and recency
-    const engagementWeight = options.engagementWeight ?? 0.7;
-    const recencyWeight = options.recencyWeight ?? 0.3;
-    
-    const score = (normalizedEngagement * engagementWeight) + (recencyScore * recencyWeight);
-    reasons.push(`Weighted Engagement: ${normalizedEngagement.toFixed(1)} (Verified: ${engagementMetrics.verified.likes + engagementMetrics.verified.comments + engagementMetrics.verified.shares + engagementMetrics.verified.saves}, Unverified: ${engagementMetrics.unverified.likes + engagementMetrics.unverified.comments + engagementMetrics.unverified.shares + engagementMetrics.unverified.saves}), Recency: ${recencyScore.toFixed(1)}`);
+
+    const { score, reasonLine } = computePublicRankFromMetrics(engagementMetrics, uploadMs, {
+      engagementWeight: options.engagementWeight,
+      recencyWeight: options.recencyWeight
+    });
+    reasons.push(reasonLine);
 
     return { score, reasons };
   }

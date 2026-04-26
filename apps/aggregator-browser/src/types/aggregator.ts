@@ -352,6 +352,9 @@ export interface PublicMetadata {
   // ENGAGEMENT METRICS
   // ============================================================================
   engagement?: EngagementMetrics;
+
+  /** Server discovery score (API); see docs/business/DISCOVERY_RANKING.md */
+  publicRankScore?: number;
   
   // ============================================================================
   // PAR NOIR SPECIFIC

@@ -7,6 +7,7 @@ import { useMemo } from 'react';
 import type { IndexedFile, Feed } from '../types/aggregator';
 import { isNSFWContent } from '../constants/contentRatings';
 import { isThought, isCollection, isMedia, getCreatorIdentifier, normalizeId } from '../utils/contentClass';
+import { sortIndexedFilesForDiscovery } from '../utils/discoverySort';
 
 export interface UseFeedFilteringParams {
   mediaFiles: IndexedFile[];
@@ -59,57 +60,15 @@ export function useFeedFiltering({
       return true;
     };
 
-    const calculateClientScore = (file: IndexedFile, usePersonalization: boolean = false): number => {
-      if ((file.metadata as any).recommendationScore !== undefined) {
-        return (file.metadata as any).recommendationScore;
-      }
-      const engagement = file.metadata.engagement;
-      const engagementScore =
-        (engagement?.likes || 0) +
-        (engagement?.comments || 0) * 2 +
-        (engagement?.shares || 0) * 1.5;
-      const uploadDate = file.metadata.uploadDate
-        ? new Date(file.metadata.uploadDate).getTime()
-        : Date.now();
-      const daysSinceUpload = (Date.now() - uploadDate) / (1000 * 60 * 60 * 24);
-      const recencyScore = Math.max(0, 100 - daysSinceUpload * 2);
-      let score = engagementScore * 0.7 + recencyScore * 0.3;
-
-      if (usePersonalization && userState.isUnlocked) {
-        const fileSubjects = (file.metadata.subjects || []).map((s) => s.toLowerCase().trim());
-        const subscribedSubjects = (userState.preferences.subscribedSubjects || []).map((s) =>
-          s.toLowerCase().trim()
-        );
-        if (subscribedSubjects.length > 0 && fileSubjects.some((s) => subscribedSubjects.includes(s))) {
-          score += 15;
-        }
-        const blockedSubjects = (userState.preferences.blockedSubjects || []).map((s) =>
-          s.toLowerCase().trim()
-        );
-        if (blockedSubjects.length > 0 && fileSubjects.some((s) => blockedSubjects.includes(s))) {
-          score -= 30;
-        }
-        const subscribedFeedIds = userState.preferences.subscribedFeedIds || [];
-        if (
-          subscribedFeedIds.length > 0 &&
-          file.metadata.feedIds?.some((id) => subscribedFeedIds.includes(id))
-        ) {
-          score += 15;
-        }
-      }
-      return Math.max(0, score);
+    const discoveryCtx = {
+      isUnlocked: userState.isUnlocked,
+      subscribedSubjects: userState.preferences.subscribedSubjects,
+      blockedSubjects: userState.preferences.blockedSubjects,
+      subscribedFeedIds: userState.preferences.subscribedFeedIds
     };
 
-    const sortByScore = (
-      files: IndexedFile[],
-      usePersonalization: boolean = false
-    ): IndexedFile[] => {
-      return [...files].sort((a, b) => {
-        const scoreA = calculateClientScore(a, usePersonalization);
-        const scoreB = calculateClientScore(b, usePersonalization);
-        return scoreB - scoreA;
-      });
-    };
+    const sortByScore = (files: IndexedFile[], usePersonalization: boolean = false): IndexedFile[] =>
+      sortIndexedFilesForDiscovery(files, usePersonalization, discoveryCtx);
 
     const applyConnectionFilter = (
       files: IndexedFile[],

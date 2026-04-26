@@ -73,6 +73,9 @@ export interface PublicMetadata {
   
   // Engagement Metrics (par Noir specific, semantic web compatible)
   engagement?: EngagementMetrics;
+
+  /** Denormalized copy of server discovery score (optional; also on CentralIndexEntry). */
+  publicRankScore?: number;
   
   // par Noir specific
   publicToken?: string;
@@ -150,6 +153,11 @@ export interface CentralIndexEntry {
   metadata: PublicMetadata;
   submittedAt: string;
   pnIdentifier?: string;
+  /**
+   * Server-computed public discovery score (verified-weighted engagement + recency).
+   * See docs/business/DISCOVERY_RANKING.md
+   */
+  publicRankScore?: number;
 }
 
 export interface CentralIndexResponse {
