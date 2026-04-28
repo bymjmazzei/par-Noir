@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { X, Upload, Camera, Shield, CheckCircle, AlertCircle, User, CreditCard, MapPin, Calendar, DollarSign } from 'lucide-react';
-import { ZKPGenerator } from '../utils/ZKPGenerator';
 import { STANDARD_DATA_POINTS } from '../types/StandardDataPointsRegistry';
 import { CoinbaseProxy, CoinbaseCheckout, CheckoutRequest } from '../utils/coinbaseProxy';
 import { verificationPaymentHandler } from '../services/verificationPaymentHandler';
@@ -347,6 +346,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
   };
 
   const generateZKProofs = async (extractedData: any) => {
+    const { ZKPGenerator } = await import('../utils/ZKPGenerator');
     const zkpProofs: { [key: string]: { value: any; zkpProof: string; verified: boolean; expirationDate?: string } } = {};
 
     if (!identityId || !encryptedIdentity) {

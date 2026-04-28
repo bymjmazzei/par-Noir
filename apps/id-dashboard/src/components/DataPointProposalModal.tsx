@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { SecureCredentialManager } from '../utils/secureCredentialManager';
 import { DATA_POINT_CATEGORIES } from '../types/standardDataPoints';
-import { ZKPGenerator } from '../utils/ZKPGenerator';
 
 interface DataPointProposalModalProps {
   isOpen: boolean;
@@ -124,6 +123,7 @@ export const DataPointProposalModal: React.FC<DataPointProposalModalProps> = ({
         return;
       }
 
+      const { ZKPGenerator } = await import('../utils/ZKPGenerator');
       const result = await ZKPGenerator.proposeDataPoint(
         proposal,
         sessionId,

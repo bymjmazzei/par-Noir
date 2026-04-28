@@ -1,4 +1,3 @@
-import { ZKPGenerator } from '../utils/ZKPGenerator';
 import type { EncryptedIdentity } from '../types/crypto';
 import {
   VerifiedIdentityData,
@@ -295,6 +294,7 @@ export class VerifiedIdentityManager {
     riskScore: number,
     ctx: { identityId: string; encryptedIdentity: EncryptedIdentity }
   ): Promise<VerifiedZKPProof> {
+    const { ZKPGenerator } = await import('../utils/ZKPGenerator');
     const standardZKP = await ZKPGenerator.generateZKP({
       dataPointId,
       userData,
