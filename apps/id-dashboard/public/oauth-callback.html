@@ -73,7 +73,9 @@
 
       var BC_NAME = 'par-noir-oauth-v1';
       var urlParams = new URLSearchParams(window.location.search);
-      var pnPopupFlow = urlParams.get('pn_popup') === '1';
+      var issuer = urlParams.get('iss') || '';
+      var isGoogleIssuer = issuer.indexOf('accounts.google.com') !== -1;
+      var pnPopupFlow = urlParams.get('pn_popup') === '1' || isGoogleIssuer;
       var code = urlParams.get('code');
       var state = urlParams.get('state');
       var error = urlParams.get('error');
@@ -86,11 +88,12 @@
       });
 
       var oauthData = {
-        type: 'oauth_callback',
+        type: isGoogleIssuer ? 'GOOGLE_OAUTH_CODE' : 'oauth_callback',
         code: code,
         state: state,
         error: error,
         age_shared: ageShared,
+        iss: issuer,
         timestamp: Date.now()
       };
 

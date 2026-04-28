@@ -4600,7 +4600,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const messageHandler = (event: MessageEvent) => {
           if (event.origin !== window.location.origin) return;
 
-          if (event.data.type === 'GOOGLE_OAUTH_CODE') {
+          if (event.data.type === 'GOOGLE_OAUTH_CODE' || event.data.type === 'oauth_callback') {
             clearTimeout(timeout);
             window.removeEventListener('message', messageHandler);
             // Avoid popup.close() from opener: COOP can block it and trigger console errors.
