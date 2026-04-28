@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { StandardDataPoint, ZKPGenerator, ZKPGenerationRequest } from '../types/standardDataPoints';
+import { StandardDataPoint, ZKPGenerationRequest } from '../types/standardDataPoints';
+import { ZKPGenerator } from '../utils/ZKPGenerator';
 import type { EncryptedIdentity } from '../types/crypto';
 import { VerificationModal } from './VerificationModal';
 

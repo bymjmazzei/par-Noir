@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SecureCredentialManager } from '../utils/secureCredentialManager';
-import { ZKPGenerator, DATA_POINT_CATEGORIES } from '../types/standardDataPoints';
+import { DATA_POINT_CATEGORIES } from '../types/standardDataPoints';
+import { ZKPGenerator } from '../utils/ZKPGenerator';
 
 interface DataPointProposalModalProps {
   isOpen: boolean;

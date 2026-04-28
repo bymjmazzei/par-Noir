@@ -15,7 +15,7 @@ import { analytics } from './utils/analytics';
 import { security } from './utils/security';
 import usePWA from './hooks/usePWA';
 import { GlobalPrivacySettings } from './types/privacy';
-import { STANDARD_DATA_POINTS, DATA_POINT_CATEGORIES, ZKPGenerator } from './types/standardDataPoints';
+import { STANDARD_DATA_POINTS, DATA_POINT_CATEGORIES } from './types/standardDataPoints';
 import { DataPointInputModal } from './components/DataPointInputModal';
 import { PermissionTile } from './components/PermissionTile';
 import { IntegratorTile } from './components/IntegratorTile';

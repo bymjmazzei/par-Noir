@@ -3,5 +3,4 @@
 
 export * from './DataPointTypes';
 export * from './StandardDataPointsRegistry';
-export { ZKPGenerator } from '../utils/ZKPGenerator';
 export { DataPointProposalManager } from '../utils/DataPointProposal';
