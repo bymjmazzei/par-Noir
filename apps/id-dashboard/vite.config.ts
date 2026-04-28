@@ -40,11 +40,6 @@ export default defineConfig(({ mode }) => ({
       'qrcode',
       'tailwind-merge',
       'buffer',
-      '@guildofweavers/genstark',
-      '@guildofweavers/galois',
-      '@guildofweavers/merkle',
-      '@guildofweavers/air-assembly',
-      '@guildofweavers/air-script',
     ]
   },
   build: {
@@ -72,6 +67,14 @@ export default defineConfig(({ mode }) => ({
           }
           // Vendor chunks
           if (id.includes('node_modules')) {
+            // Keep ZK v2/STARK runtime out of startup vendor chunk.
+            if (
+              id.includes('@guildofweavers/') ||
+              id.includes('@par-noir/zk-protocol-v2') ||
+              id.includes('packages/zk-protocol-v2/')
+            ) {
+              return 'zk-v2-lazy';
+            }
             if (id.includes('react') || id.includes('react-dom')) {
               return 'react-vendor';
             }
