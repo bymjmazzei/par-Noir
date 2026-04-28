@@ -169,6 +169,7 @@ export default defineConfig(({ mode }) => ({
     host: true,
   },
   define: {
+    global: 'globalThis',
     'process.env.NODE_ENV': JSON.stringify(mode),
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString())
