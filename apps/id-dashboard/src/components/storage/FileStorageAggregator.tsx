@@ -4553,8 +4553,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         setError('Google Drive OAuth not configured. Set VITE_GOOGLE_DRIVE_CLIENT_ID or configure GOOGLE_DRIVE_CLIENT_ID on the API.');
         return;
       }
-      // Use auth-callback.html to match existing Google OAuth redirect URI configuration.
-      const redirectUri = `${window.location.origin}/auth-callback.html`;
+      // Use the existing Google callback page bundled with the dashboard.
+      const redirectUri = `${window.location.origin}/google-oauth-callback.html`;
       const scope = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
       
       // Use authorization code flow to get refresh tokens
