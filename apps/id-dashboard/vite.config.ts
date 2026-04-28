@@ -48,9 +48,7 @@ export default defineConfig(({ mode }) => ({
     target: 'es2020',
     outDir: 'dist',
     sourcemap: false,
-    // Hotfix: terser-minified STARK/genstark chunk triggers TDZ runtime crash in browser.
-    // Keep production unminified for dashboard stability until we replace the problematic path.
-    minify: false,
+    minify: 'terser',
     chunkSizeWarningLimit: 1000,
     // Workers are handled separately and should not be minified
     rollupOptions: {
@@ -69,14 +67,6 @@ export default defineConfig(({ mode }) => ({
           }
           // Vendor chunks
           if (id.includes('node_modules')) {
-            // Keep ZK v2/STARK runtime out of startup vendor chunk.
-            if (
-              id.includes('@guildofweavers/') ||
-              id.includes('@par-noir/zk-protocol-v2') ||
-              id.includes('packages/zk-protocol-v2/')
-            ) {
-              return 'zk-v2-lazy';
-            }
             if (id.includes('react') || id.includes('react-dom')) {
               return 'react-vendor';
             }
@@ -144,7 +134,19 @@ export default defineConfig(({ mode }) => ({
         entryFileNames: 'assets/js/[name]-[hash].js',
       },
     },
-    terserOptions: undefined,
+    terserOptions: {
+      compress: {
+        drop_console: mode === 'production',
+        drop_debugger: true,
+        ...(mode !== 'production' ? { pure_funcs: ['console.log', 'console.info', 'console.debug'] } : {}),
+        passes: 2,
+      },
+      mangle: {
+        safari10: true,
+        // Don't mangle worker files - they use self/global which can break
+        reserved: ['self', 'global', 'Worker', 'importScripts'],
+      },
+    },
   },
   server: {
     port: 3001,

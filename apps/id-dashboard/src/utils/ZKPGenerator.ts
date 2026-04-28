@@ -1,10 +1,10 @@
-import { generateZkProofEnvelopeV2 } from '@par-noir/zk-protocol-v2';
+import { generateZkProofEnvelopeV1 } from '@par-noir/zk-protocol-v1';
 import type { DataPointProposal, StandardDataPoint, ZKPGenerationRequest, ZKPProof } from '../types/DataPointTypes';
 import { STANDARD_DATA_POINTS } from '../types/StandardDataPointsRegistry';
 import { DataPointProposalManager } from './DataPointProposal';
 import { loadMlDsaKeypairForZk } from './zkPqcSigning';
 
-// ZKP Generation — v2 envelope (STARK inner + ML-DSA; see docs/standards/ZK_PROOF_V2.md)
+// ZKP Generation — browser-safe v1 envelope with ML-DSA binding.
 export class ZKPGenerator {
   /**
    * Generate ZKP for a standard data point (ML-DSA–bound STARK envelope).
@@ -12,7 +12,7 @@ export class ZKPGenerator {
   static async generateZKP(request: ZKPGenerationRequest): Promise<ZKPProof> {
     if (!request.identityId || !request.encryptedIdentity) {
       throw new Error(
-        'ZKP v2 requires identityId and encryptedIdentity (unlock and use a stored identity with ML-DSA keys).'
+        'ZKP generation requires identityId and encryptedIdentity (unlock and use a stored identity with ML-DSA keys).'
       );
     }
 
@@ -40,7 +40,7 @@ export class ZKPGenerator {
       : Date.now() + 365 * 24 * 60 * 60 * 1000;
 
     const context = `par-noir.zkp.${request.dataPointId}`;
-    const proof = generateZkProofEnvelopeV2({
+    const proof = generateZkProofEnvelopeV1({
       mlDsaSecretKey,
       mlDsaPublicKey,
       context,
