@@ -48,7 +48,9 @@ export default defineConfig(({ mode }) => ({
     target: 'es2020',
     outDir: 'dist',
     sourcemap: false,
-    minify: 'terser',
+    // Hotfix: terser-minified STARK/genstark chunk triggers TDZ runtime crash in browser.
+    // Keep production unminified for dashboard stability until we replace the problematic path.
+    minify: false,
     chunkSizeWarningLimit: 1000,
     // Workers are handled separately and should not be minified
     rollupOptions: {
@@ -142,19 +144,7 @@ export default defineConfig(({ mode }) => ({
         entryFileNames: 'assets/js/[name]-[hash].js',
       },
     },
-    terserOptions: {
-      compress: {
-        drop_console: mode === 'production',
-        drop_debugger: true,
-        ...(mode !== 'production' ? { pure_funcs: ['console.log', 'console.info', 'console.debug'] } : {}),
-        passes: 2,
-      },
-      mangle: {
-        safari10: true,
-        // Don't mangle worker files - they use self/global which can break
-        reserved: ['self', 'global', 'Worker', 'importScripts'],
-      },
-    },
+    terserOptions: undefined,
   },
   server: {
     port: 3001,
