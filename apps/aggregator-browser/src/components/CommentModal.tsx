@@ -34,9 +34,12 @@ interface Comment {
 }
 
 const EMOJI_OPTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '💯'];
+const debug = (...args: unknown[]) => {
+  if (import.meta.env.DEV) console.debug(...args);
+};
 
 export function CommentModal({ file, onClose }: CommentModalProps) {
-  console.log('[CommentModal] Component function called', { fileId: file?.metadata?.fileId });
+  debug('[CommentModal] Component mounted');
   
   const { userState } = useUserState();
   const { addComment, getComments, loadComments, likeComment } = useEngagement();
@@ -44,13 +47,13 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
   
   // Log when modal is rendered and ensure it's visible
   useEffect(() => {
-    console.log('[CommentModal] Modal rendered (useEffect)', { fileId: file.metadata.fileId });
+    debug('[CommentModal] Modal rendered');
     // Force the modal to be visible by ensuring backdrop and modal are in DOM
     setTimeout(() => {
       if (backdropRef.current) {
-        console.log('[CommentModal] Backdrop element exists in DOM');
+        debug('[CommentModal] Backdrop element exists in DOM');
         const styles = window.getComputedStyle(backdropRef.current);
-        console.log('[CommentModal] Backdrop computed styles:', {
+        debug('[CommentModal] Backdrop computed styles:', {
           display: styles.display,
           visibility: styles.visibility,
           opacity: styles.opacity,
@@ -59,9 +62,9 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
         });
       }
       if (modalRef.current) {
-        console.log('[CommentModal] Modal element exists in DOM');
+        debug('[CommentModal] Modal element exists in DOM');
         const styles = window.getComputedStyle(modalRef.current);
-        console.log('[CommentModal] Modal computed styles:', {
+        debug('[CommentModal] Modal computed styles:', {
           display: styles.display,
           visibility: styles.visibility,
           opacity: styles.opacity,
@@ -124,7 +127,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
       const target = event.target as HTMLElement;
       // Check if click is on the backdrop itself (not on any child)
       if (backdropRef.current && target === backdropRef.current) {
-        console.log('[CommentModal] Clicked on backdrop, closing modal');
+        debug('[CommentModal] Clicked on backdrop, closing modal');
         onClose();
       }
     };
@@ -138,7 +141,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
     // Close on navigation (hashchange, popstate) - but only if actually navigating away
     const handleNavigation = (e: PopStateEvent | HashChangeEvent) => {
       // Don't close if it's just a hash change for the same file
-      console.log('[CommentModal] Navigation event', e.type);
+      debug('[CommentModal] Navigation event', e.type);
       onClose();
     };
 
@@ -452,7 +455,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
         onClick={(e) => {
           // Only close if clicking directly on the backdrop
           if (e.target === e.currentTarget) {
-            console.log('[CommentModal] Backdrop clicked, closing');
+            debug('[CommentModal] Backdrop clicked, closing');
             onClose();
           }
         }}

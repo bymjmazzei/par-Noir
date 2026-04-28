@@ -6,7 +6,8 @@ export default defineConfig(({ mode }) => ({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(__dirname, './src'),
+      '@par-noir/aggregator-domain': path.resolve(__dirname, '../../packages/aggregator-domain/src/index.ts')
     }
   },
   worker: {

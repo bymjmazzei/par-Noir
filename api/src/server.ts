@@ -30,6 +30,7 @@ import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
 import { registerMusicTrackRegistryRoutes } from './server/modules/musicTrackRegistryRoutes';
 import { registerStripeMonetizationRoutes } from './server/modules/stripeMonetizationRoutes';
 import { registerCreatorFundPeriodRoutes } from './server/modules/creatorFundPeriodRoutes';
+import { registerCoreRoutes } from './server/modules/coreRoutes';
 import { hashIdentifier, safeLogger } from './utils/logger';
 import { getBearerTokenPayload } from './server/middleware/authMiddleware';
 
@@ -1709,77 +1710,7 @@ class ProductionServer {
   }
 
   private async setupRoutes(): Promise<void> {
-    // Health check endpoint
-    this.app.get('/health', (req, res) => {
-      res.json({
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        environment: NODE_ENV
-      });
-    });
-
-    // Readiness: DB when DATABASE_URL is set (for load balancers / k8s)
-    this.app.get('/health/ready', async (_req, res) => {
-      if (!process.env.DATABASE_URL) {
-        return res.json({
-          ready: true,
-          database: 'not_configured',
-          timestamp: new Date().toISOString()
-        });
-      }
-      try {
-        const { getDatabasePool } = await import('./server/utils/database');
-        const pool = getDatabasePool();
-        await pool.query('SELECT 1');
-        return res.json({
-          ready: true,
-          database: 'ok',
-          timestamp: new Date().toISOString()
-        });
-      } catch {
-        return res.status(503).json({
-          ready: false,
-          database: 'unavailable',
-          timestamp: new Date().toISOString()
-        });
-      }
-    });
-
-    // API status endpoint
-    this.app.get('/api/status', (req, res) => {
-      res.json({
-        service: 'Identity Protocol API',
-        version: '1.0.0',
-        status: 'operational',
-        timestamp: new Date().toISOString()
-      });
-    });
-
-    // Public config: client ID for dashboard Google Drive OAuth (no auth; client ID is not secret)
-    this.app.get('/api/public-config', (_req, res) => {
-      res.json({
-        googleDriveClientId: process.env.GOOGLE_DRIVE_CLIENT_ID || ''
-      });
-    });
-
-    // Debug endpoint to check OAuth configuration (dev only - not exposed in production)
-    if (NODE_ENV === 'development') {
-      this.app.get('/api/debug/oauth-config', (req, res) => {
-        const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
-        const hasClientSecret = !!process.env.GOOGLE_DRIVE_CLIENT_SECRET;
-        const clientSecretLength = process.env.GOOGLE_DRIVE_CLIENT_SECRET?.length || 0;
-
-        res.json({
-          hasClientId: !!clientId,
-          clientId: clientId,
-          hasClientSecret: hasClientSecret,
-          clientSecretLength: clientSecretLength,
-          clientSecretFirstChars: process.env.GOOGLE_DRIVE_CLIENT_SECRET ? process.env.GOOGLE_DRIVE_CLIENT_SECRET.substring(0, 4) + '...' : 'MISSING',
-          environment: NODE_ENV
-        });
-      });
-    }
+    registerCoreRoutes(this.app, NODE_ENV);
 
     // Third-party indexers catalog
     this.app.get('/api/third-party/indexers', async (req, res) => {

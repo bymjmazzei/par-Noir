@@ -21,6 +21,7 @@ import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../../constants/feedCategor
 import { ReportContentModal } from './ReportContentModal';
 import { API_ENDPOINT } from '../../config/api';
 import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
+import { driveAccountTokens, normalizeVisibility } from './storageHelpers';
 
 const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
 const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
@@ -41,35 +42,6 @@ type DesktopLockPayload = {
   publicKey?: string;
   pnIdentifier?: string;
 };
-
-function normalizeVisibility(value: any): 'public' | 'private' | 'friends' {
-  if (value === 'public') {
-    return 'public';
-  }
-  if (value === 'friends') {
-    return 'friends';
-  }
-  return 'private';
-}
-
-/** API and legacy rows may use snake_case OAuth fields; dashboard code expects camelCase. */
-function driveAccountTokens(account: Record<string, unknown> | null | undefined): {
-  accessToken: string | null;
-  refreshToken: string | null;
-} {
-  if (!account || typeof account !== 'object') {
-    return { accessToken: null, refreshToken: null };
-  }
-  const access =
-    (typeof account.accessToken === 'string' && account.accessToken) ||
-    (typeof account.access_token === 'string' && account.access_token) ||
-    null;
-  const refresh =
-    (typeof account.refreshToken === 'string' && account.refreshToken) ||
-    (typeof account.refresh_token === 'string' && account.refresh_token) ||
-    null;
-  return { accessToken: access, refreshToken: refresh };
-}
 
 interface DriveAccountState {
   backendId: string;

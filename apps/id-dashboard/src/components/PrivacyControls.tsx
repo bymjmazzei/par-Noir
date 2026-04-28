@@ -113,8 +113,7 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = React.memo(({
       await loadVerificationStatus();
       setShowVerificationModal(false);
       
-      // Show success message
-      console.log('Identity verification completed successfully:', verifiedData);
+      // Verification status was refreshed successfully.
     } catch (error) {
       console.error('Failed to handle verification completion:', error);
     }

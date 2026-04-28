@@ -75,6 +75,8 @@ import { ScreenProtection } from './utils/security/screenProtection';
 import { ExtensionDetector } from './utils/security/extensionDetector';
 import { ExtensionWarningBanner } from './components/security/ExtensionWarningBanner';
 import { BiometricPasscodeModal } from './components/security/BiometricPasscodeModal';
+import { LoadingSpinner } from './components/common/LoadingSpinner';
+import { generateRandomNickname } from './utils/randomNickname';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -99,22 +101,6 @@ const MigrationModal = lazy(() => import('./components/MigrationModal').then(mod
 const ProfilePictureEditor = lazy(() => import('./components/ProfilePictureEditor').then(module => ({ default: module.ProfilePictureEditor })));
 const BiometricSetup = lazy(() => import('./components/BiometricSetup').then(module => ({ default: module.BiometricSetup })));
 const PWALockScreen = lazy(() => import('./components/PWALockScreen').then(module => ({ default: module.default })));
-
-// Loading component for lazy-loaded components
-const LoadingSpinner = () => (
-  <div className="flex items-center justify-center p-4">
-    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-  </div>
-);
-
-// Generate random nickname in format "pN123456789"
-const generateRandomNickname = (): string => {
-  // Generate secure random 9-digit number
-  const randomArray = new Uint32Array(1);
-  crypto.getRandomValues(randomArray);
-  const randomNumbers = Math.floor((randomArray[0] / 0xFFFFFFFF) * 900000000) + 100000000;
-  return `pN${randomNumbers}`;
-};
 
 interface DIDInfo {
   id: string;

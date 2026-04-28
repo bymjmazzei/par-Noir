@@ -23,6 +23,7 @@ export default defineConfig(({ mode }) => ({
       '@': resolve(__dirname, 'src'),
       // Source ESM — dist is CJS and breaks Vite named exports for this workspace package
       '@par-noir/standard-data-points': resolve(__dirname, '../../packages/standard-data-points/src/index.ts'),
+      '@par-noir/aggregator-domain': resolve(__dirname, '../../packages/aggregator-domain/src/index.ts'),
       // pqc-crypto dist is CJS; Vite/Rollup cannot resolve named exports from workspace CJS builds
       '@par-noir/pqc-crypto/encoding': resolve(__dirname, '../../packages/pqc-crypto/src/encoding.ts'),
       '@par-noir/pqc-crypto/ml-dsa': resolve(__dirname, '../../packages/pqc-crypto/src/mlDsa.ts'),
