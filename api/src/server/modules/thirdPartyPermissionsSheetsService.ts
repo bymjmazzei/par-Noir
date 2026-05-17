@@ -53,7 +53,7 @@ export class ThirdPartyPermissionsSheetsService {
       range: 'Permissions!A1:L1',
       valueInputOption: 'RAW',
       requestBody: {
-        values: [['Tool ID', 'Tool Name', 'Tool Description', 'Permissions (JSON)', 'Data Points (JSON)', 'Required Data Points (JSON)', 'Optional Data Points (JSON)', 'Granted At', 'Expires At', 'Status', 'Created At', 'Updated At']]
+        values: [['Tool ID', 'Tool Name', 'Tool Description', 'Permissions (JSON)', 'Data Points (JSON)', 'Required Data Points (JSON)', 'Optional Data Points (JSON)', 'Granted At', 'Expires At', 'Status', 'Created At', 'Updated At', 'Integrator Folder ID']]
       }
     });
 
@@ -103,7 +103,7 @@ export class ThirdPartyPermissionsSheetsService {
     // Check if permission already exists
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Permissions!A2:L'
+      range: 'Permissions!A2:M'
     });
 
     const rows = response.data.values || [];
@@ -122,7 +122,8 @@ export class ThirdPartyPermissionsSheetsService {
       permission.expiresAt || '',
       permission.status,
       now, // Created At (use existing if updating)
-      now  // Updated At
+      now, // Updated At
+      permission.integratorFolderId || ''
     ];
 
     if (existingRowIndex >= 0) {
@@ -134,7 +135,7 @@ export class ThirdPartyPermissionsSheetsService {
 
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `Permissions!A${rowNumber}:L${rowNumber}`,
+        range: `Permissions!A${rowNumber}:M${rowNumber}`,
         valueInputOption: 'RAW',
         requestBody: {
           values: [rowData]
@@ -144,7 +145,7 @@ export class ThirdPartyPermissionsSheetsService {
       // Append new row
       await sheets.spreadsheets.values.append({
         spreadsheetId,
-        range: 'Permissions!A:L',
+        range: 'Permissions!A:M',
         valueInputOption: 'RAW',
         requestBody: {
           values: [rowData]
@@ -167,7 +168,7 @@ export class ThirdPartyPermissionsSheetsService {
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Permissions!A2:L'
+      range: 'Permissions!A2:M'
     });
 
     const rows = response.data.values || [];
@@ -191,6 +192,9 @@ export class ThirdPartyPermissionsSheetsService {
         console.warn('[ThirdPartyPermissionsSheetsService] Failed to parse JSON arrays:', e);
       }
 
+      const integratorFolderId =
+        row[12] && String(row[12]).trim() ? String(row[12]).trim() : undefined;
+
       const permission: ThirdPartyPermission = {
         toolId: row[0] as string,
         toolName: row[1] as string,
@@ -201,7 +205,8 @@ export class ThirdPartyPermissionsSheetsService {
         optionalDataPoints: optionalDataPointsArray,
         grantedAt: row[7] as string,
         expiresAt: row[8] ? (row[8] as string) : undefined,
-        status: row[9] as ThirdPartyPermission['status']
+        status: row[9] as ThirdPartyPermission['status'],
+        integratorFolderId
       };
 
       permissions[permission.toolId] = permission;

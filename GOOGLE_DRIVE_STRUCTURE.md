@@ -18,6 +18,8 @@ Google Drive Root
     │   └── collections/
     │       ├── collections-public-index.xlsx
     │       └── collections-owner-index.xlsx
+    ├── integrators/ (empty root created at Drive setup; per-app subfolders on first `cloud:app` grant)
+    │   └── {oauth_client_id}/   (one silo per connected integrator)
     └── par-noir-messages/ (created on-demand when first message is sent)
         └── conversation-{otherUserDid}.xlsx (created when connection is accepted)
 ```
@@ -80,6 +82,26 @@ Each content class folder contains:
 #### 3. `collections/`
 - Contains collection files
 - Has its own public and owner index Sheets
+
+## Integrators Folder: `integrators`
+
+- **Location**: Inside `par Noir - {pnIdentifier}/` (sibling to `_metadata`, not inside it)
+- **Created**: Empty `integrators/` folder is created during Google Drive setup (`PUT /api/storage/credentials` or `POST /api/storage/initialize`). Its Drive folder id is cached as `credentials.cachedFolderIds.integratorsRootId`.
+- **Purpose**: Siloed storage for **app-specific** data that is **not** part of the par Noir standard data-point catalog
+
+### Per-app subfolder: `integrators/{oauth_client_id}/`
+
+- **Created**: On first OAuth grant with `cloud:app` scope (token exchange or `GET /api/integrator/storage-root`)
+- **Name**: Sanitized OAuth `client_id` (alphanumeric, `-`, `_` only)
+- **Access**: Third-party apps may read/write **only** under their own subfolder via par Noir API (`/api/drive/*` with `cloud:app` scope). The API enforces this server-side.
+- **Not for pN data points**: Standard ZKP data points live in `_metadata/zkp-data-points.xlsx`. Integrators receive proofs via par Noir APIs after consent (`third-party-permissions.xlsx` row keyed by `toolId` = `client_id`), not by copying rows into the integrator folder.
+
+### First-party vs layer-5 (L5)
+
+| Client type | Drive access |
+|-------------|----------------|
+| **First-party** (`browser-app`, `prism-app`, `developer-portal`) | Full pN tree including `_metadata` and content-class folders |
+| **L5 integrators** (registered OAuth clients) | `integrators/{client_id}/` only for Drive proxy; pN data points via API only |
 
 ## Messages Folder: `par-noir-messages`
 

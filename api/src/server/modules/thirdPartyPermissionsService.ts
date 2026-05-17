@@ -25,6 +25,8 @@ export interface ThirdPartyPermission {
   grantedAt: string;
   expiresAt?: string;
   status: 'active' | 'pending' | 'revoked';
+  /** Google Drive folder id for integrators/{client_id}/ when cloud:app is granted */
+  integratorFolderId?: string;
 }
 
 export interface ThirdPartyPermissionsFile {

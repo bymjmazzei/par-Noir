@@ -46,6 +46,11 @@ const client = createPNOAuthClient({
           <code>api_key</code> query) for <code>/api/v1/...</code> routes such as OAuth authorize and token exchange initiated
           from your server.
         </p>
+        <p>
+          For app-owned files on the user&apos;s Drive, request OAuth scope <code>cloud:app</code> and use{' '}
+          <code>GET /api/integrator/storage-root</code> plus <code>/api/drive/files</code> (writes stay inside{' '}
+          <code>integrators/your-client-id/</code>).
+        </p>
       </section>
 
       <section className="dev-card dev-doc-block">

@@ -28,7 +28,7 @@ export function CredentialsPage() {
   const [ocName, setOcName] = useState('');
   const [ocDescription, setOcDescription] = useState('');
   const [ocRedirectUris, setOcRedirectUris] = useState('https://localhost/oauth-callback.html');
-  const [ocScopes, setOcScopes] = useState('openid profile');
+  const [ocScopes, setOcScopes] = useState('openid profile cloud:app');
   const [akScopes, setAkScopes] = useState('oauth,data_points,content');
 
   const registerOAuthClient = async () => {

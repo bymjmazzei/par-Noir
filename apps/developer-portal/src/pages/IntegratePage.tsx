@@ -24,12 +24,20 @@ export function IntegratePage() {
             <strong>Data points vs OAuth scopes</strong> — tool permissions reference standard data point ids; OAuth scopes
             like <code>openid</code> / <code>profile</code> are separate from the ZKP catalog rows.
           </li>
+          <li>
+            <strong>Integrator silo</strong> — scope <code>cloud:app</code> provisions{' '}
+            <code>integrators/your-client-id/</code> on the user&apos;s Drive. App-specific files go there; pN data points are
+            read via API only (not copied into the silo).
+          </li>
         </ul>
       </section>
 
       <section className="dev-card dev-doc-block">
         <h3>Representative endpoints</h3>
         <ul>
+          <li>
+            <code>GET /api/integrator/storage-root</code> — integrator folder id (Bearer + <code>cloud:app</code>).
+          </li>
           <li>
             <code>GET</code> / <code>PUT /api/users/:pnIdentifier/third-party-permissions</code> — permissions sheet (bearer +
             Drive access).

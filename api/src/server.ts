@@ -29,6 +29,7 @@ import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSe
 import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
 import { registerMusicTrackRegistryRoutes } from './server/modules/musicTrackRegistryRoutes';
 import { registerStripeMonetizationRoutes } from './server/modules/stripeMonetizationRoutes';
+import { registerIntegratorRoutes } from './server/modules/integratorRoutes';
 import { registerCreatorFundPeriodRoutes } from './server/modules/creatorFundPeriodRoutes';
 import { registerCoreRoutes } from './server/modules/coreRoutes';
 import { hashIdentifier, safeLogger } from './utils/logger';
@@ -238,11 +239,9 @@ class ProductionServer {
     accessToken: string,
     pnIdentifier: string
   ): Promise<string> {
-    // Normalize pn identifier
-    const normalizedPn = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-    
-    // Find or create pN folder
-    const pnFolderName = `par Noir - ${normalizedPn}`;
+    const { pnFolderDisplayName, normalizePnIdentifier } = await import('./server/modules/integratorStoragePaths');
+    const normalizedPn = normalizePnIdentifier(pnIdentifier);
+    const pnFolderName = pnFolderDisplayName(normalizedPn);
     const pnFolderQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     const pnFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderQuery)}&fields=files(id)&pageSize=1`;
     const pnFolderResponse = await fetch(pnFolderUrl, {
@@ -4385,7 +4384,8 @@ class ProductionServer {
                       const accessToken = token.access_token;
                       
                       // Get pN folder and metadata folder
-                      const pnFolderName = `par Noir - pn-${pnIdentifier}`;
+                      const { pnFolderDisplayName } = await import('./server/modules/integratorStoragePaths');
+                      const pnFolderName = pnFolderDisplayName(pnIdentifier);
                       const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
                       const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
                       
@@ -4685,7 +4685,8 @@ class ProductionServer {
                     const accessToken = token.access_token;
                     
                     // Get pN folder and metadata folder
-                    const pnFolderName = `par Noir - pn-${pnIdentifier}`;
+                    const { pnFolderDisplayName } = await import('./server/modules/integratorStoragePaths');
+                    const pnFolderName = pnFolderDisplayName(pnIdentifier);
                     const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
                     const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
                     
@@ -5240,22 +5241,8 @@ class ProductionServer {
               console.log(`[StorageCredentials PUT] Initializing folder structure for identityId: ${sanitizedIdentityId}`);
               const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnIdentifier);
               
-              // Get pN folder ID for messages folder creation
-              const normalizedPn = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
-              const pnFolderName = `par Noir - ${normalizedPn}`;
-              const pnFolderQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-              const pnFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderQuery)}&fields=files(id)&pageSize=1`;
-              const pnFolderResponse = await fetch(pnFolderUrl, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-              });
-              
-              let pnFolderId: string | null = null;
-              if (pnFolderResponse.ok) {
-                const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string }> };
-                if (pnFolderData.files && pnFolderData.files.length > 0) {
-                  pnFolderId = pnFolderData.files[0].id;
-                }
-              }
+              const { findPnRootFolderId, ensureIntegratorsRootCached } = await import('./server/modules/pnDriveLayout');
+              const pnFolderId = await findPnRootFolderId(accessToken, pnIdentifier);
               
               // Initialize messages folder (in pN folder, not _metadata)
               if (pnFolderId) {
@@ -5269,27 +5256,32 @@ class ProductionServer {
                     const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(token, messagesFolderId, pnIdentifier, accountId);
                     console.log(`[StorageCredentials PUT] Initialized inbox sheet for identityId: ${sanitizedIdentityId}`);
                     
-                    // Cache folder IDs for fast future access
-                    const cachedFolderIds = {
+                    await ensureIntegratorsRootCached(accessToken, pnIdentifier, metadataFolderId, credentials, {
                       inboxSheetId,
                       messagesFolderId,
-                      metadataFolderId,
-                      pnFolderId, // Cache pN folder ID - static, never changes
-                      ...(credentials.cachedFolderIds || {})
-                    };
-                    credentials.cachedFolderIds = cachedFolderIds;
-                    // Update credentials with cached folder IDs
-                    try {
-                      await storageCredentialsService.upsertCredentials(pnIdentifier, credentials);
-                      console.log(`[StorageCredentials PUT] Cached folder IDs for identityId: ${sanitizedIdentityId}`);
-                    } catch (cacheErr: any) {
-                      console.warn(`[StorageCredentials PUT] Failed to cache folder IDs:`, cacheErr?.message);
-                    }
+                      pnFolderId
+                    });
+                    console.log(`[StorageCredentials PUT] Cached folder IDs (including integrators/) for identityId: ${sanitizedIdentityId}`);
                   } catch (inboxError: any) {
                     console.warn(`[StorageCredentials PUT] Failed to initialize inbox sheet:`, inboxError?.message || inboxError);
+                    try {
+                      await ensureIntegratorsRootCached(accessToken, pnIdentifier, metadataFolderId, credentials, {
+                        messagesFolderId,
+                        pnFolderId
+                      });
+                    } catch (integratorsErr: any) {
+                      console.warn(`[StorageCredentials PUT] Failed to cache integrators root:`, integratorsErr?.message);
+                    }
                   }
                 } catch (msgFolderError: any) {
                   console.warn(`[StorageCredentials PUT] Failed to initialize messages folder:`, msgFolderError?.message || msgFolderError);
+                  try {
+                    await ensureIntegratorsRootCached(accessToken, pnIdentifier, metadataFolderId, credentials, {
+                      pnFolderId
+                    });
+                  } catch (integratorsErr: any) {
+                    console.warn(`[StorageCredentials PUT] Failed to initialize integrators folder:`, integratorsErr?.message);
+                  }
                 }
               }
               
@@ -5683,29 +5675,28 @@ class ProductionServer {
         try {
           const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnIdentifier);
           
-          const normalizedPn = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-          const pnFolderName = `par Noir - ${normalizedPn}`;
-          const pnFolderQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-          const pnFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderQuery)}&fields=files(id)&pageSize=1`;
-          const pnFolderResponse = await fetch(pnFolderUrl, {
-            headers: { 'Authorization': `Bearer ${accessToken}` }
-          });
-          
-          let pnFolderId: string | null = null;
-          if (pnFolderResponse.ok) {
-            const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string }> };
-            if (pnFolderData.files && pnFolderData.files.length > 0) {
-              pnFolderId = pnFolderData.files[0].id;
-            }
-          }
+          const { findPnRootFolderId, ensureIntegratorsRootCached } = await import('./server/modules/pnDriveLayout');
+          const pnFolderId = await findPnRootFolderId(accessToken, pnIdentifier);
           
           if (pnFolderId) {
             try {
               const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
               const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(token, pnFolderId, pnIdentifier, accountId);
-              await MessageSheetsService.getOrCreateInboxSheet(token, messagesFolderId, pnIdentifier, accountId);
+              const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(token, messagesFolderId, pnIdentifier, accountId);
+              await ensureIntegratorsRootCached(accessToken, pnIdentifier, metadataFolderId, credentials.credentials, {
+                pnFolderId,
+                messagesFolderId,
+                inboxSheetId
+              });
             } catch (msgError: any) {
               console.warn(`[StorageInitialize POST] Failed to initialize messages folder:`, msgError?.message);
+              try {
+                await ensureIntegratorsRootCached(accessToken, pnIdentifier, metadataFolderId, credentials.credentials, {
+                  pnFolderId
+                });
+              } catch (integratorsErr: any) {
+                console.warn(`[StorageInitialize POST] Failed to initialize integrators folder:`, integratorsErr?.message);
+              }
             }
           }
           
@@ -8896,10 +8887,25 @@ class ProductionServer {
         const query = req.query.q as string | undefined;
         const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string, 10) : 50;
         const accountId = req.query.accountId as string | undefined;
+
+        const { resolveIntegratorDriveContext } = await import('./server/modules/integratorDriveContext');
+        const { IntegratorFolderService } = await import('./server/modules/integratorFolderService');
+        const driveCtx = await resolveIntegratorDriveContext(req, accountId);
+        if ('error' in driveCtx) {
+          return res.status(driveCtx.status).json({
+            error: driveCtx.code || 'forbidden',
+            error_description: driveCtx.error
+          });
+        }
         
         // If no query provided and we have a pN identifier, try to find files in the pN folder
         let finalQuery = query;
-        if (!finalQuery && pnIdentifier && accountId) {
+        if (!driveCtx.isFirstParty && driveCtx.integratorFolderId) {
+          finalQuery = IntegratorFolderService.integratorListQuery(
+            driveCtx.integratorFolderId,
+            query
+          );
+        } else if (!finalQuery && pnIdentifier && accountId) {
           // Try to find the pN folder first, then query files in it
           // Folder name format: "par Noir - pn-{hash}" where pnIdentifier already includes "pn-" prefix
           // pnIdentifier is already in format "pn-{hash}", so use it directly
@@ -9036,6 +9042,19 @@ class ProductionServer {
           });
         }
 
+        const { resolveIntegratorDriveContext } = await import('./server/modules/integratorDriveContext');
+        const { IntegratorFolderService, IntegratorStorageError } = await import(
+          './server/modules/integratorFolderService'
+        );
+        const { integratorStorageErrorResponse } = await import('./server/modules/integratorDriveContext');
+        const driveCtx = await resolveIntegratorDriveContext(req, accountId);
+        if ('error' in driveCtx) {
+          return res.status(driveCtx.status).json({
+            error: driveCtx.code || 'forbidden',
+            error_description: driveCtx.error
+          });
+        }
+
         // When encrypt: true, enforce tier limit (parse EncryptedFilePackage for originalSize)
         if (encrypt !== false) {
           try {
@@ -9059,9 +9078,35 @@ class ProductionServer {
         // CRITICAL: Only use pn identifier - no fallback to DID or public key
         const identifierCandidates: string[] = [pnIdentifier];
 
-        // If no parents specified, find the pN folder and upload there
-        let finalParents = parents;
-        if (!finalParents || finalParents.length === 0) {
+        let finalParents = parents as string[] | undefined;
+        try {
+          if (
+            !driveCtx.isFirstParty &&
+            driveCtx.integratorFolderId &&
+            driveCtx.metadataFolderId &&
+            driveCtx.pnFolderId
+          ) {
+            finalParents = await IntegratorFolderService.assertParentsAllowed(
+              driveCtx.accessToken,
+              driveCtx.tokenPayload.clientId,
+              parents,
+              driveCtx.integratorFolderId,
+              driveCtx.metadataFolderId,
+              driveCtx.pnFolderId
+            );
+          } else if (!finalParents || finalParents.length === 0) {
+            finalParents = undefined;
+          }
+        } catch (siloErr) {
+          if (siloErr instanceof IntegratorStorageError) {
+            const { status, body } = integratorStorageErrorResponse(siloErr);
+            return res.status(status).json(body);
+          }
+          throw siloErr;
+        }
+
+        // If no parents specified, find the pN folder and upload there (first-party only)
+        if ((!finalParents || finalParents.length === 0) && driveCtx.isFirstParty) {
           if (pnIdentifier && accountId) {
             try {
               let accessToken: string | null = null;
@@ -9072,8 +9117,8 @@ class ProductionServer {
               }
               
               if (accessToken) {
-                // Search for the pN folder
-                const pnFolderName = `par Noir - pn-${pnIdentifier}`;
+                const { pnFolderDisplayName } = await import('./server/modules/integratorStoragePaths');
+                const pnFolderName = pnFolderDisplayName(pnIdentifier);
                 const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
                 const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=10`;
                 
@@ -9183,8 +9228,21 @@ class ProductionServer {
           });
         }
 
+        const { resolveIntegratorDriveContext } = await import('./server/modules/integratorDriveContext');
+        const { IntegratorFolderService, IntegratorStorageError } = await import(
+          './server/modules/integratorFolderService'
+        );
+        const { integratorStorageErrorResponse } = await import('./server/modules/integratorDriveContext');
+        const driveCtx = await resolveIntegratorDriveContext(req, accountId);
+        if ('error' in driveCtx) {
+          return res.status(driveCtx.status).json({
+            error: driveCtx.code || 'forbidden',
+            error_description: driveCtx.error
+          });
+        }
+
         // Get access token for Google Drive operations
-        const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+        const accessToken = driveCtx.accessToken;
         if (!accessToken) {
           return res.status(401).json({
             error: 'Failed to get Google Drive access token',
@@ -9194,8 +9252,30 @@ class ProductionServer {
 
         let finalParentFolderId: string | null = null;
 
-        // If parentFolderId is provided, use it directly (preferred)
-        if (parentFolderId) {
+        if (
+          !driveCtx.isFirstParty &&
+          driveCtx.integratorFolderId &&
+          driveCtx.metadataFolderId &&
+          driveCtx.pnFolderId
+        ) {
+          try {
+            const allowed = await IntegratorFolderService.assertParentsAllowed(
+              accessToken,
+              driveCtx.tokenPayload.clientId,
+              parentFolderId ? [parentFolderId] : undefined,
+              driveCtx.integratorFolderId,
+              driveCtx.metadataFolderId,
+              driveCtx.pnFolderId
+            );
+            finalParentFolderId = allowed[0];
+          } catch (siloErr) {
+            if (siloErr instanceof IntegratorStorageError) {
+              const { status, body } = integratorStorageErrorResponse(siloErr);
+              return res.status(status).json(body);
+            }
+            throw siloErr;
+          }
+        } else if (parentFolderId) {
           finalParentFolderId = parentFolderId;
           console.log(`[CreateFolder] Using provided parent folder ID: ${parentFolderId}`);
         }
@@ -9258,11 +9338,12 @@ class ProductionServer {
           }
         }
         
-        // If no parent specified, automatically find the pN folder (same logic as file uploads)
-        if (!finalParentFolderId && pnIdentifier && accountId) {
+        // If no parent specified, automatically find the pN folder (first-party only)
+        if (!finalParentFolderId && driveCtx.isFirstParty && pnIdentifier && accountId) {
           try {
             console.log(`[CreateFolder] No parent specified, searching for pN folder automatically...`);
-            const pnFolderName = `par Noir - pn-${pnIdentifier}`;
+            const { pnFolderDisplayName } = await import('./server/modules/integratorStoragePaths');
+            const pnFolderName = pnFolderDisplayName(pnIdentifier);
             const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
             const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=10`;
             
@@ -9388,6 +9469,31 @@ class ProductionServer {
         const accountId = req.query.accountId as string | undefined;
         const ownerPnIdentifier = req.query.ownerPnIdentifier as string | undefined;
 
+        const { resolveIntegratorDriveContext } = await import('./server/modules/integratorDriveContext');
+        const { IntegratorFolderService, IntegratorStorageError } = await import(
+          './server/modules/integratorFolderService'
+        );
+        const { integratorStorageErrorResponse } = await import('./server/modules/integratorDriveContext');
+        const { isFirstPartyClient } = await import('./server/modules/integratorStoragePaths');
+        const driveCtx = await resolveIntegratorDriveContext(req, accountId);
+        if ('error' in driveCtx) {
+          return res.status(driveCtx.status).json({
+            error: driveCtx.code || 'forbidden',
+            error_description: driveCtx.error
+          });
+        }
+
+        if (
+          !isFirstPartyClient(tokenPayload.clientId) &&
+          ownerPnIdentifier &&
+          ownerPnIdentifier !== pnIdentifier
+        ) {
+          return res.status(403).json({
+            error: 'forbidden',
+            error_description: 'Integrator apps cannot access other users\' Drive files via this endpoint'
+          });
+        }
+
         // When ownerPnIdentifier is present: fetch from owner's Drive (for public feed items from other creators)
         let effectiveUserIdentifier = userIdentifier;
         let effectiveIdentifierCandidates = identifierCandidates;
@@ -9425,6 +9531,26 @@ class ProductionServer {
               error: 'Failed to resolve owner',
               error_description: lookupError?.message || 'Failed to resolve file owner'
             });
+          }
+        }
+
+        if (
+          !driveCtx.isFirstParty &&
+          driveCtx.integratorFolderId &&
+          (!ownerPnIdentifier || ownerPnIdentifier === pnIdentifier)
+        ) {
+          try {
+            await IntegratorFolderService.assertFileInIntegratorSilo(
+              driveCtx.accessToken,
+              fileId,
+              driveCtx.integratorFolderId
+            );
+          } catch (siloErr) {
+            if (siloErr instanceof IntegratorStorageError) {
+              const { status, body } = integratorStorageErrorResponse(siloErr);
+              return res.status(status).json(body);
+            }
+            throw siloErr;
           }
         }
 
@@ -9525,6 +9651,36 @@ class ProductionServer {
         if (tokenPayload) {
           userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
           pnIdentifier = tokenPayload.pnIdentifier || null;
+        }
+
+        if (tokenPayload && pnIdentifier) {
+          const { resolveIntegratorDriveContext } = await import('./server/modules/integratorDriveContext');
+          const { IntegratorFolderService, IntegratorStorageError } = await import(
+            './server/modules/integratorFolderService'
+          );
+          const { integratorStorageErrorResponse } = await import('./server/modules/integratorDriveContext');
+          const driveCtx = await resolveIntegratorDriveContext(req, accountId);
+          if ('error' in driveCtx) {
+            return res.status(driveCtx.status).json({
+              error: driveCtx.code || 'forbidden',
+              error_description: driveCtx.error
+            });
+          }
+          if (!driveCtx.isFirstParty && driveCtx.integratorFolderId) {
+            try {
+              await IntegratorFolderService.assertFileInIntegratorSilo(
+                driveCtx.accessToken,
+                fileId,
+                driveCtx.integratorFolderId
+              );
+            } catch (siloErr) {
+              if (siloErr instanceof IntegratorStorageError) {
+                const { status, body } = integratorStorageErrorResponse(siloErr);
+                return res.status(status).json(body);
+              }
+              throw siloErr;
+            }
+          }
         }
         
         // STEP 1: Read companion metadata to get mainFileId connection
@@ -10290,149 +10446,56 @@ class ProductionServer {
           });
         }
 
-        // Store age sharing preference in third-party permissions (for browser-app only)
-        if (client_id === 'browser-app' && age_shared !== undefined) {
-          try {
-            // Decode token to get pN identifier
-            const tokenPayload = PNOAuthService.validateAccessToken(tokenResponse.access_token);
-            if (tokenPayload?.pnIdentifier) {
-              const pnIdentifier = tokenPayload.pnIdentifier;
-              
-              // Get Google Drive access token
-              const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-              const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-              
-              const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-              const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-              
-              if (userCredentials?.credentials) {
-                const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-                  (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-                
-                if (googleDriveAccounts.length > 0) {
-          const account = googleDriveAccounts[0];
-          const accountId = this.extractAccountId(account);
-          const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
-                  
-                  // Find pN folder and _metadata folder
-                  const pnFolderName = `par Noir - ${pnIdentifier}`;
-                  const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                  const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-                  
-                  const pnFolderResponse = await fetch(pnFolderSearchUrl, {
-                    headers: { 'Authorization': `Bearer ${userAccessToken}` }
-                  });
-                  
-                  if (pnFolderResponse.ok) {
-                    const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                    if (pnFolderData.files && pnFolderData.files.length > 0) {
-                      const pnFolderId = pnFolderData.files[0].id;
-                      
-                      // Find _metadata folder
-                      const metadataFolderName = '_metadata';
-                      const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                      const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
-                      
-                      const metadataFolderResponse = await fetch(metadataSearchUrl, {
-                        headers: { 'Authorization': `Bearer ${userAccessToken}` }
-                      });
-                      
-                      if (metadataFolderResponse.ok) {
-                        const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-                        if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-                          const metadataFolderId = metadataFolderData.files[0].id;
-                          
-                          // Get existing permissions
-                          const { ThirdPartyPermissionsService } = await import('./server/modules/thirdPartyPermissionsService');
-                          const permissions = await ThirdPartyPermissionsService.getPermissions(
-                            userAccessToken,
-                            metadataFolderId,
-                            normalizedPnIdentifier,
-                            accountId
-                          );
-                          
-                          // Update browser-app permissions (merge with existing if present)
-                          const shareAge = age_shared === true || age_shared === 'true';
-                          const existingBrowserApp = permissions['browser-app'];
-                          
-                          // Merge data points - add age_attestation if sharing, remove if not
-                          // dataPoints array reflects what user has granted (can change)
-                          let dataPoints = existingBrowserApp?.dataPoints || [];
-                          if (shareAge && !dataPoints.includes('age_attestation')) {
-                            dataPoints = [...dataPoints, 'age_attestation'];
-                          } else if (!shareAge) {
-                            dataPoints = dataPoints.filter(dp => dp !== 'age_attestation');
-                          }
-                          
-                          // Check if user has age ZKP before including it in optionalDataPoints
-                          // We need to check again here because we might not have checked during /oauth/auth
-                          let userHasAgeZKP = false;
-                          let optionalDataPointsForUser: string[] = [];
-                          
-                          try {
-                            const { ZKPDataPointsService } = await import('./server/modules/zkpDataPointsService');
-                            const availableDataPoints = await ZKPDataPointsService.getAvailableDataPoints(
-                              userAccessToken,
-                              metadataFolderId,
-                              normalizedPnIdentifier,
-                              accountId
-                            );
-                            userHasAgeZKP = availableDataPoints.some(dp => dp.dataPointId === 'age_attestation');
-                            
-                            // Only include age_attestation in optionalDataPoints if user actually has it
-                            if (userHasAgeZKP) {
-                              optionalDataPointsForUser = ['age_attestation'];
-                            }
-                            
-                            console.log(`[OAuth Token] User has age ZKP: ${userHasAgeZKP}, optionalDataPoints:`, optionalDataPointsForUser);
-                          } catch (ageCheckError: any) {
-                            console.log('[OAuth Token] Could not check for age ZKP:', ageCheckError?.message || ageCheckError);
-                            // If check fails, default to empty (don't show age permission)
-                            optionalDataPointsForUser = [];
-                          }
-                          
-                          // Static: requiredDataPoints is always empty
-                          // optionalDataPoints is dynamic based on what user actually has
-                          permissions['browser-app'] = {
-                            toolId: 'browser-app',
-                            toolName: 'par Noir Browser',
-                            toolDescription: 'Official par Noir browser application for browsing and discovering encrypted content',
-                            permissions: existingBrowserApp?.permissions || ['openid', 'profile', 'cloud:read'],
-                            dataPoints: dataPoints, // User's granted permissions (can change)
-                            requiredDataPoints: [], // Static: No required data points for browser
-                            optionalDataPoints: optionalDataPointsForUser, // Dynamic: Only include age if user has age ZKP
-                            grantedAt: existingBrowserApp?.grantedAt || new Date().toISOString(),
-                            status: 'active' as const
-                          };
-                          
-                          console.log(`[OAuth] Updated browser-app permissions:`, {
-                            ageShared: shareAge,
-                            dataPoints: dataPoints,
-                            hadExisting: !!existingBrowserApp
-                          });
-                          
-                          // Store updated permissions
-                          await ThirdPartyPermissionsService.storePermissions(
-                            userAccessToken,
-                            metadataFolderId,
-                            pnIdentifier,
-                            permissions,
-                            normalizedPnIdentifier,
-                            accountId
-                          );
-                          
-                          console.log(`[OAuth] Stored age sharing preference for browser-app: ${shareAge}`);
-                        }
-                      }
-                    }
-                  }
-                }
+        // Persist third-party permissions + integrator silo for all OAuth clients
+        try {
+          const tokenPayload = PNOAuthService.validateAccessToken(tokenResponse.access_token);
+          if (tokenPayload?.pnIdentifier) {
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+            const { persistIntegratorGrantAfterTokenExchange } = await import(
+              './server/modules/integratorOAuthGrants'
+            );
+
+            const normalizedPnIdentifier = tokenPayload.pnIdentifier.startsWith('pn-')
+              ? tokenPayload.pnIdentifier
+              : `pn-${tokenPayload.pnIdentifier}`;
+            const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+
+            if (userCredentials?.credentials) {
+              const googleDriveAccounts =
+                userCredentials.credentials.googleDriveAccounts ||
+                (userCredentials.credentials.googleDrive
+                  ? [userCredentials.credentials.googleDrive]
+                  : []);
+
+              if (googleDriveAccounts.length > 0) {
+                const account = googleDriveAccounts[0];
+                const accountId = this.extractAccountId(account);
+                const userAccessToken = await googleDriveProxyService.getAccessToken(
+                  normalizedPnIdentifier,
+                  accountId
+                );
+
+                const shareAge =
+                  age_shared === true || age_shared === 'true'
+                    ? true
+                    : age_shared === false || age_shared === 'false'
+                      ? false
+                      : undefined;
+
+                await persistIntegratorGrantAfterTokenExchange({
+                  clientId: client_id,
+                  scopes: tokenPayload.scope || [],
+                  tokenPayload,
+                  userAccessToken,
+                  accountId,
+                  ageShared: client_id === 'browser-app' ? shareAge : undefined
+                });
               }
             }
-          } catch (permError) {
-            // Log but don't fail token exchange if permission storage fails
-            console.error('[OAuth] Failed to store age sharing preference:', permError);
           }
+        } catch (permError) {
+          console.error('[OAuth] Failed to persist integrator grant:', permError);
         }
 
         return res.json(tokenResponse);
@@ -10981,6 +11044,7 @@ class ProductionServer {
     registerMusicTrackRegistryRoutes(this.app);
     registerStripeMonetizationRoutes(this.app);
     registerCreatorFundPeriodRoutes(this.app);
+    registerIntegratorRoutes(this.app);
   }
 
   /**
@@ -16299,40 +16363,8 @@ class ProductionServer {
           const accountId = this.extractAccountId(account);
           const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
 
-        // Find or create pN folder first
-        const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
-        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-        
-        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        let pnFolderId: string | null = null;
-        if (pnFolderResponse.ok) {
-          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-          if (pnFolderData.files && pnFolderData.files.length > 0) {
-            pnFolderId = pnFolderData.files[0].id;
-          }
-        }
-
-        // If pN folder doesn't exist, try alternative name format
-        if (!pnFolderId) {
-          const altPnFolderName = `par Noir - pn-${normalizedPnIdentifier.replace('pn-', '')}`;
-          const altPnFolderSearchQuery = `name='${altPnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-          const altPnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(altPnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-          
-          const altPnFolderResponse = await fetch(altPnFolderSearchUrl, {
-            headers: { 'Authorization': `Bearer ${userAccessToken}` }
-          });
-
-          if (altPnFolderResponse.ok) {
-            const altPnFolderData = await altPnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-            if (altPnFolderData.files && altPnFolderData.files.length > 0) {
-              pnFolderId = altPnFolderData.files[0].id;
-            }
-          }
-        }
+        const { findPnRootFolderId } = await import('./server/modules/pnDriveLayout');
+        const pnFolderId = await findPnRootFolderId(userAccessToken, normalizedPnIdentifier);
 
         if (!pnFolderId) {
           return res.status(404).json({ error: 'pN folder not found' });

@@ -26,6 +26,7 @@ Google Drive Root
     │   ├── following.xlsx
     │   ├── public-file-index.xlsx
     │   └── owner-file-index.xlsx
+    ├── integrators/ (empty; created at setup; `integratorsRootId` cached in credentials)
     └── par-noir-messages/ (created on-demand)
 ```
 
@@ -50,6 +51,7 @@ Look for initialization logs when credentials were saved:
 3. Check if the folder exists at root level
 4. If folder exists, check inside for `_metadata` folder
 5. If `_metadata` exists, check for Sheets files (connections.xlsx, etc.)
+6. Confirm empty `integrators/` exists as a sibling of `_metadata` (per-app subfolders appear only after an L5 app is granted `cloud:app`)
 
 ### 3. Check API Response
 When credentials are saved, the API returns:
@@ -77,6 +79,13 @@ curl -X POST https://api.parnoir.com/api/storage/initialize/{your-pn-identifier}
 ```
 
 Or from the dashboard, you can call this endpoint to re-initialize your Google Drive structure.
+
+### Manual QA (integrators cache)
+
+1. Remove any duplicate stray `par Noir - …` folders in your test Drive (one-time cleanup).
+2. Re-connect Drive or call `POST /api/storage/initialize/:identityId`.
+3. Confirm empty `integrators/` exists under the canonical pN root (sibling to `_metadata`).
+4. OAuth with `cloud:app` for an L5 client — only `integrators/{client_id}/` should be created; `GET /api/integrator/storage-root` should return stable ids without creating a second `integrators/` parent.
 
 ### What It Does
 

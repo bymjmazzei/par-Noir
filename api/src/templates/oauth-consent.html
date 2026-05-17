@@ -542,6 +542,17 @@
           </div>
         </div>
 
+        <div id="integratorStorageBlock" class="permission-item" style="display: none;">
+          <div class="permission-text">
+            <div class="permission-title">App storage on your Drive</div>
+            <div class="permission-desc">
+              This app may store its own files in your par Noir folder under
+              <strong>integrators/<span id="integratorClientIdLabel"></span>/</strong>.
+              Standard pN data points stay in your pN metadata and are shared only through par Noir APIs, not copied into this folder.
+            </div>
+          </div>
+        </div>
+
         <div id="genericScopesBlock" class="permission-item" style="display: none;">
           <div class="permission-text">
             <div class="permission-title">Requested permissions</div>
@@ -619,12 +630,21 @@
     }
 
     const isBrowserApp = clientId === 'browser-app';
+    const scopeList = scope.split(/\s+/).filter(Boolean);
+    const needsIntegratorConsent = !isBrowserApp && scopeList.indexOf('cloud:app') >= 0;
+
     if (!isBrowserApp) {
       document.querySelectorAll('.browser-only-consent').forEach(function (el) {
         el.style.display = 'none';
       });
       var gsb = document.getElementById('genericScopesBlock');
       if (gsb) gsb.style.display = 'flex';
+      if (needsIntegratorConsent) {
+        var isb = document.getElementById('integratorStorageBlock');
+        var icl = document.getElementById('integratorClientIdLabel');
+        if (isb) isb.style.display = 'flex';
+        if (icl) icl.textContent = clientId;
+      }
     }
 
     /**
@@ -819,8 +839,15 @@
         return;
       }
 
-      if (!isBrowserApp) {
+      if (!isBrowserApp && !needsIntegratorConsent) {
         redirectWithAuthCodeFixed(authorizationCode, false);
+        return;
+      }
+
+      if (!isBrowserApp && needsIntegratorConsent) {
+        document.getElementById('pnIdentifierDisplay').textContent = pnIdentifier;
+        document.getElementById('unlockStep').style.display = 'none';
+        document.getElementById('consentStep').style.display = 'block';
         return;
       }
       
@@ -1035,14 +1062,15 @@
     // Consent handlers (Step 2 — browser-app only; other clients redirect after unlock)
     document.getElementById('approveBtn').addEventListener('click', () => {
       const ageSelect = document.getElementById('ageAttestationSelect');
+      let shareAge = false;
       if (isBrowserApp) {
         if (!ageSelect || !ageSelect.value) {
           alert('Please select whether to share your age attestation');
           if (ageSelect) ageSelect.focus();
           return;
         }
+        shareAge = ageSelect.value === 'shared';
       }
-      const shareAge = ageSelect && ageSelect.value === 'shared';
       if (!authorizationCode) {
         console.error('No authorization code!');
         return;

@@ -59,6 +59,12 @@ Hand-maintained index of **major** HTTP routes. When you add a user-facing or in
 | POST | `/api/admin/identity/succession` | Register predecessor → successor |
 | GET | `/api/admin/audit-events` | Query `limit`, optional `event_type` |
 
+## Integrator storage (L5 OAuth Bearer + `cloud:app`)
+
+| Method | Path | Notes |
+|--------|------|--------|
+| GET | `/api/integrator/storage-root` | Returns `integratorFolderId` and path under `integrators/{client_id}/` |
+
 ## Third-party permissions (user Drive)
 
 | Method | Path | Notes |

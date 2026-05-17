@@ -11,6 +11,13 @@ export {
   type PNOAuthSession
 } from './PNOAuthClient';
 
+export {
+  IntegratorStorageClient,
+  createIntegratorStorageClient,
+  type IntegratorStorageRoot,
+  type IntegratorStorageClientConfig
+} from './IntegratorStorageClient';
+
 // Advanced Security exports
 export { CertificatePinning, ThreatDetectionEngine, DistributedRateLimiter } from './advancedSecurity';
 
