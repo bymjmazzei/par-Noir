@@ -3,7 +3,7 @@
  * Rights-holder intake + authenticated track registry (creator fund / music pool).
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { FileCheck, Percent, Shield, LogOut } from 'lucide-react';
 import { UnlockButton } from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from './config/api';
@@ -32,6 +32,7 @@ function getLicensingOAuthConfig() {
 function LicensingShell() {
   const { loadingSession, signedIn, error, setError, handleBeforeUnlock, onPopupResult, signOut } =
     useLicensingSession();
+  const oauthConfig = useMemo(() => getLicensingOAuthConfig(), []);
   const [form, setForm] = useState({
     name: '',
     partnerType: '',
@@ -98,7 +99,7 @@ function LicensingShell() {
                 </>
               ) : (
                 <UnlockButton
-                  config={getLicensingOAuthConfig()}
+                  config={oauthConfig}
                   onBeforeNavigate={handleBeforeUnlock}
                   onPopupResult={(r) => void onPopupResult(r)}
                   onPopupFlowFailed={() => setError('Sign-in window was blocked or closed.')}

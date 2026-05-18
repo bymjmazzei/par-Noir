@@ -23,3 +23,7 @@ export {
   PN_DEBUG_OAUTH_STORAGE_KEY,
 } from './pnOAuthDebug';
 export type { PnOAuthDebugEntry } from './pnOAuthDebug';
+export {
+  snapshotOAuthResumeSearchFromUrl,
+  PN_OAUTH_RESUME_SEARCH_KEY,
+} from './pnOAuthResumeBootstrap';

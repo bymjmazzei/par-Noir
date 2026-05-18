@@ -4,10 +4,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode
 } from 'react';
-import type { PnOAuthPopupResult } from '@par-noir/oauth-ui';
+import { PN_OAUTH_RESUME_SEARCH_KEY, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID } from '../config/client';
 
@@ -15,6 +16,28 @@ const STORAGE_ACCESS = 'licensing_portal_access_token';
 const STORAGE_REFRESH = 'licensing_portal_refresh_token';
 const STORAGE_OAUTH_CTX = 'licensing_portal_oauth_ctx';
 const STORAGE_POPUP_STATE = 'pn_oauth_state';
+/** Prevents double token exchange (Strict Mode, popup + opener nav race). */
+const STORAGE_PROCESSED_CODE = 'licensing_portal_oauth_code_done';
+
+function oauthStatesMatch(incoming: string, expected: string): boolean {
+  const a = incoming.trim();
+  const b = expected.trim();
+  if (a === b) return true;
+  try {
+    return decodeURIComponent(a) === decodeURIComponent(b);
+  } catch {
+    return false;
+  }
+}
+
+function clearOAuthResumeQuery(): void {
+  window.history.replaceState({}, '', window.location.pathname);
+  try {
+    sessionStorage.removeItem(PN_OAUTH_RESUME_SEARCH_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 export interface LicensingUserInfo {
   sub?: string;
@@ -55,6 +78,7 @@ export function clearLicensingSession(): void {
   sessionStorage.removeItem(STORAGE_REFRESH);
   sessionStorage.removeItem(STORAGE_OAUTH_CTX);
   sessionStorage.removeItem(STORAGE_POPUP_STATE);
+  sessionStorage.removeItem(STORAGE_PROCESSED_CODE);
 }
 
 interface LicensingSessionValue {
@@ -78,6 +102,8 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
   const [user, setUser] = useState<LicensingUserInfo | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const oauthResumeStartedRef = useRef(false);
+  const processedCodesRef = useRef<Set<string>>(new Set());
 
   const authHeaders = useCallback((): HeadersInit => {
     const t = getAccessToken();
@@ -93,7 +119,7 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
       setToken(null);
       return;
     }
-    setToken(t);
+    setToken((prev) => (prev === t ? prev : t));
     try {
       let res = await fetch(`${API_ENDPOINT}/oauth/userinfo`, {
         headers: { Authorization: `Bearer ${t}` }
@@ -130,6 +156,15 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
       return;
     }
     if (!result.code) return;
+
+    const codeKey = result.code.trim();
+    if (
+      processedCodesRef.current.has(codeKey) ||
+      sessionStorage.getItem(STORAGE_PROCESSED_CODE) === codeKey
+    ) {
+      return;
+    }
+    processedCodesRef.current.add(codeKey);
     const raw = sessionStorage.getItem(STORAGE_OAUTH_CTX);
     if (!raw) {
       setError('OAuth session expired. Try unlocking again.');
@@ -144,7 +179,8 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
       sessionStorage.removeItem(STORAGE_POPUP_STATE);
       return;
     }
-    if (result.state !== undefined && result.state !== ctx.state) {
+    const expectedState = sessionStorage.getItem(STORAGE_POPUP_STATE) || ctx.state;
+    if (result.state !== undefined && expectedState && !oauthStatesMatch(result.state, expectedState)) {
       setError('Invalid OAuth state');
       sessionStorage.removeItem(STORAGE_POPUP_STATE);
       return;
@@ -178,19 +214,28 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
     if (data.refresh_token) sessionStorage.setItem(STORAGE_REFRESH, data.refresh_token);
     sessionStorage.removeItem(STORAGE_OAUTH_CTX);
     sessionStorage.removeItem(STORAGE_POPUP_STATE);
+    sessionStorage.setItem(STORAGE_PROCESSED_CODE, codeKey);
     setToken(data.access_token ?? null);
     setError(null);
   }, []);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const storedSearch = sessionStorage.getItem(PN_OAUTH_RESUME_SEARCH_KEY);
+    const search = storedSearch ?? window.location.search;
+    const params = new URLSearchParams(search);
+
     if (params.get('oauth_resume') === '1') {
+      if (oauthResumeStartedRef.current) return;
+      oauthResumeStartedRef.current = true;
+
       const resume: PnOAuthPopupResult = {
         code: params.get('code') || undefined,
         state: params.get('state') || undefined,
         error: params.get('error') || undefined,
+        error_description: params.get('error_description') || undefined,
         age_shared: params.get('age_shared') || undefined
       };
+
       void (async () => {
         try {
           setLoadingSession(true);
@@ -198,7 +243,7 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
           await refreshUser();
         } finally {
           setLoadingSession(false);
-          window.history.replaceState({}, '', window.location.pathname);
+          clearOAuthResumeQuery();
         }
       })();
       return;
@@ -207,7 +252,7 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
     const qErr = params.get('error');
     if (qErr) {
       setError(decodeURIComponent(qErr.replace(/\+/g, ' ')));
-      window.history.replaceState({}, '', window.location.pathname);
+      clearOAuthResumeQuery();
     }
     void (async () => {
       setLoadingSession(true);
@@ -248,6 +293,8 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
       }
     }
     clearLicensingSession();
+    sessionStorage.removeItem(STORAGE_PROCESSED_CODE);
+    processedCodesRef.current.clear();
     setToken(null);
     setUser(null);
     setError(null);
