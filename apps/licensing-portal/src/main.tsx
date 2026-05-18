@@ -7,8 +7,5 @@ import './index.css';
 initPnOAuthDebugFromUrl();
 snapshotOAuthResumeSearchFromUrl();
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+// StrictMode double-invokes effects; licensing has a simple mount path — avoid stuck Loading on resume races.
+ReactDOM.createRoot(document.getElementById('root')!).render(<App />);

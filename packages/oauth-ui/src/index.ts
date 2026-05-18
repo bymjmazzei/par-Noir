@@ -25,5 +25,8 @@ export {
 export type { PnOAuthDebugEntry } from './pnOAuthDebug';
 export {
   snapshotOAuthResumeSearchFromUrl,
+  clearOAuthResumeSnapshotUnlessOnResumeUrl,
+  getOAuthResumeSearchParams,
+  isOAuthResumeUrl,
   PN_OAUTH_RESUME_SEARCH_KEY,
 } from './pnOAuthResumeBootstrap';
