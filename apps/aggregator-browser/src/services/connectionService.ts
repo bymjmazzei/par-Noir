@@ -5,7 +5,10 @@
  */
 
 import { PNOAuthService } from './pnOAuthService';
-
+import { getUserProfile } from './profileService';
+import { createKemSession } from './dmCryptoClient';
+import { isDmIdentityReady } from './dmIdentitySession';
+import { setMessageRootKey } from './dmSessionCache';
 import { API_ENDPOINT } from '../config/api';
 
 // Helper function to get auth headers
@@ -90,15 +93,27 @@ export async function sendConnectionRequest(
  */
 export async function acceptConnectionRequest(
   connectionId: string,
-  userPnIdentifier: string
+  userPnIdentifier: string,
+  requesterPnIdentifier: string
 ): Promise<void> {
-  // Use Google Drive API directly
+  if (!isDmIdentityReady()) {
+    throw new Error('Unlock messaging with your passcode before accepting connections');
+  }
+  const profile = await getUserProfile(requesterPnIdentifier);
+  if (!profile.mlKemPublicKey) {
+    throw new Error('Requester has no messaging public key on file');
+  }
+  const { kemCiphertext, messageRootKey } = createKemSession(profile.mlKemPublicKey);
+  setMessageRootKey(connectionId, messageRootKey);
+
   try {
     const response = await fetch(`${API_ENDPOINT}/api/connections/${connectionId}/accept`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        userPnIdentifier
+        userPnIdentifier,
+        kemCiphertext,
+        kemAlgId: 'ML-KEM-768'
       })
     });
 

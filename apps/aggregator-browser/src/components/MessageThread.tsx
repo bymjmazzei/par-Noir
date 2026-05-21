@@ -4,25 +4,51 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Send, Image as ImageIcon, Paperclip, MoreVertical, Trash2, Check } from 'lucide-react';
+import { ArrowLeft, Send, Image as ImageIcon, Paperclip, MoreVertical, Trash2, Check, Settings } from 'lucide-react';
 import { Message } from '../services/messageService';
 import { useUserState } from '../contexts/UserStateContext';
 import { getConversationMessages, sendMessage, markAsRead, deleteConversation } from '../services/messageService';
+import {
+  getGroupMessages,
+  sendGroupMessage,
+  type GroupAccessRole,
+  type GroupRecord
+} from '../services/groupService';
+import { getUserProfile } from '../services/profileService';
 import { useToast } from '../hooks/useToast';
 import { ToastContainer } from './Toast';
+import { GroupSettingsModal } from './GroupSettingsModal';
 
 interface MessageThreadProps {
-  participantPnIdentifier: string;
+  participantPnIdentifier?: string;
   participantName?: string;
   preloadedMessages?: Message[];
   onBack: () => void;
-  // Inbox optimization fields
   connectionId?: string;
-  sharedSecret?: string; // Encrypted
+  kemCiphertext?: string;
   spreadsheetId?: string;
+  groupId?: string;
+  groupTitle?: string;
+  ownerPnIdentifier?: string;
+  accessRole?: GroupAccessRole;
+  wrappedChatKey?: string;
 }
 
-export function MessageThread({ participantPnIdentifier, participantName, preloadedMessages, onBack, connectionId, sharedSecret, spreadsheetId }: MessageThreadProps) {
+export function MessageThread({
+  participantPnIdentifier = '',
+  participantName,
+  preloadedMessages,
+  onBack,
+  connectionId,
+  kemCiphertext,
+  spreadsheetId,
+  groupId,
+  groupTitle,
+  ownerPnIdentifier,
+  accessRole = 'readWrite',
+  wrappedChatKey = ''
+}: MessageThreadProps) {
+  const isGroup = !!groupId;
   const { userState } = useUserState();
   const { error: showError, toasts, removeToast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -42,10 +68,52 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
   const isPollingRef = useRef(false);
   const errorCountRef = useRef(0);
   const currentOffsetRef = useRef(0);
+  const [showGroupSettings, setShowGroupSettings] = useState(false);
+  const [senderNames, setSenderNames] = useState<Record<string, string>>({});
+
+  const groupRecord: GroupRecord | null =
+    isGroup && groupId && ownerPnIdentifier && userState.pnIdentifier
+      ? {
+          groupId,
+          ownerPnIdentifier,
+          title: groupTitle || 'Group',
+          createdAt: '',
+          memberPnIdentifier: userState.pnIdentifier,
+          accessRole,
+          wrappedChatKey,
+          conversationSpreadsheetId: spreadsheetId
+        }
+      : null;
+
+  const fetchMessages = async (limit: number, offset: number) => {
+    if (!userState.pnIdentifier) {
+      return { messages: [] as Message[], total: 0 };
+    }
+    if (isGroup && groupRecord) {
+      return getGroupMessages(
+        userState.pnIdentifier,
+        groupId!,
+        groupRecord,
+        spreadsheetId,
+        limit,
+        offset
+      );
+    }
+    return getConversationMessages(
+      userState.pnIdentifier,
+      participantPnIdentifier,
+      limit,
+      offset,
+      connectionId,
+      kemCiphertext,
+      spreadsheetId
+    );
+  };
 
   // Load messages
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
+    if (isGroup && !groupRecord) return;
 
     const loadMessages = async (isInitial = false, loadMore = false) => {
       // Prevent duplicate requests
@@ -73,7 +141,7 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
           // Don't make background API call - let polling handle updates
           // This eliminates one unnecessary API call per conversation open
         } else {
-          result = await getConversationMessages(userState.pnIdentifier!, participantPnIdentifier, limit, offset, connectionId, sharedSecret, spreadsheetId);
+          result = await fetchMessages(limit, offset);
         }
         
         // Reset error count on success
@@ -106,13 +174,34 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
           setHasMore(reversedMessages.length < result.total);
         }
 
-        // Mark unread messages as read
-        const unreadMessages = result.messages.filter(m => !m.read && m.toPnIdentifier === userState.pnIdentifier);
-        for (const message of unreadMessages) {
-          try {
-            await markAsRead(message.messageId, userState.pnIdentifier!, participantPnIdentifier);
-          } catch (error) {
-            console.error('Failed to mark as read:', error);
+        if (!isGroup) {
+          const unreadMessages = result.messages.filter(
+            (m) => !m.read && m.toPnIdentifier === userState.pnIdentifier
+          );
+          for (const message of unreadMessages) {
+            try {
+              await markAsRead(message.messageId, userState.pnIdentifier!, participantPnIdentifier);
+            } catch (error) {
+              console.error('Failed to mark as read:', error);
+            }
+          }
+        }
+
+        if (isGroup) {
+          const senders = new Set(
+            result.messages
+              .map((m) => m.fromPnIdentifier)
+              .filter((pn) => pn && pn !== userState.pnIdentifier)
+          );
+          for (const pn of senders) {
+            if (senderNames[pn]) continue;
+            getUserProfile(pn)
+              .then((p) => {
+                if (p.displayName) {
+                  setSenderNames((prev) => ({ ...prev, [pn]: p.displayName! }));
+                }
+              })
+              .catch(() => undefined);
           }
         }
       } catch (error) {
@@ -169,7 +258,7 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
     }, 30000); // 30 seconds - reduced frequency to minimize API calls
     
     return () => clearInterval(interval);
-  }, [userState.isUnlocked, userState.pnIdentifier, participantPnIdentifier, preloadedMessages]);
+  }, [userState.isUnlocked, userState.pnIdentifier, participantPnIdentifier, preloadedMessages, groupId, spreadsheetId]);
 
   // Auto-scroll to bottom when messages change (but not when loading more)
   useEffect(() => {
@@ -197,7 +286,7 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
           
           setLoadingMore(true);
           try {
-            const result = await getConversationMessages(userState.pnIdentifier!, participantPnIdentifier, limit, offset, connectionId, sharedSecret, spreadsheetId);
+            const result = await fetchMessages(limit, offset);
             const reversedMessages = [...result.messages].reverse();
             
             // Preserve scroll position
@@ -275,16 +364,28 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
     }, 0);
 
     try {
-      const sentMessage = await sendMessage(
-        userState.pnIdentifier!,
-        participantPnIdentifier,
-        content
-      );
-      
-      // Replace optimistic message with server response
-      setMessages(prev => prev.map(msg => 
-        msg.messageId === tempMessageId ? sentMessage : msg
-      ));
+      if (isGroup && groupRecord) {
+        await sendGroupMessage(userState.pnIdentifier!, groupId!, groupRecord, content);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.messageId === tempMessageId
+              ? { ...msg, messageId: `sent-${Date.now()}`, read: false }
+              : msg
+          )
+        );
+      } else {
+        const sentMessage = await sendMessage(
+          userState.pnIdentifier!,
+          participantPnIdentifier,
+          content,
+          undefined,
+          connectionId,
+          kemCiphertext
+        );
+        setMessages((prev) =>
+          prev.map((msg) => (msg.messageId === tempMessageId ? sentMessage : msg))
+        );
+      }
     } catch (error: any) {
       console.error('Failed to send message:', error);
       
@@ -329,7 +430,11 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
     }
   };
 
-  const displayName = participantName || (participantPnIdentifier?.substring(0, 16) || 'Unknown') + '...';
+  const displayName = isGroup
+    ? (groupTitle || 'Group')
+    : participantName || (participantPnIdentifier?.substring(0, 16) || 'Unknown') + '...';
+  const isOwner = isGroup && userState.pnIdentifier === ownerPnIdentifier;
+  const canSend = !isGroup || accessRole !== 'readOnly';
 
   return (
     <div className="h-full flex flex-col bg-neutral-900">
@@ -344,6 +449,7 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
+          {!isGroup && (
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setShowMenu(!showMenu)}
@@ -367,11 +473,27 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
               </div>
             )}
           </div>
+          )}
           <div>
             <h2 className="text-white font-semibold">{displayName}</h2>
-            <p className="text-neutral-400 text-xs">{participantPnIdentifier}</p>
+            {!isGroup && (
+              <p className="text-neutral-400 text-xs">{participantPnIdentifier}</p>
+            )}
+            {isGroup && accessRole === 'readOnly' && (
+              <p className="text-neutral-500 text-xs">Read only</p>
+            )}
           </div>
         </div>
+        {isOwner && groupId && ownerPnIdentifier && (
+          <button
+            type="button"
+            onClick={() => setShowGroupSettings(true)}
+            className="text-neutral-400 hover:text-white p-2"
+            aria-label="Group settings"
+          >
+            <Settings className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
       {/* Delete Confirmation Dialog */}
@@ -440,6 +562,12 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
                       : 'bg-neutral-800 text-white'
                   } ${isTemporary ? 'opacity-75' : ''}`}
                 >
+                  {isGroup && !isOwn && (
+                    <p className="text-xs text-neutral-400 mb-1">
+                      {senderNames[message.fromPnIdentifier] ||
+                        message.fromPnIdentifier.slice(0, 12) + '…'}
+                    </p>
+                  )}
                   <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                   {message.mediaFileId && (
                     <div className="mt-2 p-2 bg-black/20 rounded">
@@ -481,7 +609,7 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
+      {canSend ? (
       <div className="p-4 border-t border-neutral-700" style={{ paddingBottom: '64px' }}>
         <div className="flex items-end space-x-2">
           <button
@@ -516,6 +644,21 @@ export function MessageThread({ participantPnIdentifier, participantName, preloa
           </button>
         </div>
       </div>
+      ) : (
+        <div className="p-4 border-t border-neutral-700 text-center text-neutral-500 text-sm" style={{ paddingBottom: '64px' }}>
+          You have read-only access in this group.
+        </div>
+      )}
+
+      {showGroupSettings && isOwner && groupId && ownerPnIdentifier && (
+        <GroupSettingsModal
+          ownerPnIdentifier={ownerPnIdentifier}
+          groupId={groupId}
+          initialTitle={groupTitle || 'Group'}
+          onClose={() => setShowGroupSettings(false)}
+          onUpdated={() => setShowGroupSettings(false)}
+        />
+      )}
     </div>
   );
 }

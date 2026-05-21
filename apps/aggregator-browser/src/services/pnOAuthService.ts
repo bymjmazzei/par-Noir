@@ -344,6 +344,18 @@ export class PNOAuthService {
     // Store session
     this.saveSession(session);
 
+    if (params.encryptedIdentity?.encryptedData && params.encryptedIdentity?.iv && params.encryptedIdentity?.salt) {
+      import('./dmIdentitySession').then(({ storeEncryptedIdentityForMessaging }) => {
+        storeEncryptedIdentityForMessaging({
+          encryptedData: params.encryptedIdentity.encryptedData,
+          iv: params.encryptedIdentity.iv,
+          salt: params.encryptedIdentity.salt,
+          publicKey: params.publicKey,
+          mlKemPublicKey: params.encryptedIdentity.mlKemPublicKey
+        });
+      });
+    }
+
     // Clear OAuth state
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('pn_oauth_state');

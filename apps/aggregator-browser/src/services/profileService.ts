@@ -24,6 +24,7 @@ function getAuthHeaders(): HeadersInit {
 export interface UserProfile {
   displayName?: string;
   profileImageFileId?: string;
+  mlKemPublicKey?: string;
 }
 
 // Track ongoing profile requests to prevent duplicate calls

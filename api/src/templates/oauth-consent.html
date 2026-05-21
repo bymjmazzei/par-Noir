@@ -678,6 +678,46 @@
     let authorizationCode = null;
     let pnIdentifier = null;
     let decryptedIdentity = null;
+    /** Retained for messaging E2E handoff to browser-app opener (postMessage). */
+    let lastMessagingIdentity = null;
+
+    function normalizeMessagingIdentityPayload(encryptedIdentity, decrypted) {
+      if (!encryptedIdentity || !encryptedIdentity.encryptedData || !encryptedIdentity.iv || !encryptedIdentity.salt) {
+        return null;
+      }
+      var mlKem =
+        encryptedIdentity.mlKemPublicKey ||
+        (decrypted && decrypted.pqcSecrets && decrypted.pqcSecrets.mlKemPublicKey) ||
+        (decrypted && decrypted.mlKemPublicKey) ||
+        undefined;
+      return {
+        encryptedData: encryptedIdentity.encryptedData,
+        iv: encryptedIdentity.iv,
+        salt: encryptedIdentity.salt,
+        publicKey: encryptedIdentity.publicKey,
+        mlKemPublicKey: mlKem
+      };
+    }
+
+    function sendMessagingIdentityToOpener(encryptedIdentity, decrypted) {
+      if (!isBrowserApp) return;
+      var payload = normalizeMessagingIdentityPayload(encryptedIdentity, decrypted);
+      if (!payload) return;
+      lastMessagingIdentity = payload;
+      var appOrigin = '';
+      try {
+        appOrigin = new URL(redirectUri).origin;
+      } catch (_) {
+        return;
+      }
+      if (window.opener && !window.opener.closed && appOrigin) {
+        try {
+          window.opener.postMessage({ type: 'pn_messaging_identity', identity: payload }, appOrigin);
+        } catch (e) {
+          console.warn('[OAuth] messaging identity postMessage failed', e);
+        }
+      }
+    }
     
     // Show/hide toggle for pN name
     let showPnName = false;
@@ -792,6 +832,7 @@
     
     async function completeOAuthUnlock(encryptedIdentity, publicKey, did, decryptedIdentity, pnName, passcode) {
       identityData = null;
+      sendMessagingIdentityToOpener(encryptedIdentity, decryptedIdentity);
       const authResponse = await fetch(`${apiEndpoint}/oauth/authorize/authenticate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1074,6 +1115,9 @@
       if (!authorizationCode) {
         console.error('No authorization code!');
         return;
+      }
+      if (lastMessagingIdentity) {
+        sendMessagingIdentityToOpener(lastMessagingIdentity, null);
       }
       redirectWithAuthCodeFixed(authorizationCode, shareAge);
     });

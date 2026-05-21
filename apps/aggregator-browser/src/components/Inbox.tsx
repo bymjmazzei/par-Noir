@@ -14,6 +14,12 @@ import { NotificationList } from './NotificationList';
 import { ConnectionsPanel } from './ConnectionsPanel';
 import { RequestsList } from './RequestsList';
 import { useUserState } from '../contexts/UserStateContext';
+import { DmCryptoUnlockModal } from './DmCryptoUnlockModal';
+import { CreateGroupModal } from './CreateGroupModal';
+import { isDmIdentityReady } from '../services/dmIdentitySession';
+import { PNOAuthService } from '../services/pnOAuthService';
+import type { SelectedInboxThread } from '../types/messaging';
+import { listGroups } from '../services/groupService';
 
 interface InboxProps {
   onNotificationClick?: (notification: Notification) => void;
@@ -27,25 +33,43 @@ interface InboxProps {
 export function Inbox({ onNotificationClick, initialThread = null, onCreatorClick }: InboxProps) {
   const { userState } = useUserState();
   const [activeView, setActiveView] = useState<'messages' | 'notifications' | 'requests' | 'activity' | 'connections'>('messages');
-  const [selectedThread, setSelectedThread] = useState<{
-    participantPnIdentifier: string;
-    participantName?: string;
-    preloadedMessages?: any[];
-    connectionId?: string;
-    sharedSecret?: string;
-    spreadsheetId?: string;
-  } | null>(initialThread);
+  const [selectedThread, setSelectedThread] = useState<SelectedInboxThread | null>(
+    initialThread
+      ? { kind: 'dm', participantPnIdentifier: initialThread.participantPnIdentifier, participantName: initialThread.participantName }
+      : null
+  );
   const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
+  const [showDmUnlock, setShowDmUnlock] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [dmReady, setDmReady] = useState(isDmIdentityReady());
   
   // Update selectedThread if initialThread changes
   React.useEffect(() => {
     if (initialThread) {
-      setSelectedThread(initialThread);
+      setSelectedThread({
+        kind: 'dm',
+        participantPnIdentifier: initialThread.participantPnIdentifier,
+        participantName: initialThread.participantName
+      });
       setActiveView('messages');
     }
   }, [initialThread]);
 
   if (selectedThread) {
+    if (selectedThread.kind === 'group') {
+      return (
+        <MessageThread
+          groupId={selectedThread.groupId}
+          groupTitle={selectedThread.title}
+          ownerPnIdentifier={selectedThread.ownerPnIdentifier}
+          accessRole={selectedThread.accessRole}
+          wrappedChatKey={selectedThread.wrappedChatKey}
+          spreadsheetId={selectedThread.spreadsheetId}
+          preloadedMessages={selectedThread.preloadedMessages}
+          onBack={() => setSelectedThread(null)}
+        />
+      );
+    }
     return (
       <MessageThread
         participantPnIdentifier={selectedThread.participantPnIdentifier}
@@ -53,11 +77,14 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
         preloadedMessages={selectedThread.preloadedMessages}
         onBack={() => setSelectedThread(null)}
         connectionId={selectedThread.connectionId}
-        sharedSecret={selectedThread.sharedSecret}
+        kemCiphertext={selectedThread.kemCiphertext}
         spreadsheetId={selectedThread.spreadsheetId}
       />
     );
   }
+
+  const session = PNOAuthService.loadSession();
+  const pnName = session?.pnName || userState.preferences?.displayName || '';
 
   return (
     <div className="h-full flex flex-col bg-neutral-900" style={{ paddingBottom: '64px' }}>
@@ -65,6 +92,15 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
       <div className="flex items-center justify-start p-4 border-b border-neutral-700">
         {/* Icons on the left */}
         <div className="flex items-center space-x-2">
+          {activeView === 'messages' && userState.isUnlocked && userState.pnIdentifier && (
+            <button
+              type="button"
+              onClick={() => (dmReady ? setShowCreateGroup(true) : setShowDmUnlock(true))}
+              className="mr-2 rounded-lg bg-neutral-800 px-3 py-1.5 text-xs text-white hover:bg-neutral-700"
+            >
+              New group
+            </button>
+          )}
           <button 
             onClick={() => setActiveView('messages')} 
             className={`p-2 rounded transition-colors ${
@@ -143,11 +179,22 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         {activeView === 'messages' ? (
-          <MessageList
-            onThreadSelect={(participantPnIdentifier, participantName, preloadedMessages, connectionId, sharedSecret, spreadsheetId) => {
-              setSelectedThread({ participantPnIdentifier, participantName, preloadedMessages, connectionId, sharedSecret, spreadsheetId });
-            }}
-          />
+          !dmReady && userState.isUnlocked ? (
+            <div className="p-6 text-center">
+              <p className="text-neutral-400 text-sm mb-4">
+                Unlock messaging with your passcode to read and send encrypted messages.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowDmUnlock(true)}
+                className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black"
+              >
+                Unlock messaging
+              </button>
+            </div>
+          ) : (
+          <MessageList onThreadSelect={(thread) => setSelectedThread(thread)} />
+          )
         ) : activeView === 'notifications' ? (
           <div className="h-full overflow-y-auto">
             {userState.isUnlocked && userState.pnIdentifier ? (
@@ -190,6 +237,51 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
           )
         ) : null}
       </div>
+
+      {showDmUnlock && pnName && (
+        <DmCryptoUnlockModal
+          pnName={pnName}
+          onUnlocked={() => {
+            setDmReady(true);
+            setShowDmUnlock(false);
+          }}
+          onCancel={() => setShowDmUnlock(false)}
+        />
+      )}
+      {showCreateGroup && userState.pnIdentifier && (
+        <CreateGroupModal
+          ownerPnIdentifier={userState.pnIdentifier}
+          onClose={() => setShowCreateGroup(false)}
+          onCreated={async (groupId, title) => {
+            setShowCreateGroup(false);
+            if (!userState.pnIdentifier) return;
+            try {
+              const groups = await listGroups(userState.pnIdentifier);
+              const row = groups.find(
+                (g) => g.groupId === groupId && g.memberPnIdentifier === userState.pnIdentifier
+              );
+              setSelectedThread({
+                kind: 'group',
+                groupId,
+                title,
+                ownerPnIdentifier: row?.ownerPnIdentifier || userState.pnIdentifier,
+                accessRole: row?.accessRole || 'readWrite',
+                wrappedChatKey: row?.wrappedChatKey || '',
+                spreadsheetId: row?.conversationSpreadsheetId
+              });
+            } catch {
+              setSelectedThread({
+                kind: 'group',
+                groupId,
+                title,
+                ownerPnIdentifier: userState.pnIdentifier,
+                accessRole: 'readWrite',
+                wrappedChatKey: ''
+              });
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

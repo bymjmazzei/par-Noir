@@ -188,7 +188,11 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
     }));
 
     try {
-      await acceptConnectionRequest(connectionId, userPnIdentifier);
+      await acceptConnectionRequest(
+        connectionId,
+        userPnIdentifier,
+        originalRequest?.userPnIdentifier || ''
+      );
       await loadData();
     } catch (error) {
       // Restore request on error

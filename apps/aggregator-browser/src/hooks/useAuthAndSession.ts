@@ -16,6 +16,8 @@ import { PNOAuthService } from '../services/pnOAuthService';
 import { getUserProfile } from '../services/profileService';
 import { API_ENDPOINT } from '../config/api';
 import { PN_OAUTH_RESUME_SEARCH_KEY } from '../oauthResumeBootstrap';
+import { installOAuthMessagingIdentityListener } from '../services/oauthMessagingIdentityBridge';
+import { clearDmIdentity } from '../services/dmIdentitySession';
 
 /**
  * oauth-callback.html may hand off via `opener.location.replace(/?oauth_resume=1&code=...)`.
@@ -84,6 +86,7 @@ export function useAuthAndSession({
           errorKey: data.error ? String(data.error).slice(0, 80) : '',
         });
         setLocked();
+        clearDmIdentity();
         PNOAuthService.clearSession();
         showErrorToast(data.error_description || data.error || 'Authentication denied');
         return;
@@ -169,6 +172,7 @@ export function useAuthAndSession({
         });
         oauthProcessedCodesRef.current.delete(data.code!);
         setLocked();
+        clearDmIdentity();
         PNOAuthService.clearSession();
         const rawMessage = err instanceof Error ? err.message : String(err);
         const safeMessage = rawMessage ? rawMessage.slice(0, 180) : 'Authentication failed';
@@ -444,6 +448,7 @@ export function useAuthAndSession({
     if (userState.isUnlocked) {
       if (!session || !PNOAuthService.isSessionValid(session)) {
         setLocked();
+        clearDmIdentity();
         PNOAuthService.clearSession();
       } else if (session.did && session.did !== userState.pnIdentifier) {
         const pnId = session.pnIdentifier || session.did;
@@ -464,9 +469,12 @@ export function useAuthAndSession({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
   }, []);
 
+  useEffect(() => installOAuthMessagingIdentityListener(), []);
+
   const handleLockUnlock = useCallback(async () => {
     if (userState.isUnlocked) {
       setLocked();
+      clearDmIdentity();
       PNOAuthService.clearSession();
     } else {
       const redirectUri = `${window.location.origin}/oauth-callback.html`;

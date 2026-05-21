@@ -88,7 +88,11 @@ export function RequestsList({ onRequestAccept }: RequestsListProps) {
     try {
       if (request.isConnectionRequest && request.connectionId) {
         // Handle connection request
-        await acceptConnectionRequest(request.connectionId, userState.pnIdentifier);
+        await acceptConnectionRequest(
+          request.connectionId,
+          userState.pnIdentifier,
+          request.fromPnIdentifier
+        );
         success('Connection request accepted');
       } else {
         // Handle message request

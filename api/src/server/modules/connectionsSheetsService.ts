@@ -13,7 +13,8 @@ export interface Connection {
   status: 'pending_sent' | 'pending_received' | 'accepted' | 'blocked';
   createdAt: string;
   acceptedAt?: string;
-  sharedSecret?: string; // Encrypted shared secret (new field)
+  sharedSecret?: string; // Deprecated — use kemCiphertext
+  kemCiphertext?: string; // ML-KEM-768 encapsulation (E2E)
 }
 
 export interface Follower {
@@ -77,7 +78,7 @@ export class ConnectionsSheetsService {
       requestBody: {
         valueInputOption: 'RAW',
         data: [
-          { range: 'Connections!A1:F1', values: [['Connection ID', 'User DID', 'Status', 'Created At', 'Accepted At', 'Shared Secret']] },
+          { range: 'Connections!A1:G1', values: [['Connection ID', 'User DID', 'Status', 'Created At', 'Accepted At', 'Shared Secret', 'KEM Ciphertext']] },
           { range: 'Blocked!A1:A1', values: [['Blocked DID']] },
           { range: 'Metadata!A1:B2', values: [['Identifier', ''], ['UpdatedAt', '']] }
         ]
@@ -220,7 +221,7 @@ export class ConnectionsSheetsService {
       // Normalize userPnIdentifier in all connections before writing (handles legacy data)
       const rows = connections.map(c => {
         const normalizedUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`;
-        return [c.connectionId, normalizedUserPnIdentifier, c.status, c.createdAt, c.acceptedAt || '', c.sharedSecret || ''];
+        return [c.connectionId, normalizedUserPnIdentifier, c.status, c.createdAt, c.acceptedAt || '', '', c.kemCiphertext || ''];
       });
       await sheets.spreadsheets.values.update({
         spreadsheetId,
@@ -444,7 +445,7 @@ export class ConnectionsSheetsService {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: 'Connections!A:F',
+      range: 'Connections!A:G',
       valueInputOption: 'RAW',
       requestBody: {
         values: [[
@@ -453,7 +454,8 @@ export class ConnectionsSheetsService {
           connection.status,
           connection.createdAt,
           connection.acceptedAt || '',
-          connection.sharedSecret || ''
+          '',
+          connection.kemCiphertext || ''
         ]]
       }
     });
@@ -511,7 +513,8 @@ export class ConnectionsSheetsService {
         status: (row[2] || 'pending_sent') as Connection['status'],
         createdAt: row[3] || new Date().toISOString(),
         acceptedAt: row[4] || undefined,
-        sharedSecret: row[5] || undefined
+        sharedSecret: row[5] || undefined,
+        kemCiphertext: row[6] || undefined
       });
     }
 
@@ -599,7 +602,8 @@ export class ConnectionsSheetsService {
           status: (row[2] || 'pending_sent') as Connection['status'],
           createdAt: row[3] || new Date().toISOString(),
           acceptedAt: row[4] || undefined,
-          sharedSecret: row[5] || undefined
+          sharedSecret: row[5] || undefined,
+        kemCiphertext: row[6] || undefined
         };
       }
     }
@@ -618,7 +622,8 @@ export class ConnectionsSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined,
     acceptedAt?: string,
-    sharedSecret?: string
+    sharedSecret?: string,
+    kemCiphertext?: string
   ): Promise<void> {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
@@ -626,7 +631,7 @@ export class ConnectionsSheetsService {
     // Get all connections to find the row
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Connections!A2:F'
+      range: 'Connections!A2:G'
     });
 
     const rows = response.data.values || [];
@@ -663,15 +668,21 @@ export class ConnectionsSheetsService {
       });
     }
     
-    // Update sharedSecret (column F) if provided
     if (sharedSecret !== undefined) {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
         range: `Connections!F${actualRow}`,
         valueInputOption: 'RAW',
-        requestBody: {
-          values: [[sharedSecret]]
-        }
+        requestBody: { values: [[sharedSecret]] }
+      });
+    }
+
+    if (kemCiphertext !== undefined) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `Connections!G${actualRow}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [[kemCiphertext]] }
       });
     }
   }

@@ -11107,6 +11107,33 @@ class ProductionServer {
             );
             
             // Inbox already contains sharedSecret - no connections lookup needed!
+            const { GroupSheetsService } = await import('./server/modules/groupSheetsService');
+            let groupTitleById = new Map<string, string>();
+            try {
+              const metadataFolder = await this.getMetadataFolder(token, pnIdentifier, accountId);
+              if (metadataFolder?.metadataFolderId) {
+                const groupsSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+                  token,
+                  metadataFolder.metadataFolderId,
+                  pnIdentifier,
+                  accountId
+                );
+                const groupRows = await GroupSheetsService.listGroupsForUser(
+                  token,
+                  groupsSheetId,
+                  pnIdentifier,
+                  accountId
+                );
+                for (const g of groupRows) {
+                  if (!groupTitleById.has(g.groupId)) {
+                    groupTitleById.set(g.groupId, g.title);
+                  }
+                }
+              }
+            } catch {
+              /* optional enrichment */
+            }
+
             const enrichedConversations = inboxConversations.map((conv) => {
               const lastMessage = conv.lastMessagePreview ? {
                 messageId: '',
@@ -11118,15 +11145,22 @@ class ProductionServer {
                 encrypted: false
               } : undefined;
 
+              const isGroup = conv.threadType === 'group';
               return {
+                threadType: conv.threadType || 'dm',
                 otherUserPnIdentifier: conv.participantPnIdentifier,
                 participantPnIdentifier: conv.participantPnIdentifier,
                 spreadsheetId: conv.spreadsheetId,
                 connectionId: conv.connectionId,
-                sharedSecret: conv.sharedSecret, // Already in inbox - no lookup needed!
+                kemCiphertext: conv.kemCiphertext,
                 lastMessageAt: conv.lastMessageAt,
                 lastMessagePreview: conv.lastMessagePreview,
-                lastMessage
+                lastMessage,
+                ...(isGroup && {
+                  groupId: conv.groupId || conv.participantPnIdentifier,
+                  ownerPnIdentifier: conv.ownerPnIdentifier || conv.connectionId,
+                  groupTitle: groupTitleById.get(conv.groupId || conv.participantPnIdentifier) || 'Group'
+                })
               };
             });
 
@@ -11193,7 +11227,7 @@ class ProductionServer {
           connectionId: string;
           lastMessageAt: string;
           lastMessagePreview?: string;
-          sharedSecret?: string; // Encrypted shared secret
+          kemCiphertext?: string;
         }> = [];
 
         try {
@@ -11242,7 +11276,7 @@ class ProductionServer {
             connectionId: '',
             lastMessageAt: conv.lastMessageAt,
             lastMessagePreview: undefined,
-            sharedSecret: undefined // Not available in fallback path
+            kemCiphertext: undefined
           }));
         }
 
@@ -11264,7 +11298,7 @@ class ProductionServer {
             participantPnIdentifier: conv.participantPnIdentifier,
             spreadsheetId: conv.spreadsheetId,
             connectionId: conv.connectionId,
-            sharedSecret: conv.sharedSecret, // Already in inbox - no lookup needed!
+            kemCiphertext: conv.kemCiphertext,
             lastMessageAt: conv.lastMessageAt,
             lastMessagePreview: conv.lastMessagePreview,
             lastMessage
@@ -11534,7 +11568,6 @@ class ProductionServer {
         userPnIdentifier: src.userPnIdentifier, 
         participantPnIdentifier: src.participantPnIdentifier,
         hasConnectionId: !!src.connectionId,
-        hasSharedSecret: !!src.sharedSecret,
         hasSpreadsheetId: !!src.spreadsheetId,
         method: req.method
       });
@@ -11545,11 +11578,9 @@ class ProductionServer {
         const limit = src.limit != null ? parseInt(String(src.limit), 10) : 50;
         const offset = src.offset != null ? parseInt(String(src.offset), 10) : 0;
         const connectionId = src.connectionId as string | undefined;
-        const sharedSecret = src.sharedSecret as string | undefined; // Encrypted
         const spreadsheetId = src.spreadsheetId as string | undefined;
         console.log('[GetConversation] Request received', {
           hasConnectionId: !!connectionId,
-          hasSharedSecret: !!sharedSecret,
           hasSpreadsheetId: !!spreadsheetId,
           method: req.method
         });
@@ -11597,35 +11628,12 @@ class ProductionServer {
           ? participantPnIdentifier 
           : `pn-${participantPnIdentifier}`;
 
-        // If connectionId and sharedSecret are provided, skip lookups (optimized path)
         let finalConnectionId: string | undefined;
-        let decryptedSharedSecret: string | undefined;
         let conversationSheetId: string | undefined;
 
-        if (connectionId && sharedSecret && spreadsheetId) {
-          // Fully optimized path: use provided connection info, skip ALL folder lookups
-          const optimizedPathStart = Date.now();
-          console.log('[GetConversation] ✅ Using fully optimized path (no folder lookups)', {
-            connectionId: connectionId.substring(0, 10) + '...',
-            hasSharedSecret: !!sharedSecret,
-            spreadsheetId: spreadsheetId.substring(0, 10) + '...'
-          });
+        if (connectionId && spreadsheetId) {
           finalConnectionId = connectionId;
           conversationSheetId = spreadsheetId;
-
-          const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
-          const decryptStart = Date.now();
-          decryptedSharedSecret = MetadataEncryption.decryptField(sharedSecret);
-          console.log(`[GetConversation] Decryption took ${Date.now() - decryptStart}ms`);
-          if (!decryptedSharedSecret || MetadataEncryption.isEncrypted(decryptedSharedSecret)) {
-            console.error('[GetConversation] Failed to decrypt provided shared secret (empty or still encrypted)');
-            return res.status(500).json({
-              error: 'Failed to decrypt shared secret',
-              error_description: 'Failed to decrypt provided shared secret'
-            });
-          }
-          console.log(`[GetConversation] Optimized path setup took ${Date.now() - optimizedPathStart}ms`);
-          // Skip all folder lookups - we have spreadsheetId, just need access token for Sheets API
         } else {
           // Fallback path: Try inbox first (fast path), then fall back to connections sheet
           console.log('[GetConversation] Looking up connection (fallback path)');
@@ -11674,21 +11682,9 @@ class ProductionServer {
                 50 // Only read first 50 most recent conversations
               );
               
-              if (inboxEntry?.sharedSecret && inboxEntry?.connectionId && inboxEntry?.spreadsheetId) {
-                // Found in inbox! Use it (fast path)
-                console.log('[GetConversation] Using inbox data (fast path)');
+              if (inboxEntry?.connectionId && inboxEntry?.spreadsheetId) {
                 finalConnectionId = inboxEntry.connectionId;
                 conversationSheetId = inboxEntry.spreadsheetId;
-                const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
-                decryptedSharedSecret = MetadataEncryption.decryptField(inboxEntry.sharedSecret);
-                if (!decryptedSharedSecret) {
-                  console.error('[GetConversation] Failed to decrypt shared secret from inbox');
-                  return res.status(500).json({
-                    error: 'Failed to decrypt shared secret',
-                    error_description: 'Failed to decrypt shared secret from inbox'
-                  });
-                }
-                // Skip all the slow connection lookups!
               } else {
                 throw new Error('Inbox entry not found or missing data');
               }
@@ -11698,12 +11694,9 @@ class ProductionServer {
             }
           }
 
-          // If inbox lookup failed or inbox not available, use connections sheet (slow path)
-          if (!finalConnectionId || !conversationSheetId || !decryptedSharedSecret) {
-            // Reset variables for connections sheet lookup
+          if (!finalConnectionId || !conversationSheetId) {
             finalConnectionId = undefined;
             conversationSheetId = undefined;
-            decryptedSharedSecret = undefined;
             // Only search if cache is missing
             if (!messagesFolderId || !metadataFolderId || !pnFolderId) {
               // Get metadata folder (includes pnFolderId)
@@ -11780,35 +11773,10 @@ class ProductionServer {
               });
             }
 
-            // Get shared secret from connection - generate if missing (for backwards compatibility)
-            let connectionSharedSecret = connection.sharedSecret;
-            if (!connectionSharedSecret) {
-              console.log(`[GetConversation] Connection ${connectionStatus.connectionId} missing shared secret, generating one`);
-              const crypto = await import('crypto');
-              const rawSecret = crypto.randomBytes(32).toString('base64');
-              connectionSharedSecret = MetadataEncryption.encryptField(rawSecret);
-              
-              // Update connection with shared secret
-              await ConnectionsSheetsService.updateConnectionStatus(
-                token,
-                connectionsSpreadsheetId,
-                connectionStatus.connectionId,
-                connection.status,
-                pnIdentifier,
-                accountId,
-                connection.acceptedAt,
-                connectionSharedSecret
-              );
-              console.log(`[GetConversation] Generated and stored shared secret for connection ${connectionStatus.connectionId}`);
-            }
-
-            // Decrypt shared secret
-            decryptedSharedSecret = MetadataEncryption.decryptField(connectionSharedSecret);
-            if (!decryptedSharedSecret) {
-              console.error(`[GetConversation] Failed to decrypt shared secret for connection ${connectionStatus.connectionId}`);
-              return res.status(500).json({
-                error: 'Failed to decrypt shared secret',
-                error_description: 'Failed to decrypt shared secret'
+            if (!connection.kemCiphertext) {
+              return res.status(403).json({
+                error: 'Connection missing KEM session. Re-accept the connection with messaging unlocked.',
+                error_description: 'No kemCiphertext on connection'
               });
             }
 
@@ -11843,12 +11811,10 @@ class ProductionServer {
           }
         }
 
-        // Ensure all required variables are set
-        if (!finalConnectionId || !conversationSheetId || !decryptedSharedSecret) {
+        if (!finalConnectionId || !conversationSheetId) {
           console.error('[GetConversation] Missing required connection data', {
             hasConnectionId: !!finalConnectionId,
-            hasConversationSheetId: !!conversationSheetId,
-            hasDecryptedSharedSecret: !!decryptedSharedSecret
+            hasConversationSheetId: !!conversationSheetId
           });
           return res.status(500).json({
             error: 'Failed to get conversation data',
@@ -11866,13 +11832,14 @@ class ProductionServer {
           token,
           conversationSheetId,
           finalConnectionId,
-          decryptedSharedSecret,
+          '',
           pnIdentifier,
           accountId,
           { 
             limit: messageLimit, 
             offset: messageOffset,
-            includeTotal: false // Skip counting for initial loads (faster!)
+            includeTotal: false,
+            relayOnly: true
           }
         );
         console.log(`[GetConversation] getMessages took ${Date.now() - fetchStart}ms`);
@@ -11914,9 +11881,15 @@ class ProductionServer {
         contentLength: req.body?.content?.length
       });
       try {
-        const { fromPnIdentifier, toPnIdentifier, content, mediaFileId, isConnectionRequest } = req.body;
-        if (!fromPnIdentifier || !toPnIdentifier || !content) {
-          return res.status(400).json({ error: 'fromPnIdentifier, toPnIdentifier, and content are required' });
+        const { fromPnIdentifier, toPnIdentifier, content, encryptedContent, cryptoVersion, mediaFileId, isConnectionRequest } = req.body;
+        const isE2E = cryptoVersion === 2 && !!encryptedContent;
+        if (!fromPnIdentifier || !toPnIdentifier) {
+          return res.status(400).json({ error: 'fromPnIdentifier and toPnIdentifier are required' });
+        }
+        if (!isE2E) {
+          return res.status(400).json({
+            error: 'encryptedContent with cryptoVersion 2 is required (client-side E2E only)'
+          });
         }
         
         // Normalize pn-identifiers (handles legacy data)
@@ -12334,19 +12307,34 @@ class ProductionServer {
           return res.status(500).json({ error: 'Conversation sheet not found' });
         }
 
-        // Try to get sharedSecret from inbox first (fastest path - no connections sheet lookup)
-        const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
-        let sharedSecret: string | undefined;
         let connectionId: string | undefined;
-        
+        let kemCiphertext: string | undefined;
+
+        if (!senderMetadataFolderId) {
+          return res.status(500).json({ error: 'Sender metadata folder not found' });
+        }
+        const connectionStatus = await ConnectionsService.getConnectionStatus(
+          senderToken.access_token,
+          senderMetadataFolderId,
+          fromPnIdentifier,
+          toPnIdentifier
+        );
+        if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
+          return res.status(403).json({
+            error: 'Connection not found. Users must be connected to send messages.',
+            requiresConnection: true
+          });
+        }
+        connectionId = connectionStatus.connectionId;
+
+        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
         try {
-          // Use cached ID directly - getInboxSheet will return it immediately if provided
           const senderInboxSheetId = await MessageSheetsService.getInboxSheet(
             senderToken,
             senderMessagesFolderId!,
             fromPnIdentifier,
             senderAccountId,
-            senderCachedFolderIds.inboxSheetId // Pass cached ID to skip search
+            senderCachedFolderIds.inboxSheetId
           );
           const inboxConversations = await MessageSheetsService.getInboxConversations(
             senderToken,
@@ -12354,48 +12342,23 @@ class ProductionServer {
             fromPnIdentifier,
             senderAccountId
           );
-          const inboxEntry = inboxConversations.find(conv => conv.participantPnIdentifier === toPnIdentifier);
-          if (inboxEntry?.sharedSecret && inboxEntry?.connectionId) {
-            sharedSecret = inboxEntry.sharedSecret;
-            connectionId = inboxEntry.connectionId;
-            console.log('[SendMessage] Using sharedSecret from inbox cache (fast path)');
+          const inboxEntry = inboxConversations.find(
+            (conv) => conv.participantPnIdentifier === toPnIdentifier
+          );
+          if (inboxEntry?.kemCiphertext) {
+            kemCiphertext = inboxEntry.kemCiphertext;
           }
-        } catch (inboxError: any) {
-          console.warn('[SendMessage] Failed to read inbox for sharedSecret, falling back to connections sheet:', inboxError?.message);
+        } catch {
+          /* inbox optional */
         }
 
-        // Fallback: Look up connection from connections sheet if inbox doesn't have it
-        if (!sharedSecret || !connectionId) {
-          if (!senderMetadataFolderId) {
-            return res.status(500).json({ error: 'Sender metadata folder not found' });
-          }
-          
-          const connectionStatus = await ConnectionsService.getConnectionStatus(
-            senderToken.access_token,
-            senderMetadataFolderId,
-            fromPnIdentifier,
-            toPnIdentifier
-          );
-
-          if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
-            return res.status(403).json({
-              error: 'Connection not found. Users must be connected to send messages.',
-              error_description: 'Connection not found. Users must be connected to send messages.'
-            });
-          }
-
-          connectionId = connectionStatus.connectionId;
-
-          // Get connection to retrieve shared secret - use Sheets directly
-          const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
+        if (!kemCiphertext) {
           const senderSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
             senderToken,
             senderMetadataFolderId,
             fromPnIdentifier,
             senderAccountId
           );
-          
-          // Get connection directly by connectionId (more efficient than loading all connections)
           const connection = await ConnectionsSheetsService.getConnectionById(
             senderToken,
             senderSpreadsheetId,
@@ -12403,70 +12366,23 @@ class ProductionServer {
             fromPnIdentifier,
             senderAccountId
           );
-          if (!connection) {
-            return res.status(500).json({
-              error: 'Connection not found',
-              error_description: `Connection ${connectionId} not found in connections sheet`
-            });
-          }
-
-          // Auto-generate shared secret if missing (fallback for existing connections)
-          sharedSecret = connection.sharedSecret;
-          if (!sharedSecret) {
-            console.log(`[SendMessage] Connection ${connectionId} missing shared secret, generating one`);
-            const crypto = await import('crypto');
-            const rawSecret = crypto.randomBytes(32).toString('base64');
-            sharedSecret = MetadataEncryption.encryptField(rawSecret);
-            
-            // Update connection with shared secret
-            if (!senderMetadataFolderId) {
-              return res.status(500).json({ error: 'Sender metadata folder not found' });
-            }
-            const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-              senderToken,
-              senderMetadataFolderId,
-              fromPnIdentifier,
-              senderAccountId
-            );
-            await ConnectionsSheetsService.updateConnectionStatus(
-              senderToken,
-              spreadsheetId,
-              connectionId,
-              connection.status,
-              fromPnIdentifier,
-              senderAccountId,
-              connection.acceptedAt,
-              sharedSecret
-            );
-            console.log(`[SendMessage] Generated and stored shared secret for connection ${connectionId}`);
-          }
+          kemCiphertext = connection?.kemCiphertext;
         }
 
-        if (!sharedSecret || !connectionId) {
+        if (!connectionId) {
           return res.status(500).json({
             error: 'Failed to get connection data',
             error_description: 'Failed to get connection data'
           });
         }
 
-        // Decrypt shared secret
-        const decryptedSharedSecret = MetadataEncryption.decryptField(sharedSecret);
-        if (!decryptedSharedSecret) {
-          console.error(`[SendMessage] Failed to decrypt shared secret for connection ${connectionId}`);
-          return res.status(500).json({
-            error: 'Failed to decrypt shared secret',
-            error_description: 'Failed to decrypt shared secret'
-          });
-        }
-
-        console.log(`[SendMessage] Using connectionId: ${connectionId}, hasSharedSecret: ${!!decryptedSharedSecret}`);
-
-        // Create message object
         const message: any = {
           messageId,
           fromPnIdentifier,
           toPnIdentifier,
-          content,
+          content: '',
+          encryptedContent,
+          cryptoVersion: 2,
           timestamp,
           read: false,
           mediaFileId
@@ -12494,8 +12410,7 @@ class ProductionServer {
           ) : Promise.resolve('')
         ]);
 
-        // Get recipient's sharedSecret from inbox (optimized path - inbox already has it)
-        let recipientSharedSecret: string | undefined;
+        let recipientKemCiphertext: string | undefined;
         if (recipientToken && recipientInboxSheetId) {
           try {
             const recipientInboxConversations = await MessageSheetsService.getInboxConversations(
@@ -12504,17 +12419,18 @@ class ProductionServer {
               toPnIdentifier,
               recipientAccountIdForInbox
             );
-            const recipientInboxEntry = recipientInboxConversations.find(conv => conv.participantPnIdentifier === fromPnIdentifier);
-            if (recipientInboxEntry?.sharedSecret) {
-              recipientSharedSecret = recipientInboxEntry.sharedSecret;
-              console.log('[SendMessage] Using recipient sharedSecret from inbox cache (fast path)');
-            }
-          } catch (recipientInboxError: any) {
-            console.warn('[SendMessage] Failed to read recipient inbox for sharedSecret, will use connections sheet:', recipientInboxError?.message);
+            const recipientInboxEntry = recipientInboxConversations.find(
+              (conv) => conv.participantPnIdentifier === fromPnIdentifier
+            );
+            recipientKemCiphertext = recipientInboxEntry?.kemCiphertext;
+          } catch {
+            /* optional */
           }
         }
+        if (!recipientKemCiphertext) {
+          recipientKemCiphertext = kemCiphertext;
+        }
 
-        // Update both inboxes in parallel (non-blocking - fire and forget)
         Promise.all([
           (async () => {
             try {
@@ -12527,8 +12443,8 @@ class ProductionServer {
                 timestamp,
                 fromPnIdentifier,
                 senderAccountId,
-                content.substring(0, 100), // Preview first 100 chars
-                sharedSecret || '' // Encrypted shared secret
+                '[Encrypted message]',
+                kemCiphertext || ''
               );
               console.log('[SendMessage] Updated sender inbox');
             } catch (inboxError: any) {
@@ -12547,8 +12463,8 @@ class ProductionServer {
                 timestamp,
                 toPnIdentifier,
                 recipientAccountIdForInbox,
-                content.substring(0, 100), // Preview first 100 chars
-                recipientSharedSecret || sharedSecret || '' // Encrypted shared secret
+                '[Encrypted message]',
+                recipientKemCiphertext || kemCiphertext || ''
               );
               console.log('[SendMessage] Updated recipient inbox');
             } catch (inboxError: any) {
@@ -12572,7 +12488,7 @@ class ProductionServer {
                 targetType: 'message',
                 targetPnIdentifier: messageId,
                 actorPnIdentifier: fromPnIdentifier,
-                metadata: { toPnIdentifier, threadId, content: content.substring(0, 100) }
+                metadata: { toPnIdentifier, threadId, encrypted: true }
               }
             );
           } catch (error: any) {
@@ -12593,7 +12509,7 @@ class ProductionServer {
                 toPnIdentifier,
                 messageId,
                 threadId,
-                metadata: { content: content.substring(0, 100), mediaFileId }
+                metadata: { encrypted: true, mediaFileId }
               }
             );
           } catch (error: any) {
@@ -12601,88 +12517,7 @@ class ProductionServer {
           }
         })();
 
-        // Fallback: Get recipient's connection to retrieve shared secret - use Sheets directly
-        // (Only if inbox lookup didn't find it)
-        if (!recipientSharedSecret) {
-          if (!recipientMetadataFolderId) {
-            return res.status(500).json({ error: 'Recipient metadata folder not found' });
-          }
-          const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-          if (!recipientToken) {
-            return res.status(500).json({ error: 'Recipient token not available' });
-          }
-          const recipientAccountIdForConnection = recipientCredentials?.credentials?.googleDriveAccounts?.[0] 
-            ? this.extractAccountId(recipientCredentials.credentials.googleDriveAccounts[0])
-            : undefined;
-          const recipientSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-            recipientToken,
-            recipientMetadataFolderId,
-            toPnIdentifier,
-            recipientAccountIdForConnection
-          );
-          
-          // Get connection directly by connectionId (more efficient than loading all connections)
-          const recipientConnection = await ConnectionsSheetsService.getConnectionById(
-            recipientToken,
-            recipientSpreadsheetId,
-            connectionId,
-            toPnIdentifier,
-            recipientAccountIdForConnection
-          );
-          if (!recipientConnection) {
-            return res.status(500).json({
-              error: 'Recipient connection not found',
-              error_description: `Connection ${connectionId} not found in recipient's connections sheet`
-            });
-          }
-
-          // Ensure recipient has the same shared secret as sender
-          recipientSharedSecret = recipientConnection.sharedSecret;
-          if (!recipientSharedSecret || recipientSharedSecret !== sharedSecret) {
-            // Recipient is missing shared secret or has a different one - sync from sender
-            console.log(`[SendMessage] Recipient missing or mismatched shared secret, syncing from sender`);
-            await ConnectionsSheetsService.updateConnectionStatus(
-              recipientToken!,
-              recipientSpreadsheetId,
-              connectionId,
-              recipientConnection.status,
-              toPnIdentifier,
-              recipientAccountIdForConnection,
-              recipientConnection.acceptedAt,
-              sharedSecret // Use sender's shared secret
-            );
-            recipientSharedSecret = sharedSecret;
-            console.log(`[SendMessage] Synced shared secret to recipient's connection ${connectionId}`);
-          }
-        }
-
-        if (!recipientSharedSecret) {
-          return res.status(500).json({
-            error: 'Failed to get recipient shared secret',
-            error_description: 'Failed to get recipient shared secret'
-          });
-        }
-
-        // Decrypt recipient's shared secret
-        const recipientDecryptedSharedSecret = MetadataEncryption.decryptField(recipientSharedSecret);
-        if (!recipientDecryptedSharedSecret) {
-          console.error(`[SendMessage] Failed to decrypt recipient shared secret for connection ${connectionId}`);
-          return res.status(500).json({
-            error: 'Failed to decrypt recipient shared secret',
-            error_description: 'Failed to decrypt recipient shared secret'
-          });
-        }
-
-        // Verify both users have the same decrypted secret
-        if (decryptedSharedSecret !== recipientDecryptedSharedSecret) {
-          console.error(`[SendMessage] Shared secret mismatch! Sender: ${decryptedSharedSecret.substring(0, 10)}..., Recipient: ${recipientDecryptedSharedSecret.substring(0, 10)}...`);
-          return res.status(500).json({
-            error: 'Shared secret mismatch between users. Please reconnect.',
-            error_description: 'Shared secret mismatch between users. Please reconnect.'
-          });
-        }
-
-        // Append messages to both sheets in parallel
+        // Append messages to both sheets in parallel (opaque ciphertext; no server crypto)
         console.log('[SendMessage] Appending messages to both sheets in parallel', { 
           senderSheetId: senderConversationSheetId, 
           recipientSheetId: recipientConversationSheetId, 
@@ -12794,7 +12629,7 @@ class ProductionServer {
             senderAccountId,
             message,
             connectionId,
-            decryptedSharedSecret,
+            '',
             toPnIdentifier,
             senderCredentials.credentials,
             senderCachedFolderIds
@@ -12810,7 +12645,7 @@ class ProductionServer {
             recipientAccountIdForSend,
             message,
             connectionId,
-            recipientDecryptedSharedSecret,
+            '',
             fromPnIdentifier,
             recipientCredentials?.credentials,
             recipientCachedFolderIds
@@ -12833,7 +12668,7 @@ class ProductionServer {
                 targetType: 'message',
                 targetPnIdentifier: messageId,
                 actorPnIdentifier: fromPnIdentifier,
-                metadata: { fromPnIdentifier, threadId, content: content.substring(0, 100) }
+                metadata: { fromPnIdentifier, threadId, encrypted: true }
               }
             );
           } catch (error: any) {
@@ -12854,7 +12689,7 @@ class ProductionServer {
                 toPnIdentifier,
                 messageId,
                 threadId,
-                metadata: { content: content.substring(0, 100), mediaFileId }
+                metadata: { encrypted: true, mediaFileId }
               }
             );
           } catch (error: any) {
@@ -13770,9 +13605,38 @@ class ProductionServer {
               profileImageFileId: dbProfile.profile_image_file_id || 'null'
             });
           }
+          const driveProfile = await (async () => {
+            try {
+              const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+              if (!userCredentials?.credentials) return null;
+              const googleDriveAccounts =
+                userCredentials.credentials.googleDriveAccounts ||
+                (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+              if (googleDriveAccounts.length === 0) return null;
+              const account = googleDriveAccounts[0];
+              const accountId = this.extractAccountId(account);
+              const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
+              const metadataFolder = await this.getMetadataFolder(
+                {
+                  access_token: account.access_token || account.accessToken,
+                  refresh_token: account.refresh_token || account.refreshToken,
+                  expires_at: account.expires_at,
+                  expires_in: account.expires_in
+                },
+                pnIdentifier,
+                accountId
+              );
+              if (!metadataFolder?.metadataFolderId) return null;
+              return ProfileService.getProfile(userAccessToken, metadataFolder.metadataFolderId);
+            } catch {
+              return null;
+            }
+          })();
+
           return res.json({
             displayName: dbProfile.display_name || null,
-            profileImageFileId: dbProfile.profile_image_file_id || null
+            profileImageFileId: dbProfile.profile_image_file_id || null,
+            mlKemPublicKey: driveProfile?.mlKemPublicKey || null
           });
         }
 
@@ -13844,13 +13708,1147 @@ class ProductionServer {
 
         return res.json({
           displayName: profile?.displayName || null,
-          profileImageFileId: profile?.profileImageFileId || null
+          profileImageFileId: profile?.profileImageFileId || null,
+          mlKemPublicKey: profile?.mlKemPublicKey || null
         });
       } catch (error: any) {
         console.error('Error getting profile:', error);
         return res.status(500).json({
           error: 'Failed to get profile',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get profile'
+        });
+      }
+    });
+
+    this.app.post('/api/profile/ml-kem-public-key', async (req, res) => {
+      try {
+        const { userPnIdentifier, mlKemPublicKey } = req.body;
+        if (!userPnIdentifier || !mlKemPublicKey) {
+          return res.status(400).json({ error: 'userPnIdentifier and mlKemPublicKey are required' });
+        }
+        const { ProfileService } = await import('./server/modules/profileService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const pnIdentifier = String(userPnIdentifier);
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+        const googleDriveAccounts =
+          userCredentials.credentials.googleDriveAccounts ||
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'No Google Drive connected' });
+        }
+        const account = googleDriveAccounts[0];
+        const accountId = this.extractAccountId(account);
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
+        const metadataFolder = await this.getMetadataFolder(
+          {
+            access_token: account.access_token || account.accessToken,
+            refresh_token: account.refresh_token || account.refreshToken,
+            expires_at: account.expires_at,
+            expires_in: account.expires_in
+          },
+          pnIdentifier,
+          accountId
+        );
+        if (!metadataFolder?.metadataFolderId) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+        let profile = await ProfileService.getProfileFile(userAccessToken, metadataFolder.metadataFolderId);
+        if (!profile) {
+          profile = { createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+        }
+        profile.mlKemPublicKey = mlKemPublicKey;
+        profile.updatedAt = new Date().toISOString();
+        await ProfileService.updateProfileFile(
+          userAccessToken,
+          metadataFolder.metadataFolderId,
+          pnIdentifier,
+          profile
+        );
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error updating ML-KEM public key:', error);
+        return res.status(500).json({
+          error: 'Failed to update messaging public key',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production')
+        });
+      }
+    });
+
+    this.app.get('/api/groups', async (req, res) => {
+      try {
+        const userPnIdentifier = req.query.userPnIdentifier as string;
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
+        }
+        const { GroupSheetsService } = await import('./server/modules/groupSheetsService');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+        const credentials = await storageCredentialsService.getCredentials(userPnIdentifier);
+        if (!credentials?.credentials) {
+          return res.json({ groups: [] });
+        }
+        const accounts =
+          credentials.credentials.googleDriveAccounts ||
+          (credentials.credentials.googleDrive ? [credentials.credentials.googleDrive] : []);
+        if (accounts.length === 0) {
+          return res.json({ groups: [] });
+        }
+        const account = accounts[0];
+        const accountId = this.extractAccountId(account);
+        const token = {
+          access_token: account.access_token || account.accessToken,
+          refresh_token: account.refresh_token || account.refreshToken,
+          expires_at: account.expires_at,
+          expires_in: account.expires_in
+        };
+        const metadataFolder = await this.getMetadataFolder(token, userPnIdentifier, accountId);
+        if (!metadataFolder?.metadataFolderId) {
+          return res.json({ groups: [] });
+        }
+        const sheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+          token,
+          metadataFolder.metadataFolderId,
+          userPnIdentifier,
+          accountId
+        );
+        const groups = await GroupSheetsService.listGroupsForUser(
+          token,
+          sheetId,
+          userPnIdentifier,
+          accountId
+        );
+        return res.json({ groups });
+      } catch (error: any) {
+        console.error('Error listing groups:', error);
+        return res.status(500).json({
+          error: 'Failed to list groups',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production')
+        });
+      }
+    });
+
+    this.app.post('/api/groups', async (req, res) => {
+      try {
+        const { ownerPnIdentifier, title, groupId, members } = req.body as {
+          ownerPnIdentifier?: string;
+          title?: string;
+          groupId?: string;
+          members?: Array<{
+            memberPnIdentifier: string;
+            wrappedChatKey: string;
+            accessRole?: 'readWrite' | 'readOnly';
+          }>;
+        };
+        if (!ownerPnIdentifier || !title || !groupId || !Array.isArray(members) || members.length === 0) {
+          return res.status(400).json({
+            error: 'ownerPnIdentifier, title, groupId, and members are required'
+          });
+        }
+        if (members.length > 15) {
+          return res.status(400).json({ error: 'Maximum 15 group members' });
+        }
+
+        const { GroupSheetsService } = await import('./server/modules/groupSheetsService');
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const ownerCreds = await storageCredentialsService.getCredentials(ownerPnIdentifier);
+        if (!ownerCreds?.credentials) {
+          return res.status(404).json({ error: 'Owner credentials not found' });
+        }
+        const accounts =
+          ownerCreds.credentials.googleDriveAccounts ||
+          (ownerCreds.credentials.googleDrive ? [ownerCreds.credentials.googleDrive] : []);
+        if (accounts.length === 0) {
+          return res.status(404).json({ error: 'Owner has no Google Drive connected' });
+        }
+        const account = accounts[0];
+        const accountId = this.extractAccountId(account);
+        const token = {
+          access_token: account.access_token || account.accessToken,
+          refresh_token: account.refresh_token || account.refreshToken,
+          expires_at: account.expires_at,
+          expires_in: account.expires_in
+        };
+        const metadataFolder = await this.getMetadataFolder(token, ownerPnIdentifier, accountId);
+        if (!metadataFolder?.metadataFolderId) {
+          return res.status(404).json({ error: 'Owner metadata folder not found' });
+        }
+
+        for (const m of members) {
+          if (m.memberPnIdentifier === ownerPnIdentifier) continue;
+          const connected = await ConnectionsService.areConnected(
+            token.access_token,
+            metadataFolder.metadataFolderId,
+            ownerPnIdentifier,
+            m.memberPnIdentifier
+          );
+          if (!connected) {
+            return res.status(403).json({
+              error: `Not connected to ${m.memberPnIdentifier}`,
+              requiresConnection: true
+            });
+          }
+        }
+
+        const createdAt = new Date().toISOString();
+        const sheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+          token,
+          metadataFolder.metadataFolderId,
+          ownerPnIdentifier,
+          accountId
+        );
+        const memberInputs = members.map((m) => ({
+          memberPnIdentifier: m.memberPnIdentifier,
+          accessRole: (m.accessRole === 'readOnly' ? 'readOnly' : 'readWrite') as 'readWrite' | 'readOnly',
+          wrappedChatKey: m.wrappedChatKey
+        }));
+        await GroupSheetsService.appendGroupMembers(
+          token,
+          sheetId,
+          groupId,
+          ownerPnIdentifier,
+          title,
+          createdAt,
+          memberInputs,
+          ownerPnIdentifier,
+          accountId
+        );
+
+        for (const m of members) {
+          if (m.memberPnIdentifier === ownerPnIdentifier) continue;
+          const memberCreds = await storageCredentialsService.getCredentials(m.memberPnIdentifier);
+          if (!memberCreds?.credentials) continue;
+          const mAccounts =
+            memberCreds.credentials.googleDriveAccounts ||
+            (memberCreds.credentials.googleDrive ? [memberCreds.credentials.googleDrive] : []);
+          if (mAccounts.length === 0) continue;
+          const mAccount = mAccounts[0];
+          const mAccountId = this.extractAccountId(mAccount);
+          const mToken = {
+            access_token: mAccount.access_token || mAccount.accessToken,
+            refresh_token: mAccount.refresh_token || mAccount.refreshToken,
+            expires_at: mAccount.expires_at,
+            expires_in: mAccount.expires_in
+          };
+          const mMeta = await this.getMetadataFolder(mToken, m.memberPnIdentifier, mAccountId);
+          if (!mMeta?.metadataFolderId) continue;
+          const mSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+            mToken,
+            mMeta.metadataFolderId,
+            m.memberPnIdentifier,
+            mAccountId
+          );
+          await GroupSheetsService.appendGroupMembers(
+            mToken,
+            mSheetId,
+            groupId,
+            ownerPnIdentifier,
+            title,
+            createdAt,
+            [
+              {
+                memberPnIdentifier: m.memberPnIdentifier,
+                accessRole: (m.accessRole === 'readOnly' ? 'readOnly' : 'readWrite') as 'readWrite' | 'readOnly',
+                wrappedChatKey: m.wrappedChatKey
+              }
+            ],
+            m.memberPnIdentifier,
+            mAccountId
+          );
+        }
+
+        const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+        const uniqueMemberPns = [...new Set(members.map((m) => m.memberPnIdentifier))];
+        const preview = `New group: ${title}`;
+
+        const provisionOne = async (memberPn: string): Promise<string> => {
+          const creds =
+            memberPn === ownerPnIdentifier
+              ? ownerCreds
+              : await storageCredentialsService.getCredentials(memberPn);
+          if (!creds?.credentials) {
+            throw new Error(`No credentials for ${memberPn}`);
+          }
+          const mAccounts =
+            creds.credentials.googleDriveAccounts ||
+            (creds.credentials.googleDrive ? [creds.credentials.googleDrive] : []);
+          if (mAccounts.length === 0) {
+            throw new Error(`No Drive for ${memberPn}`);
+          }
+          const mAccount = mAccounts[0];
+          const mAccountId = this.extractAccountId(mAccount);
+          const mToken = {
+            access_token: mAccount.access_token || mAccount.accessToken,
+            refresh_token: mAccount.refresh_token || mAccount.refreshToken,
+            expires_at: mAccount.expires_at,
+            expires_in: mAccount.expires_in
+          };
+          const mMeta = await this.getMetadataFolder(mToken, memberPn, mAccountId);
+          if (!mMeta?.pnFolderId) {
+            throw new Error(`Metadata folder missing for ${memberPn}`);
+          }
+          const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+            mToken,
+            mMeta.pnFolderId,
+            memberPn,
+            mAccountId
+          );
+          const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+            mToken,
+            messagesFolderId,
+            memberPn,
+            mAccountId
+          );
+          const convSheetId = await MessageSheetsService.getOrCreateGroupConversationSheet(
+            mToken,
+            messagesFolderId,
+            groupId,
+            memberPn,
+            mAccountId
+          );
+          await MessageSheetsService.updateGroupInboxEntry(
+            mToken,
+            inboxSheetId,
+            groupId,
+            convSheetId,
+            ownerPnIdentifier,
+            createdAt,
+            memberPn,
+            mAccountId,
+            preview
+          );
+          const memberGroupSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+            mToken,
+            mMeta.metadataFolderId!,
+            memberPn,
+            mAccountId
+          );
+          await GroupSheetsService.updateConversationSpreadsheetId(
+            mToken,
+            memberGroupSheetId,
+            groupId,
+            memberPn,
+            convSheetId,
+            memberPn,
+            mAccountId
+          );
+          return convSheetId;
+        };
+
+        await Promise.all(
+          uniqueMemberPns.map(async (memberPn) => {
+            const convSheetId = await provisionOne(memberPn);
+            await GroupSheetsService.updateConversationSpreadsheetId(
+              token,
+              sheetId,
+              groupId,
+              memberPn,
+              convSheetId,
+              ownerPnIdentifier,
+              accountId
+            );
+          })
+        );
+
+        return res.json({ success: true, groupId, title, createdAt });
+      } catch (error: any) {
+        console.error('Error creating group:', error);
+        return res.status(500).json({
+          error: 'Failed to create group',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production')
+        });
+      }
+    });
+
+    this.app.patch('/api/groups/:groupId/members/:memberPn', async (req, res) => {
+      try {
+        const { groupId, memberPn } = req.params;
+        const { ownerPnIdentifier, accessRole } = req.body as {
+          ownerPnIdentifier?: string;
+          accessRole?: 'readWrite' | 'readOnly';
+        };
+        if (!ownerPnIdentifier || !accessRole) {
+          return res.status(400).json({ error: 'ownerPnIdentifier and accessRole are required' });
+        }
+        const { GroupSheetsService } = await import('./server/modules/groupSheetsService');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+        const credentials = await storageCredentialsService.getCredentials(ownerPnIdentifier);
+        if (!credentials?.credentials) {
+          return res.status(404).json({ error: 'Owner credentials not found' });
+        }
+        const accounts =
+          credentials.credentials.googleDriveAccounts ||
+          (credentials.credentials.googleDrive ? [credentials.credentials.googleDrive] : []);
+        if (accounts.length === 0) {
+          return res.status(404).json({ error: 'No Google Drive connected' });
+        }
+        const account = accounts[0];
+        const accountId = this.extractAccountId(account);
+        const token = {
+          access_token: account.access_token || account.accessToken,
+          refresh_token: account.refresh_token || account.refreshToken,
+          expires_at: account.expires_at,
+          expires_in: account.expires_in
+        };
+        const metadataFolder = await this.getMetadataFolder(token, ownerPnIdentifier, accountId);
+        if (!metadataFolder?.metadataFolderId) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+        const sheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+          token,
+          metadataFolder.metadataFolderId,
+          ownerPnIdentifier,
+          accountId
+        );
+        const ok = await GroupSheetsService.updateMemberAccessRole(
+          token,
+          sheetId,
+          groupId,
+          memberPn,
+          accessRole === 'readOnly' ? 'readOnly' : 'readWrite',
+          ownerPnIdentifier,
+          accountId
+        );
+        if (!ok) {
+          return res.status(404).json({ error: 'Group member not found' });
+        }
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error updating group member:', error);
+        return res.status(500).json({
+          error: 'Failed to update group member',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production')
+        });
+      }
+    });
+
+    const groupMessagesHandler = async (req: express.Request, res: express.Response) => {
+      const { groupId } = req.params;
+      const src = req.method === 'POST' ? (req.body as Record<string, unknown>) : (req.query as Record<string, unknown>);
+      try {
+        const userPnIdentifier = src.userPnIdentifier as string;
+        const spreadsheetId = src.spreadsheetId as string | undefined;
+        const limit = src.limit != null ? parseInt(String(src.limit), 10) : 50;
+        const offset = src.offset != null ? parseInt(String(src.offset), 10) : 0;
+
+        if (!userPnIdentifier || !groupId) {
+          return res.status(400).json({ error: 'userPnIdentifier and groupId are required' });
+        }
+
+        const { GroupSheetsService } = await import('./server/modules/groupSheetsService');
+        const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const userCreds = await storageCredentialsService.getCredentials(userPnIdentifier);
+        if (!userCreds?.credentials) {
+          return res.json({ messages: [], total: 0 });
+        }
+        const accounts =
+          userCreds.credentials.googleDriveAccounts ||
+          (userCreds.credentials.googleDrive ? [userCreds.credentials.googleDrive] : []);
+        if (accounts.length === 0) {
+          return res.json({ messages: [], total: 0 });
+        }
+        const account = accounts[0];
+        const accountId = this.extractAccountId(account);
+        const token = {
+          access_token: account.access_token || account.accessToken,
+          refresh_token: account.refresh_token || account.refreshToken,
+          expires_at: account.expires_at,
+          expires_in: account.expires_in
+        };
+        const metadataFolder = await this.getMetadataFolder(token, userPnIdentifier, accountId);
+        if (!metadataFolder?.metadataFolderId) {
+          return res.json({ messages: [], total: 0 });
+        }
+        const groupsSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+          token,
+          metadataFolder.metadataFolderId,
+          userPnIdentifier,
+          accountId
+        );
+        const selfRow = await GroupSheetsService.getMemberRow(
+          token,
+          groupsSheetId,
+          groupId,
+          userPnIdentifier,
+          userPnIdentifier,
+          accountId
+        );
+        if (!selfRow) {
+          return res.status(403).json({ error: 'Not a member of this group' });
+        }
+
+        let convSheetId = spreadsheetId || selfRow.conversationSpreadsheetId;
+        if (!convSheetId) {
+          const cached = userCreds.credentials.cachedFolderIds || {};
+          let inboxSheetId: string | undefined = cached.inboxSheetId;
+          if (inboxSheetId && metadataFolder.pnFolderId) {
+            const messagesFolderId =
+              cached.messagesFolderId ||
+              (await MessageSheetsService.getOrCreateMessagesFolder(
+                token,
+                metadataFolder.pnFolderId,
+                userPnIdentifier,
+                accountId
+              ));
+            if (!cached.inboxSheetId) {
+              inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+                token,
+                messagesFolderId,
+                userPnIdentifier,
+                accountId
+              );
+            }
+            const entries = await MessageSheetsService.getInboxEntries(
+              token,
+              inboxSheetId!,
+              userPnIdentifier,
+              accountId
+            );
+            const groupEntry = entries.find((e) => e.threadType === 'group' && e.groupId === groupId);
+            convSheetId = groupEntry?.spreadsheetId;
+          }
+        }
+        if (!convSheetId) {
+          return res.json({ messages: [], total: 0 });
+        }
+
+        const result = await MessageSheetsService.getMessages(
+          token,
+          convSheetId,
+          '',
+          '',
+          userPnIdentifier,
+          accountId,
+          { limit, offset, includeTotal: true, relayOnly: true }
+        );
+        return res.json({ messages: result.messages, total: result.total });
+      } catch (error: any) {
+        console.error('Error loading group messages:', error);
+        return res.status(500).json({
+          error: 'Failed to load group messages',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production')
+        });
+      }
+    };
+
+    this.app.get('/api/groups/:groupId/messages', groupMessagesHandler);
+    this.app.post('/api/groups/:groupId/messages', async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const { fromPnIdentifier, encryptedContent, cryptoVersion, userPnIdentifier } = req.body as {
+          fromPnIdentifier?: string;
+          encryptedContent?: string;
+          cryptoVersion?: number;
+          userPnIdentifier?: string;
+        };
+        const senderPn = fromPnIdentifier || userPnIdentifier;
+        if (!senderPn || !groupId) {
+          return res.status(400).json({ error: 'fromPnIdentifier and groupId are required' });
+        }
+        if (cryptoVersion !== 2 || !encryptedContent) {
+          return res.status(400).json({
+            error: 'encryptedContent with cryptoVersion 2 is required (client-side E2E only)'
+          });
+        }
+
+        const { GroupSheetsService } = await import('./server/modules/groupSheetsService');
+        const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const senderCreds = await storageCredentialsService.getCredentials(senderPn);
+        if (!senderCreds?.credentials) {
+          return res.status(404).json({ error: 'Sender credentials not found' });
+        }
+        const senderAccounts =
+          senderCreds.credentials.googleDriveAccounts ||
+          (senderCreds.credentials.googleDrive ? [senderCreds.credentials.googleDrive] : []);
+        if (senderAccounts.length === 0) {
+          return res.status(404).json({ error: 'Sender has no Google Drive connected' });
+        }
+        const senderAccount = senderAccounts[0];
+        const senderAccountId = this.extractAccountId(senderAccount);
+        const senderToken = {
+          access_token: senderAccount.access_token || senderAccount.accessToken,
+          refresh_token: senderAccount.refresh_token || senderAccount.refreshToken,
+          expires_at: senderAccount.expires_at,
+          expires_in: senderAccount.expires_in
+        };
+        const senderMeta = await this.getMetadataFolder(senderToken, senderPn, senderAccountId);
+        if (!senderMeta?.metadataFolderId) {
+          return res.status(404).json({ error: 'Sender metadata folder not found' });
+        }
+        const senderGroupsSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+          senderToken,
+          senderMeta.metadataFolderId,
+          senderPn,
+          senderAccountId
+        );
+        const senderRow = await GroupSheetsService.getMemberRow(
+          senderToken,
+          senderGroupsSheetId,
+          groupId,
+          senderPn,
+          senderPn,
+          senderAccountId
+        );
+        if (!senderRow) {
+          return res.status(403).json({ error: 'Not a member of this group' });
+        }
+        if (senderRow.accessRole === 'readOnly') {
+          return res.status(403).json({ error: 'Read-only members cannot send messages' });
+        }
+
+        const ownerPn = senderRow.ownerPnIdentifier;
+        const ownerCreds = await storageCredentialsService.getCredentials(ownerPn);
+        if (!ownerCreds?.credentials) {
+          return res.status(404).json({ error: 'Group owner credentials not found' });
+        }
+        const ownerAccounts =
+          ownerCreds.credentials.googleDriveAccounts ||
+          (ownerCreds.credentials.googleDrive ? [ownerCreds.credentials.googleDrive] : []);
+        if (ownerAccounts.length === 0) {
+          return res.status(404).json({ error: 'Owner has no Google Drive connected' });
+        }
+        const ownerAccount = ownerAccounts[0];
+        const ownerAccountId = this.extractAccountId(ownerAccount);
+        const ownerToken = {
+          access_token: ownerAccount.access_token || ownerAccount.accessToken,
+          refresh_token: ownerAccount.refresh_token || ownerAccount.refreshToken,
+          expires_at: ownerAccount.expires_at,
+          expires_in: ownerAccount.expires_in
+        };
+        const ownerMeta = await this.getMetadataFolder(ownerToken, ownerPn, ownerAccountId);
+        if (!ownerMeta?.metadataFolderId) {
+          return res.status(404).json({ error: 'Owner metadata folder not found' });
+        }
+        const ownerGroupsSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+          ownerToken,
+          ownerMeta.metadataFolderId,
+          ownerPn,
+          ownerAccountId
+        );
+        const members = await GroupSheetsService.getGroupMembers(
+          ownerToken,
+          ownerGroupsSheetId,
+          groupId,
+          ownerPn,
+          ownerAccountId
+        );
+
+        const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const timestamp = new Date().toISOString();
+        const preview = '[Encrypted message]';
+        const messagePayload = {
+          messageId,
+          fromPnIdentifier: senderPn,
+          toPnIdentifier: groupId,
+          content: '',
+          timestamp,
+          read: false,
+          encryptedContent,
+          cryptoVersion: 2 as const
+        };
+
+        await Promise.all(
+          members.map(async (member) => {
+            const memberPn = member.memberPnIdentifier;
+            const memberCreds = await storageCredentialsService.getCredentials(memberPn);
+            if (!memberCreds?.credentials) return;
+            const mAccounts =
+              memberCreds.credentials.googleDriveAccounts ||
+              (memberCreds.credentials.googleDrive ? [memberCreds.credentials.googleDrive] : []);
+            if (mAccounts.length === 0) return;
+            const mAccount = mAccounts[0];
+            const mAccountId = this.extractAccountId(mAccount);
+            const mToken = {
+              access_token: mAccount.access_token || mAccount.accessToken,
+              refresh_token: mAccount.refresh_token || mAccount.refreshToken,
+              expires_at: mAccount.expires_at,
+              expires_in: mAccount.expires_in
+            };
+            const mMeta = await this.getMetadataFolder(mToken, memberPn, mAccountId);
+            if (!mMeta?.pnFolderId) return;
+
+            let convSheetId = member.conversationSpreadsheetId;
+            if (!convSheetId) {
+              const mGroupsSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+                mToken,
+                mMeta.metadataFolderId!,
+                memberPn,
+                mAccountId
+              );
+              const row = await GroupSheetsService.getMemberRow(
+                mToken,
+                mGroupsSheetId,
+                groupId,
+                memberPn,
+                memberPn,
+                mAccountId
+              );
+              convSheetId = row?.conversationSpreadsheetId;
+            }
+            if (!convSheetId) {
+              const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+                mToken,
+                mMeta.pnFolderId,
+                memberPn,
+                mAccountId
+              );
+              convSheetId = await MessageSheetsService.getOrCreateGroupConversationSheet(
+                mToken,
+                messagesFolderId,
+                groupId,
+                memberPn,
+                mAccountId
+              );
+            }
+
+            await MessageSheetsService.appendMessage(
+              mToken,
+              convSheetId,
+              messagePayload,
+              '',
+              '',
+              memberPn,
+              mAccountId
+            );
+
+            const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+              mToken,
+              mMeta.pnFolderId,
+              memberPn,
+              mAccountId
+            );
+            const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+              mToken,
+              messagesFolderId,
+              memberPn,
+              mAccountId
+            );
+            await MessageSheetsService.updateGroupInboxEntry(
+              mToken,
+              inboxSheetId,
+              groupId,
+              convSheetId,
+              ownerPn,
+              timestamp,
+              memberPn,
+              mAccountId,
+              preview
+            );
+          })
+        );
+
+        return res.json({ success: true, messageId, timestamp });
+      } catch (error: any) {
+        console.error('Error sending group message:', error);
+        return res.status(500).json({
+          error: 'Failed to send group message',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production')
+        });
+      }
+    });
+
+    this.app.patch('/api/groups/:groupId', async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const { ownerPnIdentifier, title } = req.body as { ownerPnIdentifier?: string; title?: string };
+        if (!ownerPnIdentifier || !title?.trim()) {
+          return res.status(400).json({ error: 'ownerPnIdentifier and title are required' });
+        }
+        const { GroupSheetsService } = await import('./server/modules/groupSheetsService');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+        const credentials = await storageCredentialsService.getCredentials(ownerPnIdentifier);
+        if (!credentials?.credentials) {
+          return res.status(404).json({ error: 'Owner credentials not found' });
+        }
+        const accounts =
+          credentials.credentials.googleDriveAccounts ||
+          (credentials.credentials.googleDrive ? [credentials.credentials.googleDrive] : []);
+        if (accounts.length === 0) {
+          return res.status(404).json({ error: 'No Google Drive connected' });
+        }
+        const account = accounts[0];
+        const accountId = this.extractAccountId(account);
+        const token = {
+          access_token: account.access_token || account.accessToken,
+          refresh_token: account.refresh_token || account.refreshToken,
+          expires_at: account.expires_at,
+          expires_in: account.expires_in
+        };
+        const metadataFolder = await this.getMetadataFolder(token, ownerPnIdentifier, accountId);
+        if (!metadataFolder?.metadataFolderId) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+        const sheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+          token,
+          metadataFolder.metadataFolderId,
+          ownerPnIdentifier,
+          accountId
+        );
+        await GroupSheetsService.updateGroupTitle(
+          token,
+          sheetId,
+          groupId,
+          title.trim(),
+          ownerPnIdentifier,
+          accountId
+        );
+        const members = await GroupSheetsService.getGroupMembers(
+          token,
+          sheetId,
+          groupId,
+          ownerPnIdentifier,
+          accountId
+        );
+        for (const m of members) {
+          if (m.memberPnIdentifier === ownerPnIdentifier) continue;
+          const memberCreds = await storageCredentialsService.getCredentials(m.memberPnIdentifier);
+          if (!memberCreds?.credentials) continue;
+          const mAccounts =
+            memberCreds.credentials.googleDriveAccounts ||
+            (memberCreds.credentials.googleDrive ? [memberCreds.credentials.googleDrive] : []);
+          if (mAccounts.length === 0) continue;
+          const mAccount = mAccounts[0];
+          const mAccountId = this.extractAccountId(mAccount);
+          const mToken = {
+            access_token: mAccount.access_token || mAccount.accessToken,
+            refresh_token: mAccount.refresh_token || mAccount.refreshToken,
+            expires_at: mAccount.expires_at,
+            expires_in: mAccount.expires_in
+          };
+          const mMeta = await this.getMetadataFolder(mToken, m.memberPnIdentifier, mAccountId);
+          if (!mMeta?.metadataFolderId) continue;
+          const mSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+            mToken,
+            mMeta.metadataFolderId,
+            m.memberPnIdentifier,
+            mAccountId
+          );
+          await GroupSheetsService.updateGroupTitle(
+            mToken,
+            mSheetId,
+            groupId,
+            title.trim(),
+            m.memberPnIdentifier,
+            mAccountId
+          );
+        }
+        return res.json({ success: true, title: title.trim() });
+      } catch (error: any) {
+        console.error('Error updating group title:', error);
+        return res.status(500).json({
+          error: 'Failed to update group',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production')
+        });
+      }
+    });
+
+    this.app.post('/api/groups/:groupId/members', async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const { ownerPnIdentifier, memberPnIdentifier, wrappedChatKey, accessRole } = req.body as {
+          ownerPnIdentifier?: string;
+          memberPnIdentifier?: string;
+          wrappedChatKey?: string;
+          accessRole?: 'readWrite' | 'readOnly';
+        };
+        if (!ownerPnIdentifier || !memberPnIdentifier || !wrappedChatKey) {
+          return res.status(400).json({
+            error: 'ownerPnIdentifier, memberPnIdentifier, and wrappedChatKey are required'
+          });
+        }
+
+        const { GroupSheetsService } = await import('./server/modules/groupSheetsService');
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
+        const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const ownerCreds = await storageCredentialsService.getCredentials(ownerPnIdentifier);
+        if (!ownerCreds?.credentials) {
+          return res.status(404).json({ error: 'Owner credentials not found' });
+        }
+        const accounts =
+          ownerCreds.credentials.googleDriveAccounts ||
+          (ownerCreds.credentials.googleDrive ? [ownerCreds.credentials.googleDrive] : []);
+        if (accounts.length === 0) {
+          return res.status(404).json({ error: 'Owner has no Google Drive connected' });
+        }
+        const account = accounts[0];
+        const accountId = this.extractAccountId(account);
+        const token = {
+          access_token: account.access_token || account.accessToken,
+          refresh_token: account.refresh_token || account.refreshToken,
+          expires_at: account.expires_at,
+          expires_in: account.expires_in
+        };
+        const metadataFolder = await this.getMetadataFolder(token, ownerPnIdentifier, accountId);
+        if (!metadataFolder?.metadataFolderId) {
+          return res.status(404).json({ error: 'Owner metadata folder not found' });
+        }
+
+        const connected = await ConnectionsService.areConnected(
+          token.access_token,
+          metadataFolder.metadataFolderId,
+          ownerPnIdentifier,
+          memberPnIdentifier
+        );
+        if (!connected) {
+          return res.status(403).json({ error: 'Owner must be connected to the new member', requiresConnection: true });
+        }
+
+        const sheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+          token,
+          metadataFolder.metadataFolderId,
+          ownerPnIdentifier,
+          accountId
+        );
+        const ownerRows = await GroupSheetsService.listGroupsForUser(
+          token,
+          sheetId,
+          ownerPnIdentifier,
+          accountId
+        );
+        const groupMeta = ownerRows.find((r) => r.groupId === groupId);
+        if (!groupMeta) {
+          return res.status(404).json({ error: 'Group not found' });
+        }
+        const title = groupMeta.title;
+        const createdAt = groupMeta.createdAt;
+        const role = accessRole === 'readOnly' ? 'readOnly' : 'readWrite';
+
+        await GroupSheetsService.appendSingleMember(
+          token,
+          sheetId,
+          groupId,
+          ownerPnIdentifier,
+          title,
+          createdAt,
+          { memberPnIdentifier, accessRole: role, wrappedChatKey },
+          ownerPnIdentifier,
+          accountId
+        );
+
+        const memberCreds = await storageCredentialsService.getCredentials(memberPnIdentifier);
+        if (memberCreds?.credentials) {
+          const mAccounts =
+            memberCreds.credentials.googleDriveAccounts ||
+            (memberCreds.credentials.googleDrive ? [memberCreds.credentials.googleDrive] : []);
+          if (mAccounts.length > 0) {
+            const mAccount = mAccounts[0];
+            const mAccountId = this.extractAccountId(mAccount);
+            const mToken = {
+              access_token: mAccount.access_token || mAccount.accessToken,
+              refresh_token: mAccount.refresh_token || mAccount.refreshToken,
+              expires_at: mAccount.expires_at,
+              expires_in: mAccount.expires_in
+            };
+            const mMeta = await this.getMetadataFolder(mToken, memberPnIdentifier, mAccountId);
+            if (mMeta?.metadataFolderId) {
+              const mSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+                mToken,
+                mMeta.metadataFolderId,
+                memberPnIdentifier,
+                mAccountId
+              );
+              await GroupSheetsService.appendSingleMember(
+                mToken,
+                mSheetId,
+                groupId,
+                ownerPnIdentifier,
+                title,
+                createdAt,
+                { memberPnIdentifier, accessRole: role, wrappedChatKey },
+                memberPnIdentifier,
+                mAccountId
+              );
+            }
+          }
+        }
+
+        const preview = `Added to group: ${title}`;
+        const memberPn = memberPnIdentifier;
+        const creds = memberCreds;
+        if (creds?.credentials && metadataFolder.pnFolderId) {
+          const mAccounts =
+            creds.credentials.googleDriveAccounts ||
+            (creds.credentials.googleDrive ? [creds.credentials.googleDrive] : []);
+          const mAccount = mAccounts[0];
+          const mAccountId = this.extractAccountId(mAccount);
+          const mToken = {
+            access_token: mAccount.access_token || mAccount.accessToken,
+            refresh_token: mAccount.refresh_token || mAccount.refreshToken,
+            expires_at: mAccount.expires_at,
+            expires_in: mAccount.expires_in
+          };
+          const mMeta = await this.getMetadataFolder(mToken, memberPn, mAccountId);
+          if (mMeta?.pnFolderId) {
+            const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+              mToken,
+              mMeta.pnFolderId,
+              memberPn,
+              mAccountId
+            );
+            const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+              mToken,
+              messagesFolderId,
+              memberPn,
+              mAccountId
+            );
+            const convSheetId = await MessageSheetsService.getOrCreateGroupConversationSheet(
+              mToken,
+              messagesFolderId,
+              groupId,
+              memberPn,
+              mAccountId
+            );
+            await MessageSheetsService.updateGroupInboxEntry(
+              mToken,
+              inboxSheetId,
+              groupId,
+              convSheetId,
+              ownerPnIdentifier,
+              new Date().toISOString(),
+              memberPn,
+              mAccountId,
+              preview
+            );
+            const mGroupsSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+              mToken,
+              mMeta.metadataFolderId!,
+              memberPn,
+              mAccountId
+            );
+            await GroupSheetsService.updateConversationSpreadsheetId(
+              mToken,
+              mGroupsSheetId,
+              groupId,
+              memberPn,
+              convSheetId,
+              memberPn,
+              mAccountId
+            );
+            await GroupSheetsService.updateConversationSpreadsheetId(
+              token,
+              sheetId,
+              groupId,
+              memberPn,
+              convSheetId,
+              ownerPnIdentifier,
+              accountId
+            );
+          }
+        }
+
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error adding group member:', error);
+        return res.status(500).json({
+          error: 'Failed to add group member',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production')
+        });
+      }
+    });
+
+    this.app.delete('/api/groups/:groupId/members/:memberPn', async (req, res) => {
+      try {
+        const { groupId, memberPn } = req.params;
+        const ownerPnIdentifier = (req.body?.ownerPnIdentifier || req.query.ownerPnIdentifier) as string;
+        if (!ownerPnIdentifier) {
+          return res.status(400).json({ error: 'ownerPnIdentifier is required' });
+        }
+        if (memberPn === ownerPnIdentifier) {
+          return res.status(400).json({ error: 'Owner cannot be removed from the group' });
+        }
+
+        const { GroupSheetsService } = await import('./server/modules/groupSheetsService');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        const ownerCreds = await storageCredentialsService.getCredentials(ownerPnIdentifier);
+        if (!ownerCreds?.credentials) {
+          return res.status(404).json({ error: 'Owner credentials not found' });
+        }
+        const accounts =
+          ownerCreds.credentials.googleDriveAccounts ||
+          (ownerCreds.credentials.googleDrive ? [ownerCreds.credentials.googleDrive] : []);
+        if (accounts.length === 0) {
+          return res.status(404).json({ error: 'No Google Drive connected' });
+        }
+        const account = accounts[0];
+        const accountId = this.extractAccountId(account);
+        const token = {
+          access_token: account.access_token || account.accessToken,
+          refresh_token: account.refresh_token || account.refreshToken,
+          expires_at: account.expires_at,
+          expires_in: account.expires_in
+        };
+        const metadataFolder = await this.getMetadataFolder(token, ownerPnIdentifier, accountId);
+        if (!metadataFolder?.metadataFolderId) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+        const sheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+          token,
+          metadataFolder.metadataFolderId,
+          ownerPnIdentifier,
+          accountId
+        );
+        const okOwner = await GroupSheetsService.removeGroupMember(
+          token,
+          sheetId,
+          groupId,
+          memberPn,
+          ownerPnIdentifier,
+          accountId
+        );
+        const memberCreds = await storageCredentialsService.getCredentials(memberPn);
+        if (memberCreds?.credentials) {
+          const mAccounts =
+            memberCreds.credentials.googleDriveAccounts ||
+            (memberCreds.credentials.googleDrive ? [memberCreds.credentials.googleDrive] : []);
+          if (mAccounts.length > 0) {
+            const mAccount = mAccounts[0];
+            const mAccountId = this.extractAccountId(mAccount);
+            const mToken = {
+              access_token: mAccount.access_token || mAccount.accessToken,
+              refresh_token: mAccount.refresh_token || mAccount.refreshToken,
+              expires_at: mAccount.expires_at,
+              expires_in: mAccount.expires_in
+            };
+            const mMeta = await this.getMetadataFolder(mToken, memberPn, mAccountId);
+            if (mMeta?.metadataFolderId) {
+              const mSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+                mToken,
+                mMeta.metadataFolderId,
+                memberPn,
+                mAccountId
+              );
+              await GroupSheetsService.removeGroupMember(
+                mToken,
+                mSheetId,
+                groupId,
+                memberPn,
+                memberPn,
+                mAccountId
+              );
+            }
+          }
+        }
+        if (!okOwner) {
+          return res.status(404).json({ error: 'Group member not found' });
+        }
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error removing group member:', error);
+        return res.status(500).json({
+          error: 'Failed to remove group member',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
     });
@@ -14176,9 +15174,14 @@ class ProductionServer {
     this.app.post('/api/connections/:connectionId/accept', async (req, res) => {
       try {
         const { connectionId } = req.params;
-        const { userPnIdentifier } = req.body;
+        const { userPnIdentifier, kemCiphertext, kemAlgId } = req.body;
         if (!connectionId || !userPnIdentifier) {
           return res.status(400).json({ error: 'connectionId and userPnIdentifier are required' });
+        }
+        if (!kemCiphertext || kemAlgId !== 'ML-KEM-768') {
+          return res.status(400).json({
+            error: 'kemCiphertext and kemAlgId (ML-KEM-768) are required'
+          });
         }
 
         const { ConnectionsService } = await import('./server/modules/connectionsService');
@@ -14292,16 +15295,7 @@ class ProductionServer {
 
         // Check status - allow accepting if it's pending_received, pending_sent (mutual request), or already accepted (idempotent)
         if (connection.status === 'accepted') {
-          // Already accepted - but check if it has a shared secret
-          if (!connection.sharedSecret) {
-            console.log(`[AcceptConnection] Connection already accepted but missing shared secret, generating one`);
-            // Generate shared secret for existing accepted connection
-            const crypto = await import('crypto');
-            const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
-            const rawSecret = crypto.randomBytes(32).toString('base64');
-            const sharedSecret = MetadataEncryption.encryptField(rawSecret);
-            
-            // Update with shared secret
+          if (!connection.kemCiphertext && kemCiphertext) {
             const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
             const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
               token,
@@ -14317,52 +15311,10 @@ class ProductionServer {
               pnIdentifier,
               accountId,
               connection.acceptedAt,
-              sharedSecret
+              undefined,
+              kemCiphertext
             );
-            
-            // Also update other user's connection with the same secret
-            // Normalize connection.userPnIdentifier when reading (handles legacy data)
-            if (!connection.userPnIdentifier) {
-              console.error('[AcceptConnection] Connection missing userPnIdentifier, cannot update other user:', connection);
-              throw new Error('Connection missing userPnIdentifier');
-            }
-            const otherUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-') ? connection.userPnIdentifier : `pn-${connection.userPnIdentifier}`;
-            connection.userPnIdentifier = otherUserPnIdentifier;
-            const otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
-            if (otherUserCredentials?.credentials) {
-              const otherGoogleDriveAccounts = otherUserCredentials.credentials.googleDriveAccounts || 
-                (otherUserCredentials.credentials.googleDrive ? [otherUserCredentials.credentials.googleDrive] : []);
-              if (otherGoogleDriveAccounts.length > 0) {
-                const otherAccount = otherGoogleDriveAccounts[0];
-                const otherAccountId = (otherAccount as any).backendId || (otherAccount as any).keyPrefix || (otherAccount as any).accountId || (otherAccount as any).id || undefined;
-                // Build token object for other user
-                const otherToken = {
-                  access_token: otherAccount.access_token || otherAccount.accessToken,
-                  refresh_token: otherAccount.refresh_token || otherAccount.refreshToken,
-                  expires_at: otherAccount.expires_at,
-                  expires_in: otherAccount.expires_in
-                };
-                const otherAccessToken = otherToken.access_token; // Keep for backward compatibility
-                const otherMetadataFolder = await this.getMetadataFolder(otherToken, otherUserPnIdentifier, otherAccountId);
-                if (otherMetadataFolder) {
-                  // Use normalized pn-identifiers (pnIdentifier was normalized at start of function)
-                  await ConnectionsService.updateOtherUserConnectionStatus(
-                    otherAccessToken,
-                    otherMetadataFolder.metadataFolderId,
-                    otherUserPnIdentifier, // Use normalized
-                    connectionId,
-                    'accepted',
-                    pnIdentifier, // Use normalized pn-identifier from start of function
-                    sharedSecret,
-                    otherAccountId
-                  );
-                }
-              }
-            }
-            
-            console.log(`[AcceptConnection] Generated and stored shared secret for existing accepted connection ${connectionId}`);
           }
-          console.log(`[AcceptConnection] Connection already accepted, returning success`);
           return res.json({ success: true, message: 'Connection already accepted' });
         }
 
@@ -14402,21 +15354,14 @@ class ProductionServer {
           }
         );
 
-        // Accept connection (updates acceptor's sheet and generates shared secret)
-        const sharedSecret = await ConnectionsService.acceptConnectionRequest(
+        await ConnectionsService.acceptConnectionRequest(
           token.access_token,
           metadataFolderId,
-          pnIdentifier, // Use normalized pn-identifier
+          pnIdentifier,
           connectionId,
+          kemCiphertext,
           accountId
         );
-
-        if (!sharedSecret) {
-          return res.status(500).json({
-            error: 'Shared secret not generated',
-            error_description: 'Connection accepted but shared secret was not generated'
-          });
-        }
 
         // Get connection details from acceptor's sheet for syncing to other user
         const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
@@ -14505,20 +15450,20 @@ class ProductionServer {
             otherUserPnIdentifier,
             otherAccountId,
             acceptedAt,
-            sharedSecret
+            undefined,
+            kemCiphertext
           );
         } else {
-          // Other user doesn't have this connection - add it
           await ConnectionsSheetsService.addConnection(
             otherToken,
             otherSpreadsheetId,
             {
               connectionId,
-              userPnIdentifier: pnIdentifier, // Use normalized pn-identifier (acceptor's identifier - the other user in this connection)
+              userPnIdentifier: pnIdentifier,
               status: 'accepted',
               createdAt,
               acceptedAt,
-              sharedSecret
+              kemCiphertext
             },
             otherUserPnIdentifier, // Sheet owner's identifier
             otherAccountId
@@ -14571,16 +15516,6 @@ class ProductionServer {
           if (!connectionId) {
             console.warn('[AcceptConnection] No connectionId available for system messages');
             return res.json({ success: true });
-          }
-          
-          // Decrypt shared secret for restoration
-          let decryptedSharedSecret: string | undefined;
-          if (sharedSecret) {
-            try {
-              decryptedSharedSecret = MetadataEncryption.decryptField(sharedSecret);
-            } catch (e) {
-              console.warn('[AcceptConnection] Failed to decrypt shared secret for restoration:', e);
-            }
           }
           
           try {
@@ -14758,7 +15693,7 @@ class ProductionServer {
                   read: false
                 },
                 connectionId, // Use the connection ID
-                sharedSecret || '', // Use the shared secret if available
+                '',
                 pnIdentifier,
                 accountId
               );
@@ -14783,7 +15718,7 @@ class ProductionServer {
                   pnIdentifier,
                   accountId,
                   systemMessageContent,
-                  sharedSecret // Encrypted shared secret
+                  kemCiphertext
                 );
                 console.log('[AcceptConnection] Updated acceptor inbox');
               } catch (inboxError: any) {
@@ -14837,8 +15772,7 @@ class ProductionServer {
                   });
                   
                   // If sheet is empty or doesn't exist, and we have acceptor's access, try to restore
-                  if ((!existingMessages.data.values || existingMessages.data.values.length === 0) && 
-                      userAccessToken && decryptedSharedSecret) {
+                  if (false) {
                     try {
                       // Find acceptor's pN folder
                       const acceptorPnFolderName = `par Noir - ${userCredentials.identityId}`;
@@ -14913,7 +15847,7 @@ class ProductionServer {
                     read: false
                   },
                   connectionId, // Use the connection ID
-                  sharedSecret || '', // Use the shared secret if available
+                  '',
                   otherUserPnIdentifier,
                   otherAccountId
                 );
@@ -14938,7 +15872,7 @@ class ProductionServer {
                     otherUserPnIdentifier,
                     otherAccountId,
                     systemMessageContent2,
-                    sharedSecret // Encrypted shared secret
+                    kemCiphertext
                   );
                   console.log('[AcceptConnection] Updated requester inbox');
                 } catch (inboxError: any) {

@@ -10,6 +10,8 @@ export interface UserProfile {
   profileImageFileId?: string;
   updatedAt: string;
   storageTier?: 'free' | 'feed' | 'self-hosted';
+  /** ML-KEM-768 public key (base64) for E2E messaging. */
+  mlKemPublicKey?: string;
 }
 
 export class ProfileService {

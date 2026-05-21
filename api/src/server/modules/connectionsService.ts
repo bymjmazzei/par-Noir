@@ -13,7 +13,8 @@ export interface Connection {
   status: 'pending_sent' | 'pending_received' | 'accepted' | 'blocked';
   createdAt: string;
   acceptedAt?: string;
-  sharedSecret?: string; // Encrypted shared secret (new field)
+  sharedSecret?: string; // Deprecated
+  kemCiphertext?: string;
 }
 
 export interface ConnectionsFile {
@@ -290,8 +291,9 @@ export class ConnectionsService {
     acceptorMetadataFolder: string,
     acceptorPnIdentifier: string,
     connectionId: string,
+    kemCiphertext: string,
     accountId?: string
-  ): Promise<string> {
+  ): Promise<void> {
     // Build token object from accessToken string (backward compatibility)
     const token: GoogleDriveToken = { access_token: acceptorAccessToken };
     // Get or create connections sheet
@@ -327,15 +329,7 @@ export class ConnectionsService {
       // Allow accepting if it's pending_received or pending_sent (mutual request)
       if (connection.status !== 'pending_received' && connection.status !== 'pending_sent') {
         if (connection.status === 'accepted') {
-          // Already accepted - but check if it has a shared secret
-          if (!connection.sharedSecret) {
-            // Generate shared secret for existing accepted connection
-            const crypto = await import('crypto');
-            const { MetadataEncryption } = await import('../utils/metadataEncryption');
-            const rawSecret = crypto.randomBytes(32).toString('base64');
-            const sharedSecret = MetadataEncryption.encryptField(rawSecret);
-            
-            // Update with shared secret
+          if (!connection.kemCiphertext && kemCiphertext) {
             await ConnectionsSheetsService.updateConnectionStatus(
               token,
               spreadsheetId,
@@ -344,41 +338,21 @@ export class ConnectionsService {
               acceptorPnIdentifier,
               accountId,
               connection.acceptedAt || new Date().toISOString(),
-              sharedSecret
+              undefined,
+              kemCiphertext
             );
-            console.log(`[ConnectionsService] Generated shared secret for existing accepted connection ${connectionId}`);
-            // Continue to update other user's connection below (don't return early)
-          } else {
-            // Already accepted with shared secret - idempotent
-            return connection.sharedSecret!;
           }
-        } else {
-          throw new Error(`Connection request is not in acceptable status. Current status: ${connection.status}. Only pending_received or pending_sent connections can be accepted.`);
+          return;
         }
+        throw new Error(`Connection request is not in acceptable status. Current status: ${connection.status}. Only pending_received or pending_sent connections can be accepted.`);
+      }
+
+      if (!kemCiphertext || kemCiphertext.trim() === '') {
+        throw new Error('kemCiphertext is required to accept a connection (client E2E)');
       }
 
       const now = new Date().toISOString();
 
-      // Generate shared secret if connection doesn't already have one
-      let sharedSecret: string | undefined;
-      if (!connection.sharedSecret) {
-        const crypto = await import('crypto');
-        const { MetadataEncryption } = await import('../utils/metadataEncryption');
-        
-        // Generate random 32-byte shared secret
-        const rawSecret = crypto.randomBytes(32).toString('base64');
-        
-        // Encrypt shared secret using MetadataEncryption
-        sharedSecret = MetadataEncryption.encryptField(rawSecret);
-        
-        console.log(`[ConnectionsService] Generated shared secret for connection ${connectionId}`);
-      } else {
-        // Connection already has shared secret (idempotent)
-        sharedSecret = connection.sharedSecret;
-        console.log(`[ConnectionsService] Connection ${connectionId} already has shared secret`);
-      }
-
-      // Update connection status and shared secret in Sheets
       await ConnectionsSheetsService.updateConnectionStatus(
         token,
         spreadsheetId,
@@ -387,11 +361,9 @@ export class ConnectionsService {
         acceptorPnIdentifier,
         accountId,
         now,
-        sharedSecret
+        undefined,
+        kemCiphertext
       );
-
-      // Return the shared secret so the API endpoint can sync it to the other user
-      return sharedSecret;
   }
 
   /**
@@ -405,7 +377,7 @@ export class ConnectionsService {
     connectionId: string,
     newStatus: 'accepted' | 'blocked',
     acceptorPnIdentifier?: string, // The pn identifier of the user who accepted (to create connection if missing)
-    sharedSecret?: string, // Encrypted shared secret to store in connection
+    kemCiphertext?: string,
     accountId?: string
   ): Promise<void> {
     // Use pn identifiers directly (already normalized)
@@ -444,7 +416,7 @@ export class ConnectionsService {
             status: 'accepted',
             createdAt: new Date().toISOString(),
             acceptedAt: new Date().toISOString(),
-            sharedSecret: sharedSecret
+            kemCiphertext: kemCiphertext
           },
           otherUserPnIdentifier,
           accountId
@@ -454,7 +426,6 @@ export class ConnectionsService {
         throw new Error('Connection not found');
       }
 
-      // Update connection status and shared secret
       const now = new Date().toISOString();
       await ConnectionsSheetsService.updateConnectionStatus(
         token,
@@ -464,7 +435,8 @@ export class ConnectionsService {
         otherUserPnIdentifier,
         accountId,
         newStatus === 'accepted' ? now : undefined,
-        sharedSecret
+        undefined,
+        kemCiphertext
       );
   }
 

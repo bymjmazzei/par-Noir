@@ -358,7 +358,11 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
 
     setLoading(true);
     try {
-      await acceptConnectionRequest(connectionStatus.connectionId, userState.pnIdentifier);
+      await acceptConnectionRequest(
+        connectionStatus.connectionId,
+        userState.pnIdentifier,
+        creatorId
+      );
       setConnectionStatus({ status: 'connected', connectionId: connectionStatus.connectionId });
       success('Connection accepted!');
       setIsOpen(false);

@@ -2,17 +2,19 @@
  * Inbox Cache Service
  * Caches inbox list in localStorage for instant loading
  * Stores participantPnIdentifier, lastMessageAt, and conversation credentials
- * (spreadsheetId, connectionId, encrypted sharedSecret) for fast conversation loading.
- * Note: sharedSecret is encrypted with AES-256-GCM server-side and is safe to cache.
+ * (spreadsheetId, connectionId, kemCiphertext) for fast conversation loading.
  */
 
 export interface CachedInboxEntry {
+  threadType?: 'dm' | 'group';
   participantPnIdentifier: string;
   lastMessageAt: string;
-  // Conversation credentials for optimized API path (skips folder lookups)
   spreadsheetId?: string;
   connectionId?: string;
-  sharedSecret?: string; // Encrypted (AES-256-GCM), safe to cache
+  kemCiphertext?: string;
+  groupId?: string;
+  groupTitle?: string;
+  ownerPnIdentifier?: string;
 }
 
 class InboxCacheService {

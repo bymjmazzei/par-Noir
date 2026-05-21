@@ -6,6 +6,8 @@
 import { PNOAuthService } from './pnOAuthService';
 import { API_ENDPOINT } from '../config/api';
 import { inboxCacheService } from './inboxCacheService';
+import { encryptOutgoingMessage, decryptIncomingMessage } from './dmCryptoClient';
+import { isDmIdentityReady } from './dmIdentitySession';
 
 // Helper function to get auth headers
 function getAuthHeaders(): HeadersInit {
@@ -43,15 +45,21 @@ export interface MessageRequest {
 }
 
 export interface MessageThread {
+  /** dm | group — default dm for legacy */
+  threadType?: 'dm' | 'group';
   participantPnIdentifier: string;
   participantName?: string;
   lastMessage?: Message;
   unreadCount: number;
   messages: Message[];
-  // Inbox optimization fields
   spreadsheetId?: string;
   connectionId?: string;
-  sharedSecret?: string; // Encrypted, for caching
+  kemCiphertext?: string;
+  groupId?: string;
+  groupTitle?: string;
+  ownerPnIdentifier?: string;
+  accessRole?: 'readWrite' | 'readOnly';
+  wrappedChatKey?: string;
 }
 
 /**
@@ -76,6 +84,73 @@ export async function getMessages(userPnIdentifier: string): Promise<Message[]> 
 }
 
 /**
+ * Merged DM + group inbox threads, sorted by lastMessageAt.
+ */
+export async function getInboxThreads(userPnIdentifier: string): Promise<MessageThread[]> {
+  const { listGroups, groupRecordsForUser } = await import('./groupService');
+  const [dmThreads, groups] = await Promise.all([
+    getMessageThreads(userPnIdentifier),
+    listGroups(userPnIdentifier).catch(() => [] as import('./groupService').GroupRecord[])
+  ]);
+
+  const groupById = groupRecordsForUser(groups, userPnIdentifier);
+  const dmOnly = dmThreads.filter((t) => t.threadType !== 'group');
+  const groupIdsInInbox = new Set(
+    dmThreads.filter((t) => t.threadType === 'group').map((t) => t.groupId || t.participantPnIdentifier)
+  );
+
+  const groupThreads: MessageThread[] = [];
+
+  for (const conv of dmThreads) {
+    if (conv.threadType !== 'group') continue;
+    const gid = conv.groupId || conv.participantPnIdentifier;
+    const meta = groupById.get(gid);
+    groupThreads.push({
+      threadType: 'group',
+      participantPnIdentifier: gid,
+      participantName: conv.groupTitle || meta?.title || 'Group',
+      lastMessage: conv.lastMessage,
+      unreadCount: conv.unreadCount || 0,
+      messages: [],
+      spreadsheetId: conv.spreadsheetId,
+      connectionId: conv.ownerPnIdentifier || conv.connectionId,
+      groupId: gid,
+      groupTitle: conv.groupTitle || meta?.title || 'Group',
+      ownerPnIdentifier: conv.ownerPnIdentifier || conv.connectionId,
+      accessRole: meta?.accessRole || 'readWrite',
+      wrappedChatKey: meta?.wrappedChatKey || ''
+    });
+    groupIdsInInbox.add(gid);
+  }
+
+  for (const [gid, meta] of groupById) {
+    if (groupIdsInInbox.has(gid)) continue;
+    groupThreads.push({
+      threadType: 'group',
+      participantPnIdentifier: gid,
+      participantName: meta.title,
+      unreadCount: 0,
+      messages: [],
+      spreadsheetId: meta.conversationSpreadsheetId,
+      connectionId: meta.ownerPnIdentifier,
+      groupId: gid,
+      groupTitle: meta.title,
+      ownerPnIdentifier: meta.ownerPnIdentifier,
+      accessRole: meta.accessRole,
+      wrappedChatKey: meta.wrappedChatKey
+    });
+  }
+
+  const merged = [...dmOnly, ...groupThreads];
+  merged.sort((a, b) => {
+    const ta = a.lastMessage?.timestamp || '';
+    const tb = b.lastMessage?.timestamp || '';
+    return new Date(tb).getTime() - new Date(ta).getTime();
+  });
+  return merged;
+}
+
+/**
  * Get message threads (conversations)
  */
 export async function getMessageThreads(userPnIdentifier: string): Promise<MessageThread[]> {
@@ -94,15 +169,20 @@ export async function getMessageThreads(userPnIdentifier: string): Promise<Messa
     
     // Convert to MessageThread format
     return conversations.map((conv: any) => ({
+      threadType: conv.threadType === 'group' ? 'group' : 'dm',
       participantPnIdentifier: conv.participantPnIdentifier || conv.otherUserPnIdentifier,
       participantName: conv.participantName,
       lastMessage: conv.lastMessage,
       unreadCount: conv.unreadCount || 0,
       messages: [],
-      // Inbox optimization fields
       spreadsheetId: conv.spreadsheetId,
       connectionId: conv.connectionId,
-      sharedSecret: conv.sharedSecret // Encrypted, for caching
+      kemCiphertext: conv.kemCiphertext,
+      groupId: conv.groupId,
+      groupTitle: conv.groupTitle,
+      ownerPnIdentifier: conv.ownerPnIdentifier,
+      accessRole: conv.accessRole,
+      wrappedChatKey: conv.wrappedChatKey
     }));
   } catch (error) {
     console.error('Failed to get message threads:', error);
@@ -113,7 +193,7 @@ export async function getMessageThreads(userPnIdentifier: string): Promise<Messa
 /**
  * Get messages in a conversation with a specific user
  * @param connectionId - Optional: connectionId from inbox (optimized path)
- * @param sharedSecret - Optional: encrypted sharedSecret from inbox (optimized path)
+ * @param kemCiphertext - Optional: KEM ciphertext from inbox (optimized path)
  * @param spreadsheetId - Optional: spreadsheetId from inbox (optimized path)
  * Uses POST with body when cached credentials provided (avoids URL length/encoding issues).
  */
@@ -123,34 +203,22 @@ export async function getConversationMessages(
   limit?: number,
   offset?: number,
   connectionId?: string,
-  sharedSecret?: string,
+  kemCiphertext?: string,
   spreadsheetId?: string
 ): Promise<{ messages: Message[]; total: number }> {
-  // Check if all credentials are present and non-empty (required for optimized path)
-  // Must have all three: connectionId, sharedSecret, and spreadsheetId
-  const hasCached = !!(connectionId && 
-                       sharedSecret && 
-                       spreadsheetId && 
-                       connectionId.trim() !== '' && 
-                       sharedSecret.trim() !== '' && 
-                       spreadsheetId.trim() !== '');
-  
-  if (hasCached) {
-    console.log('[getConversationMessages] ✅ Using optimized path with cached credentials');
-  } else {
-    console.warn('[getConversationMessages] ⚠️ Using fallback path (missing credentials)', {
-      connectionId: connectionId ? `${connectionId.substring(0, 10)}...` : 'missing',
-      hasSharedSecret: !!sharedSecret,
-      spreadsheetId: spreadsheetId ? `${spreadsheetId.substring(0, 10)}...` : 'missing'
-    });
-  }
-  
+  const hasCached = !!(
+    connectionId &&
+    spreadsheetId &&
+    connectionId.trim() !== '' &&
+    spreadsheetId.trim() !== ''
+  );
+
   const body = {
     userPnIdentifier,
     participantPnIdentifier,
     ...(limit != null && { limit }),
     ...(offset != null && { offset }),
-    ...(hasCached && { connectionId, sharedSecret, spreadsheetId })
+    ...(hasCached && { connectionId, spreadsheetId })
   };
 
   const response = hasCached
@@ -174,10 +242,33 @@ export async function getConversationMessages(
   }
 
   const result = await response.json();
-  return {
-    messages: result.messages || [],
-    total: result.total || 0
-  };
+  const raw = result.messages || [];
+  const kem =
+    kemCiphertext ||
+    (await getMessageThreads(userPnIdentifier)).find(
+      (t) => t.participantPnIdentifier === participantPnIdentifier
+    )?.kemCiphertext;
+
+  const messages: Message[] = await Promise.all(
+    raw.map(async (row: Message & { encryptedContent?: string; cryptoVersion?: number }) => {
+      const enc = row.encryptedContent || row.content || '';
+      let content = '';
+      if (connectionId && enc) {
+        try {
+          content = await decryptIncomingMessage(enc, connectionId, kem);
+        } catch {
+          content = '[Unable to decrypt message]';
+        }
+      }
+      return {
+        ...row,
+        content,
+        encrypted: true
+      };
+    })
+  );
+
+  return { messages, total: result.total || 0 };
 }
 
 /**
@@ -198,8 +289,28 @@ export async function sendMessage(
   fromPnIdentifier: string,
   toPnIdentifier: string,
   content: string,
-  mediaFileId?: string
+  mediaFileId?: string,
+  connectionId?: string,
+  kemCiphertext?: string
 ): Promise<Message> {
+  if (!isDmIdentityReady()) {
+    throw new Error('Unlock messaging with your passcode before sending');
+  }
+  let connId = connectionId;
+  let kem = kemCiphertext;
+  if (!connId || !kem) {
+    const thread = (await getMessageThreads(fromPnIdentifier)).find(
+      (t) => t.participantPnIdentifier === toPnIdentifier
+    );
+    connId = thread?.connectionId;
+    kem = thread?.kemCiphertext;
+  }
+  if (!connId || !kem) {
+    throw new Error('No encrypted session for this conversation. Re-accept the connection.');
+  }
+
+  const encryptedContent = await encryptOutgoingMessage(content, connId, kem);
+
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/send`, {
       method: 'POST',
@@ -207,7 +318,8 @@ export async function sendMessage(
       body: JSON.stringify({
         fromPnIdentifier,
         toPnIdentifier,
-        content,
+        encryptedContent,
+        cryptoVersion: 2,
         mediaFileId
       })
     });
@@ -241,7 +353,11 @@ export async function sendMessage(
     }
 
     const result = await response.json();
-    const message = result.message;
+    const message = {
+      ...result.message,
+      content,
+      encrypted: true
+    };
     
     // Refresh inbox cache after successful send (non-blocking)
     // This updates the lastMessageAt timestamp for the conversation

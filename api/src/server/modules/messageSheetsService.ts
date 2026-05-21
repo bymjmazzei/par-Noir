@@ -16,6 +16,9 @@ export interface Message {
   read: boolean;
   readAt?: string;
   mediaFileId?: string;
+  /** Client E2E ciphertext (cryptoVersion 2). */
+  encryptedContent?: string;
+  cryptoVersion?: number;
 }
 
 export class MessageSheetsService {
@@ -78,7 +81,7 @@ export class MessageSheetsService {
             range: 'Inbox!A1:F1',
             valueInputOption: 'RAW',
             requestBody: {
-              values: [['participantPnIdentifier', 'spreadsheetId', 'connectionId', 'lastMessageAt', 'lastMessagePreview', 'sharedSecret']]
+              values: [['participantPnIdentifier', 'spreadsheetId', 'connectionId', 'lastMessageAt', 'lastMessagePreview', 'kemCiphertext']]
             }
           });
         }
@@ -139,7 +142,7 @@ export class MessageSheetsService {
             range: 'Inbox!A1:F1',
             valueInputOption: 'RAW',
             requestBody: {
-              values: [['participantPnIdentifier', 'spreadsheetId', 'connectionId', 'lastMessageAt', 'lastMessagePreview', 'sharedSecret']]
+              values: [['participantPnIdentifier', 'spreadsheetId', 'connectionId', 'lastMessageAt', 'lastMessagePreview', 'kemCiphertext']]
             }
           });
         }
@@ -435,11 +438,12 @@ export class MessageSheetsService {
         throw new Error(`Invalid spreadsheet ID format: ${spreadsheetId} (too short)`);
       }
 
-      // Encrypt message content using connection's shared secret
-      // For system messages or if shared secret is empty, store as plain text (backward compatibility)
       let encryptedContent: string;
-      if (message.fromPnIdentifier === 'system' || !sharedSecret || sharedSecret === '') {
-        // System messages or messages without shared secret are stored as plain text
+      let cryptoVersion = message.cryptoVersion ?? 0;
+      if (message.cryptoVersion === 2 && message.encryptedContent) {
+        encryptedContent = message.encryptedContent;
+        cryptoVersion = 2;
+      } else if (message.fromPnIdentifier === 'system' || !sharedSecret || sharedSecret === '') {
         encryptedContent = message.content;
       } else {
         const { MessageEncryption } = await import('../utils/messageEncryption');
@@ -481,16 +485,17 @@ export class MessageSheetsService {
       // Step 2: Set the values in the newly inserted row 2
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: 'Messages!A2:F2',
+        range: 'Messages!A2:G2',
         valueInputOption: 'RAW',
         requestBody: {
           values: [[
             message.fromPnIdentifier,
-            encryptedContent, // Store encrypted content
+            encryptedContent,
             message.timestamp,
             message.messageId,
             message.read ? 'true' : 'false',
-            message.readAt || ''
+            message.readAt || '',
+            cryptoVersion ? String(cryptoVersion) : ''
           ]]
         }
       });
@@ -538,6 +543,8 @@ export class MessageSheetsService {
       limit?: number;
       offset?: number;
       includeTotal?: boolean; // Only count if needed (for pagination UI)
+      /** API blind relay — return ciphertext only (no server decrypt). */
+      relayOnly?: boolean;
     }
   ): Promise<{ messages: Message[]; total: number }> {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
@@ -645,8 +652,29 @@ export class MessageSheetsService {
       }
     }
 
-    // Parse and decrypt only the messages we need
-    // CRITICAL: Decrypt messages in parallel to avoid sequential PBKDF2 delays
+    if (options?.relayOnly) {
+      const messages: Message[] = rowsToProcess.map((row, relativeIndex) => {
+        const actualIndex = offset + relativeIndex;
+        const fromPnIdentifier = row[0] || '';
+        const normalizedFromPnIdentifier = fromPnIdentifier.startsWith('pn-')
+          ? fromPnIdentifier
+          : this.normalizeToPnIdentifier(fromPnIdentifier);
+        const cryptoVersion = row[6] ? parseInt(String(row[6]), 10) : 2;
+        return {
+          messageId: row[3] || `msg-${actualIndex}`,
+          fromPnIdentifier: normalizedFromPnIdentifier,
+          toPnIdentifier: '',
+          content: '',
+          encryptedContent: row[1] || '',
+          cryptoVersion: Number.isNaN(cryptoVersion) ? 2 : cryptoVersion,
+          timestamp: row[2] || new Date().toISOString(),
+          read: row[4] === 'true',
+          readAt: row[5] || undefined
+        };
+      });
+      return { messages, total };
+    }
+
     const decryptStart = Date.now();
     const { MessageEncryption } = await import('../utils/messageEncryption');
     
@@ -906,7 +934,7 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined,
     lastMessagePreview?: string,
-    sharedSecret?: string // Encrypted shared secret
+    kemCiphertext?: string
   ): Promise<void> {
     try {
       const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
@@ -927,7 +955,7 @@ export class MessageSheetsService {
         connectionId,
         lastMessageAt,
         lastMessagePreview || '',
-        sharedSecret || '' // Encrypted shared secret
+        kemCiphertext || ''
       ];
 
       if (rowIndex !== -1) {
@@ -1078,34 +1106,29 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId?: string
   ): Promise<Array<{
+    threadType: 'dm' | 'group';
     participantPnIdentifier: string;
     spreadsheetId: string;
     connectionId: string;
     lastMessageAt: string;
     lastMessagePreview?: string;
-    sharedSecret?: string; // Encrypted shared secret
+    kemCiphertext?: string;
+    groupId?: string;
+    ownerPnIdentifier?: string;
   }>> {
     try {
-      const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
-      const sheets = google.sheets({ version: 'v4', auth });
-
-      // Read all rows (already sorted by lastMessageAt descending)
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: inboxSheetId,
-        range: 'Inbox!A2:F'
-      });
-
-      const rows = response.data.values || [];
-      const conversations = rows.map(row => ({
-        participantPnIdentifier: row[0] || '',
-        spreadsheetId: row[1] || '',
-        connectionId: row[2] || '',
-        lastMessageAt: row[3] || new Date().toISOString(),
-        lastMessagePreview: row[4] || undefined,
-        sharedSecret: row[5] || undefined // Encrypted shared secret
-      })).filter(conv => conv.participantPnIdentifier && conv.spreadsheetId && conv.connectionId);
-
-      return conversations;
+      const entries = await this.getInboxEntries(token, inboxSheetId, userPnIdentifier, accountId);
+      return entries.map((e) => ({
+        threadType: e.threadType,
+        participantPnIdentifier: e.participantPnIdentifier,
+        spreadsheetId: e.spreadsheetId,
+        connectionId: e.connectionId,
+        lastMessageAt: e.lastMessageAt,
+        lastMessagePreview: e.lastMessagePreview,
+        kemCiphertext: e.kemCiphertext,
+        groupId: e.groupId,
+        ownerPnIdentifier: e.ownerPnIdentifier
+      }));
     } catch (error: any) {
       console.error('[MessageSheetsService] Error reading inbox conversations:', {
         inboxSheetId,
@@ -1134,7 +1157,7 @@ export class MessageSheetsService {
     connectionId: string;
     lastMessageAt: string;
     lastMessagePreview?: string;
-    sharedSecret?: string;
+    kemCiphertext?: string;
   } | null> {
     try {
       const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
@@ -1160,7 +1183,7 @@ export class MessageSheetsService {
             connectionId: row[2] || '',
             lastMessageAt: row[3] || new Date().toISOString(),
             lastMessagePreview: row[4] || undefined,
-            sharedSecret: row[5] || undefined
+            kemCiphertext: row[5] || undefined
           };
         }
       }
@@ -1339,5 +1362,255 @@ export class MessageSheetsService {
         throw error; // Throw original error
       }
     }
+  }
+
+  private static readonly INBOX_HEADERS_WITH_THREAD = [
+    'participantPnIdentifier',
+    'spreadsheetId',
+    'connectionId',
+    'lastMessageAt',
+    'lastMessagePreview',
+    'kemCiphertext',
+    'threadType'
+  ];
+
+  static async ensureInboxThreadTypeColumn(
+    token: GoogleDriveToken,
+    inboxSheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    try {
+      const hdr = await sheets.spreadsheets.values.get({
+        spreadsheetId: inboxSheetId,
+        range: 'Inbox!A1:G1'
+      });
+      const row = hdr.data.values?.[0] || [];
+      if (row[6] === 'threadType') return;
+    } catch {
+      /* migrate */
+    }
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: inboxSheetId,
+      range: 'Inbox!A1:G1',
+      valueInputOption: 'RAW',
+      requestBody: { values: [this.INBOX_HEADERS_WITH_THREAD] }
+    });
+    const data = await sheets.spreadsheets.values.get({
+      spreadsheetId: inboxSheetId,
+      range: 'Inbox!A2:F'
+    });
+    const rows = data.data.values || [];
+    if (rows.length > 0) {
+      const withType = rows.map((r) => [...r, 'dm']);
+      await sheets.spreadsheets.values.clear({ spreadsheetId: inboxSheetId, range: 'Inbox!A2:G' });
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: inboxSheetId,
+        range: `Inbox!A2:G${rows.length + 1}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: withType }
+      });
+    }
+  }
+
+  static async createGroupConversationSheet(
+    token: GoogleDriveToken,
+    messagesFolderId: string,
+    groupId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<string> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    const drive = google.drive({ version: 'v3', auth });
+    const sheetFileName = `conversation-group-${groupId}`;
+
+    const spreadsheet = await sheets.spreadsheets.create({
+      requestBody: {
+        properties: { title: sheetFileName },
+        sheets: [
+          {
+            properties: {
+              title: 'Messages',
+              gridProperties: { rowCount: 10000, columnCount: 7 }
+            }
+          }
+        ]
+      }
+    });
+    const spreadsheetId = spreadsheet.data.spreadsheetId;
+    if (!spreadsheetId) throw new Error('Failed to create group conversation sheet');
+
+    await drive.files.update({
+      fileId: spreadsheetId,
+      addParents: messagesFolderId,
+      fields: 'id, parents'
+    });
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Messages!A1:G1',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [['User DID', 'Message Content', 'Timestamp', 'Message ID', 'Read Status', 'Read At', 'cryptoVersion']]
+      }
+    });
+    return spreadsheetId;
+  }
+
+  static async getOrCreateGroupConversationSheet(
+    token: GoogleDriveToken,
+    messagesFolderId: string,
+    groupId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<string> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const drive = google.drive({ version: 'v3', auth });
+    const sheetFileName = `conversation-group-${groupId}`;
+    const fileQuery = `name='${sheetFileName}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    const search = await drive.files.list({ q: fileQuery, fields: 'files(id)', pageSize: 1 });
+    if (search.data.files?.[0]?.id) {
+      return search.data.files[0].id;
+    }
+    return this.createGroupConversationSheet(token, messagesFolderId, groupId, userPnIdentifier, accountId);
+  }
+
+  static async updateGroupInboxEntry(
+    token: GoogleDriveToken,
+    inboxSheetId: string,
+    groupId: string,
+    conversationSpreadsheetId: string,
+    ownerPnIdentifier: string,
+    lastMessageAt: string,
+    userPnIdentifier: string,
+    accountId: string | undefined,
+    lastMessagePreview?: string
+  ): Promise<void> {
+    await this.ensureInboxThreadTypeColumn(token, inboxSheetId, userPnIdentifier, accountId);
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: inboxSheetId,
+      range: 'Inbox!A2:G'
+    });
+    const rows = response.data.values || [];
+    const rowIndex = rows.findIndex((row) => row[0] === groupId && row[6] === 'group');
+
+    const newRow = [
+      groupId,
+      conversationSpreadsheetId,
+      ownerPnIdentifier,
+      lastMessageAt,
+      lastMessagePreview || '',
+      '',
+      'group'
+    ];
+
+    if (rowIndex !== -1) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: inboxSheetId,
+        range: `Inbox!A${rowIndex + 2}:G${rowIndex + 2}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [newRow] }
+      });
+    } else {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: inboxSheetId,
+        range: 'Inbox!A:G',
+        valueInputOption: 'RAW',
+        requestBody: { values: [newRow] }
+      });
+    }
+
+    const allRowsResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId: inboxSheetId,
+      range: 'Inbox!A2:G'
+    });
+    const allRows = allRowsResponse.data.values || [];
+    if (allRows.length > 1) {
+      allRows.sort((a, b) => new Date(b[3] || '').getTime() - new Date(a[3] || '').getTime());
+      await sheets.spreadsheets.values.clear({ spreadsheetId: inboxSheetId, range: 'Inbox!A2:G' });
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: inboxSheetId,
+        range: `Inbox!A2:G${allRows.length + 1}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: allRows }
+      });
+    }
+  }
+
+  static async getInboxEntries(
+    token: GoogleDriveToken,
+    inboxSheetId: string,
+    userPnIdentifier: string,
+    accountId?: string
+  ): Promise<
+    Array<{
+      threadType: 'dm' | 'group';
+      participantPnIdentifier: string;
+      spreadsheetId: string;
+      connectionId: string;
+      lastMessageAt: string;
+      lastMessagePreview?: string;
+      kemCiphertext?: string;
+      groupId?: string;
+      ownerPnIdentifier?: string;
+      groupTitle?: string;
+    }>
+  > {
+    await this.ensureInboxThreadTypeColumn(token, inboxSheetId, userPnIdentifier, accountId);
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: inboxSheetId,
+      range: 'Inbox!A2:G'
+    });
+    const rows = response.data.values || [];
+    const out: Array<{
+      threadType: 'dm' | 'group';
+      participantPnIdentifier: string;
+      spreadsheetId: string;
+      connectionId: string;
+      lastMessageAt: string;
+      lastMessagePreview?: string;
+      kemCiphertext?: string;
+      groupId?: string;
+      ownerPnIdentifier?: string;
+      groupTitle?: string;
+    }> = [];
+
+    for (const row of rows) {
+      const threadType = (row[6] === 'group' ? 'group' : 'dm') as 'dm' | 'group';
+      if (threadType === 'group') {
+        if (!row[0] || !row[1] || !row[2]) continue;
+        out.push({
+          threadType: 'group',
+          participantPnIdentifier: row[0],
+          spreadsheetId: row[1],
+          connectionId: row[2],
+          lastMessageAt: row[3] || new Date().toISOString(),
+          lastMessagePreview: row[4] || undefined,
+          kemCiphertext: row[5] || undefined,
+          groupId: row[0],
+          ownerPnIdentifier: row[2]
+        });
+      } else {
+        if (!row[0] || !row[1] || !row[2]) continue;
+        out.push({
+          threadType: 'dm',
+          participantPnIdentifier: row[0],
+          spreadsheetId: row[1],
+          connectionId: row[2],
+          lastMessageAt: row[3] || new Date().toISOString(),
+          lastMessagePreview: row[4] || undefined,
+          kemCiphertext: row[5] || undefined
+        });
+      }
+    }
+    return out;
   }
 }

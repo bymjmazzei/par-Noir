@@ -4,16 +4,17 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, MoreVertical, Trash2 } from 'lucide-react';
-import { MessageThread as MessageThreadType, Message } from '../services/messageService';
-import { getMessageThreads, deleteConversation } from '../services/messageService';
+import { MessageCircle, MoreVertical, Trash2, Users } from 'lucide-react';
+import { MessageThread as MessageThreadType } from '../services/messageService';
+import { getInboxThreads, deleteConversation } from '../services/messageService';
+import type { SelectedInboxThread } from '../types/messaging';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
 import { inboxCacheService } from '../services/inboxCacheService';
 import { getUserProfile } from '../services/profileService';
 
 interface MessageListProps {
-  onThreadSelect: (participantPnIdentifier: string, participantName?: string, preloadedMessages?: Message[], connectionId?: string, sharedSecret?: string, spreadsheetId?: string) => void;
+  onThreadSelect: (thread: SelectedInboxThread) => void;
 }
 
 export function MessageList({ onThreadSelect }: MessageListProps) {
@@ -88,7 +89,7 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
         // Include cached credentials for fast conversation loading (critical for optimization!)
         spreadsheetId: entry.spreadsheetId,
         connectionId: entry.connectionId,
-        sharedSecret: entry.sharedSecret // Encrypted, safe to cache
+        kemCiphertext: entry.kemCiphertext
       }));
       setThreads(cachedThreads);
       setLoading(false); // Show instantly, no loading spinner
@@ -104,7 +105,7 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
 
     const loadData = async (isInitial = false) => {
       try {
-        const threadsData = await getMessageThreads(userState.pnIdentifier!);
+        const threadsData = await getInboxThreads(userState.pnIdentifier!);
         
         // Update threads (keep timestamp but remove preview content)
         const threadsWithoutPreview = threadsData.map(thread => ({
@@ -131,12 +132,15 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
         const inboxEntries = threadsData
           .filter(thread => thread.participantPnIdentifier)
           .map(thread => ({
+            threadType: thread.threadType || 'dm',
             participantPnIdentifier: thread.participantPnIdentifier,
             lastMessageAt: thread.lastMessage?.timestamp || new Date().toISOString(),
-            // Store conversation credentials for optimized API path
             spreadsheetId: thread.spreadsheetId,
-            connectionId: thread.connectionId,
-            sharedSecret: thread.sharedSecret // Encrypted, safe to cache
+            connectionId: thread.threadType === 'group' ? thread.ownerPnIdentifier : thread.connectionId,
+            kemCiphertext: thread.kemCiphertext,
+            groupId: thread.groupId,
+            groupTitle: thread.groupTitle,
+            ownerPnIdentifier: thread.ownerPnIdentifier
           }))
           .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
         inboxCacheService.set(userState.pnIdentifier!, inboxEntries);
@@ -200,12 +204,12 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
       success('Conversation deleted');
       
       // Refresh thread list to ensure consistency
-      const threadsData = await getMessageThreads(userState.pnIdentifier);
+      const threadsData = await getInboxThreads(userState.pnIdentifier);
       setThreads(threadsData);
     } catch (error: any) {
       console.error('Failed to delete conversation:', error);
       // Restore thread on error
-      const threadsData = await getMessageThreads(userState.pnIdentifier!);
+      const threadsData = await getInboxThreads(userState.pnIdentifier!);
       setThreads(threadsData);
       const errorMessage = error?.message || 'Failed to delete conversation';
       showError(errorMessage);
@@ -243,47 +247,59 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
           </div>
         ) : (
           <div className="divide-y divide-neutral-700">
-            {threads.filter(t => t.participantPnIdentifier).map((thread) => (
-              <div key={thread.participantPnIdentifier} className="relative">
+            {threads.filter(t => t.participantPnIdentifier).map((thread) => {
+              const isGroup = thread.threadType === 'group';
+              const rowKey = isGroup ? `group-${thread.groupId}` : thread.participantPnIdentifier;
+              const label = isGroup
+                ? (thread.groupTitle || 'Group')
+                : (() => {
+                    const displayName = getDisplayName(thread.participantPnIdentifier);
+                    return displayName !== thread.participantPnIdentifier
+                      ? displayName
+                      : (thread.participantPnIdentifier || 'Unknown').substring(0, 16) + '...';
+                  })();
+              return (
+              <div key={rowKey} className="relative">
                 <button
                   onClick={() => {
-                    // Use cached credentials for optimized API path (skips folder lookups)
-                    console.log('[MessageList] Opening conversation with credentials', {
-                      participantPnIdentifier: thread.participantPnIdentifier,
-                      hasConnectionId: !!thread.connectionId,
-                      hasSharedSecret: !!thread.sharedSecret,
-                      hasSpreadsheetId: !!thread.spreadsheetId
-                    });
-                    onThreadSelect(
-                      thread.participantPnIdentifier, 
-                      thread.participantName, 
-                      undefined, // No preloaded messages
-                      thread.connectionId, // Use cached connectionId
-                      thread.sharedSecret, // Use cached encrypted sharedSecret
-                      thread.spreadsheetId // Use cached spreadsheetId
-                    );
+                    if (isGroup && thread.groupId && thread.ownerPnIdentifier) {
+                      onThreadSelect({
+                        kind: 'group',
+                        groupId: thread.groupId,
+                        title: thread.groupTitle || 'Group',
+                        ownerPnIdentifier: thread.ownerPnIdentifier,
+                        accessRole: thread.accessRole || 'readWrite',
+                        wrappedChatKey: thread.wrappedChatKey || '',
+                        spreadsheetId: thread.spreadsheetId
+                      });
+                    } else {
+                      onThreadSelect({
+                        kind: 'dm',
+                        participantPnIdentifier: thread.participantPnIdentifier,
+                        participantName: thread.participantName,
+                        connectionId: thread.connectionId,
+                        kemCiphertext: thread.kemCiphertext,
+                        spreadsheetId: thread.spreadsheetId
+                      });
+                    }
                   }}
                   className="w-full p-4 hover:bg-neutral-800 transition-colors text-left"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3 flex-1 min-w-0">
                       <div className="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+                        {isGroup ? (
+                          <Users className="h-6 w-6 text-blue-400" />
+                        ) : (
                         <span className="text-blue-400 font-semibold">
-                          {(() => {
-                            const displayName = getDisplayName(thread.participantPnIdentifier);
-                            return (displayName || thread.participantPnIdentifier || '?').charAt(0).toUpperCase();
-                          })()}
+                          {(label || '?').charAt(0).toUpperCase()}
                         </span>
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center space-x-2">
                           <h3 className="text-white font-medium truncate">
-                            {(() => {
-                              const displayName = getDisplayName(thread.participantPnIdentifier);
-                              return displayName !== thread.participantPnIdentifier 
-                                ? displayName 
-                                : (thread.participantPnIdentifier || 'Unknown').substring(0, 16) + '...';
-                            })()}
+                            {label}
                           </h3>
                           {thread.unreadCount > 0 && (
                             <span className="px-2 py-0.5 bg-blue-500 text-white text-xs rounded-full">
@@ -299,6 +315,7 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
                           {new Date(thread.lastMessage.timestamp).toLocaleDateString()}
                         </div>
                       )}
+                      {!isGroup && (
                       <div 
                         className="relative" 
                         data-menu-id={thread.participantPnIdentifier}
@@ -332,11 +349,13 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
                           </div>
                         )}
                       </div>
+                      )}
                     </div>
                   </div>
                 </button>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </div>

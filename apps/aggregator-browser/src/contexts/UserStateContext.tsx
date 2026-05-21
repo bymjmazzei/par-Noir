@@ -520,20 +520,21 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     // Load inbox and cache it for instant inbox display
     const loadAndCacheInbox = async () => {
       try {
-        const { getMessageThreads } = await import('../services/messageService');
-        const threads = await getMessageThreads(pnIdentifier);
+        const { getInboxThreads } = await import('../services/messageService');
+        const threads = await getInboxThreads(pnIdentifier);
         
-        // Extract participantPnIdentifier, lastMessageAt, and conversation credentials for cache
-        // (encrypted sharedSecret is safe to cache - it's encrypted with AES-256-GCM server-side)
         const inboxEntries = threads
           .filter(thread => thread.participantPnIdentifier)
           .map(thread => ({
+            threadType: thread.threadType || 'dm',
             participantPnIdentifier: thread.participantPnIdentifier,
             lastMessageAt: thread.lastMessage?.timestamp || new Date().toISOString(),
-            // Store conversation credentials for optimized API path (skips folder lookups)
             spreadsheetId: thread.spreadsheetId,
-            connectionId: thread.connectionId,
-            sharedSecret: thread.sharedSecret // Encrypted, safe to cache
+            connectionId: thread.threadType === 'group' ? thread.ownerPnIdentifier : thread.connectionId,
+            kemCiphertext: thread.kemCiphertext,
+            groupId: thread.groupId,
+            groupTitle: thread.groupTitle,
+            ownerPnIdentifier: thread.ownerPnIdentifier
           }))
           .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
         

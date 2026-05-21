@@ -14,6 +14,7 @@ export {
   PN_OAUTH_STORAGE_PENDING,
   PN_OAUTH_STORAGE_LATEST_KEY,
 } from './pnOAuthPopup';
+export const PN_MESSAGING_IDENTITY_MESSAGE = 'pn_messaging_identity' as const;
 export { LockButton } from './LockButton';
 export type { LockButtonProps } from './LockButton';
 export {
