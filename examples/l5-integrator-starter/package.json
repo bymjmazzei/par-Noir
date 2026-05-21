@@ -9,8 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@identity-protocol/identity-sdk": "workspace:*",
-    "@par-noir/oauth-ui": "workspace:*"
+    "@identity-protocol/identity-sdk": "file:../../sdk/identity-sdk",
+    "@par-noir/oauth-ui": "file:../../packages/oauth-ui"
   },
   "devDependencies": {
     "typescript": "^5.0.0",

@@ -43,8 +43,7 @@
     "core/*",
     "sdk/*",
     "packages/*",
-    "apps/*",
-    "examples/*"
+    "apps/*"
   ],
   "keywords": [
     "identity",
