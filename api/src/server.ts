@@ -13757,12 +13757,18 @@ class ProductionServer {
         if (!metadataFolder?.metadataFolderId) {
           return res.status(404).json({ error: 'Metadata folder not found' });
         }
-        let profile = await ProfileService.getProfileFile(userAccessToken, metadataFolder.metadataFolderId);
-        if (!profile) {
-          profile = { createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-        }
-        profile.mlKemPublicKey = mlKemPublicKey;
-        profile.updatedAt = new Date().toISOString();
+        const existingProfile = await ProfileService.getProfileFile(
+          userAccessToken,
+          metadataFolder.metadataFolderId
+        );
+        const profile = {
+          identifier: existingProfile?.identifier || pnIdentifier,
+          displayName: existingProfile?.displayName,
+          profileImageFileId: existingProfile?.profileImageFileId,
+          storageTier: existingProfile?.storageTier,
+          updatedAt: new Date().toISOString(),
+          mlKemPublicKey
+        };
         await ProfileService.updateProfileFile(
           userAccessToken,
           metadataFolder.metadataFolderId,
@@ -15616,51 +15622,7 @@ class ProductionServer {
                   range: 'Messages!A2:F'
                 });
                 
-                // If sheet is empty or doesn't exist, and we have other user's access, try to restore
-                if ((!existingMessages.data.values || existingMessages.data.values.length === 0) && 
-                    otherAccessToken && otherMetadataFolderId && decryptedSharedSecret && otherUserCredentials) {
-                  try {
-                    // Find other user's pN folder
-                    const otherPnFolderName = `par Noir - ${otherUserCredentials.identityId}`;
-                    const otherFolderQuery = `name='${otherPnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                    const otherFoldersResponse = await fetch(
-                      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(otherFolderQuery)}&fields=files(id,name)`,
-                      { headers: { 'Authorization': `Bearer ${otherAccessToken}` } }
-                    );
-                    
-                    if (otherFoldersResponse.ok) {
-                      const otherFoldersData = await otherFoldersResponse.json() as { files?: Array<{ id: string }> };
-                      const otherPnFolder = otherFoldersData.files?.[0];
-                      
-                      if (otherPnFolder) {
-                        const otherMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-                          otherToken,
-                          otherPnFolder.id,
-                          otherUserPnIdentifier,
-                          otherAccountId
-                        );
-                        
-                        // Try to restore conversation from other user
-                        acceptorConversationSheetId = await MessageSheetsService.restoreConversationFromOtherUser(
-                          token,
-                          acceptorMessagesFolderId,
-                          otherToken,
-                          otherMessagesFolderId,
-                          otherUserPnIdentifier,
-                          connectionId,
-                          decryptedSharedSecret,
-                          pnIdentifier,
-                          accountId,
-                          otherUserPnIdentifier,
-                          otherAccountId
-                        );
-                        console.log(`[AcceptConnection] Restored acceptor's conversation from other user`);
-                      }
-                    }
-                  } catch (restoreError: any) {
-                    console.warn(`[AcceptConnection] Failed to restore acceptor's conversation, continuing with empty sheet:`, restoreError.message);
-                  }
-                }
+                // E2E-only: no server-side shared-secret restore of peer conversation sheets
               } catch (error: any) {
                 // First connection or re-connection after deletion - create new sheet
                 if (error?.message?.includes('not found')) {
@@ -15771,50 +15733,7 @@ class ProductionServer {
                     range: 'Messages!A2:F'
                   });
                   
-                  // If sheet is empty or doesn't exist, and we have acceptor's access, try to restore
-                  if (false) {
-                    try {
-                      // Find acceptor's pN folder
-                      const acceptorPnFolderName = `par Noir - ${userCredentials.identityId}`;
-                      const acceptorFolderQuery = `name='${acceptorPnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                      const acceptorFoldersResponse = await fetch(
-                        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(acceptorFolderQuery)}&fields=files(id,name)`,
-                        { headers: { 'Authorization': `Bearer ${userAccessToken}` } }
-                      );
-                      
-                      if (acceptorFoldersResponse.ok) {
-                        const acceptorFoldersData = await acceptorFoldersResponse.json() as { files?: Array<{ id: string }> };
-                        const acceptorPnFolder = acceptorFoldersData.files?.[0];
-                        
-                        if (acceptorPnFolder) {
-                          const acceptorMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-                            token,
-                            acceptorPnFolder.id,
-                            pnIdentifier,
-                            accountId
-                          );
-                          
-                          // Try to restore conversation from acceptor (reverse order)
-                          requesterConversationSheetId = await MessageSheetsService.restoreConversationFromOtherUser(
-                            otherToken,
-                            requesterMessagesFolderId,
-                            token,
-                            acceptorMessagesFolderId,
-                            pnIdentifier,
-                            connectionId,
-                            decryptedSharedSecret,
-                            otherUserPnIdentifier,
-                            otherAccountId,
-                            pnIdentifier,
-                            accountId
-                          );
-                          console.log(`[AcceptConnection] Restored requester's conversation from acceptor`);
-                        }
-                      }
-                    } catch (restoreError: any) {
-                      console.warn(`[AcceptConnection] Failed to restore requester's conversation, continuing with empty sheet:`, restoreError.message);
-                    }
-                  }
+                  // E2E-only: no server-side shared-secret restore of peer conversation sheets
                 } catch (error: any) {
                   // First connection or re-connection after deletion - create new sheet
                   if (error?.message?.includes('not found')) {
