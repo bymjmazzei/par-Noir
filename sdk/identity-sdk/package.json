@@ -1,14 +1,22 @@
 {
   "name": "@identity-protocol/identity-sdk",
-  "version": "1.0.0",
-  "description": "Cross-platform identity SDK for universal authentication",
+  "version": "1.1.0",
+  "description": "par Noir identity SDK: pN OAuth and L5 integrator APIs (Drive silo, ZKP, public index)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "jest",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "identity",
@@ -19,12 +27,19 @@
     "universal"
   ],
   "author": "Identity Protocol Team",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "dependencies": {
     "@identity-protocol/identity-core": "file:../../core/identity-core",
     "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
     "@par-noir/zk-protocol-v1": "file:../../packages/zk-protocol-v1",
     "@par-noir/zk-protocol-v2": "file:../../packages/zk-protocol-v2"
+  },
+  "peerDependencies": {
+    "@par-noir/oauth-ui": ">=1.0.0",
+    "react": ">=17.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true }
   },
   "devDependencies": {
     "@par-noir/pqc-crypto": "file:../../packages/pqc-crypto",
@@ -39,7 +54,11 @@
   },
   "files": [
     "dist/**/*",
-    "src/**/*",
-    "public/**/*"
-  ]
+    "static/**/*",
+    "README.md",
+    "README_OAUTH.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 } 

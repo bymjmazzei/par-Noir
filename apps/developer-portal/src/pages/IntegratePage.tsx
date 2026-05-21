@@ -55,6 +55,14 @@ export function IntegratePage() {
         </ul>
       </section>
 
+      <section className="dev-card dev-doc-block">
+        <h3>SDK</h3>
+        <p>
+          <code>npm install @identity-protocol/identity-sdk</code> — see{' '}
+          <code>docs/developer/L5_INTEGRATOR_QUICKSTART.md</code> and <code>examples/l5-integrator-starter/</code>.
+        </p>
+      </section>
+
       <p className="dev-muted">
         See <code>docs/developer/third-party-sharing-and-L5.md</code> and <code>docs/developer/INTEGRATOR_IDENTITY_SUCCESSION.md</code>{' '}
         in the repository.

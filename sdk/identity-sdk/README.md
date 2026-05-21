@@ -11,15 +11,15 @@ TypeScript SDK for **par Noir** identity flows: **pN OAuth**, session helpers, a
 
 Older marketing claims elsewhere in this file (e.g. “military-grade”, “FIPS Level 4”, “PQC Round 3” as product guarantees) are **deprecated**; trust the linked security docs and source.
 
-## 📦 Installation
+## Installation
 
 ```bash
-npm install @identity-protocol/identity-sdk
+npm install @identity-protocol/identity-sdk @par-noir/oauth-ui
 ```
 
-## 🔧 Quick Start
+**L5 integrators (login + Drive silo + ZKP):** see [L5_INTEGRATOR_QUICKSTART.md](../../docs/developer/L5_INTEGRATOR_QUICKSTART.md) and `createPnIntegratorClient`.
 
-### pN OAuth Integration (Recommended for Third-Party Platforms)
+## Quick Start — pN OAuth
 
 **Enable users to login with their pN identity, just like Google OAuth:**
 

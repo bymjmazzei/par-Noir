@@ -43,8 +43,12 @@ When the client sends **`public_key`** (or equivalent) to the authorization serv
 ### Installation
 
 ```bash
-npm install @identity-protocol/identity-sdk
+npm install @identity-protocol/identity-sdk @par-noir/oauth-ui
 ```
+
+Copy `oauth-callback.html` from `node_modules/@identity-protocol/identity-sdk/static/` into your app `public/` folder.
+
+**L5 apps (login + Drive silo + ZKP):** see **[L5_INTEGRATOR_QUICKSTART.md](./L5_INTEGRATOR_QUICKSTART.md)** and `createPnIntegratorClient` with scopes `openid`, `profile`, `cloud:app`, and optional `zkp:*`.
 
 ### Basic Integration (Popup Flow)
 

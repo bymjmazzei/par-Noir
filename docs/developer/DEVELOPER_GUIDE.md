@@ -2,6 +2,8 @@
 
 **Welcome Developers!** This guide will help you integrate Identity Protocol into your applications and understand the development ecosystem.
 
+> **L5 third-party integrators:** Use **pN OAuth only** — do not ask users for pn name or passcode in your app. Start with **[L5_INTEGRATOR_QUICKSTART.md](./L5_INTEGRATOR_QUICKSTART.md)** (`createPnIntegratorClient`, `cloud:app`, ZKP API). Identity **creation** and passcode flows are **dashboard / L1** only.
+
 ---
 
 ## Table of Contents
@@ -1120,7 +1122,9 @@ async function createIdentity(
 Canonical lists of public HTTP routes and L5 integration topics live alongside this guide:
 
 - **[ROUTE_MANIFEST.md](./ROUTE_MANIFEST.md)** — major API routes (hand-maintained; run drift check below).
+- **[L5_INTEGRATOR_QUICKSTART.md](./L5_INTEGRATOR_QUICKSTART.md)** — third-party OAuth, Drive silo, ZKP (launch path).
 - **[third-party-sharing-and-L5.md](./third-party-sharing-and-L5.md)** — user-authorized third-party access patterns.
+- **[LAUNCH_QA_INTEGRATOR.md](./LAUNCH_QA_INTEGRATOR.md)** — pre-launch checklist.
 - **[INTEGRATOR_IDENTITY_SUCCESSION.md](./INTEGRATOR_IDENTITY_SUCCESSION.md)** — superseded / successor pN identifiers (“picture on a wall” online).
 - **[METADATA_CONTEXT_MIGRATION.md](./METADATA_CONTEXT_MIGRATION.md)** — JSON-LD `@context` URI (`https://parnoir.com/ns/v1#`) vs legacy placeholder URIs.
 

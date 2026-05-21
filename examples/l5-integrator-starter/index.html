@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>par Noir L5 integrator starter</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
+      button { margin: 0.25rem 0.5rem 0.25rem 0; padding: 0.5rem 1rem; }
+      pre { background: #111; color: #eee; padding: 1rem; overflow: auto; font-size: 12px; }
+      .muted { color: #666; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <h1>L5 integrator starter</h1>
+    <p class="muted">Set VITE_PN_CLIENT_ID and register oauth-callback.html on developers.parnoir.com.</p>
+    <div>
+      <button id="login">Login with pN</button>
+      <button id="root" disabled>Storage root</button>
+      <button id="list" disabled>List silo files</button>
+      <button id="upload" disabled>Upload test file</button>
+      <button id="zkp" disabled>Fetch ZKPs</button>
+    </div>
+    <pre id="out">Not signed in.</pre>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

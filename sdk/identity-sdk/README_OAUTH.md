@@ -13,8 +13,9 @@ npm install @identity-protocol/identity-sdk @par-noir/oauth-ui
 ## Setup
 
 1. **Copy the static OAuth callback page** into your app’s `public/` directory (must match your registered `redirect_uri`, usually `https://your-app/oauth-callback.html`):
-   - Use the same file as the par Noir browser: copy [`apps/aggregator-browser/public/oauth-callback.html`](../../apps/aggregator-browser/public/oauth-callback.html) from this repository.
-   - It posts `postMessage` with `{ type: 'oauth_callback', code, state, ... }` back to the opener and must stay in sync with par Noir’s template.
+   - From npm: `node_modules/@identity-protocol/identity-sdk/static/oauth-callback.html`
+   - Or from this repo: `packages/oauth-ui/static/oauth-callback.html` (canonical; keep in sync with browser copy)
+   - It posts `postMessage` with `{ type: 'oauth_callback', code, state, ... }` back to the opener.
 
 2. **Register your app** at `https://developers.parnoir.com` (or your operator’s developer console) so your `clientId` and redirect URIs are allowed on the API.
 
@@ -68,4 +69,18 @@ function LoginButton() {
 4. Redirect to your `oauth-callback.html` → `postMessage` to opener → popup closes
 5. SDK exchanges the code for tokens
 
-See full documentation: [PN_OAUTH_INTEGRATION.md](../../docs/developer/PN_OAUTH_INTEGRATION.md)
+## L5 integrator (OAuth + Drive silo + ZKP)
+
+```javascript
+import { createPnIntegratorClient, PN_INTEGRATOR_SCOPES } from '@identity-protocol/identity-sdk';
+
+const pn = createPnIntegratorClient({
+  clientId: 'your-client-id',
+  redirectUri: `${window.location.origin}/oauth-callback.html`,
+  scopes: [...PN_INTEGRATOR_SCOPES, 'zkp:age_attestation'],
+});
+const session = await pn.auth.authenticate();
+await pn.storage.getStorageRoot(session.accessToken);
+```
+
+See [L5_INTEGRATOR_QUICKSTART.md](../../docs/developer/L5_INTEGRATOR_QUICKSTART.md) and [PN_OAUTH_INTEGRATION.md](../../docs/developer/PN_OAUTH_INTEGRATION.md).
