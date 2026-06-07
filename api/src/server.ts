@@ -11256,12 +11256,15 @@ class ProductionServer {
 
         // Get inbox sheet and cache the ID
         let inboxConversations: Array<{
+          threadType?: 'dm' | 'group';
           participantPnIdentifier: string;
           spreadsheetId: string;
           connectionId: string;
           lastMessageAt: string;
           lastMessagePreview?: string;
           kemCiphertext?: string;
+          groupId?: string;
+          ownerPnIdentifier?: string;
         }> = [];
 
         try {
@@ -11305,6 +11308,7 @@ class ProductionServer {
             accountId
           );
           inboxConversations = conversations.map(conv => ({
+            threadType: 'dm' as const,
             participantPnIdentifier: conv.otherUserPnIdentifier,
             spreadsheetId: conv.spreadsheetId,
             connectionId: '',
@@ -11349,7 +11353,7 @@ class ProductionServer {
               lastMessageAt: conv.lastMessageAt,
               lastMessagePreview: conv.lastMessagePreview,
               lastMessage,
-              threadType: conv.threadType,
+              threadType: conv.threadType || 'dm',
               groupId: conv.groupId,
               ownerPnIdentifier: conv.ownerPnIdentifier,
               unreadCount
