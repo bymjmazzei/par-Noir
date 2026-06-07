@@ -4,7 +4,7 @@
 
 import { useEffect, useRef } from 'react';
 import { API_ENDPOINT } from '../config/api';
-import { PNOAuthService } from './pnOAuthService';
+import { PNOAuthService } from '../services/pnOAuthService';
 
 export function useRealtimeSync(onEvent?: () => void): void {
   const callbackRef = useRef(onEvent);
