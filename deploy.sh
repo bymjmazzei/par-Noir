@@ -44,6 +44,14 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "📦 Building packages/dm-crypto..."
+cd ../dm-crypto
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ dm-crypto build failed"
+    exit 1
+fi
+
 # Build aggregator-browser (browse target)
 # Do not `export` VITE_PN_CLIENT_ID: a single export would leak browser-app into prism / developer-portal builds.
 echo "📦 Building aggregator-browser..."
