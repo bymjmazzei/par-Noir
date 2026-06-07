@@ -12,6 +12,7 @@ import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
 import { inboxCacheService } from '../services/inboxCacheService';
 import { getUserProfile } from '../services/profileService';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 interface MessageListProps {
   onThreadSelect: (thread: SelectedInboxThread) => void;
@@ -26,6 +27,12 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ participantPnIdentifier: string; participantName?: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const loadingDisplayNamesRef = useRef<Set<string>>(new Set());
+
+  useRealtimeSync(() => {
+    if (userState.pnIdentifier) {
+      getInboxThreads(userState.pnIdentifier).then(setThreads).catch(() => {});
+    }
+  });
 
   // Load display names for participants
   const loadDisplayNames = async (participantPnIdentifiers: string[]) => {

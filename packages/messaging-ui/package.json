@@ -6,6 +6,9 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "private": true,
+  "dependencies": {
+    "@par-noir/dm-crypto": "file:../dm-crypto"
+  },
   "peerDependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

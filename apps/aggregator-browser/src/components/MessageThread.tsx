@@ -3,8 +3,8 @@
  * Conversation view for messaging
  */
 
-import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Send, Image as ImageIcon, Paperclip, MoreVertical, Trash2, Check, Settings } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { ArrowLeft, Send, Paperclip, MoreVertical, Trash2, Check, Settings } from 'lucide-react';
 import { Message } from '../services/messageService';
 import { useUserState } from '../contexts/UserStateContext';
 import { getConversationMessages, sendMessage, markAsRead, deleteConversation } from '../services/messageService';
@@ -18,6 +18,14 @@ import { getUserProfile } from '../services/profileService';
 import { useToast } from '../hooks/useToast';
 import { ToastContainer } from './Toast';
 import { GroupSettingsModal } from './GroupSettingsModal';
+import { MessageMediaPickerModal } from './MessageMediaPickerModal';
+import { MessageMediaAttachment } from './MessageMediaAttachment';
+import type { MediaPickItem } from '@par-noir/messaging-ui';
+import {
+  sendMessageWithMedia,
+  type MessagingThreadContext
+} from '../services/messagingMediaService';
+import { useDriveAccounts } from '../hooks/useDriveAccounts';
 
 interface MessageThreadProps {
   participantPnIdentifier?: string;
@@ -69,7 +77,13 @@ export function MessageThread({
   const errorCountRef = useRef(0);
   const currentOffsetRef = useRef(0);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [senderNames, setSenderNames] = useState<Record<string, string>>({});
+
+  const { selectedId: driveAccountId } = useDriveAccounts({
+    authenticatedUserId: userState.pnIdentifier,
+    userState: { isUnlocked: userState.isUnlocked, pnIdentifier: userState.pnIdentifier }
+  });
 
   const groupRecord: GroupRecord | null =
     isGroup && groupId && ownerPnIdentifier && userState.pnIdentifier
@@ -84,6 +98,38 @@ export function MessageThread({
           conversationSpreadsheetId: spreadsheetId
         }
       : null;
+
+  const threadContext: MessagingThreadContext | null = useMemo(() => {
+    if (!userState.pnIdentifier) {
+      return null;
+    }
+    if (isGroup && groupRecord) {
+      return {
+        threadType: 'group' as const,
+        fromPnIdentifier: userState.pnIdentifier,
+        groupId: groupId!,
+        groupRecord
+      };
+    }
+    if (connectionId) {
+      return {
+        threadType: 'dm' as const,
+        fromPnIdentifier: userState.pnIdentifier,
+        toPnIdentifier: participantPnIdentifier,
+        connectionId,
+        kemCiphertext
+      };
+    }
+    return null;
+  }, [
+    userState.pnIdentifier,
+    isGroup,
+    groupRecord,
+    groupId,
+    connectionId,
+    participantPnIdentifier,
+    kemCiphertext
+  ]);
 
   const fetchMessages = async (limit: number, offset: number) => {
     if (!userState.pnIdentifier) {
@@ -183,6 +229,17 @@ export function MessageThread({
               await markAsRead(message.messageId, userState.pnIdentifier!, participantPnIdentifier);
             } catch (error) {
               console.error('Failed to mark as read:', error);
+            }
+          }
+        } else if (groupId) {
+          const unreadMessages = result.messages.filter(
+            (m) => !m.read && m.fromPnIdentifier !== userState.pnIdentifier
+          );
+          for (const message of unreadMessages) {
+            try {
+              await markAsRead(message.messageId, userState.pnIdentifier!, groupId);
+            } catch (error) {
+              console.error('Failed to mark group message as read:', error);
             }
           }
         }
@@ -409,6 +466,52 @@ export function MessageThread({
     }
   };
 
+  const handleMediaPick = async (pick: MediaPickItem) => {
+    if (!userState.pnIdentifier || !threadContext || sending) {
+      return;
+    }
+
+    setSending(true);
+    const caption = newMessage.trim();
+    setNewMessage('');
+
+    const tempMessageId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const optimisticMessage: Message = {
+      messageId: tempMessageId,
+      fromPnIdentifier: userState.pnIdentifier,
+      toPnIdentifier: isGroup ? groupId! : participantPnIdentifier,
+      content: caption || '📎 Media',
+      timestamp: new Date().toISOString(),
+      read: false
+    };
+    setMessages((prev) => [...prev, optimisticMessage]);
+
+    try {
+      await sendMessageWithMedia(threadContext, pick, caption, driveAccountId || undefined);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.messageId === tempMessageId
+            ? { ...msg, messageId: `sent-${Date.now()}` }
+            : msg
+        )
+      );
+      await fetchMessages(10, 0).then((result) => {
+        const reversed = [...result.messages].reverse();
+        setMessages(reversed);
+      });
+    } catch (error: unknown) {
+      setMessages((prev) => prev.filter((msg) => msg.messageId !== tempMessageId));
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send media';
+      showError(errorMessage);
+      if (caption) {
+        setNewMessage(caption);
+      }
+    } finally {
+      setSending(false);
+      inputRef.current?.focus();
+    }
+  };
+
   const handleDeleteConversation = async () => {
     if (!userState.isUnlocked || !userState.pnIdentifier || deleting) {
       return;
@@ -569,11 +672,12 @@ export function MessageThread({
                     </p>
                   )}
                   <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
-                  {message.mediaFileId && (
-                    <div className="mt-2 p-2 bg-black/20 rounded">
-                      <ImageIcon className="h-4 w-4 inline mr-2" />
-                      <span className="text-xs">Media attached</span>
-                    </div>
+                  {message.mediaFileId && threadContext && (
+                    <MessageMediaAttachment
+                      mediaFileId={message.mediaFileId}
+                      threadContext={threadContext}
+                      accountId={driveAccountId || undefined}
+                    />
                   )}
                   <div className="flex items-center justify-end space-x-1 mt-1">
                     <p className={`text-xs ${
@@ -613,9 +717,12 @@ export function MessageThread({
       <div className="p-4 border-t border-neutral-700" style={{ paddingBottom: '64px' }}>
         <div className="flex items-end space-x-2">
           <button
-            className="p-2 text-neutral-400 hover:text-white transition-colors"
+            type="button"
+            onClick={() => setShowMediaPicker(true)}
+            disabled={sending || !threadContext}
+            className="p-2 text-neutral-400 hover:text-white transition-colors disabled:opacity-40"
             aria-label="Attach media"
-            title="Attach media (coming soon)"
+            title="Attach media"
           >
             <Paperclip className="h-5 w-5" />
           </button>
@@ -657,6 +764,15 @@ export function MessageThread({
           initialTitle={groupTitle || 'Group'}
           onClose={() => setShowGroupSettings(false)}
           onUpdated={() => setShowGroupSettings(false)}
+        />
+      )}
+
+      {userState.pnIdentifier && (
+        <MessageMediaPickerModal
+          open={showMediaPicker}
+          onClose={() => setShowMediaPicker(false)}
+          onSelect={handleMediaPick}
+          userPnIdentifier={userState.pnIdentifier}
         />
       )}
     </div>

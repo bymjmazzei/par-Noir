@@ -11,8 +11,11 @@ Hand-maintained index of **major** HTTP routes. When you add a user-facing or in
 | GET | `/api/v1/standard-data-points` | Public catalog of standard data point metadata (no auth) |
 | GET | `/api/v1/oauth/authorize` | API-key gated OAuth authorize |
 | POST | `/api/v1/oauth/token` | API-key gated token exchange |
-| GET | `/api/v1/data-points/:dataPointId` | API key + scope |
-| POST | `/api/v1/data-points/request` | API key + scope |
+| GET | `/api/v1/data-points/:dataPointId` | API key + `data_points` scope; query `identity_id`, `client_id` |
+| POST | `/api/v1/data-points/request` | API key; create consent request on user Drive |
+| GET | `/api/v1/data-points/requests/:requestId` | API key; poll consent request status |
+| GET | `/api/users/:pnIdentifier/data-point-requests` | Bearer; list pending/approved requests |
+| POST | `/api/users/:pnIdentifier/data-point-requests/:requestId/respond` | Bearer; approve or decline |
 | GET | `/api/v1/public-index/:identityId` | API key + content scope |
 
 ## Dashboard / browser OAuth (PN identity)
@@ -73,3 +76,19 @@ Hand-maintained index of **major** HTTP routes. When you add a user-facing or in
 | PUT | `/api/users/:pnIdentifier/third-party-permissions` | Store permissions |
 
 See `api/src/server.ts` and `api/src/server/modules/*Routes.ts` for the full surface.
+
+## Deprecated / removed
+
+| Method | Path | Status |
+|--------|------|--------|
+| POST | `/api/auth/verify` | **410 Gone** — use pN OAuth (`/oauth/token`) |
+| POST | `/api/auth/challenge` | Legacy; unused by current apps |
+| POST/DELETE | `/api/feeds/:feedId/subscriptions` | **410 Gone** — platform paid subscriptions removed |
+| POST | `/api/subscriptions/confirm` | **410 Gone** |
+
+## Integrator ZKP (OAuth bearer — preferred for user-present consent)
+
+| Method | Path | Notes |
+|--------|------|--------|
+| GET | `/oauth/zkp-data-points` | Bearer token; returns granted ZKP proofs from user Drive |
+

@@ -7,19 +7,21 @@ This repo is a monorepo so we can reuse code. Duplicating logic or types across 
 ## Guiding principles
 
 - **Crypto without blockchain.** The cryptographic asset is decentralized identity, not a blockchain token. Identity is verified through math (pn file + pn name + passcode); no central server. All three factors are required to unlock the identity and everything on top. Crypto primitives must be clear in documentation and codebase.
-- **User-owned, centralized to the user.** Users own their digital identity like their real-world identity. They create it at will via proof-of-work; there is no central issuer. They can connect real-world ID and share ZKPs with third parties instead of handing over data to store. Decentralization starts with a decentralized identity protocol.
+- **User-owned, centralized to the user.** Users own their digital identity like their real-world identity. They create it at will via **proof-of-work** (see glossary below); there is no central issuer. They can connect real-world ID and share ZKPs with third parties instead of handing over data to store. Decentralization starts with a decentralized identity protocol.
 - **Platforms as aggregators and service providers.** The browser is the aggregator: it aggregates public files from users’ Google Drives into feeds. Service providers are any third party. Long term, they use our APIs to leverage the user’s infrastructure instead of storing user data.
 - **par Noir as infrastructure.** Identity = layer 1; dashboard = layer 2; API = layer 3; browser = layer 4; third parties = layer 5. User data and content are portable across pN-based systems. Goal: invert surveillance capitalism—users aggregate and broker their own data; systems stay feature- and value-focused instead of exploitative.
 
 **Layer model:** L1 Identity (proof-of-work, 3-factor) → L2 Dashboard (identity interaction, secure cloud) → L3 API (connect to tools) → L4 Browser (aggregate public Drive files into feeds) → L5 Third parties (build on our APIs).
 
-**Implications for the codebase:** No sensitive data in plain text (see Rules). Feature hierarchy: identity-direct → dashboard + APIs; browser-only → browser only. Crypto primitives clear in docs and code.
+**Glossary — proof-of-work (par Noir):** The cryptographic process by which a user **self-issues** an identity: they supply pn name + passcode (+ pn file); `IdentityCrypto.createIdentity()` in the dashboard performs PQC key generation and encrypts the identity blob. No central issuer and **not** blockchain mining. Unlock verifies the same math (pn file + pn name + passcode).
+
+**Implications for the codebase:** No sensitive data in plain text (see Rules). Feature hierarchy: identity-direct → dashboard + APIs; browser-only → browser only. Crypto primitives clear in docs and code. Canonical identity create/unlock: `apps/id-dashboard/src/utils/crypto.ts` (`IdentityCrypto`); shared extraction to `packages/` is ongoing.
 
 ---
 
 ## What we're building
 
-- **Identity** (`core/identity-core`): L1; proof-of-work, 3-factor; no central verification.
+- **Identity** (dashboard `IdentityCrypto` + `packages/pqc-crypto`): L1; proof-of-work (credential-driven derivation), 3-factor; no central verification.
 - **Dashboard** (`apps/id-dashboard`): L2; where identity is used; secure cloud; identity-direct features + APIs.
 - **API** (`api/`): L3; connects dashboard to other tools.
 - **Browser** (`apps/aggregator-browser`): L4; aggregates public Drive files into feeds; talks only to API, not Google directly.
@@ -46,7 +48,7 @@ Shared code lives in **`core/`** (e.g. identity-core) and **`sdk/`** (e.g. ident
 
 | What | Where | Used by |
 |------|-------|---------|
-| Identity / crypto (proof-of-work, 3-factor) | `core/identity-core` | dashboard, API, browser |
+| Identity / crypto (proof-of-work, 3-factor) | `apps/id-dashboard/src/utils/crypto.ts`, `packages/pqc-crypto`, `packages/dm-crypto` | dashboard, API, browser |
 | SDK / client helpers | `sdk/` (e.g. identity-sdk) | apps |
 | Types, API clients, pure logic shared by apps | `core/`, `sdk/`, or `packages/` when present | both apps |
 | Pure logic used in one app only | `services/` in that app | that app |

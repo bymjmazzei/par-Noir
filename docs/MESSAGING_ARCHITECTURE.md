@@ -14,6 +14,17 @@ The par Noir API is a **storage coordinator**, not a **conversation participant*
 
 Inbox sheets cache `kemCiphertext` (column F) for fast session open—opaque KEM blob, not a server-held secret.
 
+## Media attachments (E2E)
+
+1. **Pick:** Attach modal tabs — **My pN** (owner index), **Shared with me** (Drive `sharedWithMe`), **Saved** (curated feed), **Device** (file picker / native camera).
+2. **Prepare (client):** Download source blob, decrypt with pN identity or public share token as needed, re-encrypt with the conversation key (`deriveMessageKey` for DMs, group `chatKey` for groups) via `@par-noir/dm-crypto` `encryptMediaBytes`.
+3. **Upload:** `POST /api/drive/files` into `par-noir-messages/attachments/` (`GET /api/messages/attachments-folder` resolves folder id). Ciphertext uploaded with `encrypt: false`.
+4. **Send:** `POST /api/messages/send` or `POST /api/groups/:groupId/messages` with optional `mediaFileId`. Message sheet column **H** stores the Drive file id.
+5. **Share:** API grants Google Drive **reader** to each recipient’s stored Google email before dual-write append.
+6. **Receive:** Browser downloads ciphertext, decrypts with the same conversation key, renders inline.
+
+The API never sees plaintext media; it coordinates upload, ACL, and sheet metadata only.
+
 ## Groups
 
 - Owner creates a group; members must already be **connected to the owner**.

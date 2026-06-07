@@ -79,8 +79,8 @@ Complete redesign of the browser app (`browse.parnoir.com`) to match TikTok-styl
 - **No Drafts**: Completed content only, no editor
 
 ### 7. Messages
-- **Type**: DMs only (no groups for now)
-- **Architecture**: **Decentralized peer-to-peer messaging**
+- **Type**: 1:1 DMs and **group chat** (E2E via `@par-noir/dm-crypto`, ML-KEM v2)
+- **Architecture**: API storage coordinator on user Google Drive; client-side encrypt/decrypt
   - Messages stored in **Google Drive** (secure cloud)
   - Each user has a `par-noir-messages` folder in their Drive
   - Messages encrypted with pN encryption standard

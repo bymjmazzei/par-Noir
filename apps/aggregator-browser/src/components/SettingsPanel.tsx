@@ -8,6 +8,7 @@ import { X, Shield, User, Bell, Globe } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 // RatingPreferences removed - will be replaced with NSFW toggle in Phase 7
 import { PNConnect } from './PNConnect';
+import { ConnectionHealthBanner } from './ConnectionHealthBanner';
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -32,6 +33,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <ConnectionHealthBanner />
           {/* Account Section */}
           <section>
             <div className="flex items-center space-x-2 mb-4">

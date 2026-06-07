@@ -14,9 +14,18 @@ export {
   deriveGroupWrapKey,
   wrapChatKey,
   unwrapChatKey,
+  deriveOwnerSelfWrapKey,
+  wrapChatKeyForOwner,
+  unwrapChatKeyForOwner,
   generateChatKey,
   generateGroupId
 } from './group';
+export {
+  encryptMessageRequest,
+  decryptMessageRequest
+} from './messageRequest';
+export { encryptMediaBytes, decryptMediaBytes } from './media';
+export { bytesToBase64, base64ToBytes } from './encoding';
 export {
   unlockIdentityMlKemSecret,
   type EncryptedIdentityPayload,

@@ -318,7 +318,7 @@ export function HomePage() {
             </>
           ) : (
             <div className="h-full flex items-center justify-center text-white">
-              <EmptyState type="no-content" message={activeFeedId === 'discovery' ? 'Discovery page coming soon' : 'No content available in this feed'} />
+              <EmptyState type="no-content" message="No content available in this feed" />
             </div>
           )}
         </div>

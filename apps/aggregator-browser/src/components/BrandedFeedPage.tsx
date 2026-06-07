@@ -3,13 +3,15 @@
  * Feed page for paid-tier creators with branding and community controls
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { ArrowLeft, Settings, Users, Calendar, Tag, Sparkles } from 'lucide-react';
 import { Feed, IndexedFile } from '../types/aggregator';
 import { ContentRatingBadge } from './ContentRatingBadge'; // Still used for isNSFW badge
 import { EngagementActions } from './EngagementActions';
 import { useEngagement } from '../hooks/useEngagement';
 import { cleanTitle } from '../utils/cleanTitle';
+import { API_ENDPOINT } from '../config/api';
+import { PNOAuthService } from '../services/pnOAuthService';
 
 interface BrandedFeedPageProps {
   feed: Feed;
@@ -20,6 +22,32 @@ interface BrandedFeedPageProps {
 
 export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFeedPageProps) {
   const { getLikeCount, isLiked, getComments, getShareCount } = useEngagement();
+  const [showSettings, setShowSettings] = useState(false);
+  const [editTitle, setEditTitle] = useState(feed.feedName);
+  const [editDescription, setEditDescription] = useState(feed.feedDescription || '');
+  const [saving, setSaving] = useState(false);
+
+  const saveSettings = async () => {
+    setSaving(true);
+    try {
+      const session = PNOAuthService.loadSession();
+      const res = await fetch(`${API_ENDPOINT}/api/feeds/${feed.feedId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {})
+        },
+        body: JSON.stringify({
+          feedName: editTitle,
+          feedDescription: editDescription
+        })
+      });
+      if (!res.ok) throw new Error('Failed to save');
+      setShowSettings(false);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900">
@@ -103,8 +131,10 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
                 <span className="hidden md:inline">Back</span>
               </button>
               <button
+                type="button"
+                onClick={() => setShowSettings(true)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-                title="Feed settings (coming soon)"
+                title="Feed settings"
               >
                 <Settings className="h-4 w-4" />
                 <span className="hidden md:inline">Settings</span>
@@ -194,6 +224,44 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
           </div>
         )}
       </div>
+
+      {showSettings && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-neutral-700 rounded-xl max-w-md w-full p-6 space-y-4">
+            <h3 className="text-lg font-semibold text-white">Feed settings</h3>
+            <label className="block text-sm text-neutral-300">
+              Title
+              <input
+                className="mt-1 w-full px-3 py-2 bg-neutral-800 border border-neutral-600 rounded text-white"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm text-neutral-300">
+              Description
+              <textarea
+                className="mt-1 w-full px-3 py-2 bg-neutral-800 border border-neutral-600 rounded text-white"
+                rows={3}
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="px-4 py-2 text-neutral-300" onClick={() => setShowSettings(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+                onClick={saveSettings}
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

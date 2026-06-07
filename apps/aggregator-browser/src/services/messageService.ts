@@ -7,7 +7,8 @@ import { PNOAuthService } from './pnOAuthService';
 import { API_ENDPOINT } from '../config/api';
 import { inboxCacheService } from './inboxCacheService';
 import { encryptOutgoingMessage, decryptIncomingMessage } from './dmCryptoClient';
-import { isDmIdentityReady } from './dmIdentitySession';
+import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
+import { encryptMessageRequest, decryptMessageRequest } from '@par-noir/dm-crypto';
 
 // Helper function to get auth headers
 function getAuthHeaders(): HeadersInit {
@@ -40,8 +41,22 @@ export interface MessageRequest {
   fromPnIdentifier: string;
   toPnIdentifier: string;
   content: string;
+  kemCiphertext?: string;
+  cryptoVersion?: number;
   timestamp: string;
   status: 'pending' | 'accepted' | 'declined';
+}
+
+async function fetchRecipientMlKemPublicKey(toPnIdentifier: string): Promise<string> {
+  const res = await fetch(`${API_ENDPOINT}/api/profile/${encodeURIComponent(toPnIdentifier)}/ml-kem-public-key`);
+  if (!res.ok) {
+    throw new Error('Recipient has no messaging public key');
+  }
+  const data = await res.json();
+  if (!data.mlKemPublicKey) {
+    throw new Error('Recipient has no messaging public key');
+  }
+  return data.mlKemPublicKey as string;
 }
 
 export interface MessageThread {
@@ -393,13 +408,21 @@ export async function sendMessageRequest(
   content: string
 ): Promise<MessageRequest> {
   try {
+    if (!isDmIdentityReady()) {
+      throw new Error('Unlock messaging before sending a request');
+    }
+    const recipientKey = await fetchRecipientMlKemPublicKey(toPnIdentifier);
+    const { encryptedContent, kemCiphertext } = await encryptMessageRequest(content, recipientKey);
+
     const response = await fetch(`${API_ENDPOINT}/api/messages/requests`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
         fromPnIdentifier,
         toPnIdentifier,
-        content
+        encryptedContent,
+        kemCiphertext,
+        cryptoVersion: 2
       })
     });
 
@@ -408,7 +431,7 @@ export async function sendMessageRequest(
     }
 
     const result = await response.json();
-    return result.request;
+    return { ...result.request, content };
   } catch (error) {
     console.error('Failed to send message request:', error);
     throw error;
@@ -429,7 +452,24 @@ export async function getMessageRequests(userPnIdentifier: string): Promise<Mess
     }
 
     const result = await response.json();
-    return result.requests || [];
+    const rows: MessageRequest[] = result.requests || [];
+    if (!isDmIdentityReady()) {
+      return rows.map((r) => ({ ...r, content: r.cryptoVersion === 2 ? '[Encrypted message request]' : r.content }));
+    }
+    const { mlKemSecretKey } = getDmIdentity();
+    return Promise.all(
+      rows.map(async (r) => {
+        if (r.cryptoVersion === 2 && r.kemCiphertext) {
+          try {
+            const plain = await decryptMessageRequest(r.content, r.kemCiphertext, mlKemSecretKey);
+            return { ...r, content: plain };
+          } catch {
+            return { ...r, content: '[Unable to decrypt request]' };
+          }
+        }
+        return r;
+      })
+    );
   } catch (error) {
     console.error('Failed to get message requests:', error);
     return [];

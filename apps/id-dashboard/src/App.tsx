@@ -19,6 +19,9 @@ import { STANDARD_DATA_POINTS, DATA_POINT_CATEGORIES } from './types/standardDat
 import { DataPointInputModal } from './components/DataPointInputModal';
 import { PermissionTile } from './components/PermissionTile';
 import { IntegratorTile } from './components/IntegratorTile';
+import { DataPointRequestsPanel } from './components/DataPointRequestsPanel';
+import { IdentitySuccessionPanel } from './components/IdentitySuccessionPanel';
+import { DeviceManagementPanel } from './components/DeviceManagementPanel';
 
 import { MigrationManager, WebIdentityData, MigrationResult } from './utils/migration';
 
@@ -31,8 +34,6 @@ import { IPFSMetadataService } from './utils/ipfsMetadataService';
 import { SecureCredentialManager } from './utils/secureCredentialManager';
 import { SessionDataMigration } from './utils/sessionDataMigration';
 import { IntegrationCredentialManager } from './utils/integrationCredentialManager';
-// Dynamic import for DistributedIdentityManager to avoid module resolution issues
-let DistributedIdentityManager: any;
 import { LicenseVerification } from './utils/licenseVerification';
 
 import { InputValidator } from './utils/validation';
@@ -48,7 +49,6 @@ import TransferReceiver from './pages/TransferReceiver';
 import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import DmcaPolicy from './pages/DmcaPolicy';
-import { MainDashboard } from './components/app/MainDashboard';
 import { MonetizationTab } from './components/monetization/MonetizationTab';
 import { DelegationModal } from './components/DelegationModal';
 import { SubPnTab } from './components/subpn/SubPnTab';
@@ -3188,7 +3188,10 @@ This invitation expires in 24 hours.`;
 
       // Find the pending custodian in the owner's list and validate the passcode
       // This would typically involve a server call, but for now we'll simulate it
-      const isValidPasscode = passcode.length >= 8 && /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/.test(passcode);
+      const acceptancePasscode = custodianAcceptanceData.passcode.trim();
+      const isValidPasscode =
+        acceptancePasscode.length >= 8 &&
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/.test(acceptancePasscode);
 
       if (!isValidPasscode) {
         throw new Error('Invalid passcode. Please check with the identity owner.');
@@ -6197,6 +6200,15 @@ This invitation expires in 24 hours.`;
                     <div className="space-y-6">
                       <div>
                         <h3 className="text-lg font-semibold text-text-primary mb-4">Privacy & Sharing Settings</h3>
+
+                        {authenticatedUser && (
+                          <DataPointRequestsPanel
+                            authenticatedUser={authenticatedUser}
+                            onResponded={() => {
+                              /* permissions refresh on next load */
+                            }}
+                          />
+                        )}
                         
                         {/* Age Verification Section */}
                         <div className="bg-secondary rounded-lg p-6 mb-6">
@@ -6357,6 +6369,13 @@ This invitation expires in 24 hours.`;
                     <div className="space-y-6">
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Recovery & Devices</h3>
+                        <DeviceManagementPanel />
+                        {authenticatedUser && (
+                          <IdentitySuccessionPanel
+                            predecessorPnIdentifier={authenticatedUser.id.startsWith('pn-') ? authenticatedUser.id : `pn-${authenticatedUser.id}`}
+                            authToken={authenticatedUser.accessToken || authenticatedUser.authToken}
+                          />
+                        )}
                         <div className="space-y-4">
                           {/* Recovery Configuration */}
                           <div className="bg-secondary p-4 rounded-lg">

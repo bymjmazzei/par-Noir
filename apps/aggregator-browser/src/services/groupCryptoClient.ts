@@ -6,6 +6,8 @@ import {
   deriveGroupWrapKey,
   wrapChatKey,
   unwrapChatKey,
+  wrapChatKeyForOwner as wrapOwnerKey,
+  unwrapChatKeyForOwner as unwrapOwnerKey,
   generateChatKey,
   generateGroupId,
   encryptDmMessage,
@@ -14,6 +16,22 @@ import {
 import { ensureMessageRootKey } from './dmCryptoClient';
 
 export { generateChatKey, generateGroupId };
+
+export async function wrapChatKeyForOwner(
+  chatKeyB64: string,
+  mlKemSecretKeyB64: string,
+  groupId: string
+): Promise<string> {
+  return wrapOwnerKey(chatKeyB64, mlKemSecretKeyB64, groupId);
+}
+
+export async function unwrapChatKeyForOwner(
+  wrappedB64: string,
+  mlKemSecretKeyB64: string,
+  groupId: string
+): Promise<string> {
+  return unwrapOwnerKey(wrappedB64, mlKemSecretKeyB64, groupId);
+}
 
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);

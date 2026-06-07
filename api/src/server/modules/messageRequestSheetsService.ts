@@ -13,6 +13,8 @@ export interface StoredMessageRequestRow {
   fromPnIdentifier: string;
   toPnIdentifier: string;
   content: string;
+  kemCiphertext?: string;
+  cryptoVersion?: number;
   status: 'pending' | 'accepted' | 'declined';
   timestamp: string;
 }
@@ -57,7 +59,7 @@ export class MessageRequestSheetsService {
           {
             properties: {
               title: SHEET_TITLE,
-              gridProperties: { rowCount: 10000, columnCount: 6 }
+              gridProperties: { rowCount: 10000, columnCount: 8 }
             }
           }
         ]
@@ -82,7 +84,7 @@ export class MessageRequestSheetsService {
       range: `${SHEET_TITLE}!A1:F1`,
       valueInputOption: 'RAW',
       requestBody: {
-        values: [['Request ID', 'From pN', 'To pN', 'Content', 'Status', 'Created At']]
+        values: [['Request ID', 'From pN', 'To pN', 'Content', 'Status', 'Created At', 'KEM Ciphertext', 'Crypto Version']]
       }
     });
 
@@ -99,7 +101,7 @@ export class MessageRequestSheetsService {
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${SHEET_TITLE}!A2:F`
+      range: `${SHEET_TITLE}!A2:H`
     });
     const rows = res.data.values || [];
     const out: StoredMessageRequestRow[] = [];
@@ -114,7 +116,9 @@ export class MessageRequestSheetsService {
         toPnIdentifier: String(row[2] || ''),
         content: String(row[3] || ''),
         status,
-        timestamp: String(row[5] || new Date().toISOString())
+        timestamp: String(row[5] || new Date().toISOString()),
+        kemCiphertext: row[6] ? String(row[6]) : undefined,
+        cryptoVersion: row[7] ? Number(row[7]) : undefined
       });
     }
     return out;
@@ -123,7 +127,14 @@ export class MessageRequestSheetsService {
   static async appendRequest(
     token: GoogleDriveToken,
     spreadsheetId: string,
-    req: { requestId: string; fromPn: string; toPn: string; content: string },
+    req: {
+      requestId: string;
+      fromPn: string;
+      toPn: string;
+      content: string;
+      kemCiphertext?: string;
+      cryptoVersion?: number;
+    },
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
@@ -132,11 +143,20 @@ export class MessageRequestSheetsService {
     const ts = new Date().toISOString();
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `${SHEET_TITLE}!A:F`,
+      range: `${SHEET_TITLE}!A:H`,
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
       requestBody: {
-        values: [[req.requestId, req.fromPn, req.toPn, req.content, 'pending', ts]]
+        values: [[
+          req.requestId,
+          req.fromPn,
+          req.toPn,
+          req.content,
+          'pending',
+          ts,
+          req.kemCiphertext || '',
+          req.cryptoVersion != null ? String(req.cryptoVersion) : ''
+        ]]
       }
     });
   }
@@ -153,7 +173,7 @@ export class MessageRequestSheetsService {
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${SHEET_TITLE}!A2:F`
+      range: `${SHEET_TITLE}!A2:H`
     });
     const rows = res.data.values || [];
     const rowIndex = rows.findIndex(r => r[0] === requestId);

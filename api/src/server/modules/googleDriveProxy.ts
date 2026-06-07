@@ -1180,6 +1180,86 @@ export class GoogleDriveProxyService {
 
     return response.json() as Promise<GoogleDriveFile>;
   }
+
+  /**
+   * Grant Google Drive reader access to a specific user email (idempotent).
+   */
+  async grantReaderPermission(
+    accessToken: string,
+    fileId: string,
+    emailAddress: string
+  ): Promise<void> {
+    const normalizedEmail = emailAddress.trim().toLowerCase();
+    if (!normalizedEmail) {
+      throw new Error('emailAddress is required to grant Drive reader permission');
+    }
+
+    const listRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}/permissions?fields=permissions(emailAddress)`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (listRes.ok) {
+      const data = (await listRes.json()) as { permissions?: Array<{ emailAddress?: string }> };
+      const already = data.permissions?.some(
+        (p) => p.emailAddress?.trim().toLowerCase() === normalizedEmail
+      );
+      if (already) {
+        return;
+      }
+    }
+
+    const shareRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          role: 'reader',
+          type: 'user',
+          emailAddress: emailAddress.trim()
+        })
+      }
+    );
+    if (!shareRes.ok) {
+      const errorText = await shareRes.text().catch(() => 'Unknown error');
+      throw new Error(`Failed to grant Drive reader permission: ${errorText}`);
+    }
+  }
+
+  /**
+   * Resolve the primary Google account email stored for a pN identifier.
+   */
+  async getGoogleEmailForPn(userPnIdentifier: string, accountId?: string): Promise<string | null> {
+    const pnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+    const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
+    const credentials = credentialsRecord?.credentials;
+    if (!credentials) {
+      return null;
+    }
+    const accounts =
+      credentials.googleDriveAccounts ||
+      (credentials.googleDrive ? [credentials.googleDrive] : []);
+    if (accounts.length === 0) {
+      return null;
+    }
+    let account = accounts[0] as { email?: string; accountId?: string; backendId?: string };
+    if (accountId) {
+      const match = accounts.find(
+        (acc: any) =>
+          acc.backendId === accountId ||
+          acc.keyPrefix === accountId ||
+          acc.accountId === accountId
+      );
+      if (match) {
+        account = match as typeof account;
+      }
+    }
+    const email = (account as { email?: string }).email;
+    return email?.trim() || null;
+  }
 }
 
 export const googleDriveProxyService = new GoogleDriveProxyService();

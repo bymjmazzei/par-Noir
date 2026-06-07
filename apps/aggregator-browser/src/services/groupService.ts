@@ -8,12 +8,14 @@ import {
   generateChatKey,
   generateGroupId,
   wrapChatKeyForMember,
+  wrapChatKeyForOwner,
+  unwrapChatKeyForOwner,
   unwrapGroupChatKey,
   encryptGroupMessage,
   decryptGroupMessage
 } from './groupCryptoClient';
 import { getMessageThreads } from './messageService';
-import { isDmIdentityReady } from './dmIdentitySession';
+import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
 import type { Message } from './messageService';
 
 const groupChatKeys = new Map<string, string>();
@@ -90,9 +92,11 @@ export async function createGroup(
 
   for (const pn of allPn) {
     if (pn === ownerPnIdentifier) {
+      const { mlKemSecretKey } = getDmIdentity();
+      const wrappedOwner = await wrapChatKeyForOwner(chatKey, mlKemSecretKey, groupId);
       members.push({
         memberPnIdentifier: ownerPnIdentifier,
-        wrappedChatKey: chatKey,
+        wrappedChatKey: wrappedOwner,
         accessRole: 'readWrite'
       });
       continue;
@@ -174,12 +178,55 @@ export async function removeGroupMember(
   groupId: string,
   memberPnIdentifier: string
 ): Promise<void> {
+  const groups = await listGroups(ownerPnIdentifier);
+  const groupRows = groups.filter((g) => g.groupId === groupId);
+  const remaining = groupRows.filter((g) => g.memberPnIdentifier !== memberPnIdentifier);
+  if (remaining.length === 0) {
+    throw new Error('Group not found');
+  }
+
+  const newChatKey = generateChatKey();
+  getGroupChatKeyCache().set(groupId, newChatKey);
+  const threads = await getMessageThreads(ownerPnIdentifier);
+  const threadByParticipant = new Map(
+    threads.filter((t) => t.participantPnIdentifier).map((t) => [t.participantPnIdentifier!, t])
+  );
+
+  const { mlKemSecretKey } = getDmIdentity();
+  const keyRotation: Array<{ memberPnIdentifier: string; wrappedChatKey: string; accessRole: GroupAccessRole }> = [];
+
+  for (const row of remaining) {
+    if (row.memberPnIdentifier === ownerPnIdentifier) {
+      keyRotation.push({
+        memberPnIdentifier: ownerPnIdentifier,
+        wrappedChatKey: await wrapChatKeyForOwner(newChatKey, mlKemSecretKey, groupId),
+        accessRole: row.accessRole
+      });
+      continue;
+    }
+    const thread = threadByParticipant.get(row.memberPnIdentifier);
+    if (!thread?.connectionId) {
+      throw new Error(`No encrypted session with ${row.memberPnIdentifier}`);
+    }
+    keyRotation.push({
+      memberPnIdentifier: row.memberPnIdentifier,
+      wrappedChatKey: await wrapChatKeyForMember(
+        newChatKey,
+        ownerPnIdentifier,
+        thread.connectionId,
+        thread.kemCiphertext,
+        groupId
+      ),
+      accessRole: row.accessRole
+    });
+  }
+
   const res = await fetch(
     `${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberPnIdentifier)}`,
     {
       method: 'DELETE',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ ownerPnIdentifier })
+      body: JSON.stringify({ ownerPnIdentifier, keyRotation })
     }
   );
   if (!res.ok) {
@@ -204,10 +251,8 @@ export async function getGroupChatKey(
   if (memberPnIdentifier === ownerPnIdentifier) {
     const cached = getGroupChatKeyCache().get(groupId);
     if (cached) return cached;
-    if (wrappedChatKey && !wrappedChatKey.startsWith('pn1.')) {
-      getGroupChatKeyCache().set(groupId, wrappedChatKey);
-      return wrappedChatKey;
-    }
+    const { mlKemSecretKey } = getDmIdentity();
+    return unwrapChatKeyForOwner(wrappedChatKey, mlKemSecretKey, groupId);
   }
   const { connectionId, kemCiphertext } = await getDmThreadToOwner(userPn, ownerPnIdentifier);
   if (!connectionId) {
@@ -260,7 +305,8 @@ export async function sendGroupMessage(
   userPn: string,
   groupId: string,
   record: GroupRecord,
-  plaintext: string
+  plaintext: string,
+  mediaFileId?: string
 ): Promise<void> {
   if (!isDmIdentityReady()) {
     throw new Error('Unlock messaging with your passcode before sending');
@@ -277,7 +323,8 @@ export async function sendGroupMessage(
       fromPnIdentifier: userPn,
       userPnIdentifier: userPn,
       encryptedContent,
-      cryptoVersion: 2
+      cryptoVersion: 2,
+      ...(mediaFileId ? { mediaFileId } : {})
     })
   });
   if (!res.ok) {

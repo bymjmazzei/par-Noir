@@ -22,6 +22,30 @@ export async function unwrapChatKey(wrappedB64: string, wrapKey: Uint8Array): Pr
   return bytesToBase64(raw);
 }
 
+/** Owner self-wrap using ML-KEM secret (no pairwise session to self). */
+export function deriveOwnerSelfWrapKey(mlKemSecretKeyB64: string, groupId: string): Uint8Array {
+  const ikm = base64ToBytes(mlKemSecretKeyB64);
+  return hkdfSha3_384(ikm, `par-noir-group-owner-wrap-v1:${groupId}`, utf8ToBytes('owner'));
+}
+
+export async function wrapChatKeyForOwner(
+  chatKeyB64: string,
+  mlKemSecretKeyB64: string,
+  groupId: string
+): Promise<string> {
+  const wrapKey = deriveOwnerSelfWrapKey(mlKemSecretKeyB64, groupId);
+  return wrapChatKey(chatKeyB64, wrapKey);
+}
+
+export async function unwrapChatKeyForOwner(
+  wrappedB64: string,
+  mlKemSecretKeyB64: string,
+  groupId: string
+): Promise<string> {
+  const wrapKey = deriveOwnerSelfWrapKey(mlKemSecretKeyB64, groupId);
+  return unwrapChatKey(wrappedB64, wrapKey);
+}
+
 /** 32-byte random chat key (base64). */
 export function generateChatKey(): string {
   const bytes = globalThis.crypto.getRandomValues(new Uint8Array(32));

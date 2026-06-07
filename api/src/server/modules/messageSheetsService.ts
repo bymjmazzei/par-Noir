@@ -443,14 +443,11 @@ export class MessageSheetsService {
       if (message.cryptoVersion === 2 && message.encryptedContent) {
         encryptedContent = message.encryptedContent;
         cryptoVersion = 2;
-      } else if (message.fromPnIdentifier === 'system' || !sharedSecret || sharedSecret === '') {
+      } else if (message.fromPnIdentifier === 'system') {
         encryptedContent = message.content;
       } else {
-        const { MessageEncryption } = await import('../utils/messageEncryption');
-        encryptedContent = await MessageEncryption.encryptMessage(
-          message.content,
-          connectionId,
-          sharedSecret
+        throw new Error(
+          'Legacy server-side message encryption is disabled. Send encryptedContent with cryptoVersion 2.'
         );
       }
 
@@ -485,7 +482,7 @@ export class MessageSheetsService {
       // Step 2: Set the values in the newly inserted row 2
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: 'Messages!A2:G2',
+        range: 'Messages!A2:H2',
         valueInputOption: 'RAW',
         requestBody: {
           values: [[
@@ -495,7 +492,8 @@ export class MessageSheetsService {
             message.messageId,
             message.read ? 'true' : 'false',
             message.readAt || '',
-            cryptoVersion ? String(cryptoVersion) : ''
+            cryptoVersion ? String(cryptoVersion) : '',
+            message.mediaFileId || ''
           ]]
         }
       });
@@ -563,7 +561,7 @@ export class MessageSheetsService {
       // Fast path: Read first N rows directly (newest messages are at top)
       // Row 1 is header, data starts at row 2, so read rows 2 to (limit+1)
       const endRow = limit + 1; // +1 because row 1 is header
-      const range = `Messages!A2:F${endRow}`;
+      const range = `Messages!A2:H${endRow}`;
       
       try {
         const sheetsApiStart = Date.now();
@@ -599,7 +597,7 @@ export class MessageSheetsService {
         // Fallback: read all rows
         const fullResponse = await sheets.spreadsheets.values.get({
           spreadsheetId,
-          range: 'Messages!A2:F'
+          range: 'Messages!A2:H'
         });
         rowsToProcess = fullResponse.data.values || [];
         total = rowsToProcess.length;
@@ -618,7 +616,7 @@ export class MessageSheetsService {
         console.warn('[MessageSheetsService] Failed to get row count, reading all rows:', error?.message);
         const fullResponse = await sheets.spreadsheets.values.get({
           spreadsheetId,
-          range: 'Messages!A2:F'
+          range: 'Messages!A2:H'
         });
         rowsToProcess = fullResponse.data.values || [];
         total = rowsToProcess.length;
@@ -629,7 +627,7 @@ export class MessageSheetsService {
         const startRow = 2 + offset; // +2 because row 1 is header, data starts at row 2
         const endRow = startRow + limit - 1;
         
-        const range = `Messages!A${startRow}:F${endRow}`;
+        const range = `Messages!A${startRow}:H${endRow}`;
         try {
           const response = await sheets.spreadsheets.values.get({
             spreadsheetId,
@@ -641,7 +639,7 @@ export class MessageSheetsService {
           // Fallback: read all rows
           const fullResponse = await sheets.spreadsheets.values.get({
             spreadsheetId,
-            range: 'Messages!A2:F'
+            range: 'Messages!A2:H'
           });
           rowsToProcess = fullResponse.data.values || [];
           total = rowsToProcess.length;
@@ -660,6 +658,7 @@ export class MessageSheetsService {
           ? fromPnIdentifier
           : this.normalizeToPnIdentifier(fromPnIdentifier);
         const cryptoVersion = row[6] ? parseInt(String(row[6]), 10) : 2;
+        const mediaFileId = row[7]?.trim() || undefined;
         return {
           messageId: row[3] || `msg-${actualIndex}`,
           fromPnIdentifier: normalizedFromPnIdentifier,
@@ -669,7 +668,8 @@ export class MessageSheetsService {
           cryptoVersion: Number.isNaN(cryptoVersion) ? 2 : cryptoVersion,
           timestamp: row[2] || new Date().toISOString(),
           read: row[4] === 'true',
-          readAt: row[5] || undefined
+          readAt: row[5] || undefined,
+          ...(mediaFileId ? { mediaFileId } : {})
         };
       });
       return { messages, total };
@@ -743,6 +743,7 @@ export class MessageSheetsService {
         // Normalize only if needed for legacy data compatibility
         const normalizedFromPnIdentifier = fromPnIdentifier.startsWith('pn-') ? fromPnIdentifier : this.normalizeToPnIdentifier(fromPnIdentifier);
         
+        const mediaFileId = row[7]?.trim() || undefined;
         return {
           messageId: row[3] || `msg-${actualIndex}`,
           fromPnIdentifier: normalizedFromPnIdentifier,
@@ -750,7 +751,8 @@ export class MessageSheetsService {
           content: decryptedContent,
           timestamp: row[2] || new Date().toISOString(),
           read: row[4] === 'true',
-          readAt: row[5] || undefined
+          readAt: row[5] || undefined,
+          ...(mediaFileId ? { mediaFileId } : {})
         };
       })
     );
@@ -784,7 +786,7 @@ export class MessageSheetsService {
     // Get all messages to find the row
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Messages!A2:F'
+      range: 'Messages!A2:H'
     });
 
     const rows = response.data.values || [];
@@ -821,7 +823,7 @@ export class MessageSheetsService {
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Messages!A2:F'
+      range: 'Messages!A2:H'
     });
 
     const rows = response.data.values || [];
@@ -1201,6 +1203,40 @@ export class MessageSheetsService {
   }
 
   /**
+   * Count unread messages in a conversation sheet (newest-first storage).
+   */
+  static async countUnreadMessages(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    viewerPnIdentifier: string,
+    userPnIdentifier: string,
+    accountId: string | undefined,
+    maxRows = 100
+  ): Promise<number> {
+    try {
+      const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+      const sheets = google.sheets({ version: 'v4', auth });
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `Messages!A2:G${maxRows + 1}`
+      });
+      const rows = response.data.values || [];
+      let count = 0;
+      for (const row of rows) {
+        const from = String(row[1] || '');
+        const readVal = String(row[5] || '').toLowerCase();
+        const isRead = readVal === 'true' || readVal === '1';
+        if (from && from !== viewerPnIdentifier && !isRead) {
+          count++;
+        }
+      }
+      return count;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
    * Delete conversation sheet for a user
    * Only deletes the requesting user's file, not the other user's file
    */
@@ -1295,7 +1331,7 @@ export class MessageSheetsService {
       // Get all messages from other user's sheet
       const otherMessagesResponse = await otherSheets.spreadsheets.values.get({
         spreadsheetId: otherUserSheetId,
-        range: 'Messages!A2:F' // Skip header
+        range: 'Messages!A2:H' // Skip header
       });
 
       const otherMessages = otherMessagesResponse.data.values || [];
@@ -1337,7 +1373,7 @@ export class MessageSheetsService {
 
       await sheets.spreadsheets.values.append({
         spreadsheetId: userSheetId,
-        range: 'Messages!A:F',
+        range: 'Messages!A:H',
         valueInputOption: 'RAW',
         requestBody: {
           values: values
@@ -1451,10 +1487,19 @@ export class MessageSheetsService {
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'Messages!A1:G1',
+      range: 'Messages!A1:H1',
       valueInputOption: 'RAW',
       requestBody: {
-        values: [['User DID', 'Message Content', 'Timestamp', 'Message ID', 'Read Status', 'Read At', 'cryptoVersion']]
+        values: [[
+          'User DID',
+          'Message Content',
+          'Timestamp',
+          'Message ID',
+          'Read Status',
+          'Read At',
+          'cryptoVersion',
+          'mediaFileId'
+        ]]
       }
     });
     return spreadsheetId;

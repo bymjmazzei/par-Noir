@@ -1878,19 +1878,10 @@ class ProductionServer {
       res.json({ challenge, expiresAt: Date.now() + 300000 }); // 5 minutes
     });
 
-    this.app.post('/api/auth/verify', (req, res) => {
-      // Verify authentication response
-      const { challenge, signature, publicKey } = req.body;
-      
-      if (!challenge || !signature || !publicKey) {
-        return res.status(400).json({ error: 'Missing required fields' });
-      }
-
-      // In production, implement proper signature verification
-      return res.json({ 
-        success: true, 
-        token: this.generateToken(),
-        expiresIn: 3600 // 1 hour
+    this.app.post('/api/auth/verify', (_req, res) => {
+      return res.status(410).json({
+        error: 'gone',
+        error_description: 'Legacy auth verify removed. Use pN OAuth (/oauth/token).'
       });
     });
 
@@ -3103,11 +3094,13 @@ class ProductionServer {
       setupIdentityPublicRoutes,
       setupOAuthRoutes,
       setupDataPointRoutes,
+      setupDataPointUserRoutes,
       setupContentPortabilityRoutes
     } = await import('./server/modules/apiRoutes');
     setupIdentityPublicRoutes(this.app);
     setupOAuthRoutes(this.app);
     setupDataPointRoutes(this.app);
+    setupDataPointUserRoutes(this.app);
     setupContentPortabilityRoutes(this.app);
 
     // Feed Routes - Posts, Subscriptions, Payment Webhooks
@@ -5813,6 +5806,7 @@ class ProductionServer {
 
         // Normalize pn identifier
         const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
+        const contentClassFilter = req.query.contentClass as string | undefined;
 
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
 
@@ -5843,7 +5837,10 @@ class ProductionServer {
         }
 
         // Merged view: aggregate from content-class indices, fallback to root
-        const contentTypes: Array<'media' | 'thoughts' | 'collections'> = ['media', 'thoughts', 'collections'];
+        const contentTypes: Array<'media' | 'thoughts' | 'collections'> =
+          contentClassFilter === 'media' || contentClassFilter === 'thoughts' || contentClassFilter === 'collections'
+            ? [contentClassFilter]
+            : ['media', 'thoughts', 'collections'];
         const allFiles: any[] = [];
         for (const contentType of contentTypes) {
           const folderQuery = `name='${contentType}' and '${out.metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -8885,6 +8882,7 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
         const query = req.query.q as string | undefined;
+        const scope = req.query.scope as string | undefined;
         const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string, 10) : 50;
         const accountId = req.query.accountId as string | undefined;
 
@@ -8896,6 +8894,27 @@ class ProductionServer {
             error: driveCtx.code || 'forbidden',
             error_description: driveCtx.error
           });
+        }
+
+        if (scope === 'sharedWithMe') {
+          if (!driveCtx.isFirstParty) {
+            return res.status(403).json({
+              error: 'forbidden',
+              error_description: 'Shared-with-me listing is first-party only'
+            });
+          }
+          const { isMessagingLibraryDriveFile } = await import('./server/modules/messagingMediaService');
+          const sharedQuery =
+            "sharedWithMe=true and trashed=false and mimeType != 'application/vnd.google-apps.folder'";
+          const sharedFiles = await googleDriveProxyService.listFiles(
+            userIdentifier,
+            sharedQuery,
+            pageSize,
+            accountId,
+            identifierCandidates
+          );
+          const files = sharedFiles.filter(isMessagingLibraryDriveFile);
+          return res.json({ files });
         }
         
         // If no query provided and we have a pN identifier, try to find files in the pN folder
@@ -10005,6 +10024,12 @@ class ProductionServer {
         console.log(`Client connected: ${socket.id}`);
       }
 
+      const oauth = (socket.data as { oauth?: { pnIdentifier?: string } }).oauth;
+      if (oauth?.pnIdentifier) {
+        const { pnRoomId } = require('./server/modules/realtimeEvents');
+        socket.join(pnRoomId(oauth.pnIdentifier));
+      }
+
       socket.on('disconnect', () => {
         if (process.env.NODE_ENV === 'development') {
           console.log(`Client disconnected: ${socket.id}`);
@@ -10024,6 +10049,15 @@ class ProductionServer {
         socket.emit('did:resolved', { did, document: {} });
       });
     });
+  }
+
+  private emitRealtime(pnIdentifier: string, event: string, payload: Record<string, unknown>): void {
+    try {
+      const { pnRoomId } = require('./server/modules/realtimeEvents');
+      this.io.to(pnRoomId(pnIdentifier)).emit(event, payload);
+    } catch (err: unknown) {
+      console.warn('[Realtime] emit failed:', (err as Error)?.message);
+    }
   }
 
   private generateChallenge(): string {
@@ -11281,29 +11315,47 @@ class ProductionServer {
         }
 
         // Inbox already contains sharedSecret - no connections lookup needed!
-        const enrichedConversations = inboxConversations.map((conv) => {
-          // Use lastMessagePreview from inbox; no getMessages calls for list
-          const lastMessage = conv.lastMessagePreview ? {
-            messageId: '',
-            fromPnIdentifier: '',
-            toPnIdentifier: conv.participantPnIdentifier,
-            content: conv.lastMessagePreview,
-            timestamp: conv.lastMessageAt,
-            read: false,
-            encrypted: false
-          } : undefined;
+        const enrichedConversations = await Promise.all(
+          inboxConversations.map(async (conv) => {
+            const lastMessage = conv.lastMessagePreview
+              ? {
+                  messageId: '',
+                  fromPnIdentifier: '',
+                  toPnIdentifier: conv.participantPnIdentifier,
+                  content: conv.lastMessagePreview,
+                  timestamp: conv.lastMessageAt,
+                  read: false,
+                  encrypted: false
+                }
+              : undefined;
 
-          return {
-            otherUserPnIdentifier: conv.participantPnIdentifier,
-            participantPnIdentifier: conv.participantPnIdentifier,
-            spreadsheetId: conv.spreadsheetId,
-            connectionId: conv.connectionId,
-            kemCiphertext: conv.kemCiphertext,
-            lastMessageAt: conv.lastMessageAt,
-            lastMessagePreview: conv.lastMessagePreview,
-            lastMessage
-          };
-        });
+            let unreadCount = 0;
+            if (conv.spreadsheetId) {
+              unreadCount = await MessageSheetsService.countUnreadMessages(
+                token,
+                conv.spreadsheetId,
+                pnIdentifier,
+                pnIdentifier,
+                accountId
+              );
+            }
+
+            return {
+              otherUserPnIdentifier: conv.participantPnIdentifier,
+              participantPnIdentifier: conv.participantPnIdentifier,
+              spreadsheetId: conv.spreadsheetId,
+              connectionId: conv.connectionId,
+              kemCiphertext: conv.kemCiphertext,
+              lastMessageAt: conv.lastMessageAt,
+              lastMessagePreview: conv.lastMessagePreview,
+              lastMessage,
+              threadType: conv.threadType,
+              groupId: conv.groupId,
+              ownerPnIdentifier: conv.ownerPnIdentifier,
+              unreadCount
+            };
+          })
+        );
 
         const threads = enrichedConversations.map(conv => ({
           participantPnIdentifier: conv.participantPnIdentifier,
@@ -11383,6 +11435,8 @@ class ProductionServer {
           fromPnIdentifier: r.fromPnIdentifier,
           toPnIdentifier: r.toPnIdentifier,
           content: r.content,
+          kemCiphertext: r.kemCiphertext,
+          cryptoVersion: r.cryptoVersion,
           timestamp: r.timestamp,
           status: r.status
         }));
@@ -11402,6 +11456,28 @@ class ProductionServer {
         return res.status(500).json({
           error: 'Failed to get message requests',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get message requests'
+        });
+      }
+    });
+
+    this.app.get('/api/messages/attachments-folder', async (req, res) => {
+      try {
+        const tokenPayload = getBearerTokenPayload(req);
+        if (!tokenPayload?.pnIdentifier) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Invalid or expired access token'
+          });
+        }
+        const accountId = req.query.accountId as string | undefined;
+        const { ensureMessagesAttachmentsFolder } = await import('./server/modules/messagingMediaService');
+        const folderId = await ensureMessagesAttachmentsFolder(tokenPayload.pnIdentifier, accountId);
+        return res.json({ folderId });
+      } catch (error: any) {
+        console.error('[AttachmentsFolder] Error:', error?.message || error);
+        return res.status(500).json({
+          error: 'Failed to resolve attachments folder',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
     });
@@ -12000,9 +12076,12 @@ class ProductionServer {
                 });
               }
             }
-          } catch (connectionCheckError: any) {
-            // If connection check fails, still allow message (fail open for now)
-            console.warn('Connection check failed, allowing message:', connectionCheckError?.message || connectionCheckError);
+          } catch (connectionCheckError: unknown) {
+            console.error('Connection check failed:', (connectionCheckError as Error)?.message || connectionCheckError);
+            return res.status(503).json({
+              error: 'connection_check_failed',
+              message: 'Unable to verify connection. Message not sent.'
+            });
           }
         }
 
@@ -12388,6 +12467,11 @@ class ProductionServer {
           mediaFileId
         };
 
+        if (mediaFileId) {
+          const { shareAttachmentWithRecipients } = await import('./server/modules/messagingMediaService');
+          await shareAttachmentWithRecipients(fromPnIdentifier, mediaFileId, [toPnIdentifier], senderAccountId);
+        }
+
         // Get inbox sheet IDs in parallel (optimized)
         const recipientAccountIdForInbox = recipientCredentials?.credentials?.googleDriveAccounts?.[0] 
           ? this.extractAccountId(recipientCredentials.credentials.googleDriveAccounts[0])
@@ -12709,6 +12793,11 @@ class ProductionServer {
           ).catch((notificationError: any) => {
             console.warn('Failed to send notification:', notificationError);
           });
+          this.emitRealtime(toPnIdentifier, 'new_message', {
+            threadId,
+            messageId,
+            fromPnIdentifier
+          });
         }
 
         return res.json({
@@ -12755,9 +12844,22 @@ class ProductionServer {
 
     this.app.post('/api/messages/requests', async (req, res) => {
       try {
-        const { fromPnIdentifier, toPnIdentifier, content } = req.body;
-        if (!fromPnIdentifier || !toPnIdentifier || !content) {
-          return res.status(400).json({ error: 'fromPnIdentifier, toPnIdentifier, and content are required' });
+        const { fromPnIdentifier, toPnIdentifier, content, encryptedContent, kemCiphertext, cryptoVersion } = req.body;
+        if (!fromPnIdentifier || !toPnIdentifier) {
+          return res.status(400).json({ error: 'fromPnIdentifier and toPnIdentifier are required' });
+        }
+
+        const storedContent = encryptedContent || content;
+        if (!storedContent) {
+          return res.status(400).json({ error: 'encryptedContent (crypto v2) is required' });
+        }
+        if (cryptoVersion !== 2 && !encryptedContent) {
+          return res.status(400).json({
+            error: 'Plaintext message requests are not allowed. Send encryptedContent with cryptoVersion 2.'
+          });
+        }
+        if (cryptoVersion === 2 && !kemCiphertext) {
+          return res.status(400).json({ error: 'kemCiphertext is required for cryptoVersion 2' });
         }
 
         const { MessageRequestSheetsService } = await import('./server/modules/messageRequestSheetsService');
@@ -12801,7 +12903,14 @@ class ProductionServer {
         await MessageRequestSheetsService.appendRequest(
           recipientToken,
           spreadsheetId,
-          { requestId, fromPn: fromPnIdentifier, toPn: toPnIdentifier, content },
+          {
+            requestId,
+            fromPn: fromPnIdentifier,
+            toPn: toPnIdentifier,
+            content: storedContent,
+            kemCiphertext,
+            cryptoVersion: cryptoVersion === 2 ? 2 : undefined
+          },
           toPnIdentifier,
           recipientAccountId
         );
@@ -12812,9 +12921,10 @@ class ProductionServer {
             requestId,
             fromPnIdentifier,
             toPnIdentifier,
-            content,
+            content: '[Encrypted message request]',
             timestamp,
-            status: 'pending' as const
+            status: 'pending' as const,
+            cryptoVersion: cryptoVersion === 2 ? 2 : undefined
           }
         });
       } catch (error: any) {
@@ -14248,11 +14358,12 @@ class ProductionServer {
     this.app.post('/api/groups/:groupId/messages', async (req, res) => {
       try {
         const { groupId } = req.params;
-        const { fromPnIdentifier, encryptedContent, cryptoVersion, userPnIdentifier } = req.body as {
+        const { fromPnIdentifier, encryptedContent, cryptoVersion, userPnIdentifier, mediaFileId } = req.body as {
           fromPnIdentifier?: string;
           encryptedContent?: string;
           cryptoVersion?: number;
           userPnIdentifier?: string;
+          mediaFileId?: string;
         };
         const senderPn = fromPnIdentifier || userPnIdentifier;
         if (!senderPn || !groupId) {
@@ -14359,8 +14470,15 @@ class ProductionServer {
           timestamp,
           read: false,
           encryptedContent,
-          cryptoVersion: 2 as const
+          cryptoVersion: 2 as const,
+          ...(mediaFileId ? { mediaFileId } : {})
         };
+
+        if (mediaFileId) {
+          const { shareAttachmentWithRecipients } = await import('./server/modules/messagingMediaService');
+          const recipientPns = members.map((m) => m.memberPnIdentifier).filter((pn) => pn !== senderPn);
+          await shareAttachmentWithRecipients(senderPn, mediaFileId, recipientPns, senderAccountId);
+        }
 
         await Promise.all(
           members.map(async (member) => {
@@ -14450,6 +14568,47 @@ class ProductionServer {
               preview
             );
           })
+        );
+
+        await Promise.all(
+          members
+            .filter((m) => m.memberPnIdentifier !== senderPn)
+            .map(async (member) => {
+              try {
+                const memberCreds = await storageCredentialsService.getCredentials(member.memberPnIdentifier);
+                if (!memberCreds?.credentials) return;
+                const mAccounts =
+                  memberCreds.credentials.googleDriveAccounts ||
+                  (memberCreds.credentials.googleDrive ? [memberCreds.credentials.googleDrive] : []);
+                if (mAccounts.length === 0) return;
+                const mAccount = mAccounts[0];
+                const mAccountId = this.extractAccountId(mAccount);
+                const mToken = {
+                  access_token: mAccount.access_token || mAccount.accessToken,
+                  refresh_token: mAccount.refresh_token || mAccount.refreshToken,
+                  expires_at: mAccount.expires_at,
+                  expires_in: mAccount.expires_in
+                };
+                const mMeta = await this.getMetadataFolder(mToken, member.memberPnIdentifier, mAccountId);
+                if (!mMeta?.metadataFolderId) return;
+                const { NotificationService } = await import('./server/modules/notificationService');
+                await NotificationService.notifyNewMessage(
+                  mToken.access_token,
+                  mMeta.metadataFolderId,
+                  messageId,
+                  senderPn,
+                  member.memberPnIdentifier,
+                  groupId
+                );
+                this.emitRealtime(member.memberPnIdentifier, 'new_message', {
+                  threadId: groupId,
+                  messageId,
+                  fromPnIdentifier: senderPn
+                });
+              } catch (notifyErr: unknown) {
+                console.warn('[GroupMessage] push notify failed:', (notifyErr as Error)?.message);
+              }
+            })
         );
 
         return res.json({ success: true, messageId, timestamp });
@@ -14767,8 +14926,18 @@ class ProductionServer {
       try {
         const { groupId, memberPn } = req.params;
         const ownerPnIdentifier = (req.body?.ownerPnIdentifier || req.query.ownerPnIdentifier) as string;
+        const keyRotation = req.body?.keyRotation as Array<{
+          memberPnIdentifier: string;
+          wrappedChatKey: string;
+          accessRole: string;
+        }> | undefined;
         if (!ownerPnIdentifier) {
           return res.status(400).json({ error: 'ownerPnIdentifier is required' });
+        }
+        if (!keyRotation || !Array.isArray(keyRotation) || keyRotation.length === 0) {
+          return res.status(400).json({
+            error: 'keyRotation is required (new wrapped keys for remaining members)'
+          });
         }
         if (memberPn === ownerPnIdentifier) {
           return res.status(400).json({ error: 'Owner cannot be removed from the group' });
@@ -14805,11 +14974,16 @@ class ProductionServer {
           ownerPnIdentifier,
           accountId
         );
-        const okOwner = await GroupSheetsService.removeGroupMember(
+        const okOwner = await GroupSheetsService.rotateGroupMemberKeys(
           token,
           sheetId,
           groupId,
           memberPn,
+          keyRotation.map((k) => ({
+            memberPnIdentifier: k.memberPnIdentifier,
+            wrappedChatKey: k.wrappedChatKey,
+            accessRole: (k.accessRole === 'readOnly' ? 'readOnly' : 'readWrite') as 'readWrite' | 'readOnly'
+          })),
           ownerPnIdentifier,
           accountId
         );

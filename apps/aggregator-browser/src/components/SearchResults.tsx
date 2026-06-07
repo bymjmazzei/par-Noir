@@ -162,9 +162,16 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
     
     return results.filter(file => {
       switch (activeFilter) {
-        case 'users':
-          // Filter by creator/author - would need user data
-          return true; // Placeholder
+        case 'users': {
+          const q = query.toLowerCase();
+          const author =
+            (file.metadata as { authorDisplayName?: string; creatorDisplayName?: string }).authorDisplayName ||
+            (file.metadata as { creatorDisplayName?: string }).creatorDisplayName ||
+            file.metadata.authorDid ||
+            file.metadata.creatorDid ||
+            '';
+          return String(author).toLowerCase().includes(q);
+        }
         case 'posts':
           // All files are posts
           return true;

@@ -82,8 +82,7 @@ export class IdentityCrypto {
       // Generate DID and key pair
       const didKeyPair = await this.generateDID();
       
-      // Generate 5 recovery keys using Shamir's Secret Sharing
-      // These are STATIC and encrypted in the ID file
+      // Generate 5 independent recovery codes (stored encrypted in identity blob)
       const recoveryKeys = await this.generateRecoveryKeySet(didKeyPair.did, 5);
       
       // Create identity data (ALL data goes in encrypted data including DID and recovery keys)
