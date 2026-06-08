@@ -10,8 +10,8 @@ import { ContentRatingBadge } from './ContentRatingBadge'; // Still used for isN
 import { EngagementActions } from './EngagementActions';
 import { useEngagement } from '../hooks/useEngagement';
 import { cleanTitle } from '../utils/cleanTitle';
-import { API_ENDPOINT } from '../config/api';
-import { PNOAuthService } from '../services/pnOAuthService';
+import { FeedService } from '../services/feedService';
+import { useUserState } from '../contexts/UserStateContext';
 
 interface BrandedFeedPageProps {
   feed: Feed;
@@ -22,27 +22,31 @@ interface BrandedFeedPageProps {
 
 export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFeedPageProps) {
   const { getLikeCount, isLiked, getComments, getShareCount } = useEngagement();
+  const { userState } = useUserState();
   const [showSettings, setShowSettings] = useState(false);
   const [editTitle, setEditTitle] = useState(feed.feedName);
   const [editDescription, setEditDescription] = useState(feed.feedDescription || '');
+  const [editBanner, setEditBanner] = useState(feed.branding?.bannerImage || '');
+  const [editAvatar, setEditAvatar] = useState(feed.branding?.avatar || '');
+  const [editBio, setEditBio] = useState(feed.branding?.bio || '');
   const [saving, setSaving] = useState(false);
 
+  const isOwner = userState.pnIdentifier === feed.creatorId;
+
   const saveSettings = async () => {
+    if (!userState.pnIdentifier || !isOwner) return;
     setSaving(true);
     try {
-      const session = PNOAuthService.loadSession();
-      const res = await fetch(`${API_ENDPOINT}/api/feeds/${feed.feedId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {})
-        },
-        body: JSON.stringify({
-          feedName: editTitle,
-          feedDescription: editDescription
-        })
+      await FeedService.updateFeed(feed.feedId, {
+        feedName: editTitle,
+        feedDescription: editDescription,
+        creatorDid: userState.pnIdentifier,
+        branding: {
+          bannerImage: editBanner || undefined,
+          avatar: editAvatar || undefined,
+          bio: editBio || undefined
+        }
       });
-      if (!res.ok) throw new Error('Failed to save');
       setShowSettings(false);
     } finally {
       setSaving(false);
@@ -130,6 +134,7 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
                 <ArrowLeft className="h-4 w-4" />
                 <span className="hidden md:inline">Back</span>
               </button>
+              {isOwner && (
               <button
                 type="button"
                 onClick={() => setShowSettings(true)}
@@ -139,6 +144,7 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
                 <Settings className="h-4 w-4" />
                 <span className="hidden md:inline">Settings</span>
               </button>
+              )}
             </div>
           </div>
         </div>
@@ -244,6 +250,31 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
                 rows={3}
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm text-neutral-300">
+              Banner image URL
+              <input
+                className="mt-1 w-full px-3 py-2 bg-neutral-800 border border-neutral-600 rounded text-white"
+                value={editBanner}
+                onChange={(e) => setEditBanner(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm text-neutral-300">
+              Avatar URL
+              <input
+                className="mt-1 w-full px-3 py-2 bg-neutral-800 border border-neutral-600 rounded text-white"
+                value={editAvatar}
+                onChange={(e) => setEditAvatar(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm text-neutral-300">
+              Bio
+              <textarea
+                className="mt-1 w-full px-3 py-2 bg-neutral-800 border border-neutral-600 rounded text-white"
+                rows={2}
+                value={editBio}
+                onChange={(e) => setEditBio(e.target.value)}
               />
             </label>
             <div className="flex justify-end gap-2">

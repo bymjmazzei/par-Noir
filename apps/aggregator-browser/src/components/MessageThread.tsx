@@ -26,6 +26,7 @@ import {
   type MessagingThreadContext
 } from '../services/messagingMediaService';
 import { useDriveAccounts } from '../hooks/useDriveAccounts';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 interface MessageThreadProps {
   participantPnIdentifier?: string;
@@ -79,6 +80,8 @@ export function MessageThread({
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [senderNames, setSenderNames] = useState<Record<string, string>>({});
+  const [realtimeRefresh, setRealtimeRefresh] = useState(0);
+  const socketConnected = useRealtimeSync(() => setRealtimeRefresh((n) => n + 1));
 
   const { selectedId: driveAccountId } = useDriveAccounts({
     authenticatedUserId: userState.pnIdentifier,
@@ -304,7 +307,7 @@ export function MessageThread({
     // Poll for new messages - only when tab is visible, with exponential backoff on errors
     // Increased interval to 30 seconds to reduce unnecessary API calls
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible' && !isPollingRef.current) {
+      if (document.visibilityState === 'visible' && !isPollingRef.current && !socketConnected) {
         // Stop polling if too many consecutive errors
         if (errorCountRef.current >= 3) {
           console.warn('Too many polling errors, stopping automatic refresh');
@@ -315,7 +318,32 @@ export function MessageThread({
     }, 30000); // 30 seconds - reduced frequency to minimize API calls
     
     return () => clearInterval(interval);
-  }, [userState.isUnlocked, userState.pnIdentifier, participantPnIdentifier, preloadedMessages, groupId, spreadsheetId]);
+  }, [userState.isUnlocked, userState.pnIdentifier, participantPnIdentifier, preloadedMessages, groupId, spreadsheetId, socketConnected]);
+
+  useEffect(() => {
+    if (realtimeRefresh === 0 || !userState.isUnlocked || !userState.pnIdentifier) return;
+    if (isGroup && !groupRecord) return;
+    if (isPollingRef.current) return;
+    isPollingRef.current = true;
+    fetchMessages(10, 0)
+      .then((result) => {
+        errorCountRef.current = 0;
+        setTotalMessages(result.total);
+        const reversedMessages = [...result.messages].reverse();
+        const tempMessages = messages.filter((msg) => msg.messageId.startsWith('temp-'));
+        const existingMessageIds = new Set(reversedMessages.map((m) => m.messageId));
+        const preservedTempMessages = tempMessages.filter((msg) => !existingMessageIds.has(msg.messageId));
+        const allMessages = [...reversedMessages, ...preservedTempMessages];
+        allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        setMessages(allMessages);
+        currentOffsetRef.current = reversedMessages.length;
+        setHasMore(reversedMessages.length < result.total);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        isPollingRef.current = false;
+      });
+  }, [realtimeRefresh]);
 
   // Auto-scroll to bottom when messages change (but not when loading more)
   useEffect(() => {
@@ -677,6 +705,7 @@ export function MessageThread({
                       mediaFileId={message.mediaFileId}
                       threadContext={threadContext}
                       accountId={driveAccountId || undefined}
+                      mimeTypeHint={message.mediaMimeType}
                     />
                   )}
                   <div className="flex items-center justify-end space-x-1 mt-1">

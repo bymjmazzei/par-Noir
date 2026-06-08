@@ -306,7 +306,8 @@ export async function sendGroupMessage(
   groupId: string,
   record: GroupRecord,
   plaintext: string,
-  mediaFileId?: string
+  mediaFileId?: string,
+  mediaMimeType?: string
 ): Promise<void> {
   if (!isDmIdentityReady()) {
     throw new Error('Unlock messaging with your passcode before sending');
@@ -324,7 +325,7 @@ export async function sendGroupMessage(
       userPnIdentifier: userPn,
       encryptedContent,
       cryptoVersion: 2,
-      ...(mediaFileId ? { mediaFileId } : {})
+      ...(mediaFileId ? { mediaFileId, ...(mediaMimeType ? { mediaMimeType } : {}) } : {})
     })
   });
   if (!res.ok) {

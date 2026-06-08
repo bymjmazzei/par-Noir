@@ -19,9 +19,10 @@ Inbox sheets cache `kemCiphertext` (column F) for fast session open—opaque KEM
 1. **Pick:** Attach modal tabs — **My pN** (owner index), **Shared with me** (Drive `sharedWithMe`), **Saved** (curated feed), **Device** (file picker / native camera).
 2. **Prepare (client):** Download source blob, decrypt with pN identity or public share token as needed, re-encrypt with the conversation key (`deriveMessageKey` for DMs, group `chatKey` for groups) via `@par-noir/dm-crypto` `encryptMediaBytes`.
 3. **Upload:** `POST /api/drive/files` into `par-noir-messages/attachments/` (`GET /api/messages/attachments-folder` resolves folder id). Ciphertext uploaded with `encrypt: false`.
-4. **Send:** `POST /api/messages/send` or `POST /api/groups/:groupId/messages` with optional `mediaFileId`. Message sheet column **H** stores the Drive file id.
+4. **Send:** `POST /api/messages/send` or `POST /api/groups/:groupId/messages` with optional `mediaFileId` and `mediaMimeType`. Message sheet columns **H** (file id) and **I** (mime hint) store attachment metadata.
 5. **Share:** API grants Google Drive **reader** to each recipient’s stored Google email before dual-write append.
-6. **Receive:** Browser downloads ciphertext, decrypts with the same conversation key, renders inline.
+6. **Receive:** Browser downloads ciphertext, decrypts with the same conversation key, uses column **I** for inline preview when present.
+7. **Delete:** Removing a message revokes Drive reader ACL for the conversation partner when the deleter owns the media file.
 
 The API never sees plaintext media; it coordinates upload, ACL, and sheet metadata only.
 
@@ -34,7 +35,7 @@ The API never sees plaintext media; it coordinates upload, ACL, and sheet metada
 - **Read:** `GET /api/groups/:groupId/messages?userPnIdentifier=…`; browser unwraps `chatKey` via DM session to owner, then decrypts.
 - `accessRole` (`readWrite` | `readOnly`): API returns 403 on send for read-only; UI hides composer.
 - **Member admin:** `POST …/members`, `DELETE …/members/:pn`, `PATCH /api/groups/:id` (title), `PATCH …/members/:pn` (role).
-- MVP does **not** rotate `chatKey` when a member is removed; removed members retain old ciphertext unless keys are rotated in a future release.
+- **Key rotation on remove:** Deleting a member fans out `rotateGroupMemberKeys` to **all remaining members’** sheets (dual-write, mirroring add-member).
 
 ## Threat model (summary)
 

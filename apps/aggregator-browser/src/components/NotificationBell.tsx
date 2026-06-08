@@ -9,6 +9,7 @@ import { useUserState } from '../contexts/UserStateContext';
 import { NotificationService, Notification } from '../services/notificationService';
 import { useToast } from '../hooks/useToast';
 import { LoadingSkeleton } from './LoadingSkeleton';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 interface NotificationBellProps {
   onNotificationClick?: (notification: Notification) => void;
@@ -22,43 +23,46 @@ export function NotificationBell({ onNotificationClick }: NotificationBellProps)
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  // Load notifications when dropdown opens
+  const loadUnreadCount = async () => {
+    if (!userState.isUnlocked || !userState.pnIdentifier) return;
+    try {
+      const result = await NotificationService.getNotifications(userState.pnIdentifier, {
+        limit: 100,
+        unreadOnly: true
+      });
+      const engagementNotifications = result.notifications.filter((n) => n.type !== 'new_message');
+      setUnreadCount(engagementNotifications.length);
+    } catch (error: unknown) {
+      const err = error as { message?: string; status?: number };
+      if (err?.message?.includes('429') || err?.status === 429) {
+        return;
+      }
+      console.error('Failed to load unread count:', error);
+    }
+  };
+
+  const socketConnected = useRealtimeSync(() => {
+    loadUnreadCount();
+  });
+
   useEffect(() => {
     if (showDropdown && userState.isUnlocked && userState.pnIdentifier) {
       loadNotifications();
     }
   }, [showDropdown, userState.isUnlocked, userState.pnIdentifier]);
 
-  // Poll for unread count periodically (excluding message notifications)
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) {
       return;
     }
 
-    const loadUnreadCount = async () => {
-      try {
-        // Get all notifications and filter out message notifications
-        const result = await NotificationService.getNotifications(userState.pnIdentifier!, {
-          limit: 100,
-          unreadOnly: true
-        });
-        const engagementNotifications = result.notifications.filter(n => n.type !== 'new_message');
-        setUnreadCount(engagementNotifications.length);
-      } catch (error: any) {
-        // Don't log 429 errors as errors, just skip this poll
-        if (error?.message?.includes('429') || error?.status === 429) {
-          console.warn('Rate limited when loading unread count, skipping this poll');
-          return;
-        }
-        console.error('Failed to load unread count:', error);
-      }
-    };
-
     loadUnreadCount();
-    const interval = setInterval(loadUnreadCount, 30000); // Poll every 30 seconds
-
+    if (socketConnected) {
+      return;
+    }
+    const interval = setInterval(loadUnreadCount, 30000);
     return () => clearInterval(interval);
-  }, [userState.isUnlocked, userState.pnIdentifier]);
+  }, [userState.isUnlocked, userState.pnIdentifier, socketConnected]);
 
   const loadNotifications = async () => {
     if (!userState.isUnlocked || !userState.pnIdentifier) {

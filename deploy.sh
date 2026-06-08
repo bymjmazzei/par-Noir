@@ -17,6 +17,14 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "📦 Building packages/recovery-crypto..."
+cd ../recovery-crypto
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ recovery-crypto build failed"
+    exit 1
+fi
+
 # Shared catalog (API server + workspace consumers use dist/)
 echo "📦 Building packages/standard-data-points..."
 cd ../standard-data-points

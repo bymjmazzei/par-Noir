@@ -281,11 +281,11 @@ export async function sendMessageWithMedia(
   caption: string,
   accountId?: string
 ): Promise<void> {
-  const { mediaFileId } = await prepareMessageAttachment(pick, ctx, accountId);
+  const { mediaFileId, mimeType } = await prepareMessageAttachment(pick, ctx, accountId);
   const text = caption.trim() || '📎 Media';
 
   if (ctx.threadType === 'group') {
-    await sendGroupMessage(ctx.fromPnIdentifier, ctx.groupId, ctx.groupRecord, text, mediaFileId);
+    await sendGroupMessage(ctx.fromPnIdentifier, ctx.groupId, ctx.groupRecord, text, mediaFileId, mimeType);
     return;
   }
 
@@ -295,7 +295,8 @@ export async function sendMessageWithMedia(
     text,
     mediaFileId,
     ctx.connectionId,
-    ctx.kemCiphertext
+    ctx.kemCiphertext,
+    mimeType
   );
 }
 
@@ -311,7 +312,8 @@ export async function decryptAttachmentBlob(
 export async function fetchAndDecryptAttachment(
   mediaFileId: string,
   ctx: MessagingThreadContext,
-  accountId?: string
+  accountId?: string,
+  mimeTypeHint?: string
 ): Promise<{ blob: Blob; mimeType: string }> {
   const token = await getAuthToken();
   const params = new URLSearchParams({ download: 'true' });
@@ -329,7 +331,7 @@ export async function fetchAndDecryptAttachment(
   const { bytes } = await decryptAttachmentBlob(envelope, ctx);
   return {
     blob: new Blob([bytes as BlobPart]),
-    mimeType: rawBlob.type || 'application/octet-stream'
+    mimeType: mimeTypeHint || rawBlob.type || 'application/octet-stream'
   };
 }
 

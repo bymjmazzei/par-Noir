@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { Bell, Settings, Check, CheckCheck } from 'lucide-react';
 import { NotificationService, Notification } from '../services/notificationService';
 import { formatTimestamp } from '../utils/formatTimestamp';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 interface NotificationListProps {
   userPnIdentifier: string;
@@ -54,14 +55,20 @@ export function NotificationList({ userPnIdentifier, onPreferencesClick }: Notif
     }
   };
 
+  const socketConnected = useRealtimeSync(() => {
+    loadNotifications(true);
+  });
+
   useEffect(() => {
     loadNotifications(true);
-    // Refresh periodically
+    if (socketConnected) {
+      return;
+    }
     const interval = setInterval(() => {
       loadNotifications(true);
-    }, 30000); // Every 30 seconds
+    }, 30000);
     return () => clearInterval(interval);
-  }, [userPnIdentifier]);
+  }, [userPnIdentifier, socketConnected]);
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {

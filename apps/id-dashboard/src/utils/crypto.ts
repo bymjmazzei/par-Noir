@@ -1,5 +1,13 @@
 // Self-contained cryptographic utilities
 import { mlDsa65Keygen, mlKem768Keygen, bytesToBase64 } from '@par-noir/pqc-crypto';
+import {
+  splitSecret,
+  generateRecoveryMaster,
+  encryptRecoveryEnvelope,
+  buildRecoveryPayload,
+  type RecoveryEnvelope,
+  type ShamirShare
+} from '@par-noir/recovery-crypto';
 import { getAssetUrl } from './assetPaths';
 
 export interface DIDKeyPair {
@@ -28,6 +36,16 @@ export interface EncryptedIdentity {
   encryptedData: string; // Contains ALL sensitive data including PQC secret keys, DID, username, ...
   iv: string;
   salt: string;
+  /** Shamir recovery envelope (AES-GCM of recovery payload, key = recovery master). */
+  recoveryEnvelope?: RecoveryEnvelope;
+}
+
+/** Result of identity creation including Shamir shares for custodian distribution. */
+export interface IdentityCreationResult {
+  identity: EncryptedIdentity;
+  /** Unassigned Shamir shares (index + hex data) — distribute to custodians; never store master. */
+  recoveryShares: ShamirShare[];
+  recoveryConfig: { threshold: number; totalShares: number; version: 1; createdAt: string };
 }
 
 export interface AuthSession {
@@ -76,18 +94,22 @@ export class IdentityCrypto {
     nickname: string,
     passcode: string,
     recoveryEmail?: string,
-    recoveryPhone?: string
-  ): Promise<EncryptedIdentity> {
+    recoveryPhone?: string,
+    recoveryThreshold = 2,
+    recoveryTotalShares = 5
+  ): Promise<IdentityCreationResult> {
     try {
-      // Generate DID and key pair
       const didKeyPair = await this.generateDID();
-      
-      // Generate 5 independent recovery codes (stored encrypted in identity blob)
-      const recoveryKeys = await this.generateRecoveryKeySet(didKeyPair.did, 5);
-      
-      // Create identity data (ALL data goes in encrypted data including DID and recovery keys)
+
+      const recoveryConfig = {
+        threshold: recoveryThreshold,
+        totalShares: recoveryTotalShares,
+        version: 1 as const,
+        createdAt: new Date().toISOString()
+      };
+
       const identityData = {
-        id: didKeyPair.did, // DID is now encrypted too
+        id: didKeyPair.did,
         username,
         nickname,
         email: '',
@@ -99,32 +121,59 @@ export class IdentityCrypto {
         status: 'active',
         custodiansRequired: true,
         custodiansSetup: false,
-        recoveryKeys: recoveryKeys, // Recovery keys are encrypted and stored in ID file
+        recoveryConfig,
         pqcSecrets: {
           mlDsaSecretKey: didKeyPair.privateKey,
           mlKemSecretKey: didKeyPair.mlKemSecretKey,
         },
       };
 
-      // Encrypt ALL sensitive identity data including DID and recovery keys
-      // SECURITY: Encryption requires BOTH pnName (username) and passcode
-      // Both are secrets and must be combined for key derivation
       const encryptedData = await this.encrypt(
         JSON.stringify(identityData),
-        username,  // pnName - SECRET #1
-        passcode   // passcode - SECRET #2
+        username,
+        passcode
       );
 
-      return {
+      const recoveryMaster = generateRecoveryMaster();
+      const recoveryPayload = buildRecoveryPayload({
         publicKey: didKeyPair.publicKey,
         mlKemPublicKey: didKeyPair.mlKemPublicKey,
-        encryptedData: encryptedData.encrypted,
-        iv: encryptedData.iv,
-        salt: encryptedData.salt
+        mlKemSecretKey: didKeyPair.mlKemSecretKey,
+        mlDsaSecretKey: didKeyPair.privateKey,
+        identityId: didKeyPair.did,
+        pnName: username,
+        recoveryConfig
+      });
+      const recoveryEnvelope = await encryptRecoveryEnvelope(recoveryMaster, recoveryPayload);
+      const recoveryShares = splitSecret(recoveryMaster, recoveryThreshold, recoveryTotalShares);
+
+      return {
+        identity: {
+          publicKey: didKeyPair.publicKey,
+          mlKemPublicKey: didKeyPair.mlKemPublicKey,
+          encryptedData: encryptedData.encrypted,
+          iv: encryptedData.iv,
+          salt: encryptedData.salt,
+          recoveryEnvelope
+        },
+        recoveryShares,
+        recoveryConfig
       };
     } catch (error) {
       throw new Error(`Failed to create identity: ${error}`);
     }
+  }
+
+  /** @deprecated Use createIdentity return value; kept for callers expecting EncryptedIdentity only. */
+  static async createIdentityLegacy(
+    username: string,
+    nickname: string,
+    passcode: string,
+    recoveryEmail?: string,
+    recoveryPhone?: string
+  ): Promise<EncryptedIdentity> {
+    const { identity } = await this.createIdentity(username, nickname, passcode, recoveryEmail, recoveryPhone);
+    return identity;
   }
 
   /**

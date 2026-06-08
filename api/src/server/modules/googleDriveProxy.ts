@@ -1229,6 +1229,35 @@ export class GoogleDriveProxyService {
     }
   }
 
+  async revokeReaderPermission(
+    accessToken: string,
+    fileId: string,
+    emailAddress: string
+  ): Promise<void> {
+    const normalizedEmail = emailAddress.trim().toLowerCase();
+    if (!normalizedEmail) return;
+
+    const listRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}/permissions?fields=permissions(id,emailAddress)`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!listRes.ok) return;
+
+    const data = (await listRes.json()) as { permissions?: Array<{ id?: string; emailAddress?: string }> };
+    const perm = data.permissions?.find(
+      (p) => p.emailAddress?.trim().toLowerCase() === normalizedEmail && p.id
+    );
+    if (!perm?.id) return;
+
+    await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}/permissions/${perm.id}`,
+      {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` }
+      }
+    );
+  }
+
   /**
    * Resolve the primary Google account email stored for a pN identifier.
    */

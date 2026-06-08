@@ -2,16 +2,17 @@
  * Optional Socket.IO client for message/notification hints (falls back to polling).
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from '../services/pnOAuthService';
 
-export function useRealtimeSync(onEvent?: () => void): void {
+export function useRealtimeSync(onEvent?: () => void): boolean {
   const callbackRef = useRef(onEvent);
   callbackRef.current = onEvent;
+  const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    let socket: { disconnect: () => void } | null = null;
+    let socket: { disconnect: () => void; on: (ev: string, fn: () => void) => void } | null = null;
     let cancelled = false;
 
     (async () => {
@@ -29,15 +30,20 @@ export function useRealtimeSync(onEvent?: () => void): void {
 
         s.on('new_message', () => callbackRef.current?.());
         s.on('new_notification', () => callbackRef.current?.());
+        s.on('connect', () => setConnected(true));
+        s.on('disconnect', () => setConnected(false));
         socket = s;
       } catch {
-        // Polling fallback remains in MessageList/MessageThread
+        setConnected(false);
       }
     })();
 
     return () => {
       cancelled = true;
+      setConnected(false);
       socket?.disconnect();
     };
   }, []);
+
+  return connected;
 }

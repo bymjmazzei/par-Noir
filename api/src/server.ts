@@ -390,6 +390,44 @@ class ProductionServer {
     }
   }
 
+  private async getRecoveryDriveContext(userPnIdentifier: string): Promise<{
+    pnIdentifier: string;
+    token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number };
+    accountId?: string;
+    metadataFolderId: string;
+  } | null> {
+    const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+    const pnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+    const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+    if (!userCredentials?.credentials) {
+      return null;
+    }
+    const googleDriveAccounts =
+      userCredentials.credentials.googleDriveAccounts ||
+      (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+    if (googleDriveAccounts.length === 0) {
+      return null;
+    }
+    const account = googleDriveAccounts[0];
+    const accountId = this.extractAccountId(account);
+    const token = {
+      access_token: account.access_token || account.accessToken,
+      refresh_token: account.refresh_token || account.refreshToken,
+      expires_at: account.expires_at,
+      expires_in: account.expires_in
+    };
+    const folders = await this.getMetadataFolder(token, pnIdentifier, accountId);
+    if (!folders) {
+      return null;
+    }
+    return {
+      pnIdentifier,
+      token,
+      accountId,
+      metadataFolderId: folders.metadataFolderId
+    };
+  }
+
   /**
    * Helper for 409 DRIVE_NOT_INITIALIZED. Use when getMetadataFolder returns null or content folder not found.
    */
@@ -10049,6 +10087,11 @@ class ProductionServer {
         socket.emit('did:resolved', { did, document: {} });
       });
     });
+
+    const { registerRealtimeEmitter } = require('./server/modules/realtimeEvents');
+    registerRealtimeEmitter((pn: string, event: string, payload: Record<string, unknown>) => {
+      this.emitRealtime(pn, event, payload);
+    });
   }
 
   private emitRealtime(pnIdentifier: string, event: string, payload: Record<string, unknown>): void {
@@ -11961,7 +12004,7 @@ class ProductionServer {
         contentLength: req.body?.content?.length
       });
       try {
-        const { fromPnIdentifier, toPnIdentifier, content, encryptedContent, cryptoVersion, mediaFileId, isConnectionRequest } = req.body;
+        const { fromPnIdentifier, toPnIdentifier, content, encryptedContent, cryptoVersion, mediaFileId, mediaMimeType, isConnectionRequest } = req.body;
         const isE2E = cryptoVersion === 2 && !!encryptedContent;
         if (!fromPnIdentifier || !toPnIdentifier) {
           return res.status(400).json({ error: 'fromPnIdentifier and toPnIdentifier are required' });
@@ -12468,7 +12511,8 @@ class ProductionServer {
           cryptoVersion: 2,
           timestamp,
           read: false,
-          mediaFileId
+          mediaFileId,
+          mediaMimeType
         };
 
         if (mediaFileId) {
@@ -13206,9 +13250,11 @@ class ProductionServer {
         );
 
         let deleted = false;
+        let deletedMediaFileId: string | undefined;
+        let otherParticipantPn: string | undefined;
         for (const conv of conversations) {
           try {
-            await MessageSheetsService.deleteMessageFromConversation(
+            const result = await MessageSheetsService.deleteMessageFromConversation(
               token,
               conv.spreadsheetId,
               messageId,
@@ -13216,6 +13262,8 @@ class ProductionServer {
               accountId
             );
             deleted = true;
+            deletedMediaFileId = result.mediaFileId;
+            otherParticipantPn = conv.otherUserPnIdentifier;
             break;
           } catch (e: any) {
             if (e?.message !== 'Message not found') {
@@ -13226,6 +13274,22 @@ class ProductionServer {
 
         if (!deleted) {
           return res.status(404).json({ error: 'Message not found' });
+        }
+
+        if (deletedMediaFileId && otherParticipantPn) {
+          try {
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            const readerEmail = await googleDriveProxyService.getGoogleEmailForPn(otherParticipantPn);
+            if (readerEmail && token.access_token) {
+              await googleDriveProxyService.revokeReaderPermission(
+                token.access_token,
+                deletedMediaFileId,
+                readerEmail
+              );
+            }
+          } catch (revokeErr) {
+            console.warn('[delete message] ACL revoke skipped:', revokeErr);
+          }
         }
 
         return res.json({ success: true });
@@ -13681,6 +13745,167 @@ class ProductionServer {
           error: 'Failed to update display name',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to update display name'
         });
+      }
+    });
+
+    // GET /api/profile/search - Search user profiles by display name or pn id
+    this.app.get('/api/profile/search', async (req, res) => {
+      try {
+        const q = String(req.query.q || '').trim();
+        const limit = Math.min(parseInt(String(req.query.limit || '20'), 10) || 20, 50);
+        if (!q) {
+          return res.json({ profiles: [] });
+        }
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        const pattern = `%${q.replace(/[%_]/g, '')}%`;
+        const result = await db.query(
+          `SELECT pn_identifier, display_name FROM user_profiles
+           WHERE display_name ILIKE $1 OR pn_identifier ILIKE $1
+           ORDER BY updated_at DESC NULLS LAST
+           LIMIT $2`,
+          [pattern, limit]
+        );
+        return res.json({
+          profiles: result.rows.map((row: { pn_identifier: string; display_name: string | null }) => ({
+            pnIdentifier: row.pn_identifier,
+            displayName: row.display_name || row.pn_identifier
+          }))
+        });
+      } catch (error: any) {
+        console.error('Error searching profiles:', error);
+        return res.status(500).json({ error: 'Failed to search profiles' });
+      }
+    });
+
+    // POST /api/storage/migrate-volume-id — legacy passcode pn id → canonical publicKey id
+    this.app.post('/api/storage/migrate-volume-id', async (req, res) => {
+      try {
+        const { legacyPnIdentifier, canonicalPnIdentifier, publicKey, driveFolderId } = req.body as {
+          legacyPnIdentifier?: string;
+          canonicalPnIdentifier?: string;
+          publicKey?: string;
+          driveFolderId?: string;
+        };
+        if (!legacyPnIdentifier || !canonicalPnIdentifier || !publicKey) {
+          return res.status(400).json({ error: 'legacyPnIdentifier, canonicalPnIdentifier, and publicKey are required' });
+        }
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+        const record = await storageCredentialsService.migrateIdentityId(
+          legacyPnIdentifier.startsWith('pn-') ? legacyPnIdentifier : `pn-${legacyPnIdentifier}`,
+          canonicalPnIdentifier.startsWith('pn-') ? canonicalPnIdentifier : `pn-${canonicalPnIdentifier}`,
+          { driveFolderId, publicKey }
+        );
+        if (!record) {
+          return res.status(404).json({ error: 'Legacy credentials not found' });
+        }
+        return res.json({ success: true, identityId: record.identityId });
+      } catch (error: any) {
+        console.error('Error migrating volume id:', error);
+        return res.status(500).json({ error: 'Failed to migrate volume id' });
+      }
+    });
+
+    // Recovery requests + custodian roster (Drive-backed)
+    this.app.post('/api/recovery/requests', async (req, res) => {
+      try {
+        const { userPnIdentifier, requestId, publicKey, threshold, claimantName, status } = req.body;
+        if (!userPnIdentifier || !requestId || !publicKey) {
+          return res.status(400).json({ error: 'userPnIdentifier, requestId, and publicKey are required' });
+        }
+        const ctx = await this.getRecoveryDriveContext(userPnIdentifier);
+        if (!ctx) return res.status(404).json({ error: 'Drive not connected' });
+        const { RecoverySheetsService } = await import('./server/modules/recoverySheetsService');
+        const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
+          ctx.token, ctx.metadataFolderId, ctx.pnIdentifier, ctx.accountId
+        );
+        await RecoverySheetsService.upsertRecoveryRequest(
+          ctx.token,
+          spreadsheetId,
+          {
+            requestId,
+            publicKey,
+            status: status || 'pending',
+            threshold: threshold || 2,
+            sharesJson: '[]',
+            claimantName: claimantName || '',
+            createdAt: new Date().toISOString()
+          },
+          ctx.pnIdentifier,
+          ctx.accountId
+        );
+        return res.json({ success: true, spreadsheetId });
+      } catch (error: any) {
+        console.error('Error saving recovery request:', error);
+        return res.status(500).json({ error: 'Failed to save recovery request' });
+      }
+    });
+
+    this.app.post('/api/recovery/requests/:requestId/shares', async (req, res) => {
+      try {
+        const { requestId } = req.params;
+        const { userPnIdentifier, share, threshold } = req.body;
+        if (!userPnIdentifier || !share) {
+          return res.status(400).json({ error: 'userPnIdentifier and share are required' });
+        }
+        const ctx = await this.getRecoveryDriveContext(userPnIdentifier);
+        if (!ctx) return res.status(404).json({ error: 'Drive not connected' });
+        const { RecoverySheetsService } = await import('./server/modules/recoverySheetsService');
+        const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
+          ctx.token, ctx.metadataFolderId, ctx.pnIdentifier, ctx.accountId
+        );
+        const requests = await RecoverySheetsService.listRecoveryRequests(
+          ctx.token, spreadsheetId, ctx.pnIdentifier, ctx.accountId
+        );
+        const reqRow = requests.find((r) => r.requestId === requestId);
+        if (!reqRow) return res.status(404).json({ error: 'Recovery request not found' });
+        const shares = JSON.parse(reqRow.sharesJson || '[]');
+        shares.push(share);
+        const required = threshold || reqRow.threshold || 2;
+        const newStatus = shares.length >= required ? 'ready' : 'pending';
+        await RecoverySheetsService.upsertRecoveryRequest(
+          ctx.token,
+          spreadsheetId,
+          { ...reqRow, sharesJson: JSON.stringify(shares), status: newStatus },
+          ctx.pnIdentifier,
+          ctx.accountId
+        );
+        return res.json({ success: true, status: newStatus, shareCount: shares.length });
+      } catch (error: any) {
+        console.error('Error appending recovery share:', error);
+        return res.status(500).json({ error: 'Failed to append recovery share' });
+      }
+    });
+
+    this.app.post('/api/recovery/custodians', async (req, res) => {
+      try {
+        const { userPnIdentifier, custodianId, name, custodianType, encryptedShare } = req.body;
+        if (!userPnIdentifier || !custodianId || !encryptedShare) {
+          return res.status(400).json({ error: 'userPnIdentifier, custodianId, and encryptedShare are required' });
+        }
+        const ctx = await this.getRecoveryDriveContext(userPnIdentifier);
+        if (!ctx) return res.status(404).json({ error: 'Drive not connected' });
+        const { RecoverySheetsService } = await import('./server/modules/recoverySheetsService');
+        const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
+          ctx.token, ctx.metadataFolderId, ctx.pnIdentifier, ctx.accountId
+        );
+        await RecoverySheetsService.upsertCustodian(
+          ctx.token,
+          spreadsheetId,
+          {
+            custodianId,
+            name: name || '',
+            custodianType: custodianType || 'person',
+            encryptedShare,
+            status: 'active',
+            createdAt: new Date().toISOString()
+          },
+          ctx.pnIdentifier,
+          ctx.accountId
+        );
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error saving custodian share:', error);
+        return res.status(500).json({ error: 'Failed to save custodian' });
       }
     });
 
@@ -14362,12 +14587,13 @@ class ProductionServer {
     this.app.post('/api/groups/:groupId/messages', async (req, res) => {
       try {
         const { groupId } = req.params;
-        const { fromPnIdentifier, encryptedContent, cryptoVersion, userPnIdentifier, mediaFileId } = req.body as {
+        const { fromPnIdentifier, encryptedContent, cryptoVersion, userPnIdentifier, mediaFileId, mediaMimeType } = req.body as {
           fromPnIdentifier?: string;
           encryptedContent?: string;
           cryptoVersion?: number;
           userPnIdentifier?: string;
           mediaFileId?: string;
+          mediaMimeType?: string;
         };
         const senderPn = fromPnIdentifier || userPnIdentifier;
         if (!senderPn || !groupId) {
@@ -14475,7 +14701,7 @@ class ProductionServer {
           read: false,
           encryptedContent,
           cryptoVersion: 2 as const,
-          ...(mediaFileId ? { mediaFileId } : {})
+          ...(mediaFileId ? { mediaFileId, ...(mediaMimeType ? { mediaMimeType } : {}) } : {})
         };
 
         if (mediaFileId) {
@@ -15027,6 +15253,47 @@ class ProductionServer {
         if (!okOwner) {
           return res.status(404).json({ error: 'Group member not found' });
         }
+
+        for (const rot of keyRotation) {
+          const remainingPn = rot.memberPnIdentifier;
+          if (remainingPn === ownerPnIdentifier) continue;
+          const memberCredsRot = await storageCredentialsService.getCredentials(remainingPn);
+          if (!memberCredsRot?.credentials) continue;
+          const mAccountsRot =
+            memberCredsRot.credentials.googleDriveAccounts ||
+            (memberCredsRot.credentials.googleDrive ? [memberCredsRot.credentials.googleDrive] : []);
+          if (mAccountsRot.length === 0) continue;
+          const mAccountRot = mAccountsRot[0];
+          const mAccountIdRot = this.extractAccountId(mAccountRot);
+          const mTokenRot = {
+            access_token: mAccountRot.access_token || mAccountRot.accessToken,
+            refresh_token: mAccountRot.refresh_token || mAccountRot.refreshToken,
+            expires_at: mAccountRot.expires_at,
+            expires_in: mAccountRot.expires_in
+          };
+          const mMetaRot = await this.getMetadataFolder(mTokenRot, remainingPn, mAccountIdRot);
+          if (!mMetaRot?.metadataFolderId) continue;
+          const mSheetIdRot = await GroupSheetsService.getOrCreateGroupsSheet(
+            mTokenRot,
+            mMetaRot.metadataFolderId,
+            remainingPn,
+            mAccountIdRot
+          );
+          await GroupSheetsService.rotateGroupMemberKeys(
+            mTokenRot,
+            mSheetIdRot,
+            groupId,
+            memberPn,
+            keyRotation.map((k) => ({
+              memberPnIdentifier: k.memberPnIdentifier,
+              wrappedChatKey: k.wrappedChatKey,
+              accessRole: (k.accessRole === 'readOnly' ? 'readOnly' : 'readWrite') as 'readWrite' | 'readOnly'
+            })),
+            remainingPn,
+            mAccountIdRot
+          );
+        }
+
         return res.json({ success: true });
       } catch (error: any) {
         console.error('Error removing group member:', error);

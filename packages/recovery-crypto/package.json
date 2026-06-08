@@ -1,0 +1,35 @@
+{
+  "name": "@par-noir/recovery-crypto",
+  "version": "0.1.0",
+  "description": "Shamir recovery shares and recovery envelope encryption for pN identity",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "secrets.js-grempe": "^2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "secrets.js-grempe": "^2.0.0"
+  }
+}

@@ -16,6 +16,7 @@ export interface Message {
   read: boolean;
   readAt?: string;
   mediaFileId?: string;
+  mediaMimeType?: string;
   /** Client E2E ciphertext (cryptoVersion 2). */
   encryptedContent?: string;
   cryptoVersion?: number;
@@ -344,7 +345,7 @@ export class MessageSheetsService {
                 title: 'Messages',
                 gridProperties: {
                   rowCount: 10000,
-                  columnCount: 6
+                  columnCount: 9
                 }
               }
             }
@@ -389,10 +390,20 @@ export class MessageSheetsService {
     try {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: 'Messages!A1:F1',
+        range: 'Messages!A1:I1',
         valueInputOption: 'RAW',
         requestBody: {
-          values: [['User DID', 'Message Content', 'Timestamp', 'Message ID', 'Read Status', 'Read At']]
+          values: [[
+            'User DID',
+            'Message Content',
+            'Timestamp',
+            'Message ID',
+            'Read Status',
+            'Read At',
+            'Crypto Version',
+            'Media File ID',
+            'Media MIME Type'
+          ]]
         }
       });
       console.log(`[MessageSheetsService] Set up headers for conversation sheet ${spreadsheetId}`);
@@ -482,7 +493,7 @@ export class MessageSheetsService {
       // Step 2: Set the values in the newly inserted row 2
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: 'Messages!A2:H2',
+        range: 'Messages!A2:I2',
         valueInputOption: 'RAW',
         requestBody: {
           values: [[
@@ -493,7 +504,8 @@ export class MessageSheetsService {
             message.read ? 'true' : 'false',
             message.readAt || '',
             cryptoVersion ? String(cryptoVersion) : '',
-            message.mediaFileId || ''
+            message.mediaFileId || '',
+            message.mediaMimeType || ''
           ]]
         }
       });
@@ -561,7 +573,7 @@ export class MessageSheetsService {
       // Fast path: Read first N rows directly (newest messages are at top)
       // Row 1 is header, data starts at row 2, so read rows 2 to (limit+1)
       const endRow = limit + 1; // +1 because row 1 is header
-      const range = `Messages!A2:H${endRow}`;
+      const range = `Messages!A2:I${endRow}`;
       
       try {
         const sheetsApiStart = Date.now();
@@ -597,7 +609,7 @@ export class MessageSheetsService {
         // Fallback: read all rows
         const fullResponse = await sheets.spreadsheets.values.get({
           spreadsheetId,
-          range: 'Messages!A2:H'
+          range: 'Messages!A2:I'
         });
         rowsToProcess = fullResponse.data.values || [];
         total = rowsToProcess.length;
@@ -616,7 +628,7 @@ export class MessageSheetsService {
         console.warn('[MessageSheetsService] Failed to get row count, reading all rows:', error?.message);
         const fullResponse = await sheets.spreadsheets.values.get({
           spreadsheetId,
-          range: 'Messages!A2:H'
+          range: 'Messages!A2:I'
         });
         rowsToProcess = fullResponse.data.values || [];
         total = rowsToProcess.length;
@@ -639,7 +651,7 @@ export class MessageSheetsService {
           // Fallback: read all rows
           const fullResponse = await sheets.spreadsheets.values.get({
             spreadsheetId,
-            range: 'Messages!A2:H'
+            range: 'Messages!A2:I'
           });
           rowsToProcess = fullResponse.data.values || [];
           total = rowsToProcess.length;
@@ -659,6 +671,7 @@ export class MessageSheetsService {
           : this.normalizeToPnIdentifier(fromPnIdentifier);
         const cryptoVersion = row[6] ? parseInt(String(row[6]), 10) : 2;
         const mediaFileId = row[7]?.trim() || undefined;
+        const mediaMimeType = row[8]?.trim() || undefined;
         return {
           messageId: row[3] || `msg-${actualIndex}`,
           fromPnIdentifier: normalizedFromPnIdentifier,
@@ -669,7 +682,8 @@ export class MessageSheetsService {
           timestamp: row[2] || new Date().toISOString(),
           read: row[4] === 'true',
           readAt: row[5] || undefined,
-          ...(mediaFileId ? { mediaFileId } : {})
+          ...(mediaFileId ? { mediaFileId } : {}),
+          ...(mediaMimeType ? { mediaMimeType } : {})
         };
       });
       return { messages, total };
@@ -744,6 +758,7 @@ export class MessageSheetsService {
         const normalizedFromPnIdentifier = fromPnIdentifier.startsWith('pn-') ? fromPnIdentifier : this.normalizeToPnIdentifier(fromPnIdentifier);
         
         const mediaFileId = row[7]?.trim() || undefined;
+        const mediaMimeType = row[8]?.trim() || undefined;
         return {
           messageId: row[3] || `msg-${actualIndex}`,
           fromPnIdentifier: normalizedFromPnIdentifier,
@@ -752,7 +767,8 @@ export class MessageSheetsService {
           timestamp: row[2] || new Date().toISOString(),
           read: row[4] === 'true',
           readAt: row[5] || undefined,
-          ...(mediaFileId ? { mediaFileId } : {})
+          ...(mediaFileId ? { mediaFileId } : {}),
+          ...(mediaMimeType ? { mediaMimeType } : {})
         };
       })
     );
@@ -786,7 +802,7 @@ export class MessageSheetsService {
     // Get all messages to find the row
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Messages!A2:H'
+      range: 'Messages!A2:I'
     });
 
     const rows = response.data.values || [];
@@ -817,13 +833,13 @@ export class MessageSheetsService {
     messageId: string,
     userPnIdentifier: string,
     accountId: string | undefined
-  ): Promise<void> {
+  ): Promise<{ mediaFileId?: string }> {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Messages!A2:H'
+      range: 'Messages!A2:I'
     });
 
     const rows = response.data.values || [];
@@ -832,6 +848,8 @@ export class MessageSheetsService {
     if (rowIndex === -1) {
       throw new Error('Message not found');
     }
+
+    const mediaFileId = rows[rowIndex]?.[7]?.trim() || undefined;
 
     const spreadsheet = await sheets.spreadsheets.get({
       spreadsheetId,
@@ -860,6 +878,8 @@ export class MessageSheetsService {
         ]
       }
     });
+
+    return { ...(mediaFileId ? { mediaFileId } : {}) };
   }
 
   /**
@@ -1331,7 +1351,7 @@ export class MessageSheetsService {
       // Get all messages from other user's sheet
       const otherMessagesResponse = await otherSheets.spreadsheets.values.get({
         spreadsheetId: otherUserSheetId,
-        range: 'Messages!A2:H' // Skip header
+        range: 'Messages!A2:I' // Skip header
       });
 
       const otherMessages = otherMessagesResponse.data.values || [];

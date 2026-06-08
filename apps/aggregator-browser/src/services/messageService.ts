@@ -30,6 +30,7 @@ export interface Message {
   toPnIdentifier: string;
   content: string;
   mediaFileId?: string;
+  mediaMimeType?: string;
   timestamp: string;
   read: boolean;
   readAt?: string;
@@ -306,7 +307,8 @@ export async function sendMessage(
   content: string,
   mediaFileId?: string,
   connectionId?: string,
-  kemCiphertext?: string
+  kemCiphertext?: string,
+  mediaMimeType?: string
 ): Promise<Message> {
   if (!isDmIdentityReady()) {
     throw new Error('Unlock messaging with your passcode before sending');
@@ -335,7 +337,7 @@ export async function sendMessage(
         toPnIdentifier,
         encryptedContent,
         cryptoVersion: 2,
-        mediaFileId
+        ...(mediaFileId ? { mediaFileId, ...(mediaMimeType ? { mediaMimeType } : {}) } : {})
       })
     });
 

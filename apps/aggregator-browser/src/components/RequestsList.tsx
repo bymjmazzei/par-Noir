@@ -3,7 +3,7 @@
  * Displays message and connection requests
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UserPlus, Check, X } from 'lucide-react';
 import { MessageRequest } from '../services/messageService';
 import { getMessageRequests, respondToRequest } from '../services/messageService';
@@ -11,6 +11,7 @@ import { getPendingRequests as getConnectionPendingRequests, acceptConnectionReq
 import { getMessageThreads } from '../services/messageService';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 interface RequestsListProps {
   onRequestAccept?: () => void; // Callback when a request is accepted (to reload threads)
@@ -22,6 +23,13 @@ export function RequestsList({ onRequestAccept }: RequestsListProps) {
   const [requests, setRequests] = useState<MessageRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingRequests, setProcessingRequests] = useState<Set<string>>(new Set());
+
+  const socketConnected = useRealtimeSync(() => {
+    setLoading(true);
+    loadDataRef.current?.();
+  });
+
+  const loadDataRef = useRef<(() => Promise<void>) | null>(null);
 
   // Load requests
   useEffect(() => {
@@ -61,17 +69,20 @@ export function RequestsList({ onRequestAccept }: RequestsListProps) {
       }
     };
 
+    loadDataRef.current = loadData;
     loadData();
 
-    // Poll for updates - only when tab is visible
+    if (socketConnected) {
+      return;
+    }
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         loadData();
       }
-    }, 30000); // 30 seconds
+    }, 30000);
     
     return () => clearInterval(interval);
-  }, [userState.isUnlocked, userState.pnIdentifier]);
+  }, [userState.isUnlocked, userState.pnIdentifier, socketConnected]);
 
   const handleAcceptRequest = async (request: MessageRequest & { isConnectionRequest?: boolean; connectionId?: string }) => {
     if (!userState.pnIdentifier) return;

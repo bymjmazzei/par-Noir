@@ -123,11 +123,7 @@ export class PNOAuthService {
     let pnIdentifier: string | undefined;
     if (params.pnName && params.passcode && params.publicKey) {
       try {
-        pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-          pnName: params.pnName,
-          passcode: params.passcode,
-          publicKey: params.publicKey
-        });
+        pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(params.publicKey);
         pushPnOAuthDebug('oauth_derive_pn_id_ok', { ok: true });
       } catch (error) {
         pushPnOAuthDebug('oauth_derive_pn_id_fail', {

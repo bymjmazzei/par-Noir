@@ -119,11 +119,16 @@ export class FeedService {
    * Update feed
    */
   static async updateFeed(feedId: string, data: UpdateFeedRequest): Promise<Feed> {
+    const session = PNOAuthService.loadSession();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json'
+    };
+    if (session?.accessToken) {
+      headers['Authorization'] = `Bearer ${session.accessToken}`;
+    }
     const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify(data)
     });
 

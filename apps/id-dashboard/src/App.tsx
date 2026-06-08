@@ -22,6 +22,10 @@ import { IntegratorTile } from './components/IntegratorTile';
 import { DataPointRequestsPanel } from './components/DataPointRequestsPanel';
 import { IdentitySuccessionPanel } from './components/IdentitySuccessionPanel';
 import { DeviceManagementPanel } from './components/DeviceManagementPanel';
+import { takeRecoveryShareForCustodian, getCustodianShare, appendShareToRecoveryRequest, saveRecoveryRequest, completeRecoveryWithShares, listRecoveryRequests } from './services/recoveryService';
+import { submitRecoveryShare, persistRecoveryRequest } from './services/recoveryApiService';
+import { RecoveryPasscodeModal } from './components/recovery/RecoveryPasscodeModal';
+import type { RecoveryEnvelope } from '@par-noir/recovery-crypto';
 
 import { MigrationManager, WebIdentityData, MigrationResult } from './utils/migration';
 
@@ -266,6 +270,14 @@ function App() {
   const exportState = useExportState();
   const custodianState = useCustodianState();
   const migrationState = useMigrationState();
+
+  const [pendingRecoveryCompletion, setPendingRecoveryCompletion] = useState<{
+    requestId: string;
+    envelope: RecoveryEnvelope;
+    existingIdentity: EncryptedIdentity;
+    shares: import('@par-noir/recovery-crypto').ShamirShare[];
+  } | null>(null);
+  const [showRecoveryPasscodeModal, setShowRecoveryPasscodeModal] = useState(false);
 
   // Destructure the most commonly used state for easier access
   const {
@@ -1531,13 +1543,22 @@ function App() {
       
       // Create real identity with cryptography
       logDebug('Creating encrypted identity...');
-      const encryptedIdentity = await IdentityCrypto.createIdentity(
+      const creation = await IdentityCrypto.createIdentity(
         createForm.pnName,
-        randomNickname, // Use generated random nickname
+        randomNickname,
         createForm.passcode,
         createForm.recoveryEmail ? createForm.recoveryEmail : undefined,
         createForm.recoveryPhone ? createForm.recoveryPhone : undefined
       );
+      const encryptedIdentity = creation.identity;
+      try {
+        sessionStorage.setItem(
+          'pn_pending_recovery_shares',
+          JSON.stringify({ publicKey: encryptedIdentity.publicKey, shares: creation.recoveryShares })
+        );
+      } catch {
+        /* optional */
+      }
       logDebug('Encrypted identity created successfully');
 
       // Store encrypted identity using simple storage
@@ -3249,7 +3270,11 @@ This invitation expires in 24 hours.`;
               ...custodian, 
               status: 'active' as const,
               canApprove: true,
-              lastVerified: new Date().toISOString()
+              lastVerified: new Date().toISOString(),
+              recoveryKeyShare: (() => {
+                const share = takeRecoveryShareForCustodian(custodianId);
+                return share ? JSON.stringify(share) : custodian.recoveryKeyShare;
+              })()
             }
           : custodian
       ));
@@ -3262,150 +3287,114 @@ This invitation expires in 24 hours.`;
     }
   };
 
-  // ZK Proof-based recovery approval with automatic license transfer
+  // Shamir share recovery approval (same pN — preserve keys, new passcode)
   const handleApproveRecovery = async (requestId: string, custodianId: string) => {
     try {
       setLoading(true);
       setError(null);
 
-      // Find the recovery request
-      const recoveryRequest = recoveryRequests.find(req => req.id === requestId);
+      const recoveryRequest = recoveryRequests.find((req) => req.id === requestId);
       if (!recoveryRequest) {
         throw new Error('Recovery request not found');
       }
 
-      // Find the custodian
-      const custodian = custodians.find(c => c.id === custodianId);
+      const custodian = custodians.find((c) => c.id === custodianId);
       if (!custodian) {
         throw new Error('Custodian not found');
       }
 
-      // Generate ZK proof that custodian has valid recovery key share
-      const zkProofRequest = {
-        type: 'recovery_share_proof' as const,
-        statement: {
-          type: 'discrete_log' as const,
-          description: 'Prove knowledge of recovery key share without revealing the share',
-          privateInputs: { 
-            share: custodian.recoveryKeyShare || `share-${custodianId}` // In real implementation, this would be the actual share
-          },
-          publicInputs: { 
-            publicShare: custodian.publicKey,
-            threshold: recoveryThreshold,
-            recoveryRequestId: requestId
-          }
-        },
-        expirationHours: 24,
-        securityLevel: 'military' as const,
-        quantumResistant: true,
-        interactive: false
-      };
-
-      // Generate real ZK proof using authentic cryptographic operations
-      let zkProofSignature = 'zk-proof-signature';
-      
-      try {
-        // Generate real ECDSA key pair for ZK proof
-        const keyPair = await crypto.subtle.generateKey(
-          {
-            name: 'ECDSA',
-            namedCurve: 'P-384'
-          },
-          true,
-          ['sign', 'verify']
-        );
-
-        // Create the recovery approval message
-        const message = JSON.stringify({
-          recoveryRequestId: requestId,
-          custodianId: custodianId,
-          requestingDid: recoveryRequest.requestingDid,
-          permissions: ['recovery_approval'],
-          requiredPermissions: ['recovery_approval'],
-          statement: 'Custodian approval for identity recovery',
-          timestamp: Date.now(),
-          nonce: crypto.randomUUID()
-        });
-
-        const encoder = new TextEncoder();
-        const messageBuffer = encoder.encode(message);
-
-        // Generate real cryptographic signature
-        const signature = await crypto.subtle.sign(
-          {
-            name: 'ECDSA',
-            hash: 'SHA-384'
-          },
-          keyPair.privateKey,
-          messageBuffer
-        );
-
-        // Convert to base64 for storage
-        const signatureArray = new Uint8Array(signature);
-        const signatureBase64 = btoa(String.fromCharCode(...signatureArray));
-
-        // Create ZK proof structure (zero-knowledge without revealing private key)
-        const zkProof = {
-          id: `recovery-zk-proof-${Date.now()}`,
-          proof: {
-            schnorrProof: {
-              response: signatureBase64,
-              publicKey: await crypto.subtle.exportKey('spki', keyPair.publicKey),
-              message: message,
-              curve: 'P-384',
-              algorithm: 'ECDSA-SHA384'
-            }
-          }
-        };
-        
-        zkProofSignature = zkProof.proof.schnorrProof.response;
-      } catch (error) {
-        logError('Real ZK proof generation failed:', error);
-        // Fallback to secure hash if crypto operations fail
-        const fallbackData = `${requestId}-${custodianId}-${Date.now()}`;
-        const encoder = new TextEncoder();
-        const dataBuffer = encoder.encode(fallbackData);
-        const hashBuffer = await crypto.subtle.digest('SHA-512', dataBuffer);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        zkProofSignature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      let share = getCustodianShare(custodianId);
+      if (!share && custodian.recoveryKeyShare) {
+        try {
+          share = JSON.parse(custodian.recoveryKeyShare);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!share) {
+        throw new Error('This custodian has no recovery share. Re-add the custodian after identity creation.');
       }
 
-      // Update recovery request with ZK proof signature
-      setRecoveryRequests(prev => {
-        const updatedRequests = prev.map(req => 
-          req.id === requestId 
-            ? { 
-                ...req, 
-                signatures: [...req.signatures, zkProofSignature],
-                approvals: [...req.approvals, custodianId]
-              }
-            : req
-        );
-        
-        // Check if recovery threshold is met after this ZK proof approval
-        const updatedRequest = updatedRequests.find(req => req.id === requestId);
-        if (updatedRequest && updatedRequest.signatures.length >= recoveryThreshold) {
-          // Recovery successful - find the DID and show completion modal
-          const foundDID = dids.find(did => did.id === updatedRequest.requestingDid);
-          if (foundDID) {
-            setRecoveredDID(foundDID);
-            setShowRecoveryCompleteModal(true);
-          }
+      const stored = appendShareToRecoveryRequest(requestId, share);
+      if (apiToken && authenticatedUser?.publicKey) {
+        try {
+          const { VolumeIdGenerator } = await import('./utils/crypto/volumeIdGenerator');
+          const pnId = await VolumeIdGenerator.generateCanonicalVolumeId(authenticatedUser.publicKey);
+          await submitRecoveryShare(pnId, apiToken, requestId, share, recoveryThreshold);
+        } catch {
+          /* localStorage fallback */
         }
-        
-        return updatedRequests;
-      });
-      
-      // Show success message if threshold not met yet
-      const currentRequest = recoveryRequests.find(req => req.id === requestId);
-      if (currentRequest && currentRequest.signatures.length + 1 < recoveryThreshold) {
-        setSuccessWithTimeout('ZK proof-based recovery approved! Waiting for more custodians to provide ZK proofs...');
+      }
+
+      setRecoveryRequests((prev) =>
+        prev.map((req) =>
+          req.id === requestId
+            ? { ...req, approvals: [...req.approvals, custodianId], signatures: [...req.signatures, custodianId] }
+            : req
+        )
+      );
+
+      if (stored && stored.shares.length >= stored.requiredThreshold) {
+        const envelopeRaw = sessionStorage.getItem(`pn_recovery_envelope_${requestId}`);
+        const identityRaw = sessionStorage.getItem(`pn_recovery_identity_${requestId}`);
+        if (envelopeRaw && identityRaw) {
+          setPendingRecoveryCompletion({
+            requestId,
+            envelope: JSON.parse(envelopeRaw),
+            existingIdentity: JSON.parse(identityRaw),
+            shares: stored.shares
+          });
+          setShowRecoveryPasscodeModal(true);
+        } else {
+          setSuccessWithTimeout('Threshold met. Upload your .pn file on the recovering device to set a new passcode.');
+        }
+      } else {
+        setSuccessWithTimeout('Recovery share submitted. Waiting for more custodians…');
         setTimeout(() => setSuccessWithTimeout(null), 5000);
       }
-
-    } catch (error: any) {
-      setError(`ZK proof generation failed: ${error.message}`);
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'Recovery approval failed');
       setTimeout(() => setError(null), 9000);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRecoveryPasscodeSubmit = async (newPasscode: string) => {
+    if (!pendingRecoveryCompletion) return;
+    setLoading(true);
+    try {
+      const result = await completeRecoveryWithShares({
+        envelope: pendingRecoveryCompletion.envelope,
+        shares: pendingRecoveryCompletion.shares,
+        newPasscode,
+        existingIdentity: pendingRecoveryCompletion.existingIdentity
+      });
+
+      const simpleStorage = (await import('./utils/simpleStorage')).SimpleStorage.getInstance();
+      const { PNNameHash } = await import('./utils/security/pnNameHash');
+      const pnNameHash = await PNNameHash.getLookupKey(result.pnName);
+      await simpleStorage.storeIdentity({
+        id: result.identity.publicKey,
+        nickname: result.pnName,
+        pnNameHash,
+        publicKey: result.identity.publicKey,
+        encryptedData: result.identity,
+        createdAt: new Date().toISOString(),
+        lastAccessed: new Date().toISOString()
+      });
+
+      const authSession = await IdentityCrypto.authenticateIdentity(
+        result.identity,
+        newPasscode,
+        result.pnName
+      );
+      setAuthenticatedUser(authSession);
+      setShowRecoveryPasscodeModal(false);
+      setPendingRecoveryCompletion(null);
+      setRecoveredDID({ nickname: authSession.nickname || result.pnName });
+      setShowRecoveryCompleteModal(true);
+      setSuccessWithTimeout('Recovery complete. Reconnect Google Drive if needed; messaging uses the same keys.');
     } finally {
       setLoading(false);
     }
@@ -6369,11 +6358,10 @@ This invitation expires in 24 hours.`;
                     <div className="space-y-6">
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Recovery & Devices</h3>
-                        <DeviceManagementPanel />
+                        <DeviceManagementPanel authToken={apiToken} />
                         {authenticatedUser && (
                           <IdentitySuccessionPanel
                             predecessorPnIdentifier={authenticatedUser.id.startsWith('pn-') ? authenticatedUser.id : `pn-${authenticatedUser.id}`}
-                            authToken={authenticatedUser.accessToken || authenticatedUser.authToken}
                           />
                         )}
                         <div className="space-y-4">
@@ -6792,6 +6780,16 @@ This invitation expires in 24 hours.`;
             setSuccessWithTimeout(message);
                       setTimeout(() => setSuccessWithTimeout(null), 5000);
                     }}
+        />
+
+        <RecoveryPasscodeModal
+          isOpen={showRecoveryPasscodeModal}
+          onClose={() => {
+            setShowRecoveryPasscodeModal(false);
+            setPendingRecoveryCompletion(null);
+          }}
+          loading={loading}
+          onSubmit={async (newPasscode) => handleRecoveryPasscodeSubmit(newPasscode)}
         />
 
         {/* Recovery Completion Modal */}

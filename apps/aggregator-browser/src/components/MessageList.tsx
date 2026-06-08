@@ -28,7 +28,7 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
   const [deleting, setDeleting] = useState(false);
   const loadingDisplayNamesRef = useRef<Set<string>>(new Set());
 
-  useRealtimeSync(() => {
+  const socketConnected = useRealtimeSync(() => {
     if (userState.pnIdentifier) {
       getInboxThreads(userState.pnIdentifier).then(setThreads).catch(() => {});
     }
@@ -163,16 +163,15 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
     // Initial load from API (background refresh)
     loadData(true);
 
-    // Poll for updates - only when tab is visible
-    // Increased interval to 30 seconds to reduce unnecessary API calls
+    // Poll for updates - only when tab is visible and socket is disconnected
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && !socketConnected) {
         loadData(false);
       }
-    }, 30000); // 30 seconds - reduced frequency to minimize API calls
+    }, 30000);
     
     return () => clearInterval(interval);
-  }, [userState.isUnlocked, userState.pnIdentifier]);
+  }, [userState.isUnlocked, userState.pnIdentifier, socketConnected]);
 
   // Close menu when clicking outside
   useEffect(() => {

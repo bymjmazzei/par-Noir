@@ -83,6 +83,27 @@ describe('IntegratorZkpClient', () => {
     expect(res.dataPoints).toHaveLength(1);
     expect((global.fetch as jest.Mock).mock.calls[0][0]).toContain('data_points=age_attestation');
   });
+
+  it('pollDataPointRequest resolves when approved', async () => {
+    let calls = 0;
+    global.fetch = jest.fn().mockImplementation(async () => {
+      calls += 1;
+      return {
+        ok: true,
+        json: async () => ({
+          success: true,
+          request: { requestId: 'dpr_1', status: calls >= 2 ? 'approved' : 'pending' }
+        })
+      };
+    });
+    const client = new IntegratorZkpClient({ apiEndpoint: 'https://api.test' });
+    const result = await client.pollDataPointRequest('key', 'dpr_1', 'pn-abc', {
+      intervalMs: 1,
+      timeoutMs: 5000
+    });
+    expect(result.request?.status).toBe('approved');
+    expect(calls).toBeGreaterThanOrEqual(2);
+  });
 });
 
 describe('IdentitySuccessionClient', () => {

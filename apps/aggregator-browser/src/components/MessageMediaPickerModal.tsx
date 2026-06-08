@@ -294,7 +294,11 @@ export function MessageMediaPickerModal({
                       onClick={() => handlePickOwn(entry)}
                       className="aspect-square rounded-lg bg-neutral-800 border border-neutral-700 hover:border-blue-500 overflow-hidden flex flex-col items-center justify-center p-1"
                     >
-                      <ImageIcon className="h-8 w-8 text-neutral-500 mb-1" />
+                      {entry.thumbnail ? (
+                        <img src={entry.thumbnail} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <ImageIcon className="h-8 w-8 text-neutral-500 mb-1" />
+                      )}
                       <span className="text-[10px] text-neutral-300 truncate w-full text-center px-1">
                         {displayNameFromEntry(entry)}
                       </span>
@@ -343,7 +347,11 @@ export function MessageMediaPickerModal({
                     onClick={() => handlePickSaved(file)}
                     className="aspect-square rounded-lg bg-neutral-800 border border-neutral-700 hover:border-blue-500 overflow-hidden flex flex-col items-center justify-center p-1"
                   >
-                    <ImageIcon className="h-8 w-8 text-neutral-500 mb-1" />
+                    {file.metadata.thumbnail ? (
+                      <img src={file.metadata.thumbnail} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <ImageIcon className="h-8 w-8 text-neutral-500 mb-1" />
+                    )}
                     <span className="text-[10px] text-neutral-300 truncate w-full text-center px-1">
                       {file.metadata.name || file.metadata.title || 'Saved'}
                     </span>

@@ -174,3 +174,23 @@ export async function searchPersonalHistory(
   }
 }
 
+export interface ProfileSearchResult {
+  pnIdentifier: string;
+  displayName: string;
+}
+
+export async function searchProfiles(query: string, limit = 20): Promise<ProfileSearchResult[]> {
+  if (!query.trim()) return [];
+  try {
+    const params = new URLSearchParams({ q: query.trim(), limit: String(limit) });
+    const response = await fetch(`${API_ENDPOINT}/api/profile/search?${params}`, {
+      headers: getAuthHeaders()
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.profiles || [];
+  } catch {
+    return [];
+  }
+}
+

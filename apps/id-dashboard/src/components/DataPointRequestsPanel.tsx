@@ -22,6 +22,7 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
 }) => {
   const [requests, setRequests] = useState<DataPointRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pnIdentifier, setPnIdentifier] = useState<string | null>(null);
 
@@ -35,11 +36,13 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
         const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
         if (!credentials || !authToken) return;
         const { VolumeIdGenerator } = await import('../utils/crypto/volumeIdGenerator');
-        const id = await VolumeIdGenerator.generateVolumeId({
-          pnName: credentials.pnName,
-          passcode: credentials.passcode,
-          publicKey: authenticatedUser.publicKey || ''
-        });
+        const id = authenticatedUser.publicKey
+          ? await VolumeIdGenerator.generateCanonicalVolumeId(authenticatedUser.publicKey)
+          : await VolumeIdGenerator.generateVolumeId({
+              pnName: credentials.pnName,
+              passcode: credentials.passcode,
+              publicKey: authenticatedUser.publicKey || ''
+            });
         if (!cancelled) setPnIdentifier(id);
       } catch {
         // ignore
@@ -53,6 +56,7 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
   const load = useCallback(async () => {
     if (!pnIdentifier || !authToken) return;
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await fetch(
         `${API_ENDPOINT}/api/users/${pnIdentifier}/data-point-requests?status=pending`,
@@ -61,7 +65,13 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
       if (res.ok) {
         const data = await res.json();
         setRequests(data.requests || []);
+      } else {
+        setLoadError('Could not load requests');
+        setRequests([]);
       }
+    } catch {
+      setLoadError('Could not load requests');
+      setRequests([]);
     } finally {
       setLoading(false);
     }
@@ -89,6 +99,9 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
       if (res.ok) {
         setRequests((prev) => prev.filter((r) => r.requestId !== requestId));
         onResponded?.();
+        await load();
+      } else {
+        setLoadError('Failed to submit response');
       }
     } finally {
       setBusyId(null);
@@ -103,8 +116,21 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
     return <p className="text-xs text-text-secondary">Loading data sharing requests…</p>;
   }
 
+  if (loadError && requests.length === 0) {
+    return (
+      <div className="mb-6">
+        <p className="text-xs text-red-500">{loadError}</p>
+        <button type="button" className="text-xs text-primary mt-2 underline" onClick={() => load()}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   if (requests.length === 0) {
-    return null;
+    return (
+      <p className="text-xs text-text-secondary mb-6">No pending data sharing requests.</p>
+    );
   }
 
   return (

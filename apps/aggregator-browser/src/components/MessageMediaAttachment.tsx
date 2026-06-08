@@ -13,12 +13,14 @@ interface MessageMediaAttachmentProps {
   mediaFileId: string;
   threadContext: MessagingThreadContext;
   accountId?: string;
+  mimeTypeHint?: string;
 }
 
 export function MessageMediaAttachment({
   mediaFileId,
   threadContext,
-  accountId
+  accountId,
+  mimeTypeHint
 }: MessageMediaAttachmentProps) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string>('application/octet-stream');
@@ -36,7 +38,8 @@ export function MessageMediaAttachment({
         const { blob, mimeType: mt } = await fetchAndDecryptAttachment(
           mediaFileId,
           threadContext,
-          accountId
+          accountId,
+          mimeTypeHint
         );
         if (cancelled) {
           return;
@@ -62,7 +65,7 @@ export function MessageMediaAttachment({
         URL.revokeObjectURL(revoked);
       }
     };
-  }, [mediaFileId, threadContext, accountId]);
+  }, [mediaFileId, threadContext, accountId, mimeTypeHint]);
 
   if (loading) {
     return (

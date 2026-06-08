@@ -176,7 +176,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       const subPnName = `sub-${randomSecret(16)}`;
       const subPass = randomSecret(32);
       const nickname = label.trim() || `Sub ${createKind}`;
-      const encrypted = await IdentityCrypto.createIdentity(subPnName, nickname, subPass);
+      const creation = await IdentityCrypto.createIdentity(subPnName, nickname, subPass);
+      const encrypted = creation.identity;
       const subject = await VolumeIdGenerator.generateVolumeId({
         pnName: subPnName,
         passcode: subPass,

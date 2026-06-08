@@ -64,7 +64,6 @@ export class IntegratorZkpClient {
     return data;
   }
 
-  /** Create a consent request the user approves in the dashboard Privacy tab. */
   async requestDataPointsWithApiKey(
     apiKey: string,
     params: {
@@ -92,6 +91,34 @@ export class IntegratorZkpClient {
     const data = await parseJsonResponse<{ success: boolean; requestId: string; status: string }>(res);
     await throwIfNotOk(res, data);
     return data;
+  }
+
+  /** Poll consent request status until approved, declined, or timeout. */
+  async pollDataPointRequest(
+    apiKey: string,
+    requestId: string,
+    identityId: string,
+    options?: { intervalMs?: number; timeoutMs?: number }
+  ): Promise<{ success: boolean; request?: { status: string; requestId: string } }> {
+    const intervalMs = options?.intervalMs ?? 2000;
+    const timeoutMs = options?.timeoutMs ?? 120000;
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const res = await fetch(
+        `${this.apiEndpoint}/api/v1/data-points/requests/${encodeURIComponent(requestId)}${buildQuery({
+          identity_id: identityId
+        })}`,
+        { headers: { 'X-API-Key': apiKey } }
+      );
+      const data = await parseJsonResponse<{ success: boolean; request?: { status: string; requestId: string } }>(res);
+      await throwIfNotOk(res, data);
+      const status = data.request?.status;
+      if (status === 'approved' || status === 'declined') {
+        return data;
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    throw new Error('Timed out waiting for data point request');
   }
 }
 

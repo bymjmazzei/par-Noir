@@ -210,6 +210,13 @@ export class NotificationService {
       // Append to sheet
       await NotificationsSheetsService.appendNotification(token, spreadsheetId, newNotification, normalizedUserPnIdentifier, undefined);
 
+      try {
+        const { emitNewNotification } = await import('./realtimeEvents');
+        emitNewNotification(normalizedUserPnIdentifier, notification.type);
+      } catch {
+        /* optional realtime */
+      }
+
       return newNotification;
     } catch (error) {
       console.error('[NotificationService] Error creating notification via sheets:', error);

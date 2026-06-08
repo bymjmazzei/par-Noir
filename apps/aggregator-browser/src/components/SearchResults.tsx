@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { IndexedFile } from '../types/aggregator';
 import { Search, X, Clock, TrendingUp, Flame } from 'lucide-react';
-import { searchFiles, SearchOptions } from '../services/searchService';
+import { searchFiles, searchProfiles, SearchOptions, ProfileSearchResult } from '../services/searchService';
 import { useUserState } from '../contexts/UserStateContext';
 import { FeedRail } from './FeedRail';
 
@@ -30,6 +30,7 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
   const { userState } = useUserState();
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<IndexedFile[]>([]);
+  const [profileResults, setProfileResults] = useState<ProfileSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<SearchFilter>('all');
@@ -71,6 +72,7 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
     
     if (!trimmedQuery) {
       setResults([]);
+      setProfileResults([]);
       setHasSearched(false);
       setError(null);
       currentSearchRef.current = '';
@@ -95,6 +97,9 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
         sortBy: 'relevance',
           limit: 50
         };
+
+      const profiles = await searchProfiles(trimmedQuery, 30);
+      setProfileResults(profiles);
 
       // Try API first, fallback to client-side search if it fails
       let apiResult = null;
@@ -158,25 +163,14 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
 
   // Filter results by type
   const filteredResults = useMemo(() => {
+    if (activeFilter === 'users') return [];
     if (activeFilter === 'all') return results;
     
     return results.filter(file => {
       switch (activeFilter) {
-        case 'users': {
-          const q = query.toLowerCase();
-          const author =
-            (file.metadata as { authorDisplayName?: string; creatorDisplayName?: string }).authorDisplayName ||
-            (file.metadata as { creatorDisplayName?: string }).creatorDisplayName ||
-            file.metadata.authorDid ||
-            file.metadata.creatorDid ||
-            '';
-          return String(author).toLowerCase().includes(q);
-        }
         case 'posts':
-          // All files are posts
           return true;
         case 'tags':
-          // Filter files that have matching tags
           const queryLower = query.toLowerCase();
           const tags = (file.metadata.tags || file.metadata.keywords || []).join(' ').toLowerCase();
           return tags.includes(queryLower);
@@ -185,6 +179,9 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
       }
     });
   }, [results, activeFilter, query]);
+
+  const showUserProfiles = activeFilter === 'users' || activeFilter === 'all';
+  const visibleProfiles = showUserProfiles ? profileResults : [];
 
   // Railway items for filtering
   const filterRailItems = [
@@ -265,12 +262,34 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
           </div>
         ) : hasSearched ? (
           // Search Results
-          <div className="p-4">
-            {filteredResults.length === 0 ? (
+          <div className="p-4 space-y-6">
+            {visibleProfiles.length > 0 && showUserProfiles && (
+              <div>
+                <h3 className="text-white font-medium mb-3">People</h3>
+                <div className="space-y-2">
+                  {visibleProfiles.map((profile) => (
+                    <div
+                      key={profile.pnIdentifier}
+                      className="flex items-center gap-3 p-3 bg-neutral-800 rounded-lg border border-neutral-700"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
+                        {(profile.displayName || profile.pnIdentifier).charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-white text-sm font-medium">{profile.displayName}</p>
+                        <p className="text-neutral-400 text-xs">{profile.pnIdentifier}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(activeFilter === 'users' && visibleProfiles.length === 0) ||
+            (activeFilter !== 'users' && filteredResults.length === 0 && visibleProfiles.length === 0) ? (
           <div className="text-center py-12">
             <p className="text-neutral-400">No results found</p>
           </div>
-        ) : (
+        ) : activeFilter !== 'users' ? (
           <div className="grid grid-cols-3 gap-2">
                 {filteredResults.map((file) => (
               <div
@@ -308,7 +327,7 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
               </div>
             ))}
               </div>
-            )}
+            ) : null}
           </div>
         ) : (
           // Default View: Recent, Popular, Trending

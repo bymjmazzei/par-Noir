@@ -397,8 +397,18 @@ export class PNOAuthService {
         return undefined;
       }
       
-      // CRITICAL: Use VolumeIdGenerator method if pnName and passcode are available
-      // This matches the dashboard's VolumeIdGenerator.generateVolumeId()
+      // Canonical id from publicKey (stable across passcode recovery)
+      if (publicKeyToUse) {
+        const utf8Bytes = Buffer.from(publicKeyToUse, 'utf8');
+        const hash = crypto.createHash('sha256').update(utf8Bytes).digest('hex');
+        const pnIdentifier = `pn-${hash.substring(0, 12)}`;
+        if (process.env.NODE_ENV === 'development') {
+          safeLogger.info('[OAuth] pN identifier derived (canonical publicKey)', { pnIdentifier });
+        }
+        return pnIdentifier;
+      }
+
+      // Legacy: pnName:passcode:publicKey (migration lookup only)
       if (pnName && passcode) {
         // STANDARDIZED: Combine credentials in exact order: pnName:passcode:publicKey
         const combined = `${pnName}:${passcode}:${publicKeyToUse}`;
