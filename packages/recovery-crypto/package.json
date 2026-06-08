@@ -28,8 +28,5 @@
   "devDependencies": {
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
-  },
-  "dependencies": {
-    "secrets.js-grempe": "^2.0.0"
   }
 }
