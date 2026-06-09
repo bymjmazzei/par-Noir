@@ -17,6 +17,7 @@ import {
 } from '@par-noir/identity-migration';
 import type { GoogleDriveBackend, DriveInventoryItem } from './storage/GoogleDriveBackend';
 import { API_ENDPOINT } from '../config/api';
+import { deviceProofHeaders } from './deviceProofContext';
 
 export interface DriveMigrationParams {
   migrationId: string;
@@ -29,8 +30,22 @@ export interface DriveMigrationParams {
   acknowledgeFailures?: boolean;
 }
 
-function authHeaders(token: string): HeadersInit {
-  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+function authHeaders(token: string, extra?: Record<string, string>): HeadersInit {
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...extra };
+}
+
+async function migrationFetch(
+  authToken: string,
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<Response> {
+  const proof = await deviceProofHeaders(method, path, body);
+  return fetch(`${API_ENDPOINT}${path}`, {
+    method,
+    headers: authHeaders(authToken, proof),
+    body: body != null ? JSON.stringify(body) : undefined,
+  });
 }
 
 async function patchDriveProgress(
@@ -39,18 +54,14 @@ async function patchDriveProgress(
   driveProgress: unknown,
   migrationReport?: MigrationReport
 ): Promise<void> {
-  await fetch(`${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/drive/progress`, {
-    method: 'PATCH',
-    headers: authHeaders(authToken),
-    body: JSON.stringify({ driveProgress, migrationReport }),
-  }).catch(() => undefined);
+  const path = `/api/identity/migration/${encodeURIComponent(migrationId)}/drive/progress`;
+  const body = { driveProgress, migrationReport };
+  await migrationFetch(authToken, 'PATCH', path, body).catch(() => undefined);
 }
 
 async function migrateSheetsViaApi(authToken: string, migrationId: string): Promise<void> {
-  const res = await fetch(
-    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/drive/sheets/migrate`,
-    { method: 'POST', headers: authHeaders(authToken), body: JSON.stringify({}) }
-  );
+  const path = `/api/identity/migration/${encodeURIComponent(migrationId)}/drive/sheets/migrate`;
+  const res = await migrationFetch(authToken, 'POST', path, {});
   if (!res.ok) throw new Error('Failed to migrate metadata sheets');
 }
 

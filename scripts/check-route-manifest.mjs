@@ -20,7 +20,8 @@ const sources = [
   path.join(root, 'api/src/server/modules/developerSelfServiceRoutes.ts'),
   path.join(root, 'api/src/server/modules/integratorRoutes.ts'),
   path.join(root, 'api/src/server/modules/identityMigrationService.ts'),
-  path.join(root, 'api/src/server/modules/recoveryVaultRoutes.ts')
+  path.join(root, 'api/src/server/modules/recoveryVaultRoutes.ts'),
+  path.join(root, 'api/src/server/modules/deviceAuthRoutes.ts')
 ];
 
 const md = fs.readFileSync(manifestPath, 'utf8');

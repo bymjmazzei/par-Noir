@@ -4,7 +4,7 @@
   "description": "Production API server for Identity Protocol",
   "main": "dist/server.js",
   "scripts": {
-    "build:deps": "cd ../packages/pqc-crypto && npm install && npm run build && cd ../recovery-crypto && npm install && npm run build && cd ../standard-data-points && npm install && npm run build && cd ../zk-protocol-v1 && npm install && npm run build && cd ../zk-protocol-v2 && npm install && npm run build && cd ../aggregator-domain && npm install && npm run build && cd ../dm-crypto && npm install && npm run build && cd ../identity-migration && npm install && npm run build",
+    "build:deps": "cd ../packages/pqc-crypto && npm install && npm run build && cd ../recovery-crypto && npm install && npm run build && cd ../device-auth && npm install && npm run build && cd ../standard-data-points && npm install && npm run build && cd ../zk-protocol-v1 && npm install && npm run build && cd ../zk-protocol-v2 && npm install && npm run build && cd ../aggregator-domain && npm install && npm run build && cd ../dm-crypto && npm install && npm run build && cd ../identity-migration && npm install && npm run build",
     "build": "npm run build:deps && node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc -p tsconfig.build.json && rm -rf dist/migrations dist/templates dist/static && mkdir -p dist/migrations dist/templates dist/static && cp -R migrations/. dist/migrations/ && cp -R src/templates/. dist/templates/ && cp -R src/static/. dist/static/",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
@@ -25,6 +25,7 @@
   "author": "Identity Protocol Team",
   "license": "UNLICENSED",
   "dependencies": {
+    "@par-noir/device-auth": "file:../../packages/device-auth",
     "@par-noir/identity-migration": "file:../../packages/identity-migration",
     "@par-noir/recovery-crypto": "file:../../packages/recovery-crypto",
     "@par-noir/zk-protocol-v1": "file:../../packages/zk-protocol-v1",

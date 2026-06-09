@@ -81,6 +81,21 @@ Hand-maintained index of **major** HTTP routes. When you add a user-facing or in
 | POST | `/api/recovery/custodians/:custodianId/resend` | Owner — rebuild invitation from existing row |
 | POST | `/api/recovery/custodians/:custodianId/revoke` | Owner — revoke revokable custodian (403 if unrevokable) |
 | POST | `/api/recovery/custodians/accept` | Custodian bearer — mark row `accepted` on owner Drive |
+
+## Device registry (OAuth Bearer + owner Drive)
+
+| Method | Path | Notes |
+|--------|------|--------|
+| GET | `/api/devices/:userPnIdentifier/registry` | List active keyed devices + policy summary |
+| GET | `/api/devices/:userPnIdentifier/policy` | Read `unkeyedAllows` and `firstDeviceKeyedAt` |
+| PATCH | `/api/devices/:userPnIdentifier/policy` | Keyed device only — update unkeyed allow-list |
+| POST | `/api/devices/pairing/nonce` | Keyed device — short-lived pairing nonce (5 min) |
+| POST | `/api/devices/register` | Register device pubkey; bootstrap if no active devices |
+| POST | `/api/devices/:deviceId/revoke` | Keyed device — revoke another device |
+| POST | `/api/devices/:deviceId/heartbeat` | Valid device proof — update `lastSeenAt` |
+
+Device proof headers (v1): `X-PN-Device-Id`, `X-PN-Device-Signature`, `X-PN-Device-Timestamp`, `X-PN-Device-Nonce`. See `docs/developer/DEVICE_AUTH.md`.
+
 | POST | `/api/recovery/requests` | Create recovery request |
 | POST | `/api/recovery/requests/:requestId/approvals` | Custodian ZK approval; `ready` requires threshold + unrevokable approval |
 | GET | `/api/recovery/:userPnIdentifier/requests/:requestId/vault-shares` | Release shares when quorum rule satisfied |

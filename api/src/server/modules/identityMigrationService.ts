@@ -11,6 +11,16 @@ import { storageCredentialsService } from './storageCredentialsService';
 import { registerSuccession } from './identitySuccessionService';
 import { appendAuditEvent } from './auditService';
 import { safeClientErrorMessage } from '../utils/safeError';
+import { assertDeviceCapability, DEVICE_CAPABILITIES } from './deviceCapabilityService';
+
+async function gateMigration(req: Request, res: Response): Promise<boolean> {
+  const gate = await assertDeviceCapability(req, DEVICE_CAPABILITIES.identityMigrate);
+  if (!gate.ok) {
+    res.status(gate.status).json({ error: gate.error, reason: gate.reason });
+    return false;
+  }
+  return true;
+}
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const REQUIRED_STEPS = [
@@ -137,6 +147,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
   /** POST /api/identity/migration/start */
   app.post('/api/identity/migration/start', async (req: Request, res: Response) => {
     try {
+      if (!(await gateMigration(req, res))) return;
       const auth = bearerPn(req);
       if (!auth) {
         return res.status(401).json({ error: 'unauthorized', error_description: 'Bearer token required' });
@@ -239,6 +250,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
   /** PATCH /api/identity/migration/:id/steps/:stepId */
   app.patch('/api/identity/migration/:id/steps/:stepId', async (req: Request, res: Response) => {
     try {
+      if (!(await gateMigration(req, res))) return;
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 
@@ -271,6 +283,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
   /** POST /api/identity/migration/:id/connections/rekey */
   app.post('/api/identity/migration/:id/connections/rekey', async (req: Request, res: Response) => {
     try {
+      if (!(await gateMigration(req, res))) return;
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 
@@ -329,6 +342,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
   /** POST /api/identity/migration/:id/groups/rewrap */
   app.post('/api/identity/migration/:id/groups/rewrap', async (req: Request, res: Response) => {
     try {
+      if (!(await gateMigration(req, res))) return;
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 
@@ -382,6 +396,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
   /** POST /api/identity/migration/:id/zkp-data-points/batch */
   app.post('/api/identity/migration/:id/zkp-data-points/batch', async (req: Request, res: Response) => {
     try {
+      if (!(await gateMigration(req, res))) return;
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 
@@ -444,6 +459,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
   /** POST /api/identity/migration/:id/recovery/custodians */
   app.post('/api/identity/migration/:id/recovery/custodians', async (req: Request, res: Response) => {
     try {
+      if (!(await gateMigration(req, res))) return;
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 
@@ -501,6 +517,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
   /** PATCH /api/identity/migration/:id/drive/progress */
   app.patch('/api/identity/migration/:id/drive/progress', async (req: Request, res: Response) => {
     try {
+      if (!(await gateMigration(req, res))) return;
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 
@@ -527,6 +544,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
   /** POST /api/identity/migration/:id/drive/sheets/migrate */
   app.post('/api/identity/migration/:id/drive/sheets/migrate', async (req: Request, res: Response) => {
     try {
+      if (!(await gateMigration(req, res))) return;
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 
@@ -569,6 +587,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
   /** POST /api/identity/migration/:id/drive/messages/rows */
   app.post('/api/identity/migration/:id/drive/messages/rows', async (req: Request, res: Response) => {
     try {
+      if (!(await gateMigration(req, res))) return;
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 
@@ -611,6 +630,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
   /** POST /api/identity/migration/:id/complete */
   app.post('/api/identity/migration/:id/complete', async (req: Request, res: Response) => {
     try {
+      if (!(await gateMigration(req, res))) return;
       const auth = bearerPn(req);
       if (!auth) {
         return res.status(401).json({ error: 'unauthorized' });

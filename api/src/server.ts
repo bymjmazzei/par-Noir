@@ -26,6 +26,7 @@ import { safeClientErrorMessage } from './server/utils/safeError';
 import { captureApiRouteError, initApiSentry } from './server/utils/sentry';
 import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modules/adminDeveloperRoutes';
 import { registerIdentityMigrationRoutes } from './server/modules/identityMigrationService';
+import { registerDeviceAuthRoutes } from './server/modules/deviceAuthRoutes';
 import {
   registerRecoveryVaultRoutes,
   evaluateRecoveryApprovalUpdate,
@@ -11081,6 +11082,7 @@ class ProductionServer {
 
     registerAdminDeveloperRoutes(this.app);
     registerIdentityMigrationRoutes(this.app);
+    registerDeviceAuthRoutes(this.app);
     registerRecoveryVaultRoutes(this.app);
     registerDeveloperSelfServiceRoutes(this.app);
     registerOwnedAssetRoutes(this.app);

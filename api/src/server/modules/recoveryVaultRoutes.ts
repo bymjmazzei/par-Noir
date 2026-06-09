@@ -14,6 +14,20 @@ import { PNOAuthService } from './pnOAuthService';
 import { getRecoveryDriveContext } from './recoveryDriveContext';
 import { RecoverySheetsService } from './recoverySheetsService';
 import { verifyCustodianshipCredential } from './recoveryZkService';
+import { assertDeviceCapability, DEVICE_CAPABILITIES } from './deviceCapabilityService';
+
+async function gateCapability(
+  req: Request,
+  res: Response,
+  capability: string
+): Promise<boolean> {
+  const gate = await assertDeviceCapability(req, capability);
+  if (!gate.ok) {
+    res.status(gate.status).json({ error: gate.error, reason: gate.reason });
+    return false;
+  }
+  return true;
+}
 
 function bearerPn(req: Request): { pnIdentifier: string; did?: string } | null {
   const authHeader = req.headers.authorization;
@@ -40,6 +54,7 @@ async function spreadsheetForPn(pn: string) {
 export function registerRecoveryVaultRoutes(app: Application): void {
   app.post('/api/recovery/vault/initialize', async (req: Request, res: Response) => {
     try {
+      if (!(await gateCapability(req, res, DEVICE_CAPABILITIES.recoveryVaultWrite))) return;
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 
@@ -68,6 +83,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
 
   app.post('/api/recovery/vault/reconcile', async (req: Request, res: Response) => {
     try {
+      if (!(await gateCapability(req, res, DEVICE_CAPABILITIES.recoveryVaultWrite))) return;
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 
@@ -144,6 +160,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
 
   app.post('/api/recovery/custodians/assign', async (req: Request, res: Response) => {
     try {
+      if (!(await gateCapability(req, res, DEVICE_CAPABILITIES.recoveryCustodianManage))) return;
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 
@@ -211,6 +228,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
 
   app.post('/api/recovery/custodians/:custodianId/resend', async (req: Request, res: Response) => {
     try {
+      if (!(await gateCapability(req, res, DEVICE_CAPABILITIES.recoveryCustodianManage))) return;
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 
@@ -249,6 +267,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
 
   app.post('/api/recovery/custodians/:custodianId/revoke', async (req: Request, res: Response) => {
     try {
+      if (!(await gateCapability(req, res, DEVICE_CAPABILITIES.recoveryCustodianManage))) return;
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 

@@ -1,10 +1,26 @@
 import { API_ENDPOINT } from '../config/api';
+import { deviceProofHeaders } from './deviceProofContext';
 
-function authHeaders(token: string): HeadersInit {
+function authHeaders(token: string, extra?: Record<string, string>): HeadersInit {
   return {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
+    ...extra,
   };
+}
+
+async function migrationFetch(
+  authToken: string,
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<Response> {
+  const proof = await deviceProofHeaders(method, path, body);
+  return fetch(`${API_ENDPOINT}${path}`, {
+    method,
+    headers: authHeaders(authToken, proof),
+    body: body != null ? JSON.stringify(body) : undefined,
+  });
 }
 
 export async function startIdentityMigration(
@@ -21,11 +37,8 @@ export async function startIdentityMigration(
   driveFolderId: string | null;
   requiredSteps: string[];
 }> {
-  const res = await fetch(`${API_ENDPOINT}/api/identity/migration/start`, {
-    method: 'POST',
-    headers: authHeaders(authToken),
-    body: JSON.stringify(body),
-  });
+  const path = '/api/identity/migration/start';
+  const res = await migrationFetch(authToken, 'POST', path, body);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error_description?: string }).error_description || 'Failed to start migration');
@@ -38,14 +51,8 @@ export async function ackMigrationStep(
   migrationId: string,
   stepId: string
 ): Promise<void> {
-  const res = await fetch(
-    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/steps/${encodeURIComponent(stepId)}`,
-    {
-      method: 'PATCH',
-      headers: authHeaders(authToken),
-      body: JSON.stringify({}),
-    }
-  );
+  const path = `/api/identity/migration/${encodeURIComponent(migrationId)}/steps/${encodeURIComponent(stepId)}`;
+  const res = await migrationFetch(authToken, 'PATCH', path, {});
   if (!res.ok) throw new Error(`Failed to ack step ${stepId}`);
 }
 
@@ -55,14 +62,9 @@ export async function batchReissueZkps(
   userPnIdentifier: string,
   updates: Array<{ dataPointId: string; zkpProof: string; proofType?: string }>
 ): Promise<void> {
-  const res = await fetch(
-    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/zkp-data-points/batch`,
-    {
-      method: 'POST',
-      headers: authHeaders(authToken),
-      body: JSON.stringify({ userPnIdentifier, updates }),
-    }
-  );
+  const path = `/api/identity/migration/${encodeURIComponent(migrationId)}/zkp-data-points/batch`;
+  const body = { userPnIdentifier, updates };
+  const res = await migrationFetch(authToken, 'POST', path, body);
   if (!res.ok) throw new Error('Failed to batch update ZKPs');
 }
 
@@ -73,14 +75,9 @@ export async function rekeyConnection(
   userPnIdentifier: string,
   kemCiphertext: string
 ): Promise<void> {
-  const res = await fetch(
-    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/connections/rekey`,
-    {
-      method: 'POST',
-      headers: authHeaders(authToken),
-      body: JSON.stringify({ connectionId, userPnIdentifier, kemCiphertext }),
-    }
-  );
+  const path = `/api/identity/migration/${encodeURIComponent(migrationId)}/connections/rekey`;
+  const body = { connectionId, userPnIdentifier, kemCiphertext };
+  const res = await migrationFetch(authToken, 'POST', path, body);
   if (!res.ok) throw new Error('Failed to rekey connection');
 }
 
@@ -92,14 +89,9 @@ export async function rewrapGroupKeys(
   groupId: string,
   keyRotation: Array<{ memberPnIdentifier: string; wrappedChatKey: string; accessRole: string }>
 ): Promise<void> {
-  const res = await fetch(
-    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/groups/rewrap`,
-    {
-      method: 'POST',
-      headers: authHeaders(authToken),
-      body: JSON.stringify({ ownerPnIdentifier, successorOwnerPnIdentifier, groupId, keyRotation }),
-    }
-  );
+  const path = `/api/identity/migration/${encodeURIComponent(migrationId)}/groups/rewrap`;
+  const body = { ownerPnIdentifier, successorOwnerPnIdentifier, groupId, keyRotation };
+  const res = await migrationFetch(authToken, 'POST', path, body);
   if (!res.ok) throw new Error('Failed to rewrap group keys');
 }
 
@@ -109,14 +101,9 @@ export async function batchRecoveryCustodians(
   userPnIdentifier: string,
   custodians: Array<Record<string, unknown>>
 ): Promise<void> {
-  const res = await fetch(
-    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/recovery/custodians`,
-    {
-      method: 'POST',
-      headers: authHeaders(authToken),
-      body: JSON.stringify({ userPnIdentifier, custodians }),
-    }
-  );
+  const path = `/api/identity/migration/${encodeURIComponent(migrationId)}/recovery/custodians`;
+  const body = { userPnIdentifier, custodians };
+  const res = await migrationFetch(authToken, 'POST', path, body);
   if (!res.ok) throw new Error('Failed to update recovery custodians');
 }
 
@@ -130,14 +117,8 @@ export async function completeIdentityMigration(
     successorPublicKey: string;
   }
 ): Promise<void> {
-  const res = await fetch(
-    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/complete`,
-    {
-      method: 'POST',
-      headers: authHeaders(authToken),
-      body: JSON.stringify(body),
-    }
-  );
+  const path = `/api/identity/migration/${encodeURIComponent(migrationId)}/complete`;
+  const res = await migrationFetch(authToken, 'POST', path, body);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error_description?: string; error?: string }).error_description || (err as { error?: string }).error || 'Failed to complete migration');

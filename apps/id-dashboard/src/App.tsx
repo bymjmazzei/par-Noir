@@ -30,6 +30,8 @@ import {
 } from './services/recoveryVaultService';
 import { revokeRecoveryCustodian, acceptRecoveryCustodianship } from './services/recoveryApiService';
 import { useRecoveryVaultState } from './hooks/useRecoveryVaultState';
+import { useDeviceAuthState } from './hooks/useDeviceAuthState';
+import { DEVICE_CAPABILITIES } from '@par-noir/device-auth';
 import { RecoveryPasscodeModal } from './components/recovery/RecoveryPasscodeModal';
 import { RecoveryCustodianPendingPanel } from './components/recovery/RecoveryCustodianPendingPanel';
 import { storeCustodianshipCredential } from './services/recoveryCredentialStorage';
@@ -378,6 +380,15 @@ function App() {
       recoveryTotalShares: 5,
     });
 
+  const deviceAuth = useDeviceAuthState({
+    apiToken,
+    userPnIdentifier: recoveryVaultPnId,
+  });
+
+  const canManageCustodians = deviceAuth.can(DEVICE_CAPABILITIES.recoveryCustodianManage);
+  const canExportIdentity = deviceAuth.can(DEVICE_CAPABILITIES.identityExport);
+  const canRotateIdentity = deviceAuth.can(DEVICE_CAPABILITIES.identityRotate);
+
   const getEncryptedIdentityForApiToken = React.useCallback(
     async (
       identityPublicKeyOrId: string | undefined
@@ -705,6 +716,11 @@ function App() {
   
   // Open export options directly (auth happens when user picks an option that needs it)
   const handleExportData = async () => {
+    if (!canExportIdentity) {
+      setError(deviceAuth.deviceRequiredMessage);
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
     setShowExportOptionsModal(true);
   };
 
@@ -762,6 +778,11 @@ function App() {
 
   // Handle direct download export (always requires verification - never use cached creds)
   const handleDownloadExport = async () => {
+    if (!canExportIdentity) {
+      setError(deviceAuth.deviceRequiredMessage);
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
     if (!exportAuthData.pnName || !exportAuthData.passcode) {
       setPendingExportAction('download');
       setShowExportOptionsModal(false);
@@ -834,6 +855,11 @@ function App() {
 
   // Handle export to NFC - open modal directly; pN + passcode collected as last step before write
   const handleExportToNfc = async () => {
+    if (!canExportIdentity) {
+      setError(deviceAuth.deviceRequiredMessage);
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
     try {
       if (!authenticatedUser || !selectedDID) {
         throw new Error('No identity is currently unlocked.');
@@ -864,6 +890,11 @@ function App() {
 
   // Handle export to USB - open modal directly; pN + passcode collected as last step before write
   const handleExportToUsb = async () => {
+    if (!canExportIdentity) {
+      setError(deviceAuth.deviceRequiredMessage);
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
     try {
       if (!authenticatedUser || !selectedDID) {
         throw new Error('No identity is currently unlocked.');
@@ -3097,6 +3128,9 @@ function App() {
 
   const generateCustodianQRCode = async (custodianData: CustodianInvitationForm & { id?: string }) => {
     try {
+      if (!canManageCustodians) {
+        throw new Error(deviceAuth.deviceRequiredMessage);
+      }
       const custodianId = custodianData.id || selectedCustodianForInvitation?.id;
       if (!custodianId || !authenticatedUser?.id) {
         throw new Error('Select a custodian and unlock your identity first');
@@ -3757,6 +3791,11 @@ This invitation expires in 24 hours.`;
   };
 
   const handleRemoveCustodian = (custodianId: string) => {
+    if (!canManageCustodians) {
+      setError(deviceAuth.deviceRequiredMessage);
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
     const vaultRow = recoveryVaultSummary?.custodians.find((c) => c.custodianId === custodianId);
     if (vaultRow?.unrevokable) {
       setError('Protected custodians cannot be revoked. Use an alternative pN you control as a protected anchor.');
@@ -6569,18 +6608,27 @@ This invitation expires in 24 hours.`;
                     <div className="space-y-6">
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Recovery & Devices</h3>
-                        <DeviceManagementPanel authToken={apiToken} />
+                        <DeviceManagementPanel
+                          authToken={apiToken}
+                          pnIdentifier={recoveryVaultPnId ?? undefined}
+                          deviceAuth={deviceAuth}
+                        />
                         {authenticatedUser && (
                           <IdentitySuccessionPanel
                             predecessorPnIdentifier={authenticatedUser.id.startsWith('pn-') ? authenticatedUser.id : `pn-${authenticatedUser.id}`}
                           />
                         )}
-                        {apiToken && authenticatedUser && (
+                        {authenticatedUser && canRotateIdentity && (
                           <IdentityRotationWizard
                             authToken={apiToken}
                             identityKey={authenticatedUser.publicKey || authenticatedUser.id}
                             currentDid={authenticatedUser.id}
                           />
+                        )}
+                        {authenticatedUser && !canRotateIdentity && deviceAuth.hasKeyedDevices && (
+                          <div className="text-xs text-text-secondary p-3 bg-secondary rounded-lg mt-4">
+                            Identity rotation requires a keyed device.
+                          </div>
                         )}
                         <div className="space-y-4">
                           {/* Recovery Configuration */}
@@ -6719,8 +6767,16 @@ This invitation expires in 24 hours.`;
                             <div className="flex items-center justify-between mb-3">
                               <h4 className="font-medium text-text-primary">Recovery Custodians</h4>
                               <button 
-                                onClick={() => setShowAddCustodianModal(true)}
-                                disabled={custodians.length >= 5}
+                                onClick={() => {
+                                  if (!canManageCustodians) {
+                                    setError(deviceAuth.deviceRequiredMessage);
+                                    setTimeout(() => setError(null), 9000);
+                                    return;
+                                  }
+                                  setShowAddCustodianModal(true);
+                                }}
+                                disabled={custodians.length >= 5 || !canManageCustodians}
+                                title={!canManageCustodians ? deviceAuth.deviceRequiredMessage : undefined}
                                 className="px-3 py-1 modal-button rounded-md disabled:opacity-50 text-sm"
                               >
                                 Add Custodian ({custodians.length}/5)
@@ -6739,8 +6795,17 @@ This invitation expires in 24 hours.`;
                                 <div className="text-center py-4">
                                   <p className="text-text-secondary mb-3">No custodians added yet</p>
                                   <button 
-                                    onClick={() => setShowAddCustodianModal(true)}
-                                    className="px-4 py-2 modal-button rounded-md text-sm"
+                                    onClick={() => {
+                                      if (!canManageCustodians) {
+                                        setError(deviceAuth.deviceRequiredMessage);
+                                        setTimeout(() => setError(null), 9000);
+                                        return;
+                                      }
+                                      setShowAddCustodianModal(true);
+                                    }}
+                                    disabled={!canManageCustodians}
+                                    title={!canManageCustodians ? deviceAuth.deviceRequiredMessage : undefined}
+                                    className="px-4 py-2 modal-button rounded-md text-sm disabled:opacity-50"
                                   >
                                     Add Your First Custodian
                                   </button>
@@ -6781,19 +6846,31 @@ This invitation expires in 24 hours.`;
                                       {(custodian.status === 'pending' || vaultStatus === 'invited') && (
                                         <button 
                                           onClick={() => {
+                                            if (!canManageCustodians) {
+                                              setError(deviceAuth.deviceRequiredMessage);
+                                              setTimeout(() => setError(null), 9000);
+                                              return;
+                                            }
                                             setSelectedCustodianForInvitation(custodian);
                                             setShowSendInvitationModal(true);
                                           }}
-                                          className="text-blue-600 hover:text-blue-800 text-sm"
-                                          title="Generate and send invitation QR code"
+                                          disabled={!canManageCustodians}
+                                          className="text-blue-600 hover:text-blue-800 text-sm disabled:opacity-50"
+                                          title={!canManageCustodians ? deviceAuth.deviceRequiredMessage : 'Generate and send invitation QR code'}
                                         >
                                           📤 Send Invitation
                                         </button>
                                       )}
                                       <button 
                                         onClick={() => handleRemoveCustodian(custodian.id)}
-                                        disabled={isProtected}
-                                        title={isProtected ? 'Protected custodians cannot be revoked' : 'Revoke and return share to pending pool'}
+                                        disabled={isProtected || !canManageCustodians}
+                                        title={
+                                          isProtected
+                                            ? 'Protected custodians cannot be revoked'
+                                            : !canManageCustodians
+                                              ? deviceAuth.deviceRequiredMessage
+                                              : 'Revoke and return share to pending pool'
+                                        }
                                         className={`text-sm ${isProtected ? 'text-gray-400 cursor-not-allowed' : 'text-red-600 hover:text-red-800'}`}
                                       >
                                         Remove

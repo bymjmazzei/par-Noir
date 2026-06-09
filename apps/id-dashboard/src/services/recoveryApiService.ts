@@ -4,6 +4,7 @@ import {
   encryptOwnerVaultShare,
   serializeOwnerVaultShare,
 } from '@par-noir/recovery-crypto';
+import { deviceProofHeaders } from './deviceProofContext';
 
 export interface RecoveryCustodianApiRow {
   custodianId: string;
@@ -24,11 +25,26 @@ export interface RecoveryCustodianSummary {
   counts: { accepted: number; acceptedUnrevokable: number; invited: number };
 }
 
-function authHeaders(authToken: string) {
+function authHeaders(authToken: string, extra?: Record<string, string>) {
   return {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${authToken}`,
+    ...extra,
   };
+}
+
+async function ownerMutatingFetch(
+  authToken: string,
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<Response> {
+  const proof = await deviceProofHeaders(method, path, body);
+  return fetch(`${API_ENDPOINT}${path}`, {
+    method,
+    headers: authHeaders(authToken, proof),
+    body: body != null ? JSON.stringify(body) : undefined,
+  });
 }
 
 export async function persistRecoveryRequest(
@@ -136,11 +152,9 @@ export async function reconcileRecoveryVault(
   authToken: string,
   totalShares?: number
 ): Promise<{ normalized: number; missingIndices: number[] }> {
-  const res = await fetch(`${API_ENDPOINT}/api/recovery/vault/reconcile`, {
-    method: 'POST',
-    headers: authHeaders(authToken),
-    body: JSON.stringify({ userPnIdentifier, totalShares }),
-  });
+  const path = '/api/recovery/vault/reconcile';
+  const body = { userPnIdentifier, totalShares };
+  const res = await ownerMutatingFetch(authToken, 'POST', path, body);
   if (!res.ok) throw new Error('Failed to reconcile recovery vault');
   return res.json();
 }
@@ -150,11 +164,9 @@ export async function initializeRecoveryVault(
   authToken: string,
   shares: Array<{ shareIndex: number; encryptedShare: string }>
 ): Promise<{ inserted: number; skipped: number }> {
-  const res = await fetch(`${API_ENDPOINT}/api/recovery/vault/initialize`, {
-    method: 'POST',
-    headers: authHeaders(authToken),
-    body: JSON.stringify({ userPnIdentifier, shares }),
-  });
+  const path = '/api/recovery/vault/initialize';
+  const body = { userPnIdentifier, shares };
+  const res = await ownerMutatingFetch(authToken, 'POST', path, body);
   if (!res.ok) throw new Error('Failed to initialize recovery vault');
   return res.json();
 }
@@ -198,11 +210,9 @@ export async function assignRecoveryCustodian(
     unrevokable?: boolean;
   }
 ): Promise<void> {
-  const res = await fetch(`${API_ENDPOINT}/api/recovery/custodians/assign`, {
-    method: 'POST',
-    headers: authHeaders(authToken),
-    body: JSON.stringify({ userPnIdentifier, ...payload }),
-  });
+  const path = '/api/recovery/custodians/assign';
+  const body = { userPnIdentifier, ...payload };
+  const res = await ownerMutatingFetch(authToken, 'POST', path, body);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || 'Failed to assign custodian');
@@ -221,11 +231,9 @@ export async function resendRecoveryCustodianInvitation(
   custodianshipCredential: string;
   unrevokable: boolean;
 }> {
-  const res = await fetch(`${API_ENDPOINT}/api/recovery/custodians/${encodeURIComponent(custodianId)}/resend`, {
-    method: 'POST',
-    headers: authHeaders(authToken),
-    body: JSON.stringify({ userPnIdentifier }),
-  });
+  const path = `/api/recovery/custodians/${encodeURIComponent(custodianId)}/resend`;
+  const body = { userPnIdentifier };
+  const res = await ownerMutatingFetch(authToken, 'POST', path, body);
   if (!res.ok) throw new Error('Failed to resend custodian invitation');
   return res.json();
 }
@@ -236,11 +244,9 @@ export async function revokeRecoveryCustodian(
   custodianId: string,
   threshold?: number
 ): Promise<void> {
-  const res = await fetch(`${API_ENDPOINT}/api/recovery/custodians/${encodeURIComponent(custodianId)}/revoke`, {
-    method: 'POST',
-    headers: authHeaders(authToken),
-    body: JSON.stringify({ userPnIdentifier, threshold }),
-  });
+  const path = `/api/recovery/custodians/${encodeURIComponent(custodianId)}/revoke`;
+  const body = { userPnIdentifier, threshold };
+  const res = await ownerMutatingFetch(authToken, 'POST', path, body);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || 'Failed to revoke custodian');
