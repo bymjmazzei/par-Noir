@@ -11,16 +11,16 @@ import {
   type RecoveryEnvelope,
   type ShamirShare
 } from '@par-noir/recovery-crypto';
-import type { EncryptedIdentity } from '../utils/crypto';
+import type { EncryptedIdentity } from '../../utils/crypto';
 import {
   appendShareToRecoveryRequest,
   completeRecoveryWithShares,
   getCustodianShare,
   saveRecoveryRequest,
   type StoredRecoveryRequest
-} from '../services/recoveryService';
+} from '../../services/recoveryService';
 import { parseRecoveryPnFile } from './parseRecoveryPnFile';
-import { persistRecoveryRequest, submitRecoveryShare } from '../services/recoveryApiService';
+import { persistRecoveryRequest, submitRecoveryShare } from '../../services/recoveryApiService';
 
 export interface InitiateRecoveryFromPnInput {
   file: File;
