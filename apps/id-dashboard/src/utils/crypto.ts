@@ -164,6 +164,32 @@ export class IdentityCrypto {
     }
   }
 
+  /**
+   * Generate a new cryptographic identity for re-key migration.
+   * Copies profile fields from decrypted predecessor JSON; new keys and recovery envelope.
+   */
+  static async prepareRotatedIdentity(params: {
+    pnName: string;
+    newPasscode: string;
+    predecessorDecrypted: {
+      nickname?: string;
+      recoveryEmail?: string;
+      recoveryPhone?: string;
+      recoveryConfig?: { threshold: number; totalShares: number };
+    };
+  }): Promise<IdentityCreationResult> {
+    const cfg = params.predecessorDecrypted.recoveryConfig;
+    return this.createIdentity(
+      params.pnName,
+      params.predecessorDecrypted.nickname || params.pnName,
+      params.newPasscode,
+      params.predecessorDecrypted.recoveryEmail,
+      params.predecessorDecrypted.recoveryPhone,
+      cfg?.threshold ?? 2,
+      cfg?.totalShares ?? 5
+    );
+  }
+
   /** @deprecated Use createIdentity return value; kept for callers expecting EncryptedIdentity only. */
   static async createIdentityLegacy(
     username: string,

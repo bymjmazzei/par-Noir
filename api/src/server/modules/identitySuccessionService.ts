@@ -104,6 +104,7 @@ export async function registerSuccession(params: {
   migrationId?: string;
   reason?: string;
   migrateBindings?: boolean;
+  successorPublicKey?: string;
 }): Promise<void> {
   const pred = normalizePn(params.predecessorPnIdentifier);
   const succ = normalizePn(params.successorPnIdentifier);
@@ -129,7 +130,14 @@ export async function registerSuccession(params: {
       ]
     );
 
-    await client.query(`DELETE FROM oauth_refresh_tokens WHERE pn_identifier = $1`, [pred]);
+    if (params.successorPublicKey) {
+      await client.query(
+        `UPDATE oauth_refresh_tokens SET pn_identifier = $2, public_key = $3 WHERE pn_identifier = $1`,
+        [pred, succ, params.successorPublicKey]
+      );
+    } else {
+      await client.query(`DELETE FROM oauth_refresh_tokens WHERE pn_identifier = $1`, [pred]);
+    }
 
     if (params.migrateBindings !== false) {
       await client.query(`UPDATE api_keys SET pn_id = $2 WHERE pn_id = $1`, [pred, succ]);
@@ -166,6 +174,59 @@ export async function registerSuccession(params: {
         );
       } catch {
         /* table may be missing on older DBs */
+      }
+      const optionalMigrations: Array<{ sql: string; params: [string, string] }> = [
+        {
+          sql: `UPDATE verified_identities SET identity_id = $2 WHERE identity_id = $1`,
+          params: [pred, succ],
+        },
+        {
+          sql: `UPDATE feed_tokens SET owner_pn_identifier = $2 WHERE owner_pn_identifier = $1`,
+          params: [pred, succ],
+        },
+        {
+          sql: `UPDATE music_registry_tracks SET owner_pn_identifier = $2 WHERE owner_pn_identifier = $1`,
+          params: [pred, succ],
+        },
+        {
+          sql: `UPDATE oauth_clients SET owner_pn_id = $2 WHERE owner_pn_id = $1`,
+          params: [pred, succ],
+        },
+        {
+          sql: `UPDATE pn_owned_assets SET subject_pn_identifier = $2, updated_at = NOW() WHERE subject_pn_identifier = $1`,
+          params: [pred, succ],
+        },
+        {
+          sql: `UPDATE pn_asset_delegations SET delegatee_pn_identifier = $2, updated_at = NOW() WHERE delegatee_pn_identifier = $1`,
+          params: [pred, succ],
+        },
+        {
+          sql: `UPDATE feeds SET sub_pn_identifier = $2 WHERE sub_pn_identifier = $1`,
+          params: [pred, succ],
+        },
+      ];
+      for (const m of optionalMigrations) {
+        try {
+          await client.query(m.sql, m.params);
+        } catch {
+          /* table may be missing on older DBs */
+        }
+      }
+      const creatorFundTables = [
+        'creator_fund_balances',
+        'creator_fund_ledger',
+        'creator_fund_payout_requests',
+        'creator_fund_allocations',
+      ];
+      for (const table of creatorFundTables) {
+        try {
+          await client.query(
+            `UPDATE ${table} SET pn_identifier = $2 WHERE pn_identifier = $1`,
+            [pred, succ]
+          );
+        } catch {
+          /* table may be missing */
+        }
       }
     }
 

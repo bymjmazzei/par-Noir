@@ -60,6 +60,14 @@ Hand-maintained index of **major** HTTP routes. When you add a user-facing or in
 | POST | `/oauth/clients` | `ADMIN_API_KEY` (break-glass; browser uses `/api/developer/oauth-clients` instead) |
 | POST | `/api/admin/api-keys` | `ADMIN_API_KEY` |
 | POST | `/api/admin/identity/succession` | Register predecessor → successor |
+| POST | `/api/identity/migration/start` | OAuth — start re-key migration |
+| GET | `/api/identity/migration/:id` | OAuth — migration status |
+| PATCH | `/api/identity/migration/:id/steps/:stepId` | OAuth — ack step |
+| POST | `/api/identity/migration/:id/complete` | OAuth (successor) — lineage ZK + succession |
+| POST | `/api/identity/migration/:id/connections/rekey` | OAuth — update kemCiphertext |
+| POST | `/api/identity/migration/:id/groups/rewrap` | OAuth — group key re-wrap |
+| POST | `/api/identity/migration/:id/zkp-data-points/batch` | OAuth — batch ZKP sheet |
+| POST | `/api/identity/migration/:id/recovery/custodians` | OAuth — recovery custodian rows |
 | GET | `/api/admin/audit-events` | Query `limit`, optional `event_type` |
 
 ## Integrator storage (L5 OAuth Bearer + `cloud:app`)

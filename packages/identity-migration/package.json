@@ -1,0 +1,39 @@
+{
+  "name": "@par-noir/identity-migration",
+  "version": "0.1.0",
+  "description": "Identity re-key migration orchestration (Drive re-encrypt, ZKP reissue, DM/group rekey)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js",
+      "default": "./dist/browser.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@par-noir/aggregator-domain": "file:../aggregator-domain",
+    "@par-noir/dm-crypto": "file:../dm-crypto",
+    "@par-noir/recovery-crypto": "file:../recovery-crypto",
+    "@par-noir/zk-protocol-v2": "file:../zk-protocol-v2"
+  },
+  "devDependencies": {
+    "@noble/post-quantum": "^0.5.4",
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  }
+}

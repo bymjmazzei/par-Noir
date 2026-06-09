@@ -25,6 +25,7 @@ import { isOAuthBrowserHtmlEntryGet } from './server/utils/oauthBrowserHtmlEntry
 import { safeClientErrorMessage } from './server/utils/safeError';
 import { captureApiRouteError, initApiSentry } from './server/utils/sentry';
 import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modules/adminDeveloperRoutes';
+import { registerIdentityMigrationRoutes } from './server/modules/identityMigrationService';
 import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSelfServiceRoutes';
 import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
 import { registerMusicTrackRegistryRoutes } from './server/modules/musicTrackRegistryRoutes';
@@ -342,52 +343,11 @@ class ProductionServer {
     pnIdentifier: string,
     accountId?: string
   ): Promise<{ metadataFolderId: string; pnFolderId: string } | null> {
-    const { GoogleOAuth2Helper } = await import('./server/modules/googleOAuth2Helper');
-    const { google } = await import('googleapis');
-    
-    const auth = GoogleOAuth2Helper.createClient(token, pnIdentifier, accountId);
-    const drive = google.drive({ version: 'v3', auth });
-    
+    const { resolvePnDriveFolders } = await import('./server/modules/resolvePnDriveFolders');
+    const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
     const normalizedPn = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-    const pnFolderName = `par Noir - ${normalizedPn}`;
-    const pnFolderQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    
-    try {
-      // Google client library will automatically refresh token on 401
-      const pnFolderResponse = await drive.files.list({
-        q: pnFolderQuery,
-        fields: 'files(id)',
-        pageSize: 1
-      });
-      
-      if (!pnFolderResponse.data.files || pnFolderResponse.data.files.length === 0) {
-        // Folders not found - return null (this is the only case where null is appropriate)
-        return null;
-      }
-      const pnFolderId = pnFolderResponse.data.files[0].id!;
-
-      const metadataFolderQuery = `name='_metadata' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-      
-      // Google client library will automatically refresh token on 401
-      const metadataFolderResponse = await drive.files.list({
-        q: metadataFolderQuery,
-        fields: 'files(id)',
-        pageSize: 1
-      });
-      
-      if (!metadataFolderResponse.data.files || metadataFolderResponse.data.files.length === 0) {
-        // _metadata folder not found - return null
-        return null;
-      }
-      return { metadataFolderId: metadataFolderResponse.data.files[0].id!, pnFolderId };
-    } catch (error: any) {
-      // Handle authentication errors
-      if (error?.response?.status === 401 || error?.response?.status === 403 || error?.code === 401 || error?.code === 403) {
-        throw new Error(`Google Drive authentication failed: ${error?.message || 'Invalid credentials'}`);
-      }
-      // Re-throw other errors
-      throw error;
-    }
+    const pinnedFolderId = await storageCredentialsService.getDriveFolderId(normalizedPn);
+    return resolvePnDriveFolders(token, normalizedPn, accountId, pinnedFolderId);
   }
 
   private async getRecoveryDriveContext(userPnIdentifier: string): Promise<{
@@ -11114,6 +11074,7 @@ class ProductionServer {
     });
 
     registerAdminDeveloperRoutes(this.app);
+    registerIdentityMigrationRoutes(this.app);
     registerDeveloperSelfServiceRoutes(this.app);
     registerOwnedAssetRoutes(this.app);
     registerMusicTrackRegistryRoutes(this.app);

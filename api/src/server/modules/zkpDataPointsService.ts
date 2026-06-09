@@ -37,6 +37,8 @@ export interface ZKPVerificationResult {
   verifiedAt?: string;
   expiresAt?: string;
   error?: string;
+  /** True when predecessor-key proof accepted during post-migration grace window */
+  successionGraceApplied?: boolean;
 }
 
 export class ZKPDataPointsService {
@@ -180,7 +182,8 @@ export class ZKPDataPointsService {
    */
   static async verifyProof(
     zkpProof: string,
-    condition: string
+    condition: string,
+    opts?: { successorPnIdentifier?: string }
   ): Promise<ZKPVerificationResult> {
     try {
       const env = decodeEnvelopeFromProofString(zkpProof);
@@ -238,11 +241,19 @@ export class ZKPDataPointsService {
         };
       }
 
+      let successionGraceApplied = false;
+      if (opts?.successorPnIdentifier) {
+        const { findLineageMigrationForSuccessor } = await import('./identityMigrationService');
+        const lineage = await findLineageMigrationForSuccessor(opts.successorPnIdentifier);
+        successionGraceApplied = lineage !== null;
+      }
+
       return {
         isValid: true,
         condition,
         verifiedAt: new Date().toISOString(),
         expiresAt,
+        ...(successionGraceApplied ? { successionGraceApplied: true } : {}),
       };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Invalid proof format';

@@ -365,4 +365,56 @@ export class GroupSheetsService {
     }
     return true;
   }
+
+  /** Replace wrapped keys for all members during identity re-key (no member removal). */
+  static async rewrapGroupKeysForMigration(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    groupId: string,
+    successorOwnerPnIdentifier: string,
+    keyRotation: Array<{ memberPnIdentifier: string; wrappedChatKey: string; accessRole: GroupAccessRole }>,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<boolean> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Groups!A2:H',
+    });
+    const rows = res.data.values || [];
+    const otherGroups = rows.filter((row) => row[0] !== groupId);
+    const groupRows = rows.filter((row) => row[0] === groupId);
+    const template = groupRows[0];
+    if (!template) return false;
+
+    const rotatedRows = keyRotation.map((m) => {
+      const existing = groupRows.find((row) => row[4] === m.memberPnIdentifier);
+      return [
+        groupId,
+        successorOwnerPnIdentifier,
+        template[2],
+        template[3],
+        m.memberPnIdentifier,
+        m.accessRole,
+        m.wrappedChatKey,
+        existing?.[7] || '',
+      ];
+    });
+
+    const kept = [...otherGroups, ...rotatedRows];
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range: 'Groups!A2:H',
+    });
+    if (kept.length > 0) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `Groups!A2:H${kept.length + 1}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: kept },
+      });
+    }
+    return true;
+  }
 }

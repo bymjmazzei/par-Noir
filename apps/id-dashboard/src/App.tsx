@@ -21,6 +21,7 @@ import { PermissionTile } from './components/PermissionTile';
 import { IntegratorTile } from './components/IntegratorTile';
 import { DataPointRequestsPanel } from './components/DataPointRequestsPanel';
 import { IdentitySuccessionPanel } from './components/IdentitySuccessionPanel';
+import { IdentityRotationWizard } from './components/identity/IdentityRotationWizard';
 import { DeviceManagementPanel } from './components/DeviceManagementPanel';
 import { completeRecoveryWithShares, setPendingRecoveryShares } from './services/recoveryService';
 import { RecoveryPasscodeModal } from './components/recovery/RecoveryPasscodeModal';
@@ -6503,6 +6504,13 @@ This invitation expires in 24 hours.`;
                         {authenticatedUser && (
                           <IdentitySuccessionPanel
                             predecessorPnIdentifier={authenticatedUser.id.startsWith('pn-') ? authenticatedUser.id : `pn-${authenticatedUser.id}`}
+                          />
+                        )}
+                        {apiToken && authenticatedUser && (
+                          <IdentityRotationWizard
+                            authToken={apiToken}
+                            identityKey={authenticatedUser.publicKey || authenticatedUser.id}
+                            currentDid={authenticatedUser.id}
                           />
                         )}
                         <div className="space-y-4">

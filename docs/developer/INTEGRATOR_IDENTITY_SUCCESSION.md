@@ -1,6 +1,6 @@
 # Identity succession for integrators (superseded pN)
 
-After **recovery or key rotation**, a user may have a **successor** pN identifier on the par Noir network. The **predecessor** identifier remains cryptographically valid as a **local file** (offline math does not erase copies), but the network treats it as **retired**: no new OAuth issuance, no storage credential binding, no feed creation for that predecessor DID when recorded.
+After **custodian recovery (same keys)** or **identity re-key migration (new keys)**, a user may have a **successor** pN identifier on the par Noir network. User-initiated re-key is documented in [IDENTITY_REKEY_MIGRATION.md](./IDENTITY_REKEY_MIGRATION.md). The **predecessor** identifier remains cryptographically valid as a **local file** (offline math does not erase copies), but the network treats it as **retired**: no new OAuth issuance, no storage credential binding, no feed creation for that predecessor DID when recorded.
 
 ## What to do
 
@@ -28,9 +28,11 @@ After **recovery or key rotation**, a user may have a **successor** pN identifie
 - **API keys:** Keys whose `pn_id` is a superseded predecessor fail validation.
 - **Owned-asset registry:** On succession migration, `pn_owned_assets.root_pn_identifier`, `api_keys.root_pn_id`, and `feeds.owner_pn_identifier` rows tied to the predecessor are updated to the successor where applicable. See [OWNED_ASSETS_INTEGRATORS.md](./OWNED_ASSETS_INTEGRATORS.md).
 
-## Registering succession (operators)
+## Registering succession
 
-Registration is **not** exposed as an unauthenticated client call. Use a secure path with **`ADMIN_API_KEY`**:
+**User re-key:** `POST /api/identity/migration/:id/complete` (successor OAuth + dual lineage ZK). See [IDENTITY_REKEY_MIGRATION.md](./IDENTITY_REKEY_MIGRATION.md).
+
+**Operators:** use **`ADMIN_API_KEY`**:
 
 `POST /api/admin/identity/succession`
 

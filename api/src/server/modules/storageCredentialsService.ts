@@ -412,6 +412,13 @@ export class StorageCredentialsService {
   /**
    * Move storage_credentials from legacy passcode-based pn id to canonical publicKey-based id.
    */
+  /** Pinned Drive folder id (par Noir root) if stored in credentials blob. */
+  async getDriveFolderId(identityId: string): Promise<string | null> {
+    const record = await this.getCredentials(identityId);
+    const id = record?.credentials?.driveFolderId;
+    return typeof id === 'string' && id.length > 0 ? id : null;
+  }
+
   async migrateIdentityId(
     legacyId: string,
     canonicalId: string,

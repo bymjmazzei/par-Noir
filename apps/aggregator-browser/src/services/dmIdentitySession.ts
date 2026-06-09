@@ -64,6 +64,37 @@ export async function unlockDmIdentity(pnName: string, passcode: string): Promis
   if (secrets.mlKemPublicKey) {
     void publishMlKemPublicKey(secrets.mlKemPublicKey).catch(() => {});
   }
+
+  void (async () => {
+    try {
+      const handoffRaw = sessionStorage.getItem('pn_identity_migration_kem_handoff');
+      if (!handoffRaw) return;
+      const handoff = JSON.parse(handoffRaw) as {
+        migrationId: string;
+        predecessorMlKemSecretKey: string;
+        predecessorMlKemPublicKey: string;
+        successorMlKemSecretKey: string;
+        successorMlKemPublicKey: string;
+      };
+      const session = PNOAuthService.loadSession();
+      if (!session?.accessToken) return;
+      const { migrateConnectionsOnUnlock } = await import('./identityMigrationBridge');
+      await migrateConnectionsOnUnlock({
+        predecessorMlKemSecretKey: handoff.predecessorMlKemSecretKey,
+        predecessorMlKemPublicKey: handoff.predecessorMlKemPublicKey,
+        successorMlKemSecretKey: handoff.successorMlKemSecretKey,
+        successorMlKemPublicKey: handoff.successorMlKemPublicKey,
+        authToken: session.accessToken,
+      });
+      const { ackMigrationStep } = await import('./identityMigrationApiClient');
+      await ackMigrationStep(session.accessToken, handoff.migrationId, 'dm_rekey').catch(() => {});
+      await ackMigrationStep(session.accessToken, handoff.migrationId, 'group_rewrap').catch(() => {});
+      sessionStorage.removeItem('pn_identity_migration_kem_handoff');
+    } catch {
+      /* non-blocking */
+    }
+  })();
+
   return state;
 }
 

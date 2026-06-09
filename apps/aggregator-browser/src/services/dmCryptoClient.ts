@@ -10,24 +10,43 @@ import {
   establishDmSession,
   isDmCiphertext
 } from '@par-noir/dm-crypto';
-import { getMessageRootKey, setMessageRootKey } from './dmSessionCache';
+import {
+  getMessageRootKey,
+  setMessageRootKey,
+  getLegacyMessageRootKey,
+  setLegacyMessageRootKey,
+} from './dmSessionCache';
 import { getDmIdentity } from './dmIdentitySession';
 
 export async function ensureMessageRootKey(
   connectionId: string,
-  kemCiphertext?: string
+  kemCiphertext?: string,
+  opts?: { allowLegacyFallback?: boolean }
 ): Promise<string> {
   const cached = getMessageRootKey(connectionId);
   if (cached) return cached;
 
-  if (!kemCiphertext) {
-    throw new Error('Missing KEM session data for this conversation');
+  if (kemCiphertext) {
+    try {
+      const { mlKemSecretKey } = getDmIdentity();
+      const root = openDmSession(kemCiphertext, mlKemSecretKey);
+      setMessageRootKey(connectionId, root);
+      return root;
+    } catch {
+      /* try legacy */
+    }
   }
 
-  const { mlKemSecretKey } = getDmIdentity();
-  const root = openDmSession(kemCiphertext, mlKemSecretKey);
-  setMessageRootKey(connectionId, root);
-  return root;
+  if (opts?.allowLegacyFallback !== false) {
+    const legacy = getLegacyMessageRootKey(connectionId);
+    if (legacy) return legacy;
+  }
+
+  throw new Error('Missing KEM session data for this conversation');
+}
+
+export function cacheLegacyMessageRoot(connectionId: string, rootB64: string): void {
+  setLegacyMessageRootKey(connectionId, rootB64);
 }
 
 export async function encryptOutgoingMessage(
@@ -49,7 +68,7 @@ export async function decryptIncomingMessage(
   if (!isDmCiphertext(encryptedContent)) {
     return encryptedContent;
   }
-  const root = await ensureMessageRootKey(connectionId, kemCiphertext);
+  const root = await ensureMessageRootKey(connectionId, kemCiphertext, { allowLegacyFallback: true });
   const messageKey = deriveMessageKey(root, connectionId);
   return decryptDmMessage(encryptedContent, messageKey);
 }

@@ -26,6 +26,7 @@
     "@capacitor/status-bar": "^6.0.0",
     "@par-noir/aggregator-domain": "file:../../packages/aggregator-domain",
     "@par-noir/dm-crypto": "file:../../packages/dm-crypto",
+    "@par-noir/identity-migration": "file:../../packages/identity-migration",
     "@par-noir/messaging-ui": "file:../../packages/messaging-ui",
     "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
     "@sentry/react": "^8.55.0",

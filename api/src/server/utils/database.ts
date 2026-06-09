@@ -904,6 +904,20 @@ export async function initializeDatabase(): Promise<void> {
     }
 
     try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const migrationPath = path.join(__dirname, '../../migrations/add_identity_migration.sql');
+      const migrationSQL = fs.readFileSync(migrationPath, 'utf-8');
+      await db.query(migrationSQL);
+      console.log('✅ Identity migration table migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ Identity migration table migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
       const { warmIdentitySuccessionCache } = await import('../modules/identitySuccessionService');
       await warmIdentitySuccessionCache();
       console.log('✅ Identity succession revocation cache warmed');

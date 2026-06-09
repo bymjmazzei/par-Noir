@@ -37,6 +37,16 @@ The API never sees plaintext media; it coordinates upload, ACL, and sheet metada
 - **Member admin:** `POST …/members`, `DELETE …/members/:pn`, `PATCH /api/groups/:id` (title), `PATCH …/members/:pn` (role).
 - **Key rotation on remove:** Deleting a member fans out `rotateGroupMemberKeys` to **all remaining members’** sheets (dual-write, mirroring add-member).
 
+## Identity re-key migration
+
+When the owner rotates ML-KEM keys (new `pn-*`):
+
+1. Dashboard stores a short-lived `pn_identity_migration_kem_handoff` in **sessionStorage** (predecessor + successor ML-KEM material).
+2. On browser unlock, `migrateConnectionsOnUnlock` self-rekeys requester-side `kemCiphertext` per connection and re-wraps owned group `chatKey` rows via `POST /api/identity/migration/:id/groups/rewrap`.
+3. **Historical DMs:** `ensureMessageRootKey` falls back to legacy roots cached during migration for decrypt-only.
+
+See [developer/IDENTITY_REKEY_MIGRATION.md](./developer/IDENTITY_REKEY_MIGRATION.md).
+
 ## Threat model (summary)
 
 | API may learn | API must not learn |
