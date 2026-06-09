@@ -29,7 +29,12 @@ export async function submitRecoveryShare(
   authToken: string,
   requestId: string,
   share: ShamirShare,
-  threshold?: number
+  threshold?: number,
+  approval?: {
+    proof: unknown;
+    encryptedShare: string;
+    custodianId: string;
+  }
 ): Promise<{ status: string; shareCount: number }> {
   const res = await fetch(`${API_ENDPOINT}/api/recovery/requests/${encodeURIComponent(requestId)}/shares`, {
     method: 'POST',
@@ -37,7 +42,7 @@ export async function submitRecoveryShare(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${authToken}`
     },
-    body: JSON.stringify({ userPnIdentifier, share, threshold })
+    body: JSON.stringify({ userPnIdentifier, share, threshold, approval })
   });
   if (!res.ok) {
     throw new Error('Failed to submit recovery share');

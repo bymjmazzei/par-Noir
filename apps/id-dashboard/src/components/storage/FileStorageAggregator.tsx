@@ -4724,6 +4724,31 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       if (payload && payload.googleDriveAccounts && payload.googleDriveAccounts.length > 0) {
         await persistStorageCredentialsToAPI(payload);
         console.log('✅ [handleConnectGoogleDrive] Credentials persisted to API after connection');
+        try {
+          const currentUser = authenticatedUserRef.current;
+          const sessionId = currentUser?.id || currentUser?.publicKey;
+          const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+          if (currentUser?.publicKey && credentials?.pnName && credentials?.passcode) {
+            const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+            const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+            const { maybeMigrateVolumeId } = await import('../../utils/volumeIdMigration');
+            const pnId = await VolumeIdGenerator.generateCanonicalVolumeId(currentUser.publicKey);
+            const accessToken = payload.googleDriveAccounts[0]?.accessToken;
+            if (accessToken) {
+              const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(accessToken, pnId);
+              const authToken = currentUser.accessToken || null;
+              await maybeMigrateVolumeId({
+                publicKey: currentUser.publicKey,
+                pnName: credentials.pnName,
+                passcode: credentials.passcode,
+                authToken,
+                driveFolderId: pnFolderId
+              });
+            }
+          }
+        } catch (folderErr) {
+          console.warn('⚠️ [handleConnectGoogleDrive] driveFolderId persistence skipped:', folderErr);
+        }
       }
     } catch (persistError) {
       console.warn('⚠️ [handleConnectGoogleDrive] Failed to persist credentials to API (non-critical):', persistError);

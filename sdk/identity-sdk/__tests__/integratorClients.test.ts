@@ -104,6 +104,51 @@ describe('IntegratorZkpClient', () => {
     expect(result.request?.status).toBe('approved');
     expect(calls).toBeGreaterThanOrEqual(2);
   });
+
+  it('registerWebhook posts to developer portal', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        subscription: { id: 'wh_1', clientId: 'app', url: 'https://ex.test/h', events: ['data_point_request.approved'] },
+        secret: 'whsec_test'
+      })
+    });
+    const client = new IntegratorZkpClient({ apiEndpoint: 'https://api.test' });
+    const result = await client.registerWebhook('dev-token', {
+      clientId: 'my-app',
+      url: 'https://ex.test/h',
+      events: ['data_point_request.approved']
+    });
+    expect(result.secret).toBe('whsec_test');
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toContain('/api/developer/webhooks');
+  });
+
+  it('E2E flow: request → poll approved → fetch data point', async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, requestId: 'dpr_e2e', status: 'pending' })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, request: { requestId: 'dpr_e2e', status: 'approved' } })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, dataPoint: { dataPointId: 'age_attestation' } })
+      });
+    const client = new IntegratorZkpClient({ apiEndpoint: 'https://api.test' });
+    const req = await client.requestDataPointsWithApiKey('key', {
+      identityId: 'pn-user',
+      clientId: 'app',
+      dataPoints: ['age_attestation']
+    });
+    expect(req.requestId).toBe('dpr_e2e');
+    const polled = await client.pollDataPointRequest('key', req.requestId, 'pn-user', { intervalMs: 1, timeoutMs: 1000 });
+    expect(polled.request?.status).toBe('approved');
+    const fetched = await client.getDataPointWithApiKey('key', 'age_attestation', 'pn-user', 'app');
+    expect(fetched.success).toBe(true);
+  });
 });
 
 describe('IdentitySuccessionClient', () => {

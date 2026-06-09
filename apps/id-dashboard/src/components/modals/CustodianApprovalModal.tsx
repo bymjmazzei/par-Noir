@@ -12,6 +12,7 @@ interface CustodianApprovalModalProps {
     claimantContactValue?: string;
     status: 'pending' | 'approved' | 'denied';
     signatures: any[];
+    proofs?: any[];
     approvals: any[];
   };
   selectedCustodianship: {
@@ -35,6 +36,8 @@ export function CustodianApprovalModal({
   onSuccess
 }: CustodianApprovalModalProps) {
   if (!isOpen || !selectedRecoveryRequest || !selectedCustodianship) return null;
+
+  const shareCount = selectedRecoveryRequest.proofs?.length ?? selectedRecoveryRequest.signatures.length;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 overflow-y-auto p-4 sm:p-6">
@@ -77,13 +80,13 @@ export function CustodianApprovalModal({
 
           {/* Approval Status */}
           <div className="bg-secondary p-4 rounded-lg">
-            <h3 className="font-medium text-text-primary mb-2">ZK Proof Approval Status</h3>
+            <h3 className="font-medium text-text-primary mb-2">Shamir Custodian Share Status</h3>
             <div className="space-y-2 text-sm">
-              <div><span className="text-text-secondary">ZK Proofs:</span> <span className="font-medium text-green-600">{selectedRecoveryRequest.signatures.length}</span></div>
-              <div><span className="text-text-secondary">Required:</span> <span className="font-medium">{recoveryThreshold} ZK proofs</span></div>
+              <div><span className="text-text-secondary">Shares submitted:</span> <span className="font-medium text-green-600">{shareCount}</span></div>
+              <div><span className="text-text-secondary">Required:</span> <span className="font-medium">{recoveryThreshold} custodian shares</span></div>
               <div><span className="text-text-secondary">Approvals:</span> <span className="font-medium text-blue-600">{selectedRecoveryRequest.approvals.length}</span></div>
               <div className="text-xs text-text-secondary mt-2">
-                ZK proofs ensure custodians have valid recovery key shares without revealing the actual shares
+                Custodians submit encrypted Shamir shares with a proof of share knowledge. Cleartext shares are never sent to the claimant or API.
               </div>
             </div>
           </div>
@@ -114,7 +117,7 @@ export function CustodianApprovalModal({
               onClick={() => {
                 onApproveRecovery(selectedRecoveryRequest.id, selectedCustodianship.id);
                 onClose();
-                onSuccess('Recovery request approved successfully');
+                onSuccess('Recovery share submitted successfully');
               }}
               className="flex-1 px-4 py-2 modal-button rounded-md"
             >

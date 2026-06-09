@@ -301,4 +301,124 @@ export function registerDeveloperSelfServiceRoutes(app: Application): void {
       });
     }
   });
+
+  app.post('/api/developer/webhooks', ...chain, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const pnId = req.user?.pnIdentifier?.trim();
+      if (!pnId) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'Your session has no par Noir user id.' });
+      }
+      const { clientId, url, events } = req.body || {};
+      if (!clientId || !url || !Array.isArray(events)) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'clientId, url, and events[] are required'
+        });
+      }
+      const { IntegratorWebhookService } = await import('./integratorWebhookService');
+      const { subscription, secret } = await IntegratorWebhookService.createSubscription({
+        clientId: String(clientId),
+        ownerPnId: pnId,
+        url: String(url),
+        events: events.map(String)
+      });
+      return res.status(201).json({
+        subscription,
+        secret,
+        message: 'Store this signing secret securely; it will not be shown again.'
+      });
+    } catch (error: unknown) {
+      const statusCode = (error as { statusCode?: number }).statusCode;
+      if (statusCode === 403 || statusCode === 404) {
+        return res.status(statusCode).json({ error: 'forbidden', error_description: (error as Error).message });
+      }
+      if (error instanceof Error && error.message.includes('event')) {
+        return res.status(400).json({ error: 'invalid_request', error_description: error.message });
+      }
+      console.error('[developer] webhooks POST:', error);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to create webhook'
+      });
+    }
+  });
+
+  app.get('/api/developer/webhooks', ...chain, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const pnId = req.user?.pnIdentifier?.trim();
+      const clientId = String(req.query.clientId || '').trim();
+      if (!pnId || !clientId) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'clientId query parameter is required'
+        });
+      }
+      const { IntegratorWebhookService } = await import('./integratorWebhookService');
+      const subscriptions = await IntegratorWebhookService.listSubscriptions(clientId, pnId);
+      return res.json({ subscriptions });
+    } catch (error: unknown) {
+      const statusCode = (error as { statusCode?: number }).statusCode;
+      if (statusCode === 403 || statusCode === 404) {
+        return res.status(statusCode).json({ error: 'forbidden', error_description: (error as Error).message });
+      }
+      console.error('[developer] webhooks GET:', error);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  });
+
+  app.put('/api/developer/webhooks/:id', ...chain, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const pnId = req.user?.pnIdentifier?.trim();
+      if (!pnId) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'Your session has no par Noir user id.' });
+      }
+      const { url, events, isActive } = req.body || {};
+      const { IntegratorWebhookService } = await import('./integratorWebhookService');
+      const updated = await IntegratorWebhookService.updateSubscription(req.params.id, pnId, {
+        url: typeof url === 'string' ? url : undefined,
+        events: Array.isArray(events) ? events.map(String) : undefined,
+        isActive: typeof isActive === 'boolean' ? isActive : undefined
+      });
+      if (!updated) return res.status(404).json({ error: 'not_found' });
+      return res.json({ subscription: updated });
+    } catch (error: unknown) {
+      console.error('[developer] webhooks PUT:', error);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  });
+
+  app.delete('/api/developer/webhooks/:id', ...chain, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const pnId = req.user?.pnIdentifier?.trim();
+      if (!pnId) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'Your session has no par Noir user id.' });
+      }
+      const { IntegratorWebhookService } = await import('./integratorWebhookService');
+      const deleted = await IntegratorWebhookService.deleteSubscription(req.params.id, pnId);
+      if (!deleted) return res.status(404).json({ error: 'not_found' });
+      return res.json({ success: true });
+    } catch (error: unknown) {
+      console.error('[developer] webhooks DELETE:', error);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  });
+
+  app.post('/api/developer/webhooks/:id/rotate-secret', ...chain, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const pnId = req.user?.pnIdentifier?.trim();
+      if (!pnId) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'Your session has no par Noir user id.' });
+      }
+      const { IntegratorWebhookService } = await import('./integratorWebhookService');
+      const rotated = await IntegratorWebhookService.rotateSecret(req.params.id, pnId);
+      if (!rotated) return res.status(404).json({ error: 'not_found' });
+      return res.json({
+        secret: rotated.secret,
+        message: 'Store this signing secret securely; it will not be shown again.'
+      });
+    } catch (error: unknown) {
+      console.error('[developer] webhooks rotate-secret:', error);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  });
 }

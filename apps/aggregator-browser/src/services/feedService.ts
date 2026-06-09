@@ -99,6 +99,17 @@ export class FeedService {
   }
 
   /**
+   * Get pinned top post for a feed (branded feed page)
+   */
+  static async getTopPost(feedId: string): Promise<{ topPost: Record<string, unknown> | null }> {
+    const response = await fetch(`${API_ENDPOINT}/api/feeds/${encodeURIComponent(feedId)}/top-post`);
+    if (!response.ok) {
+      return { topPost: null };
+    }
+    return response.json();
+  }
+
+  /**
    * Get feed by ID
    */
   static async getFeedById(feedId: string): Promise<Feed> {

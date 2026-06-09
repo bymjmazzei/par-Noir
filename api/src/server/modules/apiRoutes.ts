@@ -574,6 +574,25 @@ export function setupDataPointUserRoutes(app: any) {
         });
       }
 
+      const {
+        IntegratorWebhookService,
+        INTEGRATOR_WEBHOOK_EVENTS
+      } = await import('./integratorWebhookService');
+      IntegratorWebhookService.emitDataPointRequestEvent(
+        row.clientId,
+        action === 'approve'
+          ? INTEGRATOR_WEBHOOK_EVENTS.DATA_POINT_REQUEST_APPROVED
+          : INTEGRATOR_WEBHOOK_EVENTS.DATA_POINT_REQUEST_DECLINED,
+        {
+          requestId: req.params.requestId,
+          identityId: normalized,
+          clientId: row.clientId,
+          dataPoints: row.dataPoints.split(',').map((s) => s.trim()).filter(Boolean),
+          status: action === 'approve' ? 'approved' : 'declined',
+          approvedAt: new Date().toISOString()
+        }
+      );
+
       return res.json({ success: true, status: newStatus });
     } catch (error) {
       console.error('[DataPointRequests] respond error:', error);

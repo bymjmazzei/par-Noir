@@ -15,13 +15,12 @@
 - Notifications (in-app + native push registration)
 - NSFW gating with age ZKP
 - Copyright reports → Prism queue
-- Search over public content metadata + **profile search** (`GET /api/profile/search`)
+- Search over public content metadata + **profile search** (`GET /api/profile/search`) + **personal history** (`GET /api/search/personal`)
 - **Socket.IO** hints for messages/notifications (`useRealtimeSync`; polling reduced when connected)
-- Branded feed owner settings via `FeedService.updateFeed` with `creatorDid`
+- Branded feed: owner settings + **pinned top post** via `GET /api/feeds/:feedId/top-post`
 
-### Remaining polish
-- Orphan components (`BrowseCloud`, `CreatorFeedPage`) — cleanup pending
-- Platform paid feed subscriptions — removed (410)
+### Policy
+- Platform paid feed subscriptions — **deferred** (410); future model is creator-connected payment gateways (see `docs/business/FEEDS_AND_THIRD_PARTY_MONETIZATION.md`)
 
 ## Layer 3 — API
 
@@ -29,28 +28,29 @@
 - Metadata index, Drive proxy, feeds, engagement, connections, groups, messaging
 - pN OAuth (canonical `pn-` id from **publicKey**), Google token refresh, ZKP data points on Drive
 - **`/api/v1/data-points/*`** — API-key integrator request, poll, and fetch
-- **Recovery** Drive sheets: custodian roster + recovery requests (`/api/recovery/*`)
-- **`POST /api/storage/migrate-volume-id`** — legacy passcode-based id → canonical id
+- **Integrator webhooks** — `integrator_webhook_subscriptions`, developer portal CRUD, HMAC `X-PN-Signature` delivery on `data_point_request.approved` / `declined`
+- **Recovery** Drive sheets: custodian roster + recovery requests (`/api/recovery/*`); encrypted share + proof payloads on share submit
+- **`POST /api/storage/migrate-volume-id`** — legacy passcode-based id → canonical id (+ `driveFolderId` patch)
 - Prism, DMCA, monetization (Stripe when configured), music registry
-- Developer portal APIs (OAuth clients, API keys, proposals)
+- Developer portal APIs (OAuth clients, API keys, proposals, webhooks)
 - Push notifications, activity ledger, realtime `new_notification` events
+- **`BLOCKED_DATA_POINTS`** centralized in `@par-noir/standard-data-points`
 
-### Gaps
+### Ops
+- Production Railway: set **`SOCKET_REQUIRE_AUTH=true`** for Socket.IO
 - Legacy `POST /api/auth/verify` — deprecated
-- Production Railway: set `SOCKET_REQUIRE_AUTH=true` for Socket.IO
 
 ## Layer 2 — Dashboard (`pn.parnoir.com`)
 
 ### Implemented
 - Self-issued identity create/unlock (`IdentityCrypto`, PQC)
-- **Shamir custodian recovery** (`@par-noir/recovery-crypto`): same pN keys, new passcode, recovery envelope in `.pn` file
-- Google Drive encrypted storage, visibility, feeds metadata
+- **Shamir custodian recovery** (`@par-noir/recovery-crypto`): encrypted shares, share-knowledge proofs, `.pn` upload initiate (no passcode), new passcode completion
+- **`useRecoveryHandlers`** — Recovery tab logic extracted from `App.tsx`
+- Google Drive encrypted storage, visibility, feeds metadata; **`driveFolderId`** persisted on connect
 - ZKP v1/v2 data points, third-party permissions, data-point request panel
 - Sub-pN / owned assets, Stripe monetization, OAuth inline for API token
 - Identity succession panel (read-only public status)
-
-### Remaining polish
-- `App.tsx` monolith refactor (Recovery tab partially extracted)
+- Auto **`migrateVolumeId`** on unlock when legacy id detected
 
 ## Layer 1 — Identity
 
@@ -58,10 +58,10 @@
 
 ## Recovery architecture (summary)
 
-1. **Create:** `IdentityCrypto.createIdentity` builds a recovery envelope (PQC secrets) and Shamir shares for custodians.
-2. **Recover:** Custodians submit shares → combine → decrypt envelope → user sets **new passcode** → same `publicKey` / ML-KEM keys.
-3. **Platform:** Canonical `pn-{hash(publicKey)}` avoids orphaning API/Drive state after passcode reset; legacy ids migrate via `/api/storage/migrate-volume-id`.
-4. **Messaging:** Same keys → existing DM `kemCiphertext` threads decrypt after unlock in the browser.
+1. **Create:** `IdentityCrypto.createIdentity` builds a recovery envelope (PQC secrets) and Shamir shares for custodians (encrypted at assign).
+2. **Recover:** Upload `.pn` → custodians submit encrypted shares + proofs → combine → new passcode → same `publicKey` / ML-KEM keys.
+3. **Platform:** Canonical `pn-{hash(publicKey)}`; legacy ids migrate via `/api/storage/migrate-volume-id`.
+4. **Messaging:** Same keys → existing DM threads decrypt after unlock in the browser.
 
 Full detail: `apps/id-dashboard/docs/PN_IDENTIFIER_CONSISTENCY.md`, `docs/MESSAGING_ARCHITECTURE.md`.
 
@@ -70,3 +70,8 @@ Full detail: `apps/id-dashboard/docs/PN_IDENTIFIER_CONSISTENCY.md`, `docs/MESSAG
 - **Browser / portals:** pN OAuth 2.0 (production)
 - **Dashboard:** pn file + pn name + passcode unlock; optional API OAuth after unlock
 - **Legacy challenge auth:** not used by current apps
+
+## Integrator (L5)
+
+- SDK: `requestDataPointsWithApiKey`, `pollDataPointRequest`, `getDataPointWithApiKey`, optional `registerWebhook`
+- Webhooks complement polling for approve/decline events

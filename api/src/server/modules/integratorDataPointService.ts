@@ -5,8 +5,7 @@
 import { ThirdPartyPermissionsService } from './thirdPartyPermissionsService';
 import { ZKPDataPointsService } from './zkpDataPointsService';
 import { getUserDriveMetadataContext, normalizePnIdentifier } from './driveMetadataHelper';
-
-const BLOCKED_DATA_POINTS = new Set(['pn_file', 'pn_name', 'passcode', 'pnIdentifier']);
+import { filterAllowedDataPointIds } from '@par-noir/standard-data-points';
 
 export interface IntegratorZkpProofPayload {
   dataPointId: string;
@@ -28,7 +27,7 @@ export async function fetchGrantedZkpProofs(params: {
     return [];
   }
 
-  const allowedIds = params.dataPointIds.filter((dp) => !BLOCKED_DATA_POINTS.has(dp));
+  const allowedIds = filterAllowedDataPointIds(params.dataPointIds);
   if (allowedIds.length === 0) {
     return [];
   }

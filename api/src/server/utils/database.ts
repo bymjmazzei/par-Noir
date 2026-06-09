@@ -1046,6 +1046,20 @@ export async function initializeDatabase(): Promise<void> {
       );
     }
 
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const webhookPath = path.join(__dirname, '../../migrations/add_integrator_webhook_subscriptions.sql');
+      const webhookSql = fs.readFileSync(webhookPath, 'utf-8');
+      await db.query(webhookSql);
+      console.log('✅ integrator_webhook_subscriptions migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ integrator_webhook_subscriptions migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);

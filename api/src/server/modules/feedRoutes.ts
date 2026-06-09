@@ -305,6 +305,40 @@ export function setupFeedRoutes(app: any) {
   });
 
   /**
+   * GET /api/feeds/:feedId/top-post
+   * Get pinned top post for branded feed page
+   */
+  app.get('/api/feeds/:feedId/top-post', async (req: Request, res: Response) => {
+    try {
+      const { feedId } = req.params;
+      const result = await db.query(
+        `SELECT * FROM feed_posts WHERE feed_id = $1 AND is_top_post = true LIMIT 1`,
+        [feedId]
+      );
+      if (result.rows.length === 0) {
+        return res.json({ topPost: null });
+      }
+      const row = result.rows[0];
+      const topPost: FeedPost = {
+        id: row.post_id,
+        feedId: row.feed_id,
+        content: row.content,
+        media: row.media ? JSON.parse(row.media) : [],
+        buttons: row.buttons ? JSON.parse(row.buttons) : [],
+        polls: row.polls ? JSON.parse(row.polls) : [],
+        forms: row.forms ? JSON.parse(row.forms) : [],
+        isTopPost: true,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      };
+      return res.json({ topPost });
+    } catch (error) {
+      console.error('Get top post error:', error);
+      return res.status(500).json({ error: 'Failed to fetch top post' });
+    }
+  });
+
+  /**
    * PUT /api/feeds/:feedId/top-post
    * Update top post (enhanced profile)
    */

@@ -120,6 +120,34 @@ export class IntegratorZkpClient {
     }
     throw new Error('Timed out waiting for data point request');
   }
+
+  /**
+   * Register a webhook for data-point events (developer portal Bearer token).
+   * Complements pollDataPointRequest for push delivery.
+   */
+  async registerWebhook(
+    accessToken: string,
+    params: {
+      clientId: string;
+      url: string;
+      events: string[];
+    }
+  ): Promise<{ subscription: { id: string; clientId: string; url: string; events: string[] }; secret: string }> {
+    const res = await fetch(`${this.apiEndpoint}/api/developer/webhooks`, {
+      method: 'POST',
+      headers: {
+        ...authHeaders(accessToken),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(params)
+    });
+    const data = await parseJsonResponse<{
+      subscription: { id: string; clientId: string; url: string; events: string[] };
+      secret: string;
+    }>(res);
+    await throwIfNotOk(res, data);
+    return data;
+  }
 }
 
 export function createIntegratorZkpClient(config?: IntegratorClientConfig): IntegratorZkpClient {

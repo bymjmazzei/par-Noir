@@ -10646,10 +10646,8 @@ class ProductionServer {
               .map((scope: string) => scope.replace(/^(zkp:|data_point:)/, ''));
 
         // NEVER allow access to sensitive data points
-        const BLOCKED_DATA_POINTS = ['pn_file', 'pn_name', 'passcode', 'pnIdentifier'];
-        const allowedDataPoints = requestedDataPoints.filter(
-          (dp: string) => !BLOCKED_DATA_POINTS.includes(dp)
-        );
+        const { filterAllowedDataPointIds } = await import('@par-noir/standard-data-points');
+        const allowedDataPoints = filterAllowedDataPointIds(requestedDataPoints);
 
         if (allowedDataPoints.length === 0) {
           return res.json({ success: true, dataPoints: [] });
@@ -13748,6 +13746,36 @@ class ProductionServer {
       }
     });
 
+    // GET /api/search/personal - Search user's own indexed files (minimal personal history)
+    this.app.get('/api/search/personal', async (req, res) => {
+      try {
+        const userPnIdentifier = String(req.query.userPnIdentifier || '').trim();
+        const q = String(req.query.q || '').trim();
+        const limit = Math.min(parseInt(String(req.query.limit || '20'), 10) || 20, 100);
+        const offset = parseInt(String(req.query.offset || '0'), 10) || 0;
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
+        }
+        const normalized = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const service = AggregatorMetadataServiceDB.getInstance();
+        const result = await service.searchMetadata(q, {
+          authorDid: normalized,
+          limit: limit + offset,
+          offset: 0
+        });
+        const slice = result.files.slice(offset, offset + limit);
+        return res.json({
+          files: slice.map((entry: { metadata: unknown }) => entry.metadata),
+          total: result.total,
+          hasMore: offset + limit < result.total
+        });
+      } catch (error: unknown) {
+        console.error('Error in personal search:', error);
+        return res.status(500).json({ error: 'Failed to search personal history' });
+      }
+    });
+
     // GET /api/profile/search - Search user profiles by display name or pn id
     this.app.get('/api/profile/search', async (req, res) => {
       try {
@@ -13843,9 +13871,9 @@ class ProductionServer {
     this.app.post('/api/recovery/requests/:requestId/shares', async (req, res) => {
       try {
         const { requestId } = req.params;
-        const { userPnIdentifier, share, threshold } = req.body;
-        if (!userPnIdentifier || !share) {
-          return res.status(400).json({ error: 'userPnIdentifier and share are required' });
+        const { userPnIdentifier, share, threshold, approval } = req.body;
+        if (!userPnIdentifier || (!share && !approval?.encryptedShare)) {
+          return res.status(400).json({ error: 'userPnIdentifier and share or encrypted approval are required' });
         }
         const ctx = await this.getRecoveryDriveContext(userPnIdentifier);
         if (!ctx) return res.status(404).json({ error: 'Drive not connected' });
@@ -13859,7 +13887,11 @@ class ProductionServer {
         const reqRow = requests.find((r) => r.requestId === requestId);
         if (!reqRow) return res.status(404).json({ error: 'Recovery request not found' });
         const shares = JSON.parse(reqRow.sharesJson || '[]');
-        shares.push(share);
+        shares.push(
+          approval?.encryptedShare
+            ? { encryptedShare: approval.encryptedShare, proof: approval.proof, custodianId: approval.custodianId }
+            : share
+        );
         const required = threshold || reqRow.threshold || 2;
         const newStatus = shares.length >= required ? 'ready' : 'pending';
         await RecoverySheetsService.upsertRecoveryRequest(
@@ -19140,6 +19172,18 @@ class ProductionServer {
             }, 30_000);
           } catch (e) {
             console.warn('[CleanupOrphaned] Could not schedule cleanup job:', e);
+          }
+        })();
+        (async () => {
+          try {
+            const { IntegratorWebhookService } = await import('./server/modules/integratorWebhookService');
+            setInterval(() => {
+              IntegratorWebhookService.processPendingRetries().catch((e: unknown) =>
+                console.error('[IntegratorWebhook] retry sweep failed:', e)
+              );
+            }, 30_000);
+          } catch (e) {
+            console.warn('[IntegratorWebhook] Could not schedule retry sweeps:', e);
           }
         })();
         resolve();

@@ -24,3 +24,14 @@ Creators who want subscription revenue should use **third-party** billing and ac
 ## API behavior
 
 Endpoints that previously created **platform** paid feed subscription checkouts return **`410 Gone`** (or equivalent) with error code `feed_platform_subscriptions_disabled`. Free **follow** / membership APIs that do not process subscriber payments remain unchanged.
+
+## Phase 2: payment gateway connectors (deferred)
+
+When creator volume warrants paid feed access, par Noir will **not** act as merchant of record for viewer subscriptions. Instead:
+
+- **Creators connect their own payment processors** (Stripe Connect, PayPal, etc.) on their accounts.
+- Charges and tax/refund liability stay on the **creator MoR** account.
+- par Noir provides **discovery**, feed metadata, and **access-gating hooks** driven by creator webhook events (e.g. subscription.active → grant follow token or API-scoped access).
+- No re-enable of platform checkout (`feed_platform_subscriptions` 410 endpoints).
+
+This phase is **design-only** until product prioritization; no implementation in current engineering backlog.

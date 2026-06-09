@@ -3,7 +3,7 @@
  * Feed page for paid-tier creators with branding and community controls
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Settings, Users, Calendar, Tag, Sparkles } from 'lucide-react';
 import { Feed, IndexedFile } from '../types/aggregator';
 import { ContentRatingBadge } from './ContentRatingBadge'; // Still used for isNSFW badge
@@ -30,6 +30,19 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
   const [editAvatar, setEditAvatar] = useState(feed.branding?.avatar || '');
   const [editBio, setEditBio] = useState(feed.branding?.bio || '');
   const [saving, setSaving] = useState(false);
+  const [topPostContent, setTopPostContent] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    FeedService.getTopPost(feed.feedId).then(({ topPost }) => {
+      if (!cancelled && topPost?.content) {
+        setTopPostContent(String(topPost.content));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [feed.feedId]);
 
   const isOwner = userState.pnIdentifier === feed.creatorId;
 
@@ -152,6 +165,12 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
 
       {/* Feed Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {topPostContent && (
+          <div className="mb-8 p-6 bg-neutral-900/80 border border-blue-500/30 rounded-xl">
+            <h2 className="text-sm uppercase tracking-wide text-blue-400 mb-2">Pinned post</h2>
+            <p className="text-white whitespace-pre-wrap">{topPostContent}</p>
+          </div>
+        )}
         {files.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-text-secondary">No posts yet in this feed.</p>
