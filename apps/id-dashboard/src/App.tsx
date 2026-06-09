@@ -32,6 +32,13 @@ import { revokeRecoveryCustodian, acceptRecoveryCustodianship } from './services
 import { useRecoveryVaultState } from './hooks/useRecoveryVaultState';
 import { useDeviceAuthState } from './hooks/useDeviceAuthState';
 import { DEVICE_CAPABILITIES } from '@par-noir/device-auth';
+import {
+  authenticateDeviceBoundPn,
+  checkDeviceBoundPnUnlockAvailable,
+  createDeviceBoundPnExport,
+  DEVICE_BOUND_PN_ERROR,
+  isDeviceBoundPnEnvelope,
+} from './services/deviceBoundPnService';
 import { RecoveryPasscodeModal } from './components/recovery/RecoveryPasscodeModal';
 import { RecoveryCustodianPendingPanel } from './components/recovery/RecoveryCustodianPendingPanel';
 import { storeCustodianshipCredential } from './services/recoveryCredentialStorage';
@@ -767,6 +774,9 @@ function App() {
       } else if (pendingExportAction === 'nfc') {
         setPendingExportAction(null);
         handleExportToNfc();
+      } else if (pendingExportAction === 'device-bound') {
+        setPendingExportAction(null);
+        handleDeviceBoundDownload();
       } else {
         setShowExportOptionsModal(true);
       }
@@ -849,6 +859,99 @@ function App() {
       
     } catch (error: any) {
       setError(error.message || 'Download failed');
+      setTimeout(() => setError(null), 9000);
+    }
+  };
+
+  const handleExportDeviceBound = async () => {
+    if (!canExportIdentity) {
+      setError(deviceAuth.deviceRequiredMessage);
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
+    if (!deviceAuth.isKeyedSession || !deviceAuth.localDeviceId) {
+      setError('Device-bound export requires this browser to be keyed to your identity.');
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
+    if (!exportAuthData.pnName || !exportAuthData.passcode) {
+      setPendingExportAction('device-bound');
+      setShowExportOptionsModal(false);
+      setShowExportAuthModal(true);
+      return;
+    }
+    await handleDeviceBoundDownload();
+  };
+
+  const handleDeviceBoundDownload = async () => {
+    if (!canExportIdentity || !deviceAuth.isKeyedSession || !deviceAuth.localDeviceId) {
+      setError(deviceAuth.deviceRequiredMessage);
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
+    try {
+      await storage.init();
+
+      if (!authenticatedUser || !selectedDID || !recoveryVaultPnId) {
+        throw new Error('No identity is currently unlocked.');
+      }
+
+      const identityKey = authenticatedUser.publicKey || selectedDID?.publicKey || selectedDID?.id;
+      const simpleStorage = SimpleStorage.getInstance();
+      const currentIdentity = await simpleStorage.getIdentity(identityKey);
+
+      if (!currentIdentity) {
+        throw new Error('Identity not found in storage.');
+      }
+
+      const identityToExport = currentIdentity.encryptedData;
+
+      if (!identityToExport.encryptedData || !identityToExport.iv || !identityToExport.salt) {
+        throw new Error('Invalid encrypted data structure');
+      }
+
+      const exportData = await createDeviceBoundPnExport({
+        pnIdentifier: recoveryVaultPnId,
+        deviceId: deviceAuth.localDeviceId,
+        identityToExport: {
+          encryptedData: identityToExport.encryptedData,
+          iv: identityToExport.iv,
+          salt: identityToExport.salt,
+          publicKey: currentIdentity.publicKey ?? identityToExport.publicKey,
+        },
+        pnName: exportAuthData.pnName,
+        passcode: exportAuthData.passcode,
+        nickname: authenticatedUser.nickname,
+      });
+
+      const exportedData = JSON.stringify(exportData, null, 2);
+
+      let filename = 'identity-device-bound.pn.json';
+      try {
+        const nickname = authenticatedUser.nickname || 'identity';
+        const cleanNickname = nickname
+          .replace(/[^a-zA-Z0-9\s]/g, '')
+          .replace(/\s+/g, '-')
+          .toLowerCase()
+          .substring(0, 20);
+        filename = `${cleanNickname}-device-bound.pn.json`;
+      } catch {
+        // keep default filename
+      }
+
+      const blob = new Blob([exportedData], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      setShowExportOptionsModal(false);
+      setShowExportAuthModal(false);
+      showSuccessMessage('Device-bound pN file downloaded successfully');
+    } catch (error: any) {
+      setError(error.message || 'Device-bound download failed');
       setTimeout(() => setError(null), 9000);
     }
   };
@@ -1754,38 +1857,58 @@ function App() {
         throw new Error('Invalid backup file format');
       }
 
-      // Find the identity to import
-      const identityToImport = backup.identities.find((identity: any) => 
-        identity.pnName === importForm.pnName
-      );
+      let authSession: AuthSession;
+      let importedIdentity: Record<string, unknown>;
 
-      if (!identityToImport) {
-        throw new Error('No matching pN found in backup file');
+      if (isDeviceBoundPnEnvelope(backup)) {
+        if (!(await checkDeviceBoundPnUnlockAvailable(backup, recoveryVaultPnId))) {
+          throw new Error(DEVICE_BOUND_PN_ERROR);
+        }
+        if (backup.identities.length !== 1) {
+          throw new Error('Invalid device-bound pN file: expected a single identity');
+        }
+        const result = await authenticateDeviceBoundPn({
+          envelope: backup,
+          pnName: importForm.pnName,
+          passcode: importForm.passcode,
+          pnIdentifier: recoveryVaultPnId,
+        });
+        authSession = result.authSession;
+        importedIdentity = result.identity;
+      } else {
+        // Find the identity to import
+        const identityToImport = backup.identities.find((identity: any) =>
+          identity.pnName === importForm.pnName
+        );
+
+        if (!identityToImport) {
+          throw new Error('No matching pN found in backup file');
+        }
+
+        authSession = await IdentityCrypto.authenticateIdentity(
+          identityToImport,
+          importForm.passcode,
+          importForm.pnName
+        );
+        importedIdentity = identityToImport;
       }
-
-      // Authenticate the identity
-      const authSession = await IdentityCrypto.authenticateIdentity(
-        identityToImport,
-        importForm.passcode,
-        importForm.pnName
-      );
 
       // Store the session
       await storage.storeSession(authSession);
 
       // Create DID info for UI
       const didInfo: DIDInfo = {
-        id: identityToImport.id,
-        pnName: identityToImport.pnName,
-        nickname: identityToImport.nickname,
-        email: identityToImport.email || '',
-        phone: identityToImport.phone || '',
-        recoveryEmail: identityToImport.recoveryEmail || '',
-        recoveryPhone: identityToImport.recoveryPhone || '',
-        createdAt: identityToImport.createdAt,
-        status: identityToImport.status,
-        custodiansRequired: identityToImport.custodiansRequired,
-        custodiansSetup: identityToImport.custodiansSetup
+        id: importedIdentity.id as string,
+        pnName: (importedIdentity.pnName as string) || importForm.pnName,
+        nickname: importedIdentity.nickname as string,
+        email: (importedIdentity.email as string) || '',
+        phone: (importedIdentity.phone as string) || '',
+        recoveryEmail: (importedIdentity.recoveryEmail as string) || '',
+        recoveryPhone: (importedIdentity.recoveryPhone as string) || '',
+        createdAt: importedIdentity.createdAt as string,
+        status: importedIdentity.status as string,
+        custodiansRequired: importedIdentity.custodiansRequired as boolean,
+        custodiansSetup: importedIdentity.custodiansSetup as boolean
       };
 
       setDids(prev => {
@@ -2777,15 +2900,40 @@ function App() {
           // pnName is secret - not logged
           logDebug('Attempting authentication');
           logDebug('Identity to unlock publicKey:', identityToUnlock.publicKey);
+
+          const deviceBoundEnvelope =
+            mainForm.uploadFile && identityData && isDeviceBoundPnEnvelope(identityData)
+              ? identityData
+              : null;
+
+          if (deviceBoundEnvelope) {
+            const available = await checkDeviceBoundPnUnlockAvailable(
+              deviceBoundEnvelope,
+              recoveryVaultPnId
+            );
+            if (!available) {
+              throw new Error(DEVICE_BOUND_PN_ERROR);
+            }
+          }
           
           // This is an encrypted identity, try to authenticate it
           let authSession;
           try {
-            authSession = await IdentityCrypto.authenticateIdentity(
-              identityToUnlock as any,
-              mainForm.passcode,
-              mainForm.pnName
-            );
+            if (deviceBoundEnvelope) {
+              const result = await authenticateDeviceBoundPn({
+                envelope: deviceBoundEnvelope,
+                pnName: mainForm.pnName,
+                passcode: mainForm.passcode,
+                pnIdentifier: recoveryVaultPnId,
+              });
+              authSession = result.authSession;
+            } else {
+              authSession = await IdentityCrypto.authenticateIdentity(
+                identityToUnlock as any,
+                mainForm.passcode,
+                mainForm.pnName
+              );
+            }
             logDebug('Authentication successful, auth session created:', authSession);
           } catch (authError) {
             logError('Authentication failed:', authError);
@@ -5095,11 +5243,27 @@ This invitation expires in 24 hours.`;
       if (identityWithMetadata.encryptedData && identityWithMetadata.iv && identityWithMetadata.salt) {
         // This is an encrypted identity, try to authenticate it
         try {
-          const authSession = await IdentityCrypto.authenticateIdentity(
-              identityWithMetadata as any,
-            passcode,
-              identityWithMetadata.pnName || 'unknown'
-          );
+          const deviceBoundEnvelope = isDeviceBoundPnEnvelope(identityData) ? identityData : null;
+          if (deviceBoundEnvelope) {
+            if (!(await checkDeviceBoundPnUnlockAvailable(deviceBoundEnvelope, recoveryVaultPnId))) {
+              throw new Error(DEVICE_BOUND_PN_ERROR);
+            }
+          }
+
+          const authSession = deviceBoundEnvelope
+            ? (
+                await authenticateDeviceBoundPn({
+                  envelope: deviceBoundEnvelope,
+                  pnName: identityWithMetadata.pnName || mainForm.pnName,
+                  passcode,
+                  pnIdentifier: recoveryVaultPnId,
+                })
+              ).authSession
+            : await IdentityCrypto.authenticateIdentity(
+                identityWithMetadata as any,
+                passcode,
+                identityWithMetadata.pnName || 'unknown'
+              );
 
           // Store the session
           await storage.storeSession(authSession);
@@ -7370,7 +7534,17 @@ This invitation expires in 24 hours.`;
           showExportPasscode={showExportPasscode}
           setShowExportPasscode={setShowExportPasscode}
           onAuth={handleExportAuth}
-          purpose={pendingExportAction === 'download' ? 'download' : pendingExportAction === 'usb' ? 'usb' : pendingExportAction === 'nfc' ? 'nfc' : undefined}
+          purpose={
+            pendingExportAction === 'download'
+              ? 'download'
+              : pendingExportAction === 'usb'
+                ? 'usb'
+                : pendingExportAction === 'nfc'
+                  ? 'nfc'
+                  : pendingExportAction === 'device-bound'
+                    ? 'device-bound'
+                    : undefined
+          }
         />
 
         {/* Export Options Modal */}
@@ -7384,6 +7558,8 @@ This invitation expires in 24 hours.`;
           onDownloadExport={handleDownloadExport}
           onExportToUsb={handleExportToUsb}
           onExportToNfc={handleExportToNfc}
+          onExportDeviceBound={handleExportDeviceBound}
+          canExportDeviceBound={canExportIdentity && deviceAuth.isKeyedSession}
           onTransfer={handleTransfer}
         />
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Smartphone, Usb, CreditCard } from 'lucide-react';
+import { FileText, Smartphone, Usb, CreditCard, Laptop } from 'lucide-react';
 
 import * as nfcAdapter from '../../utils/nfcAdapter';
 
@@ -13,6 +13,8 @@ interface ExportOptionsModalProps {
   onDownloadExport: () => void;
   onExportToUsb?: () => void;
   onExportToNfc?: () => void;
+  onExportDeviceBound?: () => void;
+  canExportDeviceBound?: boolean;
   onTransfer: () => void;
 }
 
@@ -26,6 +28,8 @@ export function ExportOptionsModal({
   onDownloadExport,
   onExportToUsb,
   onExportToNfc,
+  onExportDeviceBound,
+  canExportDeviceBound,
   onTransfer
 }: ExportOptionsModalProps) {
   const [hasNfcSupport, setHasNfcSupport] = useState(false);
@@ -104,6 +108,25 @@ export function ExportOptionsModal({
                 <div>
                   <div className="font-medium">Export to NFC</div>
                   <div className="text-sm text-text-secondary">Bind to NFC card/fob</div>
+                </div>
+              </div>
+            </button>
+          )}
+
+          {onExportDeviceBound && canExportDeviceBound && (
+            <button
+              onClick={onExportDeviceBound}
+              className="w-full p-4 border border-border rounded-lg hover:bg-secondary transition-colors text-left"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                  <Laptop className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <div className="font-medium">Download (device-bound)</div>
+                  <div className="text-sm text-text-secondary">
+                    Only unlocks on this keyed device. Keep a portable backup too.
+                  </div>
                 </div>
               </div>
             </button>

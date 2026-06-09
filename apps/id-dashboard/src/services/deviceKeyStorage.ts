@@ -57,6 +57,23 @@ export async function loadDeviceRegistration(
   return row ?? null;
 }
 
+export async function loadDeviceRegistrationByDeviceId(
+  deviceId: string
+): Promise<StoredDeviceRegistration | null> {
+  const db = await openDb();
+  const row = await new Promise<StoredDeviceRegistration | null>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = () => {
+      const all = (req.result as StoredDeviceRegistration[]) ?? [];
+      resolve(all.find((r) => r.deviceId === deviceId) ?? null);
+    };
+    req.onerror = () => reject(req.error ?? new Error('Failed to scan device keys'));
+  });
+  db.close();
+  return row;
+}
+
 export async function clearDeviceRegistration(pnIdentifier: string): Promise<void> {
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {

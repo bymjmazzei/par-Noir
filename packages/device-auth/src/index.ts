@@ -1,4 +1,11 @@
 export {
+  DEVICE_BOUND_HKDF_SALT,
+  deriveDeviceBindingFactor,
+  isDeviceBoundPnEnvelope,
+  type DeviceBoundPnBinding,
+  type DeviceBoundPnEnvelope,
+} from './deviceBinding';
+export {
   DEVICE_CAPABILITIES,
   IMMUTABLE_UNKEYED_DENY,
   DEFAULT_UNKEYED_ALLOWS,

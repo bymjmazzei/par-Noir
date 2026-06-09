@@ -65,3 +65,55 @@ Pairing nonces expire in 5 minutes and are single-use (in-memory on API instance
 See [ROUTE_MANIFEST.md](./ROUTE_MANIFEST.md) § Device registry.
 
 Gated routes include recovery vault writes, custodian assign/revoke, and all identity migration write endpoints.
+
+## Device-bound `.pn` export (v2, optional)
+
+Portable unlock (`.pn` + pN name + passcode on any device) is unchanged. Users on a **keyed device** may optionally download a **device-bound** backup from Export Options.
+
+### Distinction from session device proof
+
+| Mechanism | Purpose |
+|-----------|---------|
+| **Session device proof** (API headers) | Gates privileged owner actions on the server |
+| **Device-bound KDF** (local file) | Binds ciphertext to this browser’s IndexedDB private key |
+
+The device private key is **never written to the file**. The export envelope may include public hints only: `deviceId`, `devicePublicKey`.
+
+### File format
+
+```json
+{
+  "version": "1.0",
+  "binding": { "type": "device", "deviceId": "…", "devicePublicKey": "…" },
+  "identities": [{ "encryptedData", "iv", "salt", "publicKey" }]
+}
+```
+
+Ciphertext uses the same binding KDF as NFC/USB (`encryptDataWithBinding` / `decryptDataWithBinding` in the dashboard). The binding factor is:
+
+```
+base64(HKDF-SHA256(ikm: devicePrivateKeyPkcs8, salt: "pn-device-bound-v1", info: deviceId))
+```
+
+Implemented in `@par-noir/device-auth` as `deriveDeviceBindingFactor`.
+
+### Unlock rule
+
+1. Parse `binding.type === 'device'`.
+2. Load the matching registration from `deviceKeyStorage` (IndexedDB).
+3. If missing or `devicePublicKey` mismatch → *“This backup requires the device that created it…”*
+4. Recompute binding factor locally → decrypt with name + passcode.
+
+Copying the file to another machine or browser profile fails at step 2/4 (no private key). Revoking the device in the registry does not erase the local key until the user clears it; the bound file may still unlock in that browser until the key is removed.
+
+### Dashboard
+
+- Export: **Download (device-bound)** in `ExportOptionsModal` (requires keyed session + `identity.export` capability).
+- Unlock/import: `deviceBoundPnService` detects device-bound envelopes and routes to `authenticateDeviceBoundPn`.
+- Shamir recovery still produces **portable** identity material (unchanged).
+
+### Security notes
+
+- Do not log `deviceBindingFactor`, private keys, or passcodes.
+- Device-bound export protects against **file theft**, not malware on the same device (malware can read IndexedDB).
+- WebAuthn-bound export and crypto-bound default unlock are out of scope for v2.

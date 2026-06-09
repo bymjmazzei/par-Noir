@@ -11,7 +11,7 @@ interface ExportAuthModalProps {
   setShowExportPasscode: (show: boolean) => void;
   onAuth: () => void;
   /** Shown when auth is for a specific export type */
-  purpose?: 'download' | 'usb' | 'nfc';
+  purpose?: 'download' | 'usb' | 'nfc' | 'device-bound';
 }
 
 export function ExportAuthModal({
@@ -40,7 +40,15 @@ export function ExportAuthModal({
       <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full text-text-primary">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-semibold">
-            {purpose === 'download' ? 'Enter credentials for download' : purpose === 'usb' ? 'Enter credentials for USB export' : purpose === 'nfc' ? 'Enter credentials for NFC export' : 'Verify Identity'}
+            {purpose === 'download'
+              ? 'Enter credentials for download'
+              : purpose === 'usb'
+                ? 'Enter credentials for USB export'
+                : purpose === 'nfc'
+                  ? 'Enter credentials for NFC export'
+                  : purpose === 'device-bound'
+                    ? 'Enter credentials for device-bound export'
+                    : 'Verify Identity'}
           </h2>
           <button 
             onClick={handleClose}
@@ -51,6 +59,13 @@ export function ExportAuthModal({
         </div>
         
         <div className="space-y-4">
+          {purpose === 'device-bound' && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-text-secondary">
+              This backup unlocks only on the keyed device that created it. If you lose or replace
+              this device, you will need a portable backup or Shamir recovery. Keep at least one
+              portable `.pn` backup or recovery custodians.
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium mb-2">pN Name</label>
             <div className="relative">

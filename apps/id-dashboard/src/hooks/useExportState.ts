@@ -9,7 +9,7 @@ export function useExportState() {
   const [identityForUsbExport, setIdentityForUsbExport] = useState<{ encryptedData: string; iv: string; salt: string; publicKey?: string } | null>(null);
   const [showExportToNfcModal, setShowExportToNfcModal] = useState(false);
   const [identityForNfcExport, setIdentityForNfcExport] = useState<{ encryptedData: string; iv: string; salt: string; publicKey?: string } | null>(null);
-  const [pendingExportAction, setPendingExportAction] = useState<'download' | 'usb' | 'nfc' | null>(null);
+  const [pendingExportAction, setPendingExportAction] = useState<'download' | 'usb' | 'nfc' | 'device-bound' | null>(null);
   const [exportAuthData, setExportAuthData] = useState({ pnName: '', passcode: '' });
   const [showExportPasscode, setShowExportPasscode] = useState(false);
   const [showExportPnName, setShowExportPnName] = useState(false);
