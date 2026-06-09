@@ -47,7 +47,7 @@ export async function initiateRecoveryFromPnFile(input: InitiateRecoveryFromPnIn
   sessionStorage.setItem(`pn_recovery_identity_${requestId}`, JSON.stringify(parsed.identity));
   if (input.authToken) {
     try {
-      const { VolumeIdGenerator } = await import('../utils/crypto/volumeIdGenerator');
+      const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
       const pnId = await VolumeIdGenerator.generateCanonicalVolumeId(parsed.publicKey);
       await persistRecoveryRequest(pnId, input.authToken, {
         requestId,
