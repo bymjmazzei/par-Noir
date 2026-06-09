@@ -31,3 +31,25 @@ export {
   type ShareKnowledgeProof,
   type RecoveryApprovalPayload
 } from './shareProof';
+export {
+  encryptOwnerVaultShare,
+  decryptOwnerVaultShare,
+  serializeOwnerVaultShare,
+  parseOwnerVaultShare,
+  type OwnerVaultEncryptedShare
+} from './ownerShareVault';
+export {
+  RECOVERY_CUSTODIAN_CONTEXT,
+  RECOVERY_APPROVAL_CONTEXT,
+  RECOVERY_ZKP_TYPES,
+  type RecoveryCustodianshipPublicInputs,
+  type RecoveryApprovalPublicInputs,
+  type RecoveryZkApprovalPayload
+} from './recoveryZkContexts';
+export {
+  createRecoveryApprovalBinding,
+  serializeApprovalBinding,
+  parseApprovalBinding,
+  verifyRecoveryApprovalBinding,
+  type RecoveryApprovalBinding
+} from './recoveryApprovalBinding';

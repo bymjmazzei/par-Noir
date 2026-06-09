@@ -1,26 +1,28 @@
 /**
- * Recovery tab handlers extracted from App.tsx for maintainability.
+ * Authorization-based recovery handlers (owner vault + ZK custodian approvals).
  */
 import {
-  combineShares,
-  decryptCustodianShare,
-  createShareCommitment,
-  proveShareKnowledge,
-  serializeEncryptedShare,
-  encryptCustodianShare,
   type RecoveryEnvelope,
+  type RecoveryZkApprovalPayload,
   type ShamirShare
 } from '@par-noir/recovery-crypto';
 import type { EncryptedIdentity } from '../../utils/crypto';
 import {
-  appendShareToRecoveryRequest,
+  appendApprovalToRecoveryRequest,
   completeRecoveryWithShares,
-  getCustodianShare,
+  decryptVaultSharesForRecovery,
   saveRecoveryRequest,
   type StoredRecoveryRequest
 } from '../../services/recoveryService';
 import { parseRecoveryPnFile } from './parseRecoveryPnFile';
-import { persistRecoveryRequest, submitRecoveryShare } from '../../services/recoveryApiService';
+import {
+  persistRecoveryRequest,
+  submitRecoveryApproval,
+  fetchVaultShares,
+  fetchRecoveryRequest
+} from '../../services/recoveryApiService';
+import { issueRecoveryApproval } from '../../services/recoveryZkService';
+import { getCustodianshipCredential } from '../../services/recoveryCredentialStorage';
 
 export interface InitiateRecoveryFromPnInput {
   file: File;
@@ -37,7 +39,7 @@ export async function initiateRecoveryFromPnFile(input: InitiateRecoveryFromPnIn
   const req: StoredRecoveryRequest = {
     id: requestId,
     status: 'pending',
-    shares: [],
+    approvalCount: 0,
     requiredThreshold: input.threshold,
     publicKey: parsed.publicKey,
     createdAt: new Date().toISOString()
@@ -45,6 +47,7 @@ export async function initiateRecoveryFromPnFile(input: InitiateRecoveryFromPnIn
   saveRecoveryRequest(req);
   sessionStorage.setItem(`pn_recovery_envelope_${requestId}`, JSON.stringify(parsed.envelope));
   sessionStorage.setItem(`pn_recovery_identity_${requestId}`, JSON.stringify(parsed.identity));
+
   if (input.authToken) {
     try {
       const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
@@ -62,43 +65,84 @@ export async function initiateRecoveryFromPnFile(input: InitiateRecoveryFromPnIn
   return req;
 }
 
-export interface ApproveRecoveryShareInput {
+export interface ApproveRecoveryInput {
   requestId: string;
   custodianId: string;
-  custodianPasscode: string;
   identityPublicKey: string;
+  custodianPasscode: string;
   threshold: number;
   authToken?: string | null;
   userPnIdentifier?: string;
+  custodianIdentityId?: string;
+  custodianEncryptedIdentity?: EncryptedIdentity;
 }
 
-export async function approveRecoveryWithShare(input: ApproveRecoveryShareInput): Promise<{
+export async function approveRecoveryWithZkp(input: ApproveRecoveryInput): Promise<{
   stored: StoredRecoveryRequest | null;
   thresholdMet: boolean;
 }> {
-  let share = getCustodianShare(input.custodianId);
-  if (!share) {
-    throw new Error('This custodian has no recovery share. Re-add the custodian after identity creation.');
+  const cred = getCustodianshipCredential(input.identityPublicKey, input.custodianId);
+  if (!cred) {
+    throw new Error('No custodianship credential found. Accept the custodian invitation first.');
   }
 
-  const commitment = await createShareCommitment(input.identityPublicKey, share);
-  const proof = await proveShareKnowledge(input.identityPublicKey, share, commitment.commitment);
-  const encrypted = await encryptCustodianShare(share, input.custodianPasscode, input.identityPublicKey);
-  const encryptedShare = serializeEncryptedShare(encrypted);
+  const approvalZkp = await issueRecoveryApproval({
+    identityPublicKey: input.identityPublicKey,
+    requestId: input.requestId,
+    custodianId: input.custodianId,
+    shareIndex: cred.shareIndex,
+    custodianshipZkp: cred.custodianshipZkp,
+    custodianPasscode: input.custodianPasscode || cred.custodianPasscode,
+    custodianIdentityId: input.custodianIdentityId,
+    custodianEncryptedIdentity: input.custodianEncryptedIdentity
+  });
 
-  const stored = appendShareToRecoveryRequest(input.requestId, share);
+  const approval: RecoveryZkApprovalPayload = {
+    custodianId: input.custodianId,
+    shareIndex: cred.shareIndex,
+    approvalZkp,
+    custodianshipZkp: cred.custodianshipZkp,
+    approvedAt: new Date().toISOString()
+  };
+
+  const stored = appendApprovalToRecoveryRequest(input.requestId);
   if (input.authToken && input.userPnIdentifier) {
-    await submitRecoveryShare(input.userPnIdentifier, input.authToken, input.requestId, share, input.threshold, {
-      proof,
-      encryptedShare,
-      custodianId: input.custodianId
-    });
+    const result = await submitRecoveryApproval(
+      input.userPnIdentifier,
+      input.authToken,
+      input.requestId,
+      approval,
+      input.threshold
+    );
+    if (stored) {
+      stored.status = result.status === 'ready' ? 'ready' : 'pending';
+      stored.approvalCount = result.approvalCount;
+      saveRecoveryRequest(stored);
+    }
+    return {
+      stored,
+      thresholdMet: result.status === 'ready'
+    };
   }
 
   return {
     stored,
-    thresholdMet: Boolean(stored && stored.shares.length >= stored.requiredThreshold)
+    thresholdMet: Boolean(stored && stored.approvalCount >= stored.requiredThreshold)
   };
+}
+
+export async function fetchSharesAfterThreshold(params: {
+  userPnIdentifier: string;
+  authToken: string;
+  requestId: string;
+  identityPublicKey: string;
+}): Promise<ShamirShare[]> {
+  const remote = await fetchRecoveryRequest(params.userPnIdentifier, params.authToken, params.requestId);
+  if (!remote || remote.status !== 'ready') {
+    throw new Error('Recovery threshold not met yet');
+  }
+  const vault = await fetchVaultShares(params.userPnIdentifier, params.authToken, params.requestId);
+  return decryptVaultSharesForRecovery(vault.vaultShares, params.identityPublicKey);
 }
 
 export async function completeRecoveryPasscodeStep(params: {
@@ -110,4 +154,4 @@ export async function completeRecoveryPasscodeStep(params: {
   return completeRecoveryWithShares(params);
 }
 
-export { decryptCustodianShare, parseRecoveryPnFile };
+export { parseRecoveryPnFile };

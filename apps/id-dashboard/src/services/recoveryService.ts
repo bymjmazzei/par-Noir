@@ -1,7 +1,9 @@
 import {
   combineShares,
   decryptRecoveryEnvelope,
+  decryptOwnerVaultShare,
   normalizeShare,
+  parseOwnerVaultShare,
   type RecoveryEnvelope,
   type ShamirShare
 } from '@par-noir/recovery-crypto';
@@ -20,8 +22,7 @@ export interface RecoveryCompletionResult {
 }
 
 /**
- * Combine custodian Shamir shares, decrypt recovery envelope, re-wrap identity with new passcode.
- * Preserves same cryptographic keys (same pN).
+ * Combine Shamir shares from owner vault, decrypt recovery envelope, re-wrap identity with new passcode.
  */
 export async function completeRecoveryWithShares(
   input: RecoveryCompletionInput
@@ -66,30 +67,53 @@ export async function completeRecoveryWithShares(
   };
 }
 
-/** Persist Shamir share assigned to a custodian (local until Drive sheet wired). */
-const CUSTODIAN_SHARES_KEY = 'pn_recovery_custodian_shares';
+export async function decryptVaultSharesForRecovery(
+  vaultShares: Array<{ encryptedShare: string; shareIndex: number }>,
+  identityPublicKey: string
+): Promise<ShamirShare[]> {
+  const shares: ShamirShare[] = [];
+  for (const row of vaultShares) {
+    const enc = parseOwnerVaultShare(row.encryptedShare);
+    shares.push(await decryptOwnerVaultShare(enc, identityPublicKey));
+  }
+  return shares;
+}
+
 const PENDING_SHARES_KEY = 'pn_pending_recovery_shares';
 const RECOVERY_REQUESTS_KEY = 'pn_recovery_requests';
 
-export function takeRecoveryShareForCustodian(custodianId: string): ShamirShare | null {
+export interface PendingRecoveryShares {
+  publicKey: string;
+  shares: ShamirShare[];
+  threshold: number;
+}
+
+export function getPendingRecoveryShares(): PendingRecoveryShares | null {
   try {
     const raw = sessionStorage.getItem(PENDING_SHARES_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { shares?: ShamirShare[] };
-    if (!parsed.shares?.length) return null;
-    const share = parsed.shares.shift()!;
-    sessionStorage.setItem(PENDING_SHARES_KEY, JSON.stringify(parsed));
-    storeCustodianShare(custodianId, share);
-    return share;
+    return raw ? (JSON.parse(raw) as PendingRecoveryShares) : null;
   } catch {
     return null;
   }
 }
 
+export function setPendingRecoveryShares(data: PendingRecoveryShares): void {
+  sessionStorage.setItem(PENDING_SHARES_KEY, JSON.stringify(data));
+}
+
+/** Take next unassigned share index for a custodian (owner-side only). */
+export function takeShareForCustodianAssignment(): { share: ShamirShare; shareIndex: number } | null {
+  const pending = getPendingRecoveryShares();
+  if (!pending?.shares?.length) return null;
+  const share = pending.shares.shift()!;
+  setPendingRecoveryShares(pending);
+  return { share, shareIndex: share.index };
+}
+
 export interface StoredRecoveryRequest {
   id: string;
   status: 'pending' | 'ready' | 'completed';
-  shares: ShamirShare[];
+  approvalCount: number;
   requiredThreshold: number;
   publicKey: string;
   createdAt: string;
@@ -110,32 +134,12 @@ export function listRecoveryRequests(): StoredRecoveryRequest[] {
   }
 }
 
-export function appendShareToRecoveryRequest(requestId: string, share: ShamirShare): StoredRecoveryRequest | null {
+export function appendApprovalToRecoveryRequest(requestId: string): StoredRecoveryRequest | null {
   const list = listRecoveryRequests();
   const req = list.find((r) => r.id === requestId);
   if (!req) return null;
-  req.shares = [...req.shares, share];
-  if (req.shares.length >= req.requiredThreshold) req.status = 'ready';
+  req.approvalCount += 1;
+  if (req.approvalCount >= req.requiredThreshold) req.status = 'ready';
   saveRecoveryRequest(req);
   return req;
-}
-
-export function storeCustodianShare(custodianId: string, share: ShamirShare): void {
-  const raw = localStorage.getItem(CUSTODIAN_SHARES_KEY);
-  const map: Record<string, ShamirShare> = raw ? JSON.parse(raw) : {};
-  map[custodianId] = share;
-  localStorage.setItem(CUSTODIAN_SHARES_KEY, JSON.stringify(map));
-}
-
-export function getCustodianShare(custodianId: string): ShamirShare | null {
-  const raw = localStorage.getItem(CUSTODIAN_SHARES_KEY);
-  if (!raw) return null;
-  const map = JSON.parse(raw) as Record<string, ShamirShare>;
-  return map[custodianId] ?? null;
-}
-
-export function listCustodianShares(): ShamirShare[] {
-  const raw = localStorage.getItem(CUSTODIAN_SHARES_KEY);
-  if (!raw) return [];
-  return Object.values(JSON.parse(raw) as Record<string, ShamirShare>);
 }

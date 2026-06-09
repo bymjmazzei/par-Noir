@@ -10,6 +10,8 @@ export interface RecoveryCustodianRow {
   name: string;
   custodianType: string;
   encryptedShare: string;
+  shareIndex: number;
+  custodianshipCredential: string;
   status: string;
   createdAt: string;
 }
@@ -47,7 +49,7 @@ export class RecoverySheetsService {
       requestBody: {
         properties: { title: this.FILE_NAME },
         sheets: [
-          { properties: { title: 'Custodians', gridProperties: { rowCount: 500, columnCount: 6 } } },
+          { properties: { title: 'Custodians', gridProperties: { rowCount: 500, columnCount: 8 } } },
           { properties: { title: 'RecoveryRequests', gridProperties: { rowCount: 500, columnCount: 7 } } }
         ]
       }
@@ -69,8 +71,8 @@ export class RecoverySheetsService {
         valueInputOption: 'RAW',
         data: [
           {
-            range: 'Custodians!A1:F1',
-            values: [['custodianId', 'name', 'custodianType', 'encryptedShare', 'status', 'createdAt']]
+            range: 'Custodians!A1:H1',
+            values: [['custodianId', 'name', 'custodianType', 'encryptedShare', 'shareIndex', 'custodianshipCredential', 'status', 'createdAt']]
           },
           {
             range: 'RecoveryRequests!A1:G1',
@@ -94,7 +96,7 @@ export class RecoverySheetsService {
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Custodians!A2:F'
+      range: 'Custodians!A2:H'
     });
     const rows = res.data.values || [];
     const idx = rows.findIndex((r) => r[0] === row.custodianId);
@@ -103,20 +105,22 @@ export class RecoverySheetsService {
       row.name,
       row.custodianType,
       row.encryptedShare,
+      String(row.shareIndex),
+      row.custodianshipCredential,
       row.status,
       row.createdAt
     ];
     if (idx >= 0) {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `Custodians!A${idx + 2}:F${idx + 2}`,
+        range: `Custodians!A${idx + 2}:H${idx + 2}`,
         valueInputOption: 'RAW',
         requestBody: { values: [values] }
       });
     } else {
       await sheets.spreadsheets.values.append({
         spreadsheetId,
-        range: 'Custodians!A:F',
+        range: 'Custodians!A:H',
         valueInputOption: 'RAW',
         requestBody: { values: [values] }
       });
@@ -133,16 +137,33 @@ export class RecoverySheetsService {
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Custodians!A2:F'
+      range: 'Custodians!A2:H'
     });
-    return (res.data.values || []).map((r) => ({
-      custodianId: r[0] || '',
-      name: r[1] || '',
-      custodianType: r[2] || '',
-      encryptedShare: r[3] || '',
-      status: r[4] || '',
-      createdAt: r[5] || ''
-    }));
+    return (res.data.values || []).map((r) => {
+      const newFormat = r.length >= 6 && typeof r[5] === 'string' && r[5].length > 40;
+      if (newFormat) {
+        return {
+          custodianId: r[0] || '',
+          name: r[1] || '',
+          custodianType: r[2] || '',
+          encryptedShare: r[3] || '',
+          shareIndex: parseInt(r[4] || '0', 10) || 0,
+          custodianshipCredential: r[5] || '',
+          status: r[6] || '',
+          createdAt: r[7] || ''
+        };
+      }
+      return {
+        custodianId: r[0] || '',
+        name: r[1] || '',
+        custodianType: r[2] || '',
+        encryptedShare: r[3] || '',
+        shareIndex: 0,
+        custodianshipCredential: '',
+        status: r[4] || '',
+        createdAt: r[5] || ''
+      };
+    });
   }
 
   static async upsertRecoveryRequest(

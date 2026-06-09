@@ -50,6 +50,7 @@ export function useMigrationState() {
     identityId: string;
     identityName: string;
     identityUsername: string;
+    identityPublicKey?: string;
     status: 'active' | 'pending';
     canApprove: boolean;
   }>>([]);
@@ -83,6 +84,7 @@ export function useMigrationState() {
     identityId: string;
     identityName: string;
     identityUsername: string;
+    identityPublicKey?: string;
     status: 'active' | 'pending';
     canApprove: boolean;
   } | null>(null);

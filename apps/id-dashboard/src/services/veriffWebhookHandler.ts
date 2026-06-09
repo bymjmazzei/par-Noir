@@ -207,9 +207,8 @@ export class VeriffWebhookHandler {
    * Generate ZKPs from verification result
    */
   private async generateZKPsFromVerification(result: VeriffVerificationResult): Promise<void> {
-    // This would integrate with the ZKP generation system
-    // For now, just log the extracted data
-    console.log('Generating ZKPs for:', result.extractedData);
+    const { queueFromVeriffResult } = await import('./verifiedDataPointZkService');
+    queueFromVeriffResult(result.verificationId, result.extractedData);
   }
 
   /**

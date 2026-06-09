@@ -22,9 +22,11 @@ import { IntegratorTile } from './components/IntegratorTile';
 import { DataPointRequestsPanel } from './components/DataPointRequestsPanel';
 import { IdentitySuccessionPanel } from './components/IdentitySuccessionPanel';
 import { DeviceManagementPanel } from './components/DeviceManagementPanel';
-import { takeRecoveryShareForCustodian, getCustodianShare, appendShareToRecoveryRequest, saveRecoveryRequest, completeRecoveryWithShares, listRecoveryRequests, storeCustodianShare } from './services/recoveryService';
-import { submitRecoveryShare, persistRecoveryRequest } from './services/recoveryApiService';
+import { completeRecoveryWithShares, setPendingRecoveryShares } from './services/recoveryService';
 import { RecoveryPasscodeModal } from './components/recovery/RecoveryPasscodeModal';
+import { RecoveryCustodianPendingPanel } from './components/recovery/RecoveryCustodianPendingPanel';
+import { storeCustodianshipCredential } from './services/recoveryCredentialStorage';
+import { assignCustodianVaultAndIssueCredential } from './services/recoveryCustodianSetup';
 import type { RecoveryEnvelope } from '@par-noir/recovery-crypto';
 
 import { MigrationManager, WebIdentityData, MigrationResult } from './utils/migration';
@@ -279,6 +281,7 @@ function App() {
     shares: import('@par-noir/recovery-crypto').ShamirShare[];
   } | null>(null);
   const [showRecoveryPasscodeModal, setShowRecoveryPasscodeModal] = useState(false);
+  const [recoveredIdentityExport, setRecoveredIdentityExport] = useState<EncryptedIdentity | null>(null);
 
   // Destructure the most commonly used state for easier access
   const {
@@ -1553,10 +1556,11 @@ function App() {
       );
       const encryptedIdentity = creation.identity;
       try {
-        sessionStorage.setItem(
-          'pn_pending_recovery_shares',
-          JSON.stringify({ publicKey: encryptedIdentity.publicKey, shares: creation.recoveryShares })
-        );
+        setPendingRecoveryShares({
+          publicKey: encryptedIdentity.publicKey,
+          shares: creation.recoveryShares,
+          threshold: creation.recoveryConfig.threshold
+        });
       } catch {
         /* optional */
       }
@@ -3066,31 +3070,71 @@ function App() {
     }
   };
 
-  const generateCustodianQRCode = async (custodianData: CustodianInvitationForm) => {
+  const generateCustodianQRCode = async (custodianData: CustodianInvitationForm & { id?: string }) => {
     try {
+      const custodianId = custodianData.id || selectedCustodianForInvitation?.id;
+      if (!custodianId || !authenticatedUser?.id) {
+        throw new Error('Select a custodian and unlock your identity first');
+      }
+      const identityKey = authenticatedUser.publicKey || authenticatedUser.id;
+      const encPartial = await getEncryptedIdentityForApiToken(identityKey);
+      if (!encPartial?.encryptedData) {
+        throw new Error('Encrypted identity not found');
+      }
+      const encryptedIdentity: EncryptedIdentity = {
+        publicKey: authenticatedUser.publicKey || identityKey,
+        mlKemPublicKey: (authenticatedUser as { mlKemPublicKey?: string }).mlKemPublicKey,
+        encryptedData: encPartial.encryptedData,
+        iv: encPartial.iv,
+        salt: encPartial.salt
+      };
+      const invitationId = `inv-${Date.now()}`;
+      const vault = await assignCustodianVaultAndIssueCredential({
+        custodianId,
+        custodianName: custodianData.name,
+        custodianType: custodianData.type,
+        identityId: authenticatedUser.id,
+        encryptedIdentity,
+        invitationId,
+        threshold: recoveryThreshold,
+        apiToken
+      });
+
       const invitationData = {
-        invitationId: `inv-${Date.now()}`,
-        invitationCode: `code-${Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(36)).join('').substring(0, 8)}`,
+        invitationId,
+        custodianId,
         custodianName: custodianData.name,
         custodianType: custodianData.type === 'self' ? 'self-recovery' : custodianData.type,
         contactType: custodianData.contactType,
         contactValue: custodianData.contactValue,
-        expiresAt: Date.now() + (24 * 60 * 60 * 1000), // 24 hours
+        expiresAt: Date.now() + (24 * 60 * 60 * 1000),
         identityName: authenticatedUser?.nickname || 'Unknown Identity',
-        identityUsername: authenticatedUser?.nickname || authenticatedUser?.id || 'unknown'
+        identityUsername: authenticatedUser?.nickname || authenticatedUser?.id || 'unknown',
+        identityPublicKey: encryptedIdentity.publicKey,
+        shareIndex: vault.shareIndex,
+        custodianshipZkp: vault.custodianshipZkp
       };
-      
-      // Create deep link for custodian invitation
+
       const deepLinkData = {
         invitationId: invitationData.invitationId,
+        custodianId: invitationData.custodianId,
         custodianName: invitationData.custodianName,
         custodianType: invitationData.custodianType,
         contactType: invitationData.contactType,
         contactValue: invitationData.contactValue,
         identityName: invitationData.identityName,
-        identityUsername: invitationData.identityUsername
+        identityUsername: invitationData.identityUsername,
+        identityPublicKey: invitationData.identityPublicKey,
+        shareIndex: invitationData.shareIndex,
+        custodianshipZkp: invitationData.custodianshipZkp
       };
-      
+
+      setCustodians(prev => prev.map(c =>
+        c.id === custodianId
+          ? { ...c, status: 'active' as const, canApprove: true, lastVerified: new Date().toISOString() }
+          : c
+      ));
+
       const deepLink = `${window.location.origin}?custodian-invitation=${encodeURIComponent(JSON.stringify(deepLinkData))}`;
       
       // Generate QR code with deep link
@@ -3203,7 +3247,7 @@ This invitation expires in 24 hours.`;
 
 
 
-  // Handle custodian invitation acceptance
+  // Handle custodian invitation acceptance — store ZK custodianship credential only (no share bytes)
   const handleCustodianAcceptance = async () => {
     try {
       if (!pendingCustodianInvitationData) {
@@ -3214,146 +3258,126 @@ This invitation expires in 24 hours.`;
         throw new Error('Please enter your contact information and the passcode');
       }
 
-      // Validate the contact information matches the invitation
       if (custodianAcceptanceData.contactValue !== pendingCustodianInvitationData.contactValue) {
         throw new Error('Contact information does not match the invitation');
       }
 
-      // Find the pending custodian in the owner's list and validate the passcode
-      // This would typically involve a server call, but for now we'll simulate it
       const acceptancePasscode = custodianAcceptanceData.passcode.trim();
-      const isValidPasscode =
-        acceptancePasscode.length >= 8 &&
-        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/.test(acceptancePasscode);
-
+      const isValidPasscode = /^\d{6}$/.test(acceptancePasscode);
       if (!isValidPasscode) {
-        throw new Error('Invalid passcode. Please check with the identity owner.');
+        throw new Error('Invalid passcode. Enter the 6-digit code from the identity owner.');
       }
 
-      // Create new custodian with ZK proof capabilities
-      const newCustodian: RecoveryCustodian = {
-        id: `custodian-${Date.now()}`,
-        identityId: pendingCustodianInvitationData.invitationId,
-        name: pendingCustodianInvitationData.custodianName,
-        type: pendingCustodianInvitationData.custodianType === 'self-recovery' ? 'self' : pendingCustodianInvitationData.custodianType as 'person' | 'service',
-        status: 'active',
-        addedAt: new Date().toISOString(),
-        canApprove: true,
-        contactType: pendingCustodianInvitationData.contactType,
-        contactValue: pendingCustodianInvitationData.contactValue,
-        publicKey: crypto.randomUUID(), // Generate unique public key for ZK proof verification
-        recoveryKeyShare: crypto.randomUUID(), // Generate encrypted recovery key share
-        trustLevel: 'medium'
+      const invitation = pendingCustodianInvitationData as {
+        custodianId?: string;
+        identityPublicKey?: string;
+        shareIndex?: number;
+        custodianshipZkp?: string;
+        identityName?: string;
+        identityUsername?: string;
+        invitationId?: string;
       };
 
-      // Create new custodianship
+      if (!invitation.custodianshipZkp || !invitation.custodianId || !invitation.identityPublicKey) {
+        throw new Error('Invitation is missing custodianship credential. Ask the owner to resend the invitation.');
+      }
+
+      storeCustodianshipCredential({
+        custodianId: invitation.custodianId,
+        identityPublicKey: invitation.identityPublicKey,
+        identityName: invitation.identityName || 'Identity',
+        identityUsername: invitation.identityUsername || '',
+        shareIndex: invitation.shareIndex || 0,
+        custodianshipZkp: invitation.custodianshipZkp,
+        custodianPasscode: acceptancePasscode,
+        acceptedAt: new Date().toISOString()
+      });
+
       const newCustodianship = {
-        id: `custodianship-${Date.now()}`,
-        identityId: pendingCustodianInvitationData.invitationId,
-        identityName: pendingCustodianInvitationData.identityName,
-        identityUsername: pendingCustodianInvitationData.identityUsername,
+        id: `custodianship-${invitation.custodianId}`,
+        identityId: invitation.invitationId || invitation.custodianId,
+        identityName: invitation.identityName || 'Identity',
+        identityUsername: invitation.identityUsername || '',
+        identityPublicKey: invitation.identityPublicKey,
         status: 'active' as const,
         canApprove: true
       };
 
-      // Add to custodianships list
-      setCustodianships(prev => [...prev, newCustodianship]);
+      setCustodianships(prev => {
+        const filtered = prev.filter(
+          (c) => c.identityPublicKey !== invitation.identityPublicKey
+        );
+        return [...filtered, newCustodianship];
+      });
 
-      // Close the modal and clear the data
       setShowCustodianAcceptanceModal(false);
       setPendingCustodianInvitationData(null);
       setCustodianAcceptanceData({ contactValue: '', passcode: '' });
 
-      setSuccessWithTimeout('Custodianship accepted successfully! You can now approve recovery requests for this identity.');
+      setSuccessWithTimeout('Custodianship accepted. You hold an authorization credential only — no secret shares.');
       setTimeout(() => setSuccessWithTimeout(null), 5000);
-
-    } catch (error: any) {
-      setError(error.message || 'Failed to accept custodianship');
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'Failed to accept custodianship');
       setTimeout(() => setError(null), 9000);
     }
   };
 
-  // Custodian validation handler (currently unused but available for future use)
-  const handleCustodianValidation = async (custodianId: string) => {
-    try {
-      const share = takeRecoveryShareForCustodian(custodianId);
-      const publicKey = authenticatedUser?.publicKey || '';
-      const custodian = custodians.find((c) => c.id === custodianId);
-      let encryptedShareStr: string | undefined;
-      if (share && publicKey && custodian?.passcode) {
-        const { encryptCustodianShare, serializeEncryptedShare } = await import('@par-noir/recovery-crypto');
-        const encrypted = await encryptCustodianShare(share, custodian.passcode, publicKey);
-        encryptedShareStr = serializeEncryptedShare(encrypted);
-        storeCustodianShare(custodianId, share);
-        if (apiToken && publicKey) {
-          const { VolumeIdGenerator } = await import('./utils/crypto/volumeIdGenerator');
-          const pnId = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
-          const { persistCustodianShare } = await import('./services/recoveryApiService');
-          await persistCustodianShare(pnId, apiToken, {
-            custodianId,
-            name: custodian.name,
-            custodianType: custodian.type,
-            encryptedShare: encryptedShareStr
-          }).catch(() => undefined);
-        }
-      }
-
-      setCustodians(prev => prev.map(c => 
-        c.id === custodianId 
-          ? { 
-              ...c, 
-              status: 'active' as const,
-              canApprove: true,
-              lastVerified: new Date().toISOString(),
-              recoveryKeyShare: encryptedShareStr || (share ? JSON.stringify(share) : c.recoveryKeyShare)
-            }
-          : c
-      ));
-      
-      setSuccessWithTimeout('Custodian validated successfully! They can now approve recovery requests.');
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-    } catch (error: any) {
-      setError(error.message || 'Failed to validate custodian');
-      setTimeout(() => setError(null), 9000);
-    }
-  };
-
-  // Shamir share recovery approval (same pN — preserve keys, new passcode)
-  const handleApproveRecovery = async (requestId: string, custodianId: string) => {
+  // ZK authorization recovery approval (custodian never submits share bytes)
+  const handleApproveRecovery = async (requestId: string, custodianshipId: string) => {
     try {
       setLoading(true);
       setError(null);
 
       const recoveryRequest = recoveryRequests.find((req) => req.id === requestId);
-      if (!recoveryRequest) {
+      const custodianship = custodianships.find((c) => c.id === custodianshipId);
+      const identityPublicKey =
+        custodianship?.identityPublicKey || recoveryRequest?.requestingDid || '';
+
+      if (!recoveryRequest && !custodianship) {
         throw new Error('Recovery request not found');
       }
 
-      const custodian = custodians.find((c) => c.id === custodianId);
-      if (!custodian) {
-        throw new Error('Custodian not found');
-      }
+      const cred = (await import('./services/recoveryCredentialStorage')).getCustodianshipCredential(
+        identityPublicKey,
+        custodianshipId.replace('custodianship-', '')
+      ) || (await import('./services/recoveryCredentialStorage')).getCustodianshipCredential(
+        identityPublicKey,
+        custodianship?.identityId || ''
+      );
 
-      const custodianPasscode = custodian.passcode || '';
-      if (!custodianPasscode) {
-        throw new Error('Custodian passcode required to decrypt and submit share');
-      }
+      const custodianId = cred?.custodianId || custodianshipId.replace('custodianship-', '');
+      const custodianPasscode = cred?.custodianPasscode || '';
 
-      const { approveRecoveryWithShare } = await import('./components/recovery/useRecoveryHandlers');
-      let userPnIdentifier: string | undefined;
-      if (apiToken && authenticatedUser?.publicKey) {
+      const { approveRecoveryWithZkp } = await import('./components/recovery/useRecoveryHandlers');
+      let userPnIdentifier = identityPublicKey;
+      if (apiToken && identityPublicKey) {
         const { VolumeIdGenerator } = await import('./utils/crypto/volumeIdGenerator');
-        userPnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(authenticatedUser.publicKey);
+        userPnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(identityPublicKey);
       }
 
-      const { stored, thresholdMet } = await approveRecoveryWithShare({
+      let custodianEncryptedIdentity: EncryptedIdentity | undefined;
+      if (authenticatedUser?.id) {
+        const encPartial = await getEncryptedIdentityForApiToken(authenticatedUser.publicKey || authenticatedUser.id);
+        if (encPartial) {
+          custodianEncryptedIdentity = {
+            publicKey: authenticatedUser.publicKey || authenticatedUser.id,
+            encryptedData: encPartial.encryptedData,
+            iv: encPartial.iv,
+            salt: encPartial.salt
+          };
+        }
+      }
+
+      const { stored, thresholdMet } = await approveRecoveryWithZkp({
         requestId,
         custodianId,
+        identityPublicKey,
         custodianPasscode,
-        identityPublicKey: authenticatedUser?.publicKey || recoveryRequest.requestingDid,
         threshold: recoveryThreshold,
         authToken: apiToken || undefined,
-        userPnIdentifier
+        userPnIdentifier,
+        custodianIdentityId: authenticatedUser?.id,
+        custodianEncryptedIdentity
       });
 
       setRecoveryRequests((prev) =>
@@ -3369,22 +3393,29 @@ This invitation expires in 24 hours.`;
         )
       );
 
-      if (thresholdMet && stored) {
+      if (thresholdMet) {
         const envelopeRaw = sessionStorage.getItem(`pn_recovery_envelope_${requestId}`);
         const identityRaw = sessionStorage.getItem(`pn_recovery_identity_${requestId}`);
-        if (envelopeRaw && identityRaw) {
+        if (envelopeRaw && identityRaw && apiToken) {
+          const { fetchSharesAfterThreshold } = await import('./components/recovery/useRecoveryHandlers');
+          const shares = await fetchSharesAfterThreshold({
+            userPnIdentifier,
+            authToken: apiToken,
+            requestId,
+            identityPublicKey
+          });
           setPendingRecoveryCompletion({
             requestId,
             envelope: JSON.parse(envelopeRaw),
             existingIdentity: JSON.parse(identityRaw),
-            shares: stored.shares
+            shares
           });
           setShowRecoveryPasscodeModal(true);
         } else {
-          setSuccessWithTimeout('Threshold met. Upload your .pn file on the recovering device to set a new passcode.');
+          setSuccessWithTimeout('Threshold met. Open recovery on the device with your .pn file to set a new passcode.');
         }
       } else {
-        setSuccessWithTimeout('Recovery share submitted. Waiting for more custodians…');
+        setSuccessWithTimeout('Recovery authorization submitted. Waiting for more custodians…');
         setTimeout(() => setSuccessWithTimeout(null), 5000);
       }
     } catch (error: unknown) {
@@ -3427,7 +3458,7 @@ This invitation expires in 24 hours.`;
         }
       ]);
       setShowRecoveryModal(false);
-      setSuccessWithTimeout('Recovery started. Custodians will submit Shamir shares.');
+      setSuccessWithTimeout('Recovery started. Custodians will submit authorization proofs.');
       setTimeout(() => setSuccessWithTimeout(null), 5000);
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : 'Failed to start recovery');
@@ -3467,11 +3498,27 @@ This invitation expires in 24 hours.`;
         result.pnName
       );
       setAuthenticatedUser(authSession);
+      setRecoveredIdentityExport(result.identity);
       setShowRecoveryPasscodeModal(false);
       setPendingRecoveryCompletion(null);
-      setRecoveredDID({ nickname: authSession.nickname || result.pnName });
+      setRecoveredDID({
+        id: authSession.id,
+        pnName: result.pnName,
+        nickname: authSession.nickname || result.pnName,
+        email: '',
+        phone: '',
+        recoveryEmail: '',
+        recoveryPhone: '',
+        createdAt: new Date().toISOString(),
+        status: 'active',
+        custodiansRequired: true,
+        custodiansSetup: true,
+        isEncrypted: true,
+        displayName: authSession.nickname || result.pnName,
+        publicKey: result.identity.publicKey
+      });
       setShowRecoveryCompleteModal(true);
-      setSuccessWithTimeout('Recovery complete. Reconnect Google Drive if needed; messaging uses the same keys.');
+      setSuccessWithTimeout('Recovery complete. Download your updated .pn file and reconnect Google Drive.');
     } finally {
       setLoading(false);
     }
@@ -4501,21 +4548,33 @@ This invitation expires in 24 hours.`;
 
     
 
+  const handleDownloadRecoveredPn = () => {
+    if (!recoveredIdentityExport) return;
+    const blob = new Blob([JSON.stringify(recoveredIdentityExport, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'recovered-identity.pn';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Handle recovery completion with automatic license transfer
-  const handleRecoveryComplete = async (recoveredDID: DIDInfo) => {
+  const handleRecoveryComplete = async (recovered: { nickname: string }) => {
     try {
       setLoading(true);
       setError(null);
 
-      // Set the authenticated user to the recovered DID
-      setAuthenticatedUser({
-        id: recoveredDID.id,
-        pnName: recoveredDID.pnName,
-        nickname: recoveredDID.nickname,
-        accessToken: `recovered-token-${Date.now()}`,
-        expiresIn: 3600,
-        authenticatedAt: new Date().toISOString()
-      });
+      if (!authenticatedUser?.id) {
+        setAuthenticatedUser({
+          id: recoveredDID?.id || `recovered-${Date.now()}`,
+          nickname: recovered.nickname,
+          accessToken: `recovered-token-${Date.now()}`,
+          expiresIn: 3600,
+          authenticatedAt: new Date().toISOString(),
+          publicKey: recoveredDID?.id || ''
+        });
+      }
 
       // Create a new primary device for the recovered identity
       const recoveredPrimaryDevice: SyncedDevice = {
@@ -4536,7 +4595,7 @@ This invitation expires in 24 hours.`;
       
       // Update recovery request status
       setRecoveryRequests(prev => prev.map(req => 
-        req.requestingDid === recoveredDID.id 
+        req.requestingDid === (recoveredDID?.id || authenticatedUser?.publicKey)
           ? { ...req, status: 'approved' as const }
           : req
       ));
@@ -4610,10 +4669,14 @@ This invitation expires in 24 hours.`;
     identityId: string;
     identityName: string;
     identityUsername: string;
+    identityPublicKey?: string;
     status: 'active' | 'pending';
     canApprove: boolean;
   }) => {
-    const pendingRequest = recoveryRequests.find(r => r.requestingDid === custodianship.identityId && r.status === 'pending');
+    const pk = custodianship.identityPublicKey || custodianship.identityId;
+    const pendingRequest = recoveryRequests.find(
+      (r) => (r.requestingDid === pk || r.requestingDid === custodianship.identityId) && r.status === 'pending'
+    );
     if (pendingRequest && custodianship.canApprove) {
       setSelectedRecoveryRequest(pendingRequest);
       setSelectedCustodianship(custodianship);
@@ -6622,6 +6685,59 @@ This invitation expires in 24 hours.`;
                             </div>
                           </div>
 
+                          {authenticatedUser && (
+                            <RecoveryCustodianPendingPanel
+                              authenticatedUser={authenticatedUser}
+                              custodianships={custodianships}
+                              onApprove={(requestId, custodianshipId, identityPublicKey) => {
+                                const cs = custodianships.find((c) => c.id === custodianshipId);
+                                if (cs) {
+                                  setSelectedCustodianship({ ...cs, identityPublicKey });
+                                }
+                                const pending = recoveryRequests.find((r) => r.id === requestId);
+                                if (pending) {
+                                  setSelectedRecoveryRequest(pending);
+                                  setShowCustodianApprovalModal(true);
+                                } else {
+                                  setRecoveryRequests((prev) => [
+                                    ...prev,
+                                    {
+                                      id: requestId,
+                                      requestingDid: identityPublicKey,
+                                      requestingUser: 'Recovery claimant',
+                                      timestamp: new Date().toISOString(),
+                                      status: 'pending',
+                                      approvals: [],
+                                      denials: [],
+                                      signatures: [],
+                                      proofs: [],
+                                      expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+                                      requiredApprovals: recoveryThreshold,
+                                      currentApprovals: 0,
+                                      oldIdentityHash: identityPublicKey
+                                    }
+                                  ]);
+                                  setSelectedRecoveryRequest({
+                                    id: requestId,
+                                    requestingDid: identityPublicKey,
+                                    requestingUser: 'Recovery claimant',
+                                    timestamp: new Date().toISOString(),
+                                    status: 'pending',
+                                    approvals: [],
+                                    denials: [],
+                                    signatures: [],
+                                    proofs: [],
+                                    expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+                                    requiredApprovals: recoveryThreshold,
+                                    currentApprovals: 0,
+                                    oldIdentityHash: identityPublicKey
+                                  });
+                                  setShowCustodianApprovalModal(true);
+                                }
+                              }}
+                            />
+                          )}
+
                           {/* Custodianships Section */}
                           <div className="bg-secondary p-4 rounded-lg">
                             <h4 className="font-medium text-text-primary mb-2">IDs You Are a Custodian Of</h4>
@@ -6876,6 +6992,8 @@ This invitation expires in 24 hours.`;
           onClose={() => setShowRecoveryCompleteModal(false)}
           recoveredDID={recoveredDID}
           onRecoveryComplete={handleRecoveryComplete}
+          onDownloadPn={handleDownloadRecoveredPn}
+          hasRecoveredPn={Boolean(recoveredIdentityExport)}
         />
 
         {/* Enhanced Privacy Panel */}
