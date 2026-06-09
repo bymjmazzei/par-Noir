@@ -30,6 +30,10 @@ export default defineConfig(({ mode }) => ({
       '@par-noir/pqc-crypto/constants': resolve(__dirname, '../../packages/pqc-crypto/src/constants.ts'),
       '@par-noir/zk-protocol-v1': resolve(__dirname, '../../packages/zk-protocol-v1/src/index.ts'),
       '@par-noir/zk-protocol-v2': resolve(__dirname, '../../packages/zk-protocol-v2/src/index.ts'),
+      // CJS dist breaks Vite named exports; bundle from source like pqc-crypto above
+      '@par-noir/recovery-crypto': resolve(__dirname, '../../packages/recovery-crypto/src/index.ts'),
+      '@par-noir/device-auth': resolve(__dirname, '../../packages/device-auth/src/index.ts'),
+      '@par-noir/identity-migration': resolve(__dirname, '../../packages/identity-migration/src/index.ts'),
     },
   },
   optimizeDeps: {
