@@ -2,7 +2,6 @@
   "name": "@par-noir/device-auth",
   "version": "0.1.0",
   "description": "Device registry capabilities and proof evaluation for pN owner sessions",
-  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
