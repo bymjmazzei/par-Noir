@@ -117,3 +117,30 @@ Copying the file to another machine or browser profile fails at step 2/4 (no pri
 - Do not log `deviceBindingFactor`, private keys, or passcodes.
 - Device-bound export protects against **file theft**, not malware on the same device (malware can read IndexedDB).
 - WebAuthn-bound export and crypto-bound default unlock are out of scope for v2.
+
+## Owner route capability gates (L2 + API)
+
+After the first device is keyed, owner API routes enforce `evaluateDeviceCapability` via `gateOwnerRoute` in `deviceCapabilityService.ts`. The dashboard sends device proof headers through `ownerApiService` (`ownerFetch` / `ownerGet`).
+
+| Capability | Example routes |
+|------------|----------------|
+| `profile.read` | `GET /api/profile/:userPnIdentifier` (self-access only; public reads unchanged) |
+| `profile.write` | `POST /api/profile/*`, `PUT /api/users/:pn/third-party-permissions`, `PUT /api/users/:pn/zkp-data-points/:id`, feed create/update/delete |
+| `drive.read` | `GET /api/drive/files`, `GET /api/drive/files/:fileId` |
+| `drive.upload` | `POST/PUT/DELETE /api/drive/files*`, mutating `PUT/POST/DELETE /api/aggregator/metadata-index*` |
+| `custodians.read` | `GET /api/recovery/:pn/custodians`, `GET /api/recovery/:pn/vault/pending` |
+| `recovery.custodian.manage` | `POST /api/recovery/custodians/assign`, legacy `POST /api/recovery/custodians` (gated) |
+| `recovery.vault.write` | `POST /api/recovery/vault/*` |
+| `identity.migrate` | `POST/PATCH /api/identity/migration/*` writes |
+| `device.manage` | Device registry policy, pairing, revoke, heartbeat |
+
+**Deferred:** `messages.read` / `messages.send` API gates (aggregator-browser has no device keys yet). Policy toggles for messaging are labeled in the dashboard; enforcement ships with L4 device keying.
+
+**Deferred:** `oauth.write` on developer-portal routes (separate app without IndexedDB device keys).
+
+### Manual E2E checklist
+
+1. Key first device → unkeyed session on another browser: export/custodian manage blocked (UI + API 403).
+2. Toggle “Upload to Drive” for unkeyed → unkeyed session can upload; toggle off → 403.
+3. Keyed session with device proof: profile edit, drive upload, custodian assign succeed.
+4. Legacy `POST /api/recovery/custodians` without device proof returns 403 after first device keyed.

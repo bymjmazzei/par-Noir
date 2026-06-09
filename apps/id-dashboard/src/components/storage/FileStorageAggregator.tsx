@@ -20,6 +20,7 @@ import { LICENSE_TYPES } from '../../constants/licenses';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../../constants/feedCategories';
 import { ReportContentModal } from './ReportContentModal';
 import { API_ENDPOINT } from '../../config/api';
+import { ownerFetch } from '../../services/ownerApiService';
 import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 import { driveAccountTokens, normalizeVisibility } from './storageHelpers';
 
@@ -63,9 +64,19 @@ type StoredDriveCredential = {
 interface FileStorageAggregatorProps {
   authenticatedUser?: AuthSession | CryptoAuthSession | any | null;
   hideSecureFolderSection?: boolean;
+  deviceGate?: {
+    canDriveRead: boolean;
+    canDriveUpload: boolean;
+    canProfileWrite: boolean;
+    blockedMessage: string;
+  };
 }
 
-export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ authenticatedUser, hideSecureFolderSection = false }) => {
+export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
+  authenticatedUser,
+  hideSecureFolderSection = false,
+  deviceGate,
+}) => {
   // Helper function to get passcode from SecureCredentialManager
   const getPasscodeFromSecureStorage = React.useCallback((sessionId: string | null | undefined): string | null => {
     if (!sessionId) return null;
@@ -5334,15 +5345,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
 
       // Update via API endpoint
-      const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${editingFile.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authenticatedUser?.accessToken && {
-            'Authorization': `Bearer ${authenticatedUser.accessToken}`
-          })
-        },
-        body: JSON.stringify({
+      const accessToken = authenticatedUser?.accessToken;
+      if (!accessToken) {
+        throw new Error('No access token available');
+      }
+      if (deviceGate && !deviceGate.canDriveUpload) {
+        throw new Error(deviceGate.blockedMessage);
+      }
+      const metaPath = `/api/aggregator/metadata-index/${editingFile.id}`;
+      const response = await ownerFetch(accessToken, 'PUT', metaPath, {
           name: editForm.name,
           description: editForm.description,
           keywords: tags,
@@ -5353,7 +5364,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           locationCreated: locationCreated,
           license: editForm.license || undefined,
           subjects: subjects.length > 0 ? subjects : undefined
-        }),
       });
 
       if (!response.ok) {
@@ -6024,6 +6034,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setError('Please unlock your pN first');
       return;
     }
+    if (deviceGate && !deviceGate.canProfileWrite) {
+      setError(deviceGate.blockedMessage);
+      return;
+    }
 
     // Check if file is an image
     const mimeType = file.mimeType || '';
@@ -6049,16 +6063,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         throw new Error('No access token available');
       }
 
-      const response = await fetch(`${API_ENDPOINT}/api/profile/image`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          userDid: authenticatedUser.id,
-          fileId: fileId
-        })
+      const ownerPnId = (() => {
+        const pk = authenticatedUser?.publicKey || authenticatedUser?.id;
+        if (!pk) return null;
+        return String(pk).startsWith('pn-') ? String(pk) : `pn-${pk}`;
+      })();
+      if (!ownerPnId) {
+        throw new Error('Missing identity identifier');
+      }
+
+      const response = await ownerFetch(accessToken, 'POST', '/api/profile/image', {
+        userPnIdentifier: ownerPnId,
+        fileId: fileId,
       });
 
       if (!response.ok) {
@@ -6156,6 +6172,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setError('Cannot delete file: missing file ID');
       return;
     }
+    if (deviceGate && !deviceGate.canDriveUpload) {
+      setError(deviceGate.blockedMessage);
+      return;
+    }
 
     // Confirm deletion (skip confirmation if called from bulk delete)
     if (!skipConfirm) {
@@ -6196,13 +6216,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       const accountIdParam = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
 
       try {
-        // Call API endpoint which handles: file deletion, thumbnail deletion, metadata deletion, and index cleanup
-        const response = await fetch(`${API_ENDPOINT}/api/drive/files/${file.backendFileId}${accountIdParam}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        });
+        const deletePath = `/api/drive/files/${file.backendFileId}${accountIdParam}`;
+        const response = await ownerFetch(accessToken, 'DELETE', deletePath);
 
         if (response.ok) {
           const result = await response.json().catch(() => ({}));
@@ -6216,12 +6231,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             
             // Try to remove from database via metadata-index endpoint
             try {
-              const dbResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${file.backendFileId}`, {
-                method: 'DELETE',
-                headers: {
-                  'Authorization': `Bearer ${accessToken}` // Still try with expired token
-                }
-              });
+              const metaPath = `/api/aggregator/metadata-index/${file.backendFileId}`;
+              const dbResponse = await ownerFetch(accessToken, 'DELETE', metaPath);
               if (dbResponse.ok) {
                 console.log('✅ [Delete] File removed from database via fallback endpoint');
               }

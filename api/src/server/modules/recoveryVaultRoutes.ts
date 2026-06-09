@@ -14,7 +14,7 @@ import { PNOAuthService } from './pnOAuthService';
 import { getRecoveryDriveContext } from './recoveryDriveContext';
 import { RecoverySheetsService } from './recoverySheetsService';
 import { verifyCustodianshipCredential } from './recoveryZkService';
-import { assertDeviceCapability, DEVICE_CAPABILITIES } from './deviceCapabilityService';
+import { assertDeviceCapability, DEVICE_CAPABILITIES, getBearerPnIdentifier, normalizePnIdentifier } from './deviceCapabilityService';
 
 async function gateCapability(
   req: Request,
@@ -136,10 +136,11 @@ export function registerRecoveryVaultRoutes(app: Application): void {
 
   app.get('/api/recovery/:userPnIdentifier/vault/pending', async (req: Request, res: Response) => {
     try {
-      const auth = bearerPn(req);
-      if (!auth) return res.status(401).json({ error: 'unauthorized' });
-
-      const pn = req.params.userPnIdentifier;
+      if (!(await gateCapability(req, res, DEVICE_CAPABILITIES.custodiansRead))) return;
+      const authPn = getBearerPnIdentifier(req);
+      if (!authPn) return res.status(401).json({ error: 'unauthorized' });
+      const pn = normalizePnIdentifier(req.params.userPnIdentifier);
+      if (authPn !== pn) return res.status(403).json({ error: 'forbidden' });
       const includeEncrypted = req.query.includeEncrypted === 'true';
       const bundle = await spreadsheetForPn(pn);
       if (!bundle) return res.status(404).json({ error: 'Drive not connected' });

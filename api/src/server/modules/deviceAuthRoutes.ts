@@ -287,7 +287,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
 
   app.post('/api/devices/:deviceId/heartbeat', async (req: Request, res: Response) => {
     try {
-      const gate = await assertDeviceCapability(req, DEVICE_CAPABILITIES.profileRead);
+      const gate = await assertDeviceCapability(req, DEVICE_CAPABILITIES.deviceManage);
       if (!gate.ok) return res.status(gate.status).json({ error: gate.error, reason: gate.reason });
 
       if (gate.ctx.deviceRow?.deviceId !== req.params.deviceId) {

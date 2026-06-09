@@ -100,19 +100,6 @@ export async function assignCustodianVaultAndIssueCredential(params: {
       custodianshipCredential: custodianshipZkp,
       encryptedShare,
       unrevokable: params.unrevokable === true,
-    }).catch(async () => {
-      if (share && encryptedShare) {
-        const { persistCustodianVault } = await import('./recoveryApiService');
-        await persistCustodianVault(pnId, params.apiToken!, {
-          custodianId: params.custodianId,
-          name: params.custodianName,
-          custodianType: params.custodianType,
-          encryptedShare,
-          shareIndex: shareIndex!,
-          custodianshipCredential: custodianshipZkp,
-          unrevokable: params.unrevokable,
-        });
-      }
     });
   }
 

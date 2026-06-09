@@ -270,6 +270,9 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
           <p className="text-xs text-text-secondary">
             Choose what an unlocked but unkeyed device may do. Recovery flows always remain available.
           </p>
+          <p className="text-xs text-text-secondary italic">
+            Messaging permissions apply when the browser app supports device keys (not yet available).
+          </p>
           <ul className="space-y-2">
             {CONFIGURABLE_CAPABILITIES.map((cap) => (
               <li key={cap} className="flex items-center gap-2 text-xs">

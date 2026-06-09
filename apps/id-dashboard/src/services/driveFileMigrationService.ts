@@ -18,6 +18,7 @@ import {
 import type { GoogleDriveBackend, DriveInventoryItem } from './storage/GoogleDriveBackend';
 import { API_ENDPOINT } from '../config/api';
 import { deviceProofHeaders } from './deviceProofContext';
+import { ownerFetch } from './ownerApiService';
 
 export interface DriveMigrationParams {
   migrationId: string;
@@ -214,13 +215,9 @@ export async function runFullDriveMigration(params: DriveMigrationParams): Promi
   report = recordMigrationOutcome(report, { path: '_metadata/sheets', outcome: 'patched' });
 
   onProgress('Publishing profile keys…', 74);
-  await fetch(`${API_ENDPOINT}/api/profile/ml-kem-public-key`, {
-    method: 'POST',
-    headers: authHeaders(authToken),
-    body: JSON.stringify({
-      userPnIdentifier: successor.pnIdentifier,
-      mlKemPublicKey: successor.mlKemPublicKey,
-    }),
+  await ownerFetch(authToken, 'POST', '/api/profile/ml-kem-public-key', {
+    userPnIdentifier: successor.pnIdentifier,
+    mlKemPublicKey: successor.mlKemPublicKey,
   }).catch(() => undefined);
 
   const newFolderName = `par Noir - ${successor.pnIdentifier}`;

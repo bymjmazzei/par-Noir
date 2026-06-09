@@ -4,6 +4,7 @@
  */
 
 import { API_ENDPOINT } from '../config/api';
+import { ownerFetch } from '../services/ownerApiService';
 
 export interface ZKPDataPoint {
   dataPointId: string;
@@ -142,17 +143,8 @@ export class ZKPDataPointsService {
     try {
       const pnIdentifier = await this.getPnIdentifier(identityId, credentials, publicKey);
 
-      const response = await fetch(
-        `${API_ENDPOINT}/api/users/${pnIdentifier}/zkp-data-points/${dataPoint.dataPointId}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authToken}`
-          },
-          body: JSON.stringify(dataPoint)
-        }
-      );
+      const path = `/api/users/${pnIdentifier}/zkp-data-points/${dataPoint.dataPointId}`;
+      const response = await ownerFetch(authToken, 'PUT', path, dataPoint);
 
       if (!response.ok) {
         const errorText = await response.text();

@@ -5,6 +5,7 @@
 
 import type { FeedCategory } from '../../types/aggregator';
 import { API_ENDPOINT } from '../../config/api';
+import { ownerFetch } from '../ownerApiService';
 
 export interface Feed {
   feedId: string;
@@ -85,16 +86,9 @@ export class FeedService {
     }
 
     const authenticatedUser = JSON.parse(authenticatedUserStr);
-    const response = await fetch(`${API_ENDPOINT}/api/feeds`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authenticatedUser.accessToken || ''}`
-      },
-      body: JSON.stringify({
-        ...data,
-        creatorDid: authenticatedUser.id
-      })
+    const response = await ownerFetch(authenticatedUser.accessToken || '', 'POST', '/api/feeds', {
+      ...data,
+      creatorDid: authenticatedUser.id,
     });
 
     if (!response.ok) {
@@ -162,14 +156,12 @@ export class FeedService {
     }
 
     const authenticatedUser = JSON.parse(authenticatedUserStr);
-    const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authenticatedUser.accessToken || ''}`
-      },
-      body: JSON.stringify(updates)
-    });
+    const response = await ownerFetch(
+      authenticatedUser.accessToken || '',
+      'PUT',
+      `/api/feeds/${feedId}`,
+      updates
+    );
 
     if (!response.ok) {
       const error = await response.json();
@@ -227,12 +219,12 @@ export class FeedService {
     }
 
     const authenticatedUser = JSON.parse(authenticatedUserStr);
-    const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${authenticatedUser.accessToken || ''}`
-      }
-    });
+    const response = await ownerFetch(
+      authenticatedUser.accessToken || '',
+      'DELETE',
+      `/api/feeds/${feedId}`,
+      { creatorDid: authenticatedUser.id }
+    );
 
     if (!response.ok) {
       const error = await response.json();

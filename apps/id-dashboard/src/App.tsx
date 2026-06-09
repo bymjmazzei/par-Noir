@@ -39,6 +39,7 @@ import {
   DEVICE_BOUND_PN_ERROR,
   isDeviceBoundPnEnvelope,
 } from './services/deviceBoundPnService';
+import { ownerFetch } from './services/ownerApiService';
 import { RecoveryPasscodeModal } from './components/recovery/RecoveryPasscodeModal';
 import { RecoveryCustodianPendingPanel } from './components/recovery/RecoveryCustodianPendingPanel';
 import { storeCustodianshipCredential } from './services/recoveryCredentialStorage';
@@ -394,7 +395,12 @@ function App() {
 
   const canManageCustodians = deviceAuth.can(DEVICE_CAPABILITIES.recoveryCustodianManage);
   const canExportIdentity = deviceAuth.can(DEVICE_CAPABILITIES.identityExport);
-  const canRotateIdentity = deviceAuth.can(DEVICE_CAPABILITIES.identityRotate);
+  const canRotateIdentity = deviceAuth.can(DEVICE_CAPABILITIES.identityMigrate);
+  const canProfileWrite = deviceAuth.can(DEVICE_CAPABILITIES.profileWrite);
+  const canProfileRead = deviceAuth.can(DEVICE_CAPABILITIES.profileRead);
+  const canDriveRead = deviceAuth.can(DEVICE_CAPABILITIES.driveRead);
+  const canDriveUpload = deviceAuth.can(DEVICE_CAPABILITIES.driveUpload);
+  const canCustodiansRead = deviceAuth.can(DEVICE_CAPABILITIES.custodiansRead);
 
   const getEncryptedIdentityForApiToken = React.useCallback(
     async (
@@ -2426,6 +2432,11 @@ function App() {
 
   const handleProfilePictureUpdate = async (newProfilePicture: string) => {
     if (!authenticatedUser) return;
+    if (!canProfileWrite) {
+      setError(deviceAuth.deviceRequiredMessage);
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
     
     try {
       setLoading(true);
@@ -2551,6 +2562,11 @@ function App() {
 
   const handleUpdateNickname = async (newNickname: string) => {
     if (!authenticatedUser) return;
+    if (!canProfileWrite) {
+      setError(deviceAuth.deviceRequiredMessage);
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
     
     try {
       setLoading(true);
@@ -3409,6 +3425,9 @@ This invitation expires in 24 hours.`;
 
   const handleAddCustodian = async (custodianData: CustodianInvitationForm) => {
     try {
+      if (!canManageCustodians) {
+        throw new Error(deviceAuth.deviceRequiredMessage);
+      }
       // Validate contact information
       if (!custodianData.name.trim() || !custodianData.contactValue.trim()) {
         throw new Error('Name and contact information are required');
@@ -4058,20 +4077,11 @@ This invitation expires in 24 hours.`;
       });
 
       // Store permissions via API (will be saved to Google Drive)
-      const response = await fetch(
-        `${API_ENDPOINT}/api/users/${pnIdentifier}/third-party-permissions`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authToken}`
-          },
-          body: JSON.stringify({
-            toolId,
-            permission: newSettings.toolPermissions[toolId]
-          })
-        }
-      );
+      const path = `/api/users/${pnIdentifier}/third-party-permissions`;
+      const response = await ownerFetch(authToken, 'PUT', path, {
+        toolId,
+        permission: newSettings.toolPermissions[toolId],
+      });
 
       if (!response.ok) {
         console.error('Failed to persist permissions:', response.status);
@@ -4807,6 +4817,11 @@ This invitation expires in 24 hours.`;
 
   const handleDownloadRecoveredPn = () => {
     if (!recoveredIdentityExport) return;
+    if (!canExportIdentity) {
+      setError(deviceAuth.deviceRequiredMessage);
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
     const blob = new Blob([JSON.stringify(recoveredIdentityExport, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -6493,6 +6508,7 @@ This invitation expires in 24 hours.`;
                     >
                       Help
                     </button>
+                    {canExportIdentity && (
                     <button 
                       onClick={handleExportData}
                       className="px-3 py-2 bg-green-600 text-white rounded-md font-medium hover:bg-green-700 transition-colors text-sm"
@@ -6500,6 +6516,7 @@ This invitation expires in 24 hours.`;
                     >
                       Export
                     </button>
+                    )}
                     <button 
                       onClick={handleLogout}
                       className="px-4 py-2 modal-button rounded-md font-medium"
@@ -7212,7 +7229,15 @@ This invitation expires in 24 hours.`;
                   {/* Storage Tab */}
                   {activeTab === 'storage' && (
                     <div>
-                      <FileStorageAggregator authenticatedUser={authenticatedUser} />
+                      <FileStorageAggregator
+                        authenticatedUser={authenticatedUser}
+                        deviceGate={{
+                          canDriveRead,
+                          canDriveUpload,
+                          canProfileWrite,
+                          blockedMessage: deviceAuth.deviceRequiredMessage,
+                        }}
+                      />
                     </div>
                   )}
 

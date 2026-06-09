@@ -42,6 +42,11 @@ import { registerCreatorFundPeriodRoutes } from './server/modules/creatorFundPer
 import { registerCoreRoutes } from './server/modules/coreRoutes';
 import { hashIdentifier, safeLogger } from './utils/logger';
 import { getBearerTokenPayload } from './server/middleware/authMiddleware';
+import {
+  gateOwnerRoute,
+  gateOwnerSelfRoute,
+  DEVICE_CAPABILITIES,
+} from './server/modules/deviceCapabilityService';
 
 // Environment configuration
 const PORT = process.env.PORT || 3001;
@@ -2152,6 +2157,11 @@ class ProductionServer {
           });
         }
 
+        const tokenPayload = getBearerTokenPayload(req);
+        if (tokenPayload?.pnIdentifier) {
+          if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload))) return;
+        }
+
         // Validate metadata (support both legacy and semantic web format)
         const title = metadata.name || metadata.title;
         const authorDid = metadata.creator?.identifier?.value || metadata.creator?.["@id"] || metadata.author?.did;
@@ -2452,6 +2462,10 @@ class ProductionServer {
         }
         const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
         const pnIdentifier = tokenPayload.pnIdentifier || null;
+
+        if (pnIdentifier) {
+          if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload))) return;
+        }
 
         // CRITICAL: Only thumbnails have metadata
         // If fileId is a main file, find the thumbnail that references it
@@ -3479,6 +3493,10 @@ class ProductionServer {
 
         // Define userIdentifier for use in both new file creation and companion metadata reading
         const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+
+        if (tokenPayload.pnIdentifier) {
+          if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, tokenPayload.pnIdentifier))) return;
+        }
         
         if (!current) {
           // Create new metadata entry - fetch file info from Google Drive
@@ -7862,6 +7880,11 @@ class ProductionServer {
     // POST /api/feeds - Create a new feed
     this.app.post('/api/feeds', async (req, res) => {
       try {
+        const tokenPayload = getBearerTokenPayload(req);
+        if (tokenPayload?.pnIdentifier) {
+          if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite))) return;
+        }
+
         const { FeedService } = await import('./server/modules/feedService');
         const {
           feedName,
@@ -8056,6 +8079,11 @@ class ProductionServer {
     // PUT /api/feeds/:feedId - Update feed
     this.app.put('/api/feeds/:feedId', async (req, res) => {
       try {
+        const tokenPayload = getBearerTokenPayload(req);
+        if (tokenPayload?.pnIdentifier) {
+          if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite))) return;
+        }
+
         const { FeedService } = await import('./server/modules/feedService');
         const { feedId } = req.params;
         const { feedName, feedDescription, feedCategory, branding, creatorDid } = req.body;
@@ -8091,6 +8119,11 @@ class ProductionServer {
     // DELETE /api/feeds/:feedId - Delete feed
     this.app.delete('/api/feeds/:feedId', async (req, res) => {
       try {
+        const tokenPayload = getBearerTokenPayload(req);
+        if (tokenPayload?.pnIdentifier) {
+          if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite))) return;
+        }
+
         const { FeedService } = await import('./server/modules/feedService');
         const { feedId } = req.params;
         const { creatorDid } = req.body;
@@ -8878,6 +8911,8 @@ class ProductionServer {
         // After validation, pnIdentifier is guaranteed to be defined
         const userIdentifier: string = pnIdentifier; // Use ONLY pn identifier for credential lookup
         
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveRead))) return;
+        
         // CRITICAL: Only use pn identifier - no fallback to DID or public key
         // This prevents multiple API calls with different identifiers
         const identifierCandidates: string[] = [pnIdentifier];
@@ -9053,6 +9088,8 @@ class ProductionServer {
         }
         const userIdentifier = pnIdentifier;
         console.log(`[Upload] Using pn identifier only: ${pnIdentifier}`);
+
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload))) return;
         
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
@@ -9238,6 +9275,8 @@ class ProductionServer {
           });
         }
         const userIdentifier = pnIdentifier;
+
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload))) return;
         
         const identifierCandidates: string[] = [pnIdentifier];
         
@@ -9480,6 +9519,8 @@ class ProductionServer {
         }
         // After validation, pnIdentifier is guaranteed to be defined
         const userIdentifier: string = pnIdentifier;
+
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveRead))) return;
         
         // CRITICAL: Only use pn identifier - no fallback to DID or public key
         const identifierCandidates: string[] = [pnIdentifier];
@@ -9675,6 +9716,10 @@ class ProductionServer {
         if (tokenPayload) {
           userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
           pnIdentifier = tokenPayload.pnIdentifier || null;
+        }
+
+        if (tokenPayload && pnIdentifier) {
+          if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload))) return;
         }
 
         if (tokenPayload && pnIdentifier) {
@@ -9920,6 +9965,8 @@ class ProductionServer {
             error_description: 'Invalid or expired access token'
           });
         }
+
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload))) return;
 
         const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
         const { fileId } = req.params;
@@ -13570,6 +13617,8 @@ class ProductionServer {
           return res.status(400).json({ error: 'userPnIdentifier and fileId are required' });
         }
 
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, userPnIdentifier))) return;
+
         const { ProfileService } = await import('./server/modules/profileService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
@@ -13638,6 +13687,8 @@ class ProductionServer {
         if (!userPnIdentifier || !displayName) {
           return res.status(400).json({ error: 'userPnIdentifier and displayName are required' });
         }
+
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, userPnIdentifier))) return;
 
         const { ProfileService } = await import('./server/modules/profileService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
@@ -13929,6 +13980,7 @@ class ProductionServer {
     this.app.get('/api/recovery/:userPnIdentifier/custodians', async (req, res) => {
       try {
         const { userPnIdentifier } = req.params;
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.custodiansRead, userPnIdentifier))) return;
         const summary = await getRecoveryCustodianSummary(userPnIdentifier);
         if (!summary) return res.status(404).json({ error: 'Drive not connected' });
         return res.json({
@@ -13968,6 +14020,9 @@ class ProductionServer {
         if (!userPnIdentifier || !custodianId || !encryptedShare) {
           return res.status(400).json({ error: 'userPnIdentifier, custodianId, and encryptedShare are required' });
         }
+
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.recoveryCustodianManage, userPnIdentifier))) return;
+
         if (custodianshipCredential) {
           const { verifyCustodianshipCredential } = await import('./server/modules/recoveryZkService');
           const verified = verifyCustodianshipCredential(custodianshipCredential);
@@ -14015,6 +14070,8 @@ class ProductionServer {
         if (!userPnIdentifier) {
           return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
+
+        if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.profileRead, userPnIdentifier))) return;
 
         const { ProfileService } = await import('./server/modules/profileService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
@@ -14164,6 +14221,9 @@ class ProductionServer {
         if (!userPnIdentifier || !mlKemPublicKey) {
           return res.status(400).json({ error: 'userPnIdentifier and mlKemPublicKey are required' });
         }
+
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, userPnIdentifier))) return;
+
         const { ProfileService } = await import('./server/modules/profileService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
@@ -17914,6 +17974,8 @@ class ProductionServer {
           return res.status(401).json({ error: 'Unauthorized' });
         }
 
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
+
         if (!toolId || !permission) {
           return res.status(400).json({ error: 'toolId and permission are required' });
         }
@@ -18113,6 +18175,8 @@ class ProductionServer {
         if (!pnIdentifier || !dataPointId) {
           return res.status(400).json({ error: 'pnIdentifier and dataPointId are required' });
         }
+
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
 
         if (!dataPoint || dataPoint.dataPointId !== dataPointId) {
           return res.status(400).json({ error: 'Invalid data point' });

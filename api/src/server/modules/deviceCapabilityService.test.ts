@@ -1,0 +1,257 @@
+/**
+ * @jest-environment node
+ */
+import type { Request, Response } from 'express';
+import { defaultDevicePolicy, DEVICE_CAPABILITIES } from '@par-noir/device-auth';
+import { PNOAuthService } from './pnOAuthService';
+import { getRecoveryDriveContext } from './recoveryDriveContext';
+import { DeviceSheetsService } from './deviceSheetsService';
+import {
+  assertDeviceCapability,
+  gateOwnerRoute,
+  gateOwnerSelfRoute,
+} from './deviceCapabilityService';
+
+jest.mock('./pnOAuthService', () => ({
+  PNOAuthService: {
+    validateAccessToken: jest.fn(),
+  },
+}));
+
+jest.mock('./recoveryDriveContext', () => ({
+  getRecoveryDriveContext: jest.fn(),
+}));
+
+jest.mock('./deviceSheetsService', () => ({
+  DeviceSheetsService: {
+    getOrCreateSpreadsheet: jest.fn(),
+    readPolicy: jest.fn(),
+    listDevices: jest.fn(),
+    updateLastSeen: jest.fn(),
+  },
+}));
+
+const mockValidate = PNOAuthService.validateAccessToken as jest.MockedFunction<
+  typeof PNOAuthService.validateAccessToken
+>;
+const mockDriveContext = getRecoveryDriveContext as jest.MockedFunction<typeof getRecoveryDriveContext>;
+const mockGetSpreadsheet = DeviceSheetsService.getOrCreateSpreadsheet as jest.MockedFunction<
+  typeof DeviceSheetsService.getOrCreateSpreadsheet
+>;
+const mockReadPolicy = DeviceSheetsService.readPolicy as jest.MockedFunction<
+  typeof DeviceSheetsService.readPolicy
+>;
+const mockListDevices = DeviceSheetsService.listDevices as jest.MockedFunction<
+  typeof DeviceSheetsService.listDevices
+>;
+
+const PN = 'pn-testuser';
+const KEYED_AT = '2026-01-01T00:00:00.000Z';
+
+function bearerReq(overrides: Partial<Request> = {}): Request {
+  return {
+    method: 'POST',
+    path: '/api/profile/display-name',
+    headers: { authorization: 'Bearer test-token' },
+    body: { userPnIdentifier: PN },
+    ...overrides,
+  } as Request;
+}
+
+function mockRes(): Response & { statusCode?: number; body?: unknown } {
+  const res: Response & { statusCode?: number; body?: unknown } = {
+    status(code: number) {
+      res.statusCode = code;
+      return res;
+    },
+    json(payload: unknown) {
+      res.body = payload;
+      return res;
+    },
+  } as Response;
+  return res;
+}
+
+function setupDriveContext(policy: ReturnType<typeof defaultDevicePolicy>, isKeyed: boolean) {
+  mockValidate.mockReturnValue({ pnIdentifier: PN } as ReturnType<typeof PNOAuthService.validateAccessToken>);
+  mockDriveContext.mockResolvedValue({
+    token: 'drive-token',
+    metadataFolderId: 'folder',
+    pnIdentifier: PN,
+    accountId: 'acct',
+  } as Awaited<ReturnType<typeof getRecoveryDriveContext>>);
+  mockGetSpreadsheet.mockResolvedValue('sheet-id');
+  mockReadPolicy.mockResolvedValue(policy);
+  mockListDevices.mockResolvedValue(
+    isKeyed
+      ? [
+          {
+            deviceId: 'dev-1',
+            status: 'active',
+            devicePublicKey: 'pk',
+            label: 'Test',
+            createdAt: KEYED_AT,
+          },
+        ]
+      : []
+  );
+}
+
+describe('gateOwnerRoute', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns 401 when bearer token is missing', async () => {
+    const req = { headers: {}, method: 'GET', path: '/api/drive/files', body: {} } as Request;
+    const res = mockRes();
+
+    const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveRead);
+
+    expect(ctx).toBeNull();
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'unauthorized' });
+  });
+
+  it('returns 403 when bearer pn does not match targetPn', async () => {
+    mockValidate.mockReturnValue({ pnIdentifier: 'pn-other' } as ReturnType<
+      typeof PNOAuthService.validateAccessToken
+    >);
+    const req = bearerReq();
+    const res = mockRes();
+
+    const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, PN);
+
+    expect(ctx).toBeNull();
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({ error: 'forbidden' });
+  });
+
+  it('returns 403 device_key_required for immutable deny on unkeyed session', async () => {
+    setupDriveContext({ ...defaultDevicePolicy(), firstDeviceKeyedAt: KEYED_AT }, false);
+    const req = bearerReq({ path: '/api/recovery/custodians' });
+    const res = mockRes();
+
+    const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.recoveryCustodianManage, PN);
+
+    expect(ctx).toBeNull();
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({ error: 'device_key_required', reason: 'device_required' });
+  });
+
+  it('returns 403 capability_not_allowed when unkeyed and capability not in policy', async () => {
+    setupDriveContext({ ...defaultDevicePolicy(), firstDeviceKeyedAt: KEYED_AT }, false);
+    const req = bearerReq();
+    const res = mockRes();
+
+    const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, PN);
+
+    expect(ctx).toBeNull();
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({ error: 'capability_not_allowed', reason: 'capability_not_allowed' });
+  });
+
+  it('allows unkeyed session when capability is toggled in unkeyedAllows', async () => {
+    setupDriveContext(
+      {
+        ...defaultDevicePolicy(),
+        firstDeviceKeyedAt: KEYED_AT,
+        unkeyedAllows: [...defaultDevicePolicy().unkeyedAllows, DEVICE_CAPABILITIES.profileWrite],
+      },
+      false
+    );
+    const req = bearerReq();
+    const res = mockRes();
+
+    const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, PN);
+
+    expect(ctx).not.toBeNull();
+    expect(ctx?.isKeyed).toBe(false);
+    expect(res.statusCode).toBeUndefined();
+  });
+
+  it('allows keyed session with valid device proof headers', async () => {
+    setupDriveContext({ ...defaultDevicePolicy(), firstDeviceKeyedAt: KEYED_AT }, true);
+    const req = bearerReq({
+      headers: {
+        authorization: 'Bearer test-token',
+        'x-pn-device-id': 'dev-1',
+        'x-pn-device-signature': 'sig',
+        'x-pn-device-timestamp': String(Date.now()),
+        'x-pn-device-nonce': 'nonce',
+      },
+    });
+    const res = mockRes();
+
+    const verifyModule = await import('@par-noir/device-auth');
+    const verifySpy = jest.spyOn(verifyModule, 'verifyDeviceProof').mockResolvedValue(true);
+    const hashSpy = jest.spyOn(verifyModule, 'hashRequestBody').mockResolvedValue('hash');
+    jest.spyOn(verifyModule, 'isDeviceProofTimestampValid').mockReturnValue(true);
+
+    const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, PN);
+
+    expect(ctx).not.toBeNull();
+    expect(ctx?.isKeyed).toBe(true);
+    expect(res.statusCode).toBeUndefined();
+
+    verifySpy.mockRestore();
+    hashSpy.mockRestore();
+  });
+});
+
+describe('gateOwnerSelfRoute', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('skips gate when unauthenticated (public profile read)', async () => {
+    const req = { headers: {}, method: 'GET', path: `/api/profile/${PN}`, body: {} } as Request;
+    const res = mockRes();
+
+    const ok = await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.profileRead, PN);
+
+    expect(ok).toBe(true);
+    expect(res.statusCode).toBeUndefined();
+  });
+
+  it('blocks self profile read on unkeyed when profile.read removed from policy', async () => {
+    setupDriveContext(
+      {
+        ...defaultDevicePolicy(),
+        firstDeviceKeyedAt: KEYED_AT,
+        unkeyedAllows: defaultDevicePolicy().unkeyedAllows.filter(
+          (c) => c !== DEVICE_CAPABILITIES.profileRead
+        ),
+      },
+      false
+    );
+    const req = bearerReq({ method: 'GET', path: `/api/profile/${PN}` });
+    const res = mockRes();
+
+    const ok = await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.profileRead, PN);
+
+    expect(ok).toBe(false);
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({ error: 'capability_not_allowed', reason: 'capability_not_allowed' });
+  });
+});
+
+describe('assertDeviceCapability', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns 401 when drive registry context is unavailable', async () => {
+    mockValidate.mockReturnValue({ pnIdentifier: PN } as ReturnType<typeof PNOAuthService.validateAccessToken>);
+    mockDriveContext.mockResolvedValue(null);
+    const req = bearerReq();
+
+    const result = await assertDeviceCapability(req, DEVICE_CAPABILITIES.driveRead);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(401);
+      expect(result.error).toBe('unauthorized');
+    }
+  });
+});

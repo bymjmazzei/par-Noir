@@ -4,7 +4,7 @@ import {
   encryptOwnerVaultShare,
   serializeOwnerVaultShare,
 } from '@par-noir/recovery-crypto';
-import { deviceProofHeaders } from './deviceProofContext';
+import { ownerFetch, ownerGet } from './ownerApiService';
 
 export interface RecoveryCustodianApiRow {
   custodianId: string;
@@ -39,12 +39,7 @@ async function ownerMutatingFetch(
   path: string,
   body?: unknown
 ): Promise<Response> {
-  const proof = await deviceProofHeaders(method, path, body);
-  return fetch(`${API_ENDPOINT}${path}`, {
-    method,
-    headers: authHeaders(authToken, proof),
-    body: body != null ? JSON.stringify(body) : undefined,
-  });
+  return ownerFetch(authToken, method, path, body);
 }
 
 export async function persistRecoveryRequest(
@@ -177,10 +172,8 @@ export async function fetchPendingVaultShares(
   includeEncrypted = false
 ): Promise<Array<{ shareIndex: number; createdAt: string; encryptedShare?: string }>> {
   const q = includeEncrypted ? '?includeEncrypted=true' : '';
-  const res = await fetch(
-    `${API_ENDPOINT}/api/recovery/${encodeURIComponent(userPnIdentifier)}/vault/pending${q}`,
-    { headers: { Authorization: `Bearer ${authToken}` } }
-  );
+  const path = `/api/recovery/${encodeURIComponent(userPnIdentifier)}/vault/pending${q}`;
+  const res = await ownerGet(authToken, path);
   if (!res.ok) return [];
   const data = await res.json();
   return data.pending || [];
@@ -190,9 +183,8 @@ export async function fetchRecoveryCustodianSummary(
   userPnIdentifier: string,
   authToken: string
 ): Promise<RecoveryCustodianSummary | null> {
-  const res = await fetch(`${API_ENDPOINT}/api/recovery/${encodeURIComponent(userPnIdentifier)}/custodians`, {
-    headers: { Authorization: `Bearer ${authToken}` },
-  });
+  const path = `/api/recovery/${encodeURIComponent(userPnIdentifier)}/custodians`;
+  const res = await ownerGet(authToken, path);
   if (!res.ok) return null;
   return res.json();
 }
