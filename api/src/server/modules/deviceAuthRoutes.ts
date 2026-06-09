@@ -13,14 +13,8 @@ import {
   getDeviceRegistrySummary,
   requireKeyedDevice,
 } from './deviceCapabilityService';
+import { consumePairingNonce, storePairingNonce } from './devicePairingNonceStore';
 
-interface PairingNonceEntry {
-  pnIdentifier: string;
-  expiresAt: number;
-  createdByDeviceId: string;
-}
-
-const pairingNonces = new Map<string, PairingNonceEntry>();
 const NONCE_TTL_MS = 5 * 60 * 1000;
 
 function bearerPn(req: Request): string | null {
@@ -140,7 +134,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
       }
 
       const nonce = crypto.randomUUID();
-      pairingNonces.set(nonce, {
+      await storePairingNonce(nonce, {
         pnIdentifier: pn,
         expiresAt: Date.now() + NONCE_TTL_MS,
         createdByDeviceId: gate.ctx.deviceRow!.deviceId,
@@ -194,11 +188,10 @@ export function registerDeviceAuthRoutes(app: Application): void {
         if (!pairingNonce || typeof pairingNonce !== 'string') {
           return res.status(403).json({ error: 'pairing_nonce_required' });
         }
-        const entry = pairingNonces.get(pairingNonce);
-        if (!entry || entry.pnIdentifier !== pn || entry.expiresAt < Date.now()) {
+        const entry = await consumePairingNonce(pairingNonce);
+        if (!entry || entry.pnIdentifier !== pn) {
           return res.status(403).json({ error: 'invalid_pairing_nonce' });
         }
-        pairingNonces.delete(pairingNonce);
       }
 
       const now = new Date().toISOString();

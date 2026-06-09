@@ -5208,6 +5208,8 @@ class ProductionServer {
         // Normalize to pnIdentifier format
         const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
 
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
+
         if (!credentials) {
           return res.status(400).json({ error: 'Missing credentials in request body' });
         }
@@ -5583,6 +5585,8 @@ class ProductionServer {
         // Normalize to pnIdentifier format
         const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
 
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveRead, pnIdentifier))) return;
+
         const { isPnRevokedForNetwork } = await import('./server/modules/identitySuccessionService');
         if (isPnRevokedForNetwork(pnIdentifier)) {
           return res.status(403).json({
@@ -5829,6 +5833,7 @@ class ProductionServer {
 
         // Normalize pn identifier
         const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
+        if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.driveRead, pnIdentifier))) return;
         const contentClassFilter = req.query.contentClass as string | undefined;
 
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
@@ -5907,6 +5912,8 @@ class ProductionServer {
 
         // Normalize pn identifier
         const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
+
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, pnIdentifier))) return;
 
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         // Get user credentials to build token object
@@ -11152,6 +11159,7 @@ class ProductionServer {
         if (!userPnIdentifier) {
           return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, userPnIdentifier))) return;
 
         const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
@@ -11451,6 +11459,7 @@ class ProductionServer {
         if (!userPnIdentifier) {
           return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, userPnIdentifier))) return;
 
         const { MessageRequestSheetsService } = await import('./server/modules/messageRequestSheetsService');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
@@ -11531,6 +11540,7 @@ class ProductionServer {
             error_description: 'Invalid or expired access token'
           });
         }
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, tokenPayload.pnIdentifier))) return;
         const accountId = req.query.accountId as string | undefined;
         const { ensureMessagesAttachmentsFolder } = await import('./server/modules/messagingMediaService');
         const folderId = await ensureMessagesAttachmentsFolder(tokenPayload.pnIdentifier, accountId);
@@ -11550,6 +11560,7 @@ class ProductionServer {
         if (!userPnIdentifier) {
           return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, userPnIdentifier))) return;
 
         const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
@@ -11727,6 +11738,9 @@ class ProductionServer {
           console.error('[GetConversation] Missing required parameters');
           return res.status(400).json({ error: 'userPnIdentifier and participantPnIdentifier are required' });
         }
+
+        const msgCap = req.method === 'POST' ? DEVICE_CAPABILITIES.messagesSend : DEVICE_CAPABILITIES.messagesRead;
+        if (!(await gateOwnerRoute(req, res, msgCap, userPnIdentifier))) return;
 
         const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
@@ -12024,6 +12038,7 @@ class ProductionServer {
         if (!fromPnIdentifier || !toPnIdentifier) {
           return res.status(400).json({ error: 'fromPnIdentifier and toPnIdentifier are required' });
         }
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, fromPnIdentifier))) return;
         if (!isE2E) {
           return res.status(400).json({
             error: 'encryptedContent with cryptoVersion 2 is required (client-side E2E only)'
@@ -12911,6 +12926,7 @@ class ProductionServer {
         if (!fromPnIdentifier || !toPnIdentifier) {
           return res.status(400).json({ error: 'fromPnIdentifier and toPnIdentifier are required' });
         }
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, fromPnIdentifier))) return;
 
         const storedContent = encryptedContent || content;
         if (!storedContent) {
@@ -13015,6 +13031,7 @@ class ProductionServer {
         if (!requestId || !userPnIdentifier || typeof accept !== 'boolean') {
           return res.status(400).json({ error: 'requestId, userPnIdentifier, and accept are required' });
         }
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, userPnIdentifier))) return;
 
         const { MessageRequestSheetsService } = await import('./server/modules/messageRequestSheetsService');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
@@ -13098,6 +13115,7 @@ class ProductionServer {
         if (!messageId || !userPnIdentifier) {
           return res.status(400).json({ error: 'messageId and userPnIdentifier are required' });
         }
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, userPnIdentifier))) return;
 
         const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
@@ -13208,6 +13226,7 @@ class ProductionServer {
         if (!messageId || !userPnIdentifier) {
           return res.status(400).json({ error: 'messageId and userPnIdentifier are required' });
         }
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, userPnIdentifier))) return;
 
         const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
@@ -13335,6 +13354,7 @@ class ProductionServer {
         if (!userPnIdentifier || !participantPnIdentifier) {
           return res.status(400).json({ error: 'userPnIdentifier and participantPnIdentifier are required' });
         }
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, userPnIdentifier))) return;
 
         const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
         const { ConnectionsService } = await import('./server/modules/connectionsService');
@@ -17731,6 +17751,8 @@ class ProductionServer {
         // Normalize pn identifier
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
+        if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
+
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
         if (!userCredentials?.credentials) {
@@ -17802,6 +17824,8 @@ class ProductionServer {
 
         // Normalize pn identifier
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
@@ -17880,12 +17904,14 @@ class ProductionServer {
           return res.status(401).json({ error: 'Unauthorized' });
         }
 
+        // Normalize pn identifier
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
+
         const { ThirdPartyPermissionsService } = await import('./server/modules/thirdPartyPermissionsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-
-        // Normalize pn identifier
-        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);

@@ -259,28 +259,6 @@ export async function acceptRecoveryCustodianship(
   if (!res.ok) throw new Error('Failed to accept custodianship on owner vault');
 }
 
-/** @deprecated Use assignRecoveryCustodian after vault initialize */
-export async function persistCustodianVault(
-  userPnIdentifier: string,
-  authToken: string,
-  payload: {
-    custodianId: string;
-    name: string;
-    custodianType: string;
-    encryptedShare: string;
-    shareIndex: number;
-    custodianshipCredential: string;
-    unrevokable?: boolean;
-  }
-): Promise<void> {
-  const res = await fetch(`${API_ENDPOINT}/api/recovery/custodians`, {
-    method: 'POST',
-    headers: authHeaders(authToken),
-    body: JSON.stringify({ userPnIdentifier, ...payload, status: 'invited' }),
-  });
-  if (!res.ok) throw new Error('Failed to persist custodian vault entry');
-}
-
 export async function encryptSharesForVault(
   shares: ShamirShare[],
   identityPublicKey: string

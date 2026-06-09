@@ -15,6 +15,8 @@ interface CreateFeedPostModalProps {
   onClose: () => void;
   onPostCreated?: (post: FeedPost) => void;
   authenticatedUser: { id: string } | null;
+  canCreatePost?: boolean;
+  blockedMessage?: string;
 }
 
 export const CreateFeedPostModal: React.FC<CreateFeedPostModalProps> = ({
@@ -22,7 +24,9 @@ export const CreateFeedPostModal: React.FC<CreateFeedPostModalProps> = ({
   isOpen,
   onClose,
   onPostCreated,
-  authenticatedUser
+  authenticatedUser,
+  canCreatePost = true,
+  blockedMessage,
 }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +36,10 @@ export const CreateFeedPostModal: React.FC<CreateFeedPostModalProps> = ({
   const handleSubmit = async (content: EnhancedPostContent) => {
     if (!authenticatedUser) {
       setError('User not authenticated');
+      return;
+    }
+    if (!canCreatePost) {
+      setError(blockedMessage || 'This action requires a keyed device.');
       return;
     }
 

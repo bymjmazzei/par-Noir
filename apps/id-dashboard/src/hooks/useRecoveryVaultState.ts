@@ -14,11 +14,17 @@ export function useRecoveryVaultState(params: {
   publicKey?: string | null;
   recoveryThreshold?: number;
   recoveryTotalShares?: number;
+  /** When false, skip vault refresh (e.g. unkeyed session without custodians.read). */
+  enabled?: boolean;
 }) {
   const [summary, setSummary] = useState<RecoveryCustodianSummary | null>(null);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
+    if (params.enabled === false) {
+      setSummary(null);
+      return;
+    }
     if (!params.apiToken || !params.userPnIdentifier) {
       setSummary(null);
       return;
@@ -44,7 +50,7 @@ export function useRecoveryVaultState(params: {
     } finally {
       setLoading(false);
     }
-  }, [params.apiToken, params.userPnIdentifier, params.publicKey, params.recoveryTotalShares]);
+  }, [params.apiToken, params.userPnIdentifier, params.publicKey, params.recoveryTotalShares, params.enabled]);
 
   useEffect(() => {
     void refresh();

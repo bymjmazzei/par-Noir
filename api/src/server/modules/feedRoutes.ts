@@ -8,6 +8,7 @@ import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { FeedService, Feed, FeedRow } from './feedService';
 import { getDatabasePool } from '../utils/database';
 import { feedPlatformSubscriptionsDisabledPayload } from '../utils/feedSubscriptionPolicy';
+import { gateOwnerRoute, DEVICE_CAPABILITIES } from './deviceCapabilityService';
 
 export interface FeedPost {
   id: string;
@@ -63,6 +64,8 @@ export function setupFeedRoutes(app: any) {
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
+
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite))) return;
 
       // Verify user has write access to the feed (owner or delegate with write permission)
       const feed = await FeedService.getFeedById(feedId);
@@ -217,6 +220,8 @@ export function setupFeedRoutes(app: any) {
         return res.status(401).json({ error: 'Invalid token' });
       }
 
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite))) return;
+
       // Verify user has write access to the feed (owner or delegate with write permission)
       const feed = await FeedService.getFeedById(feedId);
       if (!feed) {
@@ -351,6 +356,8 @@ export function setupFeedRoutes(app: any) {
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
+
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite))) return;
 
       // Verify user has write access to the feed (owner or delegate with write permission)
       const feed = await FeedService.getFeedById(feedId);
@@ -540,6 +547,8 @@ export function setupFeedRoutes(app: any) {
         return res.status(401).json({ error: 'Invalid token' });
       }
 
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite))) return;
+
       // Verify user has write access to the feed (owner or delegate with write permission)
       const feed = await FeedService.getFeedById(feedId);
       if (!feed) {
@@ -612,6 +621,8 @@ export function setupFeedRoutes(app: any) {
         return res.status(401).json({ error: 'Invalid token' });
       }
 
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite))) return;
+
       // Verify user has write access to the feed (owner or delegate with write permission)
       const feed = await FeedService.getFeedById(feedId);
       if (!feed) {
@@ -655,6 +666,8 @@ export function setupFeedRoutes(app: any) {
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
+
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite))) return;
 
       // Verify user has write access to the feed (owner or delegate with write permission)
       const feed = await FeedService.getFeedById(feedId);

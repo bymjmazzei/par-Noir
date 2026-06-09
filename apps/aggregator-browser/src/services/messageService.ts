@@ -9,20 +9,7 @@ import { inboxCacheService } from './inboxCacheService';
 import { encryptOutgoingMessage, decryptIncomingMessage } from './dmCryptoClient';
 import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
 import { encryptMessageRequest, decryptMessageRequest } from '@par-noir/dm-crypto';
-
-// Helper function to get auth headers
-function getAuthHeaders(): HeadersInit {
-  const session = PNOAuthService.loadSession();
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json'
-  };
-  
-  if (session?.accessToken) {
-    headers['Authorization'] = `Bearer ${session.accessToken}`;
-  }
-  
-  return headers;
-}
+import { messageAuthHeaders, messageFetch } from './messageAuthFetch';
 
 export interface Message {
   messageId: string;
@@ -83,9 +70,8 @@ export interface MessageThread {
  */
 export async function getMessages(userPnIdentifier: string): Promise<Message[]> {
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/messages/inbox?userPnIdentifier=${userPnIdentifier}`, {
-      headers: getAuthHeaders()
-    });
+    const path = `/api/messages/inbox?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`;
+    const response = await messageFetch(path, { method: 'GET' });
 
     if (!response.ok) {
       throw new Error('Failed to load messages');
@@ -171,9 +157,8 @@ export async function getInboxThreads(userPnIdentifier: string): Promise<Message
  */
 export async function getMessageThreads(userPnIdentifier: string): Promise<MessageThread[]> {
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/messages/conversations?userPnIdentifier=${userPnIdentifier}`, {
-      headers: getAuthHeaders()
-    });
+    const path = `/api/messages/conversations?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`;
+    const response = await messageFetch(path, { method: 'GET' });
 
     if (!response.ok) {
       throw new Error('Failed to load message threads');
@@ -238,19 +223,18 @@ export async function getConversationMessages(
   };
 
   const response = hasCached
-    ? await fetch(`${API_ENDPOINT}/api/messages/conversation`, {
+    ? await messageFetch('/api/messages/conversation', {
         method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(body)
+        bodyObject: body,
       })
-    : await fetch(
-        `${API_ENDPOINT}/api/messages/conversation?${new URLSearchParams({
+    : await messageFetch(
+        `/api/messages/conversation?${new URLSearchParams({
           userPnIdentifier,
           participantPnIdentifier,
           ...(limit != null && { limit: String(limit) }),
           ...(offset != null && { offset: String(offset) })
         }).toString()}`,
-        { headers: getAuthHeaders() }
+        { method: 'GET' }
       );
 
   if (!response.ok) {
@@ -329,16 +313,16 @@ export async function sendMessage(
   const encryptedContent = await encryptOutgoingMessage(content, connId, kem);
 
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/messages/send`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
+    const sendPayload = {
         fromPnIdentifier,
         toPnIdentifier,
         encryptedContent,
         cryptoVersion: 2,
         ...(mediaFileId ? { mediaFileId, ...(mediaMimeType ? { mediaMimeType } : {}) } : {})
-      })
+      };
+    const response = await messageFetch('/api/messages/send', {
+      method: 'POST',
+      bodyObject: sendPayload,
     });
 
     if (!response.ok) {
@@ -416,16 +400,15 @@ export async function sendMessageRequest(
     const recipientKey = await fetchRecipientMlKemPublicKey(toPnIdentifier);
     const { encryptedContent, kemCiphertext } = await encryptMessageRequest(content, recipientKey);
 
-    const response = await fetch(`${API_ENDPOINT}/api/messages/requests`, {
+    const response = await messageFetch('/api/messages/requests', {
       method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
+      bodyObject: {
         fromPnIdentifier,
         toPnIdentifier,
         encryptedContent,
         kemCiphertext,
         cryptoVersion: 2
-      })
+      },
     });
 
     if (!response.ok) {
@@ -445,9 +428,10 @@ export async function sendMessageRequest(
  */
 export async function getMessageRequests(userPnIdentifier: string): Promise<MessageRequest[]> {
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/messages/requests?userPnIdentifier=${userPnIdentifier}`, {
-      headers: getAuthHeaders()
-    });
+    const response = await messageFetch(
+      `/api/messages/requests?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
+      { method: 'GET' }
+    );
 
     if (!response.ok) {
       throw new Error('Failed to load message requests');
@@ -487,13 +471,9 @@ export async function respondToRequest(
   accept: boolean
 ): Promise<void> {
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/messages/requests/${requestId}/respond`, {
+    const response = await messageFetch(`/api/messages/requests/${requestId}/respond`, {
       method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        userPnIdentifier,
-        accept
-      })
+      bodyObject: { userPnIdentifier, accept },
     });
 
     if (!response.ok) {
@@ -510,13 +490,9 @@ export async function respondToRequest(
  */
 export async function markAsRead(messageId: string, userPnIdentifier: string, participantPnIdentifier?: string): Promise<void> {
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/messages/${messageId}/read`, {
+    const response = await messageFetch(`/api/messages/${messageId}/read`, {
       method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        userPnIdentifier,
-        participantPnIdentifier // Required for Google Sheets to find the right conversation sheet
-      })
+      bodyObject: { userPnIdentifier, participantPnIdentifier },
     });
 
     if (!response.ok) {
@@ -533,12 +509,9 @@ export async function markAsRead(messageId: string, userPnIdentifier: string, pa
  */
 export async function deleteMessage(messageId: string, userPnIdentifier: string): Promise<void> {
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/messages/${messageId}`, {
+    const response = await messageFetch(`/api/messages/${messageId}`, {
       method: 'DELETE',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        userPnIdentifier
-      })
+      bodyObject: { userPnIdentifier },
     });
 
     if (!response.ok) {
@@ -557,12 +530,9 @@ export async function deleteConversation(
   userPnIdentifier: string,
   participantPnIdentifier: string
 ): Promise<void> {
-  const response = await fetch(
-    `${API_ENDPOINT}/api/messages/conversation/${participantPnIdentifier}?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
-    {
-      method: 'DELETE',
-      headers: getAuthHeaders()
-    }
+  const response = await messageFetch(
+    `/api/messages/conversation/${participantPnIdentifier}?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
+    { method: 'DELETE' }
   );
 
   if (!response.ok) {

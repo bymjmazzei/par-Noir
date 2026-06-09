@@ -24,6 +24,7 @@
     "@capacitor/share": "^6.0.0",
     "@capacitor/splash-screen": "^6.0.0",
     "@capacitor/status-bar": "^6.0.0",
+    "@par-noir/device-client": "file:../../packages/device-client",
     "@par-noir/aggregator-domain": "file:../../packages/aggregator-domain",
     "@par-noir/dm-crypto": "file:../../packages/dm-crypto",
     "@par-noir/identity-migration": "file:../../packages/identity-migration",

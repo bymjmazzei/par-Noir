@@ -18,6 +18,8 @@
 - Search over public content metadata + **profile search** (`GET /api/profile/search`) + **personal history** (`GET /api/search/personal`)
 - **Socket.IO** hints for messages/notifications (`useRealtimeSync`; polling reduced when connected)
 - Branded feed: owner settings + **pinned top post** via `GET /api/feeds/:feedId/top-post`
+- **Device keys (L4):** `@par-noir/device-client`, `KeyDeviceBanner`, `messageAuthFetch` with device proof; policy enforced server-side on `/api/messages/*`
+- Discover feed filtering (niche + top rails), content preferences panel, Me page thoughts tab, edit metadata modal, music registry attach on upload/edit
 
 ### Policy
 - Platform paid feed subscriptions — **deferred** (410); future model is creator-connected payment gateways (see `docs/business/FEEDS_AND_THIRD_PARTY_MONETIZATION.md`)
@@ -31,14 +33,18 @@
 - **Integrator webhooks** — `integrator_webhook_subscriptions`, developer portal CRUD, HMAC `X-PN-Signature` delivery on `data_point_request.approved` / `declined`
 - **Recovery** Drive sheets: custodian roster + recovery requests (`/api/recovery/*`); encrypted share + proof payloads on share submit
 - **`POST /api/storage/migrate-volume-id`** — legacy passcode-based id → canonical id (+ `driveFolderId` patch)
-- Prism, DMCA, monetization (Stripe when configured), music registry
+- Prism, DMCA, monetization (Stripe when configured), **music registry phases A–D** (catalog, CRUD, post-attach for creator-fund 75/25)
+- **Creator fund:** period close, bounty allocation, Stripe Connect payouts (when configured)
 - Developer portal APIs (OAuth clients, API keys, proposals, webhooks)
+- **Device auth:** capability gates on owner routes including feeds, storage credentials, messages; Redis-backed pairing nonces when `REDIS_URL` set
 - Push notifications, activity ledger, realtime `new_notification` events
 - **`BLOCKED_DATA_POINTS`** centralized in `@par-noir/standard-data-points`
 
 ### Ops
 - Production Railway: set **`SOCKET_REQUIRE_AUTH=true`** for Socket.IO
 - Legacy `POST /api/auth/verify` — deprecated
+- Health smoke: `cd api && API_BASE_URL=https://api.parnoir.com npm run smoke:health` (`/health` + `/health/ready`)
+- Device-auth E2E: see `docs/developer/DEVICE_AUTH.md` § Manual E2E checklist
 
 ## Layer 2 — Dashboard (`pn.parnoir.com`)
 
@@ -51,6 +57,7 @@
 - Sub-pN / owned assets, Stripe monetization, OAuth inline for API token
 - Identity succession panel (read-only public status)
 - Auto **`migrateVolumeId`** on unlock when legacy id detected
+- **Device auth (L2):** `useDeviceAuthState`, `DeviceManagementPanel`, `ownerApiService` with device proof on owner routes; storage UI gates all Drive mutations; recovery/profile capability flags wired in `App.tsx`
 
 ## Layer 1 — Identity
 

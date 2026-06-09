@@ -145,6 +145,12 @@ export function useAuthAndSession({
         if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
           setUnlocked(userInfo.pn_identifier);
           try {
+            const { wireLocalDeviceProofSigner } = await import('../services/deviceService');
+            await wireLocalDeviceProofSigner(userInfo.pn_identifier, tokenResponse.access_token);
+          } catch {
+            /* non-fatal — messaging may prompt to key device */
+          }
+          try {
             const profile = await getUserProfile(userInfo.pn_identifier);
             if (profile.displayName) {
               updateDisplayName(profile.displayName);

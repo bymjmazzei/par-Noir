@@ -51,14 +51,15 @@ Verified in `deviceCapabilityService.ts`; applied via `assertDeviceCapability` /
 2. **Additional devices:** Keyed device creates nonce → QR/deep link → new device unlocks → generates keypair → register with `pairingNonce`.
 3. **Revoke:** Keyed device → `POST /api/devices/:deviceId/revoke`.
 
-Pairing nonces expire in 5 minutes and are single-use (in-memory on API instance).
+Pairing nonces expire in 5 minutes and are single-use. When `REDIS_URL` is set, nonces are stored in Redis (`pn:device-pairing:{nonce}`) for multi-instance API deploys; otherwise an in-memory fallback is used (single-instance dev).
 
 ## Dashboard integration
 
 - `useDeviceAuthState` — registry, policy, `isKeyedSession`, `can(capability)`
-- `deviceApiService` / `deviceKeyStorage` — register, pair, sign proofs
+- `deviceApiService` / `@par-noir/device-client` — register, pair, sign proofs
 - `DeviceManagementPanel` — key device, QR pairing, revoke, unkeyed permission toggles
-- UI gates in `App.tsx` (export, custodian manage, rotation) mirror server policy
+- UI gates in `App.tsx` (export, custodian manage, rotation, profile read, custodian read) mirror server policy
+- `FileStorageAggregator` — all mutating Drive paths gated with `drive.read` / `drive.upload`; upload/refresh controls disabled when blocked
 
 ## API routes
 
@@ -133,8 +134,14 @@ After the first device is keyed, owner API routes enforce `evaluateDeviceCapabil
 | `recovery.vault.write` | `POST /api/recovery/vault/*` |
 | `identity.migrate` | `POST/PATCH /api/identity/migration/*` writes |
 | `device.manage` | Device registry policy, pairing, revoke, heartbeat |
+| `messages.read` | `GET /api/messages/inbox`, `GET /api/messages/conversations`, `GET /api/messages/conversation`, `GET /api/messages/requests`, `GET /api/messages/attachments-folder` |
+| `messages.send` | `POST /api/messages/send`, `POST /api/messages/conversation`, `POST /api/messages/requests`, `POST /api/messages/requests/:id/respond`, `POST /api/messages/:id/read`, `DELETE /api/messages/:id`, `DELETE /api/messages/conversation/:participant` |
+| `drive.read` (storage) | `GET /api/storage/credentials/:identityId`, `GET /api/storage/owner-index/:identityId` |
+| `profile.write` (storage) | `PUT /api/storage/credentials/:identityId` |
+| `profile.write` (feeds) | `POST/PUT/DELETE /api/feeds/:feedId/posts`, `PUT /api/feeds/:feedId/top-post` |
+| `profile.read` (self) | `GET /api/users/:pn/zkp-data-points`, `GET /api/users/:pn/third-party-permissions` |
 
-**Deferred:** `messages.read` / `messages.send` API gates (aggregator-browser has no device keys yet). Policy toggles for messaging are labeled in the dashboard; enforcement ships with L4 device keying.
+**L4 (aggregator-browser):** `@par-noir/device-client` stores keys in IndexedDB; `KeyDeviceBanner` prompts to key the browser; `messageAuthFetch` attaches bearer + device proof on message routes.
 
 **Deferred:** `oauth.write` on developer-portal routes (separate app without IndexedDB device keys).
 
@@ -144,3 +151,7 @@ After the first device is keyed, owner API routes enforce `evaluateDeviceCapabil
 2. Toggle “Upload to Drive” for unkeyed → unkeyed session can upload; toggle off → 403.
 3. Keyed session with device proof: profile edit, drive upload, custodian assign succeed.
 4. Legacy `POST /api/recovery/custodians` without device proof returns 403 after first device keyed.
+5. Unkeyed dashboard: upload/refresh disabled in storage UI; direct Google mutations blocked client-side.
+6. `GET/PUT /api/storage/credentials/:identityId` without bearer or pn mismatch → 401/403.
+7. Aggregator: unlock → key device → inbox/send succeed; unkeyed restricted policy → message routes 403.
+8. Feed post create without `profile.write` → 403 (dashboard + API).

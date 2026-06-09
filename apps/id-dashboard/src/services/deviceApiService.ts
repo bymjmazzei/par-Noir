@@ -1,10 +1,7 @@
 import { API_ENDPOINT } from '../config/api';
 import {
   generateDeviceKeypair,
-  hashRequestBody,
-  signDeviceProof,
   type DevicePolicy,
-  type DeviceProofPayload,
 } from '@par-noir/device-auth';
 import { deviceProofHeaders } from './deviceProofContext';
 import {
@@ -13,6 +10,7 @@ import {
   persistNewKeypair,
   type StoredDeviceRegistration,
 } from './deviceKeyStorage';
+import { buildLocalDeviceProofHeaders as buildProofHeaders } from '@par-noir/device-client';
 
 export interface DeviceRegistrySummary {
   devices: Array<{
@@ -219,28 +217,7 @@ export async function buildLocalDeviceProofHeaders(
   path: string,
   body?: unknown
 ): Promise<Record<string, string>> {
-  const reg = await loadDeviceRegistration(pnIdentifier);
-  if (!reg) return {};
-  const privateKey = await importStoredPrivateKey(reg);
-  const bodyHash = await hashRequestBody(body);
-  const timestamp = Date.now();
-  const nonce = crypto.randomUUID();
-  const payload: DeviceProofPayload = {
-    pnIdentifier,
-    deviceId: reg.deviceId,
-    method,
-    path,
-    bodyHash,
-    timestamp,
-    nonce,
-  };
-  const signature = await signDeviceProof(privateKey, payload);
-  return {
-    'X-PN-Device-Id': reg.deviceId,
-    'X-PN-Device-Signature': signature,
-    'X-PN-Device-Timestamp': String(timestamp),
-    'X-PN-Device-Nonce': nonce,
-  };
+  return buildProofHeaders(pnIdentifier, method, path, body);
 }
 
 export async function getLocalDeviceRegistration(

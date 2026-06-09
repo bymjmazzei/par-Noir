@@ -6,6 +6,7 @@ import type { Application, Response } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddleware';
 import { OwnedAssetService, type OwnedAssetKind } from './ownedAssetService';
 import { safeClientErrorMessage } from '../utils/safeError';
+import { gateOwnerRoute, gateOwnerSelfRoute, DEVICE_CAPABILITIES } from './deviceCapabilityService';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -27,6 +28,7 @@ export function registerOwnedAssetRoutes(app: Application): void {
       if (!pn) {
         return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn identifier on token' });
       }
+      if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.profileRead, pn))) return;
       const assets = await OwnedAssetService.listByRoot(pn);
       return res.json({ assets });
     } catch (e: unknown) {
@@ -44,6 +46,7 @@ export function registerOwnedAssetRoutes(app: Application): void {
       if (!pn) {
         return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn identifier on token' });
       }
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pn))) return;
       const body = req.body || {};
       const kind = String(body.kind || '').trim() as OwnedAssetKind;
       if (!KINDS.has(kind) || kind === 'api_key' || kind === 'human') {
@@ -79,6 +82,7 @@ export function registerOwnedAssetRoutes(app: Application): void {
       if (!pn) {
         return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn identifier on token' });
       }
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pn))) return;
       const ok = await OwnedAssetService.revokeAsset(req.params.id, pn);
       if (!ok) return res.status(404).json({ error: 'not_found', error_description: 'Asset not found or already revoked' });
       return res.json({ ok: true });
@@ -139,6 +143,7 @@ export function registerOwnedAssetRoutes(app: Application): void {
       if (!pn) {
         return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn identifier on token' });
       }
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pn))) return;
       const body = req.body || {};
       const id = await OwnedAssetService.addDelegation({
         ownedAssetId: req.params.id,
@@ -171,6 +176,7 @@ export function registerOwnedAssetRoutes(app: Application): void {
       if (!pn) {
         return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn identifier on token' });
       }
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pn))) return;
       const ok = await OwnedAssetService.revokeDelegation(req.params.delegationId, pn);
       if (!ok) return res.status(404).json({ error: 'not_found' });
       return res.json({ ok: true });
@@ -189,6 +195,7 @@ export function registerOwnedAssetRoutes(app: Application): void {
       if (!pn) {
         return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn identifier on token' });
       }
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pn))) return;
       const cid = String((req.body || {}).cid || '').trim();
       if (!cid) {
         return res.status(400).json({ error: 'invalid_request', error_description: 'cid required' });

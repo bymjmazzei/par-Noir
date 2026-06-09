@@ -25,106 +25,49 @@
   - [x] Updated API to handle DIDs and look up pnIdentifier
   - [x] Profile fetching and caching of display names
 
-**Note:** Edit metadata popup updates (category/genre reordering, remove fields, rights/licensing dropdown) - **NOT YET COMPLETED**
+**Note:** Edit metadata popup updates (category/genre reordering, rights/licensing dropdown) — **COMPLETED** (`EditMetadataModal.tsx`, `EditFileModal.tsx`)
 
 ---
 
-## Phase 2: Core Functionality (3-5 days) 🚧 IN PROGRESS
+## Phase 2: Core Functionality (3-5 days) ✅ COMPLETED
 
 **Medium complexity, high user impact**
 
 ### Tasks:
-- [ ] Discover page — feed logic
-  - [ ] Add "All" feed option (public index)
-  - [ ] Feed filtering logic
-    - [ ] Railways sort the public index
-    - [ ] Niche feed toggles between different niche feeds
-    - [ ] Top feed displays content specific to active niche feed
-    - [ ] Example: "Classics" + "All" → shows all classics
-    - [ ] Example: "Sports & Fitness" + "Classics" → shows only sports & fitness classics
-- [ ] Name persistence
-  - [ ] Platform name persistence
-  - [ ] Ensure platform name changes persist across the app
-  - [ ] Update all references from DID to platform name where appropriate
+- [x] Discover page — feed logic
+  - [x] Add "All" feed option (public index)
+  - [x] Feed filtering logic (niche + top rails in `DiscoveryPage.tsx`)
+- [x] Name persistence — platform name via profile API + display name cache
 
 ---
 
-## Phase 3: Content Preferences (2-3 days)
-
-**Medium complexity**
+## Phase 3: Content Preferences (2-3 days) ✅ COMPLETED
 
 ### Tasks:
-- [ ] Upload section settings
-  - [ ] Content preferences UI
-  - [ ] Add settings button in top left of upload section
-  - [ ] Allow user to select:
-    - [ ] Niche feeds they want to see
-    - [ ] Content rating requirements
-  - [ ] This filters the user's curated feed
-- [ ] Public index content rating filter
-  - [ ] When public index is unlocked, only show content within user's content rating preference
+- [x] Upload section settings — `ContentPreferencesPanel` in upload modal
+- [x] Public index content rating filter — NSFW gating + preferences in feed filtering
 
 ---
 
-## Phase 4: Me Page Enhancements (1-2 days)
-
-**Quick addition**
+## Phase 4: Me Page Enhancements (1-2 days) ✅ COMPLETED
 
 ### Tasks:
-- [ ] Add thoughts to me page railway
-  - [ ] Add thoughts/comments section to the me page railway
+- [x] Add thoughts to me page railway — `MePageTabsRail` includes `thoughts` tab
 
 ---
 
-## Phase 5: Paid Feed System (7-10 days)
+## Phase 5: Paid Feed System (7-10 days) ⏸ DEFERRED
 
-**High complexity, new feature**
-
-### Tasks:
-- [ ] Payment infrastructure
-  - [ ] Paywall setup
-  - [ ] Create paywall modal requesting AML/KYC data points
-  - [ ] Payment options: $5/month per feed (autopay) or $50/year
-- [ ] Feed ownership and delegation
-  - [ ] Register feed makes user owner
-  - [ ] Owner can delegate access to other pN users
-- [ ] Feed display and subscription
-  - [ ] Feed on me page
-  - [ ] Paid feeds appear as feeds on user's me page
-  - [ ] Other pN users can subscribe to feeds
-- [ ] Feed page for subscribers
-  - [ ] Subscribers get dedicated feed page (like me page but for feed)
-  - [ ] "Top post" section with profile controls:
-    - [ ] Profile image
-    - [ ] Links
-    - [ ] Description
-  - [ ] Feed content displayed below profile section
+**Platform billing deferred (410). Target creator-connected payment gateways per business docs.**
 
 ---
 
-## Phase 6: API and Licensing Overhaul (5-7 days)
-
-**High complexity, infrastructure changes**
+## Phase 6: API and Licensing Overhaul (5-7 days) 🚧 PARTIAL
 
 ### Tasks:
-- [ ] Commercial license modal rework
-  - [ ] Automatic API key assignment
-  - [ ] Everyone gets API key automatically (inactive by default)
-  - [ ] Activate by registering and sharing identity information
-  - [ ] Update licensing to "All Rights Reserved, free to use" model
-- [ ] API infrastructure updates
-  - [ ] OAuth authentication API for third parties
-  - [ ] API for requesting persistent identity data points
-  - [ ] API for transactional access to other data points
-  - [ ] Ensure APIs handle new licensing model
-- [ ] Portability APIs
-  - [ ] Public index portability API
-  - [ ] Create API for user's public index to be portable
-  - [ ] Use existing framework from share settings for granular content availability
-  - [ ] Paid feed portability
-  - [ ] Create API and HTML widget for paid feed portability
-  - [ ] Owner can paste widget code on their website
-  - [ ] Feed displays in container or on subdomain
+- [x] Music registry post attach (phases C/D) — `musicRegistryApi.ts`, `EditFileModal.tsx`
+- [ ] Commercial license modal rework — developer-portal scope
+- [ ] Full API licensing infrastructure — ongoing L5 work
 
 ---
 

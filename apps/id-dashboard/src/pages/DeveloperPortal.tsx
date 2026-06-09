@@ -6,6 +6,8 @@ import { Rss, Plus, Edit, Users, Settings, Loader, AlertCircle, UserPlus, Extern
 import { FeedDelegationModal } from '../components/feeds/FeedDelegationModal';
 import { ContentNoticesSection } from '../components/ContentNoticesSection';
 import { useApiToken } from '../hooks/useApiToken';
+import { useDeviceAuthState } from '../hooks/useDeviceAuthState';
+import { DEVICE_CAPABILITIES } from '@par-noir/device-auth';
 import { DEVELOPER_PORTAL_URL } from '../config/developerPortal';
 
 interface DeveloperPortalProps {
@@ -14,6 +16,16 @@ interface DeveloperPortalProps {
 
 export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedUser }) => {
   const { apiToken } = useApiToken();
+  const recoveryPnId = authenticatedUser?.id
+    ? authenticatedUser.id.startsWith('pn-')
+      ? authenticatedUser.id
+      : `pn-${authenticatedUser.id}`
+    : null;
+  const deviceAuth = useDeviceAuthState({
+    apiToken,
+    userPnIdentifier: recoveryPnId,
+  });
+  const canProfileWrite = deviceAuth.can(DEVICE_CAPABILITIES.profileWrite);
   const [showFeedCreator, setShowFeedCreator] = useState(false);
   const [creatingPostForFeed, setCreatingPostForFeed] = useState<Feed | null>(null);
   const [ownedFeeds, setOwnedFeeds] = useState<Feed[]>([]);
@@ -92,7 +104,7 @@ export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedU
               <Rss className="h-6 w-6 text-primary" />
               <h2 className="text-2xl font-bold text-text-primary">Feed Services</h2>
             </div>
-            {authenticatedUser && (
+            {authenticatedUser && canProfileWrite && (
               <button
                 type="button"
                 onClick={() => setShowFeedCreator(true)}
@@ -101,6 +113,9 @@ export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedU
                 <Plus className="h-4 w-4 mr-2" />
                 Create Feed
               </button>
+            )}
+            {authenticatedUser && !canProfileWrite && deviceAuth.hasKeyedDevices && (
+              <p className="text-sm text-text-secondary">{deviceAuth.deviceRequiredMessage}</p>
             )}
           </div>
 
@@ -242,6 +257,8 @@ export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedU
           isOpen={!!creatingPostForFeed}
           onClose={() => setCreatingPostForFeed(null)}
           authenticatedUser={authenticatedUser}
+          canCreatePost={canProfileWrite}
+          blockedMessage={deviceAuth.deviceRequiredMessage}
           onPostCreated={async () => {
             await loadFeeds();
             setCreatingPostForFeed(null);

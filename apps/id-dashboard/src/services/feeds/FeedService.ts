@@ -5,7 +5,7 @@
 
 import type { FeedCategory } from '../../types/aggregator';
 import { API_ENDPOINT } from '../../config/api';
-import { ownerFetch } from '../ownerApiService';
+import { ownerFetch, ownerGet } from '../ownerApiService';
 
 export interface Feed {
   feedId: string;
@@ -260,14 +260,8 @@ export class FeedService {
     }
 
     const authenticatedUser = JSON.parse(authenticatedUserStr);
-    const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/posts`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authenticatedUser.accessToken || ''}`
-      },
-      body: JSON.stringify(post)
-    });
+    const token = authenticatedUser.accessToken || '';
+    const response = await ownerFetch(token, 'POST', `/api/feeds/${feedId}/posts`, post);
 
     if (!response.ok) {
       const error = await response.json();
@@ -287,14 +281,8 @@ export class FeedService {
     }
 
     const authenticatedUser = JSON.parse(authenticatedUserStr);
-    const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/top-post`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authenticatedUser.accessToken || ''}`
-      },
-      body: JSON.stringify(post)
-    });
+    const token = authenticatedUser.accessToken || '';
+    const response = await ownerFetch(token, 'PUT', `/api/feeds/${feedId}/top-post`, post);
 
     if (!response.ok) {
       const error = await response.json();
@@ -324,11 +312,7 @@ export class FeedService {
         return [];
       }
 
-      const response = await fetch(`${API_ENDPOINT}/api/users/${userDid}/delegated-feeds`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
+      const response = await ownerGet(accessToken, `/api/users/${userDid}/delegated-feeds`);
 
       if (!response.ok) {
         if (response.status === 404 || response.status === 401) {

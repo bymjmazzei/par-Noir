@@ -48,7 +48,7 @@ import {
   setPendingRecoverySharesBuffer,
   flushPendingRecoverySharesToDrive,
 } from './recoveryVaultService';
-import { API_ENDPOINT } from '../config/api';
+import { ownerGet } from './ownerApiService';
 
 export interface PredecessorCustodian {
   custodianId: string;
@@ -126,9 +126,7 @@ async function fetchPredecessorCustodians(
   authToken: string,
   predecessorPn: string
 ): Promise<PredecessorCustodian[]> {
-  const res = await fetch(`${API_ENDPOINT}/api/recovery/${encodeURIComponent(predecessorPn)}/custodians`, {
-    headers: { Authorization: `Bearer ${authToken}` },
-  });
+  const res = await ownerGet(authToken, `/api/recovery/${encodeURIComponent(predecessorPn)}/custodians`);
   if (!res.ok) return [];
   const data = (await res.json()) as { custodians?: PredecessorCustodian[] };
   return (data.custodians || []).filter(

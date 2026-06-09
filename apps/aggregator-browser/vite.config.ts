@@ -7,7 +7,9 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@par-noir/aggregator-domain': path.resolve(__dirname, '../../packages/aggregator-domain/src/index.ts')
+      '@par-noir/aggregator-domain': path.resolve(__dirname, '../../packages/aggregator-domain/src/index.ts'),
+      '@par-noir/device-auth': path.resolve(__dirname, '../../packages/device-auth/src/index.ts'),
+      '@par-noir/device-client': path.resolve(__dirname, '../../packages/device-client/src/index.ts'),
     }
   },
   worker: {

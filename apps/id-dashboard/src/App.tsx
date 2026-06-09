@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense, useRef, useCallback } from 'react';
-import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown, Users, Layers, Wallet } from 'lucide-react';
+import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown, Users, Layers, Wallet, Lock } from 'lucide-react';
 import Header from './components/Header';
 import { QRCodeManager } from './utils/qrCode';
   import { QRCodeScanner } from './components/QRCodeScanner';
@@ -39,7 +39,7 @@ import {
   DEVICE_BOUND_PN_ERROR,
   isDeviceBoundPnEnvelope,
 } from './services/deviceBoundPnService';
-import { ownerFetch } from './services/ownerApiService';
+import { ownerFetch, ownerGet } from './services/ownerApiService';
 import { RecoveryPasscodeModal } from './components/recovery/RecoveryPasscodeModal';
 import { RecoveryCustodianPendingPanel } from './components/recovery/RecoveryCustodianPendingPanel';
 import { storeCustodianshipCredential } from './services/recoveryCredentialStorage';
@@ -379,15 +379,6 @@ function App() {
     return raw.startsWith('pn-') ? raw : `pn-${raw}`;
   }, [authenticatedUser]);
 
-  const { summary: recoveryVaultSummary, recoveryReady: vaultRecoveryReady, refresh: refreshRecoveryVault } =
-    useRecoveryVaultState({
-      apiToken,
-      userPnIdentifier: recoveryVaultPnId,
-      publicKey: authenticatedUser?.publicKey || authenticatedUser?.id || null,
-      recoveryThreshold,
-      recoveryTotalShares: 5,
-    });
-
   const deviceAuth = useDeviceAuthState({
     apiToken,
     userPnIdentifier: recoveryVaultPnId,
@@ -401,6 +392,16 @@ function App() {
   const canDriveRead = deviceAuth.can(DEVICE_CAPABILITIES.driveRead);
   const canDriveUpload = deviceAuth.can(DEVICE_CAPABILITIES.driveUpload);
   const canCustodiansRead = deviceAuth.can(DEVICE_CAPABILITIES.custodiansRead);
+
+  const { summary: recoveryVaultSummary, recoveryReady: vaultRecoveryReady, refresh: refreshRecoveryVault } =
+    useRecoveryVaultState({
+      apiToken,
+      userPnIdentifier: recoveryVaultPnId,
+      publicKey: authenticatedUser?.publicKey || authenticatedUser?.id || null,
+      recoveryThreshold,
+      recoveryTotalShares: 5,
+      enabled: canCustodiansRead,
+    });
 
   const getEncryptedIdentityForApiToken = React.useCallback(
     async (
@@ -1146,13 +1147,9 @@ function App() {
         });
 
         // Load permissions from API (Google Drive)
-        const response = await fetch(
-          `${API_ENDPOINT}/api/users/${pnIdentifier}/third-party-permissions`,
-          {
-            headers: {
-              'Authorization': `Bearer ${authToken}`
-            }
-          }
+        const response = await ownerGet(
+          authToken,
+          `/api/users/${pnIdentifier}/third-party-permissions`
         );
 
         if (response.ok) {
@@ -6621,6 +6618,13 @@ This invitation expires in 24 hours.`;
                       <div>
                         <h3 className="text-lg font-semibold text-text-primary mb-4">Privacy & Sharing Settings</h3>
 
+                        {!canProfileRead ? (
+                          <div className="bg-secondary rounded-lg p-6 flex items-start gap-3">
+                            <Lock className="w-5 h-5 text-text-secondary shrink-0 mt-0.5" />
+                            <p className="text-sm text-text-secondary">{deviceAuth.deviceRequiredMessage}</p>
+                          </div>
+                        ) : (
+                          <>
                         {authenticatedUser && (
                           <DataPointRequestsPanel
                             authenticatedUser={authenticatedUser}
@@ -6779,6 +6783,8 @@ This invitation expires in 24 hours.`;
                             </div>
                           )}
                         </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
@@ -6873,7 +6879,7 @@ This invitation expires in 24 hours.`;
                           </div>
 
                           {/* Vault pool: pending / invited / accepted */}
-                          {recoveryVaultSummary && (
+                          {canCustodiansRead && recoveryVaultSummary && (
                             <div className="bg-secondary p-4 rounded-lg space-y-4">
                               <h4 className="font-medium text-text-primary">Share vault</h4>
                               <div>
@@ -6940,6 +6946,13 @@ This invitation expires in 24 hours.`;
                                   </p>
                                 )}
                               </div>
+                            </div>
+                          )}
+
+                          {!canCustodiansRead && deviceAuth.hasKeyedDevices && (
+                            <div className="bg-secondary p-4 rounded-lg flex items-start gap-3">
+                              <Lock className="w-5 h-5 text-text-secondary shrink-0 mt-0.5" />
+                              <p className="text-sm text-text-secondary">{deviceAuth.deviceRequiredMessage}</p>
                             </div>
                           )}
 

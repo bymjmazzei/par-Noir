@@ -4,7 +4,7 @@
  */
 
 import { API_ENDPOINT } from '../config/api';
-import { ownerFetch } from '../services/ownerApiService';
+import { ownerFetch, ownerGet } from '../services/ownerApiService';
 
 export interface ZKPDataPoint {
   dataPointId: string;
@@ -51,15 +51,8 @@ export class ZKPDataPointsService {
     try {
       const pnIdentifier = await this.getPnIdentifier(identityId, credentials, publicKey);
 
-      const response = await fetch(
-        `${API_ENDPOINT}/api/users/${pnIdentifier}/zkp-data-points`,
-        {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${authToken}`
-          }
-        }
-      );
+      const path = `/api/users/${pnIdentifier}/zkp-data-points`;
+      const response = await ownerGet(authToken, path);
 
       if (response.ok) {
         const responseData = await response.json();
@@ -103,15 +96,8 @@ export class ZKPDataPointsService {
     try {
       const pnIdentifier = await this.getPnIdentifier(identityId, credentials, publicKey);
 
-      const response = await fetch(
-        `${API_ENDPOINT}/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`,
-        {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${authToken}`
-          }
-        }
-      );
+      const path = `/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`;
+      const response = await ownerGet(authToken, path);
 
       if (response.ok) {
         const responseData = await response.json();

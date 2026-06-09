@@ -20,7 +20,7 @@ import { LICENSE_TYPES } from '../../constants/licenses';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../../constants/feedCategories';
 import { ReportContentModal } from './ReportContentModal';
 import { API_ENDPOINT } from '../../config/api';
-import { ownerFetch } from '../../services/ownerApiService';
+import { ownerFetch, ownerGet } from '../../services/ownerApiService';
 import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 import { driveAccountTokens, normalizeVisibility } from './storageHelpers';
 
@@ -87,6 +87,38 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       return null;
     }
   }, []);
+
+  type DeviceGateCapability = 'drive.read' | 'drive.upload' | 'profile.write';
+
+  const checkDeviceCapability = React.useCallback(
+    (cap: DeviceGateCapability): boolean => {
+      if (!deviceGate) return true;
+      const allowed =
+        cap === 'drive.read'
+          ? deviceGate.canDriveRead
+          : cap === 'drive.upload'
+            ? deviceGate.canDriveUpload
+            : deviceGate.canProfileWrite;
+      if (!allowed) {
+        setError(deviceGate.blockedMessage);
+        return false;
+      }
+      return true;
+    },
+    [deviceGate]
+  );
+
+  const requireDeviceCapability = React.useCallback(
+    (cap: DeviceGateCapability): void => {
+      if (!checkDeviceCapability(cap)) {
+        throw new Error(deviceGate?.blockedMessage || 'This action requires a keyed device.');
+      }
+    },
+    [checkDeviceCapability, deviceGate]
+  );
+
+  const driveReadBlocked = Boolean(deviceGate && !deviceGate.canDriveRead);
+  const driveUploadBlocked = Boolean(deviceGate && !deviceGate.canDriveUpload);
 
   // Cache for share tokens (fileId -> shareToken) - generated during upload for quick access
   const shareTokenCache = React.useRef<Map<string, ShareToken>>(new Map());
@@ -964,15 +996,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           accountsCount: payload.googleDriveAccounts.length
         });
 
-        const response = await fetch(`${API_ENDPOINT}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            credentials: payload,
-            cid: cid ?? null,
-          }),
+        const accessToken =
+          resolvedAuth?.authToken ||
+          (authenticatedUserRef.current as { accessToken?: string } | null)?.accessToken ||
+          null;
+        if (!accessToken) {
+          console.warn('⚠️ [StorageCredentials] No API token; skipping credential persistence');
+          globalPersistenceLockRef.current = false;
+          persistenceInProgressRef.current = false;
+          return;
+        }
+
+        const credPath = `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`;
+        const response = await ownerFetch(accessToken, 'PUT', credPath, {
+          credentials: payload,
+          cid: cid ?? null,
         });
 
         if (!response.ok) {
@@ -1836,7 +1874,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           hydrationMissingCandidatesRef.current.add(candidateId);
           continue;
         }
-        const response = await fetch(`${API_ENDPOINT}/api/storage/credentials/${encodeURIComponent(pnId)}`);
+        const hydrationToken =
+          resolvedAuth?.authToken ||
+          (authenticatedUser as { accessToken?: string } | null)?.accessToken ||
+          null;
+        if (!hydrationToken) {
+          hydrationMissingCandidatesRef.current.add(candidateId);
+          continue;
+        }
+        const response = await ownerGet(
+          hydrationToken,
+          `/api/storage/credentials/${encodeURIComponent(pnId)}`
+        );
         if (response.status === 404) {
           hydrationMissingCandidatesRef.current.add(candidateId);
           // candidateId (identityId) is secret - not logged
@@ -1924,13 +1973,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             const identityCandidates = getStorageIdentityCandidates();
             const pnId = identityCandidates.length > 0 && identityCandidates[0]?.startsWith('pn-') ? identityCandidates[0] : null;
             if (pnId) {
-              await fetch(`${API_ENDPOINT}/api/storage/credentials/${encodeURIComponent(pnId)}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  credentials: { googleDriveAccounts: [] },
-                  cid: null,
-                }),
+              await ownerFetch(hydrationToken, 'PUT', `/api/storage/credentials/${encodeURIComponent(pnId)}`, {
+                credentials: { googleDriveAccounts: [] },
+                cid: null,
               }).catch(() => {});
             } else {
               console.warn('⚠️ [StorageCredentials] No pn identifier available for clearing API storage');
@@ -2852,6 +2897,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       console.log('⏳ [loadFiles] Load already in progress, skipping');
       return;
     }
+    if (driveReadBlocked) {
+      setFiles([]);
+      setError(deviceGate?.blockedMessage ?? null);
+      setIsLoading(false);
+      return;
+    }
     isLoadingFilesRef.current = true;
     try {
       setIsLoading(true);
@@ -3412,10 +3463,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       setIsLoading(false);
       isLoadingFilesRef.current = false;
     }
-  }, [aggregatorService, authenticatedUser, resolvedAuth, driveAccounts, loadFileMetadata, scheduleTokenRetry]);
+  }, [aggregatorService, authenticatedUser, resolvedAuth, driveAccounts, loadFileMetadata, scheduleTokenRetry, driveReadBlocked, deviceGate]);
 
   const handleTogglePublic = async (file: AggregatedFile) => {
     try {
+      requireDeviceCapability('drive.upload');
       if (!metadataIndexService) {
         setError('Metadata service not available');
         return;
@@ -3979,6 +4031,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     }
 
     try {
+      requireDeviceCapability('drive.upload');
       setIsSavingShare(true);
       const fileForRefresh = sharingFile;
       const existingMetadata =
@@ -4194,7 +4247,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     API_ENDPOINT,
     authenticatedUser,
     closeShareSettings,
-    refreshMetadataInBackground
+    refreshMetadataInBackground,
+    requireDeviceCapability,
   ]);
 
   const loadStorageQuota = React.useCallback(async () => {
@@ -4556,6 +4610,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   const handleConnectGoogleDrive = async () => {
     try {
+      if (!checkDeviceCapability('drive.upload')) {
+        return;
+      }
       setIsLoading(true);
       setError(null);
 
@@ -4912,19 +4969,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         const pnId = identityCandidates.length > 0 && identityCandidates[0]?.startsWith('pn-') ? identityCandidates[0] : null;
         
         if (pnId) {
+          const disconnectToken =
+            resolvedAuth?.authToken ||
+            (authenticatedUser as { accessToken?: string } | null)?.accessToken ||
+            null;
+          if (disconnectToken) {
           try {
-            // Send current payload (may be empty if all accounts disconnected)
-            // CRITICAL: Always send the deduplicated payload, even if it's empty
-            const response = await fetch(`${API_ENDPOINT}/api/storage/credentials/${encodeURIComponent(pnId)}`, {
-                method: 'PUT',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  credentials: payload || { googleDriveAccounts: [] },
-                  cid: null,
-                }),
-              });
+            const response = await ownerFetch(
+              disconnectToken,
+              'PUT',
+              `/api/storage/credentials/${encodeURIComponent(pnId)}`,
+              {
+                credentials: payload || { googleDriveAccounts: [] },
+                cid: null,
+              }
+            );
               
               if (!response.ok) {
                 const errorText = await response.text().catch(() => 'Unknown error');
@@ -4939,6 +4998,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             } catch (apiError) {
               console.error('❌ [handleDisconnect] Failed to update API storage credentials:', apiError);
             }
+          }
         } else {
           console.warn('⚠️ [handleDisconnect] No pn identifier available for API update');
         }
@@ -4958,14 +5018,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         const pnId = identityCandidates.length > 0 && identityCandidates[0]?.startsWith('pn-') ? identityCandidates[0] : null;
         
         if (pnId) {
-          await fetch(`${API_ENDPOINT}/api/storage/credentials/${encodeURIComponent(pnId)}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+          const errToken =
+            resolvedAuth?.authToken ||
+            (authenticatedUser as { accessToken?: string } | null)?.accessToken ||
+            null;
+          if (errToken) {
+            await ownerFetch(errToken, 'PUT', `/api/storage/credentials/${encodeURIComponent(pnId)}`, {
               credentials: payload || { googleDriveAccounts: [] },
               cid: null,
-            }),
-          });
+            });
+          }
         } else {
           console.warn('⚠️ [handleDisconnect] No pn identifier available for API update after error');
         }
@@ -4978,6 +5040,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    if (!checkDeviceCapability('drive.upload')) {
+      event.target.value = '';
+      return;
+    }
 
     console.log('📤 [Upload] Starting upload...', { fileName: file.name, fileSize: file.size });
 
@@ -5297,6 +5364,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     if (!editingFile) return;
 
     try {
+      requireDeviceCapability('drive.upload');
       setIsLoading(true);
       setError(null);
 
@@ -5348,9 +5416,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       const accessToken = authenticatedUser?.accessToken;
       if (!accessToken) {
         throw new Error('No access token available');
-      }
-      if (deviceGate && !deviceGate.canDriveUpload) {
-        throw new Error(deviceGate.blockedMessage);
       }
       const metaPath = `/api/aggregator/metadata-index/${editingFile.id}`;
       const response = await ownerFetch(accessToken, 'PUT', metaPath, {
@@ -6034,10 +6099,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       setError('Please unlock your pN first');
       return;
     }
-    if (deviceGate && !deviceGate.canProfileWrite) {
-      setError(deviceGate.blockedMessage);
-      return;
-    }
+    if (!checkDeviceCapability('profile.write')) return;
 
     // Check if file is an image
     const mimeType = file.mimeType || '';
@@ -6097,6 +6159,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   // Bulk delete handler
   const handleBulkDelete = async (backendId: string) => {
+    if (!checkDeviceCapability('drive.upload')) return;
+
     const accountFiles = filesByBackend.get(backendId) || [];
     const filesToDelete = accountFiles.filter(file => selectedFiles.has(file.id));
     
@@ -6172,10 +6236,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       setError('Cannot delete file: missing file ID');
       return;
     }
-    if (deviceGate && !deviceGate.canDriveUpload) {
-      setError(deviceGate.blockedMessage);
-      return;
-    }
+    if (!checkDeviceCapability('drive.upload')) return;
 
     // Confirm deletion (skip confirmation if called from bulk delete)
     if (!skipConfirm) {
@@ -6645,6 +6706,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         </div>
       )}
       
+      {driveReadBlocked && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 mb-4">
+          <div className="flex items-center space-x-2">
+            <Lock className="h-4 w-4 text-amber-400 shrink-0" />
+            <span className="text-amber-200 text-sm">{deviceGate?.blockedMessage}</span>
+          </div>
+        </div>
+      )}
+
       {/* Auth Status Warning */}
       {!resolvedAuth && !error && (
         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
@@ -6719,9 +6789,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         setActiveBackendId(backendId);
                         loadFiles();
                       }}
-                      disabled={isLoading}
+                      disabled={isLoading || driveReadBlocked}
                       className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-                      title="Refresh Files"
+                      title={driveReadBlocked ? deviceGate?.blockedMessage : 'Refresh Files'}
                     >
                       <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                     </button>
@@ -6729,7 +6799,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       type="file"
                       data-backend-id={backendId}
                       className="hidden"
-                      disabled={isLoading}
+                      disabled={isLoading || driveUploadBlocked}
                       onChange={handleUpload}
                       ref={(el) => {
                         if (el) {
@@ -6741,13 +6811,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     />
                     <button
                       onClick={() => {
+                        if (driveUploadBlocked) {
+                          setError(deviceGate?.blockedMessage ?? null);
+                          return;
+                        }
                         setActiveBackendId(backendId);
                         const input = fileInputRefs.current.get(backendId);
                         input?.click();
                       }}
-                      disabled={isLoading}
+                      disabled={isLoading || driveUploadBlocked}
                       className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-                      title="Upload File"
+                      title={driveUploadBlocked ? deviceGate?.blockedMessage : 'Upload File'}
                     >
                       <Plus className="h-4 w-4" />
                     </button>
