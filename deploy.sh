@@ -25,6 +25,14 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "📦 Building packages/device-auth..."
+cd ../device-auth
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ device-auth build failed"
+    exit 1
+fi
+
 # Shared catalog (API server + workspace consumers use dist/)
 echo "📦 Building packages/standard-data-points..."
 cd ../standard-data-points
