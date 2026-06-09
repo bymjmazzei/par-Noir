@@ -12,6 +12,8 @@ interface RecoveryModalProps {
     claimantName: string;
   }) => void;
   hasLegacyRecoveryKey?: boolean;
+  recoveryBlocked?: boolean;
+  recoveryBlockedMessage?: string;
 }
 
 export function RecoveryModal({
@@ -21,7 +23,9 @@ export function RecoveryModal({
   setActiveRecoveryMethod,
   onInitiateRecoveryFromPn,
   onInitiateRecoveryWithKey,
-  hasLegacyRecoveryKey = false
+  hasLegacyRecoveryKey = false,
+  recoveryBlocked = false,
+  recoveryBlockedMessage,
 }: RecoveryModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,9 +75,15 @@ export function RecoveryModal({
 
         {activeRecoveryMethod === 'pn' && (
           <div className="mt-4 p-4 bg-secondary rounded-lg">
+            {recoveryBlocked && (
+              <div className="mb-4 p-3 border border-yellow-500 rounded text-sm text-yellow-700 bg-yellow-50">
+                {recoveryBlockedMessage || 'Recovery is not available for this identity until the owner configures a protected custodian.'}
+              </div>
+            )}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
+                if (recoveryBlocked) return;
                 const formData = new FormData(e.currentTarget);
                 const file = fileInputRef.current?.files?.[0];
                 if (!file) return;
@@ -118,7 +128,7 @@ export function RecoveryModal({
                 Custodians will approve with Shamir shares. After threshold is met, set a new passcode on this device.
                 Reconnect Google Drive afterward; messaging keys stay the same.
               </p>
-              <button type="submit" className="w-full px-4 py-2 modal-button rounded-md font-medium">
+              <button type="submit" disabled={recoveryBlocked} className="w-full px-4 py-2 modal-button rounded-md font-medium disabled:opacity-50">
                 Start recovery
               </button>
             </form>

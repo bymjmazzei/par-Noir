@@ -43,6 +43,11 @@ import {
   runFullDriveMigration,
 } from './driveFileMigrationService';
 import { setPendingRecoveryShares } from './recoveryService';
+import {
+  initializeRecoveryVaultOnDrive,
+  setPendingRecoverySharesBuffer,
+  flushPendingRecoverySharesToDrive,
+} from './recoveryVaultService';
 import { API_ENDPOINT } from '../config/api';
 
 export interface PredecessorCustodian {
@@ -205,11 +210,22 @@ export async function runIdentityMigrationCore(ctx: MigrationContext): Promise<M
   });
   const recoveryEnvelope = await encryptRecoveryEnvelope(recoveryMaster, recoveryPayload);
   const shares = splitSecret(recoveryMaster, recoveryConfig.threshold, recoveryConfig.totalShares);
-  setPendingRecoveryShares({
+  setPendingRecoverySharesBuffer({
     publicKey: succMat.publicKey,
     shares,
     threshold: recoveryConfig.threshold,
   });
+  try {
+    await initializeRecoveryVaultOnDrive({
+      userPnIdentifier: succMat.pnIdentifier,
+      authToken: ctx.authToken,
+      publicKey: succMat.publicKey,
+      shares,
+      threshold: recoveryConfig.threshold,
+    });
+  } catch {
+    /* Drive init may retry on custodian step */
+  }
   ctx.successor.encryptedIdentity = {
     ...ctx.successor.encryptedIdentity,
     recoveryEnvelope,

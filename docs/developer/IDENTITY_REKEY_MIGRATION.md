@@ -18,7 +18,7 @@ Distinct from **Shamir custodian recovery**, which keeps the same `publicKey` an
 | Step | Where | Purpose |
 |------|-------|---------|
 | `zkp_reissue` | Dashboard | Re-sign verified ZKPs on successor keys |
-| `recovery_vault` | Dashboard | New recovery envelope + `setPendingRecoveryShares` (no placeholder vault rows) |
+| `recovery_vault` | Dashboard | New recovery envelope + `initializeRecoveryVaultOnDrive` (PendingShares on Drive; sessionStorage flush-only buffer) |
 | `drive_files` | Dashboard | Full pinned Drive tree: inventory, `.encrypted` re-wrap, JSON patches, sheets, folder rename, report |
 | `dm_rekey` / `group_rewrap` | Dashboard ack + browser verify | Connections rekey; browser bridge verifies on unlock |
 | `profile_publish` | Dashboard | `profile.json` + API mlKem cache |
@@ -57,6 +57,15 @@ Admin override remains: `POST /api/admin/identity/succession`.
 - New recovery master after re-key → old custodianship ZKPs invalid.
 - Wizard requires **threshold** invitations sent (owner-side); custodians must still **accept** on their devices before approving future recovery.
 - Uses `assignCustodianVaultAndIssueCredential` + migration `recovery/custodians` batch (successor pn, predecessor Drive access).
+
+## Recovery vault (Drive `recovery.xlsx`)
+
+- **PendingShares** — all Shamir shares encrypted with owner `publicKey`; unassigned until owner assigns to a custodian.
+- **Custodians** lifecycle: `invited` → `accepted` → `revoked` (revoked returns share to pending pool). **`unrevokable`** is set only at assign and cannot be cleared later.
+- **Resend** rebuilds invitation from existing Drive row (no new share consumed). **Revoke** is blocked for protected (`unrevokable`) custodians (403 `custodian_unrevokable`).
+- **Recovery Ready** requires `accepted >= threshold` **and** `acceptedUnrevokable >= 1`. Completing recovery also requires at least one approving share from an accepted protected custodian.
+- **Legacy unlock**: dashboard flushes `sessionStorage` `pn_pending_recovery_shares` via `POST /api/recovery/vault/initialize`, then `POST /api/recovery/vault/reconcile` normalizes `active`/`pending` custodian rows to `invited` and reports missing share indices (owner must re-initialize any missing indices from cleartext shares still in buffer).
+- Identities without any accepted protected custodian cannot complete recovery until owner assigns and accepts at least one protected slot (e.g. an alt pN they control).
 
 ## Lineage ZK (`par-noir.zkp.identity_succession`)
 

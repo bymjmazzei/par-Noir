@@ -24,6 +24,12 @@ import { IdentitySuccessionPanel } from './components/IdentitySuccessionPanel';
 import { IdentityRotationWizard } from './components/identity/IdentityRotationWizard';
 import { DeviceManagementPanel } from './components/DeviceManagementPanel';
 import { completeRecoveryWithShares, setPendingRecoveryShares } from './services/recoveryService';
+import {
+  initializeRecoveryVaultOnDrive,
+  setPendingRecoverySharesBuffer,
+} from './services/recoveryVaultService';
+import { revokeRecoveryCustodian, acceptRecoveryCustodianship } from './services/recoveryApiService';
+import { useRecoveryVaultState } from './hooks/useRecoveryVaultState';
 import { RecoveryPasscodeModal } from './components/recovery/RecoveryPasscodeModal';
 import { RecoveryCustodianPendingPanel } from './components/recovery/RecoveryCustodianPendingPanel';
 import { storeCustodianshipCredential } from './services/recoveryCredentialStorage';
@@ -198,6 +204,7 @@ interface CustodianInvitationForm {
   contactValue: string;
   type: 'person' | 'service' | 'self';
   passcode: string;
+  unrevokable?: boolean;
 }
 
 interface DeviceSyncData {
@@ -354,6 +361,23 @@ function App() {
     recoveryKeys,
     setRecoveryKeys
   } = identityState;
+
+  const recoveryVaultPnId = React.useMemo(() => {
+    if (!authenticatedUser) return null;
+    const raw = authenticatedUser.publicKey || authenticatedUser.id;
+    if (!raw) return null;
+    return raw.startsWith('pn-') ? raw : `pn-${raw}`;
+  }, [authenticatedUser]);
+
+  const { summary: recoveryVaultSummary, recoveryReady: vaultRecoveryReady, refresh: refreshRecoveryVault } =
+    useRecoveryVaultState({
+      apiToken,
+      userPnIdentifier: recoveryVaultPnId,
+      publicKey: authenticatedUser?.publicKey || authenticatedUser?.id || null,
+      recoveryThreshold,
+      recoveryTotalShares: 5,
+    });
+
   const getEncryptedIdentityForApiToken = React.useCallback(
     async (
       identityPublicKeyOrId: string | undefined
@@ -1557,10 +1581,10 @@ function App() {
       );
       const encryptedIdentity = creation.identity;
       try {
-        setPendingRecoveryShares({
+        setPendingRecoverySharesBuffer({
           publicKey: encryptedIdentity.publicKey,
           shares: creation.recoveryShares,
-          threshold: creation.recoveryConfig.threshold
+          threshold: creation.recoveryConfig.threshold,
         });
       } catch {
         /* optional */
@@ -3090,6 +3114,14 @@ function App() {
         salt: encPartial.salt
       };
       const invitationId = `inv-${Date.now()}`;
+      const existingCustodian = custodians.find((c) => c.id === custodianId);
+      const vaultInvited = recoveryVaultSummary?.custodians.some(
+        (c) =>
+          c.custodianId === custodianId
+          && c.status !== 'revoked'
+          && c.status !== 'accepted'
+      );
+      const pnId = recoveryVaultPnId || authenticatedUser.id;
       const vault = await assignCustodianVaultAndIssueCredential({
         custodianId,
         custodianName: custodianData.name,
@@ -3098,7 +3130,10 @@ function App() {
         encryptedIdentity,
         invitationId,
         threshold: recoveryThreshold,
-        apiToken
+        apiToken,
+        userPnIdentifier: pnId,
+        unrevokable: custodianData.unrevokable === true,
+        resendExisting: Boolean(vaultInvited || existingCustodian?.status === 'pending'),
       });
 
       const invitationData = {
@@ -3132,9 +3167,11 @@ function App() {
 
       setCustodians(prev => prev.map(c =>
         c.id === custodianId
-          ? { ...c, status: 'active' as const, canApprove: true, lastVerified: new Date().toISOString() }
+          ? { ...c, status: 'pending' as const, canApprove: false, lastVerified: new Date().toISOString() }
           : c
       ));
+
+      void refreshRecoveryVault();
 
       const deepLink = `${window.location.origin}?custodian-invitation=${encodeURIComponent(JSON.stringify(deepLinkData))}`;
       
@@ -3293,6 +3330,12 @@ This invitation expires in 24 hours.`;
         custodianPasscode: acceptancePasscode,
         acceptedAt: new Date().toISOString()
       });
+
+      if (apiToken && invitation.identityPublicKey) {
+        const { VolumeIdGenerator } = await import('./utils/crypto/volumeIdGenerator');
+        const ownerPn = await VolumeIdGenerator.generateCanonicalVolumeId(invitation.identityPublicKey);
+        await acceptRecoveryCustodianship(ownerPn, apiToken, invitation.custodianId, invitation.custodianshipZkp);
+      }
 
       const newCustodianship = {
         id: `custodianship-${invitation.custodianId}`,
@@ -3714,8 +3757,34 @@ This invitation expires in 24 hours.`;
   };
 
   const handleRemoveCustodian = (custodianId: string) => {
+    const vaultRow = recoveryVaultSummary?.custodians.find((c) => c.custodianId === custodianId);
+    if (vaultRow?.unrevokable) {
+      setError('Protected custodians cannot be revoked. Use an alternative pN you control as a protected anchor.');
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
+
+    if (
+      vaultRow
+      && vaultRow.status === 'accepted'
+      && (recoveryVaultSummary?.counts.acceptedUnrevokable ?? 0) < 1
+    ) {
+      const proceed = window.confirm(
+        'Recovery cannot complete without at least one accepted protected custodian. Add and accept a protected custodian (e.g. your own alt pN) before removing operational custodians. Revoke anyway?'
+      );
+      if (!proceed) return;
+    }
+
     const removedCustodian = custodians.find(c => c.id === custodianId);
     setCustodians(prev => prev.filter(c => c.id !== custodianId));
+
+    if (removedCustodian && apiToken && recoveryVaultPnId) {
+      void revokeRecoveryCustodian(recoveryVaultPnId, apiToken, custodianId, recoveryThreshold)
+        .then(() => refreshRecoveryVault())
+        .catch((error) => {
+          logError('Failed to revoke custodian on vault:', error);
+        });
+    }
 
     // Store custodian removal in cloud database for cross-platform sync
     if (removedCustodian) {
@@ -6519,33 +6588,33 @@ This invitation expires in 24 hours.`;
                             <h4 className="font-medium text-text-primary mb-2">Recovery Configuration</h4>
                             
                             {/* Recovery Status */}
-                            {custodians.filter(c => c.status === 'active').length < recoveryThreshold ? (
-                              <div className="mb-4 p-3 bg-secondary border border-border rounded text-text-primary text-sm">
-                                <h5 className="font-medium mb-1 text-yellow-400 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  Recovery Not Ready
-                </h5>
-                                <p className="text-text-secondary">
-                                  You need {recoveryThreshold - custodians.filter(c => c.status === 'active').length} more active custodians 
-                                  to enable recovery. Add more custodians or verify pending ones.
-                                  {custodians.filter(c => c.status === 'pending').length > 0 && (
-                                    <span className="block mt-1 text-yellow-400">
-                                      <div className="flex items-center gap-2">
-                                        <AlertTriangle className="w-4 h-4" />
-                                        {custodians.filter(c => c.status === 'pending').length} pending custodians need to accept invitation via QR code
-                                      </div>
-                                    </span>
-                                  )}
-                                </p>
-                              </div>
-                            ) : (
+                            {vaultRecoveryReady ? (
                               <div className="mb-4 p-3 bg-secondary border border-border rounded text-text-primary text-sm">
                                 <h5 className="font-medium mb-1 text-green-400 flex items-center gap-2">
                   <CheckCircle className="w-4 h-4" />
                   Recovery Ready
                 </h5>
                                 <p className="text-text-secondary">
-                                  Your identity is protected! You can recover access with {recoveryThreshold} custodian approvals.
+                                  Your identity is protected with {recoveryVaultSummary?.counts.accepted ?? 0} accepted custodians
+                                  ({recoveryVaultSummary?.counts.acceptedUnrevokable ?? 0} protected).
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="mb-4 p-3 bg-secondary border border-border rounded text-text-primary text-sm">
+                                <h5 className="font-medium mb-1 text-yellow-400 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  Recovery Not Ready
+                </h5>
+                                <p className="text-text-secondary">
+                                  Need {recoveryThreshold} accepted custodians and at least 1 protected (unrevokable) custodian.
+                                  Current: {recoveryVaultSummary?.counts.accepted ?? 0} accepted,{' '}
+                                  {recoveryVaultSummary?.counts.acceptedUnrevokable ?? 0} protected,{' '}
+                                  {recoveryVaultSummary?.pending?.length ?? 0} unassigned shares.
+                                  {(recoveryVaultSummary?.counts.invited ?? 0) > 0 && (
+                                    <span className="block mt-1 text-yellow-400">
+                                      {recoveryVaultSummary?.counts.invited} invited — awaiting custodian acceptance
+                                    </span>
+                                  )}
                                 </p>
                               </div>
                             )}
@@ -6573,6 +6642,77 @@ This invitation expires in 24 hours.`;
 
                             </div>
                           </div>
+
+                          {/* Vault pool: pending / invited / accepted */}
+                          {recoveryVaultSummary && (
+                            <div className="bg-secondary p-4 rounded-lg space-y-4">
+                              <h4 className="font-medium text-text-primary">Share vault</h4>
+                              <div>
+                                <h5 className="text-sm font-medium text-text-secondary mb-2">
+                                  Pending shares ({recoveryVaultSummary.pending.length})
+                                </h5>
+                                {recoveryVaultSummary.pending.length === 0 ? (
+                                  <p className="text-xs text-text-secondary">No unassigned shares in the pool.</p>
+                                ) : (
+                                  <ul className="text-xs text-text-secondary space-y-1">
+                                    {recoveryVaultSummary.pending.map((p) => (
+                                      <li key={p.shareIndex}>Share #{p.shareIndex} — unassigned</li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                              <div>
+                                <h5 className="text-sm font-medium text-text-secondary mb-2">
+                                  Invited ({recoveryVaultSummary.counts.invited})
+                                </h5>
+                                {recoveryVaultSummary.custodians.filter((c) => c.status === 'invited').length === 0 ? (
+                                  <p className="text-xs text-text-secondary">No invitations awaiting acceptance.</p>
+                                ) : (
+                                  <ul className="text-xs space-y-1">
+                                    {recoveryVaultSummary.custodians
+                                      .filter((c) => c.status === 'invited')
+                                      .map((c) => (
+                                        <li key={c.custodianId} className="text-text-primary">
+                                          {c.name} — share #{c.shareIndex}
+                                          {c.unrevokable && (
+                                            <span className="ml-1 text-primary" title="Protected">🔒</span>
+                                          )}
+                                        </li>
+                                      ))}
+                                  </ul>
+                                )}
+                              </div>
+                              <div>
+                                <h5 className="text-sm font-medium text-text-secondary mb-2">
+                                  Accepted ({recoveryVaultSummary.counts.accepted})
+                                </h5>
+                                {recoveryVaultSummary.custodians.filter((c) => c.status === 'accepted').length === 0 ? (
+                                  <p className="text-xs text-text-secondary">No custodians have accepted yet.</p>
+                                ) : (
+                                  <ul className="text-xs space-y-1">
+                                    {recoveryVaultSummary.custodians
+                                      .filter((c) => c.status === 'accepted')
+                                      .map((c) => (
+                                        <li key={c.custodianId} className="text-text-primary">
+                                          {c.name} — share #{c.shareIndex}
+                                          {c.unrevokable && (
+                                            <span className="ml-1 text-primary" title="Protected custodian">🔒 protected</span>
+                                          )}
+                                          {c.custodianPnIdentifier && (
+                                            <span className="ml-1 text-text-secondary">({c.custodianPnIdentifier})</span>
+                                          )}
+                                        </li>
+                                      ))}
+                                  </ul>
+                                )}
+                                {(recoveryVaultSummary.counts.acceptedUnrevokable ?? 0) < 1 && (
+                                  <p className="mt-2 text-xs text-yellow-600">
+                                    Add and accept at least one protected custodian (e.g. your own alt pN) before recovery is possible.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
 
                           {/* Recovery Custodians */}
                           <div className="bg-secondary p-4 rounded-lg">
@@ -6606,29 +6746,39 @@ This invitation expires in 24 hours.`;
                                   </button>
                                 </div>
                               ) : (
-                                custodians.map((custodian) => (
+                                custodians.map((custodian) => {
+                                  const vaultRow = recoveryVaultSummary?.custodians.find((c) => c.custodianId === custodian.id);
+                                  const isProtected = vaultRow?.unrevokable === true;
+                                  const vaultStatus = vaultRow?.status;
+                                  return (
                                   <div key={custodian.id} className="flex items-center justify-between p-3 bg-input-bg rounded border border-border">
                                     <div className="flex items-center space-x-3">
                                       <div className={`w-3 h-3 rounded-full ${
-                                        custodian.status === 'active' ? 'bg-primary' : 'bg-yellow-500'
+                                        vaultStatus === 'accepted' || custodian.status === 'active' ? 'bg-primary' : 'bg-yellow-500'
                                       }`}></div>
                                       <div>
-                                        <div className="font-medium text-sm text-text-primary">{custodian.name}</div>
+                                        <div className="font-medium text-sm text-text-primary flex items-center gap-2">
+                                          {custodian.name}
+                                          {isProtected && (
+                                            <span className="text-xs text-primary" title="Protected — cannot be revoked from dashboard">🔒</span>
+                                          )}
+                                        </div>
                                         <div className="text-xs text-text-secondary">
-                                          {custodian.identityId} • {custodian.type} • Added {new Date(custodian.addedAt).toLocaleDateString()}
+                                          {custodian.type} • Added {new Date(custodian.addedAt).toLocaleDateString()}
+                                          {vaultRow?.custodianPnIdentifier && ` • ${vaultRow.custodianPnIdentifier}`}
                                           {custodian.lastVerified && ` • Verified ${new Date(custodian.lastVerified).toLocaleDateString()}`}
                                         </div>
                                       </div>
                                     </div>
                                     <div className="flex items-center space-x-2">
                                       <span className={`text-xs px-2 py-1 ${
-                                        custodian.status === 'active' 
+                                        vaultStatus === 'accepted' || custodian.status === 'active'
                                           ? 'text-primary' 
                                           : 'text-yellow-600'
                                       }`}>
-                                        {custodian.status}
+                                        {vaultStatus || custodian.status}
                                       </span>
-                                      {custodian.status === 'pending' && (
+                                      {(custodian.status === 'pending' || vaultStatus === 'invited') && (
                                         <button 
                                           onClick={() => {
                                             setSelectedCustodianForInvitation(custodian);
@@ -6642,13 +6792,16 @@ This invitation expires in 24 hours.`;
                                       )}
                                       <button 
                                         onClick={() => handleRemoveCustodian(custodian.id)}
-                                        className="text-red-600 hover:text-red-800 text-sm"
+                                        disabled={isProtected}
+                                        title={isProtected ? 'Protected custodians cannot be revoked' : 'Revoke and return share to pending pool'}
+                                        className={`text-sm ${isProtected ? 'text-gray-400 cursor-not-allowed' : 'text-red-600 hover:text-red-800'}`}
                                       >
                                         Remove
                                       </button>
                                     </div>
                                   </div>
-                                ))
+                                  );
+                                })
                               )}
                             </div>
                           </div>

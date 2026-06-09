@@ -12,6 +12,7 @@ interface AddCustodianModalProps {
     contactValue: string;
     type: 'person' | 'service' | 'self';
     passcode: string;
+    unrevokable?: boolean;
   }) => Promise<void>;
 }
 
@@ -44,8 +45,9 @@ export function AddCustodianModal({
             name: formData.get('name') as string,
             contactType: formData.get('contactType') as 'email' | 'phone',
             contactValue: formData.get('contactValue') as string,
-            type: 'person' as 'person' | 'service' | 'self',
-            passcode: formData.get('passcode') as string
+            type: (formData.get('custodianType') as 'person' | 'service' | 'self') || 'person',
+            passcode: formData.get('passcode') as string,
+            unrevokable: formData.get('unrevokable') === 'on',
           };
           
           await onAddCustodian(custodianData);
@@ -102,6 +104,28 @@ export function AddCustodianModal({
               className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="Enter email or phone number"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-text-primary mb-1">
+              Custodian type
+            </label>
+            <select
+              name="custodianType"
+              defaultValue="person"
+              className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="person">Person</option>
+              <option value="self">Self (your alt pN)</option>
+              <option value="service">Service</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2 text-sm text-text-primary">
+              <input type="checkbox" name="unrevokable" defaultChecked />
+              Protected custodian (cannot be revoked from dashboard)
+            </label>
           </div>
 
           <div>

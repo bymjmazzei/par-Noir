@@ -35,6 +35,24 @@ export interface InitiateRecoveryFromPnInput {
 export async function initiateRecoveryFromPnFile(input: InitiateRecoveryFromPnInput): Promise<StoredRecoveryRequest> {
   const text = await input.file.text();
   const parsed = parseRecoveryPnFile(JSON.parse(text));
+
+  if (input.authToken) {
+    const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+    const { fetchRecoveryCustodianSummary } = await import('../../services/recoveryApiService');
+    const ownerPn = await VolumeIdGenerator.generateCanonicalVolumeId(parsed.publicKey);
+    const summary = await fetchRecoveryCustodianSummary(ownerPn, input.authToken);
+    if (!summary || summary.counts.acceptedUnrevokable < 1) {
+      throw new Error(
+        'Recovery is blocked: the identity owner must add and accept at least one protected custodian (e.g. an alt pN they control) before recovery can complete.'
+      );
+    }
+    if (summary.counts.accepted < input.threshold) {
+      throw new Error(
+        `Recovery is not ready: only ${summary.counts.accepted} accepted custodian(s); ${input.threshold} required.`
+      );
+    }
+  }
+
   const requestId = `recovery-${Date.now()}`;
   const req: StoredRecoveryRequest = {
     id: requestId,
@@ -142,6 +160,9 @@ export async function fetchSharesAfterThreshold(params: {
     throw new Error('Recovery threshold not met yet');
   }
   const vault = await fetchVaultShares(params.userPnIdentifier, params.authToken, params.requestId);
+  if (!vault.includesUnrevokableShare) {
+    throw new Error('Recovery requires at least one protected custodian approval');
+  }
   return decryptVaultSharesForRecovery(vault.vaultShares, params.identityPublicKey);
 }
 

@@ -53,3 +53,18 @@ export {
   verifyRecoveryApprovalBinding,
   type RecoveryApprovalBinding
 } from './recoveryApprovalBinding';
+export {
+  parseUnrevokableFlag,
+  normalizeCustodianStatus,
+  computeMissingShareIndices,
+  isCustodianRevokable,
+  findCustodianForApproval,
+  recoveryMeetsQuorumRule,
+  countAcceptedCustodians,
+  buildCustodianInvitationPayload,
+  type RecoveryShareStatus,
+  type PendingShareRow,
+  type AssignedCustodianRow,
+  type RecoveryQuorumInput,
+  type RecoveryQuorumResult,
+} from './vault';

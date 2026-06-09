@@ -21,19 +21,21 @@ export async function issueCustodianshipCredential(params: {
   shareIndex: number;
   invitationId: string;
   threshold: number;
+  unrevokable?: boolean;
 }): Promise<string> {
   const { mlDsaSecretKey, mlDsaPublicKey } = await loadMlDsaKeypairForZk(
     params.identityId,
     params.encryptedIdentity
   );
-  const public_inputs = {
+  const public_inputs: RecoveryCustodianshipPublicInputs = {
     zkp_type: RECOVERY_ZKP_TYPES.custodianship,
     identity_public_key: params.encryptedIdentity.publicKey,
     custodian_id: params.custodianId,
     share_index: params.shareIndex,
     invitation_id: params.invitationId,
     threshold: params.threshold,
-  } satisfies RecoveryCustodianshipPublicInputs;
+    ...(params.unrevokable === true ? { unrevokable: true } : {}),
+  };
   const expiresAtMs = Date.now() + CUSTODIANSHIP_EXPIRY_YEARS * 365 * 24 * 60 * 60 * 1000;
   return generateZkProofEnvelopeV2({
     mlDsaSecretKey,

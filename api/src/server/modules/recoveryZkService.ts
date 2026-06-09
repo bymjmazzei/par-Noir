@@ -3,6 +3,7 @@ import {
   RECOVERY_CUSTODIAN_CONTEXT,
   RECOVERY_ZKP_TYPES,
   parseApprovalBinding,
+  parseUnrevokableFlag,
   verifyRecoveryApprovalBinding,
   type RecoveryZkApprovalPayload,
 } from '@par-noir/recovery-crypto';
@@ -14,6 +15,7 @@ export interface VerifiedCustodianship {
   shareIndex: number;
   invitationId: string;
   threshold: number;
+  unrevokable?: boolean;
 }
 
 export function verifyCustodianshipCredential(zkp: string): { ok: boolean; reason?: string; data?: VerifiedCustodianship } {
@@ -40,9 +42,13 @@ export function verifyCustodianshipCredential(zkp: string): { ok: boolean; reaso
     return { ok: false, reason: 'invalid_public_inputs' };
   }
 
+  const unrevokable = 'unrevokable' in publicInputs
+    ? parseUnrevokableFlag(publicInputs.unrevokable)
+    : undefined;
+
   return {
     ok: true,
-    data: { identityPublicKey, custodianId, shareIndex, invitationId, threshold },
+    data: { identityPublicKey, custodianId, shareIndex, invitationId, threshold, unrevokable },
   };
 }
 

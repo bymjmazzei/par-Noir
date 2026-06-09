@@ -88,6 +88,7 @@ export interface PendingRecoveryShares {
   threshold: number;
 }
 
+/** @deprecated Use getPendingRecoverySharesBuffer from recoveryVaultService */
 export function getPendingRecoveryShares(): PendingRecoveryShares | null {
   try {
     const raw = sessionStorage.getItem(PENDING_SHARES_KEY);
@@ -97,11 +98,12 @@ export function getPendingRecoveryShares(): PendingRecoveryShares | null {
   }
 }
 
+/** @deprecated Use setPendingRecoverySharesBuffer — flush to Drive via initializeRecoveryVaultOnDrive */
 export function setPendingRecoveryShares(data: PendingRecoveryShares): void {
   sessionStorage.setItem(PENDING_SHARES_KEY, JSON.stringify(data));
 }
 
-/** Take next unassigned share index for a custodian (owner-side only). */
+/** @deprecated Shares come from Drive pending pool via assignCustodianVaultAndIssueCredential */
 export function takeShareForCustodianAssignment(): { share: ShamirShare; shareIndex: number } | null {
   const pending = getPendingRecoveryShares();
   if (!pending?.shares?.length) return null;

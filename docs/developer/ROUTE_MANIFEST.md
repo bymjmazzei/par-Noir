@@ -68,6 +68,22 @@ Hand-maintained index of **major** HTTP routes. When you add a user-facing or in
 | POST | `/api/identity/migration/:id/groups/rewrap` | OAuth — group key re-wrap |
 | POST | `/api/identity/migration/:id/zkp-data-points/batch` | OAuth — batch ZKP sheet |
 | POST | `/api/identity/migration/:id/recovery/custodians` | OAuth — recovery custodian rows |
+
+## Recovery vault (OAuth Bearer + owner Drive)
+
+| Method | Path | Notes |
+|--------|------|--------|
+| POST | `/api/recovery/vault/initialize` | Owner — batch pending Shamir shares to Drive |
+| POST | `/api/recovery/vault/reconcile` | Owner — normalize legacy custodian rows; report missing share indices |
+| GET | `/api/recovery/:userPnIdentifier/vault/pending` | Owner — list unassigned share indices |
+| GET | `/api/recovery/:userPnIdentifier/custodians` | Owner — custodians + pending + counts |
+| POST | `/api/recovery/custodians/assign` | Owner — assign pending share to custodian (`unrevokable?`) |
+| POST | `/api/recovery/custodians/:custodianId/resend` | Owner — rebuild invitation from existing row |
+| POST | `/api/recovery/custodians/:custodianId/revoke` | Owner — revoke revokable custodian (403 if unrevokable) |
+| POST | `/api/recovery/custodians/accept` | Custodian bearer — mark row `accepted` on owner Drive |
+| POST | `/api/recovery/requests` | Create recovery request |
+| POST | `/api/recovery/requests/:requestId/approvals` | Custodian ZK approval; `ready` requires threshold + unrevokable approval |
+| GET | `/api/recovery/:userPnIdentifier/requests/:requestId/vault-shares` | Release shares when quorum rule satisfied |
 | GET | `/api/admin/audit-events` | Query `limit`, optional `event_type` |
 
 ## Integrator storage (L5 OAuth Bearer + `cloud:app`)

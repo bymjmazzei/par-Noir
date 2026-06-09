@@ -14,6 +14,8 @@ export interface RecoveryCustodianshipPublicInputs {
   share_index: number;
   invitation_id: string;
   threshold: number;
+  /** Present on credentials issued after protected-custodian support; omitted = revokable (legacy). */
+  unrevokable?: boolean;
 }
 
 export interface RecoveryApprovalPublicInputs {

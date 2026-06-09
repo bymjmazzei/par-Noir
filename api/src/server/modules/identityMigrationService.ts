@@ -467,9 +467,9 @@ export function registerIdentityMigrationRoutes(app: Application): void {
       let count = 0;
       for (const c of custodians) {
         if (!c?.custodianId) continue;
-        const status = c.status || 'active';
-        if (status === 'active' && !c.custodianshipCredential) {
-          return res.status(400).json({ error: 'custodianshipCredential required for active custodians' });
+        const status = c.status || 'invited';
+        if ((status === 'invited' || status === 'accepted') && !c.custodianshipCredential) {
+          return res.status(400).json({ error: 'custodianshipCredential required for custodian rows' });
         }
         await RecoverySheetsService.upsertCustodian(
           drive.token,
@@ -478,11 +478,12 @@ export function registerIdentityMigrationRoutes(app: Application): void {
             custodianId: c.custodianId,
             name: c.name || c.custodianId,
             custodianType: c.custodianType || c.type || 'person',
-            status,
+            status: c.status === 'accepted' ? 'accepted' : 'invited',
             shareIndex: Number(c.shareIndex) || 0,
             custodianshipCredential: c.custodianshipCredential || '',
             encryptedShare: c.encryptedShare || '',
             createdAt: c.createdAt || new Date().toISOString(),
+            unrevokable: c.unrevokable === true,
           },
           pn,
           drive.accountId

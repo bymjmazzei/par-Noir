@@ -1,12 +1,19 @@
 import {
   encryptOwnerVaultShare,
   serializeOwnerVaultShare,
-  type ShamirShare
+  type ShamirShare,
 } from '@par-noir/recovery-crypto';
 import type { EncryptedIdentity } from '../utils/crypto';
-import { takeShareForCustodianAssignment } from './recoveryService';
+import {
+  assignRecoveryCustodian,
+  resendRecoveryCustodianInvitation,
+} from './recoveryApiService';
 import { issueCustodianshipCredential } from './recoveryZkService';
-import { persistCustodianVault } from './recoveryApiService';
+import { pickLowestPendingShareIndex } from './recoveryVaultService';
+import {
+  getPendingRecoverySharesBuffer,
+  setPendingRecoverySharesBuffer,
+} from './recoveryVaultService';
 
 export async function assignCustodianVaultAndIssueCredential(params: {
   custodianId: string;
@@ -17,46 +24,102 @@ export async function assignCustodianVaultAndIssueCredential(params: {
   invitationId: string;
   threshold: number;
   apiToken?: string | null;
+  userPnIdentifier?: string;
+  shareIndex?: number;
+  unrevokable?: boolean;
+  resendExisting?: boolean;
 }): Promise<{
   custodianshipZkp: string;
   shareIndex: number;
   encryptedShare: string;
-  share: ShamirShare;
+  share?: ShamirShare;
 }> {
-  const taken = takeShareForCustodianAssignment();
-  if (!taken) {
-    throw new Error('No recovery shares available to assign. Create identity with recovery enabled first.');
+  const { VolumeIdGenerator } = await import('../utils/crypto/volumeIdGenerator');
+  const pnId =
+    params.userPnIdentifier
+    || (await VolumeIdGenerator.generateCanonicalVolumeId(params.encryptedIdentity.publicKey));
+
+  if (params.resendExisting && params.apiToken) {
+    const existing = await resendRecoveryCustodianInvitation(pnId, params.apiToken, params.custodianId);
+    return {
+      custodianshipZkp: existing.custodianshipCredential,
+      shareIndex: existing.shareIndex,
+      encryptedShare: '',
+    };
   }
 
-  const encrypted = await encryptOwnerVaultShare(taken.share, params.encryptedIdentity.publicKey);
-  const encryptedShare = serializeOwnerVaultShare(encrypted);
+  let shareIndex = params.shareIndex;
+  let encryptedShare = '';
+  let share: ShamirShare | undefined;
+
+  if (params.apiToken) {
+    if (shareIndex == null) {
+      shareIndex = (await pickLowestPendingShareIndex(pnId, params.apiToken)) ?? undefined;
+    }
+    if (shareIndex == null) {
+      const buffer = getPendingRecoverySharesBuffer();
+      if (buffer?.shares?.length) {
+        share = buffer.shares.shift()!;
+        setPendingRecoverySharesBuffer(buffer);
+        shareIndex = share.index;
+        const encrypted = await encryptOwnerVaultShare(share, params.encryptedIdentity.publicKey);
+        encryptedShare = serializeOwnerVaultShare(encrypted);
+      }
+    }
+    if (shareIndex == null) {
+      throw new Error('No recovery shares available to assign. Initialize vault or connect Drive.');
+    }
+  } else {
+    const buffer = getPendingRecoverySharesBuffer();
+    if (!buffer?.shares?.length) {
+      throw new Error('No recovery shares available to assign. Create identity with recovery enabled first.');
+    }
+    share = buffer.shares.shift()!;
+    setPendingRecoverySharesBuffer(buffer);
+    shareIndex = share.index;
+    const encrypted = await encryptOwnerVaultShare(share, params.encryptedIdentity.publicKey);
+    encryptedShare = serializeOwnerVaultShare(encrypted);
+  }
 
   const custodianshipZkp = await issueCustodianshipCredential({
     identityId: params.identityId,
     encryptedIdentity: params.encryptedIdentity,
     custodianId: params.custodianId,
-    shareIndex: taken.shareIndex,
+    shareIndex: shareIndex!,
     invitationId: params.invitationId,
-    threshold: params.threshold
+    threshold: params.threshold,
+    unrevokable: params.unrevokable === true,
   });
 
   if (params.apiToken) {
-    const { VolumeIdGenerator } = await import('../utils/crypto/volumeIdGenerator');
-    const pnId = await VolumeIdGenerator.generateCanonicalVolumeId(params.encryptedIdentity.publicKey);
-    await persistCustodianVault(pnId, params.apiToken, {
+    await assignRecoveryCustodian(pnId, params.apiToken, {
       custodianId: params.custodianId,
       name: params.custodianName,
       custodianType: params.custodianType,
+      shareIndex: shareIndex!,
+      custodianshipCredential: custodianshipZkp,
       encryptedShare,
-      shareIndex: taken.shareIndex,
-      custodianshipCredential: custodianshipZkp
-    }).catch(() => undefined);
+      unrevokable: params.unrevokable === true,
+    }).catch(async () => {
+      if (share && encryptedShare) {
+        const { persistCustodianVault } = await import('./recoveryApiService');
+        await persistCustodianVault(pnId, params.apiToken!, {
+          custodianId: params.custodianId,
+          name: params.custodianName,
+          custodianType: params.custodianType,
+          encryptedShare,
+          shareIndex: shareIndex!,
+          custodianshipCredential: custodianshipZkp,
+          unrevokable: params.unrevokable,
+        });
+      }
+    });
   }
 
   return {
     custodianshipZkp,
-    shareIndex: taken.shareIndex,
+    shareIndex: shareIndex!,
     encryptedShare,
-    share: taken.share
+    share,
   };
 }

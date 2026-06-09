@@ -26,6 +26,12 @@ import { safeClientErrorMessage } from './server/utils/safeError';
 import { captureApiRouteError, initApiSentry } from './server/utils/sentry';
 import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modules/adminDeveloperRoutes';
 import { registerIdentityMigrationRoutes } from './server/modules/identityMigrationService';
+import {
+  registerRecoveryVaultRoutes,
+  evaluateRecoveryApprovalUpdate,
+  fetchVaultSharesForRequest,
+  getRecoveryCustodianSummary,
+} from './server/modules/recoveryVaultRoutes';
 import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSelfServiceRoutes';
 import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
 import { registerMusicTrackRegistryRoutes } from './server/modules/musicTrackRegistryRoutes';
@@ -11075,6 +11081,7 @@ class ProductionServer {
 
     registerAdminDeveloperRoutes(this.app);
     registerIdentityMigrationRoutes(this.app);
+    registerRecoveryVaultRoutes(this.app);
     registerDeveloperSelfServiceRoutes(this.app);
     registerOwnedAssetRoutes(this.app);
     registerMusicTrackRegistryRoutes(this.app);
@@ -13876,40 +13883,25 @@ class ProductionServer {
         if (!userPnIdentifier || !approval?.approvalZkp || !approval?.custodianshipZkp || !approval?.custodianId) {
           return res.status(400).json({ error: 'userPnIdentifier and approval ZKP payload are required' });
         }
-        const ctx = await this.getRecoveryDriveContext(userPnIdentifier);
-        if (!ctx) return res.status(404).json({ error: 'Drive not connected' });
-        const { RecoverySheetsService } = await import('./server/modules/recoverySheetsService');
-        const { verifyRecoveryApprovalPayload } = await import('./server/modules/recoveryZkService');
-        const verified = await verifyRecoveryApprovalPayload(approval);
-        if (!verified.ok) {
-          return res.status(400).json({ error: 'Invalid recovery approval', reason: verified.reason });
+        const result = await evaluateRecoveryApprovalUpdate({
+          userPnIdentifier,
+          requestId,
+          approval,
+          threshold,
+        });
+        if (!result.ok) {
+          return res.status(result.httpStatus || 500).json({
+            error: result.error,
+            reason: result.reason,
+          });
         }
-        if (verified.requestId && verified.requestId !== requestId) {
-          return res.status(400).json({ error: 'Approval requestId mismatch' });
-        }
-        const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
-          ctx.token, ctx.metadataFolderId, ctx.pnIdentifier, ctx.accountId
-        );
-        const requests = await RecoverySheetsService.listRecoveryRequests(
-          ctx.token, spreadsheetId, ctx.pnIdentifier, ctx.accountId
-        );
-        const reqRow = requests.find((r) => r.requestId === requestId);
-        if (!reqRow) return res.status(404).json({ error: 'Recovery request not found' });
-        const approvals = JSON.parse(reqRow.sharesJson || '[]');
-        if (approvals.some((a: { custodianId?: string }) => a.custodianId === approval.custodianId)) {
-          return res.status(409).json({ error: 'Custodian already approved this request' });
-        }
-        approvals.push(approval);
-        const required = threshold || reqRow.threshold || 2;
-        const newStatus = approvals.length >= required ? 'ready' : 'pending';
-        await RecoverySheetsService.upsertRecoveryRequest(
-          ctx.token,
-          spreadsheetId,
-          { ...reqRow, sharesJson: JSON.stringify(approvals), status: newStatus },
-          ctx.pnIdentifier,
-          ctx.accountId
-        );
-        return res.json({ success: true, status: newStatus, approvalCount: approvals.length });
+        return res.json({
+          success: true,
+          status: result.status,
+          approvalCount: result.approvalCount,
+          includesUnrevokableShare: result.includesUnrevokableShare,
+          reason: result.reason,
+        });
       } catch (error: any) {
         console.error('Error submitting recovery approval:', error);
         return res.status(500).json({ error: 'Failed to submit recovery approval' });
@@ -13924,33 +13916,8 @@ class ProductionServer {
     this.app.get('/api/recovery/:userPnIdentifier/requests/:requestId/vault-shares', async (req, res) => {
       try {
         const { userPnIdentifier, requestId } = req.params;
-        const ctx = await this.getRecoveryDriveContext(userPnIdentifier);
-        if (!ctx) return res.status(404).json({ error: 'Drive not connected' });
-        const { RecoverySheetsService } = await import('./server/modules/recoverySheetsService');
-        const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
-          ctx.token, ctx.metadataFolderId, ctx.pnIdentifier, ctx.accountId
-        );
-        const requests = await RecoverySheetsService.listRecoveryRequests(
-          ctx.token, spreadsheetId, ctx.pnIdentifier, ctx.accountId
-        );
-        const reqRow = requests.find((r) => r.requestId === requestId);
-        if (!reqRow) return res.status(404).json({ error: 'Recovery request not found' });
-        if (reqRow.status !== 'ready') {
-          return res.status(403).json({ error: 'Threshold not met', status: reqRow.status });
-        }
-        const approvals = JSON.parse(reqRow.sharesJson || '[]') as Array<{ shareIndex?: number; custodianId?: string }>;
-        const custodians = await RecoverySheetsService.listCustodians(
-          ctx.token, spreadsheetId, ctx.pnIdentifier, ctx.accountId
-        );
-        const shareIndices = new Set(approvals.map((a) => a.shareIndex).filter((i) => typeof i === 'number'));
-        const vaultShares = custodians
-          .filter((c) => shareIndices.has(c.shareIndex) || approvals.some((a) => a.custodianId === c.custodianId))
-          .map((c) => ({
-            custodianId: c.custodianId,
-            shareIndex: c.shareIndex,
-            encryptedShare: c.encryptedShare
-          }));
-        return res.json({ vaultShares, approvalCount: approvals.length, threshold: reqRow.threshold });
+        const result = await fetchVaultSharesForRequest({ userPnIdentifier, requestId });
+        return res.status(result.httpStatus).json(result.body);
       } catch (error: any) {
         console.error('Error fetching vault shares:', error);
         return res.status(500).json({ error: 'Failed to fetch vault shares' });
@@ -13960,25 +13927,23 @@ class ProductionServer {
     this.app.get('/api/recovery/:userPnIdentifier/custodians', async (req, res) => {
       try {
         const { userPnIdentifier } = req.params;
-        const ctx = await this.getRecoveryDriveContext(userPnIdentifier);
-        if (!ctx) return res.status(404).json({ error: 'Drive not connected' });
-        const { RecoverySheetsService } = await import('./server/modules/recoverySheetsService');
-        const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
-          ctx.token, ctx.metadataFolderId, ctx.pnIdentifier, ctx.accountId
-        );
-        const custodians = await RecoverySheetsService.listCustodians(
-          ctx.token, spreadsheetId, ctx.pnIdentifier, ctx.accountId
-        );
+        const summary = await getRecoveryCustodianSummary(userPnIdentifier);
+        if (!summary) return res.status(404).json({ error: 'Drive not connected' });
         return res.json({
-          custodians: custodians.map((c) => ({
+          custodians: summary.custodians.map((c) => ({
             custodianId: c.custodianId,
             name: c.name,
             custodianType: c.custodianType,
             shareIndex: c.shareIndex,
             custodianshipCredential: c.custodianshipCredential,
             status: c.status,
-            createdAt: c.createdAt
-          }))
+            createdAt: c.createdAt,
+            unrevokable: c.unrevokable,
+            custodianPublicKey: c.custodianPublicKey,
+            custodianPnIdentifier: c.custodianPnIdentifier,
+          })),
+          pending: summary.pending,
+          counts: summary.counts,
         });
       } catch (error: any) {
         console.error('Error listing custodians:', error);
@@ -13995,7 +13960,8 @@ class ProductionServer {
           custodianType,
           encryptedShare,
           shareIndex,
-          custodianshipCredential
+          custodianshipCredential,
+          unrevokable,
         } = req.body;
         if (!userPnIdentifier || !custodianId || !encryptedShare) {
           return res.status(400).json({ error: 'userPnIdentifier, custodianId, and encryptedShare are required' });
@@ -14026,8 +13992,9 @@ class ProductionServer {
             encryptedShare,
             shareIndex: shareIndex || 0,
             custodianshipCredential: custodianshipCredential || '',
-            status: 'active',
-            createdAt: new Date().toISOString()
+            status: 'invited',
+            createdAt: new Date().toISOString(),
+            unrevokable: unrevokable === true,
           },
           ctx.pnIdentifier,
           ctx.accountId
