@@ -1,6 +1,6 @@
 # Identity re-key migration
 
-User-initiated **cryptographic rotation** (new ML-DSA / ML-KEM keys, new canonical `pn-*`) with seamless continuity: same Google Drive folder, re-issued ZKPs, DM/group re-key, recovery vault rebuild, and network succession.
+User-initiated **cryptographic rotation** (new ML-DSA / ML-KEM keys, new canonical `pn-*`) with seamless continuity: same Google Drive folder (pinned by id, renamed to successor), full tree migration, re-issued ZKPs, DM/group re-key, recovery vault rebuild, required custodian re-invite, and network succession.
 
 Distinct from **Shamir custodian recovery**, which keeps the same `publicKey` and only changes passcode.
 
@@ -9,37 +9,65 @@ Distinct from **Shamir custodian recovery**, which keeps the same `publicKey` an
 1. **Recovery & Devices** → **Rotate identity (new keys)**
 2. Unlock predecessor `.pn` (or use currently unlocked identity)
 3. Set new passcode → migration wizard runs client-side steps
-4. Download new `.pn`; unlock browser with new passcode to finish DM/group handoff
+4. If Drive items fail: review report and explicitly acknowledge before continuing
+5. **Re-invite recovery custodians** until threshold invitations are sent (custodians accept asynchronously)
+6. Download new `.pn`; unlock browser with new passcode to verify DM/group handoff
+
+## Migration steps
+
+| Step | Where | Purpose |
+|------|-------|---------|
+| `zkp_reissue` | Dashboard | Re-sign verified ZKPs on successor keys |
+| `recovery_vault` | Dashboard | New recovery envelope + `setPendingRecoveryShares` (no placeholder vault rows) |
+| `drive_files` | Dashboard | Full pinned Drive tree: inventory, `.encrypted` re-wrap, JSON patches, sheets, folder rename, report |
+| `dm_rekey` / `group_rewrap` | Dashboard ack + browser verify | Connections rekey; browser bridge verifies on unlock |
+| `profile_publish` | Dashboard | `profile.json` + API mlKem cache |
+| `custodian_reinvite` | Dashboard wizard | Threshold custodian invitations with new custodianship ZKPs |
+| `lineage_zkp` | Dashboard | Dual-signed succession proofs |
+| `succession_register` | API `complete` | Network succession + credential pin |
 
 ## API routes (OAuth Bearer — predecessor or successor during migration)
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/api/identity/migration/start` | Create `migration_id`, return checklist + pinned `driveFolderId` |
-| GET | `/api/identity/migration/:id` | Migration status |
+| GET | `/api/identity/migration/:id` | Migration status, `driveProgress`, `migrationReport` |
 | PATCH | `/api/identity/migration/:id/steps/:stepId` | Idempotent step completion |
+| PATCH | `/api/identity/migration/:id/drive/progress` | Persist drive phase cursor + report |
+| POST | `/api/identity/migration/:id/drive/sheets/migrate` | Batch pn/did rewrite across `_metadata` sheets |
+| POST | `/api/identity/migration/:id/drive/messages/rows` | Connection kem + row update ack after client re-crypto |
 | POST | `/api/identity/migration/:id/connections/rekey` | Update connection sheet `kemCiphertext` |
 | POST | `/api/identity/migration/:id/groups/rewrap` | Owner group key re-wrap fan-out |
 | POST | `/api/identity/migration/:id/zkp-data-points/batch` | Batch ZKP sheet updates |
-| POST | `/api/identity/migration/:id/recovery/custodians` | Recovery vault custodian rows |
+| POST | `/api/identity/migration/:id/recovery/custodians` | Recovery custodian rows (predecessor Drive creds + pinned folder) |
 | POST | `/api/identity/migration/:id/complete` | Verify lineage ZK + `registerSuccession` (successor token) |
 
 Admin override remains: `POST /api/admin/identity/succession`.
+
+## Drive folder continuity
+
+- `getMetadataFolder` resolves via pinned `driveFolderId` in `storage_credentials` before name lookup.
+- `drive_files` walks the **entire** pinned tree (no folder category skipped by default).
+- Per-item outcomes: `migrated`, `patched`, `failed` — report at `_metadata/migration-{migrationId}-report.json`.
+- Folder renamed to `par Noir - {successorPn}` after migration.
+- `integrators/_pn_migration_manifest.json` written for L5 apps; opaque integrator binaries may be marked `failed` with user acknowledgment.
+
+## Custodian re-invite
+
+- New recovery master after re-key → old custodianship ZKPs invalid.
+- Wizard requires **threshold** invitations sent (owner-side); custodians must still **accept** on their devices before approving future recovery.
+- Uses `assignCustodianVaultAndIssueCredential` + migration `recovery/custodians` batch (successor pn, predecessor Drive access).
 
 ## Lineage ZK (`par-noir.zkp.identity_succession`)
 
 Dual-signed envelopes bind predecessor and successor `public_key` + `pn_identifier` + `migration_id`. Required for `complete`. Integrators may accept predecessor-key ZKPs during a **90-day grace window** when verifying with `successorPnIdentifier` (see `ZKPDataPointsService.verifyProof`).
 
-## Drive folder continuity
-
-`getMetadataFolder` resolves via pinned `driveFolderId` in `storage_credentials` before name lookup (`par Noir - pn-{id}`). Succession `complete` patches successor credentials with the pinned folder id.
-
 ## Shared package
 
-`@par-noir/identity-migration` — drive re-encrypt, ZKP reissue, DM self-rekey, group re-wrap, lineage ZK, resumable runner.
+`@par-noir/identity-migration` — `driveFileMigration`, `driveMetadataPatch`, `dmHistoryMigration`, drive re-encrypt, ZKP reissue, DM self-rekey, group re-wrap, lineage ZK, resumable runner.
 
 ## Security
 
 - pn name, passcode, and secret keys never sent to API
 - `pn_identity_migration_kem_handoff` in **sessionStorage** only (cleared after browser DM step)
-- Legacy DM roots in local migration state for historical decrypt only
+- Legacy DM roots used as decrypt aid during migration only

@@ -918,6 +918,20 @@ export async function initializeDatabase(): Promise<void> {
     }
 
     try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const driveProgressPath = path.join(__dirname, '../../migrations/add_identity_migration_drive_progress.sql');
+      const driveProgressSql = fs.readFileSync(driveProgressPath, 'utf-8');
+      await db.query(driveProgressSql);
+      console.log('✅ Identity migration drive progress columns migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ Identity migration drive progress migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
       const { warmIdentitySuccessionCache } = await import('../modules/identitySuccessionService');
       await warmIdentitySuccessionCache();
       console.log('✅ Identity succession revocation cache warmed');

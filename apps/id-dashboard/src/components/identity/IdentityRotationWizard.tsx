@@ -2,7 +2,13 @@ import React, { useState } from 'react';
 import { AlertTriangle, KeyRound, Loader2 } from 'lucide-react';
 import type { EncryptedIdentity } from '../../types/crypto';
 import { IdentityCrypto } from '../../utils/crypto';
-import { runIdentityMigration } from '../../services/identityMigrationOrchestrator';
+import {
+  runIdentityMigrationCore,
+  finalizeIdentityMigration,
+  resumeMigrationAfterDriveAck,
+  type MigrationCoreResult,
+} from '../../services/identityMigrationOrchestrator';
+import { MigrationCustodianReinviteStep } from './MigrationCustodianReinviteStep';
 import { SimpleStorage } from '../../utils/simpleStorage';
 import { SecureCredentialManager } from '../../utils/secureCredentialManager';
 
@@ -13,7 +19,15 @@ interface IdentityRotationWizardProps {
   onComplete?: (newIdentity: EncryptedIdentity) => void;
 }
 
-type WizardStep = 'intro' | 'unlock_old' | 'new_passcode' | 'migrating' | 'done';
+type WizardStep =
+  | 'intro'
+  | 'unlock_old'
+  | 'new_passcode'
+  | 'migrating'
+  | 'drive_failures'
+  | 'custodian_reinvite'
+  | 'finalizing'
+  | 'done';
 
 async function loadStoredIdentity(key: string): Promise<EncryptedIdentity | null> {
   const simple = SimpleStorage.getInstance();
@@ -36,6 +50,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
     if (!identityKey) return;
     void loadStoredIdentity(identityKey).then(setStoredIdentity);
   }, [identityKey]);
+
   const [step, setStep] = useState<WizardStep>('intro');
   const [oldPnFile, setOldPnFile] = useState<File | null>(null);
   const [oldPasscode, setOldPasscode] = useState('');
@@ -46,6 +61,16 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
   const [progressLabel, setProgressLabel] = useState('');
   const [progressPct, setProgressPct] = useState(0);
   const [resultIdentity, setResultIdentity] = useState<EncryptedIdentity | null>(null);
+  const [coreResult, setCoreResult] = useState<MigrationCoreResult | null>(null);
+  const [migrationCtx, setMigrationCtx] = useState<{
+    predIdentity: EncryptedIdentity;
+    predDid: string;
+    pnName: string;
+    predPasscode: string;
+    rotatedIdentity: EncryptedIdentity;
+    successorDid: string;
+    recoveryConfig?: { threshold: number; totalShares: number };
+  } | null>(null);
 
   const handleStart = () => {
     setError(null);
@@ -64,17 +89,58 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
       const identity = fileJson.identity || fileJson.encryptedData;
       if (!identity?.encryptedData) throw new Error('Invalid .pn file');
       await IdentityCrypto.decryptData(
-        {
-          encrypted: identity.encryptedData,
-          iv: identity.iv,
-          salt: identity.salt,
-        },
+        { encrypted: identity.encryptedData, iv: identity.iv, salt: identity.salt },
         oldPnName,
         oldPasscode
       );
       setStep('new_passcode');
     } catch {
       setError('Could not unlock old identity. Check pn name and passcode.');
+    }
+  };
+
+  const runCore = async (acknowledgeDriveFailures = false) => {
+    if (!migrationCtx) return;
+    setStep('migrating');
+    try {
+      const core = await runIdentityMigrationCore({
+        authToken,
+        predecessor: {
+          encryptedIdentity: migrationCtx.predIdentity,
+          did: migrationCtx.predDid,
+          pnName: migrationCtx.pnName,
+          passcode: migrationCtx.predPasscode,
+          recoveryConfig: migrationCtx.recoveryConfig,
+        },
+        successor: {
+          encryptedIdentity: migrationCtx.rotatedIdentity,
+          did: migrationCtx.successorDid,
+          pnName: migrationCtx.pnName,
+          passcode: newPasscode,
+        },
+        acknowledgeDriveFailures,
+        onProgress: (label, pct) => {
+          setProgressLabel(label);
+          setProgressPct(pct);
+        },
+      });
+      setCoreResult(core);
+      if (core.driveFilesPendingAck) {
+        setStep('drive_failures');
+        return;
+      }
+      setStep('custodian_reinvite');
+    } catch (e) {
+      if (
+        !acknowledgeDriveFailures &&
+        e instanceof Error &&
+        e.message.includes('Acknowledge to continue')
+      ) {
+        setStep('drive_failures');
+        return;
+      }
+      setError(e instanceof Error ? e.message : 'Migration failed');
+      setStep('new_passcode');
     }
   };
 
@@ -89,7 +155,6 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
       return;
     }
 
-    setStep('migrating');
     try {
       let predIdentity = storedIdentity;
       let predDid = currentDid || '';
@@ -145,43 +210,59 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
         predecessorDecrypted: predData,
       });
 
-      const { migrationId, successorEncryptedIdentity } = await runIdentityMigration({
+      const successorDid = (
+        JSON.parse(
+          await IdentityCrypto.decryptData(
+            {
+              encrypted: rotated.identity.encryptedData,
+              iv: rotated.identity.iv,
+              salt: rotated.identity.salt,
+            },
+            pnName,
+            newPasscode
+          )
+        ) as { id: string }
+      ).id;
+
+      setMigrationCtx({
+        predIdentity,
+        predDid,
+        pnName,
+        predPasscode,
+        rotatedIdentity: rotated.identity,
+        successorDid,
+        recoveryConfig: predData.recoveryConfig,
+      });
+
+      await runCore(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Migration failed');
+      setStep('new_passcode');
+    }
+  };
+
+  const handleCustodianComplete = async () => {
+    if (!coreResult) return;
+    setStep('finalizing');
+    try {
+      const fin = await finalizeIdentityMigration({
         authToken,
-        predecessor: {
-          encryptedIdentity: predIdentity,
-          did: predDid,
-          pnName,
-          passcode: predPasscode,
-        },
-        successor: {
-          encryptedIdentity: rotated.identity,
-          did: (JSON.parse(
-            await IdentityCrypto.decryptData(
-              {
-                encrypted: rotated.identity.encryptedData,
-                iv: rotated.identity.iv,
-                salt: rotated.identity.salt,
-              },
-              pnName,
-              newPasscode
-            )
-          ) as { id: string }).id,
-          pnName,
-          passcode: newPasscode,
-        },
+        migrationId: coreResult.migrationId,
+        predecessor: coreResult.predMat,
+        successor: coreResult.succMat,
+        successorEncryptedIdentity: coreResult.successorEncryptedIdentity,
+        driveFolderId: coreResult.startDriveFolderId,
         onProgress: (label, pct) => {
           setProgressLabel(label);
           setProgressPct(pct);
         },
       });
-
-      setResultIdentity(successorEncryptedIdentity);
+      setResultIdentity(fin.successorEncryptedIdentity);
       setStep('done');
-      onComplete?.(successorEncryptedIdentity);
-      void migrationId;
+      onComplete?.(fin.successorEncryptedIdentity);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Migration failed');
-      setStep('new_passcode');
+      setError(e instanceof Error ? e.message : 'Failed to finalize migration');
+      setStep('custodian_reinvite');
     }
   };
 
@@ -294,9 +375,77 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
         </div>
       )}
 
+      {step === 'drive_failures' && coreResult && (
+        <div className="space-y-3">
+          <p className="text-sm text-amber-600">
+            {coreResult.driveFailures.length} Drive item(s) could not be migrated:
+          </p>
+          <ul className="text-xs text-text-secondary list-disc pl-4 max-h-32 overflow-y-auto">
+            {coreResult.driveFailures.map((f) => (
+              <li key={f.path}>
+                {f.path}: {f.reason}
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="px-4 py-2 bg-primary text-white rounded-lg text-sm"
+            onClick={() => {
+              void (async () => {
+                try {
+                  await resumeMigrationAfterDriveAck({
+                    authToken,
+                    migrationId: coreResult.migrationId,
+                    predecessor: coreResult.predMat,
+                    successor: coreResult.succMat,
+                    onProgress: (label, pct) => {
+                      setProgressLabel(label);
+                      setProgressPct(pct);
+                    },
+                  });
+                  setStep('custodian_reinvite');
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : 'Failed to continue migration');
+                }
+              })();
+            }}
+          >
+            I understand — continue migration
+          </button>
+        </div>
+      )}
+
+      {step === 'custodian_reinvite' && coreResult && migrationCtx && (
+        <MigrationCustodianReinviteStep
+          authToken={authToken}
+          migrationId={coreResult.migrationId}
+          successorPnIdentifier={coreResult.succMat.pnIdentifier}
+          successorDid={migrationCtx.successorDid}
+          successorEncryptedIdentity={coreResult.successorEncryptedIdentity}
+          predecessorCustodians={coreResult.predecessorCustodians}
+          recoveryThreshold={coreResult.recoveryThreshold}
+          recoveryTotalShares={coreResult.recoveryTotalShares}
+          onComplete={() => void handleCustodianComplete()}
+        />
+      )}
+
+      {step === 'finalizing' && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-text-secondary">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            {progressLabel || 'Finalizing…'}
+          </div>
+          <div className="h-2 bg-border rounded overflow-hidden">
+            <div className="h-full bg-primary transition-all" style={{ width: `${progressPct}%` }} />
+          </div>
+        </div>
+      )}
+
       {step === 'done' && (
         <div className="space-y-3">
-          <p className="text-sm text-green-600">Migration complete. Download your new .pn file and unlock with the new passcode.</p>
+          <p className="text-sm text-green-600">
+            Migration complete. Download your new .pn file and unlock with the new passcode.
+          </p>
           <button type="button" className="px-4 py-2 bg-primary text-white rounded-lg text-sm" onClick={downloadNewPn}>
             Download new .pn
           </button>

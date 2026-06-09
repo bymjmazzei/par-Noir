@@ -23,6 +23,7 @@ export type MigrationStepKind =
   | 'dm_rekey'
   | 'group_rewrap'
   | 'profile_publish'
+  | 'custodian_reinvite'
   | 'lineage_zkp'
   | 'succession_register';
 

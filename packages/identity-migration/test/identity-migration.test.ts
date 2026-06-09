@@ -4,6 +4,13 @@ import {
   decryptDriveFilePackage,
   reencryptDriveFilePackage,
 } from '../src/driveFiles';
+import { migrateDriveEncryptedFiles } from '../src/driveFileMigration';
+import {
+  patchProfileJson,
+  replaceIdentityStringsInJson,
+  isEncryptedPayloadFileName,
+} from '../src/driveMetadataPatch';
+import { createEmptyMigrationReport, recordMigrationOutcome } from '../src/dmHistoryMigration';
 import { buildMigrationPlan, allRequiredStepsComplete } from '../src/catalog';
 import { markStepComplete, createInitialProgress } from '../src/runner';
 import { rekeyConnectionAsRequester } from '../src/dmRekey';
@@ -53,6 +60,60 @@ describe('catalog + runner', () => {
       progress = markStepComplete(progress, step.id);
     }
     expect(allRequiredStepsComplete(plan, progress.completedStepIds)).toBe(true);
+  });
+});
+
+describe('driveFileMigration', () => {
+  it('migrates encrypted files via callbacks', async () => {
+    const old = { did: 'did:key:old', publicKey: 'pk-old' };
+    const neu = { did: 'did:key:new', publicKey: 'pk-new' };
+    const data = new TextEncoder().encode('payload');
+    const pkg = await encryptDriveFilePackage(data, old);
+    const stored = new Map<string, string>([['f1', JSON.stringify(pkg)]]);
+
+    const result = await migrateDriveEncryptedFiles(old, neu, {
+      listEncryptedFiles: async () => [{ fileId: 'f1', fileName: 'a.encrypted' }],
+      download: async (id) => stored.get(id)!,
+      uploadReencrypted: async (id, json) => {
+        stored.set(id, json);
+      },
+      onProgress: () => {},
+    });
+
+    expect(result.migrated).toBe(1);
+    const migrated = JSON.parse(stored.get('f1')!);
+    const out = await decryptDriveFilePackage(migrated, neu);
+    expect(new TextDecoder().decode(out)).toBe('payload');
+  });
+});
+
+describe('driveMetadataPatch', () => {
+  it('patches profile identifier', () => {
+    const patched = patchProfileJson({ identifier: 'pn-abc' }, 'pn-def', 'kem-b64');
+    expect(patched.identifier).toBe('pn-def');
+    expect(patched.mlKemPublicKey).toBe('kem-b64');
+  });
+
+  it('replaces pn strings in nested json', () => {
+    const out = replaceIdentityStringsInJson(
+      { owner: { id: 'pn-aaa111111111' }, tags: ['pn-aaa111111111'] },
+      'pn-aaa111111111',
+      'pn-bbb222222222'
+    ) as { owner: { id: string } };
+    expect(out.owner.id).toBe('pn-bbb222222222');
+  });
+
+  it('detects encrypted file names', () => {
+    expect(isEncryptedPayloadFileName('photo.jpg.encrypted')).toBe(true);
+    expect(isEncryptedPayloadFileName('profile.json')).toBe(false);
+  });
+});
+
+describe('migration report', () => {
+  it('records outcomes', () => {
+    let report = createEmptyMigrationReport('mig_1', 'pn-a', 'pn-b');
+    report = recordMigrationOutcome(report, { path: '/a', outcome: 'migrated' });
+    expect(report.counts.migrated).toBe(1);
   });
 });
 

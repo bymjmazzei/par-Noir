@@ -15,6 +15,7 @@ export function defaultMigrationSteps(): MigrationStep[] {
     { id: 'dm_rekey', kind: 'dm_rekey', label: 'Re-key direct messages', required: true },
     { id: 'group_rewrap', kind: 'group_rewrap', label: 'Re-wrap group chat keys', required: true },
     { id: 'profile_publish', kind: 'profile_publish', label: 'Publish new messaging keys', required: true },
+    { id: 'custodian_reinvite', kind: 'custodian_reinvite', label: 'Re-invite recovery custodians', required: true },
     { id: 'lineage_zkp', kind: 'lineage_zkp', label: 'Sign identity succession proofs', required: true },
     { id: 'succession_register', kind: 'succession_register', label: 'Register network succession', required: true },
   ];

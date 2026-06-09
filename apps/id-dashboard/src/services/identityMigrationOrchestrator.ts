@@ -17,31 +17,40 @@ import {
   buildMemberMessageRootsFromRekeys,
   type IdentityKeyMaterial,
   MIGRATION_STATE_KEY,
+  type MigrationReport,
 } from '@par-noir/identity-migration';
 import { VolumeIdGenerator } from '@par-noir/aggregator-domain';
 import { base64ToBytes, bytesToBase64 } from '@par-noir/pqc-crypto/encoding';
 import {
-  encryptOwnerVaultShare,
-  splitSecret,
   generateRecoveryMaster,
   buildRecoveryPayload,
   encryptRecoveryEnvelope,
+  splitSecret,
 } from '@par-noir/recovery-crypto';
 import type { EncryptedIdentity } from '../utils/crypto';
 import { IdentityCrypto } from '../utils/crypto';
 import { loadMlDsaKeypairForZk } from '../utils/zkPqcSigning';
-import { SecureCredentialManager } from '../utils/secureCredentialManager';
+import { LicenseManager } from '../utils/licenseVerification/licenseManager';
 import {
   ackMigrationStep,
   batchReissueZkps,
-  batchRecoveryCustodians,
   completeIdentityMigration,
-  rekeyConnection,
-  rewrapGroupKeys,
   startIdentityMigration,
 } from './identityMigrationApi';
 import { listQueuedVerifiedDataPoints, issueVerifiedZkpsForQueue } from './verifiedDataPointZkService';
-import { LicenseManager } from '../utils/licenseVerification/licenseManager';
+import {
+  connectDriveBackendForMigration,
+  runFullDriveMigration,
+} from './driveFileMigrationService';
+import { setPendingRecoveryShares } from './recoveryService';
+import { API_ENDPOINT } from '../config/api';
+
+export interface PredecessorCustodian {
+  custodianId: string;
+  name: string;
+  custodianType?: string;
+  status?: string;
+}
 
 export interface MigrationContext {
   authToken: string;
@@ -50,6 +59,7 @@ export interface MigrationContext {
     did: string;
     pnName: string;
     passcode: string;
+    recoveryConfig?: { threshold: number; totalShares: number };
   };
   successor: {
     encryptedIdentity: EncryptedIdentity;
@@ -58,7 +68,23 @@ export interface MigrationContext {
     passcode: string;
   };
   driveFolderId?: string;
+  acknowledgeDriveFailures?: boolean;
   onProgress?: (label: string, pct: number) => void;
+}
+
+export interface MigrationCoreResult {
+  migrationId: string;
+  plan: Awaited<ReturnType<typeof buildMigrationPlan>>;
+  successorEncryptedIdentity: EncryptedIdentity;
+  predecessorCustodians: PredecessorCustodian[];
+  recoveryThreshold: number;
+  recoveryTotalShares: number;
+  driveFailures: Array<{ path: string; reason: string }>;
+  driveReport: MigrationReport | null;
+  driveFilesPendingAck: boolean;
+  startDriveFolderId: string | null;
+  predMat: IdentityKeyMaterial;
+  succMat: IdentityKeyMaterial;
 }
 
 async function toKeyMaterial(
@@ -91,10 +117,21 @@ async function toKeyMaterial(
   };
 }
 
-export async function runIdentityMigration(ctx: MigrationContext): Promise<{
-  migrationId: string;
-  successorEncryptedIdentity: EncryptedIdentity;
-}> {
+async function fetchPredecessorCustodians(
+  authToken: string,
+  predecessorPn: string
+): Promise<PredecessorCustodian[]> {
+  const res = await fetch(`${API_ENDPOINT}/api/recovery/${encodeURIComponent(predecessorPn)}/custodians`, {
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as { custodians?: PredecessorCustodian[] };
+  return (data.custodians || []).filter(
+    (c) => c.custodianType !== 'vault' && c.status !== 'vault' && !c.custodianId?.startsWith('vault_share_')
+  );
+}
+
+export async function runIdentityMigrationCore(ctx: MigrationContext): Promise<MigrationCoreResult> {
   const predMat = await toKeyMaterial(
     ctx.predecessor.did,
     ctx.predecessor.encryptedIdentity,
@@ -123,6 +160,7 @@ export async function runIdentityMigration(ctx: MigrationContext): Promise<{
     migrationId: plan.migrationId,
   });
 
+  const driveFolderId = ctx.driveFolderId || start.driveFolderId;
   let progress = createInitialProgress(plan.migrationId);
   const report = (label: string, pct: number) => ctx.onProgress?.(label, pct);
 
@@ -139,15 +177,15 @@ export async function runIdentityMigration(ctx: MigrationContext): Promise<{
       if (proofs[i]) zkpUpdates.push({ dataPointId: dp.dataPointId, zkpProof: proofs[i]! });
     });
   }
-  const { mlDsaSecretKey, mlDsaPublicKey } = await loadMlDsaKeypairForZk(
-    succMat.did,
-    ctx.successor.encryptedIdentity
-  );
+  await loadMlDsaKeypairForZk(succMat.did, ctx.successor.encryptedIdentity);
   if (zkpUpdates.length) {
     await batchReissueZkps(ctx.authToken, plan.migrationId, succMat.pnIdentifier, zkpUpdates);
   }
   progress = markStepComplete(progress, 'zkp_reissue');
   await ackMigrationStep(ctx.authToken, plan.migrationId, 'zkp_reissue');
+
+  const recoveryConfig = ctx.predecessor.recoveryConfig || { threshold: 2, totalShares: 5 };
+  const predecessorCustodians = await fetchPredecessorCustodians(ctx.authToken, predMat.pnIdentifier);
 
   report('Rebuilding recovery vault', 30);
   const recoveryMaster = generateRecoveryMaster();
@@ -158,25 +196,20 @@ export async function runIdentityMigration(ctx: MigrationContext): Promise<{
     mlDsaSecretKey: bytesToBase64(succMat.mlDsaSecretKey),
     identityId: succMat.did,
     pnName: ctx.successor.pnName,
-    recoveryConfig: { threshold: 2, totalShares: 5, version: 1, createdAt: new Date().toISOString() },
+    recoveryConfig: {
+      threshold: recoveryConfig.threshold,
+      totalShares: recoveryConfig.totalShares,
+      version: 1,
+      createdAt: new Date().toISOString(),
+    },
   });
   const recoveryEnvelope = await encryptRecoveryEnvelope(recoveryMaster, recoveryPayload);
-  const shares = splitSecret(recoveryMaster, 2, 5);
-  const custodianRows = [];
-  for (const share of shares) {
-    const encryptedShare = await encryptOwnerVaultShare(share, succMat.publicKey);
-    custodianRows.push({
-      custodianId: `vault_share_${share.index}`,
-      name: `Vault share ${share.index}`,
-      custodianType: 'vault',
-      shareIndex: share.index,
-      encryptedShare: JSON.stringify(encryptedShare),
-      status: 'vault',
-    });
-  }
-  if (custodianRows.length) {
-    await batchRecoveryCustodians(ctx.authToken, plan.migrationId, succMat.pnIdentifier, custodianRows);
-  }
+  const shares = splitSecret(recoveryMaster, recoveryConfig.threshold, recoveryConfig.totalShares);
+  setPendingRecoveryShares({
+    publicKey: succMat.publicKey,
+    shares,
+    threshold: recoveryConfig.threshold,
+  });
   ctx.successor.encryptedIdentity = {
     ...ctx.successor.encryptedIdentity,
     recoveryEnvelope,
@@ -184,8 +217,52 @@ export async function runIdentityMigration(ctx: MigrationContext): Promise<{
   progress = markStepComplete(progress, 'recovery_vault');
   await ackMigrationStep(ctx.authToken, plan.migrationId, 'recovery_vault');
 
-  report('Handing off messaging re-key to browser', 45);
-  const legacyRoots: Record<string, string> = {};
+  let driveReport: MigrationReport | null = null;
+  let driveFailures: Array<{ path: string; reason: string }> = [];
+  let driveFilesPendingAck = false;
+  if (driveFolderId) {
+    const driveBackend = await connectDriveBackendForMigration(ctx.predecessor.did);
+    if (driveBackend) {
+      try {
+        const driveResult = await runFullDriveMigration({
+          migrationId: plan.migrationId,
+          authToken: ctx.authToken,
+          drive: driveBackend,
+          driveFolderId,
+          predecessor: predMat,
+          successor: succMat,
+          onProgress: report,
+          acknowledgeFailures: ctx.acknowledgeDriveFailures ?? false,
+        });
+        driveReport = driveResult.report;
+        driveFailures = driveResult.failures;
+      } catch (e) {
+        driveFailures = [{ path: 'drive_files', reason: e instanceof Error ? e.message : 'drive_failed' }];
+      }
+    }
+  }
+  if (driveFailures.length > 0 && !ctx.acknowledgeDriveFailures) {
+    driveFilesPendingAck = true;
+    return {
+      migrationId: plan.migrationId,
+      plan,
+      successorEncryptedIdentity: ctx.successor.encryptedIdentity,
+      predecessorCustodians,
+      recoveryThreshold: recoveryConfig.threshold,
+      recoveryTotalShares: recoveryConfig.totalShares,
+      driveFailures,
+      driveReport,
+      driveFilesPendingAck,
+      startDriveFolderId: driveFolderId || null,
+      predMat,
+      succMat,
+    };
+  }
+
+  progress = markStepComplete(progress, 'drive_files');
+  await ackMigrationStep(ctx.authToken, plan.migrationId, 'drive_files');
+
+  report('Handing off messaging verify to browser', 45);
   sessionStorage.setItem(
     'pn_identity_migration_kem_handoff',
     JSON.stringify({
@@ -201,69 +278,152 @@ export async function runIdentityMigration(ctx: MigrationContext): Promise<{
   progress = markStepComplete(progress, 'group_rewrap');
   await ackMigrationStep(ctx.authToken, plan.migrationId, 'group_rewrap');
 
-  report('Drive files (skip if none listed)', 65);
-  progress = markStepComplete(progress, 'drive_files');
-  await ackMigrationStep(ctx.authToken, plan.migrationId, 'drive_files');
-
-  report('Publishing profile keys', 75);
-  const { API_ENDPOINT } = await import('../config/api');
-  await fetch(`${API_ENDPOINT}/api/profile/ml-kem-public-key`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${ctx.authToken}`,
-    },
-    body: JSON.stringify({
-      userPnIdentifier: succMat.pnIdentifier,
-      mlKemPublicKey: succMat.mlKemPublicKey,
-    }),
-  }).catch(() => {});
   progress = markStepComplete(progress, 'profile_publish');
   await ackMigrationStep(ctx.authToken, plan.migrationId, 'profile_publish');
 
-  report('Signing lineage proofs', 85);
-  const lineage = await issueLineageZkpPair({
+  localStorage.setItem(
+    MIGRATION_STATE_KEY,
+    serializeMigrationState({ plan, progress: { ...progress, legacyDmRoots: {} } })
+  );
+
+  return {
     migrationId: plan.migrationId,
+    plan,
+    successorEncryptedIdentity: ctx.successor.encryptedIdentity,
+    predecessorCustodians,
+    recoveryThreshold: recoveryConfig.threshold,
+    recoveryTotalShares: recoveryConfig.totalShares,
+    driveFailures,
+    driveReport,
+    driveFilesPendingAck,
+    startDriveFolderId: driveFolderId || null,
+    predMat,
+    succMat,
+  };
+}
+
+export async function ackDriveFilesStep(authToken: string, migrationId: string): Promise<void> {
+  await ackMigrationStep(authToken, migrationId, 'drive_files');
+}
+
+export async function resumeMigrationAfterDriveAck(params: {
+  authToken: string;
+  migrationId: string;
+  predecessor: IdentityKeyMaterial;
+  successor: IdentityKeyMaterial;
+  onProgress?: (label: string, pct: number) => void;
+}): Promise<void> {
+  const report = (label: string, pct: number) => params.onProgress?.(label, pct);
+  await ackDriveFilesStep(params.authToken, params.migrationId);
+
+  report('Handing off messaging verify to browser', 45);
+  sessionStorage.setItem(
+    'pn_identity_migration_kem_handoff',
+    JSON.stringify({
+      migrationId: params.migrationId,
+      predecessorMlKemSecretKey: params.predecessor.mlKemSecretKey,
+      predecessorMlKemPublicKey: params.predecessor.mlKemPublicKey,
+      successorMlKemSecretKey: params.successor.mlKemSecretKey,
+      successorMlKemPublicKey: params.successor.mlKemPublicKey,
+    })
+  );
+  await ackMigrationStep(params.authToken, params.migrationId, 'dm_rekey');
+  await ackMigrationStep(params.authToken, params.migrationId, 'group_rewrap');
+  await ackMigrationStep(params.authToken, params.migrationId, 'profile_publish');
+
+  const plan = await buildMigrationPlan({
+    predecessorPublicKey: params.predecessor.publicKey,
+    successorPublicKey: params.successor.publicKey,
+    predecessorDid: params.predecessor.did,
+    successorDid: params.successor.did,
+    migrationId: params.migrationId,
+  });
+  let progress = createInitialProgress(params.migrationId);
+  for (const stepId of ['zkp_reissue', 'recovery_vault', 'drive_files', 'dm_rekey', 'group_rewrap', 'profile_publish']) {
+    progress = markStepComplete(progress, stepId);
+  }
+  localStorage.setItem(
+    MIGRATION_STATE_KEY,
+    serializeMigrationState({ plan, progress: { ...progress, legacyDmRoots: {} } })
+  );
+}
+
+export async function finalizeIdentityMigration(params: {
+  authToken: string;
+  migrationId: string;
+  predecessor: IdentityKeyMaterial;
+  successor: IdentityKeyMaterial;
+  successorEncryptedIdentity: EncryptedIdentity;
+  driveFolderId?: string | null;
+  onProgress?: (label: string, pct: number) => void;
+}): Promise<{ successorEncryptedIdentity: EncryptedIdentity }> {
+  const report = (label: string, pct: number) => params.onProgress?.(label, pct);
+
+  await ackMigrationStep(params.authToken, params.migrationId, 'custodian_reinvite');
+
+  report('Signing lineage proofs', 85);
+  const { mlDsaSecretKey, mlDsaPublicKey } = await loadMlDsaKeypairForZk(
+    params.successor.did,
+    params.successorEncryptedIdentity
+  );
+  const lineage = await issueLineageZkpPair({
+    migrationId: params.migrationId,
     predecessor: {
-      publicKey: predMat.publicKey,
-      pnIdentifier: predMat.pnIdentifier,
-      mlDsaSecretKey: predMat.mlDsaSecretKey,
-      mlDsaPublicKey: predMat.mlDsaPublicKey,
+      publicKey: params.predecessor.publicKey,
+      pnIdentifier: params.predecessor.pnIdentifier,
+      mlDsaSecretKey: params.predecessor.mlDsaSecretKey,
+      mlDsaPublicKey: params.predecessor.mlDsaPublicKey,
     },
     successor: {
-      publicKey: succMat.publicKey,
-      pnIdentifier: succMat.pnIdentifier,
-      mlDsaSecretKey: succMat.mlDsaSecretKey,
+      publicKey: params.successor.publicKey,
+      pnIdentifier: params.successor.pnIdentifier,
+      mlDsaSecretKey: params.successor.mlDsaSecretKey,
       mlDsaPublicKey,
     },
   });
-  progress = markStepComplete(progress, 'lineage_zkp');
-  await ackMigrationStep(ctx.authToken, plan.migrationId, 'lineage_zkp');
+  await ackMigrationStep(params.authToken, params.migrationId, 'lineage_zkp');
 
   report('Registering succession', 95);
-  await completeIdentityMigration(ctx.authToken, plan.migrationId, {
+  await completeIdentityMigration(params.authToken, params.migrationId, {
     lineagePredecessorProof: lineage.predecessorProof,
     lineageSuccessorProof: lineage.successorProof,
-    driveFolderId: ctx.driveFolderId || start.driveFolderId || undefined,
-    successorPublicKey: succMat.publicKey,
+    driveFolderId: params.driveFolderId || undefined,
+    successorPublicKey: params.successor.publicKey,
   });
-  progress = markStepComplete(progress, 'succession_register');
-  await ackMigrationStep(ctx.authToken, plan.migrationId, 'succession_register');
+  await ackMigrationStep(params.authToken, params.migrationId, 'succession_register');
 
-  const oldHash = predMat.publicKey.slice(0, 32);
-  const newHash = succMat.publicKey.slice(0, 32);
+  const oldHash = params.predecessor.publicKey.slice(0, 32);
+  const newHash = params.successor.publicKey.slice(0, 32);
   await LicenseManager.transferLicense(oldHash, newHash).catch(() => {});
 
-  localStorage.setItem(
-    MIGRATION_STATE_KEY,
-    serializeMigrationState({
-      plan,
-      progress: { ...progress, legacyDmRoots: legacyRoots },
-    })
-  );
-
   report('Complete', 100);
-  return { migrationId: plan.migrationId, successorEncryptedIdentity: ctx.successor.encryptedIdentity };
+  return { successorEncryptedIdentity: params.successorEncryptedIdentity };
 }
 
-export { reencryptDriveFilePackage, parseEncryptedFilePackage, rekeyConnectionAsRequester, rewrapGroupForOwnerRotation, buildMemberMessageRootsFromRekeys, migrateOwnerVaultShares, reissueZkProofsFromEnvelopes };
+/** @deprecated Use runIdentityMigrationCore + finalizeIdentityMigration */
+export async function runIdentityMigration(ctx: MigrationContext): Promise<{
+  migrationId: string;
+  successorEncryptedIdentity: EncryptedIdentity;
+}> {
+  const core = await runIdentityMigrationCore(ctx);
+  const fin = await finalizeIdentityMigration({
+    authToken: ctx.authToken,
+    migrationId: core.migrationId,
+    predecessor: core.predMat,
+    successor: core.succMat,
+    successorEncryptedIdentity: core.successorEncryptedIdentity,
+    driveFolderId: core.startDriveFolderId,
+    onProgress: ctx.onProgress,
+  });
+  return { migrationId: core.migrationId, successorEncryptedIdentity: fin.successorEncryptedIdentity };
+}
+
+export {
+  reencryptDriveFilePackage,
+  parseEncryptedFilePackage,
+  rekeyConnectionAsRequester,
+  rewrapGroupForOwnerRotation,
+  buildMemberMessageRootsFromRekeys,
+  migrateOwnerVaultShares,
+  reissueZkProofsFromEnvelopes,
+};

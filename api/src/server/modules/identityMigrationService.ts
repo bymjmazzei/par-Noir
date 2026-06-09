@@ -20,8 +20,47 @@ const REQUIRED_STEPS = [
   'dm_rekey',
   'group_rewrap',
   'profile_publish',
+  'custodian_reinvite',
   'lineage_zkp',
 ] as const;
+
+async function resolveMigrationDriveAccess(migrationId: string): Promise<{
+  pred: string;
+  succ: string;
+  token: { access_token: string; refresh_token?: string };
+  accountId?: string;
+  folders: { metadataFolderId: string; pnFolderId: string };
+  pinnedFolderId: string | null;
+} | null> {
+  const row = await getMigrationRow(migrationId);
+  if (!row) return null;
+  const pred = normalizePn(row.predecessor_pn_identifier);
+  const succ = normalizePn(row.successor_pn_identifier);
+  const creds = await storageCredentialsService.getCredentials(pred);
+  if (!creds?.credentials) return null;
+  const accounts = creds.credentials.googleDriveAccounts
+    || (creds.credentials.googleDrive ? [creds.credentials.googleDrive] : []);
+  const account = accounts[0];
+  if (!account) return null;
+  const token = {
+    access_token: account.access_token || account.accessToken,
+    refresh_token: account.refresh_token || account.refreshToken,
+  };
+  const pinned =
+    (row.pinned_drive_folder_id as string | null)
+    || (await storageCredentialsService.getDriveFolderId(pred));
+  const { resolvePnDriveFolders } = await import('./resolvePnDriveFolders');
+  const folders = await resolvePnDriveFolders(token, pred, account.accountId, pinned);
+  if (!folders) return null;
+  return {
+    pred,
+    succ,
+    token,
+    accountId: account.accountId,
+    folders,
+    pinnedFolderId: pinned,
+  };
+}
 
 function normalizePn(pn: string): string {
   const t = pn.trim();
@@ -134,15 +173,16 @@ export function registerIdentityMigrationRoutes(app: Application): void {
       const db = getDatabasePool();
       await db.query(
         `INSERT INTO pn_identity_migration (
-          id, predecessor_pn_identifier, successor_pn_identifier, predecessor_did, successor_did, status, completed_steps
-        ) VALUES ($1, $2, $3, $4, $5, 'in_progress', '[]'::jsonb)
-        ON CONFLICT (id) DO UPDATE SET updated_at = NOW()`,
+          id, predecessor_pn_identifier, successor_pn_identifier, predecessor_did, successor_did, status, completed_steps, pinned_drive_folder_id
+        ) VALUES ($1, $2, $3, $4, $5, 'in_progress', '[]'::jsonb, $6)
+        ON CONFLICT (id) DO UPDATE SET updated_at = NOW(), pinned_drive_folder_id = COALESCE(EXCLUDED.pinned_drive_folder_id, pn_identity_migration.pinned_drive_folder_id)`,
         [
           migrationId,
           pred,
           succ,
           typeof predecessorDid === 'string' ? predecessorDid : null,
           typeof successorDid === 'string' ? successorDid : null,
+          pinnedFolderId,
         ]
       );
 
@@ -159,6 +199,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
           dm_rekey: 'Re-key DM sessions',
           group_rewrap: 'Re-wrap group chat keys',
           profile_publish: 'Publish new mlKemPublicKey on profile.json',
+          custodian_reinvite: 'Re-invite recovery custodians to meet threshold',
           lineage_zkp: 'Dual-sign identity succession ZK proofs',
           succession_register: 'Complete migration (registers network succession)',
         },
@@ -183,6 +224,9 @@ export function registerIdentityMigrationRoutes(app: Application): void {
         predecessorPnIdentifier: row.predecessor_pn_identifier,
         successorPnIdentifier: row.successor_pn_identifier,
         completedSteps: row.completed_steps ?? [],
+        driveProgress: row.drive_progress ?? null,
+        migrationReport: row.migration_report ?? null,
+        pinnedDriveFolderId: row.pinned_drive_folder_id ?? null,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         completedAt: row.completed_at,
@@ -408,48 +452,40 @@ export function registerIdentityMigrationRoutes(app: Application): void {
         return res.status(400).json({ error: 'userPnIdentifier and custodians array required' });
       }
 
+      const drive = await resolveMigrationDriveAccess(req.params.id);
+      if (!drive) return res.status(404).json({ error: 'Drive not connected' });
+
       const pn = normalizePn(String(userPnIdentifier));
-      const creds = await storageCredentialsService.getCredentials(pn);
-      if (!creds?.credentials) return res.status(404).json({ error: 'Drive not connected' });
-
-      const accounts = creds.credentials.googleDriveAccounts
-        || (creds.credentials.googleDrive ? [creds.credentials.googleDrive] : []);
-      const account = accounts[0];
-      const token = {
-        access_token: account.access_token || account.accessToken,
-        refresh_token: account.refresh_token || account.refreshToken,
-      };
-      const { resolvePnDriveFolders } = await import('./resolvePnDriveFolders');
-      const pinned = await storageCredentialsService.getDriveFolderId(pn);
-      const folders = await resolvePnDriveFolders(token, pn, account.accountId, pinned);
-      if (!folders) return res.status(404).json({ error: 'Drive folders not found' });
-
       const { RecoverySheetsService } = await import('./recoverySheetsService');
       const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
-        token,
-        folders.metadataFolderId,
+        drive.token,
+        drive.folders.metadataFolderId,
         pn,
-        account.accountId
+        drive.accountId
       );
 
       let count = 0;
       for (const c of custodians) {
         if (!c?.custodianId) continue;
+        const status = c.status || 'active';
+        if (status === 'active' && !c.custodianshipCredential) {
+          return res.status(400).json({ error: 'custodianshipCredential required for active custodians' });
+        }
         await RecoverySheetsService.upsertCustodian(
-          token,
+          drive.token,
           spreadsheetId,
           {
             custodianId: c.custodianId,
             name: c.name || c.custodianId,
             custodianType: c.custodianType || c.type || 'person',
-            status: c.status || 'active',
+            status,
             shareIndex: Number(c.shareIndex) || 0,
             custodianshipCredential: c.custodianshipCredential || '',
             encryptedShare: c.encryptedShare || '',
             createdAt: c.createdAt || new Date().toISOString(),
           },
           pn,
-          account.accountId
+          drive.accountId
         );
         count++;
       }
@@ -457,6 +493,116 @@ export function registerIdentityMigrationRoutes(app: Application): void {
       return res.json({ success: true, updated: count });
     } catch (error: unknown) {
       console.error('[migration] recovery custodians:', error);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  });
+
+  /** PATCH /api/identity/migration/:id/drive/progress */
+  app.patch('/api/identity/migration/:id/drive/progress', async (req: Request, res: Response) => {
+    try {
+      const auth = bearerPn(req);
+      if (!auth) return res.status(401).json({ error: 'unauthorized' });
+
+      const { driveProgress, migrationReport } = req.body ?? {};
+      const db = getDatabasePool();
+      await db.query(
+        `UPDATE pn_identity_migration SET
+          drive_progress = COALESCE($2::jsonb, drive_progress),
+          migration_report = COALESCE($3::jsonb, migration_report),
+          updated_at = NOW()
+        WHERE id = $1`,
+        [
+          req.params.id,
+          driveProgress ? JSON.stringify(driveProgress) : null,
+          migrationReport ? JSON.stringify(migrationReport) : null,
+        ]
+      );
+      return res.json({ success: true });
+    } catch (error: unknown) {
+      return res.status(500).json({ error: 'server_error' });
+    }
+  });
+
+  /** POST /api/identity/migration/:id/drive/sheets/migrate */
+  app.post('/api/identity/migration/:id/drive/sheets/migrate', async (req: Request, res: Response) => {
+    try {
+      const auth = bearerPn(req);
+      if (!auth) return res.status(401).json({ error: 'unauthorized' });
+
+      const drive = await resolveMigrationDriveAccess(req.params.id);
+      if (!drive) return res.status(404).json({ error: 'Drive not connected' });
+
+      const row = await getMigrationRow(req.params.id);
+      let messagesFolderId: string | null = null;
+      try {
+        const q = `name='par-noir-messages' and '${drive.folders.pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1`;
+        const resFolder = await fetch(url, { headers: { Authorization: `Bearer ${drive.token.access_token}` } });
+        if (resFolder.ok) {
+          const data = (await resFolder.json()) as { files?: Array<{ id: string }> };
+          messagesFolderId = data.files?.[0]?.id ?? null;
+        }
+      } catch {
+        /* optional */
+      }
+
+      const { migrateMetadataSheetsPn } = await import('./driveMigrationSheetsService');
+      const result = await migrateMetadataSheetsPn(
+        drive.token,
+        drive.folders.metadataFolderId,
+        messagesFolderId,
+        drive.pred,
+        drive.succ,
+        drive.accountId,
+        row?.predecessor_did ?? undefined,
+        row?.successor_did ?? undefined
+      );
+
+      return res.json({ success: true, ...result });
+    } catch (error: unknown) {
+      console.error('[migration] drive/sheets/migrate:', error);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  });
+
+  /** POST /api/identity/migration/:id/drive/messages/rows */
+  app.post('/api/identity/migration/:id/drive/messages/rows', async (req: Request, res: Response) => {
+    try {
+      const auth = bearerPn(req);
+      if (!auth) return res.status(401).json({ error: 'unauthorized' });
+
+      const { connectionId, kemCiphertext, rowUpdates } = req.body ?? {};
+      if (!connectionId || !Array.isArray(rowUpdates)) {
+        return res.status(400).json({ error: 'connectionId and rowUpdates required' });
+      }
+
+      const drive = await resolveMigrationDriveAccess(req.params.id);
+      if (!drive) return res.status(404).json({ error: 'Drive not connected' });
+
+      if (kemCiphertext) {
+        const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
+        const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
+          drive.token,
+          drive.folders.metadataFolderId,
+          drive.succ,
+          drive.accountId
+        );
+        await ConnectionsSheetsService.updateConnectionStatus(
+          drive.token,
+          spreadsheetId,
+          String(connectionId),
+          'accepted',
+          drive.succ,
+          drive.accountId,
+          new Date().toISOString(),
+          undefined,
+          String(kemCiphertext)
+        );
+      }
+
+      return res.json({ success: true, updated: rowUpdates.length });
+    } catch (error: unknown) {
+      console.error('[migration] drive/messages/rows:', error);
       return res.status(500).json({ error: 'server_error' });
     }
   });

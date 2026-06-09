@@ -11,6 +11,14 @@ import {
 } from '../../types/aggregator';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
 
+export interface DriveInventoryItem {
+  fileId: string;
+  name: string;
+  path: string;
+  mimeType: string;
+  isFolder: boolean;
+}
+
 export class GoogleDriveBackend extends AbstractStorageBackend {
   private token: string | null = null;
   private refreshToken: string | null = null;
@@ -1251,6 +1259,122 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     }
 
     return await response.blob();
+  }
+
+  /** In-place content replace (preserves file id). */
+  async replaceFileContent(fileId: string, body: Blob, mimeType = 'application/octet-stream'): Promise<void> {
+    if (!this.token) {
+      throw new Error('Not connected to Google Drive');
+    }
+
+    const initResponse = await this.makeRequest(
+      `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=resumable`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ mimeType }),
+      }
+    );
+
+    if (!initResponse.ok) {
+      throw new Error('Failed to initiate file content replace');
+    }
+
+    const uploadUrl = initResponse.headers.get('Location');
+    if (!uploadUrl) {
+      throw new Error('No upload URL received for replace');
+    }
+
+    const uploadResponse = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': mimeType },
+      body,
+    });
+
+    if (!uploadResponse.ok) {
+      throw new Error('Failed to replace file content');
+    }
+  }
+
+  async readJsonFile<T = unknown>(fileId: string): Promise<T | null> {
+    try {
+      const blob = await this.downloadFile(fileId);
+      const text = await blob.text();
+      return JSON.parse(text) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  async writeJsonFile(fileId: string, data: unknown): Promise<void> {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    await this.replaceFileContent(fileId, blob, 'application/json');
+  }
+
+  async renameFile(fileId: string, newName: string): Promise<void> {
+    if (!this.token) {
+      throw new Error('Not connected to Google Drive');
+    }
+
+    const response = await this.makeRequest(
+      `https://www.googleapis.com/drive/v3/files/${fileId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to rename file');
+    }
+  }
+
+  /** Walk entire subtree under folderId (files + folders). */
+  async listFilesRecursive(rootFolderId: string): Promise<DriveInventoryItem[]> {
+    if (!this.token) {
+      throw new Error('Not connected to Google Drive');
+    }
+
+    const out: DriveInventoryItem[] = [];
+    const queue: Array<{ folderId: string; path: string }> = [{ folderId: rootFolderId, path: '' }];
+
+    while (queue.length > 0) {
+      const { folderId, path } = queue.shift()!;
+      let pageToken: string | undefined;
+
+      do {
+        const q = `'${folderId}' in parents and trashed=false`;
+        const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType)&pageSize=200${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+        const response = await this.makeRequest(url);
+        if (!response.ok) {
+          throw new Error('Failed to list folder contents');
+        }
+        const data = (await response.json()) as {
+          nextPageToken?: string;
+          files?: Array<{ id: string; name: string; mimeType?: string }>;
+        };
+        for (const f of data.files || []) {
+          const isFolder = f.mimeType === 'application/vnd.google-apps.folder';
+          const itemPath = path ? `${path}/${f.name}` : f.name;
+          out.push({
+            fileId: f.id,
+            name: f.name,
+            path: itemPath,
+            mimeType: f.mimeType || 'application/octet-stream',
+            isFolder,
+          });
+          if (isFolder) {
+            queue.push({ folderId: f.id, path: itemPath });
+          }
+        }
+        pageToken = data.nextPageToken;
+      } while (pageToken);
+    }
+
+    return out;
   }
 
   async deleteFile(fileId: string): Promise<void> {
