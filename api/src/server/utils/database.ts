@@ -710,6 +710,21 @@ export async function initializeDatabase(): Promise<void> {
       );
     }
 
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const platformPath = path.join(__dirname, '../../migrations/add_platform_registry_cache.sql');
+      const platformSql = fs.readFileSync(platformPath, 'utf-8');
+      await db.query(platformSql);
+      console.log('✅ platform_registry_cache migration executed');
+    } catch (migrationError: unknown) {
+      console.error(
+        '❌ platform_registry_cache migration failed:',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+      throw migrationError;
+    }
+
     const { ClientRegistrationService } = await import('../modules/clientRegistration');
     await ClientRegistrationService.ensureDefaultClientsSeeded();
 
@@ -1084,20 +1099,6 @@ export async function initializeDatabase(): Promise<void> {
     } catch (migrationError: unknown) {
       console.debug(
         'ℹ️ integrator_webhook_subscriptions migration error (may already be applied):',
-        migrationError instanceof Error ? migrationError.message : migrationError
-      );
-    }
-
-    try {
-      const fs = await import('fs');
-      const path = await import('path');
-      const platformPath = path.join(__dirname, '../../migrations/add_platform_registry_cache.sql');
-      const platformSql = fs.readFileSync(platformPath, 'utf-8');
-      await db.query(platformSql);
-      console.log('✅ platform_registry_cache migration executed');
-    } catch (migrationError: unknown) {
-      console.debug(
-        'ℹ️ platform_registry_cache migration error (may already be applied):',
         migrationError instanceof Error ? migrationError.message : migrationError
       );
     }
