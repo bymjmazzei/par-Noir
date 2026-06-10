@@ -57,6 +57,7 @@ Google Drive Root
 8. **`zkp-data-points.xlsx`** - Zero-knowledge proof data points (replaces old zkp-data-points.json)
    - Contains 1 sheet: Data Points
 9. **`third-party-permissions.xlsx`** - Third-party app permissions (replaces old third-party-permissions.json)
+10. **`platform-registry.xlsx`** *(operator pN only)* - Platform OAuth application queue, approved OAuth clients, and commercial licenses (source of truth for integrator approval; synced to API Postgres cache). See `docs/developer/PLATFORM_OPERATOR.md`.
    - Contains 1 sheet: Permissions
 10. **`public-file-index.xlsx`** - Public file index (replaces old public-file-index.json)
    - Contains 1 sheet: Files (publicly readable)

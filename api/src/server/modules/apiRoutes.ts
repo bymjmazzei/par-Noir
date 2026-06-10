@@ -7,6 +7,7 @@ import { Request, Response } from 'express';
 import { getStandardDataPointsPublic, DATA_POINT_CATEGORIES } from './standardDataPointsCatalog';
 import { ApiKeyService } from './apiKeyService';
 import { PNOAuthService } from './pnOAuthService';
+import { ClientRegistrationService } from './clientRegistration';
 
 /**
  * Middleware to authenticate API requests using API key
@@ -145,10 +146,26 @@ export function setupOAuthRoutes(app: any) {
         });
       }
 
-      // Validate client_id matches API key's pN ID or is registered
-      // For now, we'll allow any client_id (can be enhanced with client registration)
+      // Validate registered OAuth client and redirect URI
+      const validClient = await ClientRegistrationService.validateClient(
+        client_id as string,
+        redirect_uri as string
+      );
+      if (!validClient) {
+        return res.status(400).json({
+          error: 'invalid_client',
+          error_description: 'Invalid or inactive client_id, or redirect_uri not registered'
+        });
+      }
 
       const scopes = scope ? (scope as string).split(' ') : ['openid', 'profile'];
+      const scopesOk = await ClientRegistrationService.validateScopes(client_id as string, scopes);
+      if (!scopesOk) {
+        return res.status(400).json({
+          error: 'invalid_scope',
+          error_description: 'One or more requested scopes are not allowed for this client'
+        });
+      }
 
       let code: string;
       try {

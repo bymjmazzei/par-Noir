@@ -134,11 +134,12 @@ export class ClientRegistrationService {
 
     for (const d of defaults) {
       await pool.query(
-        `INSERT INTO oauth_clients (client_id, name, description, redirect_uris, scopes, is_active, updated_at)
-         VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, true, NOW())
+        `INSERT INTO oauth_clients (client_id, name, description, redirect_uris, scopes, is_active, registry_source, updated_at)
+         VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, true, 'seed', NOW())
          ON CONFLICT (client_id) DO UPDATE SET
            redirect_uris = EXCLUDED.redirect_uris,
            scopes = EXCLUDED.scopes,
+           registry_source = 'seed',
            updated_at = NOW()`,
         [d.clientId, d.name, d.description, JSON.stringify(d.redirectUris), JSON.stringify(d.scopes)]
       );

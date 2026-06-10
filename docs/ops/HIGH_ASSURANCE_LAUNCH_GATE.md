@@ -21,6 +21,7 @@ launch is blocked.
 | Token signing mode | Explicit HS256 or RS256/KMS configured and documented | Env snapshot + rotation runbook link |
 | Refresh rotation | `PN_OAUTH_ENFORCE_REFRESH_ROTATION` staged, validated, then production-enabled | Staging sign-off + production smoke report |
 | Admin auth hardening | Admin identity headers and principals configured; legacy admin key disabled when ready | Config diff + admin endpoint auth test evidence |
+| Platform registry | `PLATFORM_REGISTRY_PN_IDENTIFIER` Drive connected; sync healthy; pending integrator clients cannot OAuth | Operator init + sync timestamps; negative OAuth test for unapproved `client_id` |
 
 ## 3) App-surface controls (all apps)
 

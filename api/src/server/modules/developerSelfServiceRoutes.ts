@@ -9,10 +9,13 @@ import { ApiKeyService } from './apiKeyService';
 import { ClientRegistrationService } from './clientRegistration';
 import { appendAuditEvent, listAuditEventsBySubject } from './auditService';
 import { safeClientErrorMessage } from '../utils/safeError';
+import { isPlatformRegistryConfigured } from './platformOperatorService';
+import { submitOAuthClientApplication } from './platformRegistryApplicationService';
+import { PlatformCommercialLicenseService } from './platformRegistrySyncService';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-const RESERVED_CLIENT_IDS = new Set(['browser-app', 'prism-app', 'developer-portal']);
+const RESERVED_CLIENT_IDS = new Set(['browser-app', 'prism-app', 'developer-portal', 'licensing-portal']);
 
 const DATA_POINT_PROPOSAL_EVENT = 'data_point.proposal';
 
@@ -20,7 +23,7 @@ export function getDeveloperPortalClientId(): string {
   return (process.env.DEVELOPER_PORTAL_CLIENT_ID || 'developer-portal').trim();
 }
 
-function requireDeveloperPortalClient(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+export function requireDeveloperPortalClient(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   const expected = getDeveloperPortalClientId();
   if (req.user?.clientId !== expected) {
     res.status(403).json({
@@ -57,6 +60,25 @@ export function registerDeveloperSelfServiceRoutes(app: Application): void {
       }
 
       const { scopes, requestsPerMinute, requestsPerDay } = req.body || {};
+      const scopeList = Array.isArray(scopes) ? scopes.map(String) : undefined;
+      const rpm = typeof requestsPerMinute === 'number' ? requestsPerMinute : undefined;
+      const rpd = typeof requestsPerDay === 'number' ? requestsPerDay : undefined;
+
+      if (
+        isPlatformRegistryConfigured() &&
+        (PlatformCommercialLicenseService.scopesRequireCommercial(scopeList ?? []) ||
+          PlatformCommercialLicenseService.limitsRequireCommercial(rpm, rpd))
+      ) {
+        const licensed = await PlatformCommercialLicenseService.hasActiveLicenseForPn(pnId);
+        if (!licensed) {
+          return res.status(403).json({
+            error: 'commercial_license_required',
+            error_description:
+              'Elevated API limits or commercial scopes require an active commercial license. Contact licensing@parnoir.com or request approval via the platform operator.'
+          });
+        }
+      }
+
       const { record, plaintextKey } = await ApiKeyService.createApiKey({
         pnId,
         scopes: Array.isArray(scopes) ? scopes.map(String) : undefined,
@@ -130,7 +152,57 @@ export function registerDeveloperSelfServiceRoutes(app: Application): void {
         });
       }
 
-      if (await ClientRegistrationService.clientExists(clientId.trim())) {
+      const trimmedClientId = clientId.trim();
+      const redirectUriList = redirectUris.map((u: unknown) => String(u).trim()).filter(Boolean);
+      const scopeList = Array.isArray(scopes) ? scopes.map(String) : ['openid', 'profile'];
+
+      if (isPlatformRegistryConfigured()) {
+        if (await ClientRegistrationService.clientExists(trimmedClientId)) {
+          const existing = await ClientRegistrationService.getClient(trimmedClientId);
+          if (existing?.isActive) {
+            return res.status(409).json({
+              error: 'client_exists',
+              error_description: 'A client with this id already exists'
+            });
+          }
+        }
+
+        try {
+          const { applicationId, status } = await submitOAuthClientApplication({
+            clientId: trimmedClientId,
+            name: name.trim(),
+            description: typeof description === 'string' ? description.trim() : undefined,
+            redirectUris: redirectUriList,
+            scopes: scopeList,
+            ownerPnId: ownerPn
+          });
+
+          await appendAuditEvent({
+            eventType: 'oauth_client.application_submitted',
+            actorHint: 'developer_portal',
+            subjectPnIdentifier: ownerPn,
+            metadata: { clientId: trimmedClientId, applicationId }
+          });
+
+          return res.status(201).json({
+            applicationId,
+            clientId: trimmedClientId,
+            status,
+            message: 'Application submitted for platform operator review. OAuth will activate after approval.'
+          });
+        } catch (err: unknown) {
+          const statusCode = (err as { statusCode?: number }).statusCode;
+          if (statusCode === 409) {
+            return res.status(409).json({
+              error: 'client_exists',
+              error_description: (err as Error).message
+            });
+          }
+          throw err;
+        }
+      }
+
+      if (await ClientRegistrationService.clientExists(trimmedClientId)) {
         return res.status(409).json({
           error: 'client_exists',
           error_description: 'A client with this id already exists'
@@ -138,11 +210,11 @@ export function registerDeveloperSelfServiceRoutes(app: Application): void {
       }
 
       const client = await ClientRegistrationService.registerClient({
-        clientId: clientId.trim(),
+        clientId: trimmedClientId,
         name: name.trim(),
         description: typeof description === 'string' ? description.trim() : undefined,
-        redirectUris: redirectUris.map((u: unknown) => String(u).trim()).filter(Boolean),
-        scopes: Array.isArray(scopes) ? scopes.map(String) : ['openid', 'profile'],
+        redirectUris: redirectUriList,
+        scopes: scopeList,
         clientSecret: typeof clientSecret === 'string' ? clientSecret : undefined,
         isActive: true,
         ownerPnId: ownerPn

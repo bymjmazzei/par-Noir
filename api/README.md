@@ -258,6 +258,8 @@ This API server supports the **"MARK I"** identity - the first real identity cre
 | `DATABASE_URL` | PostgreSQL connection string (required in production with DB features) |
 | `ADMIN_API_KEY` | Protects `POST /oauth/clients` (admin), `POST /api/admin/api-keys`, `POST /api/admin/identity/succession`, `GET /api/admin/audit-events` (`X-Admin-Key` or `Authorization: Bearer`). Do not use from browser apps. |
 | `DEVELOPER_PORTAL_CLIENT_ID` | Optional; defaults to **`developer-portal`**. OAuth access tokens for this client id are required for `/api/developer/*` self-service routes. |
+| `PLATFORM_REGISTRY_PN_IDENTIFIER` | pN id whose Google Drive holds `_metadata/platform-registry.xlsx` (OAuth approvals + commercial licenses source of truth). Operator must connect Drive to the API. |
+| `PLATFORM_OPERATOR_PN_IDS` | Comma-separated pN ids allowed to use `/api/developer/platform/*` and the **Platform** section in the developer portal (same pattern as `PRISM_ADMIN_PN_IDS`). |
 | `AUDIT_RETENTION_DAYS` | Optional; defaults to **365** for `audit_events` pruning helper |
 | `REDIS_URL` | Optional; enables distributed cache and **shared API-key rate limits** across multiple API processes (see `docs/api/RATE_LIMITS.md`) |
 | `SENTRY_DSN` | Optional; server-side error reporting (`SENTRY_TRACES_SAMPLE_RATE` 0–1, default 0) |
@@ -308,6 +310,18 @@ Enable v2 in **staging** first; verify read/write of credentials; then productio
 See `docs/developer/INTEGRATOR_IDENTITY_SUCCESSION.md` for public succession reads (`GET /api/v1/identity/successor`).
 
 **Third-party OAuth:** The canonical flow is **authorization code** with a registered **`redirect_uri`**; after consent the user agent is always redirected there with `code` / `state` (or OAuth `error` params). Popup UX is optional and still uses the same redirect. See [`docs/developer/PN_OAUTH_INTEGRATION.md`](../docs/developer/PN_OAUTH_INTEGRATION.md). **`GET /oauth/popup-bridge`** is deprecated (**410 Gone**).
+
+### Platform registry (operator Drive + developer portal)
+
+When `PLATFORM_REGISTRY_PN_IDENTIFIER` and `PLATFORM_OPERATOR_PN_IDS` are set:
+
+1. **Integrators** submit OAuth clients via the developer portal → **pending** row on operator Drive (`platform-registry.xlsx` / Applications tab).
+2. **Operators** (allowlisted pNs) approve in developer portal → **Platform** nav → writes OAuthClients + CommercialLicenses tabs on Drive, then syncs to Postgres.
+3. **Postgres** (`oauth_clients`, `platform_commercial_licenses`) is an enforcement **cache** only — not the source of truth.
+4. Self-service OAuth clients cannot authorize until approved and synced. First-party seeded clients (`browser-app`, `developer-portal`, etc.) remain active via `registry_source=seed`.
+5. Elevated API key limits / commercial scopes require an active commercial license row for the grantee pN.
+
+Operator setup: connect Google Drive for the registry pN on production API, set env vars, open developer portal → **Platform** → **Initialize Drive registry**, then **Sync to API cache**.
 
 ## 📚 **Documentation**
 

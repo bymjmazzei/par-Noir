@@ -58,7 +58,14 @@ export function CredentialsPage() {
         setError((data as { error_description?: string }).error_description || (data as { error?: string }).error || res.statusText);
         return;
       }
-      setMessage(`OAuth client registered: ${(data as { clientId?: string }).clientId}.`);
+      const status = (data as { status?: string }).status;
+      if (status === 'pending') {
+        setMessage(
+          `OAuth application submitted (${(data as { applicationId?: string }).applicationId}). Pending platform operator review — OAuth activates after approval.`
+        );
+      } else {
+        setMessage(`OAuth client registered: ${(data as { clientId?: string }).clientId}.`);
+      }
       await refreshDashboard();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Request failed');

@@ -34,6 +34,8 @@ import {
   getRecoveryCustodianSummary,
 } from './server/modules/recoveryVaultRoutes';
 import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSelfServiceRoutes';
+import { registerPlatformRegistryRoutes } from './server/modules/platformRegistryRoutes';
+import { PlatformRegistrySyncService } from './server/modules/platformRegistrySyncService';
 import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
 import { registerVerificationRoutes } from './server/modules/verificationRoutes';
 import { registerMusicTrackRegistryRoutes } from './server/modules/musicTrackRegistryRoutes';
@@ -11021,6 +11023,13 @@ class ProductionServer {
         .replace(/\{\{SCOPES_HTML\}\}/g, scopesHtml)
         .replace(/\{\{ASSET_BASE\}\}/g, assetBase);
 
+      const { PlatformCommercialLicenseService } = await import('./server/modules/platformRegistrySyncService');
+      const verified = await PlatformCommercialLicenseService.getClientVerified(client_id as string);
+      const verifiedBadgeHtml = verified
+        ? '<div class="verified-badge" style="margin-top:8px;padding:6px 10px;background:#1a3d1a;border:1px solid #2d6a2d;border-radius:6px;font-size:12px;color:#8fdf8f;">Verified by par Noir</div>'
+        : '<div class="unverified-notice" style="margin-top:8px;padding:6px 10px;background:#3d2a1a;border:1px solid #6a4a2d;border-radius:6px;font-size:12px;color:#dfbf8f;">Unverified integrator — confirm the redirect domain before unlocking.</div>';
+      html = html.replace(/\{\{VERIFIED_BADGE_HTML\}\}/g, verifiedBadgeHtml);
+
       res.send(html);
     });
 
@@ -11140,6 +11149,7 @@ class ProductionServer {
     registerDeviceAuthRoutes(this.app);
     registerRecoveryVaultRoutes(this.app);
     registerDeveloperSelfServiceRoutes(this.app);
+    registerPlatformRegistryRoutes(this.app);
     registerOwnedAssetRoutes(this.app);
     registerVerificationRoutes(this.app);
     registerMusicTrackRegistryRoutes(this.app);
@@ -19345,6 +19355,13 @@ class ProductionServer {
             console.warn('[IntegratorWebhook] Could not schedule retry sweeps:', e);
           }
         })();
+        (async () => {
+          try {
+            PlatformRegistrySyncService.startPeriodicSync(5 * 60 * 1000);
+          } catch (e) {
+            console.warn('[PlatformRegistrySync] Could not schedule sync:', e);
+          }
+        })();
         resolve();
       });
 
@@ -19365,6 +19382,11 @@ class ProductionServer {
       this._cleanupOrphanedInterval = null;
     }
     // Stop Google Drive sync
+    try {
+      PlatformRegistrySyncService.stopPeriodicSync();
+    } catch (error) {
+      console.warn('Failed to stop platform registry sync:', error);
+    }
     try {
       const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
       const syncService = GoogleDriveSyncService.getInstance();

@@ -1,6 +1,8 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { UnlockButton, LockButton } from '@par-noir/oauth-ui';
 import { usePortal } from '../context/PortalContext';
+import { fetchPlatformAccess } from '../services/platformApi';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `dev-nav-link${isActive ? ' dev-nav-link--active' : ''}`;
@@ -18,6 +20,16 @@ export function DevLayout() {
     apiEndpoint,
     clientId
   } = usePortal();
+
+  const [isOperator, setIsOperator] = useState(false);
+
+  useEffect(() => {
+    if (!signedIn) {
+      setIsOperator(false);
+      return;
+    }
+    void fetchPlatformAccess().then(({ isOperator: op }) => setIsOperator(op));
+  }, [signedIn]);
 
   return (
     <div className="dev-root">
@@ -86,6 +98,11 @@ export function DevLayout() {
           <NavLink to="/proposals" className={navLinkClass}>
             Proposals
           </NavLink>
+          {isOperator && (
+            <NavLink to="/platform" className={navLinkClass}>
+              Platform
+            </NavLink>
+          )}
         </nav>
       </header>
 

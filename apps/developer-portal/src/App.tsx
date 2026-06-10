@@ -8,6 +8,11 @@ import { DocsPage } from './pages/DocsPage';
 import { IntegratePage } from './pages/IntegratePage';
 import { ApiReferencePage } from './pages/ApiReferencePage';
 import { ProposalsPage } from './pages/ProposalsPage';
+import { PlatformOperatorGate } from './pages/platform/PlatformOperatorGate';
+import { PlatformOverviewPage } from './pages/platform/PlatformOverviewPage';
+import { PlatformApplicationsPage } from './pages/platform/PlatformApplicationsPage';
+import { PlatformLicensesPage } from './pages/platform/PlatformLicensesPage';
+import { PlatformClientsPage } from './pages/platform/PlatformClientsPage';
 
 export function App() {
   return (
@@ -22,6 +27,12 @@ export function App() {
             <Route path="/integrate" element={<IntegratePage />} />
             <Route path="/api-reference" element={<ApiReferencePage />} />
             <Route path="/proposals" element={<ProposalsPage />} />
+            <Route element={<PlatformOperatorGate />}>
+              <Route path="/platform" element={<PlatformOverviewPage />} />
+              <Route path="/platform/applications" element={<PlatformApplicationsPage />} />
+              <Route path="/platform/licenses" element={<PlatformLicensesPage />} />
+              <Route path="/platform/clients" element={<PlatformClientsPage />} />
+            </Route>
           </Route>
         </Routes>
       </BrowserRouter>

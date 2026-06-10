@@ -1088,6 +1088,20 @@ export async function initializeDatabase(): Promise<void> {
       );
     }
 
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const platformPath = path.join(__dirname, '../../migrations/add_platform_registry_cache.sql');
+      const platformSql = fs.readFileSync(platformPath, 'utf-8');
+      await db.query(platformSql);
+      console.log('✅ platform_registry_cache migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ platform_registry_cache migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);
