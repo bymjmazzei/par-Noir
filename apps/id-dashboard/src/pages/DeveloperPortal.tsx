@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { FeedCreator } from '../components/feeds/FeedCreator';
 import { CreateFeedPostModal } from '../components/feeds/CreateFeedPostModal';
 import { FeedService, Feed } from '../services/feeds/FeedService';
-import { Rss, Plus, Edit, Users, Settings, Loader, AlertCircle, UserPlus, ExternalLink } from 'lucide-react';
+import { Rss, Plus, Edit, Users, Settings, Loader, AlertCircle, UserPlus, ExternalLink, Key } from 'lucide-react';
 import { FeedDelegationModal } from '../components/feeds/FeedDelegationModal';
 import { ContentNoticesSection } from '../components/ContentNoticesSection';
 import { useApiToken } from '../hooks/useApiToken';
 import { useDeviceAuthState } from '../hooks/useDeviceAuthState';
 import { DEVICE_CAPABILITIES } from '@par-noir/device-auth';
 import { DEVELOPER_PORTAL_URL } from '../config/developerPortal';
+import { LicenseModal } from '../components/LicenseModal';
 
 interface DeveloperPortalProps {
   authenticatedUser: { id: string; publicKey?: string; nickname?: string; accessToken?: string } | null;
@@ -32,6 +33,7 @@ export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedU
   const [delegatedFeeds, setDelegatedFeeds] = useState<Feed[]>([]);
   const [isLoadingFeeds, setIsLoadingFeeds] = useState(false);
   const [delegatingFeed, setDelegatingFeed] = useState<Feed | null>(null);
+  const [showLicenseModal, setShowLicenseModal] = useState(false);
 
   useEffect(() => {
     if (authenticatedUser?.id) {
@@ -80,6 +82,27 @@ export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedU
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {authenticatedUser && <ContentNoticesSection accessToken={apiToken} />}
+
+        <section className="mb-12 rounded-lg border border-border bg-secondary p-6">
+          <h2 className="text-lg font-semibold text-text-primary mb-2 flex items-center gap-2">
+            <Key className="h-5 w-5" />
+            API keys
+          </h2>
+          <p className="text-sm text-text-secondary mb-4">
+            Each pN has an API key for OAuth and integrations. Activate after identity verification (Veriff).
+          </p>
+          {authenticatedUser ? (
+            <button
+              type="button"
+              onClick={() => setShowLicenseModal(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-hover text-bg-primary rounded-lg font-medium transition-colors text-sm"
+            >
+              Manage API key
+            </button>
+          ) : (
+            <p className="text-sm text-text-secondary">Sign in to manage your API key.</p>
+          )}
+        </section>
 
         <section className="mb-12 rounded-lg border border-border bg-secondary p-6">
           <h2 className="text-lg font-semibold text-text-primary mb-2">Developer console</h2>
@@ -265,6 +288,12 @@ export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedU
           }}
         />
       )}
+
+      <LicenseModal
+        isOpen={showLicenseModal}
+        onClose={() => setShowLicenseModal(false)}
+        authenticatedUser={authenticatedUser}
+      />
     </div>
   );
 };

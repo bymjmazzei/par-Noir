@@ -1590,16 +1590,24 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
       });
 
+      let catalogIndexers: Array<{ id: string; name: string; description?: string }> = [];
+      const catalogRes = await fetch(`${API_ENDPOINT}/api/third-party/indexers`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (catalogRes.ok) {
+        const catalogData = await catalogRes.json();
+        catalogIndexers = catalogData.indexers ?? [];
+      }
+
       if (visibilityResponse.ok) {
         const visibilityData = await visibilityResponse.json();
         setIndexingPermissionsState(visibilityData.indexingPermissions || null);
 
-        // Load available indexers (simplified - in production this would come from a separate endpoint)
-        // For now, we'll use a static list or derive from permissions
-        const indexers: any[] = [];
-        if (visibilityData.indexers) {
-          indexers.push(...visibilityData.indexers);
-        }
+        const fromVisibility = visibilityData.indexers ?? [];
+        const merged = new Map<string, { id: string; name: string; description?: string }>();
+        for (const idx of catalogIndexers) merged.set(idx.id, idx);
+        for (const idx of fromVisibility) merged.set(idx.id, { ...merged.get(idx.id), ...idx });
+        const indexers = Array.from(merged.values());
 
         setThirdPartyIndexers(indexers);
 

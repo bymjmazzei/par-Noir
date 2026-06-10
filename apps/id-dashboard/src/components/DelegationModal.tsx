@@ -1,117 +1,85 @@
-import React, { useState } from 'react';
-import { X, Users, Mail, Phone, Key, Upload, Shield } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { X, Users, Shield, AlertCircle } from 'lucide-react';
+import {
+  createAssetDelegation,
+  ensureHumanOwnedAsset,
+  listOwnedAssets,
+  type OwnedAsset
+} from '../services/ownedAssetService';
+
+const SCOPE_OPTIONS = [
+  { value: 'read', label: 'Read only' },
+  { value: 'write', label: 'Read / write' },
+  { value: '*', label: 'Full access' }
+] as const;
 
 interface DelegationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onDelegationCreated?: (delegation: any) => void;
+  accessToken: string | null;
+  rootPnIdentifier: string | null;
+  onDelegationCreated?: () => void;
 }
 
 export const DelegationModal: React.FC<DelegationModalProps> = ({
   isOpen,
   onClose,
+  accessToken,
+  rootPnIdentifier,
   onDelegationCreated
 }) => {
-  const [activeSection, setActiveSection] = useState<'create' | 'add'>('create');
   const [loading, setLoading] = useState(false);
+  const [loadingAssets, setLoadingAssets] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [assets, setAssets] = useState<OwnedAsset[]>([]);
+  const [ownedAssetId, setOwnedAssetId] = useState('');
+  const [delegateePnIdentifier, setDelegateePnIdentifier] = useState('');
+  const [scope, setScope] = useState<string>('read');
 
-  // Create Delegation Form
-  const [createForm, setCreateForm] = useState({
-    delegateName: '',
-    contact: '',
-    contactType: 'email' as 'email' | 'phone',
-    delegatePin: ''
-  });
-
-  // Add Delegate Form
-  const [addForm, setAddForm] = useState({
-    token: '',
-    delegateName: '',
-    contact: '',
-    contactType: 'email' as 'email' | 'phone',
-    delegatePin: ''
-  });
+  useEffect(() => {
+    if (!isOpen || !accessToken) return;
+    setLoadingAssets(true);
+    setError(null);
+    void listOwnedAssets(accessToken)
+      .then((list) => {
+        const active = list.filter((a) => a.status === 'active');
+        setAssets(active);
+        if (active.length > 0) setOwnedAssetId(active[0].id);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load assets'))
+      .finally(() => setLoadingAssets(false));
+  }, [isOpen, accessToken]);
 
   const handleCreateDelegation = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-
-    try {
-      // Delegation creation logic - would integrate with the identity management system
-      // This would create a secure delegation record with proper cryptographic signatures
-      // 1. Generate delegation token
-      // 2. Encrypt token with delegate PIN
-      // 3. Store delegation in pN metadata
-      // 4. Send token to contact (email/SMS)
-
-      const delegation = {
-        id: `delegation_${Date.now()}`,
-        delegateName: createForm.delegateName,
-        contact: createForm.contact,
-        contactType: createForm.contactType,
-        token: `encrypted_token_${Date.now()}`,
-        createdAt: new Date().toISOString(),
-        status: 'pending'
-      };
-
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      onDelegationCreated?.(delegation);
-      onClose();
-      
-      // Reset form
-      setCreateForm({
-        delegateName: '',
-        contact: '',
-        contactType: 'email',
-        delegatePin: ''
-      });
-    } catch (error) {
-      // Failed to create delegation - error handled by UI
-    } finally {
-      setLoading(false);
+    if (!accessToken || !rootPnIdentifier) {
+      setError('Connect to the par Noir API to manage delegations.');
+      return;
     }
-  };
+    const delegatee = delegateePnIdentifier.trim();
+    if (!delegatee.startsWith('pn-')) {
+      setError('Delegatee must be a pn- identifier (e.g. pn-abc123).');
+      return;
+    }
 
-  const handleAddDelegate = async (e: React.FormEvent) => {
-    e.preventDefault();
     setLoading(true);
-
+    setError(null);
     try {
-      // Delegation acceptance logic - would validate and accept the delegation
-      // This would verify the delegation signature and update the identity's delegation list
-      // 1. Decrypt token with delegate PIN
-      // 2. Verify token validity
-      // 3. Add delegation to pN metadata
-      // 4. Establish ZKP delegation relationship
-
-      const delegation = {
-        id: `delegation_${Date.now()}`,
-        delegateName: addForm.delegateName,
-        contact: addForm.contact,
-        contactType: addForm.contactType,
-        token: addForm.token,
-        acceptedAt: new Date().toISOString(),
-        status: 'active'
-      };
-
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      onDelegationCreated?.(delegation);
-      onClose();
-      
-      // Reset form
-      setAddForm({
-        token: '',
-        delegateName: '',
-        contact: '',
-        contactType: 'email',
-        delegatePin: ''
+      let assetId = ownedAssetId;
+      if (!assetId) {
+        const asset = await ensureHumanOwnedAsset(accessToken, rootPnIdentifier);
+        assetId = asset.id;
+      }
+      await createAssetDelegation(accessToken, assetId, {
+        delegateePnIdentifier: delegatee,
+        scope
       });
-    } catch (error) {
-      // Failed to add delegate - error handled by UI
+      onDelegationCreated?.();
+      onClose();
+      setDelegateePnIdentifier('');
+      setScope('read');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create delegation');
     } finally {
       setLoading(false);
     }
@@ -122,13 +90,13 @@ export const DelegationModal: React.FC<DelegationModalProps> = ({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-modal-bg rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border">
           <div className="flex items-center gap-3">
             <Users className="w-6 h-6 text-primary" />
-            <h2 className="text-xl font-semibold text-text-primary">Delegation</h2>
+            <h2 className="text-xl font-semibold text-text-primary">Create Delegation</h2>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="text-text-secondary hover:text-text-primary transition-colors"
           >
@@ -136,207 +104,102 @@ export const DelegationModal: React.FC<DelegationModalProps> = ({
           </button>
         </div>
 
-        {/* Section Tabs */}
-        <div className="flex border-b border-border">
-          <button
-            onClick={() => setActiveSection('create')}
-            className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-              activeSection === 'create'
-                ? 'text-primary border-b-2 border-primary bg-hover'
-                : 'text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            Create Delegation
-          </button>
-          <button
-            onClick={() => setActiveSection('add')}
-            className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-              activeSection === 'add'
-                ? 'text-primary border-b-2 border-primary bg-hover'
-                : 'text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            Accept Delegation
-          </button>
-        </div>
-
-        {/* Create Delegation Form */}
-        {activeSection === 'create' && (
-          <form onSubmit={handleCreateDelegation} className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-2">
-                Delegate Name
-              </label>
-              <input
-                type="text"
-                value={createForm.delegateName}
-                onChange={(e) => setCreateForm(prev => ({ ...prev, delegateName: e.target.value }))}
-                className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-text-primary"
-                placeholder="Enter name of person you're delegating to"
-                required
-              />
+        <form onSubmit={handleCreateDelegation} className="p-6 space-y-4">
+          {!accessToken && (
+            <div className="flex items-start gap-2 p-3 bg-amber-900/20 border border-amber-700 rounded-lg text-sm text-amber-200">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>Unlock your identity and connect to the API before creating delegations.</span>
             </div>
+          )}
 
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-2">
-                Contact Method
-              </label>
-              <div className="flex gap-2">
-                <select
-                  value={createForm.contactType}
-                  onChange={(e) => setCreateForm(prev => ({ ...prev, contactType: e.target.value as 'email' | 'phone' }))}
-                  className="px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-text-primary"
-                >
-                  <option value="email">Email</option>
-                  <option value="phone">Phone</option>
-                </select>
-                <input
-                  type={createForm.contactType === 'email' ? 'email' : 'tel'}
-                  value={createForm.contact}
-                  onChange={(e) => setCreateForm(prev => ({ ...prev, contact: e.target.value }))}
-                  className="flex-1 px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-text-primary"
-                  placeholder={createForm.contactType === 'email' ? 'Enter email address' : 'Enter phone number'}
-                  required
-                />
-              </div>
+          {error && (
+            <div className="p-3 bg-red-900/20 border border-red-700 rounded-lg text-sm text-red-300">
+              {error}
             </div>
+          )}
 
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-2">
-                <Key className="w-4 h-4 inline mr-2" />
-                Delegate PIN (encrypts token)
-              </label>
-              <input
-                type="password"
-                value={createForm.delegatePin}
-                onChange={(e) => setCreateForm(prev => ({ ...prev, delegatePin: e.target.value }))}
-                className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-text-primary"
-                placeholder="Enter PIN to encrypt delegation token"
-                required
-              />
-              <p className="text-xs text-text-secondary mt-1">
-                This PIN encrypts the delegation token. The delegate will need this PIN to accept the delegation.
+          <div>
+            <label className="block text-sm font-medium text-text-primary mb-2">Owned asset</label>
+            {loadingAssets ? (
+              <p className="text-sm text-text-secondary">Loading assets…</p>
+            ) : assets.length === 0 ? (
+              <p className="text-sm text-text-secondary">
+                No owned assets yet. A delegation root asset will be created automatically.
               </p>
-            </div>
-
-            <div className="flex gap-3 pt-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 px-4 py-2 border border-border text-text-primary rounded-md hover:bg-hover transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex-1 px-4 py-2 bg-primary text-text-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <Shield className="w-4 h-4" />
-                    Generate Token
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* Add Delegate Form */}
-        {activeSection === 'add' && (
-          <form onSubmit={handleAddDelegate} className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-2">
-                <Upload className="w-4 h-4 inline mr-2" />
-                Delegation Token
-              </label>
-              <textarea
-                value={addForm.token}
-                onChange={(e) => setAddForm(prev => ({ ...prev, token: e.target.value }))}
-                className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-text-primary"
-                rows={3}
-                placeholder="Paste the delegation token here"
+            ) : (
+              <select
+                value={ownedAssetId}
+                onChange={(e) => setOwnedAssetId(e.target.value)}
+                className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md text-text-primary"
                 required
-              />
-            </div>
-
-
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-2">
-                Contact Method
-              </label>
-              <div className="flex gap-2">
-                <select
-                  value={addForm.contactType}
-                  onChange={(e) => setAddForm(prev => ({ ...prev, contactType: e.target.value as 'email' | 'phone' }))}
-                  className="px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-text-primary"
-                >
-                  <option value="email">Email</option>
-                  <option value="phone">Phone</option>
-                </select>
-                <input
-                  type={addForm.contactType === 'email' ? 'email' : 'tel'}
-                  value={addForm.contact}
-                  onChange={(e) => setAddForm(prev => ({ ...prev, contact: e.target.value }))}
-                  className="flex-1 px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-text-primary"
-                  placeholder={addForm.contactType === 'email' ? 'Enter your email' : 'Enter your phone'}
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-2">
-                <Key className="w-4 h-4 inline mr-2" />
-                Delegate PIN (decrypts token)
-              </label>
-              <input
-                type="password"
-                value={addForm.delegatePin}
-                onChange={(e) => setAddForm(prev => ({ ...prev, delegatePin: e.target.value }))}
-                className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-text-primary"
-                placeholder="Enter PIN to decrypt delegation token"
-                required
-              />
-              <p className="text-xs text-text-secondary mt-1">
-                Enter the PIN provided by the person who created the delegation.
-              </p>
-            </div>
-
-            <div className="flex gap-3 pt-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 px-4 py-2 border border-border text-text-primary rounded-md hover:bg-hover transition-colors"
               >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex-1 px-4 py-2 bg-primary text-text-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Accepting...
-                  </>
-                ) : (
-                  <>
-                    <Shield className="w-4 h-4" />
-                    Accept Delegation
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        )}
+                {assets.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.kind} {a.subjectPnIdentifier ? `· ${a.subjectPnIdentifier}` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-text-primary mb-2">
+              Delegatee pN identifier
+            </label>
+            <input
+              type="text"
+              value={delegateePnIdentifier}
+              onChange={(e) => setDelegateePnIdentifier(e.target.value)}
+              className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md text-text-primary"
+              placeholder="pn-..."
+              required
+              disabled={!accessToken}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-text-primary mb-2">Scope</label>
+            <select
+              value={scope}
+              onChange={(e) => setScope(e.target.value)}
+              className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md text-text-primary"
+              disabled={!accessToken}
+            >
+              {SCOPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-border text-text-primary rounded-md hover:bg-hover transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !accessToken}
+              className="flex-1 px-4 py-2 bg-primary text-text-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Creating…
+                </>
+              ) : (
+                <>
+                  <Shield className="w-4 h-4" />
+                  Create delegation
+                </>
+              )}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

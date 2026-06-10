@@ -47,11 +47,13 @@ export class FeedService {
    * Create a new feed
    */
   static async createFeed(data: CreateFeedRequest): Promise<Feed> {
+    const token = await PNOAuthService.getValidAccessToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
     const response = await fetch(`${API_ENDPOINT}/api/feeds`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify(data)
     });
 

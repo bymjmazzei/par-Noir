@@ -11,6 +11,7 @@ import { API_ENDPOINT } from '../config/api';
 import { getPrismRedirectUri, PRISM_CLIENT_ID, prismOnBeforeNavigate } from '../utils/oauth';
 import { exchangeCodeForToken } from '../services/prismAuthService';
 import { useAuth } from '../contexts/AuthContext';
+import { fetchReputation, submitRayApply } from '../services/prismApi';
 
 interface ApplyModalProps {
   open: boolean;
@@ -66,8 +67,21 @@ export function ApplyModal({ open, onClose }: ApplyModalProps) {
         return;
       }
       if (!result.code) return;
-      await exchangeCodeForToken(result.code);
+      const session = await exchangeCodeForToken(result.code);
       await refreshSession();
+      try {
+        const reputation = await fetchReputation(session.accessToken);
+        if (reputation.eligible) {
+          await submitRayApply(session.accessToken);
+        } else {
+          setFlowError('Signed in. Build reputation before your Ray application can be submitted.');
+          return;
+        }
+      } catch (applyErr) {
+        const msg = applyErr instanceof Error ? applyErr.message : 'Application failed after sign-in';
+        setFlowError(msg);
+        return;
+      }
       onClose();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -139,7 +153,7 @@ export function ApplyModal({ open, onClose }: ApplyModalProps) {
             disabled={busy}
             className="w-full py-3 px-4 bg-white text-black font-medium rounded-lg hover:bg-neutral-200 transition-colors disabled:opacity-50"
           >
-            {busy ? 'Opening sign-in…' : 'Sign in with par Noir to apply'}
+            {busy ? 'Signing in…' : 'Sign in and apply'}
           </button>
 
           <p className="mt-4 text-xs text-neutral-500 text-center">

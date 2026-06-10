@@ -3,13 +3,17 @@
  * Allows paid-tier creators to create new feeds
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Plus, Image as ImageIcon, Sparkles, AlertCircle, Check } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
 import { FeedCategory } from '../types/aggregator';
 import { FeedService } from '../services/feedService';
 import { FEED_CATEGORIES, getAllFeedCategories } from '../constants/feedCategories';
+import { API_ENDPOINT } from '../config/api';
+import { PNOAuthService } from '../services/pnOAuthService';
+
+const DASHBOARD_SERVICES_URL = 'https://pn.parnoir.com';
 
 interface CreateFeedModalProps {
   onClose: () => void;
@@ -26,9 +30,48 @@ export function CreateFeedModal({ onClose, onFeedCreated }: CreateFeedModalProps
   const [avatar, setAvatar] = useState<string>('');
   const [bio, setBio] = useState('');
   const [creating, setCreating] = useState(false);
+  const [creatorTier, setCreatorTier] = useState<'free' | 'feed' | 'self-hosted'>('free');
+  const [tierLoading, setTierLoading] = useState(true);
 
-  // Check if user is paid tier (in production, check actual tier)
-  const isPaidTier = userState.isUnlocked && userState.pnIdentifier; // Simplified check
+  useEffect(() => {
+    if (!userState.isUnlocked || !userState.pnIdentifier) {
+      setCreatorTier('free');
+      setTierLoading(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      setTierLoading(true);
+      try {
+        const token = await PNOAuthService.getValidAccessToken();
+        if (!token) {
+          if (!cancelled) setCreatorTier('free');
+          return;
+        }
+        const pnId = userState.pnIdentifier!;
+        const res = await fetch(`${API_ENDPOINT}/api/users/${encodeURIComponent(pnId)}/storage-tier`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const tier = data.tier as 'free' | 'feed' | 'self-hosted';
+          if (!cancelled && (tier === 'feed' || tier === 'self-hosted' || tier === 'free')) {
+            setCreatorTier(tier);
+          }
+        }
+      } catch {
+        if (!cancelled) setCreatorTier('free');
+      } finally {
+        if (!cancelled) setTierLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userState.isUnlocked, userState.pnIdentifier]);
+
+  const isPaidTier =
+    userState.isUnlocked &&
+    userState.pnIdentifier &&
+    (creatorTier === 'feed' || creatorTier === 'self-hosted');
 
 
   const handleCreateFeed = async () => {
@@ -55,7 +98,7 @@ export function CreateFeedModal({ onClose, onFeedCreated }: CreateFeedModalProps
         feedDescription: feedDescription.trim() || undefined,
         feedCategory: feedCategory || undefined,
         creatorDid: userState.pnIdentifier,
-        creatorTier: 'feed', // In production, get actual tier
+        creatorTier: creatorTier === 'self-hosted' ? 'self-hosted' : 'feed',
         branding: {
           bannerImage: bannerImage || undefined,
           avatar: avatar || undefined,
@@ -72,6 +115,16 @@ export function CreateFeedModal({ onClose, onFeedCreated }: CreateFeedModalProps
       setCreating(false);
     }
   };
+
+  if (tierLoading) {
+    return (
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+        <div className="bg-neutral-900 rounded-xl max-w-md w-full p-6 text-center text-text-secondary">
+          Checking creator tier…
+        </div>
+      </div>
+    );
+  }
 
   if (!isPaidTier) {
     return (
@@ -93,12 +146,20 @@ export function CreateFeedModal({ onClose, onFeedCreated }: CreateFeedModalProps
               Feed creation is available for paid-tier creators only.
             </p>
             <p className="text-text-secondary text-sm">
-              Upgrade to the Feed tier or Self-Hosted tier to create branded feeds.
+              Upgrade to the Feed tier or Self-Hosted tier in the dashboard Services tab.
             </p>
           </div>
+          <a
+            href={DASHBOARD_SERVICES_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-full mb-2 px-4 py-2 bg-blue-600 text-white text-center rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Open dashboard to upgrade
+          </a>
           <button
             onClick={onClose}
-            className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="w-full px-4 py-2 border border-neutral-600 text-text-secondary rounded-lg hover:text-white transition-colors"
           >
             Close
           </button>

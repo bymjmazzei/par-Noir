@@ -302,9 +302,10 @@ export class VerificationPaymentHandler {
         };
       }
 
+      const isConfirmed = Boolean(payment.confirmedAt);
       return {
         hasPayment: true,
-        isConfirmed: true,
+        isConfirmed: import.meta.env.DEV ? isConfirmed || payment.devConfirmed === true : isConfirmed,
         amount: payment.amount,
         currency: payment.currency,
         confirmedAt: payment.confirmedAt

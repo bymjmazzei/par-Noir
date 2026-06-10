@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { AlertCircle, X } from 'lucide-react';
-import { reportService } from '../../services/reporting/ReportService';
+import { submitContentReport } from '../../services/reportContentService';
 import type { AggregatedFile } from '../../types/aggregator';
 
 interface ReportContentModalProps {
@@ -13,6 +13,7 @@ interface ReportContentModalProps {
   onClose: () => void;
   file: AggregatedFile;
   authenticatedUser: { id: string } | null;
+  accessToken?: string | null;
   onReportSubmitted?: () => void;
 }
 
@@ -21,6 +22,7 @@ export const ReportContentModal: React.FC<ReportContentModalProps> = ({
   onClose,
   file,
   authenticatedUser,
+  accessToken,
   onReportSubmitted
 }) => {
   const [reportType, setReportType] = useState<'nsfw' | 'spam' | 'copyright' | 'other'>('nsfw');
@@ -40,43 +42,30 @@ export const ReportContentModal: React.FC<ReportContentModalProps> = ({
       setError('You must be logged in to submit a report');
       return;
     }
+    if (!accessToken) {
+      setError('API connection required to submit a report. Unlock your identity and try again.');
+      return;
+    }
 
     setIsSubmitting(true);
     setError(null);
 
     try {
-      const result = await reportService.submitReport(
+      await submitContentReport(
         file.id,
-        authenticatedUser.id,
+        accessToken,
         reportType,
         reason.trim() || undefined
       );
-
-      if (result.success) {
-        setSuccess(true);
-        
-        // Show escalation message if content was auto-escalated
-        if (result.escalated && result.newRating) {
-          setTimeout(() => {
-            alert(`Content has been automatically flagged as ${result.newRating.toUpperCase()} due to multiple reports. The owner has been notified.`);
-          }, 100);
-        }
-
-        // Callback
-        onReportSubmitted?.();
-
-        // Close modal after 2 seconds
-        setTimeout(() => {
-          onClose();
-          setSuccess(false);
-          setReason('');
-          setReportType('nsfw');
-        }, 2000);
-      } else {
-        setError(result.error || 'Failed to submit report');
-      }
+      setSuccess(true);
+      onReportSubmitted?.();
+      setTimeout(() => {
+        onClose();
+        setSuccess(false);
+        setReason('');
+        setReportType('nsfw');
+      }, 2000);
     } catch (err) {
-      console.error('Report submission error:', err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     } finally {
       setIsSubmitting(false);

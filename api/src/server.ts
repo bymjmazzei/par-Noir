@@ -35,6 +35,7 @@ import {
 } from './server/modules/recoveryVaultRoutes';
 import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSelfServiceRoutes';
 import { registerOwnedAssetRoutes } from './server/modules/ownedAssetRoutes';
+import { registerVerificationRoutes } from './server/modules/verificationRoutes';
 import { registerMusicTrackRegistryRoutes } from './server/modules/musicTrackRegistryRoutes';
 import { registerStripeMonetizationRoutes } from './server/modules/stripeMonetizationRoutes';
 import { registerIntegratorRoutes } from './server/modules/integratorRoutes';
@@ -11140,6 +11141,7 @@ class ProductionServer {
     registerRecoveryVaultRoutes(this.app);
     registerDeveloperSelfServiceRoutes(this.app);
     registerOwnedAssetRoutes(this.app);
+    registerVerificationRoutes(this.app);
     registerMusicTrackRegistryRoutes(this.app);
     registerStripeMonetizationRoutes(this.app);
     registerCreatorFundPeriodRoutes(this.app);

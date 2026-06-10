@@ -2,7 +2,6 @@ import React, { useState, useEffect, lazy, Suspense, useRef, useCallback } from 
 import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown, Users, Layers, Wallet, Lock } from 'lucide-react';
 import Header from './components/Header';
 import { QRCodeManager } from './utils/qrCode';
-  import { QRCodeScanner } from './components/QRCodeScanner';
 import { SecureStorage } from './utils/storage';
 import { UnifiedAuth } from './components/UnifiedAuth';
 import { Logo } from './components/Logo';
@@ -17,6 +16,7 @@ import usePWA from './hooks/usePWA';
 import { GlobalPrivacySettings } from './types/privacy';
 import { STANDARD_DATA_POINTS, DATA_POINT_CATEGORIES } from './types/standardDataPoints';
 import { DataPointInputModal } from './components/DataPointInputModal';
+import { DataPointProposalModal } from './components/DataPointProposalModal';
 import { PermissionTile } from './components/PermissionTile';
 import { IntegratorTile } from './components/IntegratorTile';
 import { DataPointRequestsPanel } from './components/DataPointRequestsPanel';
@@ -76,6 +76,12 @@ import { MonetizationTab } from './components/monetization/MonetizationTab';
 import { DelegationModal } from './components/DelegationModal';
 import { SubPnTab } from './components/subpn/SubPnTab';
 import { IdentityVerificationModal } from './components/IdentityVerificationModal';
+import { isIdentityVerificationAvailable } from './config/verification';
+import {
+  listAllDelegations,
+  revokeAssetDelegation,
+  type AssetDelegation
+} from './services/ownedAssetService';
 import { FileStorageAggregator } from './components/storage/FileStorageAggregator';
 import { ExportAuthModal } from './components/modals/ExportAuthModal';
 import { ExportOptionsModal } from './components/modals/ExportOptionsModal';
@@ -494,7 +500,9 @@ function App() {
     selectedToolId,
     setSelectedToolId,
     showIntegrationSettings,
-    setShowIntegrationSettings
+    setShowIntegrationSettings,
+    showDataPointProposalModal,
+    setShowDataPointProposalModal
   } = privacyState;
   const subPnAvailableScopes = React.useMemo(
     () =>
@@ -1331,17 +1339,43 @@ function App() {
   
 
 
-  // Handle delegation removal
-  const handleRemoveDelegation = (delegationId: string) => {
-    setActiveDelegations(prev => prev.filter(d => d.id !== delegationId));
-    showSuccessMessage('Delegation removed successfully');
-  };
+  const [assetDelegations, setAssetDelegations] = useState<AssetDelegation[]>([]);
+  const [delegationsLoading, setDelegationsLoading] = useState(false);
+  const [delegationsError, setDelegationsError] = useState<string | null>(null);
 
-  // Handle delegation permission change
-  const handleDelegationPermissionChange = (delegationId: string, newPermission: string) => {
-    setActiveDelegations(prev => 
-      prev.map(d => d.id === delegationId ? { ...d, permissions: newPermission } : d)
-    );
+  const refreshAssetDelegations = useCallback(async () => {
+    if (!apiToken) {
+      setAssetDelegations([]);
+      return;
+    }
+    setDelegationsLoading(true);
+    setDelegationsError(null);
+    try {
+      const list = await listAllDelegations(apiToken);
+      setAssetDelegations(list);
+    } catch (e) {
+      setDelegationsError(e instanceof Error ? e.message : 'Failed to load delegations');
+      setAssetDelegations([]);
+    } finally {
+      setDelegationsLoading(false);
+    }
+  }, [apiToken]);
+
+  useEffect(() => {
+    if (activeTab === 'delegation' && apiToken) {
+      void refreshAssetDelegations();
+    }
+  }, [activeTab, apiToken, refreshAssetDelegations]);
+
+  const handleRemoveDelegation = async (delegationId: string) => {
+    if (!apiToken) return;
+    try {
+      await revokeAssetDelegation(apiToken, delegationId);
+      showSuccessMessage('Delegation revoked');
+      await refreshAssetDelegations();
+    } catch (e) {
+      showErrorMessage(e instanceof Error ? e.message : 'Failed to revoke delegation');
+    }
   };
 
   
@@ -6331,6 +6365,18 @@ This invitation expires in 24 hours.`;
                     </div>
                   )}
 
+        {/* PWA identity migration */}
+        {showMigrationModal && (
+          <Suspense fallback={<LoadingSpinner />}>
+            <MigrationModal
+              isOpen={showMigrationModal}
+              onClose={() => setShowMigrationModal(false)}
+              pendingIdentities={pendingMigrations}
+              onMigrationComplete={handleMigrationComplete}
+            />
+          </Suspense>
+        )}
+
         {/* Recovery Modal */}
         <RecoveryModal
           isOpen={showRecoveryModal}
@@ -6340,6 +6386,12 @@ This invitation expires in 24 hours.`;
           onInitiateRecoveryFromPn={handleInitiateRecoveryFromPn}
           onInitiateRecoveryWithKey={handleInitiateRecoveryWithKey}
           hasLegacyRecoveryKey={recoveryKeys.length > 0}
+          recoveryBlocked={
+            !!recoveryVaultSummary &&
+            (recoveryVaultSummary.counts.acceptedUnrevokable ?? 0) < 1 &&
+            (recoveryVaultSummary.counts.accepted ?? 0) > 0
+          }
+          recoveryBlockedMessage="Recovery requires at least one accepted protected custodian on the identity being recovered."
         />
 
         {/* Add Custodian Modal */}
@@ -6645,14 +6697,58 @@ This invitation expires in 24 hours.`;
                               <CheckCircle className="w-5 h-5 text-green-400" />
                               <span className="text-text-primary">Age verified - You can share age ZKP with apps</span>
                             </div>
-                          ) : (
+                          ) : isIdentityVerificationAvailable() ? (
                             <button
                               onClick={() => setShowVerificationModal(true)}
                               className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
                             >
                               Verify Age (Create Age ZKP)
                             </button>
+                          ) : (
+                            <p className="text-sm text-text-secondary p-3 bg-modal-bg border border-border rounded-lg">
+                              Identity verification (Veriff) is not enabled yet. Use manual age attestation via Add below, or check back when verification is live.
+                            </p>
                           )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 mb-6">
+                          <button
+                            type="button"
+                            onClick={() => setShowEnhancedPrivacyPanel(true)}
+                            className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-hover text-text-primary"
+                          >
+                            Advanced privacy
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowSessionManager(true)}
+                            className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-hover text-text-primary"
+                          >
+                            Active sessions
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowIntegrationSettings(true)}
+                            className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-hover text-text-primary"
+                          >
+                            Integration settings
+                          </button>
+                          {import.meta.env.DEV && (
+                            <button
+                              type="button"
+                              onClick={() => setShowIntegrationDebugger(true)}
+                              className="px-3 py-2 text-sm border border-amber-800 rounded-lg text-amber-400 hover:bg-amber-900/20"
+                            >
+                              Integration debugger
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setShowDataPointProposalModal(true)}
+                            className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-hover text-text-primary"
+                          >
+                            Propose data point
+                          </button>
                         </div>
 
                         {/* Global Settings Section - Simplified */}
@@ -6775,6 +6871,14 @@ This invitation expires in 24 hours.`;
                                             Create an age ZKP first to share it with this app
                                           </p>
                                         )}
+
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenToolSettings(toolId)}
+                                          className="mt-3 text-sm text-primary hover:underline"
+                                        >
+                                          Tool settings
+                                        </button>
                                       </div>
                                     );
                                   })}
@@ -7244,6 +7348,7 @@ This invitation expires in 24 hours.`;
                     <div>
                       <FileStorageAggregator
                         authenticatedUser={authenticatedUser}
+                        apiToken={apiToken}
                         deviceGate={{
                           canDriveRead,
                           canDriveUpload,
@@ -7302,52 +7407,53 @@ This invitation expires in 24 hours.`;
                           </div>
                           
                           <div className="bg-modal-bg border border-border rounded-lg p-4">
-                            <h4 className="font-medium text-text-primary mb-3">Active Delegations</h4>
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="font-medium text-text-primary">Active Delegations</h4>
+                              <button
+                                type="button"
+                                onClick={() => void refreshAssetDelegations()}
+                                disabled={delegationsLoading || !apiToken}
+                                className="text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+                              >
+                                Refresh
+                              </button>
+                            </div>
+                            {!apiToken && (
+                              <p className="text-sm text-text-secondary mb-3">
+                                Connect to the par Noir API (unlock identity) to view delegations.
+                              </p>
+                            )}
+                            {delegationsError && (
+                              <p className="text-sm text-red-400 mb-3">{delegationsError}</p>
+                            )}
                             <div className="space-y-3">
-                              {activeDelegations.length > 0 ? (
-                                activeDelegations.map((delegation) => (
+                              {delegationsLoading ? (
+                                <p className="text-sm text-text-secondary text-center py-4">Loading…</p>
+                              ) : assetDelegations.length > 0 ? (
+                                assetDelegations.map((delegation) => (
                                   <div key={delegation.id} className="p-3 bg-secondary rounded-lg">
-                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
-                                      <div className="flex items-center space-x-3">
-                                        <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
-                                          <span className="text-white text-sm font-medium">{delegation.initials}</span>
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                          <h5 className="font-medium text-text-primary truncate">{delegation.name}</h5>
-                                          <p className="text-sm text-text-secondary truncate">{delegation.email}</p>
-                                        </div>
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                      <div className="min-w-0 flex-1">
+                                        <h5 className="font-medium text-text-primary truncate font-mono text-sm">
+                                          {delegation.delegateePnIdentifier || delegation.delegateeClientId || 'Unknown delegatee'}
+                                        </h5>
+                                        <p className="text-xs text-text-secondary">
+                                          Scope: {delegation.scope} · Asset: {delegation.ownedAssetId.slice(0, 8)}…
+                                        </p>
                                       </div>
-                                      <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
-                                        <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-2">
-                                          <span className="text-sm text-text-secondary">Permissions:</span>
-                                          <select 
-                                            value={delegation.permissions}
-                                            onChange={(e) => handleDelegationPermissionChange(delegation.id, e.target.value)}
-                                            className="text-xs border border-gray-300 rounded px-2 py-1 bg-input-bg text-text-primary w-full sm:w-auto"
-                                          >
-                                            <option value="readonly">Read Only</option>
-                                            <option value="readwrite">Read/Write</option>
-                                          </select>
-                                        </div>
-                                        <button 
-                                          onClick={() => handleRemoveDelegation(delegation.id)}
-                                          className="text-red-600 hover:text-red-800 text-sm px-3 py-1 border border-red-600 rounded hover:bg-red-50 w-full sm:w-auto"
-                                        >
-                                          Remove
-                                        </button>
-                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleRemoveDelegation(delegation.id)}
+                                        className="text-red-400 hover:text-red-300 text-sm px-3 py-1 border border-red-800 rounded w-full sm:w-auto"
+                                      >
+                                        Revoke
+                                      </button>
                                     </div>
                                   </div>
                                 ))
                               ) : (
                                 <div className="text-center py-4 text-text-secondary">
-                                  <p className="text-sm">No active delegations. Use the "Create Delegation" button above to add one.</p>
-                                </div>
-                              )}
-                              
-                              {activeDelegations.length > 0 && (
-                                <div className="text-center py-4 text-text-secondary">
-                                  <p className="text-sm">Add more delegations using the "Create Delegation" button above</p>
+                                  <p className="text-sm">No active delegations. Use Create Delegation above.</p>
                                 </div>
                               )}
                             </div>
@@ -7731,10 +7837,18 @@ This invitation expires in 24 hours.`;
         <DelegationModal
           isOpen={showDelegationModal}
           onClose={() => setShowDelegationModal(false)}
-          onDelegationCreated={(delegation) => {
-            // Delegation created successfully
+          accessToken={apiToken}
+          rootPnIdentifier={
+            authenticatedUser?.id
+              ? authenticatedUser.id.startsWith('pn-')
+                ? authenticatedUser.id
+                : `pn-${authenticatedUser.id}`
+              : null
+          }
+          onDelegationCreated={() => {
             setSuccessWithTimeout('Delegation created successfully!');
             setTimeout(() => setSuccessWithTimeout(null), 3000);
+            void refreshAssetDelegations();
           }}
         />
 
@@ -7777,7 +7891,17 @@ This invitation expires in 24 hours.`;
         </div>
       </footer>
 
-      {/* Identity Verification Modal */}
+        <DataPointProposalModal
+          isOpen={showDataPointProposalModal}
+          onClose={() => setShowDataPointProposalModal(false)}
+          onProposalSubmitted={() => {
+            setShowDataPointProposalModal(false);
+            setSuccessWithTimeout('Data point proposal submitted');
+            setTimeout(() => setSuccessWithTimeout(null), 3000);
+          }}
+        />
+
+        {/* Identity Verification Modal */}
       <IdentityVerificationModal
         isOpen={showVerificationModal}
         onClose={() => setShowVerificationModal(false)}

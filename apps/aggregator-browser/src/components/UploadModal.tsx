@@ -9,13 +9,9 @@ import { TextPostEditor } from './TextPostEditor';
 import { ContentPreferencesPanel } from './ContentPreferencesPanel';
 import { useUserState } from '../contexts/UserStateContext';
 import { TextPostData, Feed } from '../types/aggregator';
-import { createTextPost } from '../services/textPostService';
-import { createCollection } from '../services/collectionService';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { FeedService } from '../services/feedService';
-import { Settings } from 'lucide-react';
-import { EncryptionManager } from '../utils/encryptionManager';
-import { getEncryptionService } from '../services/encryptionService';
+import { Settings, X } from 'lucide-react';
 import { accountsCacheService } from '../services/accountsCacheService';
 import { uploadQueueService } from '../services/uploadQueueService';
 
@@ -251,8 +247,14 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
           Upload from Secure Cloud
         </h2>
         
-        {/* Right - Spacer (for balance) */}
-        <div className="w-9" />
+        <button
+          type="button"
+          onClick={onClose}
+          className="p-2 text-text-secondary hover:text-white transition-colors"
+          title="Close upload"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
       {/* FileStorageAggregator Component */}

@@ -13,7 +13,6 @@ import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { CommentModal } from './components/CommentModal';
 import { ReportCopyrightModal } from './components/ReportCopyrightModal';
 import { BrandedFeedPage } from './components/BrandedFeedPage';
-import { MediaViewer } from './components/MediaViewer';
 import { CreateFeedModal } from './components/CreateFeedModal';
 import { AddToFeedModal } from './components/AddToFeedModal';
 import { EditFileModal } from './components/EditFileModal';
@@ -29,7 +28,6 @@ import { isThirdPartyFileForViewer } from './utils/contentClass';
 import { FeedService } from './services/feedService';
 import { AppLayout } from './components/AppLayout';
 import { useAppContext } from './hooks/useAppContext';
-import { useViewingFile } from './hooks/useViewingFile';
 import { useModals } from './hooks/useModals';
 import { useFeedState } from './hooks/useFeedState';
 import { useDiscoverFiles } from './hooks/useDiscoverFiles';
@@ -96,7 +94,6 @@ function App() {
     hasMoreRef.current = hasMore;
   }, [hasMore]);
   const [searchQuery, setSearchQuery] = useState('');
-  const { viewingFile, setViewingFile } = useViewingFile();
   const {
     viewMode,
     setViewMode,
@@ -919,7 +916,6 @@ function App() {
     setShowSettings,
     setAddingToFeedFile,
     setShowFeedBrowser,
-    setViewingFile,
     setCommentingFile,
     setEditingFile,
     setInitialThread,
@@ -1095,14 +1091,6 @@ function App() {
         <SettingsPage onClose={() => setShowSettings(false)} />
       ) : (
       <HomePage />
-      )}
-      {viewingFile && (
-        <MediaViewer
-          file={viewingFile.file}
-          blob={viewingFile.blob}
-          url={viewingFile.url}
-          onClose={() => { if (viewingFile.url) URL.revokeObjectURL(viewingFile.url); setViewingFile(null); }}
-        />
       )}
       {showFeedBrowser && (
         <FeedBrowser

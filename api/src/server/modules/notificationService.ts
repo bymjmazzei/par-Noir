@@ -41,6 +41,7 @@ export interface NotificationPreferences {
   connection_request: boolean;
   connection_accepted: boolean;
   repost: boolean;
+  new_message?: boolean;
 }
 
 export interface NotificationsFile {
@@ -505,7 +506,8 @@ export class NotificationService {
       mention: true,
       connection_request: true,
       connection_accepted: true,
-      repost: true
+      repost: true,
+      new_message: true
     };
   }
 

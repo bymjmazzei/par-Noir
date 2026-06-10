@@ -1,6 +1,8 @@
 // Verification Service for Data Point Validation
 // Uses API calls to send verification codes via email and SMS
 
+import { API_ENDPOINT } from '../config/api';
+
 export interface VerificationRequest {
   type: 'email' | 'phone' | 'location';
   target: string; // email address, phone number, or device identifier
@@ -66,7 +68,7 @@ class VerificationService {
       `;
 
       // Call backend API for email sending
-      const response = await fetch('/api/email/send', {
+      const response = await fetch(`${API_ENDPOINT}/api/email/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -83,9 +85,8 @@ class VerificationService {
       } else {
         return false;
       }
-    } catch (error) {
-      // For development, we'll return true to allow testing
-      return true;
+    } catch {
+      return import.meta.env.DEV;
     }
   }
 
@@ -98,7 +99,7 @@ class VerificationService {
       // In production, this would call a backend API endpoint
       
       // Simulate API call to backend SMS service
-      const response = await fetch('/api/sms/send', {
+      const response = await fetch(`${API_ENDPOINT}/api/sms/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -114,9 +115,8 @@ class VerificationService {
       } else {
         return false;
       }
-    } catch (error) {
-      // For development, we'll return true to allow testing
-      return true;
+    } catch {
+      return import.meta.env.DEV;
     }
   }
 

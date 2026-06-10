@@ -9,7 +9,8 @@ import { Shield, Users, FileCheck, LogOut, ShieldCheck } from 'lucide-react';
 import { ApplyModal } from './components/ApplyModal';
 import { RayView } from './components/RayView';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { fetchAdminCheck, fetchAdminStats, fetchReputation, submitRayApply, seedDemoQueue, ensurePrismLedgers, ReputationResult } from './services/prismApi';
+import { fetchAdminCheck, fetchAdminStats, fetchReputation, seedDemoQueue, ensurePrismLedgers, ReputationResult } from './services/prismApi';
+import { useRayApply } from './hooks/useRayApply';
 import { UnlockButton } from '@par-noir/oauth-ui';
 import { Capacitor } from '@capacitor/core';
 import { getPrismOAuthConfig, prismOnBeforeNavigate } from './utils/oauth';
@@ -153,8 +154,7 @@ function UnlockedView() {
   const [adminState, setAdminState] = useState<{ isAdmin: boolean; isBootstrapMode: boolean } | null>(null);
   const [stats, setStats] = useState<{ pending: number; approved: number; denied: number } | null>(null);
   const [reputation, setReputation] = useState<ReputationResult | null>(null);
-  const [applyStatus, setApplyStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [applyError, setApplyError] = useState<string | null>(null);
+  const { applyStatus, applyError, submitApply } = useRayApply(session?.accessToken);
   const [seedStatus, setSeedStatus] = useState<string | null>(null);
   const [ensureStatus, setEnsureStatus] = useState<string | null>(null);
 
@@ -188,16 +188,7 @@ function UnlockedView() {
   };
 
   const handleApply = async () => {
-    if (!session?.accessToken) return;
-    setApplyStatus('loading');
-    setApplyError(null);
-    try {
-      await submitRayApply(session.accessToken);
-      setApplyStatus('success');
-    } catch (e: any) {
-      setApplyError(e?.message || 'Apply failed');
-      setApplyStatus('error');
-    }
+    await submitApply();
   };
 
   useEffect(() => {

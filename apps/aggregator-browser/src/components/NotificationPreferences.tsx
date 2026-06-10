@@ -45,7 +45,8 @@ export function NotificationPreferences({ isOpen, onClose }: NotificationPrefere
         mention: false,
         connection_request: true,
         connection_accepted: true,
-        repost: true
+        repost: true,
+        new_message: true
       });
     } finally {
       setLoading(false);
@@ -94,7 +95,8 @@ export function NotificationPreferences({ isOpen, onClose }: NotificationPrefere
     { key: 'mention' as const, label: 'Mentions' },
     { key: 'connection_request' as const, label: 'Connection requests' },
     { key: 'connection_accepted' as const, label: 'Connection accepted' },
-    { key: 'repost' as const, label: 'Reposts' }
+    { key: 'repost' as const, label: 'Reposts' },
+    { key: 'new_message' as const, label: 'New messages' }
   ];
 
   return (
@@ -142,16 +144,16 @@ export function NotificationPreferences({ isOpen, onClose }: NotificationPrefere
                     {item.label}
                   </label>
                   <button
-                    onClick={() => updatePreference(item.key, !preferences[item.key])}
+                    onClick={() => updatePreference(item.key, !(preferences[item.key] ?? false))}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      preferences[item.key] ? 'bg-blue-500' : 'bg-neutral-600'
+                      (preferences[item.key] ?? false) ? 'bg-blue-500' : 'bg-neutral-600'
                     }`}
                     role="switch"
-                    aria-checked={preferences[item.key]}
+                    aria-checked={preferences[item.key] ?? false}
                   >
                     <span
                       className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        preferences[item.key] ? 'translate-x-6' : 'translate-x-1'
+                        (preferences[item.key] ?? false) ? 'translate-x-6' : 'translate-x-1'
                       }`}
                     />
                   </button>

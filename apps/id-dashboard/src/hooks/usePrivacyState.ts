@@ -22,6 +22,8 @@ export function usePrivacyState() {
   // Integration Settings Manager
   const [showIntegrationSettings, setShowIntegrationSettings] = useState(false);
 
+  const [showDataPointProposalModal, setShowDataPointProposalModal] = useState(false);
+
   return {
     // Privacy settings
     showEnhancedPrivacyPanel,
@@ -41,6 +43,9 @@ export function usePrivacyState() {
 
     // Integration settings
     showIntegrationSettings,
-    setShowIntegrationSettings
+    setShowIntegrationSettings,
+
+    showDataPointProposalModal,
+    setShowDataPointProposalModal
   };
 }

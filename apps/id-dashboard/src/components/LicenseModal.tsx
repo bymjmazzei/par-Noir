@@ -9,7 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { Key, Shield, CheckCircle, X, Copy, ExternalLink, AlertCircle } from 'lucide-react';
 import { apiKeyService, ApiKey } from '../services/api/ApiKeyService';
 import { IdentityVerificationModal } from './IdentityVerificationModal';
-import type { VerifiedIdentityData } from './IdentityVerificationModal';
+import type { VerifiedIdentityData } from '../types/verifiedIdentity';
 import type { EncryptedIdentity } from '../types/crypto';
 
 interface LicenseModalProps {

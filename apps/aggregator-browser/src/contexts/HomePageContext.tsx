@@ -83,7 +83,6 @@ export interface HomePageContextValue {
   setShowSettings: (v: boolean) => void;
   setAddingToFeedFile: (f: IndexedFile | null) => void;
   setShowFeedBrowser: (v: boolean) => void;
-  setViewingFile: (v: { file: IndexedFile; blob: Blob | null; url: string | null } | null) => void;
   setCommentingFile: (f: IndexedFile | null) => void;
   setEditingFile: (f: IndexedFile | null) => void;
   setInitialThread: (t: { participantPnIdentifier: string; participantName?: string } | null) => void;

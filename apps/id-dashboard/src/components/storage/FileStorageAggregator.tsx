@@ -63,6 +63,7 @@ type StoredDriveCredential = {
 
 interface FileStorageAggregatorProps {
   authenticatedUser?: AuthSession | CryptoAuthSession | any | null;
+  apiToken?: string | null;
   hideSecureFolderSection?: boolean;
   deviceGate?: {
     canDriveRead: boolean;
@@ -74,6 +75,7 @@ interface FileStorageAggregatorProps {
 
 export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   authenticatedUser,
+  apiToken = null,
   hideSecureFolderSection = false,
   deviceGate,
 }) => {
@@ -7825,6 +7827,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           }}
           file={reportingFile}
           authenticatedUser={authenticatedUser}
+          accessToken={apiToken}
           onReportSubmitted={() => {
             // Refresh metadata to show updated report count
             if (reportingFile) {

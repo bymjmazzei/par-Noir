@@ -4,6 +4,14 @@
  */
 
 import { API_ENDPOINT } from '../config/api';
+import { PNOAuthService } from './pnOAuthService';
+
+async function authHeaders(): Promise<HeadersInit> {
+  const token = await PNOAuthService.getValidAccessToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
 
 export interface Notification {
   notification_id: string;
@@ -33,6 +41,10 @@ export interface NotificationPreferences {
   feed_new_subscriber: boolean;
   comment_reply: boolean;
   mention: boolean;
+  connection_request?: boolean;
+  connection_accepted?: boolean;
+  repost?: boolean;
+  new_message?: boolean;
 }
 
 export interface NotificationListResponse {
@@ -144,7 +156,9 @@ export class NotificationService {
    * Get notification preferences
    */
   static async getPreferences(userPnIdentifier: string): Promise<NotificationPreferences> {
-    const response = await fetch(`${API_ENDPOINT}/api/notifications/preferences?userPnIdentifier=${userPnIdentifier}`);
+    const response = await fetch(`${API_ENDPOINT}/api/notifications/preferences?userPnIdentifier=${userPnIdentifier}`, {
+      headers: await authHeaders()
+    });
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to get preferences' }));
@@ -163,9 +177,7 @@ export class NotificationService {
   ): Promise<NotificationPreferences> {
     const response = await fetch(`${API_ENDPOINT}/api/notifications/preferences`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({
           userPnIdentifier,
         ...preferences

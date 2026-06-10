@@ -161,8 +161,8 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
       },
       onError: (error) => {
         console.error('❌ [EditFileModal] Failed to update metadata:', error);
+        onSave(file);
         setError(error.message || 'Failed to update file');
-        // Rollback optimistic update - would need to re-open modal or show undo toast
       }
     });
   };

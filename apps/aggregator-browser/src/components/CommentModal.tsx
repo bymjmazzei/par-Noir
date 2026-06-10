@@ -397,7 +397,16 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
 
             {/* Post Reply Preview */}
             {comment.postReply && postReplyExpanded && (
-              <div className="mt-3 ml-8 p-3 bg-neutral-800 rounded-lg border border-neutral-700">
+              <button
+                type="button"
+                onClick={() => {
+                  if (comment.postReply?.fileId) {
+                    onClose();
+                    window.location.hash = `file=${comment.postReply.fileId}`;
+                  }
+                }}
+                className="mt-3 ml-8 w-[calc(100%-2rem)] text-left p-3 bg-neutral-800 rounded-lg border border-neutral-700 hover:border-neutral-500 transition-colors"
+              >
                 {comment.postReply.thumbnail && (
                   <img 
                     src={comment.postReply.thumbnail} 
@@ -409,7 +418,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
                   <p className="text-white text-sm font-medium">{comment.postReply.title}</p>
                 )}
                 <p className="text-text-secondary text-xs mt-1">Click to view full post</p>
-              </div>
+              </button>
             )}
 
             {/* Nested Replies */}

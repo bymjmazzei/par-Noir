@@ -248,6 +248,30 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
           onCancel={() => setShowDmUnlock(false)}
         />
       )}
+      {showDmUnlock && !pnName && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-xl border border-neutral-700 bg-neutral-900 p-6 shadow-xl text-center">
+            <p className="text-sm text-neutral-300 mb-4">
+              Unlock your pN in the dashboard first so messaging can use your identity.
+            </p>
+            <a
+              href="https://pn.parnoir.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block mb-3 px-4 py-2 bg-white text-black rounded-lg text-sm font-medium"
+            >
+              Open dashboard
+            </a>
+            <button
+              type="button"
+              onClick={() => setShowDmUnlock(false)}
+              className="block w-full text-sm text-neutral-400 hover:text-white"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {showCreateGroup && userState.pnIdentifier && (
         <CreateGroupModal
           ownerPnIdentifier={userState.pnIdentifier}

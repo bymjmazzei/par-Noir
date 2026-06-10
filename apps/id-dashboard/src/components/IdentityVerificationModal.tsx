@@ -1,9 +1,9 @@
-import React, { useState, useCallback, useRef } from 'react';
-import { X, Upload, Camera, Shield, CheckCircle, AlertCircle, User, CreditCard, MapPin, Calendar, DollarSign } from 'lucide-react';
-import { STANDARD_DATA_POINTS } from '../types/StandardDataPointsRegistry';
+import React, { useState, useCallback } from 'react';
+import { X, Shield, CheckCircle, AlertCircle, DollarSign } from 'lucide-react';
 import { CoinbaseProxy, CoinbaseCheckout, CheckoutRequest } from '../utils/coinbaseProxy';
 import { verificationPaymentHandler } from '../services/verificationPaymentHandler';
 import { API_ENDPOINT } from '../config/api';
+import { VERIFF_ENABLED, COINBASE_COMMERCE_ENABLED } from '../config/verification';
 import type { EncryptedIdentity } from '../types/crypto';
 
 interface IdentityVerificationModalProps {
@@ -54,19 +54,11 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [verificationData, setVerificationData] = useState<{
-    idDocument?: File;
-    selfie?: File;
-    livenessCheck?: boolean;
-  }>({});
   const [paymentData, setPaymentData] = useState<{
     paymentRequest?: CoinbaseCheckout;
     paymentCompleted?: boolean;
     selectedCurrency?: 'BTC' | 'ETH' | 'XRP' | 'USDT';
   }>({});
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const steps: VerificationStep[] = [
     {
@@ -78,36 +70,12 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
       current: currentStep === 0
     },
     {
-      id: 'upload',
-      title: 'Upload ID Document',
-      description: 'Upload a clear photo of your government-issued ID',
-      icon: CreditCard,
-      completed: false,
-      current: currentStep === 1
-    },
-    {
-      id: 'selfie',
-      title: 'Take Selfie',
-      description: 'Take a selfie for identity verification',
-      icon: Camera,
-      completed: false,
-      current: currentStep === 2
-    },
-    {
-      id: 'liveness',
-      title: 'Liveness Check',
-      description: 'Complete liveness verification to prevent fraud',
-      icon: User,
-      completed: false,
-      current: currentStep === 3
-    },
-    {
       id: 'verification',
-      title: 'Verification',
-      description: 'Processing your verification with fraud prevention',
+      title: 'Identity Check',
+      description: 'Complete verification with Veriff',
       icon: Shield,
       completed: false,
-      current: currentStep === 4
+      current: currentStep === 1
     },
     {
       id: 'complete',
@@ -115,7 +83,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
       description: 'Your identity has been verified and ZKPs generated',
       icon: CheckCircle,
       completed: false,
-      current: currentStep === 5
+      current: currentStep === 2
     }
   ];
 
@@ -170,7 +138,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
           ...prev,
           paymentCompleted: true
         }));
-        setCurrentStep(1); // Move to document upload
+        setCurrentStep(1); // Move to Veriff / identity check step
       } else {
         setError('Payment not yet confirmed. Please wait for confirmation or try again.');
       }
@@ -179,169 +147,38 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
     }
   }, [identityId]);
 
-  const handleFileUpload = useCallback((file: File, type: 'idDocument' | 'selfie') => {
-    // Check if payment is completed
-    if (!paymentData.paymentCompleted) {
-      setError('Please complete payment before uploading documents.');
-      return;
+  const createVeriffSession = async (): Promise<{ url: string }> => {
+    const response = await fetch(`${API_ENDPOINT}/api/verification/veriff/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identityId: identityId || 'unknown' })
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error_description || err.error || `Veriff session failed (${response.status})`);
     }
-
-    // Validate file type and size
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
-    const maxSize = 10 * 1024 * 1024; // 10MB
-
-    if (!allowedTypes.includes(file.type)) {
-      setError('Please upload a valid image file (JPEG, PNG)');
-      return;
-    }
-
-    if (file.size > maxSize) {
-      setError('File size must be less than 10MB');
-      return;
-    }
-
-    setVerificationData(prev => ({
-      ...prev,
-      [type]: file
-    }));
-
-    setError(null);
-    
-    // Auto-advance to next step
-    if (type === 'idDocument') {
-      setCurrentStep(2);
-    } else if (type === 'selfie') {
-      setCurrentStep(3);
-    }
-  }, [paymentData.paymentCompleted]);
-
-  const handleLivenessCheck = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Simulate liveness check with WebRTC
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          width: 640, 
-          height: 480,
-          facingMode: 'user'
-        } 
-      });
-      
-      // Simulate liveness detection
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      stream.getTracks().forEach(track => track.stop());
-      
-      setVerificationData(prev => ({
-        ...prev,
-        livenessCheck: true
-      }));
-      
-      setCurrentStep(4);
-      await performVerification();
-    } catch (err) {
-      setError('Liveness check failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const performVerification = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Simulate Veriff-style verification process
-      const verificationResult = await simulateVeriffVerification();
-      
-      if (!verificationResult.success) {
-        throw new Error(verificationResult.error || 'Verification failed');
-      }
-
-      // Generate ZKPs for all verified data points
-      const zkpProofs = await generateZKProofs(verificationResult.extractedData);
-      
-      const verifiedData: VerifiedIdentityData = {
-        id: identityId || 'unknown',
-        verificationId: verificationResult.verificationId,
-        verificationLevel: 'verified',
-        verifiedAt: new Date().toISOString(),
-        dataPoints: zkpProofs,
-        fraudPrevention: verificationResult.fraudPrevention
-      };
-
-      // Sync verification status to engagement system
-      try {
-        await fetch(`${API_ENDPOINT}/api/verification/sync`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            identityId: identityId || verifiedData.id,
-            verificationId: verifiedData.verificationId,
-            verifiedAt: verifiedData.verifiedAt
-          })
-        });
-        console.log('✅ Verification status synced to engagement system');
-      } catch (syncError) {
-        // Non-critical - log but don't fail verification
-        console.warn('⚠️ Failed to sync verification status:', syncError);
-      }
-
-      setCurrentStep(5);
-      onVerificationComplete(verifiedData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Verification failed');
-    } finally {
-      setLoading(false);
-    }
-  }, [identityId, onVerificationComplete]);
-
-  const createVeriffSession = async () => {
-    try {
-      const response = await fetch('https://stationapi.veriff.com/v1/sessions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_VERIFF_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          verification: {
-            callback: 'https://yourdomain.com/api/veriff-webhook',
-            person: {
-              firstName: 'User',
-              lastName: 'Verification'
-            },
-            document: {
-              type: 'DRIVERS_LICENSE',
-              country: 'US'
-            },
-            vendorData: identityId || 'unknown'
-          }
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Veriff session creation failed: ${response.status}`);
-      }
-
-      const session = await response.json();
-      return session;
-    } catch (error) {
-      console.error('Failed to create Veriff session:', error);
-      throw error;
-    }
+    const session = await response.json();
+    const url = session.url || session.verification?.url;
+    if (!url) throw new Error('Veriff session missing redirect URL');
+    return { url };
   };
 
   const redirectToVeriff = async () => {
+    if (!VERIFF_ENABLED) {
+      setError('Identity verification is not yet available on this deployment.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
     try {
       const session = await createVeriffSession();
-      
-      // Redirect to Veriff's hosted verification page
-      window.location.href = `https://magic.veriff.com/v/${session.verification.url}`;
-    } catch (error) {
-      setError('Failed to start verification. Please try again.');
+      window.location.href = session.url.startsWith('http')
+        ? session.url
+        : `https://magic.veriff.com/v/${session.url}`;
+    } catch {
+      setError('Failed to start verification. Please try again later.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -474,6 +311,19 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
   const renderStepContent = () => {
     switch (currentStep) {
       case 0:
+        if (!COINBASE_COMMERCE_ENABLED && !import.meta.env.DEV) {
+          return (
+            <div className="text-center space-y-6">
+              <AlertCircle className="w-12 h-12 text-amber-500 mx-auto" />
+              <p className="text-text-secondary">
+                Payment processing is not configured. Identity verification is unavailable.
+              </p>
+              <button type="button" onClick={onClose} className="modal-button px-6 py-2 rounded-lg">
+                Close
+              </button>
+            </div>
+          );
+        }
         return (
           <div className="text-center space-y-6">
             <div className="mx-auto w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center">
@@ -557,6 +407,31 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
         );
 
       case 1:
+        if (!VERIFF_ENABLED) {
+          return (
+            <div className="text-center space-y-6">
+              <div className="mx-auto w-24 h-24 bg-neutral-800 rounded-full flex items-center justify-center">
+                <Shield className="w-12 h-12 text-neutral-400" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold text-text-primary mb-2">
+                  Identity verification coming soon
+                </h3>
+                <p className="text-text-secondary mb-6">
+                  Veriff-hosted identity verification is not enabled on this deployment yet.
+                  Your payment will be honored when verification goes live.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full bg-secondary text-text-primary py-3 px-6 rounded-lg hover:bg-border transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          );
+        }
         return (
           <div className="text-center space-y-6">
             <div className="mx-auto w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center">
@@ -567,22 +442,23 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
                 Start Verification
               </h3>
               <p className="text-gray-600 dark:text-gray-400 mb-6">
-                You'll be redirected to Veriff's secure verification platform to upload your ID and take a selfie.
+                You&apos;ll be redirected to Veriff&apos;s secure verification platform to upload your ID and take a selfie.
               </p>
             </div>
             
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-6">
-              <h4 className="font-medium text-blue-900 dark:text-blue-200 mb-2">🔒 Secure Third-Party Verification</h4>
+              <h4 className="font-medium text-blue-900 dark:text-blue-200 mb-2">Secure third-party verification</h4>
               <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
                 <li>• par Noir never handles your ID documents</li>
                 <li>• Veriff processes everything securely</li>
-                <li>• You'll return here after verification</li>
+                <li>• You&apos;ll return here after verification</li>
                 <li>• Only ZKPs are stored locally</li>
               </ul>
             </div>
             
             <button
-              onClick={redirectToVeriff}
+              type="button"
+              onClick={() => void redirectToVeriff()}
               disabled={loading}
               className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
@@ -591,131 +467,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
           </div>
         );
 
-      case 4:
-        return (
-          <div className="text-center space-y-6">
-            <div className="mx-auto w-24 h-24 bg-green-100 rounded-full flex items-center justify-center">
-              <Camera className="w-12 h-12 text-green-600" />
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                Take Selfie
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
-                Take a clear selfie for identity verification. Make sure your face is well-lit and visible.
-              </p>
-            </div>
-            
-            <div className="space-y-4">
-              <button
-                onClick={() => cameraInputRef.current?.click()}
-                className="w-full flex items-center justify-center px-6 py-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg hover:border-green-500 transition-colors"
-              >
-                <Camera className="w-6 h-6 mr-2 text-gray-500" />
-                <span className="text-gray-700 dark:text-gray-300">Take selfie</span>
-              </button>
-              
-              <input
-                ref={cameraInputRef}
-                type="file"
-                accept="image/*"
-                capture="user"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleFileUpload(file, 'selfie');
-                }}
-                className="hidden"
-              />
-              
-              {verificationData.selfie && (
-                <div className="flex items-center justify-center space-x-2 text-green-600">
-                  <CheckCircle className="w-5 h-5" />
-                  <span>Selfie captured successfully</span>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-
       case 2:
-        return (
-          <div className="text-center space-y-6">
-            <div className="mx-auto w-24 h-24 bg-purple-100 rounded-full flex items-center justify-center">
-              <User className="w-12 h-12 text-purple-600" />
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                Liveness Check
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
-                Complete a liveness check to verify you're a real person and prevent fraud.
-              </p>
-            </div>
-            
-            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4 mb-6">
-              <div className="flex items-start space-x-3">
-                <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-yellow-800 dark:text-yellow-200">
-                  <p className="font-medium mb-1">Fraud Prevention</p>
-                  <p>This step helps prevent identity theft and ensures you're a real person, not a photo or video.</p>
-                </div>
-              </div>
-            </div>
-            
-            <button
-              onClick={handleLivenessCheck}
-              disabled={loading}
-              className="w-full bg-purple-600 text-white py-3 px-6 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {loading ? 'Processing...' : 'Start Liveness Check'}
-            </button>
-          </div>
-        );
-
-      case 3:
-        return (
-          <div className="text-center space-y-6">
-            <div className="mx-auto w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center">
-              <Shield className="w-12 h-12 text-blue-600" />
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                Verifying Identity
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
-                Processing your verification with advanced fraud prevention...
-              </p>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="flex items-center justify-center space-x-2">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                <span className="text-gray-600 dark:text-gray-400">Analyzing documents...</span>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="flex items-center space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-600" />
-                  <span>Document authenticity</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-600" />
-                  <span>Biometric matching</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-600" />
-                  <span>Liveness detection</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-600" />
-                  <span>Risk assessment</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-
-      case 5:
         return (
           <div className="text-center space-y-6">
             <div className="mx-auto w-24 h-24 bg-green-100 rounded-full flex items-center justify-center">

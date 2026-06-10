@@ -97,10 +97,11 @@ export function AddToFeedModal({ file, feeds, onClose, onAdded }: AddToFeedModal
     );
 
     if (feedsToAdd.length === 0 && feedsToRemove.length === 0) {
-      // No changes made
       onClose();
       return;
     }
+
+    setAdding(true);
 
     // Optimistically update UI - close modal immediately
     if (feedsToAdd.length > 0 && onAdded) {

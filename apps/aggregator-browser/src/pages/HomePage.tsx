@@ -94,7 +94,6 @@ export function HomePage() {
     setShowSettings,
     setAddingToFeedFile,
     setShowFeedBrowser,
-    setViewingFile,
     setCommentingFile,
     setEditingFile,
     setInitialThread,
