@@ -198,7 +198,11 @@ export async function runFullDriveMigration(params: DriveMigrationParams): Promi
         await drive.writeJsonFile(existingManifest.fileId, manifest);
       } else {
         onProgress('Writing integrator migration manifest…', 69);
-        void manifestPath;
+        const manifestBlob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
+        const manifestFile = new File([manifestBlob], '_pn_migration_manifest.json', {
+          type: 'application/json',
+        });
+        await drive.uploadFile(manifestFile, integratorsFolder.fileId);
       }
       report = recordMigrationOutcome(report, { path: 'integrators/_pn_migration_manifest.json', outcome: 'patched' });
     } catch (e) {
@@ -234,6 +238,29 @@ export async function runFullDriveMigration(params: DriveMigrationParams): Promi
   }
 
   report = { ...report, completedAt: new Date().toISOString() };
+
+  const metadataFolder = inventory.find((i) => i.isFolder && i.name === '_metadata');
+  if (metadataFolder) {
+    try {
+      onProgress('Writing migration report…', 77);
+      const reportBlob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+      const reportFile = new File([reportBlob], `migration-${migrationId}-report.json`, {
+        type: 'application/json',
+      });
+      await drive.uploadFile(reportFile, metadataFolder.fileId);
+      report = recordMigrationOutcome(report, {
+        path: `_metadata/migration-${migrationId}-report.json`,
+        outcome: 'patched',
+      });
+    } catch (e) {
+      report = recordMigrationOutcome(report, {
+        path: `_metadata/migration-${migrationId}-report.json`,
+        outcome: 'failed',
+        reason: e instanceof Error ? e.message : 'migration_report_failed',
+      });
+    }
+  }
+
   await patchDriveProgress(authToken, migrationId, { phase: 'complete' }, report);
 
   const failures = report.items.filter((i) => i.outcome === 'failed').map((i) => ({

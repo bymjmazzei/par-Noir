@@ -76,6 +76,47 @@ export function registerOwnedAssetRoutes(app: Application): void {
     }
   });
 
+  app.post('/api/owned-assets/:id/rekey', ...chain, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const pn = req.user?.pnIdentifier?.trim();
+      if (!pn) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn identifier on token' });
+      }
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pn))) return;
+      const body = req.body || {};
+      const newSubjectPnIdentifier = String(body.newSubjectPnIdentifier || '').trim();
+      if (!newSubjectPnIdentifier) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'newSubjectPnIdentifier is required',
+        });
+      }
+      const asset = await OwnedAssetService.rekeyAsset({
+        assetId: req.params.id,
+        rootPn: pn,
+        newSubjectPnIdentifier,
+        newSubjectPublicKey:
+          typeof body.newSubjectPublicKey === 'string' ? body.newSubjectPublicKey : undefined,
+        reason: typeof body.reason === 'string' ? body.reason : 'rotation',
+        migrateDelegations: body.migrateDelegations !== false,
+      });
+      return res.status(201).json({ asset });
+    } catch (e: unknown) {
+      const code = (e as { code?: string }).code;
+      if (code === 'FORBIDDEN') {
+        return res.status(404).json({ error: 'not_found', error_description: 'Asset not found or not owned' });
+      }
+      if (code === 'INVALID_INPUT') {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'Asset cannot be rekeyed' });
+      }
+      console.error('[owned-assets] rekey:', e);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(e, NODE_ENV === 'production'),
+      });
+    }
+  });
+
   app.post('/api/owned-assets/:id/revoke', ...chain, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pn = req.user?.pnIdentifier?.trim();

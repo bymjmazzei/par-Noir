@@ -62,6 +62,12 @@ Google Drive Root
    - Contains 1 sheet: Files (publicly readable)
 11. **`owner-file-index.xlsx`** - Owner file index (replaces old owner-file-index.json)
     - Contains 1 sheet: Files (private)
+12. **`followers.xlsx`** / **`following.xlsx`** - Social graph (created at Drive init)
+13. **`groups.xlsx`** - Group chat metadata (on-demand)
+14. **`devices.xlsx`** - Registered devices (on-demand)
+15. **`recovery.xlsx`** - Recovery vault custodians and pending shares (on-demand)
+16. **`device-policy.json`** - Device policy flags (on-demand)
+17. **`migration-{migrationId}-report.json`** - Identity re-key audit report (written after re-key migration)
 
 ### Content Class Folders (in `_metadata/`)
 
@@ -70,6 +76,8 @@ Each content class folder contains:
 - **`{folder}-owner-index.xlsx`** (e.g. `thoughts-owner-index.xlsx`, `media-owner-index.xlsx`, `collections-owner-index.xlsx`) - Owner index for that content class (private). Same structure as root `owner-file-index.xlsx` (Files sheet).
 
 **Indexes are Sheets only.** Owner and public indexes (root and content-class) are only `.xlsx` (Sheets). JSON index files (`public-file-index.json`, `owner-file-index.json`) are deprecated and no longer created or read.
+
+Each content-class folder may also contain **`{fileId}.metadata`** companion Google Sheets (engagement tabs + encrypted owner columns) alongside encrypted uploads (`*.encrypted`).
 
 #### 1. `media/`
 - Contains media files (images, videos, etc.)
@@ -103,14 +111,22 @@ Each content class folder contains:
 | **First-party** (`browser-app`, `prism-app`, `developer-portal`) | Full pN tree including `_metadata` and content-class folders |
 | **L5 integrators** (registered OAuth clients) | `integrators/{client_id}/` only for Drive proxy; pN data points via API only |
 
+### Migration manifest (after root re-key):
+- **`integrators/_pn_migration_manifest.json`** - Predecessor/successor pn ids and `migrationId` for L5 apps
+
 ## Messages Folder: `par-noir-messages`
 
 - **Location**: Inside `par Noir - {pnIdentifier}/`
 - **Created**: On-demand when first message is sent or connection is accepted
 - **Purpose**: Contains conversation sheets
 
-### Conversation Files:
-- **`conversation-{otherUserDid}.xlsx`** - One sheet per conversation
+### Inbox and conversation files:
+- **`Inbox`** - Spreadsheet (not `.xlsx` suffix) with thread metadata
+- **`conversation-{otherUserPn}.xlsx`** and **`conversation-group-{groupId}.xlsx`** - One sheet per DM or group thread
+- **`attachments/`** - E2E-encrypted media blobs (conversation-key encrypted, not identity re-wrapped)
+
+### Legacy conversation naming:
+- **`conversation-{otherUserDid}.xlsx`** - One sheet per conversation (legacy pn/did in filename)
   - Created automatically when a connection is accepted
   - Contains messages between two users
   - First message is system message: "{acceptor} accepted {requester}'s connection request"

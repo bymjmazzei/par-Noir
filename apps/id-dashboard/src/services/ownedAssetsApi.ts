@@ -57,6 +57,29 @@ export async function createOwnedAsset(
   return data.asset;
 }
 
+export async function rekeyOwnedAsset(
+  accessToken: string,
+  id: string,
+  body: {
+    newSubjectPnIdentifier: string;
+    newSubjectPublicKey?: string;
+    reason?: string;
+    migrateDelegations?: boolean;
+  }
+): Promise<OwnedAssetDto> {
+  const res = await fetch(`${API_ENDPOINT}/api/owned-assets/${encodeURIComponent(id)}/rekey`, {
+    method: 'POST',
+    headers: await authHeaders(accessToken),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error((j as { error_description?: string }).error_description || res.statusText);
+  }
+  const data = (await res.json()) as { asset: OwnedAssetDto };
+  return data.asset;
+}
+
 export async function revokeOwnedAsset(accessToken: string, id: string): Promise<void> {
   const res = await fetch(`${API_ENDPOINT}/api/owned-assets/${encodeURIComponent(id)}/revoke`, {
     method: 'POST',

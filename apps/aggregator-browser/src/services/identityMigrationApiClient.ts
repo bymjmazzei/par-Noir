@@ -58,3 +58,47 @@ export async function ackMigrationStep(
     }
   );
 }
+
+export async function fetchConversationRowsForMigration(
+  authToken: string,
+  migrationId: string,
+  participantPn: string,
+  spreadsheetId?: string
+): Promise<{
+  rows: Array<{ rowIndex: number; fromPnIdentifier: string; encryptedContent: string }>;
+  spreadsheetId: string;
+}> {
+  const qs = spreadsheetId ? `?spreadsheetId=${encodeURIComponent(spreadsheetId)}` : '';
+  const res = await fetch(
+    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/conversations/${encodeURIComponent(participantPn)}/rows${qs}`,
+    { headers: authHeaders(authToken) }
+  );
+  if (!res.ok) return { rows: [], spreadsheetId: spreadsheetId || '' };
+  return res.json();
+}
+
+export async function postDmMessageRowUpdates(
+  authToken: string,
+  migrationId: string,
+  body: {
+    connectionId: string;
+    kemCiphertext?: string;
+    spreadsheetId?: string;
+    participantPnIdentifier?: string;
+    rowUpdates: Array<{
+      rowIndex: number;
+      fromPnIdentifier?: string;
+      encryptedContent?: string;
+    }>;
+  }
+): Promise<void> {
+  const res = await fetch(
+    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/drive/messages/rows`,
+    {
+      method: 'POST',
+      headers: authHeaders(authToken),
+      body: JSON.stringify(body),
+    }
+  );
+  if (!res.ok) throw new Error('Failed to update conversation rows');
+}

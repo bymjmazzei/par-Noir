@@ -2,20 +2,19 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Layers, RefreshCw, Plus, Download, Shield, UserPlus, Trash2 } from 'lucide-react';
 import { IdentityCrypto, type EncryptedIdentity } from '../../utils/crypto';
 import { VolumeIdGenerator } from '../../utils/crypto/volumeIdGenerator';
-import { SecureCredentialManager } from '../../utils/secureCredentialManager';
 import { sealSubExportPayload, unsealSubExportPayload } from '../../utils/subIdentitySeal';
 import {
   fetchOwnedAssets,
   createOwnedAsset,
   revokeOwnedAsset,
+  rekeyOwnedAsset,
   auditSubExport,
   fetchDelegations,
   createDelegation,
   revokeDelegation,
-  postIpfsManifestPointer,
   type OwnedAssetDto
 } from '../../services/ownedAssetsApi';
-import { ipfsMetadataService } from '../../utils/ipfsMetadataService';
+import { republishOwnedAssetsManifest } from '../../services/ownedAssetsManifestService';
 
 const SUB_KINDS = ['feed', 'device', 'ai_agent', 'smart_device'] as const;
 type SubKind = (typeof SUB_KINDS)[number];
@@ -66,6 +65,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   const [exportPassphrase, setExportPassphrase] = useState('');
   const [exportPassConfirm, setExportPassConfirm] = useState('');
   const [showExportAuthModal, setShowExportAuthModal] = useState(false);
+  const [rotatePending, setRotatePending] = useState(false);
   const [authPnName, setAuthPnName] = useState('');
   const [authPasscode, setAuthPasscode] = useState('');
   const [authFile, setAuthFile] = useState<File | null>(null);
@@ -84,45 +84,16 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   const [newDelClient, setNewDelClient] = useState('');
   const [delegationBusyScope, setDelegationBusyScope] = useState<string | null>(null);
 
-  const rootPnForIpfs = useCallback(async (): Promise<string | null> => {
-    if (!sessionId || !publicKey) return null;
-    const c = SecureCredentialManager.getCredentials(sessionId);
-    if (!c?.pnName || !c?.passcode) return null;
-    return VolumeIdGenerator.generateVolumeId({
-      pnName: c.pnName,
-      passcode: c.passcode,
-      publicKey
-    });
-  }, [sessionId, publicKey]);
-
   const syncIpfsManifest = useCallback(
-    async (list: OwnedAssetDto[]) => {
+    async (_list: OwnedAssetDto[]) => {
       if (!accessToken) return;
-      const pnId = (await rootPnForIpfs()) || 'pn-unknown';
-      const ownedAssets = list
-        .filter((a) => a.status === 'active' && a.kind !== 'human')
-        .map((a) => ({
-          assetId: a.id,
-          kind: a.kind,
-          subjectPnIdentifier: a.subjectPnIdentifier || undefined,
-          label: typeof a.metadata?.label === 'string' ? a.metadata.label : undefined
-        }));
       try {
-        if (!ipfsMetadataService.isAvailable()) return;
-        const res = await ipfsMetadataService.storePNMetadata({
-          pnId,
-          name: 'par Noir manifest',
-          ownedAssets,
-          updatedAt: new Date().toISOString()
-        } as Parameters<typeof ipfsMetadataService.storePNMetadata>[0]);
-        if (res.success && res.cid) {
-          await postIpfsManifestPointer(accessToken, res.cid);
-        }
+        await republishOwnedAssetsManifest(accessToken, publicKey);
       } catch {
         /* optional IPFS */
       }
     },
-    [accessToken, rootPnForIpfs]
+    [accessToken, publicKey]
   );
 
   const load = useCallback(async () => {
@@ -210,6 +181,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
 
   const closeExportAuthModal = () => {
     if (authLoading) return;
+    setRotatePending(false);
     setShowExportAuthModal(false);
     setAuthPnName('');
     setAuthPasscode('');
@@ -285,6 +257,87 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       setExportPassConfirm('');
     } catch {
       setErr('Export passphrase wrong or corrupt backup.');
+    }
+  };
+
+  const handleConfirmFullReauthAndRotate = async () => {
+    if (!authFile || !selected || !accessToken) {
+      setAuthError('Upload your root pN identity file.');
+      return;
+    }
+    if (!authPnName.trim() || !authPasscode.trim()) {
+      setAuthError('Enter your pN name and passcode.');
+      return;
+    }
+    if (!sessionId) {
+      setAuthError('No active root identity session. Unlock again.');
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const encryptedIdentity = await parseIdentityFile(authFile);
+      const authSession = await IdentityCrypto.authenticateIdentity(
+        encryptedIdentity,
+        authPasscode.trim(),
+        authPnName.trim()
+      );
+      if (authSession.id !== sessionId) {
+        throw new Error('Re-authenticated identity does not match the currently unlocked root pN.');
+      }
+
+      const subPnName = `sub-${randomSecret(16)}`;
+      const subPass = randomSecret(32);
+      const nickname =
+        (typeof selected.metadata?.label === 'string' ? selected.metadata.label : null) ||
+        `Rotated ${selected.kind}`;
+      const creation = await IdentityCrypto.createIdentity(subPnName, nickname, subPass);
+      const encrypted = creation.identity;
+      const subject = await VolumeIdGenerator.generateVolumeId({
+        pnName: subPnName,
+        passcode: subPass,
+        publicKey: encrypted.publicKey,
+      });
+
+      const newAsset = await rekeyOwnedAsset(accessToken, selected.id, {
+        newSubjectPnIdentifier: subject,
+        newSubjectPublicKey: encrypted.publicKey,
+        reason: 'compromise',
+        migrateDelegations: true,
+      });
+
+      const portable = JSON.stringify({
+        pnName: subPnName,
+        passcode: subPass,
+        encryptedIdentity: encrypted,
+        kind: newAsset.kind,
+        assetId: newAsset.id,
+      });
+      const pass = exportPassConfirm.trim() || exportPassphrase.trim();
+      if (!pass) {
+        throw new Error('Set an export passphrase before rotating (used to seal the new backup).');
+      }
+      const sealed = await sealSubExportPayload(portable, pass);
+      localStorage.removeItem(`${STORAGE_SEAL_PREFIX}${selected.id}`);
+      localStorage.setItem(`${STORAGE_SEAL_PREFIX}${newAsset.id}`, sealed);
+
+      const blob = new Blob([portable], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sub-pn-${newAsset.id.slice(0, 8)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      closeExportAuthModal();
+      setRotatePending(false);
+      await load();
+      setSelectedId(newAsset.id);
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : 'Sub rotation failed.');
+    } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -538,6 +591,28 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
 
           <div className="border-t border-border pt-4 space-y-3">
             <h5 className="font-medium flex items-center gap-2">
+              <Shield className="w-4 h-4" />
+              Rotate sub identity (compromised)
+            </h5>
+            <p className="text-xs text-text-secondary">
+              Issues a new cryptographic subject for this sub, revokes the old subject on the network, and downloads a
+              fresh export backup. Requires root re-auth.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setRotatePending(true);
+                setShowExportAuthModal(true);
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-amber-800 text-white text-sm hover:bg-amber-700"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Rotate compromised sub
+            </button>
+          </div>
+
+          <div className="border-t border-border pt-4 space-y-3">
+            <h5 className="font-medium flex items-center gap-2">
               <Download className="w-4 h-4" />
               Export sub backup
             </h5>
@@ -664,7 +739,9 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               </button>
             </div>
             <p className="text-xs text-text-secondary">
-              Re-authenticate with your root identity file, pN name, and passcode to export this sub backup.
+              {rotatePending
+                ? 'Re-authenticate to rotate this sub identity and download a new export backup.'
+                : 'Re-authenticate with your root identity file, pN name, and passcode to export this sub backup.'}
             </p>
             <input
               type="file"
@@ -698,11 +775,17 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => void handleConfirmFullReauthAndExport()}
+                onClick={() =>
+                  void (rotatePending ? handleConfirmFullReauthAndRotate() : handleConfirmFullReauthAndExport())
+                }
                 className="px-3 py-2 rounded bg-primary text-bg-primary text-sm"
                 disabled={authLoading}
               >
-                {authLoading ? 'Verifying...' : 'Verify and export'}
+                {authLoading
+                  ? 'Verifying...'
+                  : rotatePending
+                    ? 'Verify and rotate'
+                    : 'Verify and export'}
               </button>
             </div>
           </div>

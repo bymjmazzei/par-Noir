@@ -9,6 +9,8 @@ import {
   type MigrationCoreResult,
 } from '../../services/identityMigrationOrchestrator';
 import { MigrationCustodianReinviteStep } from './MigrationCustodianReinviteStep';
+import { fetchOwnedAssets } from '../../services/ownedAssetsApi';
+import { summarizeOwnedAssetsByKind } from '../../services/ownedAssetsManifestService';
 import { SimpleStorage } from '../../utils/simpleStorage';
 import { SecureCredentialManager } from '../../utils/secureCredentialManager';
 
@@ -27,6 +29,7 @@ type WizardStep =
   | 'drive_failures'
   | 'custodian_reinvite'
   | 'finalizing'
+  | 'subs_verify'
   | 'done';
 
 async function loadStoredIdentity(key: string): Promise<EncryptedIdentity | null> {
@@ -62,6 +65,8 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
   const [progressPct, setProgressPct] = useState(0);
   const [resultIdentity, setResultIdentity] = useState<EncryptedIdentity | null>(null);
   const [coreResult, setCoreResult] = useState<MigrationCoreResult | null>(null);
+  const [subsBackupAck, setSubsBackupAck] = useState(false);
+  const [subsSummary, setSubsSummary] = useState<Record<string, number>>({});
   const [migrationCtx, setMigrationCtx] = useState<{
     predIdentity: EncryptedIdentity;
     predDid: string;
@@ -258,8 +263,13 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
         },
       });
       setResultIdentity(fin.successorEncryptedIdentity);
-      setStep('done');
-      onComplete?.(fin.successorEncryptedIdentity);
+      try {
+        const assets = await fetchOwnedAssets(authToken);
+        setSubsSummary(summarizeOwnedAssetsByKind(assets));
+      } catch {
+        setSubsSummary({});
+      }
+      setStep('subs_verify');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to finalize migration');
       setStep('custodian_reinvite');
@@ -438,6 +448,47 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
           <div className="h-2 bg-border rounded overflow-hidden">
             <div className="h-full bg-primary transition-all" style={{ width: `${progressPct}%` }} />
           </div>
+        </div>
+      )}
+
+      {step === 'subs_verify' && (
+        <div className="space-y-3">
+          <p className="text-sm text-text-secondary">
+            Root ownership migrated on the network. Sub subjects stay stable unless you rotate them individually.
+          </p>
+          {Object.keys(subsSummary).length > 0 ? (
+            <ul className="text-sm text-text-primary list-disc pl-5">
+              {Object.entries(subsSummary).map(([kind, count]) => (
+                <li key={kind}>
+                  {count} active {kind} sub(s)
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-text-secondary">No active sub-pN assets registered.</p>
+          )}
+          <label className="flex items-start gap-2 text-sm text-text-secondary">
+            <input
+              type="checkbox"
+              checked={subsBackupAck}
+              onChange={(e) => setSubsBackupAck(e.target.checked)}
+              className="mt-1"
+            />
+            <span>
+              I have downloaded sub exports or confirm local sealed backups still exist (Sub-pN tab).
+            </span>
+          </label>
+          <button
+            type="button"
+            className="px-4 py-2 bg-primary text-white rounded-lg text-sm disabled:opacity-50"
+            disabled={!subsBackupAck}
+            onClick={() => {
+              onComplete?.(resultIdentity!);
+              setStep('done');
+            }}
+          >
+            Finish
+          </button>
         </div>
       )}
 

@@ -11,19 +11,21 @@ Distinct from **Shamir custodian recovery**, which keeps the same `publicKey` an
 3. Set new passcode → migration wizard runs client-side steps
 4. If Drive items fail: review report and explicitly acknowledge before continuing
 5. **Re-invite recovery custodians** until threshold invitations are sent (custodians accept asynchronously)
-6. Download new `.pn`; unlock browser with new passcode to verify DM/group handoff
+6. **Verify sub-pN backups** and run `owned_assets_sync` (IPFS manifest republish)
+7. Download new `.pn`; unlock **aggregator-browser** with successor passcode so `dm_rekey` / `group_rewrap` complete before finalize
 
 ## Migration steps
 
 | Step | Where | Purpose |
 |------|-------|---------|
-| `zkp_reissue` | Dashboard | Re-sign verified ZKPs on successor keys |
+| `zkp_reissue` | Dashboard | Re-sign ZKPs from localStorage queue **and** `zkp-data-points.xlsx` on Drive |
 | `recovery_vault` | Dashboard | New recovery envelope + `initializeRecoveryVaultOnDrive` (PendingShares on Drive; sessionStorage flush-only buffer) |
-| `drive_files` | Dashboard | Full pinned Drive tree: inventory, `.encrypted` re-wrap, JSON patches, sheets, folder rename, report |
-| `dm_rekey` / `group_rewrap` | Dashboard ack + browser verify | Connections rekey; browser bridge verifies on unlock |
+| `drive_files` | Dashboard | Full pinned Drive tree: inventory, `.encrypted` re-wrap, JSON patches, sheets (incl. followers/groups/devices/Inbox), companion `*.metadata` sheets, folder rename |
+| `dm_rekey` / `group_rewrap` | **Browser only** | Browser bridge rekeys connections, re-encrypts DM history rows, re-wraps group keys; acks steps via API |
 | `profile_publish` | Dashboard | `profile.json` + API mlKem cache |
 | `custodian_reinvite` | Dashboard wizard | Threshold custodian invitations with new custodianship ZKPs |
 | `lineage_zkp` | Dashboard | Dual-signed succession proofs |
+| `owned_assets_sync` | Dashboard | Verify subs under successor root; republish IPFS `ownedAssets` manifest |
 | `succession_register` | API `complete` | Network succession + credential pin |
 
 ## API routes (OAuth Bearer — predecessor or successor during migration)
@@ -34,8 +36,10 @@ Distinct from **Shamir custodian recovery**, which keeps the same `publicKey` an
 | GET | `/api/identity/migration/:id` | Migration status, `driveProgress`, `migrationReport` |
 | PATCH | `/api/identity/migration/:id/steps/:stepId` | Idempotent step completion |
 | PATCH | `/api/identity/migration/:id/drive/progress` | Persist drive phase cursor + report |
-| POST | `/api/identity/migration/:id/drive/sheets/migrate` | Batch pn/did rewrite across `_metadata` sheets |
-| POST | `/api/identity/migration/:id/drive/messages/rows` | Connection kem + row update ack after client re-crypto |
+| POST | `/api/identity/migration/:id/drive/sheets/migrate` | Batch pn/did rewrite across `_metadata` + `par-noir-messages` sheets; companion `*.metadata` spreadsheets |
+| GET | `/api/identity/migration/:id/zkp-data-points/from-drive` | Read ZKP envelopes from Drive sheet for client re-sign |
+| GET | `/api/identity/migration/:id/conversations/:participantPn/rows` | Conversation rows for DM history re-encrypt |
+| POST | `/api/identity/migration/:id/drive/messages/rows` | Persist re-encrypted message rows + connection kem ack |
 | POST | `/api/identity/migration/:id/connections/rekey` | Update connection sheet `kemCiphertext` |
 | POST | `/api/identity/migration/:id/groups/rewrap` | Owner group key re-wrap fan-out |
 | POST | `/api/identity/migration/:id/zkp-data-points/batch` | Batch ZKP sheet updates |
@@ -74,6 +78,23 @@ Dual-signed envelopes bind predecessor and successor `public_key` + `pn_identifi
 ## Shared package
 
 `@par-noir/identity-migration` — `driveFileMigration`, `driveMetadataPatch`, `dmHistoryMigration`, drive re-encrypt, ZKP reissue, DM self-rekey, group re-wrap, lineage ZK, resumable runner.
+
+## QA matrix (manual)
+
+Use a test account with **all** artifact types before shipping migration changes:
+
+| Area | Verify |
+|------|--------|
+| `_metadata` sheets | `followers`, `following`, `groups`, `devices`, `recovery`, `connections`, `zkp-data-points` show successor pn/did |
+| Companion sheets | `{fileId}.metadata` in `media/`, `thoughts/`, `collections/` decrypt with successor keys |
+| Messages | `Inbox`, `conversation-*`, `conversation-group-*` updated; DM history decrypts after browser unlock |
+| ZKPs | Proofs on sheet only (not localStorage queue) re-signed and verify |
+| Integrators | `integrators/_pn_migration_manifest.json` present; opaque binaries acknowledged if unmigrated |
+| Report | `_metadata/migration-{migrationId}-report.json` on Drive matches API `migrationReport` |
+| Subs | `owned_assets_sync` completes; IPFS manifest lists subs under successor root |
+| Browser | `dm_rekey` + `group_rewrap` acked only after aggregator-browser unlock with successor |
+
+Automated: `api` Jest `replaceInCell` tests; production builds for `api`, `id-dashboard`, `aggregator-browser`.
 
 ## Security
 

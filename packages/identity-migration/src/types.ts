@@ -25,6 +25,7 @@ export type MigrationStepKind =
   | 'profile_publish'
   | 'custodian_reinvite'
   | 'lineage_zkp'
+  | 'owned_assets_sync'
   | 'succession_register';
 
 export interface MigrationStep {

@@ -300,6 +300,111 @@ export class OwnedAssetService {
     return (r.rowCount ?? 0) > 0;
   }
 
+  /** Rotate a sub owned asset to a new subject (compromise recovery). */
+  static async rekeyAsset(params: {
+    assetId: string;
+    rootPn: string;
+    newSubjectPnIdentifier: string;
+    newSubjectPublicKey?: string;
+    reason?: string;
+    migrateDelegations?: boolean;
+  }): Promise<OwnedAssetRow> {
+    const root = normalizePn(params.rootPn);
+    const old = await this.getById(params.assetId);
+    if (!old || old.rootPnIdentifier !== root || old.status !== 'active') {
+      throw Object.assign(new Error('not_found_or_forbidden'), { code: 'FORBIDDEN' });
+    }
+    if (old.kind === 'human' || old.kind === 'api_key') {
+      throw Object.assign(new Error('kind_not_rekeyable'), { code: 'INVALID_INPUT' });
+    }
+    const newSubject = normalizePn(params.newSubjectPnIdentifier);
+    if (old.subjectPnIdentifier && normalizePn(old.subjectPnIdentifier) === newSubject) {
+      throw Object.assign(new Error('subject_unchanged'), { code: 'INVALID_INPUT' });
+    }
+
+    const pool = getDatabasePool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      await client.query(
+        `UPDATE pn_owned_assets
+         SET status = 'revoked', revoked_at = NOW(), updated_at = NOW()
+         WHERE id = $1 AND root_pn_identifier = $2`,
+        [params.assetId, root]
+      );
+
+      const label =
+        typeof old.metadata?.label === 'string' ? old.metadata.label : undefined;
+      const ins = await client.query(
+        `INSERT INTO pn_owned_assets (root_pn_identifier, subject_pn_identifier, kind, status, metadata)
+         VALUES ($1, $2, $3, 'active', $4::jsonb)
+         RETURNING *`,
+        [
+          root,
+          newSubject,
+          old.kind,
+          JSON.stringify({
+            ...(label ? { label } : {}),
+            supersedesAssetId: old.id,
+            ...(params.newSubjectPublicKey ? { subjectPublicKey: params.newSubjectPublicKey } : {}),
+          }),
+        ]
+      );
+      const created = mapAssetRow(ins.rows[0] as Record<string, unknown>);
+
+      if (params.migrateDelegations !== false) {
+        await client.query(
+          `UPDATE pn_asset_delegations
+           SET owned_asset_id = $2, updated_at = NOW()
+           WHERE owned_asset_id = $1 AND status = 'active'`,
+          [old.id, created.id]
+        );
+      }
+
+      if (old.subjectPnIdentifier) {
+        const predSubject = normalizePn(old.subjectPnIdentifier);
+        await client.query(
+          `INSERT INTO pn_subject_succession (
+            predecessor_subject_pn_identifier, successor_subject_pn_identifier,
+            predecessor_asset_id, successor_asset_id, root_pn_identifier, reason
+          ) VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            predSubject,
+            newSubject,
+            old.id,
+            created.id,
+            root,
+            (params.reason || 'rotation').slice(0, 64),
+          ]
+        );
+        const { syncSubjectSuccessionFromRow } = await import('./identitySuccessionService');
+        syncSubjectSuccessionFromRow(predSubject, newSubject);
+      }
+
+      await client.query('COMMIT');
+
+      await appendAuditEvent({
+        eventType: 'owned_asset.rekeyed',
+        actorHint: 'dashboard',
+        subjectPnIdentifier: root,
+        metadata: {
+          predecessorAssetId: old.id,
+          successorAssetId: created.id,
+          predecessorSubject: old.subjectPnIdentifier,
+          successorSubject: newSubject,
+        },
+      });
+
+      return created;
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
   static async setIpfsManifestPointer(rootPn: string, cid: string): Promise<void> {
     const pool = getDatabasePool();
     await pool.query(

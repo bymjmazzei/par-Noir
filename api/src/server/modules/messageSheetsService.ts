@@ -538,6 +538,47 @@ export class MessageSheetsService {
   }
 
   /**
+   * Apply identity-migration row updates (pn string + re-encrypted ciphertext).
+   * rowIndex is 1-based sheet row number (row 2 = first data row).
+   */
+  static async applyMessageRowUpdates(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    rowUpdates: Array<{
+      rowIndex: number;
+      fromPnIdentifier?: string;
+      encryptedContent?: string;
+    }>,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<number> {
+    if (!rowUpdates.length) return 0;
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    let updated = 0;
+    for (const row of rowUpdates) {
+      if (!row.rowIndex || row.rowIndex < 2) continue;
+      const data: { range: string; values: string[][] }[] = [];
+      if (row.fromPnIdentifier) {
+        data.push({ range: `Messages!A${row.rowIndex}`, values: [[row.fromPnIdentifier]] });
+      }
+      if (row.encryptedContent) {
+        data.push({ range: `Messages!B${row.rowIndex}`, values: [[row.encryptedContent]] });
+      }
+      for (const batch of data) {
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: batch.range,
+          valueInputOption: 'RAW',
+          requestBody: { values: batch.values },
+        });
+        updated++;
+      }
+    }
+    return updated;
+  }
+
+  /**
    * Get messages from conversation sheet
    * Decrypts message content using connection's shared secret
    * Optimized to read only needed rows from Sheets API

@@ -2,19 +2,27 @@
  * Resume DM/group migration steps after identity re-key (browser unlock).
  */
 
+import { openDmSession } from '@par-noir/dm-crypto';
 import {
   MIGRATION_STATE_KEY,
   parseMigrationState,
   rekeyConnectionAsRequester,
   rewrapGroupForOwnerRotation,
   buildMemberMessageRootsFromRekeys,
+  migrateDmThreadHistory,
 } from '@par-noir/identity-migration/browser';
 import { getMessageThreads } from './messageService';
 import { listGroups } from './groupService';
 import { getDmIdentity } from './dmIdentitySession';
 import { cacheLegacyMessageRoot } from './dmCryptoClient';
 import { setMessageRootKey, getLegacyMessageRootKey } from './dmSessionCache';
-import { rekeyConnection, rewrapGroupKeys } from './identityMigrationApiClient';
+import {
+  rekeyConnection,
+  rewrapGroupKeys,
+  fetchConversationRowsForMigration,
+  postDmMessageRowUpdates,
+  ackMigrationStep,
+} from './identityMigrationApiClient';
 import { unwrapChatKeyForOwner } from './groupCryptoClient';
 import { PNOAuthService } from './pnOAuthService';
 
@@ -22,6 +30,15 @@ function loadMigrationState() {
   const raw = localStorage.getItem(MIGRATION_STATE_KEY);
   if (!raw) return null;
   return parseMigrationState(raw);
+}
+
+function isRequesterForKem(kemCiphertext: string, predecessorMlKemSecretKey: string): boolean {
+  try {
+    openDmSession(kemCiphertext, predecessorMlKemSecretKey);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function migrateConnectionsOnUnlock(params: {
@@ -45,44 +62,100 @@ export async function migrateConnectionsOnUnlock(params: {
   const rekeyResults: Array<{ participantPnIdentifier: string; newMessageRootKey: string }> = [];
 
   for (const thread of threads) {
-    if (!thread.connectionId) continue;
-    if (!thread.kemCiphertext) continue;
+    if (!thread.connectionId || !thread.kemCiphertext || !thread.participantPnIdentifier) continue;
+    if (thread.threadType === 'group') continue;
+
+    const isRequester = isRequesterForKem(thread.kemCiphertext, params.predecessorMlKemSecretKey);
+
     try {
-      const result = rekeyConnectionAsRequester(
-        {
-          connectionId: thread.connectionId,
-          kemCiphertext: thread.kemCiphertext,
-          participantPnIdentifier: thread.participantPnIdentifier || '',
-          isRequester: true,
-        },
-        {
-          mlKemSecretKey: params.predecessorMlKemSecretKey,
-          mlKemPublicKey: params.predecessorMlKemPublicKey,
-        },
-        {
-          mlKemSecretKey: params.successorMlKemSecretKey,
-          mlKemPublicKey: params.successorMlKemPublicKey,
-        }
-      );
-      if (result.legacyMessageRootKey) {
-        cacheLegacyMessageRoot(thread.connectionId, result.legacyMessageRootKey);
-      }
-      if (result.newKemCiphertext) {
-        await rekeyConnection(
-          params.authToken,
-          migrationId,
-          thread.connectionId,
-          userPn,
-          result.newKemCiphertext
+      let newKem: string | undefined;
+      let legacyRoot: string | undefined;
+      let newRoot: string;
+
+      if (isRequester) {
+        const result = rekeyConnectionAsRequester(
+          {
+            connectionId: thread.connectionId,
+            kemCiphertext: thread.kemCiphertext,
+            participantPnIdentifier: thread.participantPnIdentifier,
+            isRequester: true,
+          },
+          {
+            mlKemSecretKey: params.predecessorMlKemSecretKey,
+            mlKemPublicKey: params.predecessorMlKemPublicKey,
+          },
+          {
+            mlKemSecretKey: params.successorMlKemSecretKey,
+            mlKemPublicKey: params.successorMlKemPublicKey,
+          }
         );
+        newKem = result.newKemCiphertext;
+        legacyRoot = result.legacyMessageRootKey;
+        newRoot = result.newMessageRootKey;
+        if (newKem) {
+          await rekeyConnection(
+            params.authToken,
+            migrationId,
+            thread.connectionId,
+            userPn,
+            newKem
+          );
+        }
+      } else {
+        legacyRoot = getLegacyMessageRootKey(thread.connectionId);
+        try {
+          newRoot = openDmSession(thread.kemCiphertext, params.successorMlKemSecretKey);
+        } catch {
+          continue;
+        }
       }
-      setMessageRootKey(thread.connectionId, result.newMessageRootKey);
-      if (thread.participantPnIdentifier) {
-        rekeyResults.push({
-          participantPnIdentifier: thread.participantPnIdentifier,
-          newMessageRootKey: result.newMessageRootKey,
-        });
+
+      if (legacyRoot) {
+        cacheLegacyMessageRoot(thread.connectionId, legacyRoot);
       }
+      setMessageRootKey(thread.connectionId, newRoot);
+
+      const { rows, spreadsheetId } = await fetchConversationRowsForMigration(
+        params.authToken,
+        migrationId,
+        thread.participantPnIdentifier,
+        thread.spreadsheetId
+      );
+      if (rows.length) {
+        const history = await migrateDmThreadHistory(
+          {
+            connectionId: thread.connectionId,
+            kemCiphertext: newKem || thread.kemCiphertext,
+            participantPnIdentifier: thread.participantPnIdentifier,
+            isRequester,
+            rows: rows.filter((r) => r.encryptedContent),
+          },
+          {
+            mlKemSecretKey: params.predecessorMlKemSecretKey,
+            mlKemPublicKey: params.predecessorMlKemPublicKey,
+            pnIdentifier: plan.predecessorPnIdentifier,
+          },
+          {
+            mlKemSecretKey: params.successorMlKemSecretKey,
+            mlKemPublicKey: params.successorMlKemPublicKey,
+            pnIdentifier: plan.successorPnIdentifier,
+          }
+        );
+        if (history.rowUpdates.length) {
+          await postDmMessageRowUpdates(params.authToken, migrationId, {
+            connectionId: thread.connectionId,
+            kemCiphertext: history.newKemCiphertext,
+            spreadsheetId,
+            participantPnIdentifier: thread.participantPnIdentifier,
+            rowUpdates: history.rowUpdates,
+          });
+        }
+      }
+
+      rekeyResults.push({
+        participantPnIdentifier: thread.participantPnIdentifier,
+        newMessageRootKey: newRoot,
+      });
     } catch {
       /* skip connection */
     }
@@ -144,4 +217,8 @@ export async function migrateConnectionsOnUnlock(params: {
   progress.legacyDmRoots = legacyDmRoots;
   progress.completedStepIds = [...new Set([...progress.completedStepIds, 'dm_rekey', 'group_rewrap'])];
   localStorage.setItem(MIGRATION_STATE_KEY, JSON.stringify({ plan, progress }));
+  sessionStorage.removeItem('pn_identity_migration_kem_handoff');
+
+  await ackMigrationStep(params.authToken, migrationId, 'dm_rekey');
+  await ackMigrationStep(params.authToken, migrationId, 'group_rewrap');
 }

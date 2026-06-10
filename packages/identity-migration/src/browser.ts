@@ -2,5 +2,6 @@
 export * from './types';
 export * from './catalog';
 export * from './dmRekey';
+export * from './dmHistoryMigration';
 export * from './groupRewrap';
 export * from './runner';

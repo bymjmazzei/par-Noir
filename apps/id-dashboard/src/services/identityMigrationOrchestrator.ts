@@ -35,6 +35,7 @@ import {
   ackMigrationStep,
   batchReissueZkps,
   completeIdentityMigration,
+  fetchZkpsFromDrive,
   startIdentityMigration,
 } from './identityMigrationApi';
 import { listQueuedVerifiedDataPoints, issueVerifiedZkpsForQueue } from './verifiedDataPointZkService';
@@ -49,6 +50,7 @@ import {
   flushPendingRecoverySharesToDrive,
 } from './recoveryVaultService';
 import { ownerGet } from './ownerApiService';
+import { republishOwnedAssetsManifest } from './ownedAssetsManifestService';
 
 export interface PredecessorCustodian {
   custodianId: string;
@@ -181,8 +183,27 @@ export async function runIdentityMigrationCore(ctx: MigrationContext): Promise<M
     });
   }
   await loadMlDsaKeypairForZk(succMat.did, ctx.successor.encryptedIdentity);
+  const seenZkpIds = new Set(zkpUpdates.map((u) => u.dataPointId));
+  try {
+    const fromDrive = await fetchZkpsFromDrive(ctx.authToken, plan.migrationId);
+    const proofStrings = fromDrive.map((p) => p.zkpProof).filter(Boolean);
+    if (proofStrings.length) {
+      const reissued = await reissueZkProofsFromEnvelopes(proofStrings, {
+        mlDsaSecretKey: succMat.mlDsaSecretKey,
+        mlDsaPublicKey: succMat.mlDsaPublicKey,
+        publicKey: succMat.publicKey,
+      });
+      for (const entry of reissued) {
+        if (seenZkpIds.has(entry.dataPointId)) continue;
+        seenZkpIds.add(entry.dataPointId);
+        zkpUpdates.push({ dataPointId: entry.dataPointId, zkpProof: entry.proof });
+      }
+    }
+  } catch {
+    /* Drive ZKP reissue is best-effort when sheet missing */
+  }
   if (zkpUpdates.length) {
-    await batchReissueZkps(ctx.authToken, plan.migrationId, succMat.pnIdentifier, zkpUpdates);
+    await batchReissueZkps(ctx.authToken, plan.migrationId, predMat.pnIdentifier, zkpUpdates);
   }
   progress = markStepComplete(progress, 'zkp_reissue');
   await ackMigrationStep(ctx.authToken, plan.migrationId, 'zkp_reissue');
@@ -287,11 +308,6 @@ export async function runIdentityMigrationCore(ctx: MigrationContext): Promise<M
       successorMlKemPublicKey: succMat.mlKemPublicKey,
     })
   );
-  progress = markStepComplete(progress, 'dm_rekey');
-  await ackMigrationStep(ctx.authToken, plan.migrationId, 'dm_rekey');
-  progress = markStepComplete(progress, 'group_rewrap');
-  await ackMigrationStep(ctx.authToken, plan.migrationId, 'group_rewrap');
-
   progress = markStepComplete(progress, 'profile_publish');
   await ackMigrationStep(ctx.authToken, plan.migrationId, 'profile_publish');
 
@@ -341,8 +357,6 @@ export async function resumeMigrationAfterDriveAck(params: {
       successorMlKemPublicKey: params.successor.mlKemPublicKey,
     })
   );
-  await ackMigrationStep(params.authToken, params.migrationId, 'dm_rekey');
-  await ackMigrationStep(params.authToken, params.migrationId, 'group_rewrap');
   await ackMigrationStep(params.authToken, params.migrationId, 'profile_publish');
 
   const plan = await buildMigrationPlan({
@@ -353,7 +367,7 @@ export async function resumeMigrationAfterDriveAck(params: {
     migrationId: params.migrationId,
   });
   let progress = createInitialProgress(params.migrationId);
-  for (const stepId of ['zkp_reissue', 'recovery_vault', 'drive_files', 'dm_rekey', 'group_rewrap', 'profile_publish']) {
+  for (const stepId of ['zkp_reissue', 'recovery_vault', 'drive_files', 'profile_publish']) {
     progress = markStepComplete(progress, stepId);
   }
   localStorage.setItem(
@@ -396,6 +410,14 @@ export async function finalizeIdentityMigration(params: {
     },
   });
   await ackMigrationStep(params.authToken, params.migrationId, 'lineage_zkp');
+
+  report('Syncing owned assets manifest', 90);
+  try {
+    await republishOwnedAssetsManifest(params.authToken, params.successor.publicKey);
+  } catch {
+    /* IPFS optional */
+  }
+  await ackMigrationStep(params.authToken, params.migrationId, 'owned_assets_sync');
 
   report('Registering succession', 95);
   await completeIdentityMigration(params.authToken, params.migrationId, {

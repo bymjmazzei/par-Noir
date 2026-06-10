@@ -22,7 +22,8 @@ Human rows may exist for symmetry; most registry rows are non-human kinds.
 
 - On identity succession (predecessor → successor), **`root_pn_identifier`** on owned-asset rows where root = predecessor updates to successor.
 - **Default**: **`subject_pn_identifier` does not change** for subs (cryptographic identity stable for integrators until re-issued).
-- Document any product change if subjects are ever migrated.
+- After re-key, the dashboard runs **`owned_assets_sync`**: verifies subs under the successor root and republishes the IPFS `ownedAssets` manifest.
+- **Sub compromise rotation** (independent of root re-key): `POST /api/owned-assets/:id/rekey` revokes the old subject, creates a new asset row, records `pn_subject_succession`, and optionally migrates delegations.
 
 ## Revocation
 

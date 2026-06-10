@@ -56,6 +56,17 @@ export async function ackMigrationStep(
   if (!res.ok) throw new Error(`Failed to ack step ${stepId}`);
 }
 
+export async function fetchZkpsFromDrive(
+  authToken: string,
+  migrationId: string
+): Promise<Array<{ dataPointId: string; zkpProof: string; proofType?: string }>> {
+  const path = `/api/identity/migration/${encodeURIComponent(migrationId)}/zkp-data-points/from-drive`;
+  const res = await migrationFetch(authToken, 'GET', path);
+  if (!res.ok) return [];
+  const data = (await res.json()) as { proofs?: Array<{ dataPointId: string; zkpProof: string; proofType?: string }> };
+  return data.proofs || [];
+}
+
 export async function batchReissueZkps(
   authToken: string,
   migrationId: string,

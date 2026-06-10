@@ -9,7 +9,7 @@ function normalizePn(pn: string): string {
   return t.startsWith('pn-') ? t : `pn-${t}`;
 }
 
-function replaceInCell(value: string, pred: string, succ: string, predDid?: string, succDid?: string): string {
+export function replaceInCell(value: string, pred: string, succ: string, predDid?: string, succDid?: string): string {
   if (!value) return value;
   let out = value;
   if (out.includes(pred)) out = out.split(pred).join(succ);
@@ -81,26 +81,19 @@ async function replacePnInSpreadsheet(
   return updated;
 }
 
-const METADATA_SHEET_NAMES = new Set([
-  'public-file-index.xlsx',
-  'owner-file-index.xlsx',
-  'engagement.xlsx',
-  'messaging_ledger.xlsx',
-  'third-party-permissions.xlsx',
-  'notifications.xlsx',
-  'activity_ledger.xlsx',
-  'prism_ledger.xlsx',
-  'preferences.xlsx',
-  'connections.xlsx',
-  'recovery.xlsx',
-  'zkp-data-points.xlsx',
-  'media-public-index.xlsx',
-  'media-owner-index.xlsx',
-  'thoughts-public-index.xlsx',
-  'thoughts-owner-index.xlsx',
-  'collections-public-index.xlsx',
-  'collections-owner-index.xlsx',
-]);
+/** Spreadsheets in _metadata/ root that must not receive pn string replace (handled elsewhere). */
+const METADATA_SHEET_DENYLIST = new Set<string>();
+
+function shouldMigrateMetadataSpreadsheet(name: string): boolean {
+  if (METADATA_SHEET_DENYLIST.has(name)) return false;
+  if (name.endsWith('.metadata')) return false;
+  return true;
+}
+
+function shouldMigrateMessagesSpreadsheet(name: string): boolean {
+  if (name === 'Inbox') return true;
+  return name.startsWith('conversation-');
+}
 
 export async function migrateMetadataSheetsPn(
   token: GoogleDriveToken,
@@ -118,9 +111,7 @@ export async function migrateMetadataSheetsPn(
 
   const metaFiles = await listSpreadsheetsInFolder(token, metadataFolderId);
   for (const f of metaFiles) {
-    if (!METADATA_SHEET_NAMES.has(f.name) && !f.name.endsWith('-owner-index.xlsx') && !f.name.endsWith('-public-index.xlsx')) {
-      continue;
-    }
+    if (!shouldMigrateMetadataSpreadsheet(f.name)) continue;
     sheetsUpdated += await replacePnInSpreadsheet(token, f.id, pred, succ, accountId, predecessorDid, successorDid);
   }
 
@@ -128,7 +119,7 @@ export async function migrateMetadataSheetsPn(
   if (messagesFolderId) {
     const convFiles = await listSpreadsheetsInFolder(token, messagesFolderId);
     for (const f of convFiles) {
-      if (!f.name.startsWith('conversation-')) continue;
+      if (!shouldMigrateMessagesSpreadsheet(f.name)) continue;
       conversationSheetsUpdated += await replacePnInSpreadsheet(token, f.id, pred, succ, accountId, predecessorDid, successorDid);
     }
   }

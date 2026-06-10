@@ -125,6 +125,5 @@ export function isEncryptedPayloadFileName(name: string): boolean {
 }
 
 export function isTextPatchableFileName(name: string): boolean {
-  const lower = name.toLowerCase();
-  return lower.endsWith('.json') || lower.endsWith('.csv') || lower.endsWith('.txt') || lower.endsWith('.metadata.json');
+  return isJsonLikeFileName(name);
 }

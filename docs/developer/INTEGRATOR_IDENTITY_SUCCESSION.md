@@ -26,7 +26,8 @@ After **custodian recovery (same keys)** or **identity re-key migration (new key
 - **Storage:** `GET`/`PUT` `/api/storage/credentials/...` and Drive proxy token retrieval reject predecessors.
 - **Feeds:** Creating a feed rejects **superseded** `creatorDid` when that DID was recorded on the succession row.
 - **API keys:** Keys whose `pn_id` is a superseded predecessor fail validation.
-- **Owned-asset registry:** On succession migration, `pn_owned_assets.root_pn_identifier`, `api_keys.root_pn_id`, and `feeds.owner_pn_identifier` rows tied to the predecessor are updated to the successor where applicable. See [OWNED_ASSETS_INTEGRATORS.md](./OWNED_ASSETS_INTEGRATORS.md).
+- **Owned-asset registry:** On succession migration, `pn_owned_assets.root_pn_identifier`, `api_keys.root_pn_id`, and `feeds.owner_pn_identifier` rows tied to the predecessor are updated to the successor where applicable. Sub **subjects** stay stable unless the owner calls `POST /api/owned-assets/:id/rekey` (compromise rotation). See [OWNED_ASSETS_INTEGRATORS.md](./OWNED_ASSETS_INTEGRATORS.md).
+- **Subject succession:** `GET /api/v1/identity/successor?pn_identifier=` also resolves revoked **sub** subjects via `pn_subject_succession`.
 
 ## Registering succession
 

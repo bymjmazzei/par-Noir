@@ -17,6 +17,7 @@ export function defaultMigrationSteps(): MigrationStep[] {
     { id: 'profile_publish', kind: 'profile_publish', label: 'Publish new messaging keys', required: true },
     { id: 'custodian_reinvite', kind: 'custodian_reinvite', label: 'Re-invite recovery custodians', required: true },
     { id: 'lineage_zkp', kind: 'lineage_zkp', label: 'Sign identity succession proofs', required: true },
+    { id: 'owned_assets_sync', kind: 'owned_assets_sync', label: 'Verify owned assets and IPFS manifest', required: true },
     { id: 'succession_register', kind: 'succession_register', label: 'Register network succession', required: true },
   ];
 }

@@ -29,6 +29,18 @@ export function syncRevocationFromRow(
   if (predecessorDid) revokedDidCache.add(predecessorDid);
 }
 
+export function syncSubjectSuccessionFromRow(
+  predecessorSubjectPn: string,
+  successorSubjectPn: string,
+  effectiveAtIso?: string
+): void {
+  const p = normalizePn(predecessorSubjectPn);
+  const s = normalizePn(successorSubjectPn);
+  revokedPnCache.add(p);
+  successorByPredecessorPn.set(p, s);
+  if (effectiveAtIso) effectiveAtByPredecessorPn.set(p, effectiveAtIso);
+}
+
 export async function warmIdentitySuccessionCache(): Promise<void> {
   const db = getDatabasePool();
   const r = await db.query(
@@ -47,6 +59,22 @@ export async function warmIdentitySuccessionCache(): Promise<void> {
       row.predecessor_did,
       eff
     );
+  }
+  try {
+    const sub = await db.query(
+      `SELECT predecessor_subject_pn_identifier, successor_subject_pn_identifier, effective_at
+       FROM pn_subject_succession`
+    );
+    for (const row of sub.rows) {
+      const eff = row.effective_at ? new Date(row.effective_at).toISOString() : undefined;
+      syncSubjectSuccessionFromRow(
+        row.predecessor_subject_pn_identifier,
+        row.successor_subject_pn_identifier,
+        eff
+      );
+    }
+  } catch {
+    /* table may be missing on older DBs */
   }
 }
 
@@ -77,14 +105,35 @@ export async function getSuccessorPublicInfo(pnIdentifier: string): Promise<{
       `SELECT successor_pn_identifier, effective_at FROM pn_identity_succession WHERE predecessor_pn_identifier = $1`,
       [n]
     );
-    if (r.rows.length === 0) {
-      return { revoked: false };
+    if (r.rows.length > 0) {
+      const rowSucc = String(r.rows[0].successor_pn_identifier ?? '');
+      const rowEff = r.rows[0].effective_at
+        ? new Date(r.rows[0].effective_at as Date).toISOString()
+        : new Date().toISOString();
+      successor = rowSucc;
+      effectiveAt = rowEff;
+      syncRevocationFromRow(n, rowSucc, null, rowEff);
+    } else {
+      try {
+        const sub = await db.query(
+          `SELECT successor_subject_pn_identifier, effective_at
+           FROM pn_subject_succession WHERE predecessor_subject_pn_identifier = $1`,
+          [n]
+        );
+        if (sub.rows.length === 0) {
+          return { revoked: false };
+        }
+        const rowSucc = String(sub.rows[0].successor_subject_pn_identifier ?? '');
+        const rowEff = sub.rows[0].effective_at
+          ? new Date(sub.rows[0].effective_at as Date).toISOString()
+          : new Date().toISOString();
+        successor = rowSucc;
+        effectiveAt = rowEff;
+        syncSubjectSuccessionFromRow(n, rowSucc, rowEff);
+      } catch {
+        return { revoked: false };
+      }
     }
-    const rowSucc = String(r.rows[0].successor_pn_identifier ?? '');
-    const rowEff = r.rows[0].effective_at ? new Date(r.rows[0].effective_at as Date).toISOString() : new Date().toISOString();
-    successor = rowSucc;
-    effectiveAt = rowEff;
-    syncRevocationFromRow(n, rowSucc, null, rowEff);
   }
   if (!successor || !effectiveAt) {
     return { revoked: false };
