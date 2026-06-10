@@ -47,9 +47,11 @@ export function registerVerificationRoutes(app: Application): void {
         });
       }
 
-      const session = await response.json();
-      const url = session?.verification?.url;
-      return res.json({ url, verification: session?.verification });
+      const session = (await response.json()) as {
+        verification?: { url?: string; [key: string]: unknown };
+      };
+      const url = session.verification?.url;
+      return res.json({ url, verification: session.verification });
     } catch (e: unknown) {
       console.error('[Veriff] session:', e);
       return res.status(500).json({
