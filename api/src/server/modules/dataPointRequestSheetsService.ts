@@ -228,4 +228,33 @@ export class DataPointRequestSheetsService {
     const list = await drive.files.list({ q, fields: 'files(id)', pageSize: 1 });
     return list.data.files?.[0]?.id ?? null;
   }
+
+  static async setAllRequests(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    requests: DataPointRequestRow[],
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: `${SHEET_TITLE}!A2:H` });
+    if (requests.length === 0) return;
+    const rows = requests.map((r) => [
+      r.requestId,
+      r.clientId,
+      r.toolName,
+      r.dataPoints,
+      r.reason,
+      r.status,
+      r.createdAt,
+      r.respondedAt || ''
+    ]);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${SHEET_TITLE}!A2:H`,
+      valueInputOption: 'RAW',
+      requestBody: { values: rows }
+    });
+  }
 }

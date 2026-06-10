@@ -67,7 +67,7 @@ async function readConversationLines(
     .map((line) => JSON.parse(line) as Message);
 }
 
-async function writeConversationLines(
+export async function writeConversationLines(
   pnIdentifier: string,
   sheetId: string,
   messages: Message[],

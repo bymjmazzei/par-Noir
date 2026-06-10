@@ -2,6 +2,7 @@ import type { DelegateTableHooks, ScanOptions, TableRow, TableSchema } from '@pa
 import { TABLE_PATHS } from '@par-noir/user-owned-storage';
 import type { GoogleDriveToken } from '../googleOAuth2Helper';
 import type { ThirdPartyPermission } from '../thirdPartyPermissionsService';
+import { replaceAllGoogleTableRows, scanGoogleTableRows } from './googleSheetsTableOps';
 
 export type DriveTableContext = {
   token: GoogleDriveToken;
@@ -51,7 +52,11 @@ async function routeAppend(
     );
     return;
   }
-  throw new Error(`Sheets append not implemented for ${schema.id}`);
+  const existing = await scanGoogleTableRows(ctx, schema);
+  const keyCol = schema.keyColumn;
+  const key = String(row[keyCol] ?? '');
+  const filtered = existing.filter((r) => String(r[keyCol] ?? '') !== key);
+  await replaceAllGoogleTableRows(ctx, schema, [...filtered, row]);
 }
 
 async function routeGetByKey(
@@ -60,24 +65,8 @@ async function routeGetByKey(
   key: string
 ): Promise<TableRow | null> {
   const ctx = await getDriveContext();
-  if (schema.path === TABLE_PATHS.thirdPartyPermissions) {
-    const { ThirdPartyPermissionsSheetsService } = await import('../thirdPartyPermissionsSheetsService');
-    const sheetId = await ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(
-      ctx.token,
-      ctx.metadataFolderId,
-      ctx.pnIdentifier,
-      ctx.accountId
-    );
-    const all = await ThirdPartyPermissionsSheetsService.getPermissions(
-      ctx.token,
-      sheetId,
-      ctx.pnIdentifier,
-      ctx.accountId
-    );
-    const perm = all[key];
-    return perm ? (perm as unknown as TableRow) : null;
-  }
-  throw new Error(`Sheets getByKey not implemented for ${schema.id}`);
+  const rows = await scanGoogleTableRows(ctx, schema);
+  return rows.find((r) => String(r[schema.keyColumn] ?? '') === key) ?? null;
 }
 
 async function routeDelete(
@@ -103,7 +92,9 @@ async function routeDelete(
     );
     return;
   }
-  throw new Error(`Sheets delete not implemented for ${schema.id}`);
+  const rows = await scanGoogleTableRows(ctx, schema);
+  const filtered = rows.filter((r) => String(r[schema.keyColumn] ?? '') !== key);
+  await replaceAllGoogleTableRows(ctx, schema, filtered);
 }
 
 async function routeScan(
@@ -112,30 +103,15 @@ async function routeScan(
   _options?: ScanOptions
 ): Promise<TableRow[]> {
   const ctx = await getDriveContext();
-  if (schema.path === TABLE_PATHS.thirdPartyPermissions) {
-    const { ThirdPartyPermissionsSheetsService } = await import('../thirdPartyPermissionsSheetsService');
-    const sheetId = await ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(
-      ctx.token,
-      ctx.metadataFolderId,
-      ctx.pnIdentifier,
-      ctx.accountId
-    );
-    const all = await ThirdPartyPermissionsSheetsService.getPermissions(
-      ctx.token,
-      sheetId,
-      ctx.pnIdentifier,
-      ctx.accountId
-    );
-    return Object.values(all) as unknown as TableRow[];
-  }
-  throw new Error(`Sheets scan not implemented for ${schema.id}`);
+  return scanGoogleTableRows(ctx, schema);
 }
 
 async function routeReplaceAll(
-  _getDriveContext: () => Promise<DriveTableContext>,
+  getDriveContext: () => Promise<DriveTableContext>,
   schema: TableSchema,
-  _rows: TableRow[],
-  _meta?: { updatedAt?: string }
+  rows: TableRow[],
+  meta?: { updatedAt?: string }
 ): Promise<void> {
-  throw new Error(`Sheets replaceAll not implemented for ${schema.id}`);
+  const ctx = await getDriveContext();
+  await replaceAllGoogleTableRows(ctx, schema, rows, meta);
 }

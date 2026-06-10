@@ -458,4 +458,77 @@ export class EngagementSheetsService {
 
     return response.data.values.map((row: any[]) => row[0] as string).filter(Boolean);
   }
+
+  static async setAllEngagement(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    engagement: {
+      likes: string[];
+      dislikes: string[];
+      comments: UserComment[];
+      shares: string[];
+      saves: string[];
+    },
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    const ts = new Date().toISOString();
+    const tabs = ['Likes', 'Dislikes', 'Comments', 'Shares', 'Saves'] as const;
+    for (const tab of tabs) {
+      await sheets.spreadsheets.values.clear({ spreadsheetId, range: `${tab}!A2:H` });
+    }
+    if (engagement.likes.length) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Likes!A2:B',
+        valueInputOption: 'RAW',
+        requestBody: { values: engagement.likes.map((id) => [id, ts]) }
+      });
+    }
+    if (engagement.dislikes.length) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Dislikes!A2:B',
+        valueInputOption: 'RAW',
+        requestBody: { values: engagement.dislikes.map((id) => [id, ts]) }
+      });
+    }
+    if (engagement.comments.length) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Comments!A2:H',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: engagement.comments.map((c) => [
+            c.commentId,
+            c.fileId,
+            c.content,
+            c.authorName,
+            c.timestamp,
+            c.parentCommentId ?? '',
+            JSON.stringify(c.likes ?? []),
+            c.postReply ? JSON.stringify(c.postReply) : ''
+          ])
+        }
+      });
+    }
+    if (engagement.shares.length) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Shares!A2:B',
+        valueInputOption: 'RAW',
+        requestBody: { values: engagement.shares.map((id) => [id, ts]) }
+      });
+    }
+    if (engagement.saves.length) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Saves!A2:B',
+        valueInputOption: 'RAW',
+        requestBody: { values: engagement.saves.map((id) => [id, ts]) }
+      });
+    }
+  }
 }

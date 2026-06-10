@@ -1850,4 +1850,103 @@ export class MessageSheetsService {
     }
     return out;
   }
+
+  /**
+   * Bulk-replace conversation messages (migration / relay ciphertext as-is).
+   */
+  static async setAllConversationMessages(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    messages: Message[],
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await MsgPortable.writeConversationLines(userPnIdentifier, spreadsheetId, messages, accountId);
+      return;
+    }
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Messages!A2:I' });
+    if (messages.length === 0) return;
+    const values = messages.map((message) => {
+      const encryptedContent =
+        message.cryptoVersion === 2 && message.encryptedContent
+          ? message.encryptedContent
+          : message.fromPnIdentifier === 'system'
+            ? message.content
+            : message.encryptedContent || message.content;
+      const cryptoVersion = message.cryptoVersion ?? (message.encryptedContent ? 2 : 0);
+      return [
+        message.fromPnIdentifier,
+        encryptedContent,
+        message.timestamp,
+        message.messageId,
+        message.read ? 'true' : 'false',
+        message.readAt || '',
+        cryptoVersion ? String(cryptoVersion) : '',
+        message.mediaFileId || '',
+        message.mediaMimeType || ''
+      ];
+    });
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `Messages!A2:I${messages.length + 1}`,
+      valueInputOption: 'RAW',
+      requestBody: { values }
+    });
+  }
+
+  static async setAllInboxEntries(
+    token: GoogleDriveToken,
+    inboxSheetId: string,
+    entries: Array<{
+      participantPnIdentifier: string;
+      spreadsheetId: string;
+      connectionId: string;
+      lastMessageAt: string;
+      lastMessagePreview?: string;
+      kemCiphertext?: string;
+      threadType?: 'dm' | 'group';
+      groupId?: string;
+      ownerPnIdentifier?: string;
+    }>,
+    userPnIdentifier: string,
+    accountId?: string
+  ): Promise<void> {
+    await this.ensureInboxThreadTypeColumn(token, inboxSheetId, userPnIdentifier, accountId);
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId: inboxSheetId, range: 'Inbox!A2:G' });
+    if (entries.length === 0) return;
+    const rows = entries.map((e) => {
+      const threadType = e.threadType ?? 'dm';
+      if (threadType === 'group') {
+        return [
+          e.groupId || e.participantPnIdentifier,
+          e.spreadsheetId,
+          e.ownerPnIdentifier || e.connectionId,
+          e.lastMessageAt,
+          e.lastMessagePreview || '',
+          e.kemCiphertext || '',
+          'group'
+        ];
+      }
+      return [
+        e.participantPnIdentifier,
+        e.spreadsheetId,
+        e.connectionId,
+        e.lastMessageAt,
+        e.lastMessagePreview || '',
+        e.kemCiphertext || '',
+        'dm'
+      ];
+    });
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: inboxSheetId,
+      range: 'Inbox!A2:G',
+      valueInputOption: 'RAW',
+      requestBody: { values: rows }
+    });
+  }
 }

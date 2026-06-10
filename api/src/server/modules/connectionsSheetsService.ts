@@ -1129,4 +1129,52 @@ export class ConnectionsSheetsService {
       }
     });
   }
+
+  static async setAllFollowers(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    followers: Follower[],
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Followers!A2:C' });
+    if (followers.length === 0) return;
+    const rows = followers.map((f) => [
+      f.followerPnIdentifier,
+      f.followedAt,
+      f.feedId || ''
+    ]);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Followers!A2:C',
+      valueInputOption: 'RAW',
+      requestBody: { values: rows }
+    });
+  }
+
+  static async setAllFollowing(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    following: Following[],
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Following!A2:C' });
+    if (following.length === 0) return;
+    const rows = following.map((f) => [
+      f.targetType,
+      f.targetPnIdentifier,
+      f.followedAt
+    ]);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Following!A2:C',
+      valueInputOption: 'RAW',
+      requestBody: { values: rows }
+    });
+  }
 }

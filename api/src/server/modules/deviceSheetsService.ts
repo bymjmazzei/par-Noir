@@ -234,4 +234,23 @@ export class DeviceSheetsService {
       media: { mimeType: 'application/json', body: content },
     });
   }
+
+  static async setAllDevices(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    devices: DeviceRow[],
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Devices!A2:I' });
+    if (devices.length === 0) return;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Devices!A2:I',
+      valueInputOption: 'RAW',
+      requestBody: { values: devices.map((d) => this.rowToValues(d)) }
+    });
+  }
 }

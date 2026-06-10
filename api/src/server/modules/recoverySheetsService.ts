@@ -604,4 +604,72 @@ export class RecoverySheetsService {
       createdAt: r[6] || '',
     }));
   }
+
+  static async setAllRecoveryData(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    data: {
+      custodians: RecoveryCustodianRow[];
+      pending: PendingShareRow[];
+      requests: RecoveryRequestRow[];
+    },
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Custodians!A2:K' });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'PendingShares!A2:C' });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'RecoveryRequests!A2:G' });
+    if (data.custodians.length) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Custodians!A2:K',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: data.custodians.map((c) => [
+            c.custodianId,
+            c.name,
+            c.custodianType,
+            c.encryptedShare,
+            c.shareIndex,
+            c.custodianshipCredential,
+            c.status,
+            c.createdAt,
+            c.unrevokable ? 'true' : 'false',
+            c.custodianPublicKey || '',
+            c.custodianPnIdentifier || ''
+          ])
+        }
+      });
+    }
+    if (data.pending.length) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'PendingShares!A2:C',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: data.pending.map((p) => [p.shareIndex, p.encryptedShare, p.createdAt])
+        }
+      });
+    }
+    if (data.requests.length) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'RecoveryRequests!A2:G',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: data.requests.map((r) => [
+            r.requestId,
+            r.publicKey,
+            r.status,
+            r.threshold,
+            r.sharesJson,
+            r.claimantName,
+            r.createdAt
+          ])
+        }
+      });
+    }
+  }
 }

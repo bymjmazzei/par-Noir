@@ -1,6 +1,5 @@
 import {
   buildPortableInventoryFromList,
-  copyPortableSocialCloudBlobs,
   type MigrationReport
 } from '@par-noir/storage-migration';
 import {
@@ -12,7 +11,13 @@ import {
 } from '@par-noir/user-owned-storage';
 import { storageCredentialsService } from '../storageCredentialsService';
 import { createBlobStoreForProvider } from './blobAdapters';
-import { initializePortableStorage } from './storageInitService';
+import { buildGoogleInventoryFromDrive } from './googleDriveInventory';
+import {
+  migrateGoogleToPortable,
+  migratePortableToGoogle,
+  migratePortableToPortable
+} from './googlePortableMigrator';
+import { googleDriveProxyService } from '../googleDriveProxy';
 import {
   createMigrationJob,
   getMigrationJob,
@@ -47,14 +52,25 @@ export async function previewSocialCloudMigration(
   if (sourceProvider === targetProvider) {
     blockers.push('Source and target social cloud are the same provider');
   }
-  if (sourceProvider !== 'google_drive' && targetProvider === 'google_drive') {
-    blockers.push('Portable to Google Drive migration is not supported in v1');
-  }
 
   let inventoryCount = 0;
   let estimatedBytes = 0;
 
-  if (await isPortableSocialCloud(normalized)) {
+  if (sourceProvider === 'google_drive') {
+    const accessToken = await googleDriveProxyService.getAccessToken(
+      normalized,
+      credentials.socialCloudAccountId,
+      [normalized]
+    );
+    const inv = await buildGoogleInventoryFromDrive(
+      { access_token: accessToken },
+      credentials,
+      normalized,
+      credentials.socialCloudAccountId
+    );
+    inventoryCount = inv.items.length;
+    estimatedBytes = inv.totalEstimatedBytes;
+  } else if (await isPortableSocialCloud(normalized)) {
     const sourceAccountId = credentials.socialCloudAccountId;
     const blobStore = await createBlobStoreForProvider(
       normalized,
@@ -67,10 +83,6 @@ export async function previewSocialCloudMigration(
     const inv = buildPortableInventoryFromList(entries, rootPrefix);
     inventoryCount = inv.items.length;
     estimatedBytes = inv.totalEstimatedBytes;
-  } else {
-    inventoryCount = 12;
-    estimatedBytes = 0;
-    blockers.push('Google Drive inventory is approximate; full export runs during migration');
   }
 
   void targetAccountId;
@@ -90,7 +102,7 @@ export async function startSocialCloudMigration(
 ): Promise<{ jobId: string }> {
   const normalized = normalizePn(pnIdentifier);
   const preview = await previewSocialCloudMigration(normalized, targetProvider, targetAccountId);
-  if (preview.blockers.some((b) => b.includes('not supported'))) {
+  if (preview.blockers.some((b) => b.includes('same provider'))) {
     throw new Error(preview.blockers.join('; '));
   }
 
@@ -108,46 +120,73 @@ export async function startSocialCloudMigration(
   });
 
   await updateMigrationJob(jobId, { status: 'running' });
+  void executeSocialCloudMigrationJob(
+    jobId,
+    normalized,
+    credentials,
+    sourceProvider,
+    targetProvider,
+    targetAccountId
+  );
+
+  return { jobId };
+}
+
+async function executeSocialCloudMigrationJob(
+  jobId: string,
+  normalized: string,
+  credentials: StorageCredentialsEnvelope,
+  sourceProvider: StorageProviderId,
+  targetProvider: StorageProviderId,
+  targetAccountId?: string
+): Promise<void> {
+  const onProgress = async (report: MigrationReport) => {
+    await updateMigrationJob(jobId, {
+      progress: { report, results: report.items }
+    });
+  };
 
   try {
-    let report: MigrationReport | null = null;
+    let report: MigrationReport;
 
-    if (sourceProvider !== 'google_drive' && targetProvider !== 'google_drive') {
-      const sourceStore = await createBlobStoreForProvider(
-        normalized,
-        credentials,
-        sourceProvider,
-        credentials.socialCloudAccountId
-      );
-      const destStore = await createBlobStoreForProvider(
+    if (sourceProvider === 'google_drive' && targetProvider !== 'google_drive') {
+      report = await migrateGoogleToPortable(
+        jobId,
         normalized,
         credentials,
         targetProvider,
-        targetAccountId
+        targetAccountId,
+        onProgress
       );
-      const root = `${pnRootFolderName(normalized)}/`;
-      await initializePortableStorage(normalized, credentials, targetProvider);
-      report = await copyPortableSocialCloudBlobs({
+    } else if (sourceProvider !== 'google_drive' && targetProvider === 'google_drive') {
+      report = await migratePortableToGoogle(
         jobId,
-        sourceStore,
-        destStore,
-        sourcePrefix: root,
-        destPrefix: root
-      });
-    } else if (sourceProvider === 'google_drive' && targetProvider !== 'google_drive') {
-      await initializePortableStorage(normalized, credentials, targetProvider);
-      report = {
+        normalized,
+        credentials,
+        credentials.socialCloudAccountId,
+        onProgress
+      );
+    } else if (sourceProvider !== 'google_drive' && targetProvider !== 'google_drive') {
+      report = await migratePortableToPortable(
         jobId,
-        startedAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
-        items: [],
-        totals: { migrated: 0, failed: 0, skipped: 0, bytes: 0 }
-      };
+        normalized,
+        credentials,
+        sourceProvider,
+        targetProvider,
+        credentials.socialCloudAccountId,
+        targetAccountId,
+        onProgress
+      );
+    } else {
+      throw new Error('Unsupported migration direction');
     }
 
+    const status =
+      report.totals.failed > 0 && report.totals.migrated === 0 ? 'failed' : 'completed';
+
     await updateMigrationJob(jobId, {
-      status: 'completed',
-      progress: { report },
+      status,
+      progress: { report, results: report.items },
       completedAt: new Date().toISOString()
     });
   } catch (err) {
@@ -157,10 +196,7 @@ export async function startSocialCloudMigration(
       progress: { error: msg },
       completedAt: new Date().toISOString()
     });
-    throw err;
   }
-
-  return { jobId };
 }
 
 export async function completeSocialCloudMigration(

@@ -35,6 +35,9 @@ export function SocialCloudMigrationWizard({
     sourceProvider?: string;
   } | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [artifactResults, setArtifactResults] = useState<
+    Array<{ path: string; outcome: string; error?: string }>
+  >([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -51,9 +54,12 @@ export function SocialCloudMigrationWizard({
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || data.error || 'Preview failed');
         setPreview(data);
-        if (data.blockers?.some((b: string) => b.includes('not supported'))) {
-          setStep('error');
-          setError(data.blockers.join('; '));
+        if (data.blockers?.length) {
+          const hard = data.blockers.filter((b: string) => b.includes('same provider'));
+          if (hard.length) {
+            setStep('error');
+            setError(hard.join('; '));
+          }
         }
       } catch (e) {
         setStep('error');
@@ -79,6 +85,37 @@ export function SocialCloudMigrationWizard({
       if (!startRes.ok) throw new Error(startData.message || startData.error || 'Start failed');
       const id = startData.jobId as string;
       setJobId(id);
+
+      let jobStatus = 'running';
+      while (jobStatus === 'running') {
+        const pollRes = await ownerFetch(
+          authToken,
+          'GET',
+          `/api/storage/migrate/social-cloud/${id}`
+        );
+        const pollData = await pollRes.json();
+        if (pollRes.ok) {
+          jobStatus = pollData.status ?? 'running';
+          const progress =
+            pollData.progress_json ?? pollData.progress ?? {};
+          const results = progress.results ?? progress.report?.items;
+          if (Array.isArray(results)) {
+            setArtifactResults(
+              results.map((r: { path: string; outcome: string; error?: string }) => ({
+                path: r.path,
+                outcome: r.outcome,
+                error: r.error
+              }))
+            );
+          }
+        }
+        if (jobStatus === 'running') {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+      }
+      if (jobStatus === 'failed') {
+        throw new Error('Migration job failed');
+      }
 
       const completeRes = await ownerFetch(
         authToken,
@@ -138,11 +175,27 @@ export function SocialCloudMigrationWizard({
           </div>
         )}
 
+        {step === 'running' && artifactResults.length > 0 && (
+          <ul className="text-xs text-text-secondary mb-4 max-h-32 overflow-y-auto space-y-0.5">
+            {artifactResults.slice(-8).map((r) => (
+              <li key={r.path}>
+                {r.path}: {r.outcome}
+                {r.error ? ` (${r.error})` : ''}
+              </li>
+            ))}
+          </ul>
+        )}
+
         {preview && step === 'preview' && (
           <ul className="text-sm text-text-secondary mb-4 space-y-1">
             <li>Source: {preview.sourceProvider}</li>
+            <li>Target: {targetProvider}</li>
+            <li>Direction: {preview.sourceProvider === 'google_drive' ? 'Google Sheets → portable' : targetProvider === 'google_drive' ? 'Portable → Google Sheets' : 'Portable → portable'}</li>
             <li>Items: ~{preview.inventoryCount ?? 0}</li>
             <li>Estimated size: {preview.estimatedBytes ?? 0} bytes</li>
+            {preview.blockers?.length ? (
+              <li className="text-amber-400">Notes: {preview.blockers.join('; ')}</li>
+            ) : null}
           </ul>
         )}
 

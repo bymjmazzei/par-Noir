@@ -276,4 +276,39 @@ export class ThirdPartyPermissionsSheetsService {
       }
     });
   }
+
+  static async setAllPermissions(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    permissions: ThirdPartyPermission[],
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Permissions!A2:M' });
+    if (permissions.length === 0) return;
+    const now = new Date().toISOString();
+    const rows = permissions.map((p) => [
+      p.toolId,
+      p.toolName,
+      p.toolDescription,
+      JSON.stringify(p.permissions),
+      JSON.stringify(p.dataPoints),
+      JSON.stringify(p.requiredDataPoints),
+      JSON.stringify(p.optionalDataPoints),
+      p.grantedAt,
+      p.expiresAt ?? '',
+      p.status,
+      now,
+      now,
+      p.integratorFolderId ?? ''
+    ]);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Permissions!A2:M',
+      valueInputOption: 'RAW',
+      requestBody: { values: rows }
+    });
+  }
 }

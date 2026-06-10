@@ -341,4 +341,36 @@ export class PreferencesSheetsService {
       throw error;
     }
   }
+
+  static async setAllPreferenceInteractions(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    interactions: PreferenceInteraction[],
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Interactions!A2:K' });
+    if (interactions.length === 0) return;
+    const rows = interactions.map((i) => [
+      i.interaction_id,
+      i.user_did,
+      i.preference_type,
+      i.action_type,
+      i.previous_value ?? '',
+      i.new_value ?? '',
+      i.tag_id ?? '',
+      i.source_file_id ?? '',
+      i.question_id ?? '',
+      i.metadata ? JSON.stringify(i.metadata) : '',
+      i.created_at
+    ]);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Interactions!A2:K',
+      valueInputOption: 'RAW',
+      requestBody: { values: rows }
+    });
+  }
 }

@@ -585,7 +585,7 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
       const existing = (record?.credentials ?? {}) as StorageCredentialsEnvelope;
       const previousSocial = resolveSocialCloudProvider(existing);
 
-      const needsMigration = previousSocial !== provider && previousSocial !== 'google_drive';
+      const needsMigration = previousSocial !== provider;
 
       if (needsMigration) {
         const jobOk =

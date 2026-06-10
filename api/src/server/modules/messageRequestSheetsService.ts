@@ -221,4 +221,33 @@ export class MessageRequestSheetsService {
       requestBody: { values: [[status]] }
     });
   }
+
+  static async setAllRequests(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    requests: StoredMessageRequestRow[],
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: `${SHEET_TITLE}!A2:H` });
+    if (requests.length === 0) return;
+    const rows = requests.map((r) => [
+      r.requestId,
+      r.fromPnIdentifier,
+      r.toPnIdentifier,
+      r.content,
+      r.status,
+      r.timestamp,
+      r.kemCiphertext || '',
+      r.cryptoVersion != null ? String(r.cryptoVersion) : ''
+    ]);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${SHEET_TITLE}!A2:H`,
+      valueInputOption: 'RAW',
+      requestBody: { values: rows }
+    });
+  }
 }

@@ -131,4 +131,63 @@ export class PrismLedgerSheetsService {
       }
     });
   }
+
+  static async getActivities(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined,
+    options?: { limit?: number; offset?: number }
+  ): Promise<{ entries: PrismLedgerEntry[]; total: number }> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Activities!A2:H'
+    });
+    const rows = response.data.values || [];
+    const entries: PrismLedgerEntry[] = rows.map((row) => ({
+      activity_id: row[0] || '',
+      user_pn_identifier: row[1] || '',
+      activity_type: (row[2] || 'report') as PrismLedgerEntryType,
+      target_file_id: row[3] || undefined,
+      target_owner_pn_identifier: row[4] || undefined,
+      vote: (row[5] as 'approve' | 'deny') || undefined,
+      metadata: row[6] || undefined,
+      created_at: row[7] || new Date().toISOString()
+    }));
+    const total = entries.length;
+    const limit = options?.limit ?? total;
+    const offset = options?.offset ?? 0;
+    return { entries: entries.slice(offset, offset + limit), total };
+  }
+
+  static async setAllEntries(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    entries: PrismLedgerEntry[],
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Activities!A2:H' });
+    if (entries.length === 0) return;
+    const rows = entries.map((e) => [
+      e.activity_id,
+      e.user_pn_identifier,
+      e.activity_type,
+      e.target_file_id || '',
+      e.target_owner_pn_identifier || '',
+      e.vote || '',
+      typeof e.metadata === 'string' ? e.metadata : (e.metadata ? JSON.stringify(e.metadata) : ''),
+      e.created_at
+    ]);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Activities!A2:H',
+      valueInputOption: 'RAW',
+      requestBody: { values: rows }
+    });
+  }
 }

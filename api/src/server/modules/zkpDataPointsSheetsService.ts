@@ -256,4 +256,35 @@ export class ZKPDataPointsSheetsService {
       }
     });
   }
+
+  static async setAllZKPDataPoints(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    dataPoints: ZKPDataPoint[],
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Data Points!A2:L' });
+    if (dataPoints.length === 0) return;
+    const rows = dataPoints.map((dp) => [
+      dp.dataPointId,
+      dp.proofType,
+      dp.zkpProof,
+      dp.signature,
+      dp.verifiedAt,
+      dp.expiresAt ?? '',
+      dp.verificationLevel,
+      dp.metadata?.provider ?? '',
+      dp.metadata?.fraudPreventionScore ?? '',
+      dp.encryptedUserData ?? ''
+    ]);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Data Points!A2:L',
+      valueInputOption: 'RAW',
+      requestBody: { values: rows }
+    });
+  }
 }

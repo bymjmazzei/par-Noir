@@ -13,7 +13,7 @@ Each connected account has a canonical id: `{prefix}::{pn}::{slug}` (e.g. `s3::p
 
 ## Social cloud migration
 
-When changing social cloud from one portable provider to another, a migration job is required.
+When changing social cloud provider (including Google Drive ↔ portable), a completed migration job is required.
 
 | Endpoint | Purpose |
 |----------|---------|
@@ -23,9 +23,19 @@ When changing social cloud from one portable provider to another, a migration jo
 | `POST /api/storage/migrate/social-cloud/:jobId/complete` | Flip credentials |
 | `PUT /api/storage/credentials/:pn/social-cloud` | Pass `migrationJobId` when required |
 
-**v1 supported:** portable → portable; Google → portable (scaffold + partial export).
+**Supported directions:**
 
-**v1 blocked:** portable → Google Drive.
+| From | To | Strategy |
+|------|-----|----------|
+| Google Drive | portable | Semantic export: Sheets → SQLite/JSON via `googlePortableMigrator` |
+| portable | Google Drive | Semantic import: SQLite/JSON → Sheets |
+| portable A | portable B | Byte-copy `_metadata/` blobs (unchanged) |
+
+**Artifact matrix:** bridge tables (notifications, indexes, inbox, …), JSON blobs (profile, preferences, device-policy, index meta), transformers (connections, recovery, preferences, engagement, messaging conversations).
+
+**Not migrated with social cloud:** encrypted file blobs on file backends (use file migration). Companion metadata sheets and feed subscribers may be skipped in v1.
+
+**409 semantics:** `PUT .../social-cloud` without a completed `migrationJobId` returns `migration_required` for any provider change.
 
 Encrypted **file blobs** on other backends are not moved unless you run file migration separately.
 

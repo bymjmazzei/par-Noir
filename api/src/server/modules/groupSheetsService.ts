@@ -488,4 +488,55 @@ export class GroupSheetsService {
     }
     return true;
   }
+
+  /** All group member rows (unfiltered) for migration. */
+  static async listAllGroupRows(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<GroupRecord[]> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Groups!A2:H' });
+    return (res.data.values || []).map((row) => ({
+      groupId: row[0] || '',
+      ownerPnIdentifier: row[1] || '',
+      title: row[2] || '',
+      createdAt: row[3] || '',
+      memberPnIdentifier: row[4] || '',
+      accessRole: (row[5] === 'readOnly' ? 'readOnly' : 'readWrite') as GroupAccessRole,
+      wrappedChatKey: row[6] || '',
+      conversationSpreadsheetId: row[7] || undefined
+    }));
+  }
+
+  static async setAllMembers(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    records: GroupRecord[],
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Groups!A2:H' });
+    if (records.length === 0) return;
+    const rows = records.map((r) => [
+      r.groupId,
+      r.ownerPnIdentifier,
+      r.title,
+      r.createdAt,
+      r.memberPnIdentifier,
+      r.accessRole,
+      r.wrappedChatKey,
+      r.conversationSpreadsheetId || ''
+    ]);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Groups!A2:H',
+      valueInputOption: 'RAW',
+      requestBody: { values: rows }
+    });
+  }
 }

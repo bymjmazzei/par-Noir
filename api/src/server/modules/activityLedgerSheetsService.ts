@@ -260,4 +260,33 @@ export class ActivityLedgerSheetsService {
       created_at: row[7] || new Date().toISOString()
     };
   }
+
+  static async setAllActivities(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    activities: ActivityEntry[],
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Activities!A2:H' });
+    if (activities.length === 0) return;
+    const rows = activities.map((a) => [
+      a.activity_id,
+      a.user_pn_identifier,
+      a.activity_type,
+      a.target_type || '',
+      a.target_pn_identifier || '',
+      a.actor_pn_identifier || '',
+      JSON.stringify(a.metadata || {}),
+      a.created_at
+    ]);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Activities!A2:H',
+      valueInputOption: 'RAW',
+      requestBody: { values: rows }
+    });
+  }
 }
