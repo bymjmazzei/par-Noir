@@ -4,6 +4,8 @@
 
 import { google } from 'googleapis';
 import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
+import * as RequestPortable from './storage/requestPortableService';
 
 const FILE_NAME = 'data-point-requests.xlsx';
 const SHEET_TITLE = 'Requests';
@@ -26,6 +28,9 @@ export class DataPointRequestSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<string> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return RequestPortable.PORTABLE_DATA_POINT_REQUESTS_SHEET;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
     const sheets = google.sheets({ version: 'v4', auth });
@@ -94,6 +99,10 @@ export class DataPointRequestSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await RequestPortable.appendDataPointRequestPortable(userPnIdentifier, row, accountId);
+      return;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -126,6 +135,10 @@ export class DataPointRequestSheetsService {
     accountId: string | undefined,
     statusFilter?: DataPointRequestRow['status']
   ): Promise<DataPointRequestRow[]> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      const rows = await RequestPortable.listDataPointRequestsPortable(userPnIdentifier, accountId);
+      return statusFilter ? rows.filter((r) => r.status === statusFilter) : rows;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -157,6 +170,20 @@ export class DataPointRequestSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<boolean> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      try {
+        await RequestPortable.updateDataPointRequestStatusPortable(
+          userPnIdentifier,
+          requestId,
+          status,
+          new Date().toISOString(),
+          accountId
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -192,6 +219,9 @@ export class DataPointRequestSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<string | null> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return RequestPortable.PORTABLE_DATA_POINT_REQUESTS_SHEET;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
     const q = `name='${FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;

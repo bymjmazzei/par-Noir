@@ -7,6 +7,9 @@
 import * as crypto from 'crypto';
 import { MessagingLedgerSheetsService, MessagingActivityEntry } from './messagingLedgerSheetsService';
 import { GoogleDriveToken } from './googleOAuth2Helper';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
+import { portableTableAppend, portableTableScan } from './storage/portableTableService';
+import { MESSAGING_LEDGER_SCHEMA } from './storage/tableSchemas';
 
 // Re-export MessagingActivityEntry for backward compatibility
 export type { MessagingActivityEntry };
@@ -36,10 +39,24 @@ export class MessagingLedgerService {
     identifier?: string
   ): Promise<MessagingLedgerFile | null> {
     try {
-      // Convert accessToken string to token object if needed (backward compatibility)
+      const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
+
+      if (await isPortableStorageProvider(normalizedUserPnIdentifier)) {
+        const activities = await portableTableScan<MessagingActivityEntry>(
+          normalizedUserPnIdentifier,
+          MESSAGING_LEDGER_SCHEMA,
+          accountId
+        );
+        const normalizedIdentifier = identifier ? this.normalizeToPnIdentifier(identifier) : '';
+        return {
+          identifier: normalizedIdentifier,
+          updatedAt: new Date().toISOString(),
+          activities
+        };
+      }
+
       const tokenObj: GoogleDriveToken = typeof token === 'string' ? { access_token: token } : token;
 
-      // Get or create Sheets file
       const spreadsheetId = await MessagingLedgerSheetsService.getMessagingLedgerSheet(
         tokenObj,
         metadataFolderId,
@@ -47,7 +64,6 @@ export class MessagingLedgerService {
         accountId
       );
 
-      // Get all activities
       const { activities } = await MessagingLedgerSheetsService.getActivities(
         tokenObj,
         spreadsheetId,
@@ -137,10 +153,18 @@ export class MessagingLedgerService {
       created_at: now
     };
 
-    // Convert accessToken string to token object
+    if (await isPortableStorageProvider(normalizedUserPnIdentifier)) {
+      await portableTableAppend(
+        normalizedUserPnIdentifier,
+        MESSAGING_LEDGER_SCHEMA,
+        activity as unknown as Record<string, unknown>,
+        accountId
+      );
+      return activity;
+    }
+
     const token: GoogleDriveToken = { access_token: accessToken };
 
-    // Get or create Sheets file
     const spreadsheetId = await MessagingLedgerSheetsService.getMessagingLedgerSheet(
       token,
       metadataFolderId,
@@ -148,7 +172,6 @@ export class MessagingLedgerService {
       accountId
     );
 
-    // Append activity (no 10,000 limit - Sheets can handle millions)
     await MessagingLedgerSheetsService.appendActivity(token, spreadsheetId, activity, normalizedUserPnIdentifier, accountId);
 
     return activity;
@@ -169,11 +192,28 @@ export class MessagingLedgerService {
       threadId?: string;
     }
   ): Promise<{ activities: MessagingActivityEntry[]; total: number }> {
-    // Convert accessToken string to token object
-    const token: GoogleDriveToken = { access_token: accessToken };
     const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
 
-    // Get or create Sheets file
+    if (await isPortableStorageProvider(normalizedUserPnIdentifier)) {
+      let activities = await portableTableScan<MessagingActivityEntry>(
+        normalizedUserPnIdentifier,
+        MESSAGING_LEDGER_SCHEMA,
+        accountId
+      );
+      if (options?.activityType) {
+        activities = activities.filter((a) => a.activity_type === options.activityType);
+      }
+      if (options?.threadId) {
+        activities = activities.filter((a) => a.thread_id === options.threadId);
+      }
+      const total = activities.length;
+      const limit = options?.limit ?? activities.length;
+      const offset = options?.offset ?? 0;
+      return { activities: activities.slice(offset, offset + limit), total };
+    }
+
+    const token: GoogleDriveToken = { access_token: accessToken };
+
     const spreadsheetId = await MessagingLedgerSheetsService.getMessagingLedgerSheet(
       token,
       metadataFolderId,
@@ -181,7 +221,6 @@ export class MessagingLedgerService {
       accountId
     );
 
-    // Get activities from Sheets
     return await MessagingLedgerSheetsService.getActivities(token, spreadsheetId, normalizedUserPnIdentifier, accountId, options);
   }
 }

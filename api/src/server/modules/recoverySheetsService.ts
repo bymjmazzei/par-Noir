@@ -5,6 +5,8 @@
 import { google } from 'googleapis';
 import { normalizeCustodianStatus, parseUnrevokableFlag } from '@par-noir/recovery-crypto';
 import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
+import * as RecoveryPortable from './storage/recoveryPortableService';
 
 export interface RecoveryCustodianRow {
   custodianId: string;
@@ -61,6 +63,9 @@ export class RecoverySheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<string> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return RecoveryPortable.getOrCreateSpreadsheetPortable();
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
@@ -203,6 +208,9 @@ export class RecoverySheetsService {
     accountId: string | undefined,
     includeEncrypted = false
   ): Promise<Array<{ shareIndex: number; createdAt: string; encryptedShare?: string }>> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return RecoveryPortable.listPendingSharesPortable(userPnIdentifier, accountId, includeEncrypted);
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     try {
@@ -232,6 +240,9 @@ export class RecoverySheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<{ inserted: number; skipped: number }> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return RecoveryPortable.initializePendingSharesPortable(userPnIdentifier, shares, accountId);
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     await this.ensureSheetTabs(auth, spreadsheetId);
@@ -284,6 +295,9 @@ export class RecoverySheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<boolean> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return RecoveryPortable.removePendingSharePortable(userPnIdentifier, shareIndex, accountId);
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
@@ -308,6 +322,10 @@ export class RecoverySheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await RecoveryPortable.appendPendingSharePortable(userPnIdentifier, share, accountId);
+      return;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     await sheets.spreadsheets.values.append({
@@ -328,6 +346,10 @@ export class RecoverySheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await RecoveryPortable.assignShareToCustodianPortable(userPnIdentifier, row, accountId);
+      return;
+    }
     const pending = await this.listPendingShares(token, spreadsheetId, userPnIdentifier, accountId, true);
     const pendingRow = pending.find((p) => p.shareIndex === row.shareIndex);
     if (!pendingRow?.encryptedShare) {
@@ -350,6 +372,9 @@ export class RecoverySheetsService {
     accountId: string | undefined,
     threshold?: number
   ): Promise<RecoveryCustodianRow> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return RecoveryPortable.revokeCustodianPortable(userPnIdentifier, custodianId, accountId, threshold);
+    }
     const custodians = await this.listCustodians(token, spreadsheetId, userPnIdentifier, accountId);
     const row = custodians.find((c) => c.custodianId === custodianId);
     if (!row) throw new Error('custodian_not_found');
@@ -392,6 +417,15 @@ export class RecoverySheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<RecoveryCustodianRow> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return RecoveryPortable.acceptCustodianPortable(
+        userPnIdentifier,
+        custodianId,
+        custodianPublicKey,
+        custodianPnIdentifier,
+        accountId
+      );
+    }
     const custodians = await this.listCustodians(token, spreadsheetId, userPnIdentifier, accountId);
     const row = custodians.find((c) => c.custodianId === custodianId);
     if (!row) throw new Error('custodian_not_found');
@@ -414,6 +448,9 @@ export class RecoverySheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<RecoveryCustodianRow | null> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return RecoveryPortable.getCustodianByIdPortable(userPnIdentifier, custodianId, accountId);
+    }
     const custodians = await this.listCustodians(token, spreadsheetId, userPnIdentifier, accountId);
     return custodians.find((c) => c.custodianId === custodianId) || null;
   }
@@ -425,6 +462,10 @@ export class RecoverySheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await RecoveryPortable.upsertCustodianPortable(userPnIdentifier, row, accountId);
+      return;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
@@ -458,6 +499,9 @@ export class RecoverySheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<RecoveryCustodianRow[]> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return RecoveryPortable.listCustodiansPortable(userPnIdentifier, accountId);
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
@@ -474,6 +518,10 @@ export class RecoverySheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await RecoveryPortable.upsertRecoveryRequestPortable(userPnIdentifier, row, accountId);
+      return;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
@@ -516,6 +564,9 @@ export class RecoverySheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<{ normalized: number }> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return RecoveryPortable.normalizeLegacyCustodianRowsPortable(userPnIdentifier, accountId);
+    }
     const custodians = await this.listCustodians(token, spreadsheetId, userPnIdentifier, accountId);
     let normalized = 0;
     for (const row of custodians) {
@@ -534,6 +585,9 @@ export class RecoverySheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<RecoveryRequestRow[]> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return RecoveryPortable.listRecoveryRequestsPortable(userPnIdentifier, accountId);
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({

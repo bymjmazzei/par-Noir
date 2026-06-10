@@ -6,6 +6,8 @@
 
 import { google } from 'googleapis';
 import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
+import * as SocialPortable from './storage/socialGraphPortableService';
 
 export interface Connection {
   connectionId: string;
@@ -335,6 +337,9 @@ export class ConnectionsSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<string> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return 'pn-portable-followers';
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
@@ -401,6 +406,9 @@ export class ConnectionsSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<string> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return 'pn-portable-following';
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
@@ -759,7 +767,10 @@ export class ConnectionsSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
-    // Validate required fields
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await SocialPortable.addFollowerPortable(userPnIdentifier, follower, accountId);
+      return;
+    }
     if (!follower.followerPnIdentifier) {
       throw new Error('Follower missing followerPnIdentifier');
     }
@@ -801,6 +812,9 @@ export class ConnectionsSheetsService {
       offset?: number;
     }
   ): Promise<{ followers: Follower[]; total: number }> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return SocialPortable.getFollowersPortable(userPnIdentifier, accountId, options);
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -859,7 +873,10 @@ export class ConnectionsSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
-    // Normalize followerPnIdentifier parameter
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await SocialPortable.removeFollowerPortable(userPnIdentifier, followerPnIdentifier, accountId);
+      return;
+    }
     const normalizedFollowerPnIdentifier = followerPnIdentifier.startsWith('pn-') ? followerPnIdentifier : `pn-${followerPnIdentifier}`;
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
@@ -927,7 +944,10 @@ export class ConnectionsSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
-    // Validate required fields
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await SocialPortable.addFollowingPortable(userPnIdentifier, following, accountId);
+      return;
+    }
     if (!following.targetPnIdentifier) {
       throw new Error('Following missing targetPnIdentifier');
     }
@@ -972,10 +992,12 @@ export class ConnectionsSheetsService {
       targetType?: 'user' | 'feed';
     }
   ): Promise<{ following: Following[]; total: number }> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return SocialPortable.getFollowingPortable(userPnIdentifier, accountId, options);
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
-    // Get all following (skip header row)
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: 'Following!A2:C'
@@ -1041,7 +1063,10 @@ export class ConnectionsSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
-    // Normalize targetPnIdentifier parameter (only if it's a user, not a feed)
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await SocialPortable.removeFollowingPortable(userPnIdentifier, targetType, targetPnIdentifier, accountId);
+      return;
+    }
     const normalizedTargetPnIdentifier = targetType === 'user' && targetPnIdentifier && !targetPnIdentifier.startsWith('pn-')
       ? `pn-${targetPnIdentifier}`
       : targetPnIdentifier;

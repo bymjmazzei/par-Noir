@@ -46,6 +46,17 @@ export function setupPrismRoutes(app: any): void {
           flagSource: 'user_report',
           reporterPnIdentifier: payload.pnIdentifier,
         });
+        try {
+          const { recordPrismEntry } = await import('./prismLedgerService');
+          await recordPrismEntry(payload.pnIdentifier, {
+            user_pn_identifier: payload.pnIdentifier,
+            activity_type: 'report',
+            target_file_id: fileId,
+            target_owner_pn_identifier: ownerPn
+          });
+        } catch (ledgerErr) {
+          console.warn('[Prism] Ledger write failed:', ledgerErr);
+        }
       }
       return res.json({ success: true });
     } catch (err: any) {
@@ -108,12 +119,22 @@ export function setupPrismRoutes(app: any): void {
       }
 
       const result = await submitVote(queueItemId, payload.pnIdentifier, vote);
-      if (result.resolved && result.status === 'denied') {
-        const item = await getQueueItemById(queueItemId);
-        if (item) {
-          const { executeTakedown } = await import('./dmcaTakedownService');
-          await executeTakedown(item.file_id, 'Prism review: content denied (copyright).', 'prism_denied');
-        }
+      const item = await getQueueItemById(queueItemId);
+      try {
+        const { recordPrismEntry } = await import('./prismLedgerService');
+        await recordPrismEntry(payload.pnIdentifier, {
+          user_pn_identifier: payload.pnIdentifier,
+          activity_type: 'ray_vote',
+          target_file_id: item?.file_id,
+          vote,
+          metadata: JSON.stringify({ queueItemId, resolved: result.resolved, status: result.status })
+        });
+      } catch (ledgerErr) {
+        console.warn('[Prism] Vote ledger write failed:', ledgerErr);
+      }
+      if (result.resolved && result.status === 'denied' && item) {
+        const { executeTakedown } = await import('./dmcaTakedownService');
+        await executeTakedown(item.file_id, 'Prism review: content denied (copyright).', 'prism_denied');
       }
       return res.json({ success: true, resolved: result.resolved, status: result.status });
     } catch (err: any) {

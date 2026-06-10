@@ -44,7 +44,21 @@ export async function addToPrismQueue(params: AddToQueueParams): Promise<string>
      RETURNING id`,
     [fileId, ownerPnIdentifier, flagSource, reporterPnIdentifier ?? null]
   );
-  return result.rows[0]?.id ?? '';
+  const queueItemId = result.rows[0]?.id ?? '';
+  try {
+    const { recordPrismEntry } = await import('./prismLedgerService');
+    const ledgerPn = reporterPnIdentifier || ownerPnIdentifier;
+    await recordPrismEntry(ledgerPn, {
+      user_pn_identifier: ledgerPn,
+      activity_type: 'flagged',
+      target_file_id: fileId,
+      target_owner_pn_identifier: ownerPnIdentifier,
+      metadata: JSON.stringify({ flagSource, queueItemId })
+    });
+  } catch (ledgerErr) {
+    console.warn('[Prism] Flag ledger write failed:', ledgerErr);
+  }
+  return queueItemId;
 }
 
 /**

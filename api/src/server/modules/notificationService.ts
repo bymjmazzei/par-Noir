@@ -9,6 +9,9 @@
 import crypto from 'crypto';
 import { NotificationsSheetsService, Notification as SheetsNotification } from './notificationsSheetsService';
 import { GoogleDriveToken } from './googleOAuth2Helper';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
+import { portableTableAppend, portableTableScan, portableTableReplaceAll } from './storage/portableTableService';
+import { NOTIFICATIONS_SCHEMA } from './storage/tableSchemas';
 
 export interface Notification {
   notification_id: string;
@@ -69,9 +72,24 @@ export class NotificationService {
     accountId?: string
   ): Promise<NotificationsFile | null> {
     try {
+      const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
+
+      if (await isPortableStorageProvider(normalizedUserPnIdentifier)) {
+        const notifications = await portableTableScan<Notification>(
+          normalizedUserPnIdentifier,
+          NOTIFICATIONS_SCHEMA,
+          accountId
+        );
+        if (notifications.length === 0) return null;
+        return {
+          identifier: normalizedUserPnIdentifier,
+          updatedAt: notifications[0]?.created_at ?? new Date().toISOString(),
+          notifications
+        };
+      }
+
       // Convert accessToken string to token object
       const token: GoogleDriveToken = { access_token: accessToken };
-      const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
       
       const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
         token,
@@ -115,11 +133,21 @@ export class NotificationService {
     userPnIdentifier: string,
     accountId?: string
   ): Promise<void> {
-    // Convert accessToken string to token object
-    const token: GoogleDriveToken = { access_token: accessToken };
-    // Normalize identifier before writing
     const normalizedIdentifier = this.normalizeToPnIdentifier(identifier);
     const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
+
+    if (await isPortableStorageProvider(normalizedUserPnIdentifier)) {
+      await portableTableReplaceAll(
+        normalizedUserPnIdentifier,
+        NOTIFICATIONS_SCHEMA,
+        notificationsData.notifications as unknown as Record<string, unknown>[],
+        accountId,
+        { updatedAt: notificationsData.updatedAt }
+      );
+      return;
+    }
+
+    const token: GoogleDriveToken = { access_token: accessToken };
     const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
       token,
       metadataFolderId,
@@ -185,18 +213,6 @@ export class NotificationService {
       const notificationId = crypto.randomUUID();
       const now = new Date().toISOString();
 
-      // Convert accessToken string to token object
-      const token: GoogleDriveToken = { access_token: accessToken };
-
-      // Get or create notifications sheet
-      const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
-        token,
-        metadataFolderId,
-        normalizedUserPnIdentifier,
-        undefined // accountId not available in this context
-      );
-
-      // Create notification entry
       const newNotification: SheetsNotification = {
         notification_id: notificationId,
         user_pn_identifier: normalizedUserPnIdentifier,
@@ -208,7 +224,30 @@ export class NotificationService {
         created_at: now
       };
 
-      // Append to sheet
+      if (await isPortableStorageProvider(normalizedUserPnIdentifier)) {
+        await portableTableAppend(
+          normalizedUserPnIdentifier,
+          NOTIFICATIONS_SCHEMA,
+          newNotification as unknown as Record<string, unknown>
+        );
+        try {
+          const { emitNewNotification } = await import('./realtimeEvents');
+          emitNewNotification(normalizedUserPnIdentifier, notification.type);
+        } catch {
+          /* optional realtime */
+        }
+        return newNotification;
+      }
+
+      const token: GoogleDriveToken = { access_token: accessToken };
+
+      const spreadsheetId = await NotificationsSheetsService.getNotificationsSheet(
+        token,
+        metadataFolderId,
+        normalizedUserPnIdentifier,
+        undefined // accountId not available in this context
+      );
+
       await NotificationsSheetsService.appendNotification(token, spreadsheetId, newNotification, normalizedUserPnIdentifier, undefined);
 
       try {

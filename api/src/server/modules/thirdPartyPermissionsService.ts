@@ -1,31 +1,28 @@
 /**
  * Third Party Permissions Service
- * Manages third-party tool permissions for users
- * Stores permissions in Google Sheets (replaces third-party-permissions.json for better scalability)
- * Stored in Google Drive (decentralized) - users own their data
- *
- * Connection to zkp-data-points (Master):
- * - dataPoints are data point IDs that REFERENCE zkp-data-points by ID. For ZKP types (e.g. age_attestation),
- *   "user has generated" is determined by ZKPDataPointsService / the Data Points sheet. For OAuth scopes
- *   (openid, profile, cloud:read) there is no zkp row; access is determined only by dataPoints/permissions.
- * - To serve a ZKP proof for X: (X in tool's dataPoints) AND (zkp-data-points has a row for X via ZKPDataPointsService).
+ * Stores permissions via UserOwnedTableStore (Google Sheets or portable SQLite).
  */
 
 import { GoogleDriveToken } from './googleOAuth2Helper';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
+import {
+  portableTableAppend,
+  portableTableDelete,
+  portableTableScan
+} from './storage/portableTableService';
+import { THIRD_PARTY_PERMISSIONS_SCHEMA } from './storage/tableSchemas';
 
 export interface ThirdPartyPermission {
   toolId: string;
   toolName: string;
   toolDescription: string;
   permissions: string[];
-  /** Data point IDs the user has granted to this tool. For ZKP types these reference zkp-data-points by ID; for OAuth scopes (openid, profile, cloud:read) they are not in zkp-data-points. */
   dataPoints: string[];
-  requiredDataPoints: string[]; // Data points marked as required by the tool
-  optionalDataPoints: string[]; // Data points marked as optional by the tool
+  requiredDataPoints: string[];
+  optionalDataPoints: string[];
   grantedAt: string;
   expiresAt?: string;
   status: 'active' | 'pending' | 'revoked';
-  /** Google Drive folder id for integrators/{client_id}/ when cloud:app is granted */
   integratorFolderId?: string;
 }
 
@@ -36,10 +33,6 @@ export interface ThirdPartyPermissionsFile {
 }
 
 export class ThirdPartyPermissionsService {
-  /**
-   * Get third-party permissions from Google Sheets
-   * Returns all permissions as a Record (backward compatibility method name)
-   */
   static async getPermissionsFile(
     accessToken: string,
     metadataFolderId: string,
@@ -47,81 +40,135 @@ export class ThirdPartyPermissionsService {
     accountId?: string
   ): Promise<Record<string, ThirdPartyPermission> | null> {
     try {
+      const normalized = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+
+      if (await isPortableStorageProvider(normalized)) {
+        const rows = await portableTableScan<ThirdPartyPermission>(
+          normalized,
+          THIRD_PARTY_PERMISSIONS_SCHEMA,
+          accountId
+        );
+        if (rows.length === 0) return null;
+        const permissions: Record<string, ThirdPartyPermission> = {};
+        for (const row of rows) {
+          permissions[row.toolId] = row;
+        }
+        return permissions;
+      }
+
       const token: GoogleDriveToken = { access_token: accessToken };
-      const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
       const { ThirdPartyPermissionsSheetsService } = await import('./thirdPartyPermissionsSheetsService');
       const spreadsheetId = await ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(
         token,
         metadataFolderId,
-        normalizedUserPnIdentifier,
+        normalized,
         accountId
       );
-      
+
       const permissions = await ThirdPartyPermissionsSheetsService.getPermissions(
         token,
         spreadsheetId,
-        normalizedUserPnIdentifier,
+        normalized,
         accountId
       );
-      
+
       return Object.keys(permissions).length > 0 ? permissions : null;
     } catch (error) {
-      console.error('Error getting third-party permissions from sheets:', error);
+      console.error('Error getting third-party permissions:', error);
       return null;
     }
   }
 
-  /**
-   * Get all third-party permissions for a user
-   */
   static async getPermissions(
     accessToken: string,
     metadataFolderId: string,
     userPnIdentifier: string,
     accountId?: string
   ): Promise<Record<string, ThirdPartyPermission>> {
-    const permissions = await this.getPermissionsFile(accessToken, metadataFolderId, userPnIdentifier, accountId);
+    const permissions = await this.getPermissionsFile(
+      accessToken,
+      metadataFolderId,
+      userPnIdentifier,
+      accountId
+    );
     return permissions || {};
   }
 
-  /**
-   * Store or update third-party permissions
-   */
   static async storePermissions(
     accessToken: string,
     metadataFolderId: string,
-    identifier: string,
+    _identifier: string,
     permissions: Record<string, ThirdPartyPermission>,
     userPnIdentifier: string,
     accountId?: string
   ): Promise<void> {
     try {
+      const normalized = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+
+      if (await isPortableStorageProvider(normalized)) {
+        for (const permission of Object.values(permissions)) {
+          await portableTableAppend(
+            normalized,
+            THIRD_PARTY_PERMISSIONS_SCHEMA,
+            permission as unknown as Record<string, unknown>,
+            accountId
+          );
+        }
+        return;
+      }
+
       const token: GoogleDriveToken = { access_token: accessToken };
-      const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
       const { ThirdPartyPermissionsSheetsService } = await import('./thirdPartyPermissionsSheetsService');
       const spreadsheetId = await ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(
         token,
         metadataFolderId,
-        normalizedUserPnIdentifier,
+        normalized,
         accountId
       );
-      
-      // Store each permission
+
       for (const permission of Object.values(permissions)) {
         await ThirdPartyPermissionsSheetsService.addPermission(
           token,
           spreadsheetId,
           permission,
-          normalizedUserPnIdentifier,
+          normalized,
           accountId
         );
       }
-      
-      console.log('Successfully stored third-party permissions in sheets');
     } catch (error) {
-      console.error('Error storing third-party permissions in sheets:', error);
+      console.error('Error storing third-party permissions:', error);
       throw error;
     }
   }
-}
 
+  static async revokePermission(
+    userPnIdentifier: string,
+    toolId: string,
+    accessToken: string,
+    metadataFolderId: string,
+    accountId?: string
+  ): Promise<void> {
+    const normalized = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+
+    if (await isPortableStorageProvider(normalized)) {
+      await portableTableDelete(normalized, THIRD_PARTY_PERMISSIONS_SCHEMA, toolId, accountId);
+      return;
+    }
+
+    const token: GoogleDriveToken = { access_token: accessToken };
+    const { ThirdPartyPermissionsSheetsService } = await import('./thirdPartyPermissionsSheetsService');
+    const spreadsheetId = await ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(
+      token,
+      metadataFolderId,
+      normalized,
+      accountId
+    );
+    await ThirdPartyPermissionsSheetsService.revokePermission(
+      token,
+      spreadsheetId,
+      toolId,
+      normalized,
+      accountId
+    );
+  }
+}

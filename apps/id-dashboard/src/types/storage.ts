@@ -75,7 +75,16 @@ export interface AccessRecord {
   userAgent?: string;
 }
 
-export type StorageProviderType = 'ipfs' | 'filecoin' | 'cloudflare-r2' | 'google-drive';
+export type StorageProviderType =
+  | 'ipfs'
+  | 'filecoin'
+  | 'cloudflare-r2'
+  | 'google-drive'
+  | 'dropbox'
+  | 'aws_s3'
+  | 'azure_blob'
+  | 'onedrive'
+  | 'ftp';
 
 export interface StorageProvider {
   id: string;

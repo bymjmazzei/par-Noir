@@ -6,6 +6,11 @@
 
 import { EngagementSheetsService, UserComment } from './engagementSheetsService';
 import { GoogleDriveToken } from './googleOAuth2Helper';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
+import {
+  getOrInitEngagementPortable,
+  saveEngagementPortable
+} from './storage/engagementPortableService';
 
 // Re-export UserComment for backward compatibility
 export type { UserComment };
@@ -36,8 +41,11 @@ export class EngagementDriveService {
     if (!userPnIdentifier) {
       throw new Error('userPnIdentifier is required');
     }
+    const normalized = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+    if (await isPortableStorageProvider(normalized)) {
+      return getOrInitEngagementPortable(normalized, accountId);
+    }
     try {
-      // Get or create Sheets file
       const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
         tokenObj,
         metadataFolderId,
@@ -136,7 +144,22 @@ export class EngagementDriveService {
     metadataFolderId: string,
     accountId?: string
   ): Promise<{ liked: boolean }> {
-    // Convert accessToken string to token object
+    const normalized = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+    if (await isPortableStorageProvider(normalized)) {
+      const state = await getOrInitEngagementPortable(normalized, accountId);
+      const isLiked = state.likes.includes(fileId);
+      if (isLiked) {
+        state.likes = state.likes.filter((id) => id !== fileId);
+        state.dislikes = state.dislikes.filter((id) => id !== fileId);
+        await saveEngagementPortable(normalized, state, accountId);
+        return { liked: false };
+      }
+      state.likes = [...state.likes.filter((id) => id !== fileId), fileId];
+      state.dislikes = state.dislikes.filter((id) => id !== fileId);
+      await saveEngagementPortable(normalized, state, accountId);
+      return { liked: true };
+    }
+
     const token: GoogleDriveToken = { access_token: accessToken };
 
     const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
@@ -180,7 +203,21 @@ export class EngagementDriveService {
     metadataFolderId: string,
     accountId?: string
   ): Promise<{ disliked: boolean }> {
-    // Convert accessToken string to token object
+    const normalized = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+    if (await isPortableStorageProvider(normalized)) {
+      const state = await getOrInitEngagementPortable(normalized, accountId);
+      const isDisliked = state.dislikes.includes(fileId);
+      if (isDisliked) {
+        state.dislikes = state.dislikes.filter((id) => id !== fileId);
+        await saveEngagementPortable(normalized, state, accountId);
+        return { disliked: false };
+      }
+      state.dislikes = [...state.dislikes.filter((id) => id !== fileId), fileId];
+      state.likes = state.likes.filter((id) => id !== fileId);
+      await saveEngagementPortable(normalized, state, accountId);
+      return { disliked: true };
+    }
+
     const token: GoogleDriveToken = { access_token: accessToken };
 
     const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
@@ -219,7 +256,12 @@ export class EngagementDriveService {
     userPnIdentifier: string,
     accountId?: string
   ): Promise<boolean> {
-    // Convert accessToken string to token object
+    const normalized = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+    if (await isPortableStorageProvider(normalized)) {
+      const state = await getOrInitEngagementPortable(normalized, accountId);
+      return state.likes.includes(fileId);
+    }
+
     const token: GoogleDriveToken = { access_token: accessToken };
 
     const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
@@ -243,7 +285,12 @@ export class EngagementDriveService {
     userPnIdentifier: string,
     accountId?: string
   ): Promise<boolean> {
-    // Convert accessToken string to token object
+    const normalized = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+    if (await isPortableStorageProvider(normalized)) {
+      const state = await getOrInitEngagementPortable(normalized, accountId);
+      return state.dislikes.includes(fileId);
+    }
+
     const token: GoogleDriveToken = { access_token: accessToken };
 
     const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
@@ -268,7 +315,15 @@ export class EngagementDriveService {
     metadataFolderId: string,
     accountId?: string
   ): Promise<UserComment> {
-    // Convert accessToken string to token object
+    const newComment: UserComment = { fileId, ...comment };
+    const normalized = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+    if (await isPortableStorageProvider(normalized)) {
+      const state = await getOrInitEngagementPortable(normalized, accountId);
+      state.comments = [...state.comments, newComment];
+      await saveEngagementPortable(normalized, state, accountId);
+      return newComment;
+    }
+
     const token: GoogleDriveToken = { access_token: accessToken };
 
     const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
@@ -277,11 +332,6 @@ export class EngagementDriveService {
       userPnIdentifier,
       accountId
     );
-
-    const newComment: UserComment = {
-      fileId,
-      ...comment
-    };
 
     await EngagementSheetsService.addComment(token, spreadsheetId, newComment, userPnIdentifier, accountId);
 

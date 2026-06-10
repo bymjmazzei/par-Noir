@@ -14,6 +14,13 @@ import {
 } from '@par-noir/zk-protocol-v1';
 import { isZkProofEnvelopeV2, verifyZkProofEnvelopeV2 } from '@par-noir/zk-protocol-v2';
 import { GoogleDriveToken } from './googleOAuth2Helper';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
+import {
+  portableTableAppend,
+  portableTableGetByKey,
+  portableTableScan
+} from './storage/portableTableService';
+import { ZKP_DATA_POINTS_SCHEMA } from './storage/tableSchemas';
 
 export interface ZKPDataPoint {
   dataPointId: string;
@@ -53,8 +60,23 @@ export class ZKPDataPointsService {
     accountId?: string
   ): Promise<Record<string, ZKPDataPoint> | null> {
     try {
-      const token: GoogleDriveToken = { access_token: accessToken };
       const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+
+      if (await isPortableStorageProvider(normalizedUserPnIdentifier)) {
+        const rows = await portableTableScan<ZKPDataPoint>(
+          normalizedUserPnIdentifier,
+          ZKP_DATA_POINTS_SCHEMA,
+          accountId
+        );
+        if (rows.length === 0) return null;
+        const dataPoints: Record<string, ZKPDataPoint> = {};
+        for (const row of rows) {
+          dataPoints[row.dataPointId] = row;
+        }
+        return dataPoints;
+      }
+
+      const token: GoogleDriveToken = { access_token: accessToken };
       const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
       const spreadsheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(
         token,
@@ -62,14 +84,14 @@ export class ZKPDataPointsService {
         normalizedUserPnIdentifier,
         accountId
       );
-      
+
       const dataPoints = await ZKPDataPointsSheetsService.getZKPDataPoints(
         token,
         spreadsheetId,
         normalizedUserPnIdentifier,
         accountId
       );
-      
+
       return Object.keys(dataPoints).length > 0 ? dataPoints : null;
     } catch (error) {
       console.error('Error getting ZKP data points from sheets:', error);
@@ -121,24 +143,34 @@ export class ZKPDataPointsService {
     accountId?: string
   ): Promise<ZKPDataPoint | null> {
     try {
-      const token: GoogleDriveToken = { access_token: accessToken };
       const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
-      const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
-      const spreadsheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(
-        token,
-        metadataFolderId,
-        normalizedUserPnIdentifier,
-        accountId
-      );
-      
-      const dataPoint = await ZKPDataPointsSheetsService.getZKPDataPoint(
-        token,
-        spreadsheetId,
-        dataPointId,
-        normalizedUserPnIdentifier,
-        accountId
-      );
-      
+
+      let dataPoint: ZKPDataPoint | null = null;
+      if (await isPortableStorageProvider(normalizedUserPnIdentifier)) {
+        dataPoint = await portableTableGetByKey<ZKPDataPoint>(
+          normalizedUserPnIdentifier,
+          ZKP_DATA_POINTS_SCHEMA,
+          dataPointId,
+          accountId
+        );
+      } else {
+        const token: GoogleDriveToken = { access_token: accessToken };
+        const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
+        const spreadsheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(
+          token,
+          metadataFolderId,
+          normalizedUserPnIdentifier,
+          accountId
+        );
+        dataPoint = await ZKPDataPointsSheetsService.getZKPDataPoint(
+          token,
+          spreadsheetId,
+          dataPointId,
+          normalizedUserPnIdentifier,
+          accountId
+        );
+      }
+
       if (!dataPoint) {
         return null;
       }
@@ -277,8 +309,19 @@ export class ZKPDataPointsService {
     accountId?: string
   ): Promise<void> {
     try {
-      const token: GoogleDriveToken = { access_token: accessToken };
       const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+
+      if (await isPortableStorageProvider(normalizedUserPnIdentifier)) {
+        await portableTableAppend(
+          normalizedUserPnIdentifier,
+          ZKP_DATA_POINTS_SCHEMA,
+          dataPoint as unknown as Record<string, unknown>,
+          accountId
+        );
+        return;
+      }
+
+      const token: GoogleDriveToken = { access_token: accessToken };
       const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
       const spreadsheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(
         token,
@@ -286,7 +329,7 @@ export class ZKPDataPointsService {
         normalizedUserPnIdentifier,
         accountId
       );
-      
+
       await ZKPDataPointsSheetsService.addZKPDataPoint(
         token,
         spreadsheetId,
@@ -294,8 +337,6 @@ export class ZKPDataPointsService {
         normalizedUserPnIdentifier,
         accountId
       );
-      
-      console.log('Successfully stored ZKP data point in sheets:', dataPoint.dataPointId);
     } catch (error) {
       console.error('Error storing ZKP data point in sheets:', error);
       throw error;

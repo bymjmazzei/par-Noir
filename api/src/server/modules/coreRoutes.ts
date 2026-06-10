@@ -47,7 +47,9 @@ export function registerCoreRoutes(app: Application, nodeEnv: string): void {
 
   app.get('/api/public-config', (_req, res) => {
     res.json({
-      googleDriveClientId: process.env.GOOGLE_DRIVE_CLIENT_ID || ''
+      googleDriveClientId: process.env.GOOGLE_DRIVE_CLIENT_ID || '',
+      dropboxAppKey: process.env.DROPBOX_APP_KEY || '',
+      microsoftClientId: process.env.MICROSOFT_CLIENT_ID || ''
     });
   });
 

@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { GoogleAuth } from 'google-auth-library';
+import { normalizeLegacyAccountIds } from '@par-noir/user-owned-storage';
 import { getDatabasePool } from '../utils/database';
 import { securityFlags } from '../utils/securityFlags';
 import { appendSecurityAuditEvent } from './auditService';
@@ -301,6 +302,7 @@ export class StorageCredentialsService {
     }
 
     credentials = this.ensureSingleDriveAccount(credentials);
+    credentials = normalizeLegacyAccountIds(credentials, row.identity_id);
 
     return {
       identityId: row.identity_id,

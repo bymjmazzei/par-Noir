@@ -41,6 +41,7 @@ import { registerVerificationRoutes } from './server/modules/verificationRoutes'
 import { registerMusicTrackRegistryRoutes } from './server/modules/musicTrackRegistryRoutes';
 import { registerStripeMonetizationRoutes } from './server/modules/stripeMonetizationRoutes';
 import { registerIntegratorRoutes } from './server/modules/integratorRoutes';
+import { registerStorageRoutes } from './server/modules/storage/storageRoutes';
 import { registerCreatorFundPeriodRoutes } from './server/modules/creatorFundPeriodRoutes';
 import { registerCoreRoutes } from './server/modules/coreRoutes';
 import { hashIdentifier, safeLogger } from './utils/logger';
@@ -779,25 +780,8 @@ class ProductionServer {
     accountId?: string
   ): Promise<any | null> {
     try {
-      const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-      
-      // Get or create owner index sheet
-      const spreadsheetId = await IndexSheetsService.getIndexSheet(
-        token,
-        metadataFolderId,
-        'owner',
-        pnIdentifier,
-        accountId
-      );
-
-      // Get all files from sheet
-      const { files } = await IndexSheetsService.getFiles(token, spreadsheetId, pnIdentifier, accountId);
-
-      return {
-        identifier: pnIdentifier,
-        files,
-        updatedAt: new Date().toISOString()
-      };
+      const { IndexStorageService } = await import('./server/modules/storage/indexStorageService');
+      return IndexStorageService.getOwnerFileIndex(pnIdentifier, token, metadataFolderId, accountId);
     } catch (error) {
       console.error('[getOwnerFileIndex] Error getting owner index:', error);
       return {
@@ -819,17 +803,9 @@ class ProductionServer {
     fileMetadata: any,
     accountId?: string
   ): Promise<void> {
-    const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-    const accessToken = token.access_token; // Keep for backward compatibility in fetch calls
-    
-    // Get or create owner index sheet
-    const spreadsheetId = await IndexSheetsService.getIndexSheet(
-      token,
-      metadataFolderId,
-      'owner',
-      pnIdentifier,
-      accountId
-    );
+    const { IndexStorageService } = await import('./server/modules/storage/indexStorageService');
+    const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+    const accessToken = token.access_token;
 
     // Determine contentClass from fileMetadata before creating index entry
     const { determineContentClass } = await import('./server/utils/fileTypeUtils');
@@ -846,7 +822,10 @@ class ProductionServer {
     // Convert companion metadata to index entry format
     const indexEntry: any = {
       fileId: fileMetadata.fileId,
-      googleDriveFileId: fileMetadata.googleDriveFileId,
+      backend: fileMetadata.backend,
+      backendFileId: fileMetadata.backendFileId ?? fileMetadata.googleDriveFileId,
+      backendAccountId: fileMetadata.backendAccountId,
+      googleDriveFileId: fileMetadata.googleDriveFileId ?? fileMetadata.backendFileId,
       fileName: fileMetadata.fileName,
       originalName: fileMetadata.originalName,
       mimeType: fileMetadata.mimeType,
@@ -870,21 +849,20 @@ class ProductionServer {
       collection: metadataAny.collection
     };
 
-    // Check if file already exists in index
-    const existingEntry = await IndexSheetsService.getFileById(
-      token,
-      spreadsheetId,
-      fileMetadata.fileId,
+    const existingEntry = await IndexStorageService.getFileById(
       pnIdentifier,
+      'owner',
+      fileMetadata.fileId,
+      token,
+      metadataFolderId,
       accountId
     );
 
     if (existingEntry) {
-      // Merge with existing entry
       if (!indexEntry.publicToken && existingEntry.publicToken) {
         indexEntry.publicToken = existingEntry.publicToken;
       }
-      
+
       if (existingEntry.engagement) {
         indexEntry.engagement = {
           views: indexEntry.engagement?.views ?? existingEntry.engagement.views ?? 0,
@@ -898,16 +876,65 @@ class ProductionServer {
           ]
         };
       }
-      
-      // Update existing entry
-      await IndexSheetsService.updateFile(token, spreadsheetId, fileMetadata.fileId, indexEntry, pnIdentifier, accountId);
+
+      await IndexStorageService.updateFile(
+        pnIdentifier,
+        'owner',
+        fileMetadata.fileId,
+        indexEntry,
+        token,
+        metadataFolderId,
+        accountId
+      );
     } else {
-      // Add new entry
-      await IndexSheetsService.addFile(token, spreadsheetId, indexEntry, pnIdentifier, accountId);
+      await IndexStorageService.addFile(
+        pnIdentifier,
+        'owner',
+        indexEntry,
+        token,
+        metadataFolderId,
+        accountId
+      );
     }
 
-    // Also update content class-specific owner index (map thought→thoughts, collection→collections)
     const contentTypeFolderName = indexEntry.contentClass === 'thought' ? 'thoughts' : indexEntry.contentClass === 'collection' ? 'collections' : indexEntry.contentClass;
+    const isPortable = await isPortableStorageProvider(pnIdentifier);
+
+    if (isPortable && contentTypeFolderName) {
+      const contentClassOwnerIndex = await IndexStorageService.getContentClassOwnerIndex(
+        pnIdentifier,
+        contentTypeFolderName as 'media' | 'thoughts' | 'collections',
+        token,
+        metadataFolderId,
+        accountId
+      );
+      const contentClassIndex = contentClassOwnerIndex || {
+        identifier: pnIdentifier,
+        files: [],
+        updatedAt: new Date().toISOString()
+      };
+      const contentClassFileIndex = contentClassIndex.files.findIndex(
+        (f: any) => f.fileId === fileMetadata.fileId || f.googleDriveFileId === fileMetadata.googleDriveFileId
+      );
+      if (contentClassFileIndex >= 0) {
+        contentClassIndex.files[contentClassFileIndex] = indexEntry;
+      } else {
+        contentClassIndex.files.push(indexEntry);
+      }
+      contentClassIndex.updatedAt = new Date().toISOString();
+      await IndexStorageService.setAllFiles(
+        pnIdentifier,
+        'owner',
+        contentClassIndex.files,
+        token,
+        metadataFolderId,
+        accountId,
+        contentClassIndex.updatedAt,
+        contentTypeFolderName as 'media' | 'thoughts' | 'collections'
+      );
+      return;
+    }
+
     let contentTypeFolderId: string | null = null;
     const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     const contentTypeFolderResponse = await fetch(
@@ -958,8 +985,16 @@ class ProductionServer {
         }
 
         contentClassIndex.updatedAt = new Date().toISOString();
-        const ownerSheetId = await IndexSheetsService.getIndexSheet(token, contentTypeFolderId, 'owner', pnIdentifier, accountId, contentTypeFolderName as 'media' | 'thoughts' | 'collections');
-        await IndexSheetsService.setAllFiles(token, ownerSheetId, contentClassIndex.files, pnIdentifier, accountId, contentClassIndex.updatedAt);
+        await IndexStorageService.setAllFiles(
+          pnIdentifier,
+          'owner',
+          contentClassIndex.files,
+          token,
+          contentTypeFolderId,
+          accountId,
+          contentClassIndex.updatedAt,
+          contentTypeFolderName as 'media' | 'thoughts' | 'collections'
+        );
     }
   }
 
@@ -974,27 +1009,8 @@ class ProductionServer {
     accountId?: string
   ): Promise<any | null> {
     try {
-      const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-      
-      // Get or create public index sheet
-      const spreadsheetId = await IndexSheetsService.getIndexSheet(
-        token,
-        metadataFolderId,
-        'public',
-        pnIdentifier,
-        accountId
-      );
-
-      // Get only public files
-      const { files } = await IndexSheetsService.getFiles(token, spreadsheetId, pnIdentifier, accountId, {
-        visibility: 'public'
-      });
-
-      return {
-        identifier: pnIdentifier,
-        files,
-        updatedAt: new Date().toISOString()
-      };
+      const { IndexStorageService } = await import('./server/modules/storage/indexStorageService');
+      return IndexStorageService.getPublicFileIndex(pnIdentifier, token, metadataFolderId, accountId);
     } catch (error) {
       console.error('[getPublicFileIndex] Error getting public index:', error);
       return {
@@ -1200,15 +1216,55 @@ class ProductionServer {
     
     index.updatedAt = new Date().toISOString();
     
-    // Save updated root index (Sheets) and ensure public permission
-    const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-    const publicSheetId = await IndexSheetsService.getIndexSheet(token, metadataFolderId, 'public', pnIdentifier, accountId);
-    await IndexSheetsService.setAllFiles(token, publicSheetId, index.files, pnIdentifier, accountId, index.updatedAt);
-    await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
-    
-    // Also remove from content class-specific index if we know the contentClass (thought→thoughts, collection→collections)
+    const { IndexStorageService } = await import('./server/modules/storage/indexStorageService');
+    const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+    await IndexStorageService.setAllFiles(
+      pnIdentifier,
+      'public',
+      index.files,
+      token,
+      metadataFolderId,
+      accountId,
+      index.updatedAt
+    );
+    const isPortableRemove = await isPortableStorageProvider(pnIdentifier);
+    if (!isPortableRemove) {
+      const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+      const publicSheetId = await IndexSheetsService.getIndexSheet(token, metadataFolderId, 'public', pnIdentifier, accountId);
+      await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
+    }
+
     if (contentClass) {
       const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass === 'collection' ? 'collections' : contentClass;
+      if (isPortableRemove) {
+        const contentClassIndex = await IndexStorageService.getContentClassPublicIndex(
+          pnIdentifier,
+          contentTypeFolderName as 'media' | 'thoughts' | 'collections',
+          token,
+          metadataFolderId,
+          accountId
+        );
+        if (contentClassIndex?.files) {
+          const before = contentClassIndex.files.length;
+          contentClassIndex.files = contentClassIndex.files.filter(
+            (f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId
+          );
+          if (contentClassIndex.files.length !== before) {
+            contentClassIndex.updatedAt = new Date().toISOString();
+            await IndexStorageService.setAllFiles(
+              pnIdentifier,
+              'public',
+              contentClassIndex.files,
+              token,
+              metadataFolderId,
+              accountId,
+              contentClassIndex.updatedAt,
+              contentTypeFolderName as 'media' | 'thoughts' | 'collections'
+            );
+          }
+        }
+        return;
+      }
       const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
       const contentTypeFolderResponse = await fetch(
         `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
@@ -1223,8 +1279,7 @@ class ProductionServer {
         const contentTypeFolderData = await contentTypeFolderResponse.json() as { files?: Array<{ id: string }> };
         if (contentTypeFolderData.files && contentTypeFolderData.files.length > 0) {
           const contentTypeFolderId = contentTypeFolderData.files[0].id;
-          
-          // Get content class-specific public index
+
           const contentClassIndex = await this.getContentClassPublicIndex(token, contentTypeFolderId, pnIdentifier, contentTypeFolderName as 'media' | 'thoughts' | 'collections', accountId);
           if (contentClassIndex && contentClassIndex.files) {
             const contentClassInitialLength = contentClassIndex.files.length;
@@ -1234,10 +1289,21 @@ class ProductionServer {
             
             if (contentClassIndex.files.length !== contentClassInitialLength) {
               contentClassIndex.updatedAt = new Date().toISOString();
-              const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-              const publicSheetId = await IndexSheetsService.getIndexSheet(token, contentTypeFolderId, 'public', pnIdentifier, accountId, contentTypeFolderName as 'media' | 'thoughts' | 'collections');
-              await IndexSheetsService.setAllFiles(token, publicSheetId, contentClassIndex.files, pnIdentifier, accountId, contentClassIndex.updatedAt);
-              await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
+              await IndexStorageService.setAllFiles(
+                pnIdentifier,
+                'public',
+                contentClassIndex.files,
+                token,
+                metadataFolderId,
+                accountId,
+                contentClassIndex.updatedAt,
+                contentTypeFolderName as 'media' | 'thoughts' | 'collections'
+              );
+              if (!isPortableRemove) {
+                const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+                const publicSheetId = await IndexSheetsService.getIndexSheet(token, contentTypeFolderId, 'public', pnIdentifier, accountId, contentTypeFolderName as 'media' | 'thoughts' | 'collections');
+                await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
+              }
             }
           }
         }
@@ -1384,12 +1450,24 @@ class ProductionServer {
 
     index.updatedAt = new Date().toISOString();
 
-    // Save root public index (Sheets) and ensure public permission
-    const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-    const publicSheetId = await IndexSheetsService.getIndexSheet(token, metadataFolderId, 'public', pnIdentifier, accountId);
-    await IndexSheetsService.setAllFiles(token, publicSheetId, index.files, pnIdentifier, accountId, index.updatedAt);
-    await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
-    
+    const { IndexStorageService } = await import('./server/modules/storage/indexStorageService');
+    const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+    await IndexStorageService.setAllFiles(
+      pnIdentifier,
+      'public',
+      index.files,
+      token,
+      metadataFolderId,
+      accountId,
+      index.updatedAt
+    );
+    const isPortablePublic = await isPortableStorageProvider(pnIdentifier);
+    if (!isPortablePublic) {
+      const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+      const publicSheetId = await IndexSheetsService.getIndexSheet(token, metadataFolderId, 'public', pnIdentifier, accountId);
+      await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
+    }
+
     // Also update content class-specific public index
     // Determine contentClass from fileMetadata
     const { determineContentClass } = await import('./server/utils/fileTypeUtils');
@@ -1441,6 +1519,63 @@ class ProductionServer {
       }
     }
     console.log(`[updatePublicFileIndex] Content-class folder: ${contentTypeFolderId ?? 'content-class folder missing'}`);
+
+    if (isPortablePublic && contentTypeFolderName) {
+      const contentClassPublicIndex = await IndexStorageService.getContentClassPublicIndex(
+        pnIdentifier,
+        contentTypeFolderName as 'media' | 'thoughts' | 'collections',
+        token,
+        metadataFolderId,
+        accountId
+      );
+      const contentClassIndex = contentClassPublicIndex || {
+        identifier: pnIdentifier,
+        files: [],
+        updatedAt: new Date().toISOString()
+      };
+      const contentClassFileIndex = contentClassIndex.files.findIndex(
+        (f: any) => f && (f.googleDriveFileId === fileMetadata.googleDriveFileId || f.fileId === fileMetadata.fileId)
+      );
+      if (fileMetadata.visibility === 'public') {
+        const publicMetadata = this.companionToPublicMetadata(fileMetadata, fileMetadata.owner.did);
+        const contentClassIndexEntry: any = {
+          ...publicMetadata,
+          fileId: fileMetadata.fileId,
+          googleDriveFileId: fileMetadata.googleDriveFileId,
+          fileName: fileMetadata.fileName,
+          originalName: fileMetadata.originalName,
+          mimeType: fileMetadata.mimeType,
+          size: fileMetadata.size,
+          visibility: fileMetadata.visibility,
+          uploadedAt: fileMetadata.uploadedAt,
+          owner: fileMetadata.owner,
+          tags: fileMetadata.tags || [],
+          description: fileMetadata.description,
+          thumbnail: fileMetadata.thumbnail,
+          publicToken: fileMetadata.publicToken,
+          indexingPermissions: fileMetadata.indexingPermissions
+        };
+        if (contentClassFileIndex >= 0) {
+          contentClassIndex.files[contentClassFileIndex] = contentClassIndexEntry;
+        } else {
+          contentClassIndex.files.push(contentClassIndexEntry);
+        }
+      } else if (contentClassFileIndex >= 0) {
+        contentClassIndex.files.splice(contentClassFileIndex, 1);
+      }
+      contentClassIndex.updatedAt = new Date().toISOString();
+      await IndexStorageService.setAllFiles(
+        pnIdentifier,
+        'public',
+        contentClassIndex.files,
+        token,
+        metadataFolderId,
+        accountId,
+        contentClassIndex.updatedAt,
+        contentTypeFolderName as 'media' | 'thoughts' | 'collections'
+      );
+      return;
+    }
 
     if (contentTypeFolderId) {
         const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
@@ -1680,15 +1815,14 @@ class ProductionServer {
     accountId?: string
   ): Promise<any | null> {
     try {
-      const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-      const spreadsheetId = await IndexSheetsService.getIndexSheet(token, folderId, 'public', pnIdentifier, accountId, contentClass);
-      const { files } = await IndexSheetsService.getFiles(token, spreadsheetId, pnIdentifier, accountId);
-      const updatedAt = await IndexSheetsService.getUpdatedAt(token, spreadsheetId, pnIdentifier, accountId);
-      return {
-        identifier: pnIdentifier,
-        files,
-        updatedAt: updatedAt || new Date().toISOString()
-      };
+      const { IndexStorageService } = await import('./server/modules/storage/indexStorageService');
+      return IndexStorageService.getContentClassPublicIndex(
+        pnIdentifier,
+        contentClass,
+        token,
+        folderId,
+        accountId
+      );
     } catch (e) {
       console.warn('[getContentClassPublicIndex]', e);
       return { identifier: pnIdentifier, files: [], updatedAt: new Date().toISOString() };
@@ -1706,15 +1840,14 @@ class ProductionServer {
     accountId?: string
   ): Promise<any | null> {
     try {
-      const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-      const spreadsheetId = await IndexSheetsService.getIndexSheet(token, folderId, 'owner', pnIdentifier, accountId, contentClass);
-      const { files } = await IndexSheetsService.getFiles(token, spreadsheetId, pnIdentifier, accountId);
-      const updatedAt = await IndexSheetsService.getUpdatedAt(token, spreadsheetId, pnIdentifier, accountId);
-      return {
-        identifier: pnIdentifier,
-        files,
-        updatedAt: updatedAt || new Date().toISOString()
-      };
+      const { IndexStorageService } = await import('./server/modules/storage/indexStorageService');
+      return IndexStorageService.getContentClassOwnerIndex(
+        pnIdentifier,
+        contentClass,
+        token,
+        folderId,
+        accountId
+      );
     } catch (e) {
       console.warn('[getContentClassOwnerIndex]', e);
       return { identifier: pnIdentifier, files: [], updatedAt: new Date().toISOString() };
@@ -5235,6 +5368,22 @@ class ProductionServer {
         let directoryBuilt = true;
         let folderInitError: string | null = null;
 
+        try {
+          const {
+            inferPrimaryProviderFromCredentials,
+            shouldInitializePortable,
+            initializePortableStorage
+          } = await import('./server/modules/storage/storageInitService');
+          const inferred = inferPrimaryProviderFromCredentials(credentials);
+          if (shouldInitializePortable(inferred) && inferred.primaryProvider !== 'google_drive') {
+            await initializePortableStorage(pnIdentifier, inferred);
+            console.log(`[StorageCredentials PUT] Initialized portable storage for ${inferred.primaryProvider}`);
+          }
+        } catch (portableInitErr: any) {
+          console.warn(`[StorageCredentials PUT] Portable init warning:`, portableInitErr?.message || portableInitErr);
+          folderInitError = portableInitErr?.message || 'Portable storage init failed';
+        }
+
         // Initialize Google Drive folder structure if this is a new Google Drive connection
         const hasGoogleDrive = credentials?.googleDriveAccounts?.length > 0 || credentials?.googleDrive;
         if (hasGoogleDrive) {
@@ -5839,6 +5988,13 @@ class ProductionServer {
         if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.driveRead, pnIdentifier))) return;
         const contentClassFilter = req.query.contentClass as string | undefined;
 
+        const { isPortableSocialCloud } = await import('./server/modules/storage/storageProviderUtils');
+        if (await isPortableSocialCloud(pnIdentifier)) {
+          const { handleGetOwnerIndex } = await import('./server/modules/storage/indexHttpHandlers');
+          await handleGetOwnerIndex(req, res, identityId);
+          return;
+        }
+
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
 
         // Get user credentials to build token object
@@ -5918,8 +6074,19 @@ class ProductionServer {
 
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, pnIdentifier))) return;
 
+        const { isPortableSocialCloud } = await import('./server/modules/storage/storageProviderUtils');
+        if (await isPortableSocialCloud(pnIdentifier)) {
+          await this.updateOwnerFileIndex(
+            { access_token: '' },
+            identityId,
+            '',
+            entry,
+            undefined
+          );
+          return res.json({ ok: true });
+        }
+
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-        // Get user credentials to build token object
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
@@ -5963,8 +6130,14 @@ class ProductionServer {
         // Normalize pn identifier
         const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
 
+        const { isPortableSocialCloud } = await import('./server/modules/storage/storageProviderUtils');
+        if (await isPortableSocialCloud(pnIdentifier)) {
+          const { handleGetPublicIndex } = await import('./server/modules/storage/indexHttpHandlers');
+          await handleGetPublicIndex(req, res, identityId);
+          return;
+        }
+
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-        // Get user credentials to build token object
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
@@ -5983,14 +6156,13 @@ class ProductionServer {
           expires_at: account.expires_at,
           expires_in: account.expires_in
         };
-        const accessToken = token.access_token; // Keep for backward compatibility in fetch calls
+        const accessToken = token.access_token;
 
         const out = await this.getMetadataFolder(token, pnIdentifier, accountId);
         if (!out) {
           return res.json({ identifier: identityId, files: [], updatedAt: new Date().toISOString() });
         }
 
-        // Merged view: aggregate from content-class public indices, fallback to root
         const contentTypes: Array<'media' | 'thoughts' | 'collections'> = ['media', 'thoughts', 'collections'];
         const allFiles: any[] = [];
         for (const contentType of contentTypes) {
@@ -6035,6 +6207,20 @@ class ProductionServer {
         // Normalize pn identifier
         const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
 
+        const { isPortableSocialCloud } = await import('./server/modules/storage/storageProviderUtils');
+        if (await isPortableSocialCloud(pnIdentifier)) {
+          if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, pnIdentifier))) return;
+          await this.updatePublicFileIndex(
+            { access_token: '' },
+            identityId,
+            '',
+            '',
+            entry,
+            undefined
+          );
+          return res.json({ ok: true });
+        }
+
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         // Get user credentials to build token object
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
@@ -6069,198 +6255,7 @@ class ProductionServer {
       }
     });
 
-    // GET /api/storage/accounts/:identityId - List available cloud storage accounts (without exposing tokens)
-    this.app.get('/api/storage/accounts/:identityId', async (req, res) => {
-      console.log(`[StorageAccounts] Endpoint called for identityId: ${req.params.identityId}`);
-      try {
-        const { identityId } = req.params;
-
-        if (!identityId) {
-          console.log(`[StorageAccounts] Missing identityId parameter`);
-          return res.status(400).json({ error: 'Missing identityId parameter' });
-        }
-
-        // CRITICAL: Normalize identityId to pn identifier format
-        // Browser app may send DID, pn identifier hash, or full pn identifier
-        // For storage accounts, we need the pn identifier (pn-{hash})
-        let pnIdentifier: string;
-        if (identityId.startsWith('pn-')) {
-          // Already in correct format
-          pnIdentifier = identityId;
-        } else if (identityId.startsWith('did:key:')) {
-          // DID format - we can't convert this to pn identifier without additional info
-          // But credentials are stored under pn identifier, so we need to get it from the token
-          // For now, try to get it from the Authorization header token
-          try {
-            const tokenPayload = getBearerTokenPayload(req);
-            if (tokenPayload?.pnIdentifier) {
-              pnIdentifier = tokenPayload.pnIdentifier;
-            } else {
-              if (NODE_ENV === 'development') {
-                console.warn(`[StorageAccounts] Cannot determine pn identifier from DID: ${identityId}`);
-              }
-              return res.json({ success: true, accounts: [] });
-            }
-          } catch (tokenError) {
-            if (NODE_ENV === 'development') {
-              console.warn(`[StorageAccounts] Failed to validate token:`, tokenError);
-            }
-            return res.json({ success: true, accounts: [] });
-          }
-        } else {
-          // Assume it's a pn identifier hash (without 'pn-' prefix)
-          pnIdentifier = `pn-${identityId}`;
-        }
-
-        if (NODE_ENV === 'development') {
-          console.log(
-            `[StorageAccounts] Normalized identityId to pn identifier: ${redactPnIdentifier(pnIdentifier)}`
-          );
-        }
-        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-        const record = await storageCredentialsService.getCredentials(pnIdentifier);
-        if (NODE_ENV === 'development') {
-          console.log(`[StorageAccounts] Credentials service returned:`, record ? 'record found' : 'null');
-        }
-
-        if (!record) {
-          if (NODE_ENV === 'development') {
-            console.log(`[StorageAccounts] No credentials record found for identityId: ${identityId}`);
-          }
-          return res.json({
-            success: true,
-            accounts: []
-          });
-        }
-
-        const credentials = record.credentials;
-        if (NODE_ENV === 'development') {
-          console.log(`[StorageAccounts] Found credentials record for ${redactPnIdentifier(pnIdentifier)}`);
-          console.log(`[StorageAccounts] Credential object top-level keys:`, Object.keys(credentials || {}));
-          // Never log full credentials — contains OAuth tokens and account identifiers
-        }
-        
-        const accounts: Array<{ provider: string; accountId: string; email?: string; displayName?: string }> = [];
-
-        // Extract Google Drive accounts (support both single googleDrive and googleDriveAccounts array)
-        let googleDriveAccounts = credentials?.googleDriveAccounts;
-        
-        // If googleDriveAccounts doesn't exist, try single googleDrive object
-        if (!googleDriveAccounts) {
-          if (credentials?.googleDrive) {
-            googleDriveAccounts = [credentials.googleDrive];
-          } else {
-            googleDriveAccounts = [];
-          }
-        }
-        
-        // Ensure it's an array
-        if (!Array.isArray(googleDriveAccounts)) {
-          if (NODE_ENV === 'development') {
-            console.warn(`[StorageAccounts] googleDriveAccounts is not an array, type: ${typeof googleDriveAccounts}`);
-          }
-          googleDriveAccounts = [];
-        }
-        
-        if (NODE_ENV === 'development') {
-          console.log(`[StorageAccounts] Found ${googleDriveAccounts.length} Google Drive account(s)`);
-        }
-        if (googleDriveAccounts.length === 0 && NODE_ENV === 'development') {
-          console.warn(`[StorageAccounts] No Google Drive accounts found. Credentials structure:`, {
-            hasGoogleDriveAccounts: !!credentials?.googleDriveAccounts,
-            hasGoogleDrive: !!credentials?.googleDrive,
-            credentialsType: typeof credentials,
-            allKeys: Object.keys(credentials || {})
-          });
-        }
-
-        // Process each Google Drive account
-        for (let i = 0; i < googleDriveAccounts.length; i++) {
-          const account = googleDriveAccounts[i];
-          const accountId = account?.backendId || account?.keyPrefix || `${pnIdentifier}_${i}`;
-          
-          if (NODE_ENV === 'development') {
-            console.log(`[StorageAccounts] Processing account ${i + 1}:`, {
-              accountId,
-              hasBackendId: !!account?.backendId,
-              hasKeyPrefix: !!account?.keyPrefix,
-              hasAccessToken: !!((account as any)?.access_token || (account as any)?.accessToken),
-              hasEmail: !!(account as any)?.email
-            });
-          }
-          
-          // Try to get user info from Google Drive API to get email
-          try {
-            // Get access token for this specific account (support both camelCase and snake_case)
-            const accessToken = (account as any)?.access_token || (account as any)?.accessToken;
-            
-            if (accessToken) {
-              // Fetch user info from Google
-              const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-                headers: {
-                  'Authorization': `Bearer ${accessToken}`
-                }
-              });
-
-              if (userInfoResponse.ok) {
-                const userInfo = await userInfoResponse.json() as { email?: string; name?: string };
-                accounts.push({
-                  provider: 'google_drive',
-                  accountId: accountId,
-                  email: userInfo.email,
-                  displayName: userInfo.name || userInfo.email || `Google Drive ${i + 1}`
-                });
-              } else {
-                // Fallback: use account identifier or index
-                const displayName = (account as any)?.email || (account as any)?.keyPrefix || `Google Drive ${i + 1}`;
-                accounts.push({
-                  provider: 'google_drive',
-                  accountId: accountId,
-                  email: (account as any)?.email,
-                  displayName: displayName
-                });
-              }
-            } else {
-              // No access token, but account exists - still include it
-              const displayName = (account as any)?.email || (account as any)?.keyPrefix || `Google Drive ${i + 1}`;
-              accounts.push({
-                provider: 'google_drive',
-                accountId: accountId,
-                email: (account as any)?.email,
-                displayName: displayName
-              });
-            }
-          } catch (error: any) {
-            console.error(`[StorageAccounts] Error processing account ${i + 1}:`, error);
-            // If we can't fetch user info, still include the account
-            const displayName = (account as any)?.email || (account as any)?.keyPrefix || `Google Drive ${i + 1}`;
-            accounts.push({
-              provider: 'google_drive',
-              accountId: accountId,
-              email: (account as any)?.email,
-              displayName: displayName
-            });
-          }
-        }
-        
-        if (NODE_ENV === 'development') {
-          console.log(`[StorageAccounts] Returning ${accounts.length} account(s)`);
-        }
-
-        // Add other cloud providers here as they're added (Cloudflare R2, etc.)
-
-        return res.json({
-          success: true,
-          accounts
-        });
-      } catch (error: any) {
-        console.error('Error listing storage accounts:', error);
-        return res.status(500).json({
-          error: 'Failed to list storage accounts',
-          message: safeClientErrorMessage(error, NODE_ENV === 'production')
-        });
-      }
-    });
+    // GET /api/storage/accounts/:identityId — registered in storageRoutes (multi-provider)
 
     // POST /api/aggregator/engagement/:fileId/:type - Update engagement metrics
     this.app.post('/api/aggregator/engagement/:fileId/:type', async (req, res) => {
@@ -8555,11 +8550,24 @@ class ProductionServer {
     // POST /api/aggregator/metadata-index/sync - DISABLED (Google Drive sync service removed)
     // Files are added/updated/removed via API calls only - no background sync needed
     this.app.post('/api/aggregator/metadata-index/sync', async (req, res) => {
-      return res.status(410).json({
-        error: 'Gone',
-        message: 'Google Drive sync service has been removed. Files are managed via API calls only.',
-        note: 'Use PUT /api/aggregator/metadata-index/:fileId to add/update files, or make files private to remove them.'
-      });
+      try {
+        const { userStorageSyncService } = await import('./server/modules/userStorageSyncService');
+        const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
+        const portable = await userStorageSyncService.syncPortableUsers();
+        let driveOk = false;
+        try {
+          await GoogleDriveSyncService.getInstance().syncFromGoogleDrive();
+          driveOk = true;
+        } catch (driveErr) {
+          console.warn('[MetadataSync] Google Drive sync skipped:', driveErr);
+        }
+        return res.json({ success: true, portable, drive: { ok: driveOk } });
+      } catch (error: any) {
+        return res.status(500).json({
+          error: 'Sync failed',
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
+        });
+      }
     });
 
     // POST /api/aggregator/metadata-index/cleanup - Cleanup disabled (was removing all posts from feeds)
@@ -11156,6 +11164,7 @@ class ProductionServer {
     registerStripeMonetizationRoutes(this.app);
     registerCreatorFundPeriodRoutes(this.app);
     registerIntegratorRoutes(this.app);
+    registerStorageRoutes(this.app, NODE_ENV);
   }
 
   /**

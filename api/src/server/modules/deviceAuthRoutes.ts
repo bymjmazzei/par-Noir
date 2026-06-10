@@ -5,8 +5,15 @@
 import type { Application, Request, Response } from 'express';
 import { defaultDevicePolicy, type DeviceRow } from '@par-noir/device-auth';
 import { PNOAuthService } from './pnOAuthService';
-import { getRecoveryDriveContext } from './recoveryDriveContext';
-import { DeviceSheetsService } from './deviceSheetsService';
+import {
+  getDeviceById,
+  listDevices,
+  loadDeviceBundle,
+  readPolicy,
+  updateLastSeen,
+  upsertDevice,
+  writePolicy
+} from './storage/deviceStorageService';
 import {
   assertDeviceCapability,
   DEVICE_CAPABILITIES,
@@ -26,16 +33,8 @@ function bearerPn(req: Request): string | null {
   return payload.pnIdentifier.startsWith('pn-') ? payload.pnIdentifier : `pn-${payload.pnIdentifier}`;
 }
 
-async function driveBundle(pn: string) {
-  const ctx = await getRecoveryDriveContext(pn);
-  if (!ctx) return null;
-  const spreadsheetId = await DeviceSheetsService.getOrCreateSpreadsheet(
-    ctx.token,
-    ctx.metadataFolderId,
-    ctx.pnIdentifier,
-    ctx.accountId
-  );
-  return { ctx, spreadsheetId };
+async function storageBundle(pn: string) {
+  return loadDeviceBundle(pn);
 }
 
 export function registerDeviceAuthRoutes(app: Application): void {
@@ -46,7 +45,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
         ? req.params.userPnIdentifier
         : `pn-${req.params.userPnIdentifier}`;
       const summary = await getDeviceRegistrySummary(pn);
-      if (!summary) return res.status(404).json({ error: 'Drive not connected' });
+      if (!summary) return res.status(404).json({ error: 'Storage not connected' });
       return res.json(summary);
     } catch (e) {
       console.error('[devices] registry:', e);
@@ -60,14 +59,9 @@ export function registerDeviceAuthRoutes(app: Application): void {
       const pn = req.params.userPnIdentifier.startsWith('pn-')
         ? req.params.userPnIdentifier
         : `pn-${req.params.userPnIdentifier}`;
-      const bundle = await driveBundle(pn);
-      if (!bundle) return res.status(404).json({ error: 'Drive not connected' });
-      const policy = await DeviceSheetsService.readPolicy(
-        bundle.ctx.token,
-        bundle.ctx.metadataFolderId,
-        bundle.ctx.pnIdentifier,
-        bundle.ctx.accountId
-      );
+      const bundle = await storageBundle(pn);
+      if (!bundle) return res.status(404).json({ error: 'Storage not connected' });
+      const policy = await readPolicy(bundle);
       return res.json({ policy });
     } catch (e) {
       console.error('[devices] policy get:', e);
@@ -92,28 +86,17 @@ export function registerDeviceAuthRoutes(app: Application): void {
         return res.status(400).json({ error: 'unkeyedAllows array required' });
       }
 
-      const bundle = await driveBundle(pn);
-      if (!bundle) return res.status(404).json({ error: 'Drive not connected' });
+      const bundle = await storageBundle(pn);
+      if (!bundle) return res.status(404).json({ error: 'Storage not connected' });
 
-      const existing = await DeviceSheetsService.readPolicy(
-        bundle.ctx.token,
-        bundle.ctx.metadataFolderId,
-        bundle.ctx.pnIdentifier,
-        bundle.ctx.accountId
-      );
+      const existing = await readPolicy(bundle);
 
       const policy = {
         ...existing,
         unkeyedAllows: unkeyedAllows.filter((x: unknown) => typeof x === 'string'),
       };
 
-      await DeviceSheetsService.writePolicy(
-        bundle.ctx.token,
-        bundle.ctx.metadataFolderId,
-        policy,
-        bundle.ctx.pnIdentifier,
-        bundle.ctx.accountId
-      );
+      await writePolicy(bundle, policy);
 
       return res.json({ success: true, policy });
     } catch (e) {
@@ -173,16 +156,10 @@ export function registerDeviceAuthRoutes(app: Application): void {
         return res.status(400).json({ error: 'deviceId and devicePublicKey required' });
       }
 
-      const bundle = await driveBundle(pn);
-      if (!bundle) return res.status(404).json({ error: 'Drive not connected' });
+      const bundle = await storageBundle(pn);
+      if (!bundle) return res.status(404).json({ error: 'Storage not connected' });
 
-      const active = await DeviceSheetsService.listDevices(
-        bundle.ctx.token,
-        bundle.spreadsheetId,
-        bundle.ctx.pnIdentifier,
-        bundle.ctx.accountId,
-        false
-      );
+      const active = await listDevices(bundle, false);
 
       if (active.length > 0) {
         if (!pairingNonce || typeof pairingNonce !== 'string') {
@@ -207,20 +184,9 @@ export function registerDeviceAuthRoutes(app: Application): void {
         lastSeenAt: now,
       };
 
-      await DeviceSheetsService.upsertDevice(
-        bundle.ctx.token,
-        bundle.spreadsheetId,
-        row,
-        bundle.ctx.pnIdentifier,
-        bundle.ctx.accountId
-      );
+      await upsertDevice(bundle, row);
 
-      let policy = await DeviceSheetsService.readPolicy(
-        bundle.ctx.token,
-        bundle.ctx.metadataFolderId,
-        bundle.ctx.pnIdentifier,
-        bundle.ctx.accountId
-      );
+      let policy = await readPolicy(bundle);
 
       if (!policy.firstDeviceKeyedAt) {
         policy = {
@@ -228,13 +194,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
           ...policy,
           firstDeviceKeyedAt: now,
         };
-        await DeviceSheetsService.writePolicy(
-          bundle.ctx.token,
-          bundle.ctx.metadataFolderId,
-          policy,
-          bundle.ctx.pnIdentifier,
-          bundle.ctx.accountId
-        );
+        await writePolicy(bundle, policy);
       }
 
       return res.json({ success: true, deviceId, firstDevice: active.length === 0 });
@@ -251,25 +211,13 @@ export function registerDeviceAuthRoutes(app: Application): void {
 
       const { userPnIdentifier } = req.body ?? {};
       const pn = String(userPnIdentifier || gate.ctx.pnIdentifier);
-      const bundle = await driveBundle(pn);
-      if (!bundle) return res.status(404).json({ error: 'Drive not connected' });
+      const bundle = await storageBundle(pn);
+      if (!bundle) return res.status(404).json({ error: 'Storage not connected' });
 
-      const row = await DeviceSheetsService.getDeviceById(
-        bundle.ctx.token,
-        bundle.spreadsheetId,
-        req.params.deviceId,
-        bundle.ctx.pnIdentifier,
-        bundle.ctx.accountId
-      );
+      const row = await getDeviceById(bundle, req.params.deviceId);
       if (!row) return res.status(404).json({ error: 'device_not_found' });
 
-      await DeviceSheetsService.upsertDevice(
-        bundle.ctx.token,
-        bundle.spreadsheetId,
-        { ...row, status: 'revoked' },
-        bundle.ctx.pnIdentifier,
-        bundle.ctx.accountId
-      );
+      await upsertDevice(bundle, { ...row, status: 'revoked' });
 
       return res.json({ success: true, deviceId: req.params.deviceId });
     } catch (e) {
@@ -287,16 +235,10 @@ export function registerDeviceAuthRoutes(app: Application): void {
         return res.status(403).json({ error: 'device_mismatch' });
       }
 
-      const bundle = await driveBundle(gate.ctx.pnIdentifier);
-      if (!bundle) return res.status(404).json({ error: 'Drive not connected' });
+      const bundle = await storageBundle(gate.ctx.pnIdentifier);
+      if (!bundle) return res.status(404).json({ error: 'Storage not connected' });
 
-      await DeviceSheetsService.updateLastSeen(
-        bundle.ctx.token,
-        bundle.spreadsheetId,
-        req.params.deviceId,
-        bundle.ctx.pnIdentifier,
-        bundle.ctx.accountId
-      );
+      await updateLastSeen(bundle, req.params.deviceId);
 
       return res.json({ success: true });
     } catch (e) {

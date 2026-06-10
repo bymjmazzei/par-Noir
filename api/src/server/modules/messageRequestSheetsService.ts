@@ -4,6 +4,8 @@
 
 import { google } from 'googleapis';
 import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
+import * as RequestPortable from './storage/requestPortableService';
 
 const FILE_NAME = 'message_requests.xlsx';
 const SHEET_TITLE = 'Requests';
@@ -27,6 +29,9 @@ export class MessageRequestSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<string | null> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return RequestPortable.PORTABLE_MESSAGE_REQUESTS_SHEET;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
     const q = `name='${FILE_NAME}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
@@ -41,6 +46,9 @@ export class MessageRequestSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<string> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return RequestPortable.PORTABLE_MESSAGE_REQUESTS_SHEET;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
     const sheets = google.sheets({ version: 'v4', auth });
@@ -97,6 +105,9 @@ export class MessageRequestSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<StoredMessageRequestRow[]> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return RequestPortable.listMessageRequestsPortable(userPnIdentifier, accountId);
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
@@ -138,6 +149,24 @@ export class MessageRequestSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      const ts = new Date().toISOString();
+      await RequestPortable.appendMessageRequestPortable(
+        userPnIdentifier,
+        {
+          requestId: req.requestId,
+          fromPnIdentifier: req.fromPn,
+          toPnIdentifier: req.toPn,
+          content: req.content,
+          status: 'pending',
+          timestamp: ts,
+          kemCiphertext: req.kemCiphertext,
+          cryptoVersion: req.cryptoVersion
+        },
+        accountId
+      );
+      return;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const ts = new Date().toISOString();
@@ -169,6 +198,10 @@ export class MessageRequestSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await RequestPortable.setMessageRequestStatusPortable(userPnIdentifier, requestId, status, accountId);
+      return;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({

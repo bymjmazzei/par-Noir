@@ -1,0 +1,29 @@
+{
+  "name": "@par-noir/storage-migration",
+  "version": "0.1.0",
+  "description": "Social cloud and cross-provider file migration helpers",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@par-noir/user-owned-storage": "file:../user-owned-storage"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  }
+}

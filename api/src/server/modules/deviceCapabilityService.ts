@@ -14,8 +14,12 @@ import {
   type DeviceRow,
 } from '@par-noir/device-auth';
 import { PNOAuthService } from './pnOAuthService';
-import { getRecoveryDriveContext } from './recoveryDriveContext';
-import { DeviceSheetsService } from './deviceSheetsService';
+import {
+  loadDeviceBundle,
+  listDevices,
+  readPolicy,
+  updateLastSeen
+} from './storage/deviceStorageService';
 
 export { DEVICE_CAPABILITIES };
 
@@ -45,24 +49,17 @@ function bearerPn(req: Request): { pnIdentifier: string } | null {
 }
 
 async function loadDeviceContext(pn: string): Promise<{
-  ctx: Awaited<ReturnType<typeof getRecoveryDriveContext>>;
-  spreadsheetId: string;
+  bundle: Awaited<ReturnType<typeof loadDeviceBundle>>;
   policy: DevicePolicy;
   devices: DeviceRow[];
 } | null> {
-  const ctx = await getRecoveryDriveContext(pn);
-  if (!ctx) return null;
-  const spreadsheetId = await DeviceSheetsService.getOrCreateSpreadsheet(
-    ctx.token,
-    ctx.metadataFolderId,
-    ctx.pnIdentifier,
-    ctx.accountId
-  );
+  const bundle = await loadDeviceBundle(pn);
+  if (!bundle) return null;
   const [policy, devices] = await Promise.all([
-    DeviceSheetsService.readPolicy(ctx.token, ctx.metadataFolderId, ctx.pnIdentifier, ctx.accountId),
-    DeviceSheetsService.listDevices(ctx.token, spreadsheetId, ctx.pnIdentifier, ctx.accountId, true),
+    readPolicy(bundle),
+    listDevices(bundle, true)
   ]);
-  return { ctx, spreadsheetId, policy, devices };
+  return { bundle, policy, devices };
 }
 
 export async function verifyDeviceProofFromRequest(
@@ -142,15 +139,9 @@ export async function assertDeviceCapability(
   }
 
   if (ctx.isKeyed && ctx.deviceRow) {
-    const bundle = await loadDeviceContext(ctx.pnIdentifier);
-    if (bundle?.ctx) {
-      await DeviceSheetsService.updateLastSeen(
-        bundle.ctx.token,
-        bundle.spreadsheetId,
-        ctx.deviceRow.deviceId,
-        bundle.ctx.pnIdentifier,
-        bundle.ctx.accountId
-      );
+    const loaded = await loadDeviceContext(ctx.pnIdentifier);
+    if (loaded?.bundle) {
+      await updateLastSeen(loaded.bundle, ctx.deviceRow.deviceId);
     }
   }
 

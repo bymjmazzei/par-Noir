@@ -179,7 +179,10 @@ export function useThumbnailsAndMedia({
             const session = PNOAuthService.loadSession();
             const accessToken = session?.accessToken;
             if (!accessToken) return;
-            const url = `${API_ENDPOINT}/api/drive/files/${file.fileId}?download=true&ownerPnIdentifier=${encodeURIComponent(ownerId)}`;
+            const backend = file.backend || 'google_drive';
+            const backendFileId = file.backendFileId || file.fileId;
+            const { resolveFileUrl } = await import('../services/storageApiClient');
+            const url = resolveFileUrl(ownerId, backend, backendFileId, file.accountId);
             const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
             if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
             videoBlob = await response.blob();

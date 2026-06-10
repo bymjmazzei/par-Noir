@@ -4,6 +4,8 @@
 
 import { google } from 'googleapis';
 import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
+import * as GroupPortable from './storage/groupPortableService';
 
 export type GroupAccessRole = 'readWrite' | 'readOnly';
 
@@ -34,6 +36,9 @@ export class GroupSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<string> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return GroupPortable.PORTABLE_GROUPS_SHEET;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
     const query = `name='${this.GROUPS_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false`;
@@ -93,6 +98,18 @@ export class GroupSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await GroupPortable.appendGroupMembersPortable(
+        groupId,
+        ownerPnIdentifier,
+        title,
+        createdAt,
+        members,
+        userPnIdentifier,
+        accountId
+      );
+      return;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const rows = members.map((m) => [
@@ -119,6 +136,9 @@ export class GroupSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<GroupRecord[]> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return GroupPortable.listGroupsForUserPortable(userPnIdentifier, accountId);
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
@@ -149,6 +169,15 @@ export class GroupSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<boolean> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return GroupPortable.updateMemberAccessRolePortable(
+        userPnIdentifier,
+        groupId,
+        memberPnIdentifier,
+        accessRole,
+        accountId
+      );
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
@@ -210,6 +239,15 @@ export class GroupSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<boolean> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return GroupPortable.updateConversationSpreadsheetIdPortable(
+        userPnIdentifier,
+        groupId,
+        memberPnIdentifier,
+        conversationSpreadsheetId,
+        accountId
+      );
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
@@ -236,6 +274,10 @@ export class GroupSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await GroupPortable.updateGroupTitlePortable(userPnIdentifier, groupId, title, accountId);
+      return;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
@@ -287,6 +329,14 @@ export class GroupSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<boolean> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return GroupPortable.removeGroupMemberPortable(
+        userPnIdentifier,
+        groupId,
+        memberPnIdentifier,
+        accountId
+      );
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
@@ -321,6 +371,15 @@ export class GroupSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<boolean> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return GroupPortable.rotateGroupMemberKeysPortable(
+        userPnIdentifier,
+        groupId,
+        removedMemberPn,
+        keyRotation,
+        accountId
+      );
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
@@ -376,6 +435,18 @@ export class GroupSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<boolean> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      for (const m of keyRotation) {
+        await GroupPortable.rewrapGroupKeysForMigrationPortable(
+          userPnIdentifier,
+          groupId,
+          m.memberPnIdentifier,
+          m.wrappedChatKey,
+          accountId
+        );
+      }
+      return true;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({

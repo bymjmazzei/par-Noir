@@ -522,6 +522,16 @@ export class GoogleDriveSyncService {
       
       console.log(`✅ [Cleanup] Complete - Case 1: ${case1Users} users (indexes exist, kept all files), Case 2: ${case2Processed} users processed (${case2Removed} files removed)`);
 
+      try {
+        const { userStorageSyncService } = await import('./userStorageSyncService');
+        const portableResult = await userStorageSyncService.syncPortableUsers();
+        console.log(
+          `✅ [Sync] Portable storage users synced: ${portableResult.synced}, errors: ${portableResult.errors}`
+        );
+      } catch (portableSyncErr) {
+        console.warn('⚠️ [Sync] Portable user sync failed:', portableSyncErr);
+      }
+
     } catch (error) {
       console.error('❌ Google Drive sync failed:', error);
     } finally {

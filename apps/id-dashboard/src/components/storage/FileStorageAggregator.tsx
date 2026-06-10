@@ -23,6 +23,7 @@ import { API_ENDPOINT } from '../../config/api';
 import { ownerFetch, ownerGet } from '../../services/ownerApiService';
 import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 import { driveAccountTokens, normalizeVisibility } from './storageHelpers';
+import { MultiCloudStoragePanel } from './MultiCloudStoragePanel';
 
 const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
 const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
@@ -259,7 +260,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   // Formula: SHA256(pnName:passcode:publicKey) → first 12 hex chars → pn-{hash}
   // This is the ONLY method used across all implementations (web, desktop, mobile)
   const pnIdentifierRef = React.useRef<string | null>(null);
-  
+  const [cloudPnIdentifier, setCloudPnIdentifier] = React.useState<string | null>(null);
+  const [portableCloudAccounts, setPortableCloudAccounts] = React.useState<
+    Array<{ provider: string; accountId: string; displayName?: string; isSocialCloud?: boolean }>
+  >([]);
+  const [moveDestKey, setMoveDestKey] = React.useState('');
+
   React.useEffect(() => {
     const derivePnIdentifier = async () => {
       const currentResolvedAuth = resolvedAuthRef.current;
@@ -286,14 +292,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           // CRITICAL: Store WITH 'pn-' prefix - this is the standardized format
           // API expects pn-{hash} format, not just {hash}
           pnIdentifierRef.current = identifier; // Keep full format: pn-{12-char-hex}
+          setCloudPnIdentifier(identifier);
           console.log('[StorageCredentials] Derived pN identifier (standardized):', identifier);
         } else {
         pnIdentifierRef.current = null;
+          setCloudPnIdentifier(null);
           console.warn('[StorageCredentials] Cannot derive pN identifier - missing credentials');
         }
       } catch (error) {
         console.error('[StorageCredentials] Error deriving pN identifier:', error);
         pnIdentifierRef.current = null;
+        setCloudPnIdentifier(null);
       }
     };
     
@@ -371,6 +380,42 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       return null;
     }
   }, []);
+
+  const registerPortableCloudBackends = React.useCallback(async () => {
+    if (!cloudPnIdentifier || !resolvedAuth?.authToken || !aggregatorService) return;
+    try {
+      const res = await ownerGet(
+        resolvedAuth.authToken,
+        `/api/storage/accounts/${encodeURIComponent(cloudPnIdentifier)}`
+      );
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        accounts?: Array<{ provider: string; accountId: string; displayName?: string; isSocialCloud?: boolean }>;
+      };
+      const portable = (data.accounts ?? []).filter((a) => a.provider !== 'google_drive');
+      setPortableCloudAccounts(portable);
+      const { PortableBlobBackend } = await import('../../services/storage/PortableBlobBackend');
+      for (const acct of portable) {
+        const backendId = `${acct.provider}::${acct.accountId}`;
+        aggregatorService.registerBackend(
+          backendId,
+          new PortableBlobBackend(
+            cloudPnIdentifier,
+            resolvedAuth.authToken,
+            acct.provider,
+            acct.accountId
+          )
+        );
+        setConnectedBackends((prev) => new Set(prev).add(backendId));
+      }
+    } catch {
+      /* non-fatal */
+    }
+  }, [cloudPnIdentifier, resolvedAuth?.authToken, aggregatorService]);
+
+  React.useEffect(() => {
+    void registerPortableCloudBackends();
+  }, [registerPortableCloudBackends]);
   
   const scheduleTokenRetry = React.useCallback((backendIds: string[], options?: { delayMs?: number; resetAttempts?: boolean }) => {
     if (!backendIds.length) {
@@ -3092,18 +3137,46 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             ? `${backendId}_token`
             : 'google_drive_token';
 
+        const backendProviderForToken =
+          backendId.includes('::') ? backendId.split('::')[0] : backendId;
+        const isPortableBackendForToken = backendProviderForToken !== 'google_drive';
+
         const accessToken =
           ensuredAccessToken ||
           (typeof backend.getAccessToken === 'function' ? backend.getAccessToken() : undefined) ||
           (backend as any).token ||
           (localTokenKey ? localStorage.getItem(localTokenKey) : null);
-        if (!accessToken) {
+        if (!accessToken && !isPortableBackendForToken) {
           retryBackends.add(backendId);
           console.debug('⏳ [loadFiles] Waiting for refreshed token', { backendId });
         }
         let ownerIndex: any = null;
 
-        if (accessToken && currentPnIdentifier) {
+        if (!ownerIndex && currentPnIdentifier && resolvedAuth?.authToken) {
+          try {
+            const pnId = currentPnIdentifier.startsWith('pn-')
+              ? currentPnIdentifier
+              : `pn-${currentPnIdentifier}`;
+            const idxRes = await ownerGet(
+              resolvedAuth.authToken,
+              `/api/storage/owner-index/${encodeURIComponent(pnId)}`
+            );
+            if (idxRes.ok) {
+              const idxData = await idxRes.json();
+              const provider = backendId.includes('::') ? backendId.split('::')[0] : backendId;
+              const filteredFiles = (idxData.files || []).filter(
+                (entry: any) => (entry.backend || 'google_drive') === provider
+              );
+              if (filteredFiles.length > 0) {
+                ownerIndex = { ...idxData, files: filteredFiles };
+              }
+            }
+          } catch {
+            /* non-blocking */
+          }
+        }
+
+        if (accessToken && currentPnIdentifier && !ownerIndex) {
           try {
             const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
             const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(accessToken, currentPnIdentifier);
@@ -3171,18 +3244,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             // Continue with owner index entries if scan fails (better than showing nothing)
           }
 
-          // Create a set of file IDs that actually exist in Google Drive
-          const existingFileIds = new Set(scannedFiles.map((f: any) => f.id));
-          
-          // Create a set of file IDs that are in the owner index
-          const ownerIndexFileIds = new Set(ownerIndex.files.map((entry: any) => entry.googleDriveFileId).filter(Boolean));
-          
-          // Files from owner index that exist in Drive
+          const backendProvider = backendId.includes('::') ? backendId.split('::')[0] : backendId;
+          const isPortableBackend = backendProvider !== 'google_drive';
+          const existingFileIds = new Set(
+            scannedFiles.map((f: any) => f.id).concat(scannedFiles.map((f: any) => f.name))
+          );
+
+          const ownerIndexFileIds = new Set(
+            ownerIndex.files
+              .map((entry: any) => entry.backendFileId || entry.googleDriveFileId)
+              .filter(Boolean)
+          );
+
           filesForBackend = ownerIndex.files
             .filter((entry: any) => {
-              // Filter out orphaned entries that don't exist in Google Drive
-              const googleDriveFileId = entry.googleDriveFileId;
-              if (googleDriveFileId && !existingFileIds.has(googleDriveFileId)) {
+              const blobId = entry.backendFileId || entry.googleDriveFileId;
+              if (!isPortableBackend && blobId && !existingFileIds.has(blobId)) {
                 console.debug('🗑️ [loadFiles] Filtering out orphaned file from files list', {
                   backendId,
                   fileId: googleDriveFileId,
@@ -3199,12 +3276,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
               const normalizedName = entry.fileName || entry.originalName || 'Untitled';
               const parsedSize = typeof entry.size === 'number' ? entry.size : Number(entry.size || 0);
-              const fileId = entry.fileId || entry.googleDriveFileId || `${backendId}:${entry.fileName}`;
+              const fileId = entry.fileId || entry.backendFileId || entry.googleDriveFileId || `${backendId}:${entry.fileName}`;
 
               return {
                 id: fileId,
                 backend: backendId,
-                backendFileId: entry.googleDriveFileId,
+                backendFileId: entry.backendFileId || entry.googleDriveFileId,
+                storageProvider: entry.backend || backendId.split('::')[0],
                 name: normalizedName,
                 originalName: entry.originalName || normalizedName,
                 mimeType: derivedMime,
@@ -6159,6 +6237,49 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     }
   };
 
+  const handleMoveToCloud = async () => {
+    if (!cloudPnIdentifier || !resolvedAuth?.authToken || !moveDestKey) {
+      setError('Select a destination cloud and unlock your identity.');
+      return;
+    }
+    const sep = moveDestKey.indexOf('|||');
+    if (sep < 0) return;
+    const destProvider = moveDestKey.slice(0, sep);
+    const destAccountId = moveDestKey.slice(sep + 3);
+    const fileIds = Array.from(selectedFiles);
+    if (fileIds.length === 0) return;
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await ownerFetch(
+        resolvedAuth.authToken,
+        'POST',
+        '/api/storage/migrate/files/start',
+        {
+          pnIdentifier: cloudPnIdentifier,
+          fileIds,
+          destProvider,
+          destAccountId,
+          mode: 'move'
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Move failed');
+      }
+      setSelectedFiles(new Set());
+      setIsBulkDeleteMode(false);
+      setMoveDestKey('');
+      await loadFiles();
+      setMessage(`Moved ${fileIds.length} file(s) to ${destProvider}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Move failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Bulk delete handler
   const handleBulkDelete = async (backendId: string) => {
     if (!checkDeviceCapability('drive.upload')) return;
@@ -6676,6 +6797,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           </div>
         </div>
       </div>
+
+      <MultiCloudStoragePanel
+        pnIdentifier={cloudPnIdentifier}
+        authToken={resolvedAuth?.authToken}
+        onConnected={async () => {
+          void hydrateStorageCredentialsFromAPI();
+          await registerPortableCloudBackends();
+          void loadFiles();
+        }}
+      />
 
       {/* Success Message */}
       {successMessage && (
@@ -7365,17 +7496,105 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       {selectedCount} file{selectedCount !== 1 ? 's' : ''} selected
                     </span>
                   </div>
-                  <button
-                    onClick={() => handleBulkDelete(backendId)}
-                    disabled={selectedCount === 0 || isLoading}
-                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete Selected ({selectedCount})
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={moveDestKey}
+                      onChange={(e) => setMoveDestKey(e.target.value)}
+                      className="text-sm bg-neutral-800 border border-neutral-600 rounded px-2 py-1.5 text-white"
+                      disabled={selectedCount === 0 || isLoading}
+                    >
+                      <option value="">Move to cloud…</option>
+                      {portableCloudAccounts.map((a) => (
+                        <option
+                          key={`${a.provider}|||${a.accountId}`}
+                          value={`${a.provider}|||${a.accountId}`}
+                        >
+                          {a.displayName || a.provider}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleMoveToCloud}
+                      disabled={selectedCount === 0 || !moveDestKey || isLoading}
+                      className="px-3 py-2 bg-violet-600 text-white rounded hover:bg-violet-500 text-sm disabled:opacity-50"
+                    >
+                      Move
+                    </button>
+                    <button
+                      onClick={() => handleBulkDelete(backendId)}
+                      disabled={selectedCount === 0 || isLoading}
+                      className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete ({selectedCount})
+                    </button>
+                  </div>
                 </div>
               );
             })()}
+              </div>
+            );
+          })}
+          {portableCloudAccounts.map((acct) => {
+            const backendId = `${acct.provider}::${acct.accountId}`;
+            const accountFiles = filesByBackend.get(backendId) || [];
+            return (
+              <div key={backendId} className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <Cloud className="h-5 w-5 text-text-secondary" />
+                    <span className="text-white font-semibold truncate max-w-xs">
+                      {acct.displayName || acct.provider}
+                    </span>
+                    {acct.isSocialCloud && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-blue-900/50 text-blue-300">Social cloud</span>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => {
+                        setActiveBackendId(backendId);
+                        loadFiles();
+                      }}
+                      disabled={isLoading || driveReadBlocked}
+                      className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+                      title="Refresh Files"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                    </button>
+                    <input
+                      type="file"
+                      data-backend-id={backendId}
+                      className="hidden"
+                      disabled={isLoading || driveUploadBlocked}
+                      onChange={handleUpload}
+                      ref={(el) => {
+                        if (el) fileInputRefs.current.set(backendId, el);
+                        else fileInputRefs.current.delete(backendId);
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        if (driveUploadBlocked) {
+                          setError(deviceGate?.blockedMessage ?? null);
+                          return;
+                        }
+                        setActiveBackendId(backendId);
+                        fileInputRefs.current.get(backendId)?.click();
+                      }}
+                      disabled={isLoading || driveUploadBlocked}
+                      className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+                      title="Upload to this cloud"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                <p className="text-text-secondary text-sm">
+                  {accountFiles.length === 0
+                    ? 'No files indexed for this backend yet'
+                    : `${accountFiles.length} file(s) — upload destination: ${acct.provider}`}
+                </p>
               </div>
             );
           })}

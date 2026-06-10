@@ -8,6 +8,9 @@
 import crypto from 'crypto';
 import { ActivityLedgerSheetsService, ActivityEntry as SheetsActivityEntry } from './activityLedgerSheetsService';
 import { GoogleDriveToken } from './googleOAuth2Helper';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
+import { portableTableAppend, portableTableScan } from './storage/portableTableService';
+import { ACTIVITY_LEDGER_SCHEMA } from './storage/tableSchemas';
 
 export interface ActivityEntry {
   activity_id: string;
@@ -69,20 +72,6 @@ export class ActivityLedgerService {
       const activityId = crypto.randomUUID();
       const now = new Date().toISOString();
 
-      // Convert accessToken string to token object if needed (backward compatibility)
-      const tokenObj: GoogleDriveToken = typeof token === 'string' 
-        ? { access_token: token }
-        : token;
-
-      // Get or create activity ledger sheet
-      const spreadsheetId = await ActivityLedgerSheetsService.getActivityLedgerSheet(
-        tokenObj,
-        metadataFolderId,
-        normalizedUserPnIdentifier,
-        accountId
-      );
-
-      // Create activity entry
       const activity: SheetsActivityEntry = {
         activity_id: activityId,
         user_pn_identifier: normalizedUserPnIdentifier,
@@ -94,7 +83,27 @@ export class ActivityLedgerService {
         created_at: now
       };
 
-      // Append to sheet
+      if (await isPortableStorageProvider(normalizedUserPnIdentifier)) {
+        await portableTableAppend(
+          normalizedUserPnIdentifier,
+          ACTIVITY_LEDGER_SCHEMA,
+          activity as unknown as Record<string, unknown>,
+          accountId
+        );
+        return activity;
+      }
+
+      const tokenObj: GoogleDriveToken = typeof token === 'string' 
+        ? { access_token: token }
+        : token;
+
+      const spreadsheetId = await ActivityLedgerSheetsService.getActivityLedgerSheet(
+        tokenObj,
+        metadataFolderId,
+        normalizedUserPnIdentifier,
+        accountId
+      );
+
       await ActivityLedgerSheetsService.appendActivity(tokenObj, spreadsheetId, activity, normalizedUserPnIdentifier, accountId);
 
       return activity;
@@ -126,13 +135,27 @@ export class ActivityLedgerService {
     }
   ): Promise<{ activities: ActivityEntry[]; total: number }> {
     try {
-      // Convert accessToken string to token object if needed (backward compatibility)
+      const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
+
+      if (await isPortableStorageProvider(normalizedUserPnIdentifier)) {
+        let activities = await portableTableScan<ActivityEntry>(
+          normalizedUserPnIdentifier,
+          ACTIVITY_LEDGER_SCHEMA,
+          accountId
+        );
+        if (options?.activityType) {
+          activities = activities.filter((a) => a.activity_type === options.activityType);
+        }
+        const total = activities.length;
+        const limit = options?.limit ?? activities.length;
+        const offset = options?.offset ?? 0;
+        return { activities: activities.slice(offset, offset + limit), total };
+      }
+
       const tokenObj: GoogleDriveToken = typeof token === 'string' 
         ? { access_token: token }
         : token;
-      const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
 
-      // Get or create activity ledger sheet
       const spreadsheetId = await ActivityLedgerSheetsService.getActivityLedgerSheet(
         tokenObj,
         metadataFolderId,

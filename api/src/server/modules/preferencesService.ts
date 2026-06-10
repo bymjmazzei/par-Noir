@@ -6,7 +6,12 @@
  */
 
 import crypto from 'crypto';
+import { JSON_BLOB_PATHS } from '@par-noir/user-owned-storage';
 import { GoogleDriveToken } from './googleOAuth2Helper';
+import { isPortableSocialCloud } from './storage/storageProviderUtils';
+import { readPortableJsonBlob, writePortableJsonBlob } from './storage/portableJsonBlob';
+import * as PrefsPortable from './storage/preferencesPortableService';
+import type { PreferenceInteraction, PreferenceType, PreferenceActionType } from './preferencesSheetsService';
 
 export interface UserTagPreference {
   tagId: string;
@@ -69,7 +74,24 @@ export class PreferencesService {
       }
     }
     try {
-      // Search for preferences.json in metadata folder
+      if (pnIdentifier) {
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+        if (await isPortableSocialCloud(normalizedPnIdentifier)) {
+          const preferences = await readPortableJsonBlob<UserPreferences>(
+            normalizedPnIdentifier,
+            JSON_BLOB_PATHS.preferences
+          );
+          if (preferences) {
+            this.preferencesCache.set(normalizedPnIdentifier, {
+              preferences,
+              lastUpdated: new Date().toISOString()
+            });
+            return preferences;
+          }
+          return null;
+        }
+      }
+
       const searchQuery = `name='${this.PREFERENCES_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false`;
       const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id)&pageSize=1`;
       
@@ -165,6 +187,26 @@ export class PreferencesService {
     };
 
     const preferencesContent = JSON.stringify(updatedPreferences, null, 2);
+    const normalizedUserPn = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+
+    if (await isPortableSocialCloud(normalizedUserPn)) {
+      await writePortableJsonBlob(normalizedUserPn, JSON_BLOB_PATHS.preferences, updatedPreferences);
+      await this.logPreferenceInteractions(
+        '',
+        metadataFolderId,
+        identifier,
+        existingPreferences,
+        updatedPreferences,
+        preferences,
+        userPnIdentifier,
+        accountId
+      );
+      this.preferencesCache.set(normalizedUserPn, {
+        preferences: updatedPreferences,
+        lastUpdated: now
+      });
+      return updatedPreferences;
+    }
 
     try {
       // Search for existing preferences.json
@@ -327,84 +369,95 @@ export class PreferencesService {
     accountId?: string
   ): Promise<void> {
     try {
-      const token: GoogleDriveToken = { access_token: accessToken };
-      const { PreferencesSheetsService } = await import('./preferencesSheetsService');
-      const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
-        token,
-        metadataFolderId,
-        normalizedUserPnIdentifier,
-        accountId
-      );
+      const normalized = normalizedUserPnIdentifier.startsWith('pn-')
+        ? normalizedUserPnIdentifier
+        : `pn-${normalizedUserPnIdentifier}`;
+
+      const appendInteraction = async (interaction: PreferenceInteraction) => {
+        if (await isPortableSocialCloud(normalized)) {
+          await PrefsPortable.appendPreferenceInteractionPortable(normalized, interaction, accountId);
+          return;
+        }
+        const token: GoogleDriveToken = { access_token: accessToken };
+        const { PreferencesSheetsService } = await import('./preferencesSheetsService');
+        const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
+          token,
+          metadataFolderId,
+          normalizedUserPnIdentifier,
+          accountId
+        );
+        await PreferencesSheetsService.appendPreferenceInteraction(
+          token,
+          spreadsheetId,
+          interaction,
+          normalizedUserPnIdentifier,
+          accountId
+        );
+      };
 
       const now = new Date().toISOString();
 
-      // Log each changed field as a separate interaction
       if (changedPreferences.displayName !== undefined) {
-        const interactionId = crypto.randomUUID();
-        await PreferencesSheetsService.appendPreferenceInteraction(token, spreadsheetId, {
-          interaction_id: interactionId,
+        await appendInteraction({
+          interaction_id: crypto.randomUUID(),
           user_pn_identifier: userPnIdentifier,
-          preference_type: 'display_name',
-          action_type: existingPreferences?.displayName ? 'update' : 'add',
+          preference_type: 'display_name' as PreferenceType,
+          action_type: (existingPreferences?.displayName ? 'update' : 'add') as PreferenceActionType,
           previous_value: existingPreferences?.displayName ? JSON.stringify(existingPreferences.displayName) : undefined,
           new_value: JSON.stringify(updatedPreferences.displayName),
           created_at: now
-        }, normalizedUserPnIdentifier, accountId);
+        });
       }
 
       if (changedPreferences.profileImageFileId !== undefined) {
-        const interactionId = crypto.randomUUID();
-        await PreferencesSheetsService.appendPreferenceInteraction(token, spreadsheetId, {
-          interaction_id: interactionId,
+        await appendInteraction({
+          interaction_id: crypto.randomUUID(),
           user_pn_identifier: userPnIdentifier,
-          preference_type: 'profile_image',
-          action_type: existingPreferences?.profileImageFileId ? 'update' : 'add',
+          preference_type: 'profile_image' as PreferenceType,
+          action_type: (existingPreferences?.profileImageFileId ? 'update' : 'add') as PreferenceActionType,
           previous_value: existingPreferences?.profileImageFileId ? JSON.stringify(existingPreferences.profileImageFileId) : undefined,
           new_value: JSON.stringify(updatedPreferences.profileImageFileId),
           created_at: now
-        }, normalizedUserPnIdentifier, accountId);
+        });
       }
 
       if (changedPreferences.curatedFeedPreferences !== undefined) {
-        const interactionId = crypto.randomUUID();
-        await PreferencesSheetsService.appendPreferenceInteraction(token, spreadsheetId, {
-          interaction_id: interactionId,
+        await appendInteraction({
+          interaction_id: crypto.randomUUID(),
           user_pn_identifier: userPnIdentifier,
-          preference_type: 'curated_feed_preferences',
-          action_type: existingPreferences?.curatedFeedPreferences ? 'update' : 'add',
+          preference_type: 'curated_feed_preferences' as PreferenceType,
+          action_type: (existingPreferences?.curatedFeedPreferences ? 'update' : 'add') as PreferenceActionType,
           previous_value: existingPreferences?.curatedFeedPreferences ? JSON.stringify(existingPreferences.curatedFeedPreferences) : undefined,
           new_value: JSON.stringify(updatedPreferences.curatedFeedPreferences),
           created_at: now
-        }, normalizedUserPnIdentifier, accountId);
+        });
       }
 
       if (changedPreferences.subscribedFeedIds !== undefined) {
-        const interactionId = crypto.randomUUID();
-        await PreferencesSheetsService.appendPreferenceInteraction(token, spreadsheetId, {
-          interaction_id: interactionId,
+        await appendInteraction({
+          interaction_id: crypto.randomUUID(),
           user_pn_identifier: userPnIdentifier,
-          preference_type: 'subscribed_feed_ids',
-          action_type: 'update',
+          preference_type: 'subscribed_feed_ids' as PreferenceType,
+          action_type: 'update' as PreferenceActionType,
           previous_value: existingPreferences?.subscribedFeedIds ? JSON.stringify(existingPreferences.subscribedFeedIds) : undefined,
           new_value: JSON.stringify(updatedPreferences.subscribedFeedIds),
           created_at: now
-        }, normalizedUserPnIdentifier, accountId);
+        });
       }
 
       // Note: blockedCategories, subscribedSubjects, blockedSubjects are not in UserPreferences interface
       // They may be added in the future - these checks are included for forward compatibility
 
       if (changedPreferences.mePageSortOrder !== undefined) {
-        const interactionId = crypto.randomUUID();
-        await PreferencesSheetsService.appendPreferenceInteraction(token, spreadsheetId, {
-          interaction_id: interactionId,
+        await appendInteraction({
+          interaction_id: crypto.randomUUID(),
           user_pn_identifier: userPnIdentifier,
-          preference_type: 'me_page_sort_order',
-          action_type: existingPreferences?.mePageSortOrder ? 'update' : 'add',
+          preference_type: 'me_page_sort_order' as PreferenceType,
+          action_type: (existingPreferences?.mePageSortOrder ? 'update' : 'add') as PreferenceActionType,
           previous_value: existingPreferences?.mePageSortOrder ? JSON.stringify(existingPreferences.mePageSortOrder) : undefined,
           new_value: JSON.stringify(updatedPreferences.mePageSortOrder),
           created_at: now
-        }, normalizedUserPnIdentifier, accountId);
+        });
       }
 
       // Note: tagPreferences are logged separately in addTagPreference and removeTagPreference
@@ -462,32 +515,40 @@ export class PreferencesService {
       tagPreferences.push(newPreference);
     }
 
-    // Log tag preference interaction to sheet
     try {
-      const token: GoogleDriveToken = { access_token: accessToken };
       const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
-      const { PreferencesSheetsService } = await import('./preferencesSheetsService');
-      const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
-        token,
-        metadataFolderId,
-        normalizedUserPnIdentifier,
-        accountId
-      );
-
-      const interactionId = crypto.randomUUID();
-      await PreferencesSheetsService.appendPreferenceInteraction(token, spreadsheetId, {
-        interaction_id: interactionId,
+      const interaction: PreferenceInteraction = {
+        interaction_id: crypto.randomUUID(),
         user_pn_identifier: userPnIdentifier,
         preference_type: 'tag_preference',
-        action_type: action, // Use the action directly (swipe_like, swipe_dislike, etc.)
+        action_type: action as PreferenceActionType,
         previous_value: existingTagPreference ? JSON.stringify(existingTagPreference) : undefined,
         new_value: JSON.stringify(newPreference),
         tag_id: normalizedTagId,
         source_file_id: options?.sourceFileId,
-        question_id: options?.metadata?.questionId, // For curation cards
+        question_id: options?.metadata?.questionId,
         metadata: options?.metadata ? JSON.stringify(options.metadata) : undefined,
         created_at: now
-      }, normalizedUserPnIdentifier, accountId);
+      };
+      if (await isPortableSocialCloud(normalizedUserPnIdentifier)) {
+        await PrefsPortable.appendPreferenceInteractionPortable(normalizedUserPnIdentifier, interaction, accountId);
+      } else {
+        const token: GoogleDriveToken = { access_token: accessToken };
+        const { PreferencesSheetsService } = await import('./preferencesSheetsService');
+        const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
+          token,
+          metadataFolderId,
+          normalizedUserPnIdentifier,
+          accountId
+        );
+        await PreferencesSheetsService.appendPreferenceInteraction(
+          token,
+          spreadsheetId,
+          interaction,
+          normalizedUserPnIdentifier,
+          accountId
+        );
+      }
     } catch (error) {
       // Log error but don't fail the preference update
       console.warn('[PreferencesService] Failed to log tag preference interaction:', error);
@@ -525,23 +586,11 @@ export class PreferencesService {
       tp => tp.tagId !== normalizedTagId
     );
 
-    // Log tag preference removal to sheet
     if (existingTagPreference) {
       try {
-        const token: GoogleDriveToken = { access_token: accessToken };
         const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
-        const { PreferencesSheetsService } = await import('./preferencesSheetsService');
-        const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
-          token,
-          metadataFolderId,
-          normalizedUserPnIdentifier,
-          accountId
-        );
-
-        const interactionId = crypto.randomUUID();
-        const now = new Date().toISOString();
-        await PreferencesSheetsService.appendPreferenceInteraction(token, spreadsheetId, {
-          interaction_id: interactionId,
+        const interaction: PreferenceInteraction = {
+          interaction_id: crypto.randomUUID(),
           user_pn_identifier: userPnIdentifier,
           preference_type: 'tag_preference',
           action_type: 'remove',
@@ -551,10 +600,28 @@ export class PreferencesService {
           source_file_id: existingTagPreference.sourceFileId,
           question_id: existingTagPreference.metadata?.questionId,
           metadata: existingTagPreference.metadata ? JSON.stringify(existingTagPreference.metadata) : undefined,
-          created_at: now
-        }, normalizedUserPnIdentifier, accountId);
+          created_at: new Date().toISOString()
+        };
+        if (await isPortableSocialCloud(normalizedUserPnIdentifier)) {
+          await PrefsPortable.appendPreferenceInteractionPortable(normalizedUserPnIdentifier, interaction, accountId);
+        } else {
+          const token: GoogleDriveToken = { access_token: accessToken };
+          const { PreferencesSheetsService } = await import('./preferencesSheetsService');
+          const spreadsheetId = await PreferencesSheetsService.getPreferencesSheet(
+            token,
+            metadataFolderId,
+            normalizedUserPnIdentifier,
+            accountId
+          );
+          await PreferencesSheetsService.appendPreferenceInteraction(
+            token,
+            spreadsheetId,
+            interaction,
+            normalizedUserPnIdentifier,
+            accountId
+          );
+        }
       } catch (error) {
-        // Log error but don't fail the preference update
         console.warn('[PreferencesService] Failed to log tag preference removal:', error);
       }
     }

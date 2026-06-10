@@ -379,16 +379,13 @@ export class FeedService {
         DO UPDATE SET subscribed_at = NOW()
       `, [creatorDid, userPnIdentifier, feedId]);
 
-      // Store subscriber info on creator's Google Drive (if creator has Drive connected)
-      if (creatorGoogleTokens) {
-        const { CreatorSubscriberStorage } = await import('./creatorSubscriberStorage');
-        await CreatorSubscriberStorage.storeSubscriberOnCreatorDrive(
-          creatorDid,
-          feedId,
-          userPnIdentifier,
-          creatorGoogleTokens
-        );
-      }
+      const { CreatorSubscriberStorage } = await import('./creatorSubscriberStorage');
+      await CreatorSubscriberStorage.storeSubscriberOnCreatorDrive(
+        creatorDid,
+        feedId,
+        userPnIdentifier,
+        creatorGoogleTokens
+      );
 
       // Update subscriber count
       await db.query(`
@@ -434,16 +431,13 @@ export class FeedService {
         WHERE creator_did = $1 AND subscriber_did = $2 AND feed_id = $3
       `, [creatorDid, userPnIdentifier, feedId]);
 
-      // Remove from creator's Google Drive (if creator has Drive connected)
-      if (creatorGoogleTokens) {
-        const { CreatorSubscriberStorage } = await import('./creatorSubscriberStorage');
-        await CreatorSubscriberStorage.removeSubscriberFromCreatorDrive(
-          creatorDid,
-          feedId,
-          userPnIdentifier,
-          creatorGoogleTokens
-        );
-      }
+      const { CreatorSubscriberStorage } = await import('./creatorSubscriberStorage');
+      await CreatorSubscriberStorage.removeSubscriberFromCreatorDrive(
+        creatorDid,
+        feedId,
+        userPnIdentifier,
+        creatorGoogleTokens
+      );
 
       // Update subscriber count
       await db.query(`
@@ -828,38 +822,25 @@ export class FeedService {
         throw new Error('Feed not found');
       }
 
-      // Get creator's pN identifier from Google Drive credentials
-      // We'll derive it from DID or get it from storage
-      const { GoogleDriveProxyService } = await import('./googleDriveProxy');
-      const googleDriveProxy = new GoogleDriveProxyService();
-      
-      // Try to get access token - this will help us find the pN identifier
-      let creatorPnIdentifier: string | undefined;
+      const { storageCredentialsService } = await import('./storageCredentialsService');
+      const creatorCredentials = await storageCredentialsService.findCredentialsByIdentityCandidates([creatorDid]);
+
+      if (!creatorCredentials) {
+        throw new Error('Creator storage not connected — designate a social cloud provider first');
+      }
+
+      const ownerPnIdentifier = creatorCredentials.identityId;
+
       try {
-        // Get access token - this will find the pN identifier from storage
-        await googleDriveProxy.getAccessToken(creatorDid);
-        // Generate pnName and passcode tokens for the feed
         const feedPnName = `feed_${feedId.substring(0, 8)}_${crypto.randomBytes(4).toString('hex')}`;
-        const feedPasscode = crypto.randomBytes(16).toString('hex'); // 32-character hex passcode
-        
-        // Generate key pair for feed sub-pN
+        const feedPasscode = crypto.randomBytes(16).toString('hex');
+
         const { generateKeyPairSync } = crypto;
         const { publicKey } = generateKeyPairSync('rsa', {
           modulusLength: 2048,
           publicKeyEncoding: { type: 'spki', format: 'pem' },
           privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
         });
-        
-        // Get creator's pN identifier from storage credentials
-        const { storageCredentialsService } = await import('./storageCredentialsService');
-        const creatorCredentials = await storageCredentialsService.findCredentialsByIdentityCandidates([creatorDid]);
-        
-        if (!creatorCredentials) {
-          throw new Error('Creator credentials not found - Google Drive must be connected');
-        }
-        
-        // Extract creator's pN identifier from credentials
-        const ownerPnIdentifier = creatorCredentials.identityId;
         
         const { encryptFeedTokenField } = await import('./feedTokenCrypto');
         const encryptedPnName = encryptFeedTokenField(feedPnName);
@@ -884,44 +865,55 @@ export class FeedService {
         const hash = crypto.createHash('sha256').update(combined, 'utf8').digest('hex');
         const subPnIdentifier = `feed-${hash.substring(0, 12)}`;
 
-        // Create Google Drive folder structure
-        // Note: This requires the creator to have Google Drive connected
-        const accessToken = await googleDriveProxy.getAccessToken(creatorDid);
-        
-        // Create feed folder structure
-        const feedFolderName = `par Noir - Feed: ${feed.feedName}`;
-        const feedFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            name: feedFolderName,
-            mimeType: 'application/vnd.google-apps.folder'
-          })
-        });
+        const { isPortableSocialCloud } = await import('./storage/storageProviderUtils');
+        const { metadataPath } = await import('@par-noir/user-owned-storage');
 
-        let googleDriveFolderId: string | null = null;
-        if (feedFolderResponse.ok) {
-          const folderData = await feedFolderResponse.json() as { id: string };
-          googleDriveFolderId = folderData.id;
+        let storageFolderRef: string | null = null;
 
-          // Create subfolders
-          const subfolders = ['_metadata', 'top-post', 'posts'];
-          for (const subfolderName of subfolders) {
-            await fetch('https://www.googleapis.com/drive/v3/files', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                name: subfolderName,
-                mimeType: 'application/vnd.google-apps.folder',
-                parents: [googleDriveFolderId]
-              })
-            });
+        if (await isPortableSocialCloud(ownerPnIdentifier)) {
+          storageFolderRef = metadataPath('feeds', feedId);
+          const { writeSubscribersPortable } = await import('./storage/creatorSubscriberPortableService');
+          await writeSubscribersPortable(ownerPnIdentifier, feedId, {
+            creatorDid,
+            feedId,
+            subscribers: [],
+            updatedAt: new Date().toISOString()
+          });
+        } else {
+          const { GoogleDriveProxyService } = await import('./googleDriveProxy');
+          const googleDriveProxy = new GoogleDriveProxyService();
+          const accessToken = await googleDriveProxy.getAccessToken(creatorDid);
+          const feedFolderName = `par Noir - Feed: ${feed.feedName}`;
+          const feedFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              name: feedFolderName,
+              mimeType: 'application/vnd.google-apps.folder'
+            })
+          });
+
+          if (feedFolderResponse.ok) {
+            const folderData = (await feedFolderResponse.json()) as { id: string };
+            storageFolderRef = folderData.id;
+            const subfolders = ['_metadata', 'top-post', 'posts'];
+            for (const subfolderName of subfolders) {
+              await fetch('https://www.googleapis.com/drive/v3/files', {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  name: subfolderName,
+                  mimeType: 'application/vnd.google-apps.folder',
+                  parents: [storageFolderRef]
+                })
+              });
+            }
           }
         }
 
@@ -942,10 +934,10 @@ export class FeedService {
         updateFields.push(`status = $${paramCount}`);
         params.push('active');
 
-        if (googleDriveFolderId) {
+        if (storageFolderRef) {
           paramCount++;
           updateFields.push(`google_drive_folder_id = $${paramCount}`);
-          params.push(googleDriveFolderId);
+          params.push(storageFolderRef);
         }
 
         paramCount++;

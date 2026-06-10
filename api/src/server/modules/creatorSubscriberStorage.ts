@@ -26,9 +26,92 @@ export interface CreatorSubscriberList {
 }
 
 export class CreatorSubscriberStorage {
+  private static async resolveCreatorPn(creatorDid: string): Promise<string | null> {
+    const { storageCredentialsService } = await import('./storageCredentialsService');
+    const record = await storageCredentialsService.findCredentialsByIdentityCandidates([creatorDid]);
+    return record?.identityId ?? null;
+  }
+
+  private static async storeSubscriberPortable(
+    creatorPn: string,
+    creatorDid: string,
+    feedId: string,
+    subscriberDid: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { readSubscribersPortable, writeSubscribersPortable } = await import(
+        './storage/creatorSubscriberPortableService'
+      );
+      const existing = (await readSubscribersPortable(creatorPn, feedId)) ?? {
+        creatorDid,
+        feedId,
+        subscribers: [],
+        updatedAt: new Date().toISOString()
+      };
+      const subscriberInfo: SubscriberInfo = {
+        subscriberDid,
+        feedId,
+        subscribedAt: new Date().toISOString()
+      };
+      const updatedSubscribers = [
+        ...existing.subscribers.filter((sub) => sub.subscriberDid !== subscriberDid),
+        subscriberInfo
+      ];
+      await writeSubscribersPortable(creatorPn, feedId, {
+        creatorDid,
+        feedId,
+        subscribers: updatedSubscribers,
+        updatedAt: new Date().toISOString()
+      });
+      const { getDatabasePool } = await import('../utils/database');
+      const db = getDatabasePool();
+      await db.query(
+        `UPDATE creator_subscriber_index SET synced_to_drive = TRUE
+         WHERE creator_did = $1 AND subscriber_did = $2 AND feed_id = $3`,
+        [creatorDid, subscriberDid, feedId]
+      );
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to store subscriber on creator portable social cloud:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  private static async removeSubscriberPortable(
+    creatorPn: string,
+    creatorDid: string,
+    feedId: string,
+    subscriberDid: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { readSubscribersPortable, writeSubscribersPortable } = await import(
+        './storage/creatorSubscriberPortableService'
+      );
+      const existing = await readSubscribersPortable(creatorPn, feedId);
+      if (!existing) return { success: true };
+      const updatedSubscribers = existing.subscribers.filter(
+        (sub) => sub.subscriberDid !== subscriberDid
+      );
+      await writeSubscribersPortable(creatorPn, feedId, {
+        ...existing,
+        subscribers: updatedSubscribers,
+        updatedAt: new Date().toISOString()
+      });
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to remove subscriber from creator portable social cloud:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
   /**
-   * Store subscriber info on creator's Google Drive
-   * Creates/updates a subscribers.json file in creator's par-noir-media folder
+   * Store subscriber info on creator's social cloud (Google Drive or portable blob storage)
    */
   static async storeSubscriberOnCreatorDrive(
     creatorDid: string,
@@ -37,10 +120,16 @@ export class CreatorSubscriberStorage {
     creatorGoogleTokens?: { access_token: string; refresh_token?: string }
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // If creator doesn't have Google Drive tokens, skip (they'll sync later)
+      const creatorPn = await this.resolveCreatorPn(creatorDid);
+      if (creatorPn) {
+        const { isPortableSocialCloud } = await import('./storage/storageProviderUtils');
+        if (await isPortableSocialCloud(creatorPn)) {
+          return this.storeSubscriberPortable(creatorPn, creatorDid, feedId, subscriberDid);
+        }
+      }
+
       if (!creatorGoogleTokens) {
-        console.log(`Creator ${creatorDid} doesn't have Google Drive connected, skipping Drive storage`);
-        return { success: true }; // Not an error, just deferred
+        return { success: true };
       }
 
       const oauth2Client = new google.auth.OAuth2(
@@ -111,8 +200,16 @@ export class CreatorSubscriberStorage {
     creatorGoogleTokens?: { access_token: string; refresh_token?: string }
   ): Promise<{ success: boolean; error?: string }> {
     try {
+      const creatorPn = await this.resolveCreatorPn(creatorDid);
+      if (creatorPn) {
+        const { isPortableSocialCloud } = await import('./storage/storageProviderUtils');
+        if (await isPortableSocialCloud(creatorPn)) {
+          return this.removeSubscriberPortable(creatorPn, creatorDid, feedId, subscriberDid);
+        }
+      }
+
       if (!creatorGoogleTokens) {
-        return { success: true }; // Skip if creator doesn't have Drive connected
+        return { success: true };
       }
 
       const oauth2Client = new google.auth.OAuth2(

@@ -6,6 +6,8 @@
 
 import { google } from 'googleapis';
 import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
+import * as MsgPortable from './storage/messagePortableService';
 
 export interface Message {
   messageId: string;
@@ -47,7 +49,9 @@ export class MessageSheetsService {
     accountId: string | undefined,
     cachedInboxSheetId?: string
   ): Promise<string> {
-    // If cached ID provided, return it immediately (no search!)
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return MsgPortable.getInboxSheetPortable();
+    }
     if (cachedInboxSheetId) {
       return cachedInboxSheetId;
     }
@@ -113,6 +117,9 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<string> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return MsgPortable.getOrCreateInboxSheetPortable();
+    }
     try {
       const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const drive = google.drive({ version: 'v3', auth });
@@ -215,6 +222,9 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<string> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return MsgPortable.getOrCreateMessagesFolderPortable(pnFolderId);
+    }
     try {
       const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const drive = google.drive({ version: 'v3', auth });
@@ -293,7 +303,9 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<string> {
-    // Use pn identifier directly (already normalized)
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return MsgPortable.getConversationSheetPortable(otherUserPnIdentifier);
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
@@ -324,6 +336,9 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<string> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return MsgPortable.createConversationSheetPortable(otherUserPnIdentifier);
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
@@ -433,8 +448,11 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await MsgPortable.appendMessagePortable(userPnIdentifier, spreadsheetId, message, accountId);
+      return;
+    }
     try {
-      // Validation checks
       if (!token.access_token || typeof token.access_token !== 'string' || token.access_token.trim().length === 0) {
         throw new Error('Invalid access token: token is empty or invalid');
       }
@@ -553,6 +571,14 @@ export class MessageSheetsService {
     accountId: string | undefined
   ): Promise<number> {
     if (!rowUpdates.length) return 0;
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return MsgPortable.applyMessageRowUpdatesPortable(
+        userPnIdentifier,
+        spreadsheetId,
+        rowUpdates,
+        accountId
+      );
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     let updated = 0;
@@ -598,10 +624,12 @@ export class MessageSheetsService {
       relayOnly?: boolean;
     }
   ): Promise<{ messages: Message[]; total: number }> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return MsgPortable.getMessagesPortable(userPnIdentifier, spreadsheetId, accountId, options);
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
-    // Default to last 10 messages if no limit specified (for initial load)
     const limit = options?.limit || 10;
     const offset = options?.offset || 0;
 
@@ -837,6 +865,10 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await MsgPortable.markAsReadPortable(userPnIdentifier, spreadsheetId, [messageId], accountId);
+      return;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -875,6 +907,16 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<{ mediaFileId?: string }> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      const result = await MsgPortable.deleteMessageFromConversationPortable(
+        userPnIdentifier,
+        spreadsheetId,
+        messageId,
+        accountId
+      );
+      if (!result.deleted) throw new Error('Message not found');
+      return { ...(result.mediaFileId ? { mediaFileId: result.mediaFileId } : {}) };
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -932,6 +974,14 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId?: string
   ): Promise<Array<{ otherUserPnIdentifier: string; spreadsheetId: string; lastMessageAt: string }>> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      const rows = await MsgPortable.getConversationsPortable(userPnIdentifier, accountId);
+      return rows.map((r) => ({
+        otherUserPnIdentifier: r.participantPnIdentifier,
+        spreadsheetId: r.spreadsheetId,
+        lastMessageAt: r.lastMessageAt
+      }));
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
@@ -999,6 +1049,21 @@ export class MessageSheetsService {
     lastMessagePreview?: string,
     kemCiphertext?: string
   ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await MsgPortable.updateInboxEntryPortable(
+        userPnIdentifier,
+        {
+          participantPnIdentifier,
+          spreadsheetId,
+          connectionId,
+          lastMessageAt,
+          lastMessagePreview,
+          kemCiphertext
+        },
+        accountId
+      );
+      return;
+    }
     try {
       const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const sheets = google.sheets({ version: 'v4', auth });
@@ -1099,6 +1164,10 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await MsgPortable.removeInboxEntryPortable(userPnIdentifier, participantPnIdentifier, accountId);
+      return;
+    }
     try {
       const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const sheets = google.sheets({ version: 'v4', auth });
@@ -1223,6 +1292,22 @@ export class MessageSheetsService {
     kemCiphertext?: string;
   } | null> {
     try {
+      if (await isPortableStorageProvider(userPnIdentifier)) {
+        const row = await MsgPortable.getInboxConversationByParticipantPortable(
+          userPnIdentifier,
+          participantPnIdentifier,
+          accountId
+        );
+        if (!row) return null;
+        return {
+          participantPnIdentifier: row.participantPnIdentifier,
+          spreadsheetId: row.spreadsheetId,
+          connectionId: row.connectionId,
+          lastMessageAt: row.lastMessageAt,
+          lastMessagePreview: row.lastMessagePreview,
+          kemCiphertext: row.kemCiphertext
+        };
+      }
       const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const sheets = google.sheets({ version: 'v4', auth });
 
@@ -1275,6 +1360,14 @@ export class MessageSheetsService {
     maxRows = 100
   ): Promise<number> {
     try {
+      if (await isPortableStorageProvider(userPnIdentifier)) {
+        return MsgPortable.countUnreadMessagesPortable(
+          userPnIdentifier,
+          spreadsheetId,
+          viewerPnIdentifier,
+          accountId
+        );
+      }
       const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const sheets = google.sheets({ version: 'v4', auth });
       const response = await sheets.spreadsheets.values.get({
@@ -1310,6 +1403,15 @@ export class MessageSheetsService {
   ): Promise<void> {
     // Use pn identifier directly (already normalized)
     try {
+      if (await isPortableStorageProvider(userPnIdentifier)) {
+        await MsgPortable.deleteConversationPortable(
+          userPnIdentifier,
+          MsgPortable.portableConversationSheetId(otherUserPnIdentifier),
+          accountId
+        );
+        await MsgPortable.removeInboxEntryPortable(userPnIdentifier, otherUserPnIdentifier, accountId);
+        return;
+      }
       const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const drive = google.drive({ version: 'v3', auth });
 
@@ -1363,6 +1465,9 @@ export class MessageSheetsService {
   ): Promise<string> {
     // Use pn identifier directly (already normalized)
     try {
+      if (await isPortableStorageProvider(userPnIdentifier)) {
+        return MsgPortable.createConversationSheetPortable(otherUserPnIdentifier);
+      }
       const auth = GoogleOAuth2Helper.createClient(userToken, userPnIdentifier, userAccountId);
       const sheets = google.sheets({ version: 'v4', auth });
       const drive = google.drive({ version: 'v3', auth });
@@ -1477,6 +1582,9 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     try {
@@ -1519,6 +1627,9 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<string> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return MsgPortable.createGroupConversationSheetPortable(groupId);
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
@@ -1573,6 +1684,9 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<string> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return MsgPortable.getOrCreateGroupConversationSheetPortable(groupId);
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
     const sheetFileName = `conversation-group-${groupId}`;
@@ -1595,6 +1709,20 @@ export class MessageSheetsService {
     accountId: string | undefined,
     lastMessagePreview?: string
   ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await MsgPortable.updateGroupInboxEntryPortable(
+        userPnIdentifier,
+        groupId,
+        {
+          spreadsheetId: conversationSpreadsheetId,
+          connectionId: ownerPnIdentifier,
+          lastMessageAt,
+          lastMessagePreview
+        },
+        accountId
+      );
+      return;
+    }
     await this.ensureInboxThreadTypeColumn(token, inboxSheetId, userPnIdentifier, accountId);
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
@@ -1668,6 +1796,9 @@ export class MessageSheetsService {
       groupTitle?: string;
     }>
   > {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return MsgPortable.getInboxEntriesPortable(userPnIdentifier, accountId);
+    }
     await this.ensureInboxThreadTypeColumn(token, inboxSheetId, userPnIdentifier, accountId);
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });

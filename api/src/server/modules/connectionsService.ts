@@ -6,6 +6,15 @@
 
 import { ConnectionsSheetsService } from './connectionsSheetsService';
 import { GoogleDriveToken } from './googleOAuth2Helper';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
+import {
+  appendConnectionPortable,
+  getConnectionsFilePortable,
+  listConnectionsPortable,
+  removeConnectionByPeerPortable,
+  updateConnectionsFilePortable,
+  updateConnectionStatusPortable
+} from './storage/connectionsPortableService';
 
 export interface Connection {
   connectionId: string;
@@ -45,10 +54,13 @@ export class ConnectionsService {
   ): Promise<ConnectionsFile | null> {
     const tokenObj: GoogleDriveToken = typeof token === 'string' ? { access_token: token } : token;
     if (!userPnIdentifier) {
-      // Backward compatibility - try to get from token if available
       throw new Error('userPnIdentifier is required');
     }
-    return ConnectionsSheetsService.getConnectionsFile(tokenObj, metadataFolderId, userPnIdentifier, accountId);
+    const normalized = this.normalizeToPnIdentifier(userPnIdentifier);
+    if (await isPortableStorageProvider(normalized)) {
+      return getConnectionsFilePortable(normalized, accountId);
+    }
+    return ConnectionsSheetsService.getConnectionsFile(tokenObj, metadataFolderId, normalized, accountId);
   }
 
   /**
@@ -66,7 +78,19 @@ export class ConnectionsService {
     if (!userPnIdentifier) {
       throw new Error('userPnIdentifier is required');
     }
-    await ConnectionsSheetsService.updateConnectionsFile(tokenObj, metadataFolderId, identifier, connectionsData, userPnIdentifier, accountId);
+    const normalized = this.normalizeToPnIdentifier(userPnIdentifier);
+    if (await isPortableStorageProvider(normalized)) {
+      await updateConnectionsFilePortable(normalized, connectionsData, accountId);
+      return;
+    }
+    await ConnectionsSheetsService.updateConnectionsFile(
+      tokenObj,
+      metadataFolderId,
+      identifier,
+      connectionsData,
+      normalized,
+      accountId
+    );
   }
 
   /**
@@ -94,9 +118,41 @@ export class ConnectionsService {
   ): Promise<{ status: 'not_connected' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked'; connectionId?: string }> {
     // Use pn identifiers directly (already normalized)
     // Build token object from accessToken string (backward compatibility)
+    const normalizedUser1 = this.normalizeToPnIdentifier(user1PnIdentifier);
+    if (await isPortableStorageProvider(normalizedUser1)) {
+      const connectionsFile = await this.getConnectionsFile(
+        user1AccessToken,
+        user1MetadataFolder,
+        normalizedUser1,
+        accountId
+      );
+      if (!connectionsFile) {
+        return { status: 'not_connected' };
+      }
+      const normalizedBlocked = connectionsFile.blocked.map((b) => this.normalizeToPnIdentifier(b));
+      if (normalizedBlocked.includes(user2PnIdentifier)) {
+        return { status: 'blocked' };
+      }
+      const connection = connectionsFile.connections.find((c) => {
+        const peer = c.userPnIdentifier.startsWith('pn-')
+          ? c.userPnIdentifier
+          : this.normalizeToPnIdentifier(c.userPnIdentifier);
+        return peer === user2PnIdentifier;
+      });
+      if (!connection) {
+        return { status: 'not_connected' };
+      }
+      if (connection.status === 'blocked') {
+        return { status: 'blocked', connectionId: connection.connectionId };
+      }
+      return {
+        status: connection.status === 'accepted' ? 'connected' : connection.status,
+        connectionId: connection.connectionId
+      };
+    }
+
     const token: GoogleDriveToken = { access_token: user1AccessToken };
     try {
-      // Get or create connections sheet
       const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
         token,
         user1MetadataFolder,
@@ -179,9 +235,144 @@ export class ConnectionsService {
     const requesterToken: GoogleDriveToken = { access_token: requesterAccessToken };
     const recipientToken: GoogleDriveToken = { access_token: recipientAccessToken };
     const connectionId = this.generateConnectionId(requesterPnIdentifier, recipientPnIdentifier);
-      const now = new Date().toISOString();
+    const now = new Date().toISOString();
 
-      // Get or create connections sheets for both users
+    const requesterPortable = await isPortableStorageProvider(requesterPnIdentifier);
+    const recipientPortable = await isPortableStorageProvider(recipientPnIdentifier);
+
+    if (requesterPortable || recipientPortable) {
+      if (requesterPortable) {
+        await removeConnectionByPeerPortable(
+          requesterPnIdentifier,
+          recipientPnIdentifier,
+          requesterAccountId
+        );
+        await appendConnectionPortable(
+          requesterPnIdentifier,
+          {
+            connectionId,
+            userPnIdentifier: recipientPnIdentifier,
+            status: 'pending_sent',
+            createdAt: now
+          },
+          requesterAccountId
+        );
+      } else {
+        const requesterSheetId = await ConnectionsSheetsService.getConnectionsSheet(
+          requesterToken,
+          requesterMetadataFolder,
+          requesterPnIdentifier,
+          requesterAccountId
+        );
+        try {
+          const existingRequester = await ConnectionsSheetsService.getConnections(
+            requesterToken,
+            requesterSheetId,
+            requesterPnIdentifier,
+            requesterAccountId
+          );
+          const existingReq = existingRequester.connections.find((c) => {
+            const peer = c.userPnIdentifier.startsWith('pn-')
+              ? c.userPnIdentifier
+              : this.normalizeToPnIdentifier(c.userPnIdentifier);
+            return peer === recipientPnIdentifier;
+          });
+          if (existingReq) {
+            await ConnectionsSheetsService.removeConnection(
+              requesterToken,
+              requesterSheetId,
+              existingReq.connectionId,
+              requesterPnIdentifier,
+              requesterAccountId
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+        await ConnectionsSheetsService.addConnection(
+          requesterToken,
+          requesterSheetId,
+          {
+            connectionId,
+            userPnIdentifier: recipientPnIdentifier,
+            status: 'pending_sent',
+            createdAt: now
+          },
+          requesterPnIdentifier,
+          requesterAccountId
+        );
+      }
+
+      if (recipientPortable) {
+        await removeConnectionByPeerPortable(
+          recipientPnIdentifier,
+          requesterPnIdentifier,
+          recipientAccountId
+        );
+        await appendConnectionPortable(
+          recipientPnIdentifier,
+          {
+            connectionId,
+            userPnIdentifier: requesterPnIdentifier,
+            status: 'pending_received',
+            createdAt: now
+          },
+          recipientAccountId
+        );
+      } else {
+        const recipientSheetId = await ConnectionsSheetsService.getConnectionsSheet(
+          recipientToken,
+          recipientMetadataFolder,
+          recipientPnIdentifier,
+          recipientAccountId
+        );
+        try {
+          const existingRecipient = await ConnectionsSheetsService.getConnections(
+            recipientToken,
+            recipientSheetId,
+            recipientPnIdentifier,
+            recipientAccountId
+          );
+          const existingRec = existingRecipient.connections.find((c) => {
+            const peer = c.userPnIdentifier.startsWith('pn-')
+              ? c.userPnIdentifier
+              : this.normalizeToPnIdentifier(c.userPnIdentifier);
+            return peer === requesterPnIdentifier;
+          });
+          if (existingRec) {
+            await ConnectionsSheetsService.removeConnection(
+              recipientToken,
+              recipientSheetId,
+              existingRec.connectionId,
+              recipientPnIdentifier,
+              recipientAccountId
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+        await ConnectionsSheetsService.addConnection(
+          recipientToken,
+          recipientSheetId,
+          {
+            connectionId,
+            userPnIdentifier: requesterPnIdentifier,
+            status: 'pending_received',
+            createdAt: now
+          },
+          recipientPnIdentifier,
+          recipientAccountId
+        );
+      }
+
+      return {
+        connectionId,
+        userPnIdentifier: recipientPnIdentifier,
+        status: 'pending_sent',
+        createdAt: now
+      };
+    }
+
       const requesterSheetId = await ConnectionsSheetsService.getConnectionsSheet(
         requesterToken,
         requesterMetadataFolder,
@@ -295,8 +486,52 @@ export class ConnectionsService {
     accountId?: string
   ): Promise<void> {
     // Build token object from accessToken string (backward compatibility)
+    if (await isPortableStorageProvider(acceptorPnIdentifier)) {
+      const allConnections = await listConnectionsPortable(acceptorPnIdentifier, accountId);
+      const allMatchingConnections = allConnections.filter((c) => c.connectionId === connectionId);
+      let connection = allMatchingConnections.find((c) => c.status === 'pending_received');
+      if (!connection && allMatchingConnections.length > 0) {
+        connection = allMatchingConnections.find((c) => c.status === 'pending_sent');
+      }
+      if (!connection) {
+        const statuses = allMatchingConnections.map((c) => c.status).join(', ');
+        throw new Error(
+          `Connection request not found or not in acceptable status. Found connections with statuses: ${statuses || 'none'}`
+        );
+      }
+      if (connection.status !== 'pending_received' && connection.status !== 'pending_sent') {
+        if (connection.status === 'accepted') {
+          if (!connection.kemCiphertext && kemCiphertext) {
+            await updateConnectionStatusPortable(
+              acceptorPnIdentifier,
+              connectionId,
+              'accepted',
+              accountId,
+              connection.acceptedAt || new Date().toISOString(),
+              kemCiphertext
+            );
+          }
+          return;
+        }
+        throw new Error(
+          `Connection request is not in acceptable status. Current status: ${connection.status}. Only pending_received or pending_sent connections can be accepted.`
+        );
+      }
+      if (!kemCiphertext || kemCiphertext.trim() === '') {
+        throw new Error('kemCiphertext is required to accept a connection (client E2E)');
+      }
+      await updateConnectionStatusPortable(
+        acceptorPnIdentifier,
+        connectionId,
+        'accepted',
+        accountId,
+        new Date().toISOString(),
+        kemCiphertext
+      );
+      return;
+    }
+
     const token: GoogleDriveToken = { access_token: acceptorAccessToken };
-    // Get or create connections sheet
     const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
         token,
         acceptorMetadataFolder,
@@ -304,7 +539,6 @@ export class ConnectionsService {
         accountId
       );
 
-      // Get all connections
       const allConnections = await ConnectionsSheetsService.getConnections(
         token,
         spreadsheetId,
@@ -383,9 +617,40 @@ export class ConnectionsService {
     // Use pn identifiers directly (already normalized)
     const normalizedAcceptorPnIdentifier = acceptorPnIdentifier;
     // Build token object from accessToken string (backward compatibility)
+    if (await isPortableStorageProvider(otherUserPnIdentifier)) {
+      const allConnections = await listConnectionsPortable(otherUserPnIdentifier, accountId);
+      const connection = allConnections.find((c) => c.connectionId === connectionId);
+      if (!connection) {
+        if (newStatus === 'accepted' && normalizedAcceptorPnIdentifier) {
+          await appendConnectionPortable(
+            otherUserPnIdentifier,
+            {
+              connectionId,
+              userPnIdentifier: normalizedAcceptorPnIdentifier,
+              status: 'accepted',
+              createdAt: new Date().toISOString(),
+              acceptedAt: new Date().toISOString(),
+              kemCiphertext
+            },
+            accountId
+          );
+          return;
+        }
+        throw new Error('Connection not found');
+      }
+      await updateConnectionStatusPortable(
+        otherUserPnIdentifier,
+        connectionId,
+        newStatus,
+        accountId,
+        newStatus === 'accepted' ? new Date().toISOString() : undefined,
+        kemCiphertext
+      );
+      return;
+    }
+
     const token: GoogleDriveToken = { access_token: otherUserAccessToken };
 
-    // Get or create connections sheet
     const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
         token,
         otherUserMetadataFolder,
@@ -393,7 +658,6 @@ export class ConnectionsService {
         accountId
       );
 
-      // Get all connections to find the one to update
       const allConnections = await ConnectionsSheetsService.getConnections(
         token,
         spreadsheetId,
@@ -476,9 +740,13 @@ export class ConnectionsService {
     accountId?: string
   ): Promise<Connection[]> {
     // Build token object from accessToken string (backward compatibility)
+    const normalized = userPnIdentifier ? this.normalizeToPnIdentifier(userPnIdentifier) : '';
+    if (normalized && (await isPortableStorageProvider(normalized))) {
+      return listConnectionsPortable(normalized, accountId, { status: 'accepted' });
+    }
+
     const token: GoogleDriveToken = { access_token: accessToken };
     try {
-      // Get or create connections sheet
       const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
         token,
         metadataFolderId,
@@ -486,7 +754,6 @@ export class ConnectionsService {
         accountId
       );
 
-      // Get accepted connections
       const result = await ConnectionsSheetsService.getConnections(
         token,
         spreadsheetId,
@@ -519,9 +786,18 @@ export class ConnectionsService {
     accountId?: string
   ): Promise<{ sent: Connection[]; received: Connection[] }> {
     // Build token object from accessToken string (backward compatibility)
+    const normalized = userPnIdentifier ? this.normalizeToPnIdentifier(userPnIdentifier) : '';
+    if (normalized && (await isPortableStorageProvider(normalized))) {
+      const file = await getConnectionsFilePortable(normalized, accountId);
+      if (!file) return { sent: [], received: [] };
+      return {
+        sent: file.connections.filter((c) => c.status === 'pending_sent'),
+        received: file.connections.filter((c) => c.status === 'pending_received')
+      };
+    }
+
     const token: GoogleDriveToken = { access_token: accessToken };
     try {
-      // Get or create connections sheet
       const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
         token,
         metadataFolderId,
@@ -529,7 +805,6 @@ export class ConnectionsService {
         accountId
       );
 
-      // Get pending sent
       const sentResult = await ConnectionsSheetsService.getConnections(
         token,
         spreadsheetId,
