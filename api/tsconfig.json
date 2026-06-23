@@ -2,6 +2,10 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "commonjs",
+    "baseUrl": ".",
+    "paths": {
+      "@par-noir/user-owned-storage/sqlite": ["../packages/user-owned-storage/dist/sqlite"]
+    },
     "lib": ["ES2020"],
     "outDir": "./dist",
     "rootDir": "./src",

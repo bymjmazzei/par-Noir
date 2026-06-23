@@ -19,6 +19,7 @@
     "./sqlite": {
       "types": "./dist/sqlite.d.ts",
       "import": "./dist/sqlite.js",
+      "require": "./dist/sqlite.js",
       "default": "./dist/sqlite.js"
     }
   },

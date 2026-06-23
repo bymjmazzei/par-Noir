@@ -13,7 +13,7 @@ import {
   type StorageProviderId
 } from '@par-noir/user-owned-storage';
 import { defaultDevicePolicy } from '@par-noir/device-auth';
-import { SqliteBlobTableAdapter } from '@par-noir/user-owned-storage/dist/sqlite';
+import { SqliteBlobTableAdapter } from '@par-noir/user-owned-storage/sqlite';
 import { storageCredentialsService } from '../storageCredentialsService';
 import { createBlobStoreForProvider } from './blobAdapters';
 

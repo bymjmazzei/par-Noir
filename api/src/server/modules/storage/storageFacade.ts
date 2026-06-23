@@ -8,7 +8,7 @@ import {
   type TableSchema,
   type UserOwnedTableStore
 } from '@par-noir/user-owned-storage';
-import { SqliteBlobTableAdapter } from '@par-noir/user-owned-storage/dist/sqlite';
+import { SqliteBlobTableAdapter } from '@par-noir/user-owned-storage/sqlite';
 import { pnRootFolderName } from '@par-noir/user-owned-storage';
 import { storageCredentialsService } from '../storageCredentialsService';
 import { createBlobStoreForProvider } from './blobAdapters';
