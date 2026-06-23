@@ -84,6 +84,10 @@ export default defineConfig(({ mode }) => ({
             if (id.includes('tailwind')) {
               return 'styles';
             }
+            // ZK v2 (genSTARK) — isolate from main vendor; pulls Node __dirname shims at load.
+            if (id.includes('genstark') || id.includes('zk-protocol-v2')) {
+              return 'zk-vendor';
+            }
             // Other vendor libraries
             return 'vendor';
           }
@@ -173,6 +177,9 @@ export default defineConfig(({ mode }) => ({
   },
   define: {
     global: 'globalThis',
+    // genSTARK assembly modules reference __dirname for .wasm paths (wasm: false at runtime).
+    __dirname: JSON.stringify('/'),
+    __filename: JSON.stringify('/index.js'),
     'process.env.NODE_ENV': JSON.stringify(mode),
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString())
