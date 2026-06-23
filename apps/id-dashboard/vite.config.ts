@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => ({
       '@par-noir/pqc-crypto/ml-dsa': resolve(__dirname, '../../packages/pqc-crypto/src/mlDsa.ts'),
       '@par-noir/pqc-crypto/constants': resolve(__dirname, '../../packages/pqc-crypto/src/constants.ts'),
       '@par-noir/zk-protocol-v1': resolve(__dirname, '../../packages/zk-protocol-v1/src/index.ts'),
+      '@par-noir/zk-protocol-v2/envelope': resolve(__dirname, '../../packages/zk-protocol-v2/src/envelope.ts'),
       '@par-noir/zk-protocol-v2': resolve(__dirname, '../../packages/zk-protocol-v2/src/index.ts'),
       // CJS dist breaks Vite named exports; bundle from source like pqc-crypto above
       '@par-noir/recovery-crypto': resolve(__dirname, '../../packages/recovery-crypto/src/index.ts'),
@@ -55,6 +56,9 @@ export default defineConfig(({ mode }) => ({
     sourcemap: false,
     minify: 'terser',
     chunkSizeWarningLimit: 1000,
+    commonjsOptions: {
+      transformMixedEsModules: true,
+    },
     // Workers are handled separately and should not be minified
     rollupOptions: {
       output: {
@@ -84,11 +88,7 @@ export default defineConfig(({ mode }) => ({
             if (id.includes('tailwind')) {
               return 'styles';
             }
-            // ZK v2 (genSTARK) — isolate from main vendor; pulls Node __dirname shims at load.
-            if (id.includes('genstark') || id.includes('zk-protocol-v2')) {
-              return 'zk-vendor';
-            }
-            // Other vendor libraries
+            // Other vendor libraries (keep @guildofweavers/* in vendor — splitting breaks CJS exports)
             return 'vendor';
           }
           

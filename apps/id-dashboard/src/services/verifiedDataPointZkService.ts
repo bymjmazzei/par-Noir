@@ -3,7 +3,6 @@
  * Issuance requires unlocked identity with ML-DSA keys.
  */
 
-import { generateZkProofEnvelopeV2 } from '@par-noir/zk-protocol-v2';
 import type { EncryptedIdentity } from '../utils/crypto';
 import { loadMlDsaKeypairForZk } from '../utils/zkPqcSigning';
 
@@ -48,6 +47,7 @@ export async function issueVerifiedZkpsForQueue(params: {
     params.encryptedIdentity
   );
 
+  const { generateZkProofEnvelopeV2 } = await import('@par-noir/zk-protocol-v2');
   const proofs: string[] = [];
   const expiresAtMs = Date.now() + 365 * 24 * 60 * 60 * 1000;
 

@@ -1,4 +1,4 @@
-import { generateZkProofEnvelopeV2, decodeEnvelopeFromProofString, isZkProofEnvelopeV2 } from '@par-noir/zk-protocol-v2';
+import { decodeEnvelopeFromProofString, isZkProofEnvelopeV2 } from '@par-noir/zk-protocol-v2/envelope';
 import type { IdentityKeyMaterial, ZkpReissueSource } from './types';
 
 const DEFAULT_TTL_MS = 365 * 24 * 60 * 60 * 1000;
@@ -33,6 +33,7 @@ export async function reissueZkProof(
     public_inputs.identity_public_key = successor.publicKey;
   }
   const expiresAtMs = source.expiresAtMs ?? Date.now() + DEFAULT_TTL_MS;
+  const { generateZkProofEnvelopeV2 } = await import('@par-noir/zk-protocol-v2');
   return generateZkProofEnvelopeV2({
     mlDsaSecretKey: successor.mlDsaSecretKey,
     mlDsaPublicKey: successor.mlDsaPublicKey,

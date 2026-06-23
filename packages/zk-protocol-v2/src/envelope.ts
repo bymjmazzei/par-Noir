@@ -1,4 +1,16 @@
+import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
+
 export const ZK_PROOF_TYPE_V2 = 'stark_genstark_sha256_ml_dsa_binding_v2' as const;
+
+export function decodeEnvelopeFromProofString(zkpProof: string): unknown {
+  try {
+    const bytes = base64ToBytes(zkpProof.trim());
+    const json = new TextDecoder().decode(bytes);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
 
 export interface ZkProofEnvelopeV2 {
   format_version: 2;

@@ -1,4 +1,3 @@
-import { generateZkProofEnvelopeV2, verifyZkProofEnvelopeV2 } from '@par-noir/zk-protocol-v2';
 import {
   LINEAGE_ZKP_CONTEXT,
   LINEAGE_ZKP_TYPE,
@@ -34,6 +33,7 @@ function buildPublicInputs(params: LineageZkpParams, signerRole: 'predecessor' |
 }
 
 export async function issueLineageZkpPair(params: LineageZkpParams): Promise<LineageZkpPair> {
+  const { generateZkProofEnvelopeV2 } = await import('@par-noir/zk-protocol-v2');
   const ttl = 10 * 365 * 24 * 60 * 60 * 1000;
   const expiresAtMs = Date.now() + ttl;
 
@@ -56,10 +56,11 @@ export async function issueLineageZkpPair(params: LineageZkpParams): Promise<Lin
   return { predecessorProof, successorProof };
 }
 
-export function verifyLineageZkpPair(
+export async function verifyLineageZkpPair(
   pair: LineageZkpPair,
   expectedMigrationId: string
-): { ok: boolean; reason?: string } {
+): Promise<{ ok: boolean; reason?: string }> {
+  const { verifyZkProofEnvelopeV2 } = await import('@par-noir/zk-protocol-v2');
   const pred = verifyZkProofEnvelopeV2(pair.predecessorProof);
   if (!pred.ok) return { ok: false, reason: `predecessor_${pred.reason}` };
   const succ = verifyZkProofEnvelopeV2(pair.successorProof);

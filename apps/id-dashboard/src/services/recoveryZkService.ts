@@ -7,9 +7,15 @@ import {
   type RecoveryCustodianshipPublicInputs,
   type RecoveryApprovalPublicInputs,
 } from '@par-noir/recovery-crypto';
-import { generateZkProofEnvelopeV2 } from '@par-noir/zk-protocol-v2';
 import type { EncryptedIdentity } from '../utils/crypto';
 import { loadMlDsaKeypairForZk } from '../utils/zkPqcSigning';
+
+async function generateZkEnvelope(params: Parameters<
+  (typeof import('@par-noir/zk-protocol-v2'))['generateZkProofEnvelopeV2']
+>[0]): Promise<string> {
+  const { generateZkProofEnvelopeV2 } = await import('@par-noir/zk-protocol-v2');
+  return generateZkProofEnvelopeV2(params);
+}
 
 const CUSTODIANSHIP_EXPIRY_YEARS = 5;
 const APPROVAL_EXPIRY_HOURS = 72;
@@ -37,7 +43,7 @@ export async function issueCustodianshipCredential(params: {
     ...(params.unrevokable === true ? { unrevokable: true } : {}),
   };
   const expiresAtMs = Date.now() + CUSTODIANSHIP_EXPIRY_YEARS * 365 * 24 * 60 * 60 * 1000;
-  return generateZkProofEnvelopeV2({
+  return generateZkEnvelope({
     mlDsaSecretKey,
     mlDsaPublicKey,
     context: RECOVERY_CUSTODIAN_CONTEXT,
@@ -68,7 +74,7 @@ export async function issueRecoveryApprovalZkp(params: {
       share_index: params.shareIndex,
     } satisfies RecoveryApprovalPublicInputs;
     const expiresAtMs = Date.now() + APPROVAL_EXPIRY_HOURS * 60 * 60 * 1000;
-    return generateZkProofEnvelopeV2({
+    return generateZkEnvelope({
       mlDsaSecretKey,
       mlDsaPublicKey,
       context: RECOVERY_APPROVAL_CONTEXT,

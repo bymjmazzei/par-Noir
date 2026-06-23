@@ -21,7 +21,9 @@ import { PermissionTile } from './components/PermissionTile';
 import { IntegratorTile } from './components/IntegratorTile';
 import { DataPointRequestsPanel } from './components/DataPointRequestsPanel';
 import { IdentitySuccessionPanel } from './components/IdentitySuccessionPanel';
-import { IdentityRotationWizard } from './components/identity/IdentityRotationWizard';
+const IdentityRotationWizard = lazy(() =>
+  import('./components/identity/IdentityRotationWizard').then((m) => ({ default: m.IdentityRotationWizard }))
+);
 import { DeviceManagementPanel } from './components/DeviceManagementPanel';
 import { completeRecoveryWithShares, setPendingRecoveryShares } from './services/recoveryService';
 import {
@@ -43,7 +45,6 @@ import { ownerFetch, ownerGet } from './services/ownerApiService';
 import { RecoveryPasscodeModal } from './components/recovery/RecoveryPasscodeModal';
 import { RecoveryCustodianPendingPanel } from './components/recovery/RecoveryCustodianPendingPanel';
 import { storeCustodianshipCredential } from './services/recoveryCredentialStorage';
-import { assignCustodianVaultAndIssueCredential } from './services/recoveryCustodianSetup';
 import type { RecoveryEnvelope } from '@par-noir/recovery-crypto';
 
 import { MigrationManager, WebIdentityData, MigrationResult } from './utils/migration';
@@ -3351,6 +3352,7 @@ function App() {
           && c.status !== 'accepted'
       );
       const pnId = recoveryVaultPnId || authenticatedUser.id;
+      const { assignCustodianVaultAndIssueCredential } = await import('./services/recoveryCustodianSetup');
       const vault = await assignCustodianVaultAndIssueCredential({
         custodianId,
         custodianName: custodianData.name,
@@ -6910,11 +6912,13 @@ This invitation expires in 24 hours.`;
                           />
                         )}
                         {authenticatedUser && canRotateIdentity && (
-                          <IdentityRotationWizard
-                            authToken={apiToken}
-                            identityKey={authenticatedUser.publicKey || authenticatedUser.id}
-                            currentDid={authenticatedUser.id}
-                          />
+                          <Suspense fallback={<div className="text-sm text-text-secondary mt-4">Loading identity rotation…</div>}>
+                            <IdentityRotationWizard
+                              authToken={apiToken}
+                              identityKey={authenticatedUser.publicKey || authenticatedUser.id}
+                              currentDid={authenticatedUser.id}
+                            />
+                          </Suspense>
                         )}
                         {authenticatedUser && !canRotateIdentity && deviceAuth.hasKeyedDevices && (
                           <div className="text-xs text-text-secondary p-3 bg-secondary rounded-lg mt-4">

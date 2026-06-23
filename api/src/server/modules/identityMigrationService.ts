@@ -97,7 +97,7 @@ async function verifyLineageProofs(
 ): Promise<{ ok: boolean; reason?: string }> {
   try {
     const { verifyLineageZkpPair } = await import('@par-noir/identity-migration');
-    return verifyLineageZkpPair(
+    return await verifyLineageZkpPair(
       { predecessorProof, successorProof },
       migrationId
     );

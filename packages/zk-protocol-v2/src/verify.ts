@@ -2,8 +2,15 @@ import { ML_DSA_65_PUBLIC_KEY_LENGTH } from '@par-noir/pqc-crypto/constants';
 import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
 import { mlDsa65Verify } from '@par-noir/pqc-crypto/ml-dsa';
 import { bindingDigest384, digestToStarkLimbs } from './binding';
-import { canonicalJsonForSigning, isZkProofEnvelopeV2, type ZkProofEnvelopeV2 } from './envelope';
+import {
+  canonicalJsonForSigning,
+  decodeEnvelopeFromProofString,
+  isZkProofEnvelopeV2,
+  type ZkProofEnvelopeV2,
+} from './envelope';
 import { getBindMixStark, starkProofFromBase64 } from './stark';
+
+export { decodeEnvelopeFromProofString };
 
 export interface ZkVerifyResultV2 {
   ok: boolean;
@@ -15,16 +22,6 @@ function digestsEqual(a: Uint8Array, b: Uint8Array): boolean {
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a[i]! ^ b[i]!;
   return diff === 0;
-}
-
-export function decodeEnvelopeFromProofString(zkpProof: string): unknown {
-  try {
-    const bytes = base64ToBytes(zkpProof.trim());
-    const json = new TextDecoder().decode(bytes);
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
 }
 
 /**
