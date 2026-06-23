@@ -36,6 +36,11 @@ export default defineConfig(({ mode }) => ({
       '@par-noir/device-auth': resolve(__dirname, '../../packages/device-auth/src/index.ts'),
       '@par-noir/device-client': resolve(__dirname, '../../packages/device-client/src/index.ts'),
       '@par-noir/identity-migration': resolve(__dirname, '../../packages/identity-migration/src/index.ts'),
+      '@par-noir/user-owned-storage/pn-layout': resolve(__dirname, '../../packages/user-owned-storage/src/pnLayout.ts'),
+      'better-sqlite3': resolve(__dirname, 'src/shims/empty-node-module.ts'),
+      'ipfs-http-client': resolve(__dirname, 'src/shims/empty-node-module.ts'),
+      twilio: resolve(__dirname, 'src/shims/empty-node-module.ts'),
+      '@sendgrid/mail': resolve(__dirname, 'src/shims/empty-node-module.ts'),
     },
   },
   optimizeDeps: {
@@ -49,6 +54,7 @@ export default defineConfig(({ mode }) => ({
     ]
   },
   build: {
+    modulePreload: false,
     // BigInt crypto deps (ML-DSA) require modern output; downleveling to es2015 rewrites `**` to Math.pow
     // which throws at runtime for bigint operands.
     target: 'es2020',

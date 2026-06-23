@@ -3,7 +3,7 @@ import type { BlobStore } from '../blob/BlobStore.js';
 import { BlobPreconditionError } from '../blob/MemoryBlobStore.js';
 import type { ScanOptions, TableRow, TableSchema } from '../types.js';
 import type { TableHandle, UserOwnedTableStore } from './TableStore.js';
-import { TableConcurrencyError } from './SqliteBlobTableAdapter.js';
+import { TableConcurrencyError } from './tableErrors.js';
 
 interface SnapshotFile {
   updatedAt?: string;

@@ -1,5 +1,3 @@
-import { orbitDBService } from './orbitDBService';
-
 export interface OrbitCloudUpdate {
   type: 'nickname' | 'profile-picture' | 'custodian' | 'recovery-key' | 'device' | 'privacy' | 'license-transfer';
   identityId: string;
@@ -8,6 +6,11 @@ export interface OrbitCloudUpdate {
   updatedByDeviceId: string;
   updatedAt: string;
   signature?: string;
+}
+
+async function getOrbitDBService() {
+  const { orbitDBService } = await import('./orbitDBService');
+  return orbitDBService;
 }
 
 export class OrbitCloudAPI {
@@ -22,6 +25,7 @@ export class OrbitCloudAPI {
 
   async healthCheck(): Promise<boolean> {
     try {
+      const orbitDBService = await getOrbitDBService();
       const result = await orbitDBService.healthCheck();
       return result.success;
     } catch (error) {
@@ -32,6 +36,7 @@ export class OrbitCloudAPI {
   }
 
   async storeUpdate(update: OrbitCloudUpdate): Promise<void> {
+    const orbitDBService = await getOrbitDBService();
     const orbitUpdate = {
       type: update.type,
       pnId: update.identityId,
@@ -39,7 +44,7 @@ export class OrbitCloudAPI {
       timestamp: update.updatedAt,
       signature: update.signature
     };
-    
+
     const result = await orbitDBService.storeUpdate(orbitUpdate);
     if (!result.success) {
       throw new Error(`Failed to store update: ${result.error}`);
@@ -48,13 +53,13 @@ export class OrbitCloudAPI {
 
   async getUpdates(identityId: string): Promise<OrbitCloudUpdate[]> {
     try {
+      const orbitDBService = await getOrbitDBService();
       const result = await orbitDBService.getUpdates(identityId);
-      
+
       if (!result.success) {
         return [];
       }
-      
-      // Convert OrbitDB results to cloud format for compatibility
+
       return result.data.map((item: any) => ({
         type: item.type,
         identityId: item.pnId,
@@ -78,6 +83,7 @@ export class OrbitCloudAPI {
     updatedAt: string;
     signature?: string;
   }): Promise<void> {
+    const orbitDBService = await getOrbitDBService();
     const orbitUpdate = {
       type: 'nickname' as const,
       pnId: update.identityId,

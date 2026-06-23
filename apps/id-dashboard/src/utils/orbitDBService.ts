@@ -101,6 +101,9 @@ export class OrbitDBService {
    * Initialize IPFS connection
    */
   private async initializeIPFS(): Promise<void> {
+    if (typeof window !== 'undefined') {
+      return;
+    }
     try {
       // Import IPFS HTTP client
       const { create } = await import('ipfs-http-client');

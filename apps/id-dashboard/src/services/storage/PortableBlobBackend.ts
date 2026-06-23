@@ -1,4 +1,4 @@
-import { encryptedMediaPath, type ContentClass } from '@par-noir/user-owned-storage';
+import { encryptedMediaPath, type ContentClass } from '@par-noir/user-owned-storage/pn-layout';
 import { API_ENDPOINT } from '../../config/api';
 import { ownerFetch } from '../ownerApiService';
 import { AbstractStorageBackend, type StorageFile, type StorageQuota, type StorageUserInfo } from './StorageBackend';

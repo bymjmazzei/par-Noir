@@ -5,5 +5,5 @@ export * from './blob/BlobStore.js';
 export * from './blob/MemoryBlobStore.js';
 export * from './table/TableStore.js';
 export * from './table/DelegateTableAdapter.js';
-export * from './table/SqliteBlobTableAdapter.js';
 export * from './table/SnapshotJsonTableAdapter.js';
+export { TableConcurrencyError } from './table/tableErrors.js';

@@ -4,6 +4,7 @@ import type { BlobStore } from '../blob/BlobStore.js';
 import { BlobPreconditionError } from '../blob/MemoryBlobStore.js';
 import type { ScanOptions, TableRow, TableSchema } from '../types.js';
 import type { TableHandle, UserOwnedTableStore } from './TableStore.js';
+import { TableConcurrencyError } from './tableErrors.js';
 
 const META_TABLE = '_pn_meta';
 const DATA_TABLE = 'rows';
@@ -138,13 +139,6 @@ class SqliteTableHandle implements TableHandle {
     });
     tx();
     await this.persist();
-  }
-}
-
-export class TableConcurrencyError extends Error {
-  constructor(tableId: string) {
-    super(`Concurrent write conflict on table ${tableId}`);
-    this.name = 'TableConcurrencyError';
   }
 }
 
