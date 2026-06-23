@@ -46,7 +46,6 @@ export interface IdentityConfig {
   debug?: boolean;
 }
 
-// Export all data point related types and utilities
+// Types only — do not re-export utils here (creates circular imports with orbitDBService).
 export * from './DataPointTypes';
 export * from './StandardDataPointsRegistry';
-export * from '../utils/DataPointProposal';

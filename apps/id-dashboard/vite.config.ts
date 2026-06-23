@@ -147,6 +147,9 @@ export default defineConfig(({ mode }) => ({
         passes: 2,
       },
       mangle: {
+        // Scope names per ES module — prevents TDZ crashes when a chunk bundles
+        // many modules (e.g. secrets.js init vs component useState both → same name).
+        module: true,
         safari10: true,
         // Don't mangle worker files - they use self/global which can break
         reserved: ['self', 'global', 'Worker', 'importScripts'],

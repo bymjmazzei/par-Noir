@@ -3,4 +3,3 @@
 
 export * from './DataPointTypes';
 export * from './StandardDataPointsRegistry';
-export { DataPointProposalManager } from '../utils/DataPointProposal';

@@ -1,6 +1,13 @@
 import secrets from 'secrets.js-grempe';
 
-secrets.init(8);
+let secretsInitialized = false;
+
+function ensureSecretsInit(): void {
+  if (!secretsInitialized) {
+    secrets.init(8);
+    secretsInitialized = true;
+  }
+}
 
 export interface ShamirShare {
   /** Share index 1..n (from secrets.js encoding) */
@@ -29,6 +36,7 @@ function shareIndex(share: string): number {
 }
 
 export function splitSecret(secret: Uint8Array, threshold: number, totalShares: number): ShamirShare[] {
+  ensureSecretsInit();
   if (threshold < 2 || threshold > 5) throw new Error('threshold must be 2..5');
   if (totalShares < threshold || totalShares > 5) throw new Error('totalShares must be threshold..5');
   if (secret.length === 0) throw new Error('secret must not be empty');
@@ -41,6 +49,7 @@ export function splitSecret(secret: Uint8Array, threshold: number, totalShares: 
 }
 
 export function combineShares(shares: ShamirShare[]): Uint8Array {
+  ensureSecretsInit();
   if (shares.length < 2) throw new Error('need at least 2 shares');
   const indices = shares.map((s) => s.index);
   if (new Set(indices).size !== indices.length) throw new Error('duplicate share indices');
