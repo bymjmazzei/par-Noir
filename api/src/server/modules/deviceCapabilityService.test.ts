@@ -151,6 +151,21 @@ describe('gateOwnerRoute', () => {
     expect(res.body).toEqual({ error: 'capability_not_allowed', reason: 'capability_not_allowed' });
   });
 
+  it('allows profileWrite before Drive layout exists (storage bootstrap)', async () => {
+    mockValidate.mockReturnValue({ pnIdentifier: PN } as ReturnType<
+      typeof PNOAuthService.validateAccessToken
+    >);
+    const req = bearerReq({ path: `/api/storage/credentials/${PN}`, method: 'PUT' });
+    const res = mockRes();
+
+    const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, PN);
+
+    expect(ctx).not.toBeNull();
+    expect(ctx?.isKeyed).toBe(false);
+    expect(res.statusCode).toBeUndefined();
+    expect(mockDriveContext).not.toHaveBeenCalled();
+  });
+
   it('allows unkeyed session when capability is toggled in unkeyedAllows', async () => {
     setupDriveContext(
       {

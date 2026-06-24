@@ -5,6 +5,7 @@
 import type { Request, Response } from 'express';
 import {
   DEVICE_CAPABILITIES,
+  defaultDevicePolicy,
   evaluateDeviceCapability,
   hashRequestBody,
   isDeviceProofTimestampValid,
@@ -103,7 +104,14 @@ export async function resolveDeviceAuthContext(req: Request): Promise<DeviceAuth
   if (!auth) return null;
 
   const bundle = await loadDeviceContext(auth.pnIdentifier);
-  if (!bundle) return null;
+  if (!bundle) {
+    // Drive layout not provisioned yet (first storage credential save). unkeyed_legacy allows bootstrap.
+    return {
+      pnIdentifier: auth.pnIdentifier,
+      policy: defaultDevicePolicy(),
+      isKeyed: false,
+    };
+  }
 
   const proof = await verifyDeviceProofFromRequest(req, auth.pnIdentifier, bundle.devices);
   return {

@@ -1067,9 +1067,34 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             error: errorText,
           });
         } else {
+          const result = (await response.json().catch(() => ({}))) as {
+            directoryBuilt?: boolean;
+            folderInitError?: string;
+          };
           console.log('✅ [StorageCredentials] Credentials persisted to API', {
-            accountsCount: payload.googleDriveAccounts.length
+            accountsCount: payload.googleDriveAccounts.length,
+            directoryBuilt: result.directoryBuilt,
           });
+          if (result.directoryBuilt === false) {
+            console.warn('⚠️ [StorageCredentials] Drive layout incomplete; requesting server re-init', {
+              folderInitError: result.folderInitError,
+            });
+            try {
+              const initRes = await ownerFetch(
+                accessToken,
+                'POST',
+                `/api/storage/initialize/${encodeURIComponent(pnIdentifier)}`
+              );
+              if (!initRes.ok) {
+                const initErr = await initRes.text().catch(() => 'Unknown error');
+                console.warn('⚠️ [StorageCredentials] Drive initialize retry failed:', initErr);
+              } else {
+                console.log('✅ [StorageCredentials] Drive layout initialized via retry');
+              }
+            } catch (initError) {
+              console.warn('⚠️ [StorageCredentials] Drive initialize retry error:', initError);
+            }
+          }
         }
       } catch (error) {
         console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
@@ -4880,7 +4905,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
             const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
             const { maybeMigrateVolumeId } = await import('../../utils/volumeIdMigration');
-            const pnId = await VolumeIdGenerator.generateCanonicalVolumeId(currentUser.publicKey);
+            const pnId = await VolumeIdGenerator.generateVolumeId({
+              pnName: credentials.pnName,
+              passcode: credentials.passcode,
+              publicKey: currentUser.publicKey,
+            });
             const accessToken = payload.googleDriveAccounts[0]?.accessToken;
             if (accessToken) {
               const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(accessToken, pnId);
