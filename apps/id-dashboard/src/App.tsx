@@ -44,7 +44,7 @@ import {
 import { ownerFetch, ownerGet } from './services/ownerApiService';
 import { RecoveryPasscodeModal } from './components/recovery/RecoveryPasscodeModal';
 import { RecoveryCustodianPendingPanel } from './components/recovery/RecoveryCustodianPendingPanel';
-import { RecoveryAuthProvider } from './components/recovery/RecoveryAuthContext';
+import { RecoveryAuthProvider } from './contexts/RecoveryAuthContext';
 import { RecoveryAuthGate } from './components/recovery/RecoveryAuthGate';
 import { RecoveryVaultSetupPanel } from './components/recovery/RecoveryVaultSetupPanel';
 import {

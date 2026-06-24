@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useRecoveryAuth } from './RecoveryAuthContext';
+import { useRecoveryAuth } from '../../contexts/RecoveryAuthContext';
 import { seedRecoveryVaultFromMaterial } from '../../services/recoveryVaultService';
 import { RecoverySharesUnavailableError } from '../../services/recoveryShareResolver';
 

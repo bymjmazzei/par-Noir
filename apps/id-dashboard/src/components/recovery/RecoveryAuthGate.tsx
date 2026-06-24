@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, Shield } from 'lucide-react';
-import { useRecoveryAuth } from './RecoveryAuthContext';
+import { useRecoveryAuth } from '../../contexts/RecoveryAuthContext';
 
 interface RecoveryAuthGateProps {
   onAuthenticated?: () => void;

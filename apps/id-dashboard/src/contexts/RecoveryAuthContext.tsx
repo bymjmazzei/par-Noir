@@ -1,9 +1,9 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import * as React from 'react';
 import {
   RECOVERY_AUTH_TTL_MS,
   setRecoveryAuthSession,
   type RecoveryAuthSession,
-} from '../../services/recoveryAuthSession';
+} from '../services/recoveryAuthSession';
 
 interface RecoveryAuthContextValue {
   isAuthenticated: boolean;
@@ -12,17 +12,26 @@ interface RecoveryAuthContextValue {
   clearAuth: () => void;
 }
 
-const RecoveryAuthContext = createContext<RecoveryAuthContextValue | null>(null);
+let recoveryAuthContext: React.Context<RecoveryAuthContextValue | null> | null = null;
+
+/** Deferred init avoids createContext during components ↔ crypto-utils chunk cycles on load. */
+function getRecoveryAuthContext(): React.Context<RecoveryAuthContextValue | null> {
+  if (!recoveryAuthContext) {
+    recoveryAuthContext = React.createContext<RecoveryAuthContextValue | null>(null);
+  }
+  return recoveryAuthContext;
+}
 
 export function RecoveryAuthProvider({ children }: { children: React.ReactNode }) {
-  const [auth, setAuth] = useState<RecoveryAuthSession | null>(null);
+  const [auth, setAuth] = React.useState<RecoveryAuthSession | null>(null);
+  const Ctx = getRecoveryAuthContext();
 
-  const clearAuth = useCallback(() => {
+  const clearAuth = React.useCallback(() => {
     setAuth(null);
     setRecoveryAuthSession(null);
   }, []);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!auth) {
       setRecoveryAuthSession(null);
       return;
@@ -37,10 +46,10 @@ export function RecoveryAuthProvider({ children }: { children: React.ReactNode }
     return () => window.clearTimeout(timer);
   }, [auth, clearAuth]);
 
-  const authenticateFromFile = useCallback(async (file: File, pnName: string, passcode: string) => {
+  const authenticateFromFile = React.useCallback(async (file: File, pnName: string, passcode: string) => {
     const [{ IdentityCrypto }, { parsePortablePnBackup }] = await Promise.all([
-      import('../../utils/crypto'),
-      import('../../utils/parsePortablePnBackup'),
+      import('../utils/crypto'),
+      import('../utils/parsePortablePnBackup'),
     ]);
     const text = await file.text();
     const parsed = JSON.parse(text) as unknown;
@@ -54,7 +63,7 @@ export function RecoveryAuthProvider({ children }: { children: React.ReactNode }
     });
   }, []);
 
-  const value = useMemo<RecoveryAuthContextValue>(
+  const value = React.useMemo<RecoveryAuthContextValue>(
     () => ({
       isAuthenticated: auth != null && auth.expiresAt > Date.now(),
       auth,
@@ -64,11 +73,11 @@ export function RecoveryAuthProvider({ children }: { children: React.ReactNode }
     [auth, authenticateFromFile, clearAuth]
   );
 
-  return <RecoveryAuthContext.Provider value={value}>{children}</RecoveryAuthContext.Provider>;
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useRecoveryAuth(): RecoveryAuthContextValue {
-  const ctx = useContext(RecoveryAuthContext);
+  const ctx = React.useContext(getRecoveryAuthContext());
   if (!ctx) {
     throw new Error('useRecoveryAuth must be used within RecoveryAuthProvider');
   }
@@ -77,5 +86,5 @@ export function useRecoveryAuth(): RecoveryAuthContextValue {
 
 /** Safe optional hook for components outside provider. */
 export function useRecoveryAuthOptional(): RecoveryAuthContextValue | null {
-  return useContext(RecoveryAuthContext);
+  return React.useContext(getRecoveryAuthContext());
 }
