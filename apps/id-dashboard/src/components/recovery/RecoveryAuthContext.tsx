@@ -1,6 +1,4 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { IdentityCrypto, type EncryptedIdentity } from '../../utils/crypto';
-import { parsePortablePnBackup } from '../../utils/parsePortablePnBackup';
 import {
   RECOVERY_AUTH_TTL_MS,
   setRecoveryAuthSession,
@@ -40,6 +38,10 @@ export function RecoveryAuthProvider({ children }: { children: React.ReactNode }
   }, [auth, clearAuth]);
 
   const authenticateFromFile = useCallback(async (file: File, pnName: string, passcode: string) => {
+    const [{ IdentityCrypto }, { parsePortablePnBackup }] = await Promise.all([
+      import('../../utils/crypto'),
+      import('../../utils/parsePortablePnBackup'),
+    ]);
     const text = await file.text();
     const parsed = JSON.parse(text) as unknown;
     const encryptedIdentity = parsePortablePnBackup(parsed);

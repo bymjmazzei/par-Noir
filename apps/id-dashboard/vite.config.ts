@@ -102,6 +102,9 @@ export default defineConfig(({ mode }) => ({
           
           // Feature-based chunks
           if (id.includes('components/')) {
+            if (id.includes('components/recovery/')) {
+              return 'components';
+            }
             if (id.includes('Security') || id.includes('security')) {
               return 'security-features';
             }
