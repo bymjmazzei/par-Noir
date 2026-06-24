@@ -5,6 +5,7 @@
  */
 
 import { API_ENDPOINT } from '../../config/api';
+import { ownerGet } from '../ownerApiService';
 
 /**
  * Engagement Metrics (tracked in companion metadata)
@@ -1124,10 +1125,14 @@ export class GoogleDriveMetadataService {
   static async getOwnerFileIndexFromContentClasses(
     _accessToken: string,
     _metadataFolderId: string,
-    pnIdentifier: string
+    pnIdentifier: string,
+    ownerApiToken?: string | null
   ): Promise<PublicFileIndex | null> {
     try {
-      const res = await fetch(`${API_ENDPOINT}/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}`);
+      const path = `/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}`;
+      const res = ownerApiToken
+        ? await ownerGet(ownerApiToken, path)
+        : await fetch(`${API_ENDPOINT}${path}`);
       if (!res.ok) return null;
       const data = await res.json();
       return { identifier: data.identifier ?? pnIdentifier, files: data.files ?? [], updatedAt: data.updatedAt ?? new Date().toISOString() };
@@ -1142,10 +1147,14 @@ export class GoogleDriveMetadataService {
   static async getOwnerFileIndex(
     _accessToken: string,
     _metadataFolderId: string,
-    pnIdentifier: string
+    pnIdentifier: string,
+    ownerApiToken?: string | null
   ): Promise<PublicFileIndex | null> {
     try {
-      const res = await fetch(`${API_ENDPOINT}/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}`);
+      const path = `/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}`;
+      const res = ownerApiToken
+        ? await ownerGet(ownerApiToken, path)
+        : await fetch(`${API_ENDPOINT}${path}`);
       if (!res.ok) return null;
       const data = await res.json();
       return { identifier: data.identifier ?? pnIdentifier, files: data.files ?? [], updatedAt: data.updatedAt ?? new Date().toISOString() };

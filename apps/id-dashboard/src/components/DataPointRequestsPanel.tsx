@@ -12,12 +12,14 @@ export interface DataPointRequest {
 }
 
 interface DataPointRequestsPanelProps {
-  authenticatedUser: { id: string; accessToken?: string; authToken?: string; publicKey?: string };
+  authenticatedUser: { id: string; publicKey?: string };
+  apiToken?: string | null;
   onResponded?: () => void;
 }
 
 export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
   authenticatedUser,
+  apiToken = null,
   onResponded
 }) => {
   const [requests, setRequests] = useState<DataPointRequest[]>([]);
@@ -26,7 +28,7 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pnIdentifier, setPnIdentifier] = useState<string | null>(null);
 
-  const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
+  const authToken = apiToken;
 
   useEffect(() => {
     let cancelled = false;
@@ -34,15 +36,13 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
       try {
         const { SecureCredentialManager } = await import('../utils/secureCredentialManager');
         const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-        if (!credentials || !authToken) return;
+        if (!credentials?.pnName || !credentials?.passcode || !authenticatedUser.publicKey) return;
         const { VolumeIdGenerator } = await import('../utils/crypto/volumeIdGenerator');
-        const id = authenticatedUser.publicKey
-          ? await VolumeIdGenerator.generateCanonicalVolumeId(authenticatedUser.publicKey)
-          : await VolumeIdGenerator.generateVolumeId({
-              pnName: credentials.pnName,
-              passcode: credentials.passcode,
-              publicKey: authenticatedUser.publicKey || ''
-            });
+        const id = await VolumeIdGenerator.generateVolumeId({
+          pnName: credentials.pnName,
+          passcode: credentials.passcode,
+          publicKey: authenticatedUser.publicKey
+        });
         if (!cancelled) setPnIdentifier(id);
       } catch {
         // ignore
@@ -51,7 +51,7 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [authenticatedUser.id, authenticatedUser.publicKey, authToken]);
+  }, [authenticatedUser.id, authenticatedUser.publicKey]);
 
   const load = useCallback(async () => {
     if (!pnIdentifier || !authToken) return;

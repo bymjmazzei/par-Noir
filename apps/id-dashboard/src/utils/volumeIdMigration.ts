@@ -1,34 +1,20 @@
 import { VolumeIdGenerator } from '../utils/crypto/volumeIdGenerator';
-import { migrateVolumeId } from '../services/recoveryApiService';
 
 /**
- * When legacy passcode-based pn id differs from canonical publicKey id, migrate API storage row.
+ * Returns the credential-bound volume id (pnName:passcode:publicKey).
+ * Automatic legacy→canonical API migration is disabled: OAuth, Drive folders, and storage
+ * all use this id; migrating the credentials row breaks owner-index and device registry lookups.
  */
 export async function maybeMigrateVolumeId(params: {
   publicKey: string;
   pnName: string;
   passcode: string;
-  authToken: string | null;
+  authToken?: string | null;
   driveFolderId?: string;
 }): Promise<string> {
-  const canonical = await VolumeIdGenerator.generateCanonicalVolumeId(params.publicKey);
-  const legacy = await VolumeIdGenerator.generateVolumeId({
+  return VolumeIdGenerator.generateVolumeId({
     pnName: params.pnName,
     passcode: params.passcode,
-    publicKey: params.publicKey
+    publicKey: params.publicKey,
   });
-  if (legacy === canonical || !params.authToken) {
-    return canonical;
-  }
-  try {
-    await migrateVolumeId(params.authToken, {
-      legacyPnIdentifier: legacy,
-      canonicalPnIdentifier: canonical,
-      publicKey: params.publicKey,
-      driveFolderId: params.driveFolderId
-    });
-  } catch {
-    /* non-blocking */
-  }
-  return canonical;
 }

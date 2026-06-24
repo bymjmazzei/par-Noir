@@ -6701,6 +6701,7 @@ This invitation expires in 24 hours.`;
                         {authenticatedUser && (
                           <DataPointRequestsPanel
                             authenticatedUser={authenticatedUser}
+                            apiToken={apiToken}
                             onResponded={() => {
                               /* permissions refresh on next load */
                             }}

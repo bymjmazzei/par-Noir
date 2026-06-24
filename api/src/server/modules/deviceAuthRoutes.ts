@@ -45,7 +45,18 @@ export function registerDeviceAuthRoutes(app: Application): void {
         ? req.params.userPnIdentifier
         : `pn-${req.params.userPnIdentifier}`;
       const summary = await getDeviceRegistrySummary(pn);
-      if (!summary) return res.status(404).json({ error: 'Storage not connected' });
+      if (!summary) {
+        const { defaultDevicePolicy } = await import('@par-noir/device-auth');
+        const policy = defaultDevicePolicy();
+        return res.json({
+          devices: [],
+          policy: {
+            unkeyedAllows: policy.unkeyedAllows,
+            firstDeviceKeyedAt: policy.firstDeviceKeyedAt,
+          },
+          hasKeyedDevices: false,
+        });
+      }
       return res.json(summary);
     } catch (e) {
       console.error('[devices] registry:', e);
