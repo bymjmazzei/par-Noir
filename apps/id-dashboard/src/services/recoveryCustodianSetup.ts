@@ -9,11 +9,8 @@ import {
   resendRecoveryCustodianInvitation,
 } from './recoveryApiService';
 import { issueCustodianshipCredential } from './recoveryZkService';
-import { pickLowestPendingShareIndex } from './recoveryVaultService';
-import {
-  getPendingRecoverySharesBuffer,
-  setPendingRecoverySharesBuffer,
-} from './recoveryVaultService';
+import { pickLowestPendingShareIndex, getPendingRecoverySharesBuffer, setPendingRecoverySharesBuffer } from './recoveryVaultService';
+import { resolveRecoveryShares } from './recoveryShareResolver';
 
 export async function assignCustodianVaultAndIssueCredential(params: {
   custodianId: string;
@@ -27,6 +24,8 @@ export async function assignCustodianVaultAndIssueCredential(params: {
   userPnIdentifier?: string;
   shareIndex?: number;
   unrevokable?: boolean;
+  pnName?: string;
+  passcode?: string;
   resendExisting?: boolean;
 }): Promise<{
   custodianshipZkp: string;
@@ -66,8 +65,19 @@ export async function assignCustodianVaultAndIssueCredential(params: {
         encryptedShare = serializeOwnerVaultShare(encrypted);
       }
     }
+    if (shareIndex == null && params.pnName && params.passcode) {
+      const shares = await resolveRecoveryShares({
+        encryptedIdentity: params.encryptedIdentity,
+        pnName: params.pnName,
+        passcode: params.passcode,
+      });
+      share = shares[0];
+      shareIndex = share.index;
+      const encrypted = await encryptOwnerVaultShare(share, params.encryptedIdentity.publicKey);
+      encryptedShare = serializeOwnerVaultShare(encrypted);
+    }
     if (shareIndex == null) {
-      throw new Error('No recovery shares available to assign. Initialize vault or connect Drive.');
+      throw new Error('No recovery shares available to assign. Set up recovery vault on Drive first.');
     }
   } else {
     const buffer = getPendingRecoverySharesBuffer();

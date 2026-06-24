@@ -44,6 +44,13 @@ import {
 import { ownerFetch, ownerGet } from './services/ownerApiService';
 import { RecoveryPasscodeModal } from './components/recovery/RecoveryPasscodeModal';
 import { RecoveryCustodianPendingPanel } from './components/recovery/RecoveryCustodianPendingPanel';
+import { RecoveryAuthProvider } from './components/recovery/RecoveryAuthContext';
+import { RecoveryAuthGate } from './components/recovery/RecoveryAuthGate';
+import { RecoveryVaultSetupPanel } from './components/recovery/RecoveryVaultSetupPanel';
+import {
+  getRecoveryAuthSession,
+  recoveryAuthRequiredMessage,
+} from './services/recoveryAuthSession';
 import { storeCustodianshipCredential } from './services/recoveryCredentialStorage';
 import type { RecoveryEnvelope } from '@par-noir/recovery-crypto';
 
@@ -381,12 +388,42 @@ function App() {
     setRecoveryKeys
   } = identityState;
 
-  const recoveryVaultPnId = React.useMemo(() => {
-    if (!authenticatedUser) return null;
-    const raw = authenticatedUser.publicKey || authenticatedUser.id;
-    if (!raw) return null;
-    return raw.startsWith('pn-') ? raw : `pn-${raw}`;
-  }, [authenticatedUser]);
+  const [recoveryVaultPnId, setRecoveryVaultPnId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!authenticatedUser?.publicKey) {
+      setRecoveryVaultPnId(null);
+      return;
+    }
+    void (async () => {
+      const { VolumeIdGenerator } = await import('./utils/crypto/volumeIdGenerator');
+      const creds = SecureCredentialManager.getCredentials(authenticatedUser.id);
+      if (creds?.pnName && creds.passcode) {
+        const pn = await VolumeIdGenerator.generateVolumeId({
+          pnName: creds.pnName,
+          passcode: creds.passcode,
+          publicKey: authenticatedUser.publicKey,
+        });
+        if (!cancelled) setRecoveryVaultPnId(pn);
+      } else {
+        const canonical = await VolumeIdGenerator.generateCanonicalVolumeId(authenticatedUser.publicKey);
+        if (!cancelled) setRecoveryVaultPnId(canonical);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticatedUser?.id, authenticatedUser?.publicKey]);
+
+  const [recoveryAuthVersion, setRecoveryAuthVersion] = React.useState(0);
+  const recoveryMutationAllowed = React.useMemo(
+    () => Boolean(getRecoveryAuthSession()),
+    [recoveryAuthVersion]
+  );
+  const bumpRecoveryAuthUi = React.useCallback(() => {
+    setRecoveryAuthVersion((v) => v + 1);
+  }, []);
 
   const deviceAuth = useDeviceAuthState({
     apiToken,
@@ -406,9 +443,7 @@ function App() {
     useRecoveryVaultState({
       apiToken,
       userPnIdentifier: recoveryVaultPnId,
-      publicKey: authenticatedUser?.publicKey || authenticatedUser?.id || null,
       recoveryThreshold,
-      recoveryTotalShares: 5,
       enabled: canCustodiansRead,
     });
 
@@ -3305,6 +3340,10 @@ function App() {
 
   const generateCustodianQRCode = async (custodianData: CustodianInvitationForm & { id?: string }) => {
     try {
+      const recoveryAuth = getRecoveryAuthSession();
+      if (!recoveryAuth) {
+        throw new Error(recoveryAuthRequiredMessage());
+      }
       if (!canManageCustodians) {
         throw new Error(deviceAuth.deviceRequiredMessage);
       }
@@ -3312,18 +3351,7 @@ function App() {
       if (!custodianId || !authenticatedUser?.id) {
         throw new Error('Select a custodian and unlock your identity first');
       }
-      const identityKey = authenticatedUser.publicKey || authenticatedUser.id;
-      const encPartial = await getEncryptedIdentityForApiToken(identityKey);
-      if (!encPartial?.encryptedData) {
-        throw new Error('Encrypted identity not found');
-      }
-      const encryptedIdentity: EncryptedIdentity = {
-        publicKey: authenticatedUser.publicKey || identityKey,
-        mlKemPublicKey: (authenticatedUser as { mlKemPublicKey?: string }).mlKemPublicKey,
-        encryptedData: encPartial.encryptedData,
-        iv: encPartial.iv,
-        salt: encPartial.salt
-      };
+      const encryptedIdentity = recoveryAuth.encryptedIdentity;
       const invitationId = `inv-${Date.now()}`;
       const existingCustodian = custodians.find((c) => c.id === custodianId);
       const vaultInvited = recoveryVaultSummary?.custodians.some(
@@ -3344,6 +3372,8 @@ function App() {
         threshold: recoveryThreshold,
         apiToken,
         userPnIdentifier: pnId,
+        pnName: recoveryAuth.pnName,
+        passcode: recoveryAuth.passcode,
         unrevokable: custodianData.unrevokable === true,
         resendExisting: Boolean(vaultInvited || existingCustodian?.status === 'pending'),
       });
@@ -3439,6 +3469,9 @@ This invitation expires in 24 hours.`;
 
   const handleAddCustodian = async (custodianData: CustodianInvitationForm) => {
     try {
+      if (!getRecoveryAuthSession()) {
+        throw new Error(recoveryAuthRequiredMessage());
+      }
       if (!canManageCustodians) {
         throw new Error(deviceAuth.deviceRequiredMessage);
       }
@@ -3972,6 +4005,11 @@ This invitation expires in 24 hours.`;
   };
 
   const handleRemoveCustodian = (custodianId: string) => {
+    if (!getRecoveryAuthSession()) {
+      setError(recoveryAuthRequiredMessage());
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
     if (!canManageCustodians) {
       setError(deviceAuth.deviceRequiredMessage);
       setTimeout(() => setError(null), 9000);
@@ -6907,6 +6945,21 @@ This invitation expires in 24 hours.`;
                           </div>
                         )}
                         <div className="space-y-4">
+                        <RecoveryAuthProvider>
+                        <RecoveryAuthGate
+                          onAuthenticated={bumpRecoveryAuthUi}
+                          onLocked={bumpRecoveryAuthUi}
+                        />
+                        <RecoveryVaultSetupPanel
+                          apiToken={apiToken}
+                          userPnIdentifier={recoveryVaultPnId}
+                          canCustodiansRead={canCustodiansRead}
+                          pendingShareCount={recoveryVaultSummary?.pending?.length ?? 0}
+                          onSeeded={() => {
+                            bumpRecoveryAuthUi();
+                            void refreshRecoveryVault();
+                          }}
+                        />
                           {/* Recovery Configuration */}
                           <div className="bg-secondary p-4 rounded-lg">
                             <h4 className="font-medium text-text-primary mb-2">Recovery Configuration</h4>
@@ -6954,7 +7007,9 @@ This invitation expires in 24 hours.`;
                                   <select
                                     value={recoveryThreshold}
                                     onChange={(e) => setRecoveryThreshold(parseInt(e.target.value))}
-                                    className="flex-1 px-3 py-1 border border-input-border bg-input-bg rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                    disabled={!recoveryMutationAllowed}
+                                    title={!recoveryMutationAllowed ? recoveryAuthRequiredMessage() : undefined}
+                                    className="flex-1 px-3 py-1 border border-input-border bg-input-bg rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
                                   >
                                     <option value={2}>2 approvals</option>
                                     <option value={3}>3 approvals</option>
@@ -7051,6 +7106,11 @@ This invitation expires in 24 hours.`;
                               <h4 className="font-medium text-text-primary">Recovery Custodians</h4>
                               <button 
                                 onClick={() => {
+                                  if (!recoveryMutationAllowed) {
+                                    setError(recoveryAuthRequiredMessage());
+                                    setTimeout(() => setError(null), 9000);
+                                    return;
+                                  }
                                   if (!canManageCustodians) {
                                     setError(deviceAuth.deviceRequiredMessage);
                                     setTimeout(() => setError(null), 9000);
@@ -7058,8 +7118,14 @@ This invitation expires in 24 hours.`;
                                   }
                                   setShowAddCustodianModal(true);
                                 }}
-                                disabled={custodians.length >= 5 || !canManageCustodians}
-                                title={!canManageCustodians ? deviceAuth.deviceRequiredMessage : undefined}
+                                disabled={custodians.length >= 5 || !canManageCustodians || !recoveryMutationAllowed}
+                                title={
+                                  !recoveryMutationAllowed
+                                    ? recoveryAuthRequiredMessage()
+                                    : !canManageCustodians
+                                      ? deviceAuth.deviceRequiredMessage
+                                      : undefined
+                                }
                                 className="px-3 py-1 modal-button rounded-md disabled:opacity-50 text-sm"
                               >
                                 Add Custodian ({custodians.length}/5)
@@ -7079,6 +7145,11 @@ This invitation expires in 24 hours.`;
                                   <p className="text-text-secondary mb-3">No custodians added yet</p>
                                   <button 
                                     onClick={() => {
+                                      if (!recoveryMutationAllowed) {
+                                        setError(recoveryAuthRequiredMessage());
+                                        setTimeout(() => setError(null), 9000);
+                                        return;
+                                      }
                                       if (!canManageCustodians) {
                                         setError(deviceAuth.deviceRequiredMessage);
                                         setTimeout(() => setError(null), 9000);
@@ -7086,8 +7157,14 @@ This invitation expires in 24 hours.`;
                                       }
                                       setShowAddCustodianModal(true);
                                     }}
-                                    disabled={!canManageCustodians}
-                                    title={!canManageCustodians ? deviceAuth.deviceRequiredMessage : undefined}
+                                    disabled={!canManageCustodians || !recoveryMutationAllowed}
+                                    title={
+                                      !recoveryMutationAllowed
+                                        ? recoveryAuthRequiredMessage()
+                                        : !canManageCustodians
+                                          ? deviceAuth.deviceRequiredMessage
+                                          : undefined
+                                    }
                                     className="px-4 py-2 modal-button rounded-md text-sm disabled:opacity-50"
                                   >
                                     Add Your First Custodian
@@ -7129,6 +7206,11 @@ This invitation expires in 24 hours.`;
                                       {(custodian.status === 'pending' || vaultStatus === 'invited') && (
                                         <button 
                                           onClick={() => {
+                                            if (!recoveryMutationAllowed) {
+                                              setError(recoveryAuthRequiredMessage());
+                                              setTimeout(() => setError(null), 9000);
+                                              return;
+                                            }
                                             if (!canManageCustodians) {
                                               setError(deviceAuth.deviceRequiredMessage);
                                               setTimeout(() => setError(null), 9000);
@@ -7137,19 +7219,27 @@ This invitation expires in 24 hours.`;
                                             setSelectedCustodianForInvitation(custodian);
                                             setShowSendInvitationModal(true);
                                           }}
-                                          disabled={!canManageCustodians}
+                                          disabled={!canManageCustodians || !recoveryMutationAllowed}
                                           className="text-blue-600 hover:text-blue-800 text-sm disabled:opacity-50"
-                                          title={!canManageCustodians ? deviceAuth.deviceRequiredMessage : 'Generate and send invitation QR code'}
+                                          title={
+                                            !recoveryMutationAllowed
+                                              ? recoveryAuthRequiredMessage()
+                                              : !canManageCustodians
+                                                ? deviceAuth.deviceRequiredMessage
+                                                : 'Generate and send invitation QR code'
+                                          }
                                         >
                                           📤 Send Invitation
                                         </button>
                                       )}
                                       <button 
                                         onClick={() => handleRemoveCustodian(custodian.id)}
-                                        disabled={isProtected || !canManageCustodians}
+                                        disabled={isProtected || !canManageCustodians || !recoveryMutationAllowed}
                                         title={
                                           isProtected
                                             ? 'Protected custodians cannot be revoked'
+                                            : !recoveryMutationAllowed
+                                              ? recoveryAuthRequiredMessage()
                                             : !canManageCustodians
                                               ? deviceAuth.deviceRequiredMessage
                                               : 'Revoke and return share to pending pool'
@@ -7165,6 +7255,7 @@ This invitation expires in 24 hours.`;
                               )}
                             </div>
                           </div>
+                        </RecoveryAuthProvider>
 
                           {/* Recovery Keys Section */}
                           <div className="bg-secondary p-4 rounded-lg">

@@ -3,17 +3,12 @@ import {
   fetchRecoveryCustodianSummary,
   type RecoveryCustodianSummary,
 } from '../services/recoveryApiService';
-import {
-  flushPendingRecoverySharesToDrive,
-  reconcileRecoveryVaultOnDrive,
-} from '../services/recoveryVaultService';
 
+/** Read-only recovery vault status — no auto-seed; mutations happen in Recovery tab after re-auth. */
 export function useRecoveryVaultState(params: {
   apiToken?: string | null;
   userPnIdentifier?: string | null;
-  publicKey?: string | null;
   recoveryThreshold?: number;
-  recoveryTotalShares?: number;
   /** When false, skip vault refresh (e.g. unkeyed session without custodians.read). */
   enabled?: boolean;
 }) {
@@ -31,26 +26,14 @@ export function useRecoveryVaultState(params: {
     }
     setLoading(true);
     try {
-      if (params.publicKey) {
-        await flushPendingRecoverySharesToDrive({
-          userPnIdentifier: params.userPnIdentifier,
-          authToken: params.apiToken,
-          publicKey: params.publicKey,
-        });
-      }
-      if (params.recoveryTotalShares && params.recoveryTotalShares > 0) {
-        await reconcileRecoveryVaultOnDrive({
-          userPnIdentifier: params.userPnIdentifier,
-          authToken: params.apiToken,
-          totalShares: params.recoveryTotalShares,
-        });
-      }
       const data = await fetchRecoveryCustodianSummary(params.userPnIdentifier, params.apiToken);
       setSummary(data);
+    } catch {
+      setSummary(null);
     } finally {
       setLoading(false);
     }
-  }, [params.apiToken, params.userPnIdentifier, params.publicKey, params.recoveryTotalShares, params.enabled]);
+  }, [params.apiToken, params.userPnIdentifier, params.enabled]);
 
   useEffect(() => {
     void refresh();

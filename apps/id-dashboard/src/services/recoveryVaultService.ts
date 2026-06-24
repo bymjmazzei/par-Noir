@@ -5,6 +5,8 @@ import {
   initializeRecoveryVault,
   reconcileRecoveryVault,
 } from './recoveryApiService';
+import { resolveRecoveryShares } from './recoveryShareResolver';
+import type { EncryptedIdentity } from '../utils/crypto';
 
 const PENDING_SHARES_KEY = 'pn_pending_recovery_shares';
 const RECOVERY_REQUESTS_KEY = 'pn_recovery_requests';
@@ -48,7 +50,7 @@ export async function initializeRecoveryVaultOnDrive(params: {
   return result;
 }
 
-/** Flush sessionStorage buffer to Drive if present. */
+/** Flush sessionStorage buffer to Drive if present (legacy create-session fast path). */
 export async function flushPendingRecoverySharesToDrive(params: {
   userPnIdentifier: string;
   authToken: string;
@@ -66,6 +68,31 @@ export async function flushPendingRecoverySharesToDrive(params: {
     threshold: buffer.threshold,
   });
   return { flushed: true, ...result };
+}
+
+/** Seed Drive pending vault from sealed shares in .pn (Recovery tab — explicit user action). */
+export async function seedRecoveryVaultFromMaterial(params: {
+  encryptedIdentity: EncryptedIdentity;
+  pnName: string;
+  passcode: string;
+  userPnIdentifier: string;
+  authToken: string;
+  publicKey: string;
+  threshold?: number;
+}): Promise<{ inserted: number; skipped: number }> {
+  const shares = await resolveRecoveryShares({
+    encryptedIdentity: params.encryptedIdentity,
+    pnName: params.pnName,
+    passcode: params.passcode,
+    publicKey: params.publicKey,
+  });
+  return initializeRecoveryVaultOnDrive({
+    userPnIdentifier: params.userPnIdentifier,
+    authToken: params.authToken,
+    publicKey: params.publicKey,
+    shares,
+    threshold: params.threshold ?? 2,
+  });
 }
 
 /** Normalize legacy custodian rows and report share indices still missing from Drive vault. */

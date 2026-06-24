@@ -5,7 +5,9 @@ import {
   generateRecoveryMaster,
   encryptRecoveryEnvelope,
   buildRecoveryPayload,
+  sealRecoveryShares,
   type RecoveryEnvelope,
+  type RecoverySharesSealed,
   type ShamirShare
 } from '@par-noir/recovery-crypto';
 import { getAssetUrl } from './assetPaths';
@@ -38,6 +40,8 @@ export interface EncryptedIdentity {
   salt: string;
   /** Shamir recovery envelope (AES-GCM of recovery payload, key = recovery master). */
   recoveryEnvelope?: RecoveryEnvelope;
+  /** Shamir shares sealed with pN name + passcode — durable recovery vault seed in .pn file. */
+  recoverySharesSealed?: RecoverySharesSealed;
 }
 
 /** Result of identity creation including Shamir shares for custodian distribution. */
@@ -146,6 +150,7 @@ export class IdentityCrypto {
       });
       const recoveryEnvelope = await encryptRecoveryEnvelope(recoveryMaster, recoveryPayload);
       const recoveryShares = splitSecret(recoveryMaster, recoveryThreshold, recoveryTotalShares);
+      const recoverySharesSealed = await sealRecoveryShares(recoveryShares, username, passcode);
 
       return {
         identity: {
@@ -154,7 +159,8 @@ export class IdentityCrypto {
           encryptedData: encryptedData.encrypted,
           iv: encryptedData.iv,
           salt: encryptedData.salt,
-          recoveryEnvelope
+          recoveryEnvelope,
+          recoverySharesSealed,
         },
         recoveryShares,
         recoveryConfig

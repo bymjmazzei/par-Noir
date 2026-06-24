@@ -1,4 +1,9 @@
 export {
+  sealRecoveryShares,
+  unsealRecoveryShares,
+  type RecoverySharesSealed,
+} from './sealedShares';
+export {
   splitSecret,
   combineShares,
   generateRecoveryMaster,

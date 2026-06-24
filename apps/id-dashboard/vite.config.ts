@@ -25,9 +25,11 @@ export default defineConfig(({ mode }) => ({
       '@par-noir/standard-data-points': resolve(__dirname, '../../packages/standard-data-points/src/index.ts'),
       '@par-noir/aggregator-domain': resolve(__dirname, '../../packages/aggregator-domain/src/index.ts'),
       // pqc-crypto dist is CJS; Vite/Rollup cannot resolve named exports from workspace CJS builds
+      // Subpath aliases must be listed before the package root alias.
       '@par-noir/pqc-crypto/encoding': resolve(__dirname, '../../packages/pqc-crypto/src/encoding.ts'),
       '@par-noir/pqc-crypto/ml-dsa': resolve(__dirname, '../../packages/pqc-crypto/src/mlDsa.ts'),
       '@par-noir/pqc-crypto/constants': resolve(__dirname, '../../packages/pqc-crypto/src/constants.ts'),
+      '@par-noir/pqc-crypto': resolve(__dirname, '../../packages/pqc-crypto/src/index.ts'),
       '@par-noir/zk-protocol-v1': resolve(__dirname, '../../packages/zk-protocol-v1/src/index.ts'),
       '@par-noir/zk-protocol-v2/envelope': resolve(__dirname, '../../packages/zk-protocol-v2/src/envelope.ts'),
       '@par-noir/zk-protocol-v2': resolve(__dirname, '../../packages/zk-protocol-v2/src/index.ts'),

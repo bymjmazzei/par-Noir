@@ -26,6 +26,7 @@ import {
   buildRecoveryPayload,
   encryptRecoveryEnvelope,
   splitSecret,
+  sealRecoveryShares,
 } from '@par-noir/recovery-crypto';
 import type { EncryptedIdentity } from '../utils/crypto';
 import { IdentityCrypto } from '../utils/crypto';
@@ -229,6 +230,7 @@ export async function runIdentityMigrationCore(ctx: MigrationContext): Promise<M
   });
   const recoveryEnvelope = await encryptRecoveryEnvelope(recoveryMaster, recoveryPayload);
   const shares = splitSecret(recoveryMaster, recoveryConfig.threshold, recoveryConfig.totalShares);
+  const recoverySharesSealed = await sealRecoveryShares(shares, ctx.successor.pnName, ctx.successor.passcode);
   setPendingRecoverySharesBuffer({
     publicKey: succMat.publicKey,
     shares,
@@ -248,6 +250,7 @@ export async function runIdentityMigrationCore(ctx: MigrationContext): Promise<M
   ctx.successor.encryptedIdentity = {
     ...ctx.successor.encryptedIdentity,
     recoveryEnvelope,
+    recoverySharesSealed,
   };
   progress = markStepComplete(progress, 'recovery_vault');
   await ackMigrationStep(ctx.authToken, plan.migrationId, 'recovery_vault');
