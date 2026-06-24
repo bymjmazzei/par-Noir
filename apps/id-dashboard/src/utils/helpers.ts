@@ -234,7 +234,8 @@ export function downloadFile(data: string, filename: string, mimeType: string = 
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // Defer revoke — immediate revoke can yield empty/corrupt downloads in Safari and Chrome.
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /**

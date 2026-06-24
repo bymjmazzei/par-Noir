@@ -61,6 +61,8 @@ import { IntegrationCredentialManager } from './utils/integrationCredentialManag
 import { LicenseVerification } from './utils/licenseVerification';
 
 import { InputValidator } from './utils/validation';
+import { downloadFile } from './utils/helpers';
+import { parsePortablePnBackup } from './utils/parsePortablePnBackup';
 import { API_ENDPOINT } from './config/api';
 
 import SimpleStorage, { SimpleIdentity } from './utils/simpleStorage';
@@ -1774,13 +1776,7 @@ function App() {
         .replace(/\s+/g, '-')
         .toLowerCase()
         .substring(0, 20)}.pn`;
-      const pnBlob = new Blob([JSON.stringify(pnExport, null, 2)], { type: 'application/json' });
-      const pnUrl = URL.createObjectURL(pnBlob);
-      const pnLink = document.createElement('a');
-      pnLink.href = pnUrl;
-      pnLink.download = pnFilename;
-      pnLink.click();
-      URL.revokeObjectURL(pnUrl);
+      downloadFile(JSON.stringify(pnExport, null, 2), pnFilename);
 
       // Optional PWA browser cache only — unlock always requires the .pn file.
       try {
@@ -1927,14 +1923,10 @@ function App() {
         authSession = result.authSession;
         importedIdentity = result.identity;
       } else {
-        // Find the identity to import
-        const identityToImport = backup.identities.find((identity: any) =>
-          identity.pnName === importForm.pnName
-        );
-
-        if (!identityToImport) {
-          throw new Error('No matching pN found in backup file');
+        if (backup.identities.length !== 1) {
+          throw new Error('Invalid pN file: Multiple identities found. Each pN file should contain only one identity.');
         }
+        const identityToImport = parsePortablePnBackup(backup);
 
         authSession = await IdentityCrypto.authenticateIdentity(
           identityToImport,
@@ -1949,17 +1941,17 @@ function App() {
 
       // Create DID info for UI
       const didInfo: DIDInfo = {
-        id: importedIdentity.id as string,
-        pnName: (importedIdentity.pnName as string) || importForm.pnName,
-        nickname: importedIdentity.nickname as string,
-        email: (importedIdentity.email as string) || '',
-        phone: (importedIdentity.phone as string) || '',
-        recoveryEmail: (importedIdentity.recoveryEmail as string) || '',
-        recoveryPhone: (importedIdentity.recoveryPhone as string) || '',
-        createdAt: importedIdentity.createdAt as string,
-        status: importedIdentity.status as string,
-        custodiansRequired: importedIdentity.custodiansRequired as boolean,
-        custodiansSetup: importedIdentity.custodiansSetup as boolean
+        id: authSession.id,
+        pnName: '',
+        nickname: authSession.nickname,
+        email: '',
+        phone: '',
+        recoveryEmail: '',
+        recoveryPhone: '',
+        createdAt: authSession.authenticatedAt,
+        status: 'active',
+        custodiansRequired: true,
+        custodiansSetup: false
       };
 
       setDids(prev => {
@@ -2877,6 +2869,15 @@ function App() {
       setError('Please enter both pnName and passcode');
       return;
     }
+
+    try {
+      await storage.init();
+    } catch (error) {
+      logError('Storage initialization error:', error);
+      setError('Storage system error. Please refresh and try again.');
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
     
     // Check if we have either a stored identity selected, a file uploaded, or a synced identity
     const syncedIdentityKey = `synced-identity-${mainForm.pnName}`;
@@ -2934,19 +2935,7 @@ function App() {
 
         // Handle different possible formats (only for file uploads, not stored identities)
         if (mainForm.uploadFile) {
-          if (identityData.identities && Array.isArray(identityData.identities)) {
-            // Backup format - should only have one identity
-            if (identityData.identities.length === 1) {
-              identityToUnlock = identityData.identities[0];
-            } else {
-              throw new Error('Invalid pN file: Multiple identities found. Each pN file should contain only one identity.');
-            }
-          } else if (identityData.id || identityData.pnName) {
-            // Single identity format
-            identityToUnlock = identityData;
-          } else {
-            throw new Error('Invalid pN file format');
-          }
+          identityToUnlock = parsePortablePnBackup(identityData);
         }
 
         // Check if this is an encrypted identity
@@ -3173,58 +3162,37 @@ function App() {
       logDebug('Simple storage identities found:', identities.length);
       
       // Find the identity to unlock
-      let foundIdentity = null;
-      let decryptedIdentity = null;
+      let foundIdentity: SimpleIdentity | null = null;
+      let authSession: AuthSession | null = null;
       
       for (const identity of identities) {
-        // pnName is secret - not logged
-        logDebug('Checking identity');
         try {
-          // Try to decrypt and verify the identity
-          decryptedIdentity = await IdentityCrypto.authenticateIdentity(
+          const session = await IdentityCrypto.authenticateIdentity(
             identity.encryptedData, 
             mainForm.passcode, 
             mainForm.pnName
           );
-          // pnName is secret - not logged
-          logDebug('Decrypted identity');
-          if (decryptedIdentity.pnName === mainForm.pnName) {
-            logDebug('Found matching identity!');
-            foundIdentity = identity;
-            break;
-          }
+          foundIdentity = identity;
+          authSession = session;
+          break;
         } catch (error) {
           logError('Failed to decrypt identity:', error);
-          // Continue to next identity
           continue;
         }
       }
 
-      if (!foundIdentity || !decryptedIdentity) {
-        throw new Error('No identity found with that pnName and passcode.');
+      if (!foundIdentity || !authSession) {
+        throw new Error('No identity found with that pN name and passcode. Upload your .pn file to unlock.');
       }
 
-      // Create session
-      const session: AuthSession = {
-        id: decryptedIdentity.id,
-        pnName: decryptedIdentity.pnName,
-        nickname: decryptedIdentity.nickname,
-        accessToken: `token_${Date.now()}`,
-        expiresIn: 3600,
-        authenticatedAt: new Date().toISOString(),
-        publicKey: foundIdentity.publicKey
-      };
-
-      // Store the session
-      await storage.storeSession(session);
-      
-      // Update state
-      setAuthenticatedUser(session);
+      await storage.storeSession(authSession);
+      setAuthenticatedUser(authSession);
       try {
         const { maybeMigrateVolumeId } = await import('./utils/volumeIdMigration');
+        const credentials = SecureCredentialManager.getCredentials(authSession.id);
         await maybeMigrateVolumeId({
           publicKey: foundIdentity.publicKey,
-          pnName: decryptedIdentity.pnName,
+          pnName: credentials?.pnName ?? mainForm.pnName,
           passcode: mainForm.passcode,
           authToken: apiToken
         });
@@ -3232,12 +3200,12 @@ function App() {
         /* non-blocking */
       }
       setDids([{
-        id: decryptedIdentity.id,
-        pnName: decryptedIdentity.pnName,
-        nickname: decryptedIdentity.nickname, // Set the actual nickname
-        createdAt: decryptedIdentity.authenticatedAt,
+        id: authSession.id,
+        pnName: '',
+        nickname: authSession.nickname,
+        createdAt: authSession.authenticatedAt,
         status: 'active',
-        displayName: decryptedIdentity.nickname,
+        displayName: authSession.nickname,
         custodiansRequired: true,
         custodiansSetup: false
       }]);
