@@ -284,9 +284,9 @@ function App() {
     // Silent in production - no logging
   };
 
-  const logError = (_message: string, ..._args: unknown[]) => {
+  const logError = (message: string, ...args: unknown[]) => {
     if (process.env.NODE_ENV === 'development') {
-      // This is intentionally empty in production
+      console.error(message, ...args);
     }
   };
 
@@ -1763,34 +1763,45 @@ function App() {
       }
       logDebug('Encrypted identity created successfully');
 
-      // Store encrypted identity using simple storage
+      // Portable .pn file is the identity — required for every unlock (file + pN name + passcode).
+      const pnExport = {
+        version: '1.0',
+        timestamp: new Date().toISOString(),
+        identities: [encryptedIdentity],
+      };
+      const pnFilename = `${randomNickname
+        .replace(/[^a-zA-Z0-9\s]/g, '')
+        .replace(/\s+/g, '-')
+        .toLowerCase()
+        .substring(0, 20)}.pn`;
+      const pnBlob = new Blob([JSON.stringify(pnExport, null, 2)], { type: 'application/json' });
+      const pnUrl = URL.createObjectURL(pnBlob);
+      const pnLink = document.createElement('a');
+      pnLink.href = pnUrl;
+      pnLink.download = pnFilename;
+      pnLink.click();
+      URL.revokeObjectURL(pnUrl);
+
+      // Optional PWA browser cache only — unlock always requires the .pn file.
       try {
-        logDebug('Storing encrypted identity with public key:', encryptedIdentity.publicKey);
-        
         const simpleStorage = SimpleStorage.getInstance();
-        // SECURITY: Do NOT store pnName in plaintext - it's a SECRET
-        // Store only a hash for lookup purposes
         const { PNNameHash } = await import('./utils/security/pnNameHash');
         const pnNameHash = await PNNameHash.getLookupKey(createForm.pnName);
-        
+
         const simpleIdentity: SimpleIdentity = {
           id: encryptedIdentity.publicKey,
-          nickname: randomNickname, // Use generated random nickname
-          pnNameHash: pnNameHash, // Store hash instead of plaintext pnName
+          nickname: randomNickname,
+          pnNameHash,
           publicKey: encryptedIdentity.publicKey,
           encryptedData: encryptedIdentity,
           createdAt: new Date().toISOString(),
-          lastAccessed: new Date().toISOString()
+          lastAccessed: new Date().toISOString(),
         };
-        
-        await simpleStorage.storeIdentity(simpleIdentity);
-        logDebug('Identity stored successfully in simple storage');
 
-        // Store for migration if in web app mode
+        await simpleStorage.storeIdentity(simpleIdentity);
         MigrationManager.storeForMigration(encryptedIdentity);
       } catch (error) {
-        logError('Storage error:', error);
-        throw new Error('Failed to store identity. Please try again.');
+        logError('Optional PWA browser cache failed (your .pn file is what matters):', error);
       }
 
       // Recovery keys are now automatically generated and encrypted in the ID file
@@ -1827,7 +1838,9 @@ function App() {
         
 
         
-        showSuccessMessage(`pN created and authenticated successfully! Your nickname is ${randomNickname}. Welcome to Par Noir.`);
+        showSuccessMessage(
+          `pN created! Your .pn file was downloaded — keep it safe; you need it with your pN name and passcode to unlock. Nickname: ${randomNickname}.`
+        );
         
         // Trigger onboarding wizard for new users
         setIsNewUser(true);

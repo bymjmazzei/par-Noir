@@ -23,10 +23,9 @@ export class SimpleStorage {
   private static readonly DB_VERSION = 1;
   private static readonly STORE_NAME = 'identities';
   private db: IDBDatabase | null = null;
+  private initPromise: Promise<void> | null = null;
   
-  private constructor() {
-    this.init();
-  }
+  private constructor() {}
   
   static getInstance(): SimpleStorage {
     if (!SimpleStorage.instance) {
@@ -36,22 +35,28 @@ export class SimpleStorage {
   }
 
   /**
-   * Initialize IndexedDB
+   * Initialize IndexedDB (single in-flight open; concurrent callers share one promise).
    */
   private async init(): Promise<void> {
     if (this.db) return;
+    if (this.initPromise) return this.initPromise;
 
-    return new Promise((resolve, reject) => {
+    this.initPromise = new Promise((resolve) => {
       const request = indexedDB.open(SimpleStorage.DB_NAME, SimpleStorage.DB_VERSION);
 
       request.onerror = () => {
-        console.error('Failed to open SimpleStorage IndexedDB');
-        // Fallback to localStorage for compatibility
+        console.error('[SimpleStorage] IndexedDB unavailable; using localStorage fallback');
+        this.initPromise = null;
         resolve();
       };
 
       request.onsuccess = () => {
         this.db = request.result;
+        this.db.onversionchange = () => {
+          this.db?.close();
+          this.db = null;
+          this.initPromise = null;
+        };
         resolve();
       };
 
@@ -65,7 +70,13 @@ export class SimpleStorage {
           store.createIndex('lastAccessed', 'lastAccessed', { unique: false });
         }
       };
+
+      request.onblocked = () => {
+        console.warn('[SimpleStorage] IndexedDB upgrade blocked by another open connection');
+      };
     });
+
+    return this.initPromise;
   }
 
   /**
