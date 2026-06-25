@@ -10,6 +10,7 @@ import {
   StorageBackendConfig
 } from '../../types/aggregator';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
+import { getStoredToken } from '../parNoirOAuthInline';
 
 export interface DriveInventoryItem {
   fileId: string;
@@ -28,6 +29,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
   private keyPrefix: string;
   private connected = false;
   private apiEndpoint: string | null = null;
+  private getOwnerApiToken: (() => string | null) | null = null;
   private backendId: string;
   private refreshPromise: Promise<string | null> | null = null;
   
@@ -92,7 +94,13 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     }
   }
 
-  constructor(config?: Partial<StorageBackendConfig> & { storageKeyPrefix?: string }) {
+  constructor(
+    config?: Partial<StorageBackendConfig> & {
+      storageKeyPrefix?: string;
+      apiEndpoint?: string;
+      getOwnerApiToken?: () => string | null;
+    }
+  ) {
     const prefix = config?.storageKeyPrefix || 'google_drive';
     super({
       id: config?.id || prefix,
@@ -102,6 +110,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     });
     this.keyPrefix = prefix;
     this.apiEndpoint = config?.apiEndpoint || null;
+    this.getOwnerApiToken = config?.getOwnerApiToken ?? null;
     this.backendId = config?.id || prefix;
     
     // SECURITY: Do not load tokens from plaintext localStorage
@@ -230,6 +239,10 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     return this.keyPrefix;
   }
 
+  private resolveOwnerApiToken(): string | null {
+    return this.getOwnerApiToken?.() ?? getStoredToken()?.accessToken ?? null;
+  }
+
   getEmail(): string | null {
     return this.userEmail;
   }
@@ -305,10 +318,15 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
 
       if (this.apiEndpoint) {
         try {
+          const ownerToken = this.resolveOwnerApiToken();
+          if (!ownerToken) {
+            throw new Error('par Noir API session not ready for Google token refresh');
+          }
           const response = await fetch(`${this.apiEndpoint}/api/auth/google-oauth/refresh`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              Authorization: `Bearer ${ownerToken}`,
             },
             body: JSON.stringify({ refreshToken }),
           });

@@ -1229,6 +1229,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             token: nextAccessToken,
             refreshToken: nextRefreshToken ?? undefined,
             email: resolvedEmail ?? undefined,
+            sessionId: authenticatedUser?.id || authenticatedUser?.publicKey || undefined,
           })
           .catch((connectError) => {
             console.warn('⚠️ [StorageCredentials] Failed to apply refreshed token to backend', connectError);
@@ -1710,16 +1711,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               id: params.backendId,
               name: params.email || 'Google Drive',
               storageKeyPrefix: params.keyPrefix,
-              API_ENDPOINT
+              apiEndpoint: API_ENDPOINT,
+              getOwnerApiToken: resolveOwnerApiToken,
             });
             aggregatorService.registerBackend(params.backendId, backend);
           }
         }
 
+        const sessionId =
+          authenticatedUserRef.current?.id || authenticatedUserRef.current?.publicKey || undefined;
         await backend.connect({
           token: params.token,
           refreshToken: params.refreshToken || undefined,
-          email: params.email || undefined
+          email: params.email || undefined,
+          sessionId,
         });
 
         const resolvedEmail = params.email || backend.getEmail() || null;
@@ -1816,7 +1821,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     }
 
     return upsertPromise;
-  }, [aggregatorService, activeBackendId, API_ENDPOINT, driveAccounts, userEmails]);
+  }, [aggregatorService, activeBackendId, API_ENDPOINT, driveAccounts, userEmails, resolveOwnerApiToken]);
 
   const removeDriveAccount = React.useCallback((backendId: string) => {
     let nextActiveId: string | null = null;
@@ -1969,7 +1974,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
         const hydrationToken = resolveOwnerApiToken();
         if (!hydrationToken) {
-          hydrationMissingCandidatesRef.current.add(candidateId);
+          console.debug('ℹ️ [StorageCredentials] No OAuth token yet; deferring hydration');
           continue;
         }
         const response = await ownerGet(
@@ -2276,6 +2281,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     }
   }, [API_ENDPOINT, resolvedAuth?.publicKey, authenticatedUser?.id, authenticatedUser?.publicKey, upsertDriveAccount, persistStorageCredentialsToAPI, resolveOwnerApiToken, apiToken]);
   // SECURITY: Removed resolvedAuth?.pnName, authenticatedUser?.pnName - these are secrets
+
+  React.useEffect(() => {
+    if (!apiToken || !authenticatedUser?.id) return;
+    if (driveCredentialCacheRef.current.size > 0) return;
+    void hydrateStorageCredentialsFromAPI(true);
+  }, [apiToken, authenticatedUser?.id, hydrateStorageCredentialsFromAPI]);
 
   const fetchDriveUserInfo = React.useCallback(async (accessToken: string) => {
     try {
@@ -4632,10 +4643,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const credential = driveCredentialCacheRef.current.get(backendId)!;
           const backend = aggregatorService?.getBackend(backendId) as { connect: (c: { token: string; refreshToken?: string; email?: string }) => Promise<void> } | null;
           if (backend && credential.accessToken) {
+            const sessionId =
+              authenticatedUserRef.current?.id || authenticatedUserRef.current?.publicKey || undefined;
             await backend.connect({
               token: credential.accessToken,
               refreshToken: credential.refreshToken ?? undefined,
               email: credential.email ?? undefined,
+              sessionId,
             });
             console.log('✅ [401Recovery] Applied fresh token from API to backend');
             return true;
