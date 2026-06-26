@@ -2777,17 +2777,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, pnIdentifier);
             const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(token, pnFolderId);
             
-            // AUTOMATIC CLEANUP: Verify files exist in Google Drive and remove orphaned entries
-            // Google Drive is the source of truth - if file doesn't exist there, remove from all indexes
-            try {
-              const cleanupResult = await GoogleDriveMetadataService.cleanupOrphanedIndexEntries(token, pnIdentifier);
-              if (cleanupResult.ownerIndexRemoved > 0 || cleanupResult.publicIndexRemoved > 0) {
-                console.log(`✅ [Metadata] Cleaned up indexes: removed ${cleanupResult.ownerIndexRemoved} from owner index, ${cleanupResult.publicIndexRemoved} from public index`);
-              }
-            } catch (cleanupError) {
-              console.warn('⚠️ [Metadata] Failed to cleanup orphaned index entries (non-critical):', cleanupError);
-            }
-            
             // Try loading from content class-specific indices first, fallback to root index
             const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndexFromContentClasses(
               token,
@@ -3485,27 +3474,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 fileName: e.fileName || e.originalName
               }))
             });
-            
-            // Automatically clean up orphaned entries from indexes
-            // Google Drive is the source of truth - if file doesn't exist there, remove from all indexes
-            try {
-              if (accessToken && currentPnIdentifier) {
-                const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
-                const cleanupResult = await GoogleDriveMetadataService.cleanupOrphanedIndexEntries(
-                  accessToken,
-                  currentPnIdentifier
-                );
-                if (cleanupResult.ownerIndexRemoved > 0 || cleanupResult.publicIndexRemoved > 0) {
-                  console.log(`✅ [loadFiles] Cleaned up indexes: removed ${cleanupResult.ownerIndexRemoved} from owner index, ${cleanupResult.publicIndexRemoved} from public index`);
-                  // Reload files after cleanup to show updated list
-                  if (loadFilesRef.current) {
-                    setTimeout(() => loadFilesRef.current!(), 1000);
-                  }
-                }
-              }
-            } catch (cleanupError) {
-              console.warn('⚠️ [loadFiles] Failed to cleanup orphaned index entries:', cleanupError);
-            }
           }
         } else {
           console.debug('ℹ️ [loadFiles] Owner index empty; scanning Drive contents', { backendId });
@@ -6485,66 +6453,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         } catch (backendError) {
           throw new Error(`Failed to delete file: ${apiError instanceof Error ? apiError.message : 'API error'} and ${backendError instanceof Error ? backendError.message : 'backend error'}`);
         }
-      }
-
-      // AUTOMATIC CLEANUP: Clean up indexes after deletion
-      // Google Drive is the source of truth - file is deleted, remove from all indexes
-      // NOTE: This cleanup is non-critical - database is already cleaned up by API
-      // Only run if we have a valid token (skip if expired to avoid errors)
-      try {
-        if (accessToken) {
-          // Check if token is likely expired by trying a simple Google Drive API call first
-          // This prevents unnecessary cleanup attempts with expired tokens
-          let tokenValid = false;
-          try {
-            const testResponse = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
-              headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
-            tokenValid = testResponse.ok;
-          } catch {
-            tokenValid = false;
-          }
-          
-          if (!tokenValid) {
-            console.log('ℹ️ [Delete] Token expired - skipping Google Drive index cleanup (database already cleaned)');
-            return; // Skip cleanup if token is invalid
-          }
-          
-          // Generate pN identifier for cleanup
-          let pnIdentifierForCleanup: string | undefined = undefined;
-          try {
-            const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
-            const sessionId = authenticatedUser?.id;
-            const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-            
-            // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth (public)
-            if (credentials?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
-              pnIdentifierForCleanup = await VolumeIdGenerator.generateVolumeId({
-                pnName: credentials.pnName,
-                passcode: credentials.passcode,
-                publicKey: resolvedAuth.publicKey
-              });
-            }
-          } catch (idError) {
-            console.warn('⚠️ [Delete] Failed to generate pN identifier for cleanup:', idError);
-          }
-          
-          if (pnIdentifierForCleanup) {
-            const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
-            const cleanupResult = await GoogleDriveMetadataService.cleanupOrphanedIndexEntries(
-              accessToken,
-              pnIdentifierForCleanup
-            );
-            if (cleanupResult.ownerIndexRemoved > 0 || cleanupResult.publicIndexRemoved > 0) {
-              console.log(`✅ [Delete] Cleaned up indexes: removed ${cleanupResult.ownerIndexRemoved} from owner index, ${cleanupResult.publicIndexRemoved} from public index`);
-            }
-          } else {
-            console.warn('⚠️ [Delete] Cannot generate pN identifier for cleanup - skipping index cleanup');
-          }
-        }
-      } catch (cleanupError) {
-        // Cleanup is non-critical - database is already cleaned, Google Drive indexes are secondary
-        console.log('ℹ️ [Delete] Index cleanup skipped (non-critical):', cleanupError instanceof Error ? cleanupError.message : cleanupError);
       }
 
       // Reload files after deletion

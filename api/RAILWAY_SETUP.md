@@ -115,17 +115,15 @@ You should see:
 ```
 ✅ Database connection pool created
 ✅ Database schema initialized
-✅ Google Drive service account authenticated
-✅ Started periodic Google Drive sync (every 10 minutes)
 🚀 Identity Protocol API Server running on port 3001
 ```
 
 ## How It Works
 
-1. **Database**: All metadata is stored in PostgreSQL (persistent, survives restarts)
-2. **Sync Service**: Every 10 minutes, the API scans Google Drive for `public-file-index.xlsx` files
-3. **Browser Queries**: The aggregator browser queries the API, which returns data from PostgreSQL
-4. **Manual Submissions**: The dashboard can still submit metadata directly to the API (which stores it in PostgreSQL)
+1. **Database**: Public feed metadata is stored in PostgreSQL (`aggregator_media`, `aggregator_thoughts`, `aggregator_collections`).
+2. **Reconcile job**: Every 5 minutes the API aligns the cache with each owner's `public-file-index` (membership truth). Manual trigger: `POST /api/aggregator/metadata-index/reconcile`.
+3. **Browser queries**: The aggregator browser calls the API; responses come from PostgreSQL (with short Redis/browser TTL).
+4. **Writes**: Upload/delete via the API update storage, the owner's index, and the cache together.
 
 ## Troubleshooting
 
@@ -133,15 +131,13 @@ You should see:
 - Check that `DATABASE_URL` is set in Railway
 - Verify the PostgreSQL service is running in Railway
 
-### "Google Drive sync disabled"
-- This is normal if `GOOGLE_SERVICE_ACCOUNT_KEY` is not set
-- The API will still work, but won't automatically sync from Google Drive
-- Manual submissions from the dashboard will still work
+### Stale public feed after manual Drive folder delete
+- Wait up to 5 minutes for the reconcile job, or call `POST /api/aggregator/metadata-index/reconcile`
+- Hard-refresh the browser (aggregator-browser caches index responses ~60s)
 
-### "Failed to scan pN folders"
-- Verify the service account email has access to the Google Drive folders
-- Check that Google Drive API is enabled in Google Cloud Console
-- Verify the service account key JSON is correctly formatted
+### Reconcile skipped a user (auth)
+- Owner Google OAuth may be expired; reconnect Drive in the dashboard
+- Reconcile intentionally skips purge on auth errors to avoid false mass deletion
 
 ## Cost
 

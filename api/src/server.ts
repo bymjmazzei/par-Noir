@@ -214,8 +214,8 @@ class ProductionServer {
   private app: express.Application;
   private server: any;
   private io: SocketIOServer;
-  private _cleanupOrphanedTimer: ReturnType<typeof setTimeout> | null = null;
-  private _cleanupOrphanedInterval: ReturnType<typeof setInterval> | null = null;
+  private _reconcileTimer: ReturnType<typeof setTimeout> | null = null;
+  private _reconcileInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.app = express();
@@ -2241,14 +2241,6 @@ class ProductionServer {
       }
     });
 
-    // POST /api/aggregator/cleanup - Cleanup disabled (was removing all posts from feeds)
-    this.app.post('/api/aggregator/cleanup', async (req, res) => {
-      return res.status(410).json({ 
-        error: 'Cleanup disabled',
-        message: 'Cleanup logic has been disabled as it was removing all posts from feeds. Manual cleanup is no longer available.' 
-      });
-    });
-
     // POST /api/aggregator/metadata-index - Submit public metadata
     this.app.post('/api/aggregator/metadata-index', async (req, res) => {
       let requestId = Math.random().toString(36).substring(7);
@@ -2499,27 +2491,22 @@ class ProductionServer {
       }
     });
 
-    // POST /api/aggregator/metadata-index/cleanup-orphaned - Remove orphaned metadata entries (metadata without corresponding Google Drive files)
-    // Also run automatically every 5 minutes via runCleanupOrphaned.
-    // MUST be before /:fileId route to avoid route conflict
-    this.app.post('/api/aggregator/metadata-index/cleanup-orphaned', async (req, res) => {
+    // POST /api/aggregator/metadata-index/reconcile - Align aggregator cache with owner public indexes
+    // Also run automatically every 5 minutes. MUST be before /:fileId route.
+    this.app.post('/api/aggregator/metadata-index/reconcile', async (req, res) => {
       try {
-        const { runCleanupOrphaned } = await import('./server/jobs/cleanupOrphanedJob');
-        const { checked, removed } = await runCleanupOrphaned();
+        const { runReconcilePublicAggregator } = await import('./server/jobs/reconcilePublicAggregatorJob');
+        const result = await runReconcilePublicAggregator();
         return res.json({
           success: true,
-          checked,
-          removed,
-          message: `Checked ${checked} file(s), removed ${removed} orphaned metadata entry/entries`
+          ...result,
+          message: `Reconciled ${result.usersChecked} user(s); removed ${result.filesRemoved} file(s); purged ${result.usersPurged} user(s)`,
         });
       } catch (error: any) {
-        console.error('[CleanupOrphaned] Error:', error);
-        console.error('[CleanupOrphaned] Error stack:', error?.stack);
+        console.error('[Reconcile] Error:', error);
         return res.status(500).json({
-          error: 'Failed to cleanup orphaned metadata',
+          error: 'Failed to reconcile public aggregator cache',
           message: safeClientErrorMessage(error, NODE_ENV === 'production'),
-          errorType: error?.constructor?.name,
-          stack: error?.stack
         });
       }
     });
@@ -8547,35 +8534,20 @@ class ProductionServer {
       }
     });
 
-    // POST /api/aggregator/metadata-index/sync - DISABLED (Google Drive sync service removed)
-    // Files are added/updated/removed via API calls only - no background sync needed
+    // POST /api/aggregator/metadata-index/sync - Portable index upsert + public cache reconcile
     this.app.post('/api/aggregator/metadata-index/sync', async (req, res) => {
       try {
         const { userStorageSyncService } = await import('./server/modules/userStorageSyncService');
-        const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
+        const { runReconcilePublicAggregator } = await import('./server/jobs/reconcilePublicAggregatorJob');
         const portable = await userStorageSyncService.syncPortableUsers();
-        let driveOk = false;
-        try {
-          await GoogleDriveSyncService.getInstance().syncFromGoogleDrive();
-          driveOk = true;
-        } catch (driveErr) {
-          console.warn('[MetadataSync] Google Drive sync skipped:', driveErr);
-        }
-        return res.json({ success: true, portable, drive: { ok: driveOk } });
+        const reconcile = await runReconcilePublicAggregator();
+        return res.json({ success: true, portable, reconcile });
       } catch (error: any) {
         return res.status(500).json({
           error: 'Sync failed',
           message: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
-    });
-
-    // POST /api/aggregator/metadata-index/cleanup - Cleanup disabled (was removing all posts from feeds)
-    this.app.post('/api/aggregator/metadata-index/cleanup', async (req, res) => {
-      return res.status(410).json({ 
-        error: 'Cleanup disabled',
-        message: 'Cleanup logic has been disabled as it was removing all posts from feeds. Manual cleanup is no longer available.' 
-      });
     });
 
     // POST /api/aggregator/metadata-index/sync-visibility - Sync isPublic from companion metadata files
@@ -8656,16 +8628,6 @@ class ProductionServer {
         console.error('❌ Sync visibility error:', error);
         return res.status(500).json({ error: 'Failed to sync visibility', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
-    });
-
-    // POST /api/aggregator/metadata-index/refresh - DISABLED (Google Drive sync service removed)
-    // Files are added/updated/removed via API calls only - no background sync needed
-    this.app.post('/api/aggregator/metadata-index/refresh', async (req, res) => {
-      return res.status(410).json({
-        error: 'Gone',
-        message: 'Google Drive sync service has been removed. Files are managed via API calls only.',
-        note: 'Use PUT /api/aggregator/metadata-index/:fileId to add/update files, or make files private to remove them.'
-      });
     });
 
     // POST /api/auth/google-oauth/token - Exchange authorization code for tokens
@@ -19302,28 +19264,6 @@ class ProductionServer {
       }
     }
 
-    // DISABLED: Google Drive sync service is outdated - files are now submitted directly via API
-    // Start Google Drive sync service (if configured)
-    // try {
-    //   const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
-    // Google Drive sync service disabled - files are added/updated/removed via API calls only
-    // No background sync needed - aggregate index built from explicit user actions
-    // try {
-    //   const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
-    //   const syncService = GoogleDriveSyncService.getInstance();
-    //   
-    //   // Start periodic sync (every 10 minutes)
-    //   // Only if service account is configured
-    //   if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-    //     syncService.startPeriodicSync(10);
-    //     console.log('✅ Google Drive sync enabled - will run cleanup every 10 minutes');
-    //   } else {
-    //     console.log('ℹ️ Google Drive sync disabled - GOOGLE_SERVICE_ACCOUNT_KEY not set');
-    //   }
-    // } catch (error) {
-    //   console.warn('⚠️ Failed to start Google Drive sync service:', error);
-    //   // Continue anyway - sync is optional
-    // }
 
     // Warm third-party catalog
     try {
@@ -19339,17 +19279,20 @@ class ProductionServer {
         console.log(`🚀 Identity Protocol API Server running on port ${PORT}`);
         console.log(`📊 Environment: ${NODE_ENV}`);
         console.log(`🔒 CORS Origins: ${ALLOWED_ORIGINS.join(', ')}`);
-        // Orphan cleanup: first run after 30s, then every 5 minutes (for testing; can be increased later)
+        // Public aggregator reconcile: first run after 30s, then every 5 minutes
         (async () => {
           try {
-            const { runCleanupOrphaned } = await import('./server/jobs/cleanupOrphanedJob');
-            const run = () => runCleanupOrphaned().catch((e: any) => console.error('[CleanupOrphaned] Scheduled run failed:', e));
-            this._cleanupOrphanedTimer = setTimeout(() => {
+            const { runReconcilePublicAggregator } = await import('./server/jobs/reconcilePublicAggregatorJob');
+            const run = () =>
+              runReconcilePublicAggregator().catch((e: unknown) =>
+                console.error('[Reconcile] Scheduled run failed:', e)
+              );
+            this._reconcileTimer = setTimeout(() => {
               run();
-              this._cleanupOrphanedInterval = setInterval(run, 5 * 60 * 1000);
+              this._reconcileInterval = setInterval(run, 5 * 60 * 1000);
             }, 30_000);
           } catch (e) {
-            console.warn('[CleanupOrphaned] Could not schedule cleanup job:', e);
+            console.warn('[Reconcile] Could not schedule reconcile job:', e);
           }
         })();
         (async () => {
@@ -19382,26 +19325,18 @@ class ProductionServer {
   }
 
   public async stop(): Promise<void> {
-    if (this._cleanupOrphanedTimer) {
-      clearTimeout(this._cleanupOrphanedTimer);
-      this._cleanupOrphanedTimer = null;
+    if (this._reconcileTimer) {
+      clearTimeout(this._reconcileTimer);
+      this._reconcileTimer = null;
     }
-    if (this._cleanupOrphanedInterval) {
-      clearInterval(this._cleanupOrphanedInterval);
-      this._cleanupOrphanedInterval = null;
+    if (this._reconcileInterval) {
+      clearInterval(this._reconcileInterval);
+      this._reconcileInterval = null;
     }
-    // Stop Google Drive sync
     try {
       PlatformRegistrySyncService.stopPeriodicSync();
     } catch (error) {
       console.warn('Failed to stop platform registry sync:', error);
-    }
-    try {
-      const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
-      const syncService = GoogleDriveSyncService.getInstance();
-      syncService.stopPeriodicSync();
-    } catch (error) {
-      console.warn('Failed to stop sync service:', error);
     }
 
     // Close database connections

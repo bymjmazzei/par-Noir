@@ -4,17 +4,13 @@
  * IMPORTANT: This service maintains a PERFORMANCE CACHE, not the source of truth.
  * 
  * Architecture:
- * - Google Drive (`public-file-index.xlsx`) is the SOURCE OF TRUTH (decentralized, user-owned)
+ * - Owner public-file-index (Drive Sheets or portable index) is membership truth for public content
  * - This database is a PERFORMANCE CACHE for fast queries (PostgreSQL)
- * - Sync service (GoogleDriveSyncService) keeps cache fresh by syncing from Google Drive
- * - Users own their data on Google Drive; this cache is just for performance
- * 
- * When files are updated via API, both the cache (this database) and the source of truth
- * (Google Drive index) should be updated to keep them in sync.
+ * - aggregatorReconcileService keeps the cache aligned with each owner's public index
+ * - API write paths (submit/delete) update cache and index together
  */
 
 import { getDatabasePool } from '../utils/database';
-import { isDriveFileUrlDead } from '../utils/driveUrlCheck';
 import { PublicMetadata, CentralIndexEntry, CentralIndexResponse } from './aggregatorMetadataService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 import { EngagementService, type EngagementMetrics } from './engagementService';
@@ -672,11 +668,9 @@ export class AggregatorMetadataServiceDB {
   /**
    * Get all public metadata with optional filters
    * 
-   * IMPORTANT: This is the SOURCE OF TRUTH for the public feed.
-   * The public feed reads directly from the database - NOT from Google Drive files.
-   * Google Drive `public-file-index.xlsx` files are NOT used by the API for the public feed.
-   * 
-   * Only files with `isPublic = 'true'` in the database will appear in the public feed.
+   * Serves the public feed from the aggregator cache (PostgreSQL).
+   * Membership truth lives in each owner's public-file-index; reconcilePublicAggregator
+   * removes cache rows that are no longer listed there.
    */
   async getPublicMetadata(filters?: {
     tags?: string[];
@@ -1042,6 +1036,54 @@ export class AggregatorMetadataServiceDB {
     }
   }
 
+  /** SQL predicate matching public feed rows (isPublic = true). */
+  private static readonly PUBLIC_METADATA_WHERE = `(
+    metadata->>'isPublic' = 'true'
+    OR (metadata->>'isPublic')::boolean = true
+    OR metadata->'isPublic' = 'true'::jsonb
+  )`;
+
+  /**
+   * pn_identifiers that have at least one public row in aggregator cache tables.
+   */
+  async listPnIdentifiersWithPublicFiles(): Promise<string[]> {
+    const db = getDatabasePool();
+    const where = AggregatorMetadataServiceDB.PUBLIC_METADATA_WHERE;
+    const result = await db.query(`
+      SELECT DISTINCT pn_identifier FROM aggregator_media
+        WHERE pn_identifier IS NOT NULL AND ${where}
+      UNION
+      SELECT DISTINCT pn_identifier FROM aggregator_thoughts
+        WHERE pn_identifier IS NOT NULL AND ${where}
+      UNION
+      SELECT DISTINCT pn_identifier FROM aggregator_collections
+        WHERE pn_identifier IS NOT NULL AND ${where}
+    `);
+    return result.rows
+      .map((row: { pn_identifier: string }) => row.pn_identifier)
+      .filter(Boolean);
+  }
+
+  /**
+   * Public file_ids for one user across all aggregator cache tables.
+   */
+  async listPublicFileIdsForUser(pnIdentifier: string): Promise<string[]> {
+    const db = getDatabasePool();
+    const where = AggregatorMetadataServiceDB.PUBLIC_METADATA_WHERE;
+    const tables = this.getAllContentTypeTables();
+    const ids = new Set<string>();
+    for (const table of tables) {
+      const result = await db.query(
+        `SELECT file_id FROM ${table} WHERE pn_identifier = $1 AND ${where}`,
+        [pnIdentifier]
+      );
+      for (const row of result.rows) {
+        if (row.file_id) ids.add(row.file_id);
+      }
+    }
+    return [...ids];
+  }
+
   /**
    * Get ALL files (public + private) for a specific user
    * Used for authenticated users viewing their own content
@@ -1135,17 +1177,7 @@ export class AggregatorMetadataServiceDB {
         );
       }
 
-      // Verify files exist in Google Drive before returning (filter out deleted files)
-      const verifiedEntries = await this.verifyGoogleDriveFilesExist(entries);
-
-      if (
-        verifiedEntries.length !== entries.length &&
-        process.env.NODE_ENV === 'development'
-      ) {
-        console.log(`✅ [getAllFilesForUser] Filtered out ${entries.length - verifiedEntries.length} deleted file(s)`);
-      }
-      
-      return verifiedEntries;
+      return entries;
     } catch (error) {
       console.error('❌ Failed to get all files for user:', error);
       throw error;
@@ -1457,87 +1489,7 @@ export class AggregatorMetadataServiceDB {
   }
 
   /**
-   * Filter results to only include files that exist in Google Drive
-   * This ensures we only show files with active URLs
-   * 
-   * Filtering strategy:
-   * - Files marked as public (isPublic = true) are always kept (trust database)
-   * - Files with publicToken are always kept (accessible through token system)
-   * - Only filter files confirmed deleted (404 or trashed status)
-   * - Always keep files when verification fails (graceful degradation)
-   * 
-   * This prevents false positives where valid files are filtered out due to
-   * service account access limitations.
-   */
-  private async filterActiveFiles(result: { files: CentralIndexEntry[]; total: number; hasMore: boolean }): Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }> {
-    const activeFiles: CentralIndexEntry[] = [];
-    const batchSize = 10; // Process in batches to avoid rate limits
-    
-    for (let i = 0; i < result.files.length; i += batchSize) {
-      const batch = result.files.slice(i, i + batchSize);
-      const batchPromises = batch.map(async (file) => {
-        const backend = file.metadata.backend || 'google_drive';
-        
-        if (!backend || !backend.startsWith('google_drive')) {
-          return file;
-        }
-        
-        const isPublic = file.metadata.isPublic === true;
-        if (isPublic) {
-          return file;
-        }
-        
-        const publicToken = file.metadata.publicToken;
-        if (publicToken) {
-          return file;
-        }
-        
-        const backendFileId = (file.metadata as any).googleDriveFileId || file.metadata.backendFileId;
-        if (!backendFileId) {
-          console.log(`⚠️ [filterActiveFiles] No backendFileId for file ${file.fileId} - keeping (cannot verify)`);
-          return file;
-        }
-        
-        try {
-          const dead = await isDriveFileUrlDead(backendFileId);
-          if (dead) {
-            console.log(`🗑️ [filterActiveFiles] File ${backendFileId} is dead (deleted/not found) - filtering out: ${file.metadata.name || file.fileId}`);
-            return null;
-          }
-          return file;
-        } catch (error) {
-          console.warn(`⚠️ [filterActiveFiles] Error verifying file ${backendFileId} - keeping: ${file.metadata.name || file.fileId}`, error);
-          return file;
-        }
-      });
-      
-      const batchResults = await Promise.all(batchPromises);
-      // Filter out null values (files that were filtered out)
-      const validFiles = batchResults.filter((file): file is CentralIndexEntry => file !== null);
-      activeFiles.push(...validFiles);
-    }
-    
-    // Calculate new total and hasMore based on filtered results
-    // Adjust total proportionally (conservative estimate)
-    const filteredCount = result.files.length - activeFiles.length;
-    const filteredTotal = Math.max(0, result.total - filteredCount);
-    
-    // If we filtered out files, hasMore might need adjustment
-    // Keep hasMore false if we have fewer files than the limit
-    const hasMore = activeFiles.length === result.files.length 
-      ? result.hasMore 
-      : activeFiles.length > 0; // Only set hasMore if we still have files
-    
-    return {
-      files: activeFiles,
-      total: filteredTotal,
-      hasMore
-    };
-  }
-
-  /**
-   * Get full index response
-   * Filters results to only show files with active URLs (files that exist in Google Drive)
+   * Get full index response for the public feed (cache-backed; kept fresh by reconcile job).
    */
   async getIndexResponse(filters?: {
     tags?: string[];
@@ -1554,62 +1506,35 @@ export class AggregatorMetadataServiceDB {
       const cached = await getCachedIndex(filters);
       if (cached) {
         console.log(`✅ [getIndexResponse] Cache hit for filters:`, filters);
-        // Filter cached results to ensure only active files are returned
-        // Extract the fields needed for filtering (cached may have additional fields like updatedAt)
-        const filteredResult = await this.filterActiveFiles({
-          files: cached.files || [],
-          total: cached.total || cached.totalFiles || 0,
-          hasMore: cached.hasMore || false
-        });
-        if (filteredResult.files.length !== (cached.files || []).length) {
-          console.log(`🔍 [getIndexResponse] Filtered ${(cached.files || []).length - filteredResult.files.length} inactive file(s) from cache`);
-        }
-        // Return with same structure as cached (preserve updatedAt, etc.)
         return {
           ...cached,
-          files: filteredResult.files,
-          total: filteredResult.total,
-          totalFiles: filteredResult.total,
-          hasMore: filteredResult.hasMore
+          files: cached.files || [],
+          total: cached.total || cached.totalFiles || 0,
+          totalFiles: cached.total || cached.totalFiles || 0,
+          hasMore: cached.hasMore || false,
         };
       }
     } catch (error) {
       console.warn('⚠️ [getIndexResponse] Cache check failed (non-critical):', error);
-      // Continue to database query if cache fails
     }
-    
-    // Query database for fresh data
+
     const result = await this.getPublicMetadata(filters);
-    
-    // Filter to only show files with active URLs (files that exist in Google Drive)
-    const filteredResult = await this.filterActiveFiles({
-      files: result.files,
-      total: result.total,
-      hasMore: result.hasMore
-    });
-    
-    if (filteredResult.files.length !== result.files.length) {
-      console.log(`🔍 [getIndexResponse] Filtered ${result.files.length - filteredResult.files.length} inactive file(s) (${filteredResult.files.length} active files remaining)`);
-    }
-    
     const stats = await this.getStats();
 
     const response = {
-      files: filteredResult.files,
+      files: result.files,
       updatedAt: stats.lastUpdated,
-      totalFiles: filteredResult.total,  // Total matching files after filtering
-      total: filteredResult.total,        // Alias for consistency
-      hasMore: filteredResult.hasMore     // Whether more pages exist
+      totalFiles: result.total,
+      total: result.total,
+      hasMore: result.hasMore,
     };
-    
-    // SCALABILITY: Cache the filtered response (5 minutes TTL)
+
     try {
       const { setCachedIndex } = await import('../utils/cache');
-      await setCachedIndex(filters, response, 300); // 5 minutes
-      console.log(`💾 [getIndexResponse] Cached filtered response for filters:`, filters);
+      await setCachedIndex(filters, response, 300);
+      console.log(`💾 [getIndexResponse] Cached response for filters:`, filters);
     } catch (error) {
       console.warn('⚠️ [getIndexResponse] Cache set failed (non-critical):', error);
-      // Continue even if cache fails
     }
 
     return response;
@@ -1642,77 +1567,6 @@ export class AggregatorMetadataServiceDB {
       hasMore: result.hasMore     // Whether more pages exist
     };
   }
-
-  /**
-   * Verify Google Drive files still exist
-   * Uses authenticated Google Drive API with service account
-   * Google Drive is the source of truth - deleted files are removed from database
-   */
-  private async verifyGoogleDriveFilesExist(files: CentralIndexEntry[]): Promise<CentralIndexEntry[]> {
-    console.log(`🔍 [verifyGoogleDriveFilesExist] Verifying ${files.length} files from Google Drive...`);
-    
-    const verifiedFiles: CentralIndexEntry[] = [];
-    const filesToRemove: string[] = [];
-    const batchSize = 10;
-    
-    for (let i = 0; i < files.length; i += batchSize) {
-      const batch = files.slice(i, i + batchSize);
-      const batchPromises = batch.map(async (file) => {
-        if (file.metadata.backend !== 'google_drive') {
-          return file;
-        }
-        
-        const googleDriveFileId = (file.metadata as any).googleDriveFileId || file.metadata.backendFileId || file.fileId;
-        if (!googleDriveFileId) {
-          return file;
-        }
-        
-        try {
-          const dead = await isDriveFileUrlDead(googleDriveFileId);
-          if (dead) {
-            console.log(`🗑️ [verifyGoogleDriveFilesExist] File ${googleDriveFileId} is dead (deleted/not found): ${file.metadata.name || 'unknown'}`);
-            filesToRemove.push(file.fileId);
-            return null;
-          }
-          return file;
-        } catch (error) {
-          console.warn(`⚠️ [verifyGoogleDriveFilesExist] Error verifying ${googleDriveFileId}:`, error);
-          return file;
-        }
-      });
-      
-      const batchResults = await Promise.all(batchPromises);
-      const validFiles = batchResults.filter((file): file is CentralIndexEntry => file !== null);
-      verifiedFiles.push(...validFiles);
-      
-      // Small delay between batches to avoid rate limiting
-      if (i + batchSize < files.length) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-    }
-    
-    // Remove deleted files from database (all three tables)
-    if (filesToRemove.length > 0) {
-      try {
-        const db = getDatabasePool();
-        const allTables = this.getAllContentTypeTables();
-        for (const table of allTables) {
-        await db.query(
-            `DELETE FROM ${table} WHERE file_id = ANY($1::text[])`,
-          [filesToRemove]
-        );
-        }
-        console.log(`✅ [verifyGoogleDriveFilesExist] Removed ${filesToRemove.length} deleted file(s) from database: ${filesToRemove.join(', ')}`);
-      } catch (error) {
-        console.error('❌ [verifyGoogleDriveFilesExist] Failed to remove deleted files from database:', error);
-      }
-    } else {
-      console.log(`✅ [verifyGoogleDriveFilesExist] All ${files.length} files verified - no deletions needed`);
-    }
-    
-    return verifiedFiles;
-  }
-
 
   /**
    * Update engagement metrics for a file
