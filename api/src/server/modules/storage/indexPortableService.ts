@@ -1,4 +1,5 @@
 import { contentClassIndexPath, type TableSchema } from '@par-noir/user-owned-storage';
+import { indexEntryToRow } from '@par-noir/storage-migration';
 import type { IndexFileEntry } from '../indexSheetsService';
 import {
   portableTableAppend,
@@ -48,14 +49,8 @@ function rowToEntry(row: Record<string, unknown>): IndexFileEntry {
   return row as IndexFileEntry;
 }
 
-function entryToRow(entry: IndexFileEntry): Record<string, unknown> {
-  return {
-    ...entry,
-    fileId: entry.fileId,
-    visibility: entry.visibility,
-    uploadedAt: entry.uploadedAt,
-    entryData: JSON.stringify(entry)
-  };
+function entryToRow(entry: IndexFileEntry, indexType: 'public' | 'owner'): Record<string, unknown> {
+  return indexEntryToRow(entry, { indexKind: indexType });
 }
 
 export async function getIndexFilesPortable(
@@ -112,7 +107,7 @@ export async function addIndexFilePortable(
   contentClassFolder?: ContentClassFolder
 ): Promise<void> {
   const schema = resolveIndexSchema(indexType, contentClassFolder);
-  await portableTableAppend(pnIdentifier, schema, entryToRow(entry), accountId);
+  await portableTableAppend(pnIdentifier, schema, entryToRow(entry, indexType), accountId);
 }
 
 export async function updateIndexFilePortable(
@@ -152,7 +147,7 @@ export async function setAllIndexFilesPortable(
   await portableTableReplaceAll(
     pnIdentifier,
     schema,
-    entries.map(entryToRow),
+    entries.map((e) => entryToRow(e, indexType)),
     accountId,
     updatedAt ? { updatedAt } : undefined
   );

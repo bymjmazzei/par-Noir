@@ -6,6 +6,10 @@
 
 import { google } from 'googleapis';
 import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
+import {
+  serializeSlimIndexEntryJson,
+  type IndexSheetKind,
+} from '@par-noir/storage-migration';
 
 export interface IndexFileEntry {
   fileId: string;
@@ -155,10 +159,12 @@ export class IndexSheetsService {
     spreadsheetId: string,
     entry: IndexFileEntry,
     userPnIdentifier: string,
-    accountId: string | undefined
+    accountId: string | undefined,
+    indexKind?: IndexSheetKind
   ): Promise<void> {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
+    const entryJson = serializeSlimIndexEntryJson(entry, { indexKind });
 
     await sheets.spreadsheets.values.append({
       spreadsheetId,
@@ -170,7 +176,7 @@ export class IndexSheetsService {
           entry.googleDriveFileId || '',
           entry.visibility,
           entry.uploadedAt,
-          JSON.stringify(entry)
+          entryJson
         ]]
       }
     });
@@ -185,7 +191,8 @@ export class IndexSheetsService {
     fileId: string,
     updates: Partial<IndexFileEntry>,
     userPnIdentifier: string,
-    accountId: string | undefined
+    accountId: string | undefined,
+    indexKind?: IndexSheetKind
   ): Promise<void> {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
@@ -224,6 +231,8 @@ export class IndexSheetsService {
       fileId // Ensure fileId doesn't change
     };
 
+    const entryJson = serializeSlimIndexEntryJson(updatedEntry, { indexKind });
+
     // Update the row
     const rowIndex = foundIndex + 2; // +2 because we skip header and 0-indexed
     await sheets.spreadsheets.values.update({
@@ -236,7 +245,7 @@ export class IndexSheetsService {
           updatedEntry.googleDriveFileId || '',
           updatedEntry.visibility,
           updatedEntry.uploadedAt,
-          JSON.stringify(updatedEntry)
+          entryJson
         ]]
       }
     });
@@ -327,7 +336,8 @@ export class IndexSheetsService {
     entries: IndexFileEntry[],
     userPnIdentifier: string,
     accountId: string | undefined,
-    updatedAt?: string
+    updatedAt?: string,
+    indexKind?: IndexSheetKind
   ): Promise<void> {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
@@ -343,7 +353,7 @@ export class IndexSheetsService {
         e.googleDriveFileId || '',
         e.visibility,
         e.uploadedAt,
-        JSON.stringify(e)
+        serializeSlimIndexEntryJson(e, { indexKind })
       ]);
       await sheets.spreadsheets.values.update({
         spreadsheetId,

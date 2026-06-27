@@ -265,7 +265,15 @@ export async function replaceAllGoogleTableRows(
       token, metadataFolderId, indexType, pnIdentifier, accountId, contentClass
     );
     const entries = portableRowsToIndexEntries(rows as Record<string, unknown>[]) as IndexFileEntry[];
-    await IndexSheetsService.setAllFiles(token, sheetId, entries, pnIdentifier, accountId, meta?.updatedAt);
+    await IndexSheetsService.setAllFiles(
+      token,
+      sheetId,
+      entries,
+      pnIdentifier,
+      accountId,
+      meta?.updatedAt,
+      indexType
+    );
     return;
   }
 

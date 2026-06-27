@@ -206,7 +206,7 @@ export class IndexStorageService {
       accountId,
       contentClass
     );
-    await IndexSheetsService.addFile(token, spreadsheetId, entry, normalized, accountId);
+    await IndexSheetsService.addFile(token, spreadsheetId, entry, normalized, accountId, indexType);
   }
 
   static async updateFile(
@@ -233,7 +233,15 @@ export class IndexStorageService {
       accountId,
       contentClass
     );
-    await IndexSheetsService.updateFile(token, spreadsheetId, fileId, updates, normalized, accountId);
+    await IndexSheetsService.updateFile(
+      token,
+      spreadsheetId,
+      fileId,
+      updates,
+      normalized,
+      accountId,
+      indexType
+    );
   }
 
   static async setAllFiles(
@@ -273,7 +281,8 @@ export class IndexStorageService {
       entries,
       normalized,
       accountId,
-      updatedAt
+      updatedAt,
+      indexType
     );
   }
 }

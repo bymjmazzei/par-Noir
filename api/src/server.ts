@@ -835,7 +835,6 @@ class ProductionServer {
       owner: fileMetadata.owner,
       tags: fileMetadata.tags || [],
       description: fileMetadata.description,
-      thumbnail: fileMetadata.thumbnail,
       publicToken: fileMetadata.publicToken,
       engagement: fileMetadata.engagement,
       inReplyTo: fileMetadata.inReplyTo,
@@ -844,9 +843,9 @@ class ProductionServer {
       indexingPermissions: fileMetadata.indexingPermissions,
       contentClass: contentClass,
       isThoughtThumbnail: metadataAny.isThoughtThumbnail,
-      thought: metadataAny.thought,
-      textPost: metadataAny.textPost,
-      collection: metadataAny.collection
+      mainFileId: metadataAny.mainFileId,
+      thumbnailFileId: metadataAny.thumbnailFileId,
+      collectionFileIds: metadataAny.collectionFileIds ?? metadataAny.collection?.collectionFileIds
     };
 
     const existingEntry = await IndexStorageService.getFileById(
@@ -869,11 +868,7 @@ class ProductionServer {
           likes: indexEntry.engagement?.likes ?? existingEntry.engagement.likes ?? 0,
           comments: indexEntry.engagement?.comments ?? existingEntry.engagement.comments ?? 0,
           shares: indexEntry.engagement?.shares ?? existingEntry.engagement.shares ?? 0,
-          lastUpdated: indexEntry.engagement?.lastUpdated || existingEntry.engagement.lastUpdated || fileMetadata.uploadedAt,
-          engagementHistory: [
-            ...(existingEntry.engagement.engagementHistory || []),
-            ...(indexEntry.engagement?.engagementHistory || [])
-          ]
+          lastUpdated: indexEntry.engagement?.lastUpdated || existingEntry.engagement.lastUpdated || fileMetadata.uploadedAt
         };
       }
 
@@ -1131,7 +1126,7 @@ class ProductionServer {
     // Save updated root index (Sheets)
     const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
     const ownerSheetId = await IndexSheetsService.getIndexSheet(token, metadataFolderId, 'owner', pnIdentifier, accountId);
-    await IndexSheetsService.setAllFiles(token, ownerSheetId, index.files, pnIdentifier, accountId, index.updatedAt);
+    await IndexSheetsService.setAllFiles(token, ownerSheetId, index.files, pnIdentifier, accountId, index.updatedAt, 'owner');
     
     // Also remove from content class-specific index if we know the contentClass (thought→thoughts, collection→collections)
     if (contentClass) {
@@ -1163,7 +1158,7 @@ class ProductionServer {
               contentClassIndex.updatedAt = new Date().toISOString();
               const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
               const ownerSheetId = await IndexSheetsService.getIndexSheet(token, contentTypeFolderId, 'owner', pnIdentifier, accountId, contentTypeFolderName as 'media' | 'thoughts' | 'collections');
-              await IndexSheetsService.setAllFiles(token, ownerSheetId, contentClassIndex.files, pnIdentifier, accountId, contentClassIndex.updatedAt);
+              await IndexSheetsService.setAllFiles(token, ownerSheetId, contentClassIndex.files, pnIdentifier, accountId, contentClassIndex.updatedAt, 'owner');
             }
           }
         }
@@ -1339,13 +1334,17 @@ class ProductionServer {
     );
 
     if (fileMetadata.visibility === 'public') {
-      // Convert companion metadata to public metadata (semantic web format)
-      const publicMetadata = this.companionToPublicMetadata(fileMetadata, fileMetadata.owner.did);
-      
-      // Create index entry with full semantic metadata
+      const metadataAny = fileMetadata as any;
+      const publicContentClass = determineContentClass({
+        fileType: metadataAny.fileType,
+        collection: metadataAny.collection,
+        textPost: metadataAny.textPost,
+        thought: metadataAny.thought,
+        isThoughtThumbnail: metadataAny.isThoughtThumbnail,
+        isPartOfCollection: metadataAny.isPartOfCollection
+      });
+
       const indexEntry: any = {
-        ...publicMetadata,
-        // Keep legacy fields for compatibility
         fileId: fileMetadata.fileId,
         googleDriveFileId: fileMetadata.googleDriveFileId,
         fileName: fileMetadata.fileName,
@@ -1357,9 +1356,15 @@ class ProductionServer {
         owner: fileMetadata.owner,
         tags: fileMetadata.tags || [],
         description: fileMetadata.description,
-        thumbnail: fileMetadata.thumbnail,
         publicToken: fileMetadata.publicToken,
-        indexingPermissions: fileMetadata.indexingPermissions
+        indexingPermissions: fileMetadata.indexingPermissions,
+        contentClass: publicContentClass,
+        isThoughtThumbnail: metadataAny.isThoughtThumbnail,
+        mainFileId: metadataAny.mainFileId,
+        thumbnailFileId: metadataAny.thumbnailFileId,
+        inReplyTo: fileMetadata.inReplyTo,
+        repostOf: fileMetadata.repostOf,
+        engagement: fileMetadata.engagement
       };
 
       const isNewPublicFile = fileIndex < 0;
@@ -1380,11 +1385,7 @@ class ProductionServer {
             likes: indexEntry.engagement?.likes ?? existingEntry.engagement.likes ?? 0,
             comments: indexEntry.engagement?.comments ?? existingEntry.engagement.comments ?? 0,
             shares: indexEntry.engagement?.shares ?? existingEntry.engagement.shares ?? 0,
-            lastUpdated: indexEntry.engagement?.lastUpdated || existingEntry.engagement.lastUpdated || fileMetadata.uploadedAt,
-            engagementHistory: [
-              ...(existingEntry.engagement.engagementHistory || []),
-              ...(indexEntry.engagement?.engagementHistory || [])
-            ]
+            lastUpdated: indexEntry.engagement?.lastUpdated || existingEntry.engagement.lastUpdated || fileMetadata.uploadedAt
           };
         }
         
@@ -1593,9 +1594,8 @@ class ProductionServer {
         );
 
         if (fileMetadata.visibility === 'public') {
-          const publicMetadata = this.companionToPublicMetadata(fileMetadata, fileMetadata.owner.did);
+          const ccMeta = fileMetadata as any;
           const contentClassIndexEntry: any = {
-            ...publicMetadata,
             fileId: fileMetadata.fileId,
             googleDriveFileId: fileMetadata.googleDriveFileId,
             fileName: fileMetadata.fileName,
@@ -1607,9 +1607,13 @@ class ProductionServer {
             owner: fileMetadata.owner,
             tags: fileMetadata.tags || [],
             description: fileMetadata.description,
-            thumbnail: fileMetadata.thumbnail,
             publicToken: fileMetadata.publicToken,
-            indexingPermissions: fileMetadata.indexingPermissions
+            indexingPermissions: fileMetadata.indexingPermissions,
+            contentClass: contentClass,
+            isThoughtThumbnail: ccMeta.isThoughtThumbnail,
+            mainFileId: ccMeta.mainFileId,
+            thumbnailFileId: ccMeta.thumbnailFileId,
+            engagement: fileMetadata.engagement
           };
 
           if (contentClassFileIndex >= 0) {
@@ -1623,11 +1627,7 @@ class ProductionServer {
                 likes: contentClassIndexEntry.engagement?.likes ?? existingEntry.engagement.likes ?? 0,
                 comments: contentClassIndexEntry.engagement?.comments ?? existingEntry.engagement.comments ?? 0,
                 shares: contentClassIndexEntry.engagement?.shares ?? existingEntry.engagement.shares ?? 0,
-                lastUpdated: contentClassIndexEntry.engagement?.lastUpdated || existingEntry.engagement.lastUpdated || fileMetadata.uploadedAt,
-                engagementHistory: [
-                  ...(existingEntry.engagement.engagementHistory || []),
-                  ...(contentClassIndexEntry.engagement?.engagementHistory || [])
-                ]
+                lastUpdated: contentClassIndexEntry.engagement?.lastUpdated || existingEntry.engagement.lastUpdated || fileMetadata.uploadedAt
               };
             }
             contentClassIndex.files[contentClassFileIndex] = contentClassIndexEntry;
@@ -1643,7 +1643,7 @@ class ProductionServer {
         contentClassIndex.updatedAt = new Date().toISOString();
         try {
           console.log(`[updatePublicFileIndex] Content-class before setAllFiles: ${contentTypeFolderName} sheetId=${contentClassPublicSheetId} files.length=${contentClassIndex.files.length}`);
-          await IndexSheetsService.setAllFiles(token, contentClassPublicSheetId, contentClassIndex.files, pnIdentifier, accountId, contentClassIndex.updatedAt);
+          await IndexSheetsService.setAllFiles(token, contentClassPublicSheetId, contentClassIndex.files, pnIdentifier, accountId, contentClassIndex.updatedAt, 'public');
           await this.setPublicPermissionOnDriveFile(accessToken, contentClassPublicSheetId);
         } catch (contentClassErr: any) {
           console.error(`[updatePublicFileIndex] Content-class public index (${contentTypeFolderName}) failed sheetId=${contentClassPublicSheetId}:`, contentClassErr?.message || contentClassErr, contentClassErr?.stack);
@@ -2424,14 +2424,13 @@ class ProductionServer {
                 } : undefined),
                 tags: validatedMetadata.tags || validatedMetadata.keywords || [],
                 description: validatedMetadata.description,
-                thumbnail: (validatedMetadata as any).thumbnail,
                 publicToken: validatedMetadata.publicToken,
                 engagement: validatedMetadata.engagement,
                 contentClass: (validatedMetadata as any).contentClass,
                 isThoughtThumbnail: (validatedMetadata as any).isThoughtThumbnail,
-                thought: validatedMetadata.thought,
-                textPost: validatedMetadata.textPost,
-                collection: validatedMetadata.collection
+                mainFileId: (validatedMetadata as any).mainFileId,
+                thumbnailFileId: (validatedMetadata as any).thumbnailFileId,
+                collectionFileIds: (validatedMetadata as any).collection?.collectionFileIds
               };
               
                 // Check if file exists in index, update or add accordingly
@@ -3616,6 +3615,13 @@ class ProductionServer {
 
         // Define userIdentifier for use in both new file creation and companion metadata reading
         const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+        let aggregatorSubmittedThisRequest = false;
+        let dmcaCheckedThisRequest = false;
+        const accountIdParam = (req.query.accountId as string) || undefined;
+        const { createStorageRequestContext, getDriveTokenFromContext } = await import('./server/modules/storage/storageRequestContext');
+        const storageCtx = tokenPayload.pnIdentifier
+          ? await createStorageRequestContext(tokenPayload.pnIdentifier, accountIdParam)
+          : null;
 
         if (tokenPayload.pnIdentifier) {
           if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, tokenPayload.pnIdentifier))) return;
@@ -3639,10 +3645,12 @@ class ProductionServer {
 
           // Fetch file info from Google Drive
           const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-          const accountId = req.query.accountId as string | undefined;
+          const accountId = accountIdParam;
           
           try {
-            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+            const accessToken =
+              storageCtx?.accessToken ??
+              (await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates));
             const driveResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime`, {
               headers: {
                 'Authorization': `Bearer ${accessToken}`
@@ -3750,30 +3758,28 @@ class ProductionServer {
                       queueItemId: queueItemId || undefined,
                     });
                   }
+                  dmcaCheckedThisRequest = true;
+                } else {
+                  dmcaCheckedThisRequest = true;
                 }
                 // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
                 await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
+                aggregatorSubmittedThisRequest = true;
                 console.log(`[MetadataIndex] Created metadata entry for ${fileId}`);
                 
                 // Also add to Google Drive index (root + content-class e.g. thoughts-public) if file is public
                 try {
-                  const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
                   const pnIdentifier = tokenPayload.pnIdentifier;
-                  if (pnIdentifier) {
-                    const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
-                    if (credentialsRecord?.credentials) {
-                      const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
-                        (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
-                      if (googleDriveAccounts.length > 0) {
-                        const account = googleDriveAccounts[0];
-                        const accountId = this.extractAccountId(account);
-                        const token = {
-                          access_token: account.access_token || account.accessToken,
-                          refresh_token: account.refresh_token || account.refreshToken,
-                          expires_at: account.expires_at,
-                          expires_in: account.expires_in
-                        };
-                        const out = await this.getMetadataFolder(token, pnIdentifier, accountId);
+                  if (pnIdentifier && storageCtx?.credentialsRecord?.credentials) {
+                    const { getDriveTokenFromContext } = await import('./server/modules/storage/storageRequestContext');
+                    const credentialsRecord = storageCtx.credentialsRecord;
+                    const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
+                      (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
+                    if (googleDriveAccounts.length > 0) {
+                      const account = googleDriveAccounts[0];
+                      const resolvedAccountId = accountId || this.extractAccountId(account);
+                      const token = getDriveTokenFromContext(storageCtx);
+                        const out = await this.getMetadataFolder(token, pnIdentifier, resolvedAccountId);
                         if (!out) {
                           return this.driveNotInitialized(res);
                         }
@@ -3791,23 +3797,22 @@ class ProductionServer {
                           description: initialMetadata.description,
                           publicToken: initialMetadata.publicToken,
                           engagement: initialMetadata.engagement,
-                          thought: initialMetadata.thought,
-                          textPost: initialMetadata.textPost,
                           isThoughtThumbnail: (initialMetadata as any).isThoughtThumbnail,
-                          collection: initialMetadata.collection,
-                          isPartOfCollection: (initialMetadata as any).isPartOfCollection
+                          mainFileId: (initialMetadata as any).mainFileId,
+                          thumbnailFileId: (initialMetadata as any).thumbnailFileId,
+                          isPartOfCollection: (initialMetadata as any).isPartOfCollection,
+                          collectionFileIds: initialMetadata.collection?.collectionFileIds
                         };
-                        await this.updateOwnerFileIndex(token, pnIdentifier, out.metadataFolderId, fileMetadataForIndex, accountId);
+                        await this.updateOwnerFileIndex(token, pnIdentifier, out.metadataFolderId, fileMetadataForIndex, resolvedAccountId);
                         await this.updatePublicFileIndex(
                           token,
                           pnIdentifier,
                           out.metadataFolderId,
                           out.pnFolderId,
                           fileMetadataForIndex,
-                          accountId
+                          resolvedAccountId
                         );
                         console.log(`✅ [MetadataIndex] Added new file to Google Drive public index (root + content-class): ${fileId}`);
-                      }
                     }
                   }
                 } catch (driveError: any) {
@@ -3910,30 +3915,28 @@ class ProductionServer {
                       queueItemId: queueItemId || undefined,
                     });
                   }
+                  dmcaCheckedThisRequest = true;
+                } else {
+                  dmcaCheckedThisRequest = true;
                 }
                 // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
                 await service.submitMetadata(minimalMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
+                aggregatorSubmittedThisRequest = true;
                 console.log(`[MetadataIndex] Created minimal metadata entry for ${fileId}`);
                 
                 // Also add to Google Drive index (root + content-class e.g. thoughts-public) if file is public
                 try {
-                  const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
                   const pnIdentifier = tokenPayload.pnIdentifier;
-                  if (pnIdentifier) {
-                    const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
-                    if (credentialsRecord?.credentials) {
-                      const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
-                        (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
-                      if (googleDriveAccounts.length > 0) {
-                        const account = googleDriveAccounts[0];
-                        const accountId = this.extractAccountId(account);
-                        const token = {
-                          access_token: account.access_token || account.accessToken,
-                          refresh_token: account.refresh_token || account.refreshToken,
-                          expires_at: account.expires_at,
-                          expires_in: account.expires_in
-                        };
-                        const out = await this.getMetadataFolder(token, pnIdentifier, accountId);
+                  if (pnIdentifier && storageCtx?.credentialsRecord?.credentials) {
+                    const { getDriveTokenFromContext } = await import('./server/modules/storage/storageRequestContext');
+                    const credentialsRecord = storageCtx.credentialsRecord;
+                    const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
+                      (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
+                    if (googleDriveAccounts.length > 0) {
+                      const account = googleDriveAccounts[0];
+                      const resolvedAccountId = accountIdParam || this.extractAccountId(account);
+                      const token = getDriveTokenFromContext(storageCtx);
+                        const out = await this.getMetadataFolder(token, pnIdentifier, resolvedAccountId);
                         if (!out) {
                           return this.driveNotInitialized(res);
                         }
@@ -3951,23 +3954,22 @@ class ProductionServer {
                           description: minimalMetadata.description,
                           publicToken: minimalMetadata.publicToken,
                           engagement: minimalMetadata.engagement,
-                          thought: minimalMetadata.thought,
-                          textPost: minimalMetadata.textPost,
                           isThoughtThumbnail: (minimalMetadata as any).isThoughtThumbnail,
-                          collection: minimalMetadata.collection,
-                          isPartOfCollection: (minimalMetadata as any).isPartOfCollection
+                          mainFileId: (minimalMetadata as any).mainFileId,
+                          thumbnailFileId: (minimalMetadata as any).thumbnailFileId,
+                          isPartOfCollection: (minimalMetadata as any).isPartOfCollection,
+                          collectionFileIds: minimalMetadata.collection?.collectionFileIds
                         };
-                        await this.updateOwnerFileIndex(token, pnIdentifier, out.metadataFolderId, fileMetadataForIndex, accountId);
+                        await this.updateOwnerFileIndex(token, pnIdentifier, out.metadataFolderId, fileMetadataForIndex, resolvedAccountId);
                         await this.updatePublicFileIndex(
                           token,
                           pnIdentifier,
                           out.metadataFolderId,
                           out.pnFolderId,
                           fileMetadataForIndex,
-                          accountId
+                          resolvedAccountId
                         );
                         console.log(`✅ [MetadataIndex] Added new file (minimal) to Google Drive public index (root + content-class): ${fileId}`);
-                      }
                     }
                   }
                 } catch (driveError: any) {
@@ -4072,20 +4074,23 @@ class ProductionServer {
             
             const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
             const userPnId = userIdentifier || tokenPayload.pnIdentifier || tokenPayload.did;
-            const credentialsRecord = await storageCredentialsService.getCredentials(userPnId);
+            const credentialsRecord =
+              storageCtx?.credentialsRecord ?? (await storageCredentialsService.getCredentials(userPnId));
             
             if (credentialsRecord?.credentials) {
               const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
                 (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
               if (googleDriveAccounts.length > 0) {
                 const account = googleDriveAccounts[0];
-                const accountIdForToken = this.extractAccountId(account);
-                const token = {
-                  access_token: account.access_token || account.accessToken,
-                  refresh_token: account.refresh_token || account.refreshToken,
-                  expires_at: account.expires_at,
-                  expires_in: account.expires_in
-                };
+                const accountIdForToken = accountIdParam || this.extractAccountId(account);
+                const token = storageCtx
+                  ? getDriveTokenFromContext(storageCtx)
+                  : {
+                      access_token: account.access_token || account.accessToken,
+                      refresh_token: account.refresh_token || account.refreshToken,
+                      expires_at: account.expires_at,
+                      expires_in: account.expires_in
+                    };
                 const accessToken = token.access_token;
                 const backendFileId = current.metadata.backendFileId || fileId;
                 
@@ -4200,10 +4205,11 @@ class ProductionServer {
                 
                 const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
                 const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-                const accountId = req.query.accountId as string | undefined;
+                const accountId = accountIdParam;
                 
-                // Get credentials to build token object
-                const credentialsRecord = await storageCredentialsService.getCredentials(userIdentifier);
+                const credentialsRecord =
+                  storageCtx?.credentialsRecord ??
+                  (await storageCredentialsService.getCredentials(userIdentifier));
                 if (!credentialsRecord?.credentials) {
                   throw new Error('Google Drive not connected');
                 }
@@ -4214,12 +4220,14 @@ class ProductionServer {
                 }
                 const account = googleDriveAccounts[0];
                 const actualAccountId = accountId || this.extractAccountId(account);
-                const token = {
-                  access_token: account.access_token || account.accessToken,
-                  refresh_token: account.refresh_token || account.refreshToken,
-                  expires_at: account.expires_at,
-                  expires_in: account.expires_in
-                };
+                const token = storageCtx
+                  ? getDriveTokenFromContext(storageCtx)
+                  : {
+                      access_token: account.access_token || account.accessToken,
+                      refresh_token: account.refresh_token || account.refreshToken,
+                      expires_at: account.expires_at,
+                      expires_in: account.expires_in
+                    };
                 const accessToken = token.access_token; // Keep for fetch calls
                 
                 // Fetch file info from Google Drive
@@ -4505,21 +4513,25 @@ class ProductionServer {
                   
                   const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
                   const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-                  const accountId = req.query.accountId as string | undefined;
-                  const credentialsRecord = await storageCredentialsService.getCredentials(userIdentifier);
+                  const accountId = accountIdParam;
+                  const credentialsRecord =
+                    storageCtx?.credentialsRecord ??
+                    (await storageCredentialsService.getCredentials(userIdentifier));
                   
                   if (credentialsRecord?.credentials) {
                     const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
                       (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
                     if (googleDriveAccounts.length > 0) {
                       const account = googleDriveAccounts[0];
-                      const accountIdForToken = this.extractAccountId(account);
-                      const token = {
-                        access_token: account.access_token || account.accessToken,
-                        refresh_token: account.refresh_token || account.refreshToken,
-                        expires_at: account.expires_at,
-                        expires_in: account.expires_in
-                      };
+                      const accountIdForToken = accountId || this.extractAccountId(account);
+                      const token = storageCtx
+                        ? getDriveTokenFromContext(storageCtx)
+                        : {
+                            access_token: account.access_token || account.accessToken,
+                            refresh_token: account.refresh_token || account.refreshToken,
+                            expires_at: account.expires_at,
+                            expires_in: account.expires_in
+                          };
                       const accessToken = token.access_token;
                       
                       // Get pN folder and metadata folder
@@ -4645,19 +4657,23 @@ class ProductionServer {
             // Get user's credentials
             const pnIdentifier = tokenPayload.pnIdentifier;
             if (pnIdentifier) {
-              const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
+              const credentialsRecord =
+                storageCtx?.credentialsRecord ??
+                (await storageCredentialsService.getCredentials(pnIdentifier));
               if (credentialsRecord?.credentials) {
                 const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
                   (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
                 if (googleDriveAccounts.length > 0) {
                   const account = googleDriveAccounts[0];
-                  const accountId = this.extractAccountId(account);
-                  const token = {
-                    access_token: account.access_token || account.accessToken,
-                    refresh_token: account.refresh_token || account.refreshToken,
-                    expires_at: account.expires_at,
-                    expires_in: account.expires_in
-                  };
+                  const accountId = accountIdParam || this.extractAccountId(account);
+                  const token = storageCtx
+                    ? getDriveTokenFromContext(storageCtx)
+                    : {
+                        access_token: account.access_token || account.accessToken,
+                        refresh_token: account.refresh_token || account.refreshToken,
+                        expires_at: account.expires_at,
+                        expires_in: account.expires_in
+                      };
                   const out = await this.getMetadataFolder(token, pnIdentifier, accountId);
                   if (!out) {
                     return this.driveNotInitialized(res);
@@ -4688,14 +4704,13 @@ class ProductionServer {
                   } : undefined,
                   tags: updated.tags || updated.keywords || [],
                   description: updated.description,
-                  thumbnail: (updated as any).thumbnail,
                   publicToken: updated.publicToken,
                   engagement: updated.engagement,
                   contentClass: (updated as any).contentClass,
                   isThoughtThumbnail: (updated as any).isThoughtThumbnail,
-                  thought: updated.thought,
-                  textPost: updated.textPost,
-                  collection: updated.collection
+                  mainFileId: (updated as any).mainFileId,
+                  thumbnailFileId: (updated as any).thumbnailFileId,
+                  collectionFileIds: (updated as any).collection?.collectionFileIds
                 };
                 
                   // Check if file exists in index, update or add accordingly
@@ -4806,21 +4821,25 @@ class ProductionServer {
                 
                 const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
                 const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-                const accountId = req.query.accountId as string | undefined;
-                const credentialsRecord = await storageCredentialsService.getCredentials(userIdentifier);
+                const accountId = accountIdParam;
+                const credentialsRecord =
+                  storageCtx?.credentialsRecord ??
+                  (await storageCredentialsService.getCredentials(userIdentifier));
                 
                 if (credentialsRecord?.credentials) {
                   const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
                     (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
                   if (googleDriveAccounts.length > 0) {
                     const account = googleDriveAccounts[0];
-                    const accountIdForToken = this.extractAccountId(account);
-                    const token = {
-                      access_token: account.access_token || account.accessToken,
-                      refresh_token: account.refresh_token || account.refreshToken,
-                      expires_at: account.expires_at,
-                      expires_in: account.expires_in
-                    };
+                    const accountIdForToken = accountId || this.extractAccountId(account);
+                    const token = storageCtx
+                      ? getDriveTokenFromContext(storageCtx)
+                      : {
+                          access_token: account.access_token || account.accessToken,
+                          refresh_token: account.refresh_token || account.refreshToken,
+                          expires_at: account.expires_at,
+                          expires_in: account.expires_in
+                        };
                     const accessToken = token.access_token;
                     
                     // Get pN folder and metadata folder
@@ -4928,8 +4947,8 @@ class ProductionServer {
         }
         
         // CRITICAL: Submit metadata to aggregator service so it appears in feeds
-        // Only runs if file is public and exists in database
-        if (isPublic === true && current) {
+        // Only for private→public transitions on existing files (creation path already submitted)
+        if (isPublic === true && current && fileExistedBefore && !aggregatorSubmittedThisRequest) {
           try {
             // Get token payload for submitMetadata
             {
@@ -5014,6 +5033,7 @@ class ProductionServer {
                   submitTokenPayload.pnIdentifier,
                   submitTokenPayload.did || submitTokenPayload.pnIdentifier
                 );
+                aggregatorSubmittedThisRequest = true;
                 console.log(`[MetadataIndex PUT] Submitted metadata to aggregator for public file ${actualFileId}`);
               }
             }

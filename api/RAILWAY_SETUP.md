@@ -125,6 +125,16 @@ You should see:
 3. **Browser queries**: The aggregator browser calls the API; responses come from PostgreSQL (with short Redis/browser TTL).
 4. **Writes**: Upload/delete via the API update storage, the owner's index, and the cache together.
 
+## DMCA moderation (Gemini)
+
+Optional bot DMCA screening runs before public indexing. Configure on the **API** Railway service:
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GEMINI_API_KEY` | No | — | Google AI Studio key. If unset, DMCA checks **fail open** (content allowed). |
+| `GEMINI_MODEL` | No | `gemini-2.0-flash` | Generative model for DMCA checks. Override if Google deprecates the default. |
+| `DMCA_GATE_FAIL_MODE` | No | `open` | `open` = allow on API errors; `closed` = send to Prism review queue on errors. |
+
 ## Troubleshooting
 
 ### "Database connection failed"

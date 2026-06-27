@@ -1,7 +1,7 @@
 /**
  * API-side Gemini Moderation Service
  * DMCA-focused content check for private→indexed gating
- * Uses GEMINI_API_KEY env var
+ * Uses GEMINI_API_KEY and optional GEMINI_MODEL env vars
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -12,13 +12,24 @@ export interface DMCACheckResult {
   confidence: number;
 }
 
+/** Default flash model for DMCA checks (override with GEMINI_MODEL on Railway). */
+export const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
+
+export function resolveGeminiModelName(): string {
+  const fromEnv = process.env.GEMINI_MODEL?.trim();
+  return fromEnv && fromEnv.length > 0 ? fromEnv : DEFAULT_GEMINI_MODEL;
+}
+
 export class GeminiModerationService {
   private genAI: GoogleGenerativeAI | null = null;
   private apiKey: string;
   private isInitialized: boolean = false;
+  private readonly modelName: string;
+  private modelErrorLogged = false;
 
   constructor() {
     this.apiKey = process.env.GEMINI_API_KEY || '';
+    this.modelName = resolveGeminiModelName();
     if (!this.apiKey) {
       console.warn('⚠️ [GeminiModerationService] GEMINI_API_KEY not set; DMCA check will fail open');
       return;
@@ -29,6 +40,22 @@ export class GeminiModerationService {
     } catch (error) {
       console.error('❌ [GeminiModerationService] Failed to initialize:', error);
     }
+  }
+
+  private getModel() {
+    if (!this.genAI) {
+      throw new Error('Gemini client not initialized');
+    }
+    return this.genAI.getGenerativeModel({ model: this.modelName });
+  }
+
+  private logModelErrorOnce(error: unknown): void {
+    if (this.modelErrorLogged) return;
+    this.modelErrorLogged = true;
+    const msg = error instanceof Error ? error.message : String(error);
+    console.warn(
+      `⚠️ [GeminiModerationService] DMCA model "${this.modelName}" unavailable (${msg.slice(0, 120)}); checks fail open. Set GEMINI_MODEL on Railway if needed.`
+    );
   }
 
   /**
@@ -43,7 +70,7 @@ export class GeminiModerationService {
 
     try {
       const base64 = await this.toBase64(content);
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = this.getModel();
 
       const prompt = `Analyze this content for DMCA/copyright risk. Flag if copyrighted music, video, images, or text is detectable at any level—including background or incidental use (e.g. music playing while someone talks). Do not distinguish between primary and incidental use. Only allow content with no recognizable copyrighted material, original/creator-owned content, or properly licensed content. Return JSON only: {"flagged": boolean, "reason": string, "confidence": number (0-1)}. If content appears to be original, user-created, or properly licensed, set flagged to false.`;
 
@@ -61,7 +88,7 @@ export class GeminiModerationService {
         confidence: typeof response.confidence === 'number' ? response.confidence : 0.8,
       };
     } catch (error) {
-      console.error('❌ [GeminiModerationService] DMCA check error:', error);
+      this.logModelErrorOnce(error);
       return { flagged: false, confidence: 0, reason: 'Check unavailable' };
     }
   }
@@ -89,7 +116,7 @@ export class GeminiModerationService {
       const prompt = `These are ${clips.length} clips sampled from the same file. Analyze each for DMCA/copyright risk. Flag if copyrighted music, video, images, or text is detectable at any level—including background or incidental use. Do not distinguish between primary and incidental use. Only allow if no recognizable copyrighted material, original/creator-owned content, or properly licensed content. If ANY clip appears to violate, return flagged: true. Return JSON only: {"flagged": boolean, "reason": string, "confidence": number (0-1)}.`;
       parts.push({ text: prompt });
 
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = this.getModel();
       const result = await model.generateContent(parts);
       const responseText = result.response.text();
       const response = this.parseJSONResponse(responseText);
@@ -100,7 +127,7 @@ export class GeminiModerationService {
         confidence: typeof response.confidence === 'number' ? response.confidence : 0.8,
       };
     } catch (error) {
-      console.error('❌ [GeminiModerationService] DMCA sampled check error:', error);
+      this.logModelErrorOnce(error);
       return { flagged: false, confidence: 0, reason: 'Check unavailable' };
     }
   }
@@ -136,4 +163,9 @@ export function getGeminiModerationService(): GeminiModerationService {
     instance = new GeminiModerationService();
   }
   return instance;
+}
+
+/** Test-only: reset singleton between tests */
+export function resetGeminiModerationServiceForTests(): void {
+  instance = null;
 }
