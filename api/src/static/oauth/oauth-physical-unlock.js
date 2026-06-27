@@ -203,9 +203,36 @@
     });
   }
 
+  /**
+   * Decrypt a standard pN identity file (file upload mode).
+   * Key derivation matches id-dashboard IdentityCrypto: PBKDF2 on "pnName:passcode".
+   * @returns {{ encryptedIdentity: object, publicKey: string, did: string, decryptedIdentity: object }}
+   */
+  async function decryptIdentityFile(identityRow, pnName, passcode) {
+    var enc = identityRow.encryptedData ?? identityRow.encrypted;
+    if (!enc || !identityRow.iv || !identityRow.salt) {
+      throw new Error('Invalid identity file: missing encrypted data');
+    }
+    var plaintext = await decryptWithBinding(identityRow, pnName, passcode, undefined);
+    var identity = JSON.parse(plaintext);
+    var publicKey = identityRow.publicKey || identity.publicKey;
+    if (!publicKey) throw new Error('Invalid pN file: missing public key');
+    if (identity.username !== pnName) {
+      throw new Error('Authentication failed: pN name does not match identity file');
+    }
+    var did = identity.id;
+    if (!did) throw new Error('Identity file does not contain a DID');
+    var encryptedIdentity = Object.assign({}, identityRow, {
+      encryptedData: enc,
+      publicKey: publicKey,
+    });
+    return { encryptedIdentity: encryptedIdentity, publicKey: publicKey, did: did, decryptedIdentity: identity };
+  }
+
   global.ParNoirOAuthPhysical = {
     decryptFromDrive: decryptFromDrive,
     decryptUidFromDrive: decryptUidFromDrive,
+    decryptIdentityFile: decryptIdentityFile,
     unlockBoundIdentity: unlockBoundIdentity,
     unlockFromUsbKeyAndPayload: unlockFromUsbKeyAndPayload,
     readNfcIdentity: readNfcIdentity,

@@ -1,6 +1,6 @@
 /**
  * pN Identity Crypto Utilities for Backend
- * Decrypts and verifies pN identity files using the same algorithm as the frontend
+ * Decrypts and verifies pN identity files using the same algorithm as the dashboard
  */
 
 import crypto from 'crypto';
@@ -29,29 +29,34 @@ export interface DecryptedIdentity {
 }
 
 /**
- * Decrypt pN identity file using passcode
+ * Decrypt pN identity file using pnName + passcode (both required for key derivation).
  */
 export async function decryptIdentity(
   encryptedIdentity: EncryptedIdentity,
+  pnName: string,
   passcode: string
 ): Promise<DecryptedIdentity> {
   try {
-    // Decrypt the encrypted data
     const decryptedData = await decrypt(
       {
         encrypted: encryptedIdentity.encryptedData,
         iv: encryptedIdentity.iv,
-        salt: encryptedIdentity.salt
+        salt: encryptedIdentity.salt,
       },
+      pnName,
       passcode
     );
 
-    // Parse the decrypted identity
-    const identity = JSON.parse(decryptedData);
-    
+    const identity = JSON.parse(decryptedData) as DecryptedIdentity;
+
+    if (identity.username !== pnName) {
+      throw new Error('Authentication failed: username mismatch');
+    }
+
     return identity;
-  } catch (error: any) {
-    throw new Error(`Failed to decrypt identity: ${error.message}`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to decrypt identity: ${message}`);
   }
 }
 
@@ -64,46 +69,34 @@ export function verifyPnName(identity: DecryptedIdentity, expectedPnName: string
 }
 
 /**
- * Decrypt encrypted data using passcode
- * Matches the frontend implementation using PBKDF2 and AES-GCM
+ * Decrypt encrypted data using pnName + passcode (matches dashboard IdentityCrypto.deriveKey).
  */
 async function decrypt(
   encryptedData: { encrypted: string; iv: string; salt: string },
+  pnName: string,
   passcode: string
 ): Promise<string> {
   try {
-    // Convert base64 strings to buffers
     const encryptedBuffer = Buffer.from(encryptedData.encrypted, 'base64');
     const ivBuffer = Buffer.from(encryptedData.iv, 'base64');
     const saltBuffer = Buffer.from(encryptedData.salt, 'base64');
 
-    // Derive key using PBKDF2 (same as frontend)
-    // Frontend uses 1000000 iterations with SHA-512 (military-grade)
-    const key = crypto.pbkdf2Sync(
-      passcode,
-      saltBuffer,
-      1000000, // Same iterations as frontend (military-grade: 1M iterations)
-      32, // 256 bits = 32 bytes for AES-256
-      'sha512' // Same hash as frontend (military-grade: SHA-512)
-    );
+    const keyMaterial = `${pnName}:${passcode}`;
+    const key = crypto.pbkdf2Sync(keyMaterial, saltBuffer, 1000000, 32, 'sha512');
 
-    // Decrypt using AES-256-GCM
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, ivBuffer);
-    
-    // Extract auth tag (last 16 bytes of encrypted data)
+
     const authTagLength = 16;
     const ciphertext = encryptedBuffer.slice(0, -authTagLength);
     const authTag = encryptedBuffer.slice(-authTagLength);
-    
+
     decipher.setAuthTag(authTag);
-    
+
     let decrypted = decipher.update(ciphertext, undefined, 'utf8');
     decrypted += decipher.final('utf8');
-    
+
     return decrypted;
-  } catch (error: any) {
-    // If decryption fails, the passcode is wrong
-    throw new Error('Invalid passcode or corrupted identity file');
+  } catch {
+    throw new Error('Invalid pN name, passcode, or corrupted identity file');
   }
 }
-

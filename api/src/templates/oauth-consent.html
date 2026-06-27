@@ -1011,90 +1011,20 @@
           throw new Error('Invalid identity file: missing public key');
         }
         
-        // ALWAYS decrypt identity to get DID - EXACT COPY FROM DASHBOARD
-        // This is the EXACT same code from apps/id-dashboard/src/utils/crypto.ts
-        if (encryptedIdentity.encryptedData && encryptedIdentity.iv && encryptedIdentity.salt) {
-          try {
-            // Helper function - EXACT COPY from dashboard
-            const base64ToArrayBuffer = (base64) => {
-              const binary = atob(base64);
-              const bytes = new Uint8Array(binary.length);
-              for (let i = 0; i < binary.length; i++) {
-                bytes[i] = binary.charCodeAt(i);
-              }
-              return bytes.buffer;
-            };
-            
-            // EXACT COPY of dashboard's deriveKey method
-            const encoder = new TextEncoder();
-            const passcodeBuffer = encoder.encode(passcode);
-            const saltBuffer = base64ToArrayBuffer(encryptedIdentity.salt);
-            
-            const keyMaterial = await crypto.subtle.importKey(
-              'raw',
-              passcodeBuffer,
-              'PBKDF2',
-              false,
-              ['deriveBits', 'deriveKey']
-            );
-            
-            const derivedKey = await crypto.subtle.deriveKey(
-              {
-                name: 'PBKDF2',
-                salt: saltBuffer,
-                iterations: 1000000, // Military-grade: 1M iterations
-                hash: 'SHA-512', // Military-grade: SHA-512
-              },
-              keyMaterial,
-              { name: 'AES-GCM', length: 256 },
-              false,
-              ['encrypt', 'decrypt']
-            );
-            
-            // EXACT COPY of dashboard's decrypt method
-            const iv = base64ToArrayBuffer(encryptedIdentity.iv);
-            const data = base64ToArrayBuffer(encryptedIdentity.encryptedData);
-            
-            const decryptedBuffer = await crypto.subtle.decrypt(
-              { name: 'AES-GCM', iv },
-              derivedKey,
-              data
-            );
-            
-            const decoder = new TextDecoder();
-            const decryptedData = decoder.decode(decryptedBuffer);
-            const identity = JSON.parse(decryptedData);
-            
-            // Store decrypted identity for pN identifier generation
-            decryptedIdentity = identity;
-            
-            // Extract DID from decrypted identity (same as dashboard)
-            did = identity.id; // DID comes from decrypted data (EXACT as dashboard)
-            if (did) {
-              console.log('✅ Decrypted identity, extracted DID:', did.substring(0, 30) + '...');
-            } else {
-              console.error('❌ Decrypted identity but no DID found:', Object.keys(identity));
-              throw new Error('Identity file does not contain a DID');
-            }
-          } catch (decryptError) {
-            console.error('❌ Failed to decrypt identity:', decryptError);
-            throw new Error('Failed to decrypt identity file. Please check your passcode.');
-          }
-        } else {
-          // If no encrypted data, use the DID from unencrypted part (shouldn't happen normally)
-          if (!did) {
-            throw new Error('Identity file has no encrypted data and no DID found');
-          }
+        if (!window.ParNoirOAuthPhysical) {
+          throw new Error('Unlock script failed to load');
         }
         
-        if (!did) {
-          throw new Error('Failed to extract DID from identity file');
-        }
+        const unlocked = await ParNoirOAuthPhysical.decryptIdentityFile(encryptedIdentity, pnName, passcode);
+        encryptedIdentity = unlocked.encryptedIdentity;
+        publicKey = unlocked.publicKey;
+        did = unlocked.did;
+        decryptedIdentity = unlocked.decryptedIdentity;
         
         await completeOAuthUnlock(encryptedIdentity, publicKey, did, decryptedIdentity, pnName, passcode);
         
       } catch (error) {
-        errorDiv.textContent = error.message || 'Failed to unlock. Please check your passcode and try again.';
+        errorDiv.textContent = error.message || 'Failed to unlock. Check your pN name, passcode, and identity file.';
         errorDiv.style.display = 'block';
         unlockBtn.disabled = false;
         unlockBtn.textContent = 'Unlock pN';
