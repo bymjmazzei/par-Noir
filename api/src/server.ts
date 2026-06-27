@@ -1471,7 +1471,6 @@ class ProductionServer {
 
     // Also update content class-specific public index
     // Determine contentClass from fileMetadata
-    const { determineContentClass } = await import('./server/utils/fileTypeUtils');
     const metadataAny = fileMetadata as any;
     const contentClass = determineContentClass({
       fileType: metadataAny.fileType,
