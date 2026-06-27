@@ -6,8 +6,8 @@ import { pushPnOAuthDebug } from './pnOAuthDebug';
  *
  * After consent, the API redirects the popup to the registered redirect_uri (RFC 6749) — typically
  * oauth-callback.html on the **same origin** as the opener. Handoff uses postMessage from that
- * origin, BroadcastChannel (par-noir-oauth-v1), and same-origin localStorage polling when opener
- * is missing.
+ * Handoff uses postMessage from that origin, BroadcastChannel (par-noir-oauth-v1), same-origin
+ * localStorage polling, and named-window navigation (PN_OAUTH_OPENER_WINDOW_NAME) when opener is lost.
  *
  * Contract:
  * - Callback page posts message: { type: 'oauth_callback', code?, state?, error?, age_shared?, timestamp? }
@@ -23,6 +23,11 @@ export const PN_OAUTH_STORAGE_PENDING = 'pn_oauth_pending';
 export const PN_OAUTH_STORAGE_LATEST_KEY = 'pn_oauth_latest_key';
 /** Same-origin bridge when the popup loses window.opener after cross-origin redirects (must match static oauth-callback.html). */
 export const PN_OAUTH_BROADCAST_CHANNEL = 'par-noir-oauth-v1';
+/**
+ * Opener window.name for oauth-callback.html named-window fallback when window.opener is null
+ * (noopener / COOP after cross-origin consent). Must match static oauth-callback.html.
+ */
+export const PN_OAUTH_OPENER_WINDOW_NAME = 'parnoir_oauth_parent_v1';
 
 export interface OAuthConsentUrlConfig {
   clientId: string;
@@ -243,6 +248,15 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       completeViaParentNavigation,
       expectedStateEmpty: expectedState === '',
     });
+    // Named window lets oauth-callback.html navigate this tab when window.opener is lost.
+    try {
+      if (!window.name) {
+        window.name = PN_OAUTH_OPENER_WINDOW_NAME;
+      }
+    } catch {
+      /* ignore */
+    }
+
     const popup = window.open(url, popupName, popupFeatures);
     if (!popup) {
       pushPnOAuthDebug('popup_blocked', {});

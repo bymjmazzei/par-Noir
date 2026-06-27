@@ -11,6 +11,7 @@ export type { OAuthConsentUrlConfig, PnOAuthPopupResult, StartPnOAuthPopupOption
 export {
   PN_OAUTH_BROADCAST_CHANNEL,
   PN_OAUTH_MESSAGE_TYPE,
+  PN_OAUTH_OPENER_WINDOW_NAME,
   PN_OAUTH_STORAGE_PENDING,
   PN_OAUTH_STORAGE_LATEST_KEY,
 } from './pnOAuthPopup';

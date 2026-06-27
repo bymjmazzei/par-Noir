@@ -59,8 +59,8 @@ export function useAuthAndSession({
 }: UseAuthAndSessionParams) {
   const { userState, setLocked, setUnlocked, updateDisplayName } = useUserState();
   const loadingDisplayNameRef = useRef<Set<string>>(new Set());
-  /** Dedup OAuth code handling (postMessage + polling + URL resume / Strict Mode) */
-  const oauthProcessedCodesRef = useRef<Set<string>>(new Set());
+  /** Serialize token exchange per authorization code (postMessage + storage recovery + URL resume). */
+  const oauthCallbackInflightRef = useRef<Map<string, Promise<void>>>(new Map());
 
   const redirectUriForOAuth = `${typeof window !== 'undefined' ? window.location.origin : ''}/oauth-callback.html`;
 
@@ -95,24 +95,35 @@ export function useAuthAndSession({
         pushPnOAuthDebug('run_oauth_callback_no_code', {});
         return;
       }
-      if (oauthProcessedCodesRef.current.has(data.code)) {
-        pushPnOAuthDebug('run_oauth_callback_deduped', {});
+
+      const inflight = oauthCallbackInflightRef.current.get(data.code);
+      if (inflight) {
+        pushPnOAuthDebug('run_oauth_callback_await_inflight', {});
+        await inflight;
+        const session = PNOAuthService.loadSession();
+        if (session && PNOAuthService.isSessionValid(session) && session.did) {
+          const pnId = session.pnIdentifier || session.did;
+          setUnlocked(pnId);
+          if (discoverFilesRef.current) {
+            discoverFilesRef.current(undefined, true);
+          }
+        }
         return;
       }
-      oauthProcessedCodesRef.current.add(data.code);
 
       const exchangeRedirectUri = options?.redirectUri ?? redirectUriForOAuth;
 
-      try {
-        const ageShared = data.age_shared === 'true';
-        pushPnOAuthDebug('run_oauth_callback_exchange', {
-          redirectUriLen: exchangeRedirectUri.length,
-        });
-        const tokenResponse = await PNOAuthService.exchangeCodeForToken(
-          data.code,
-          exchangeRedirectUri,
-          ageShared
-        );
+      const work = (async () => {
+        try {
+          const ageShared = data.age_shared === 'true';
+          pushPnOAuthDebug('run_oauth_callback_exchange', {
+            redirectUriLen: exchangeRedirectUri.length,
+          });
+          const tokenResponse = await PNOAuthService.exchangeCodeForToken(
+            data.code!,
+            exchangeRedirectUri,
+            ageShared
+          );
         const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
 
         let feedTokens: unknown[] = [];
@@ -172,17 +183,25 @@ export function useAuthAndSession({
         pushPnOAuthDebug('run_oauth_callback_success', {
           hasPnIdentifier: Boolean(userInfo.pn_identifier),
         });
-      } catch (err) {
-        pushPnOAuthDebug('run_oauth_callback_exception', {
-          name: err instanceof Error ? err.name : 'unknown',
-        });
-        oauthProcessedCodesRef.current.delete(data.code!);
-        setLocked();
-        clearDmIdentity();
-        PNOAuthService.clearSession();
-        const rawMessage = err instanceof Error ? err.message : String(err);
-        const safeMessage = rawMessage ? rawMessage.slice(0, 180) : 'Authentication failed';
-        showErrorToast(safeMessage);
+        } catch (err) {
+          pushPnOAuthDebug('run_oauth_callback_exception', {
+            name: err instanceof Error ? err.name : 'unknown',
+          });
+          setLocked();
+          clearDmIdentity();
+          PNOAuthService.clearSession();
+          const rawMessage = err instanceof Error ? err.message : String(err);
+          const safeMessage = rawMessage ? rawMessage.slice(0, 180) : 'Authentication failed';
+          showErrorToast(safeMessage);
+          throw err;
+        }
+      })();
+
+      oauthCallbackInflightRef.current.set(data.code, work);
+      try {
+        await work;
+      } finally {
+        oauthCallbackInflightRef.current.delete(data.code);
       }
 
       const popup = options?.popup;
@@ -290,7 +309,7 @@ export function useAuthAndSession({
         const code = data.code;
         const err = data.error;
         if (!code && !err) return;
-        if (code && oauthProcessedCodesRef.current.has(code)) return;
+        if (code && oauthCallbackInflightRef.current.has(code)) return;
         const ts = Number(data.timestamp);
         if (Number.isFinite(ts) && Date.now() - ts > 120_000) return;
 
@@ -542,6 +561,12 @@ export function useAuthAndSession({
           },
           { redirectUri: actualRedirectUri }
         );
+
+        const sessionAfter = PNOAuthService.loadSession();
+        if (sessionAfter && PNOAuthService.isSessionValid(sessionAfter) && sessionAfter.did) {
+          const pnId = sessionAfter.pnIdentifier || sessionAfter.did;
+          setUnlocked(pnId);
+        }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         pushPnOAuthDebug('lock_unlock_popup_catch', { msg });

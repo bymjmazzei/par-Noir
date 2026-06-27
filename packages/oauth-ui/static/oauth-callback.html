@@ -72,6 +72,8 @@
       }
 
       var BC_NAME = 'par-noir-oauth-v1';
+      /** Must match @par-noir/oauth-ui PN_OAUTH_OPENER_WINDOW_NAME */
+      var OPENER_WIN_NAME = 'parnoir_oauth_parent_v1';
       var urlParams = new URLSearchParams(window.location.search);
       var pnPopupFlow = urlParams.get('pn_popup') === '1';
       var code = urlParams.get('code');
@@ -157,6 +159,24 @@
       var resumeUrl = buildResumeUrl();
 
       /**
+       * When window.opener is null (noopener / COOP), postMessage and partitioned localStorage
+       * may not reach the parent. Navigate the opener tab by its window.name instead.
+       */
+      function tryNavigateNamedOpener() {
+        try {
+          var w = window.open(resumeUrl, OPENER_WIN_NAME);
+          if (w) {
+            oauthDbg('named_opener_nav', { ok: true });
+            try { w.focus(); } catch (e) {}
+            return true;
+          }
+        } catch (e) {
+          oauthDbg('named_opener_nav', { ok: false });
+        }
+        return false;
+      }
+
+      /**
        * Popup OAuth (pn_popup=1): do NOT navigate opener — that breaks startPnOAuthPopup on the parent.
        */
       var handedOffViaOpenerNav = false;
@@ -195,6 +215,11 @@
         tryClosePopup();
       } else if (lackOpener) {
         if (pnPopupFlow) {
+          if (!tryNavigateNamedOpener()) {
+            deliverHandshake();
+          } else {
+            handedOffViaOpenerNav = true;
+          }
           tryClosePopup();
         } else {
           window.location.replace(resumeUrl);
