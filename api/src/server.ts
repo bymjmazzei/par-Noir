@@ -796,12 +796,48 @@ class ProductionServer {
    * Update owner file index (includes ALL files, regardless of visibility)
    * Now uses Sheets instead of JSON
    */
+  /**
+   * Sheets index updates are non-blocking for the browse feed (Postgres is authoritative).
+   * Run after the HTTP response so publish feels fast.
+   */
+  private scheduleDriveIndexUpdates(
+    token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
+    pnIdentifier: string,
+    metadataFolderId: string,
+    pnFolderId: string,
+    fileMetadata: any,
+    accountId: string | undefined,
+    options: { isNewFile: boolean; isPublic: boolean }
+  ): void {
+    const indexOpts = { isNewFile: options.isNewFile, skipPublicPermission: true };
+    void Promise.all([
+      this.updateOwnerFileIndex(token, pnIdentifier, metadataFolderId, fileMetadata, accountId, indexOpts),
+      options.isPublic
+        ? this.updatePublicFileIndex(
+            token,
+            pnIdentifier,
+            metadataFolderId,
+            pnFolderId,
+            fileMetadata,
+            accountId,
+            indexOpts
+          )
+        : Promise.resolve(),
+    ]).catch((err) => {
+      safeLogger.warn('[MetadataIndex] Background Sheets index update failed', {
+        fileId: fileMetadata?.fileId,
+        error: err as Error,
+      });
+    });
+  }
+
   private async updateOwnerFileIndex(
     token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
     pnIdentifier: string,
     metadataFolderId: string,
     fileMetadata: any,
-    accountId?: string
+    accountId?: string,
+    options?: { isNewFile?: boolean; skipPublicPermission?: boolean }
   ): Promise<void> {
     const { IndexStorageService } = await import('./server/modules/storage/indexStorageService');
     const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
@@ -848,14 +884,16 @@ class ProductionServer {
       collectionFileIds: metadataAny.collectionFileIds ?? metadataAny.collection?.collectionFileIds
     };
 
-    const existingEntry = await IndexStorageService.getFileById(
-      pnIdentifier,
-      'owner',
-      fileMetadata.fileId,
-      token,
-      metadataFolderId,
-      accountId
-    );
+    const existingEntry = options?.isNewFile
+      ? null
+      : await IndexStorageService.getFileById(
+          pnIdentifier,
+          'owner',
+          fileMetadata.fileId,
+          token,
+          metadataFolderId,
+          accountId
+        );
 
     if (existingEntry) {
       if (!indexEntry.publicToken && existingEntry.publicToken) {
@@ -897,15 +935,17 @@ class ProductionServer {
 
     if (isPortable && contentTypeFolderName) {
       const ccFolder = contentTypeFolderName as 'media' | 'thoughts' | 'collections';
-      const existingCcEntry = await IndexStorageService.getFileById(
-        pnIdentifier,
-        'owner',
-        fileMetadata.fileId,
-        token,
-        metadataFolderId,
-        accountId,
-        ccFolder
-      );
+      const existingCcEntry = options?.isNewFile
+        ? null
+        : await IndexStorageService.getFileById(
+            pnIdentifier,
+            'owner',
+            fileMetadata.fileId,
+            token,
+            metadataFolderId,
+            accountId,
+            ccFolder
+          );
       if (existingCcEntry) {
         await IndexStorageService.updateFile(
           pnIdentifier,
@@ -961,15 +1001,17 @@ class ProductionServer {
 
     if (contentTypeFolderId) {
       const ccFolder = contentTypeFolderName as 'media' | 'thoughts' | 'collections';
-      const existingCcEntry = await IndexStorageService.getFileById(
-        pnIdentifier,
-        'owner',
-        fileMetadata.fileId,
-        token,
-        contentTypeFolderId,
-        accountId,
-        ccFolder
-      );
+      const existingCcEntry = options?.isNewFile
+        ? null
+        : await IndexStorageService.getFileById(
+            pnIdentifier,
+            'owner',
+            fileMetadata.fileId,
+            token,
+            contentTypeFolderId,
+            accountId,
+            ccFolder
+          );
       if (existingCcEntry) {
         await IndexStorageService.updateFile(
           pnIdentifier,
@@ -1317,21 +1359,24 @@ class ProductionServer {
     metadataFolderId: string,
     pnFolderId: string,
     fileMetadata: any,
-    accountId?: string
+    accountId?: string,
+    options?: { isNewFile?: boolean; skipPublicPermission?: boolean }
   ): Promise<void> {
     const accessToken = token.access_token;
     const { IndexStorageService } = await import('./server/modules/storage/indexStorageService');
     const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
     const isPortablePublic = await isPortableStorageProvider(pnIdentifier);
 
-    const existingRootEntry = await IndexStorageService.getFileById(
-      pnIdentifier,
-      'public',
-      fileMetadata.fileId,
-      token,
-      metadataFolderId,
-      accountId
-    );
+    const existingRootEntry = options?.isNewFile
+      ? null
+      : await IndexStorageService.getFileById(
+          pnIdentifier,
+          'public',
+          fileMetadata.fileId,
+          token,
+          metadataFolderId,
+          accountId
+        );
 
     const metadataAny = fileMetadata as any;
     const contentClass = determineContentClass({
@@ -1461,7 +1506,7 @@ class ProductionServer {
       );
     }
 
-    if (!isPortablePublic) {
+    if (!isPortablePublic && !options?.skipPublicPermission) {
       const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
       const publicSheetId = await IndexSheetsService.getIndexSheet(
         token,
@@ -1517,15 +1562,17 @@ class ProductionServer {
       return;
     }
 
-    const existingContentClassEntry = await IndexStorageService.getFileById(
-      pnIdentifier,
-      'public',
-      fileMetadata.fileId,
-      token,
-      contentClassFolderId,
-      accountId,
-      ccFolder
-    );
+    const existingContentClassEntry = options?.isNewFile
+      ? null
+      : await IndexStorageService.getFileById(
+          pnIdentifier,
+          'public',
+          fileMetadata.fileId,
+          token,
+          contentClassFolderId,
+          accountId,
+          ccFolder
+        );
 
     if (fileMetadata.visibility === 'public') {
       const contentClassIndexEntry: any = isPortablePublic
@@ -1612,7 +1659,7 @@ class ProductionServer {
       );
     }
 
-    if (!isPortablePublic && contentTypeFolderId) {
+    if (!isPortablePublic && contentTypeFolderId && !options?.skipPublicPermission) {
       const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
       const contentClassPublicSheetId = await IndexSheetsService.getIndexSheet(
         token,
@@ -3703,7 +3750,9 @@ class ProductionServer {
                 // DMCA gate: check content before indexing (skip if Prism already approved this file)
                 const { isFileApprovedByPrism, addToPrismQueue } = await import('./server/modules/prismQueueService');
                 const alreadyApproved = await isFileApprovedByPrism(fileId);
-                if (!alreadyApproved) {
+                const { shouldSkipDmcaGate } = await import('./server/modules/dmcaGate');
+                const skipDmca = shouldSkipDmcaGate({ isThoughtThumbnail, thought, textPost });
+                if (!alreadyApproved && !skipDmca) {
                   const { runDMCACheck } = await import('./server/modules/dmcaGate');
                   const dmcaResult = await runDMCACheck(
                     googleDriveProxyService,
@@ -3812,7 +3861,9 @@ class ProductionServer {
                 }
                 const { isFileApprovedByPrism, addToPrismQueue } = await import('./server/modules/prismQueueService');
                 const alreadyApproved = await isFileApprovedByPrism(fileId);
-                if (!alreadyApproved) {
+                const { shouldSkipDmcaGate } = await import('./server/modules/dmcaGate');
+                const skipDmca = shouldSkipDmcaGate({ isThoughtThumbnail, thought, textPost });
+                if (!alreadyApproved && !skipDmca) {
                   const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
                   const { runDMCACheck } = await import('./server/modules/dmcaGate');
                   const dmcaResult = await runDMCACheck(googleDriveProxyService, userIdentifier, fileId, 'application/octet-stream', (req.query.accountId as string) || undefined);
@@ -4304,45 +4355,17 @@ class ProductionServer {
                         }
                       };
                       
-                      // Update owner index (contains ALL files for the owner)
-                      try {
-                        await this.updateOwnerFileIndex(
-                          token,
-                          pnIdentifier,
-                          metadataFolderId,
-                          companionMetadataForIndex,
-                          actualAccountId
-                        );
-                      } catch (ownerIndexError: any) {
-                        console.warn(`[MetadataIndex] Failed to update owner index (non-critical):`, ownerIndexError?.message || ownerIndexError);
-                      }
-                      
-                      // Update public file index (only if file is public)
-                      if (finalVisibility === 'public') {
-                        if (!companionMetadataForIndex.publicToken) {
-                          console.warn(`[MetadataIndex] No publicToken found for public file ${fileId} - file may not load in public feed`);
-                        } else {
-                          console.log(`[MetadataIndex] Using publicToken for public file index update: ${fileId}`);
-                        }
-                        
-                        try {
-                          await this.updatePublicFileIndex(
-                            token,
-                            pnIdentifier,
-                            metadataFolderId,
-                            pnFolderId,
-                            companionMetadataForIndex,
-                            actualAccountId
-                          );
-                          indexUpdatedThisRequest = true;
-                          console.log(`[MetadataIndex] Successfully updated public file index for file ${fileId}`);
-                        } catch (indexError: any) {
-                          console.error(`[MetadataIndex] Failed to update public file index:`, indexError?.message || indexError);
-                          console.error(`[MetadataIndex] Stack trace:`, indexError?.stack);
-                        }
-                      } else {
-                        console.log(`[MetadataIndex] File ${fileId} is private - skipping public index update`);
-                      }
+                      // Sheets indexes are non-blocking; Postgres + companion metadata are authoritative for feeds.
+                      indexUpdatedThisRequest = true;
+                      this.scheduleDriveIndexUpdates(
+                        token,
+                        pnIdentifier,
+                        metadataFolderId,
+                        pnFolderId,
+                        companionMetadataForIndex,
+                        actualAccountId,
+                        { isNewFile: true, isPublic: finalVisibility === 'public' }
+                      );
                 }
               }
           } catch (metadataError: any) {
@@ -4874,7 +4897,13 @@ class ProductionServer {
                 const mimeType = String((current.metadata as any)?.mimeType ?? 'application/octet-stream');
                 const { isFileApprovedByPrism, addToPrismQueue } = await import('./server/modules/prismQueueService');
                 const alreadyApproved = await isFileApprovedByPrism(fileId);
-                if (!alreadyApproved) {
+                const { shouldSkipDmcaGate } = await import('./server/modules/dmcaGate');
+                const skipDmca = shouldSkipDmcaGate({
+                  isThoughtThumbnail: (current.metadata as any)?.isThoughtThumbnail,
+                  thought: (current.metadata as any)?.thought,
+                  textPost: (current.metadata as any)?.textPost,
+                });
+                if (!alreadyApproved && !skipDmca) {
                   const { googleDriveProxyService: driveProxy } = await import('./server/modules/googleDriveProxy');
                   const { runDMCACheck } = await import('./server/modules/dmcaGate');
                   const dmcaResult = await runDMCACheck(driveProxy, ownerPn, driveFileId, mimeType, (req.query.accountId as string) || undefined);

@@ -29,6 +29,16 @@ function isVideoOrAudio(mimeType: string): boolean {
   return base.startsWith('video/') || base.startsWith('audio/');
 }
 
+/** Encrypted thoughts/thumbnails cannot be meaningfully moderated before publish. */
+export function shouldSkipDmcaGate(params: {
+  isThoughtThumbnail?: boolean;
+  thought?: unknown;
+  textPost?: unknown;
+}): boolean {
+  if (params.isThoughtThumbnail === true) return true;
+  return !!(params.thought || params.textPost);
+}
+
 /**
  * Run DMCA check on file before allowing it to be indexed.
  * Video/audio: samples random clips. Images: full file. Other: full file.
