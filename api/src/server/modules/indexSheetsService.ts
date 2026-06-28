@@ -47,6 +47,11 @@ export interface IndexFile {
   updatedAt: string;
 }
 
+export function isIndexSheetNotFoundError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return msg.includes('Sheet not found') || msg.includes('not found');
+}
+
 export class IndexSheetsService {
   private static readonly PUBLIC_INDEX_FILE_NAME = 'public-file-index.xlsx';
   private static readonly OWNER_INDEX_FILE_NAME = 'owner-file-index.xlsx';

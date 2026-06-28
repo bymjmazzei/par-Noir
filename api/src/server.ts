@@ -896,37 +896,38 @@ class ProductionServer {
     const isPortable = await isPortableStorageProvider(pnIdentifier);
 
     if (isPortable && contentTypeFolderName) {
-      const contentClassOwnerIndex = await IndexStorageService.getContentClassOwnerIndex(
-        pnIdentifier,
-        contentTypeFolderName as 'media' | 'thoughts' | 'collections',
-        token,
-        metadataFolderId,
-        accountId
-      );
-      const contentClassIndex = contentClassOwnerIndex || {
-        identifier: pnIdentifier,
-        files: [],
-        updatedAt: new Date().toISOString()
-      };
-      const contentClassFileIndex = contentClassIndex.files.findIndex(
-        (f: any) => f.fileId === fileMetadata.fileId || f.googleDriveFileId === fileMetadata.googleDriveFileId
-      );
-      if (contentClassFileIndex >= 0) {
-        contentClassIndex.files[contentClassFileIndex] = indexEntry;
-      } else {
-        contentClassIndex.files.push(indexEntry);
-      }
-      contentClassIndex.updatedAt = new Date().toISOString();
-      await IndexStorageService.setAllFiles(
+      const ccFolder = contentTypeFolderName as 'media' | 'thoughts' | 'collections';
+      const existingCcEntry = await IndexStorageService.getFileById(
         pnIdentifier,
         'owner',
-        contentClassIndex.files,
+        fileMetadata.fileId,
         token,
         metadataFolderId,
         accountId,
-        contentClassIndex.updatedAt,
-        contentTypeFolderName as 'media' | 'thoughts' | 'collections'
+        ccFolder
       );
+      if (existingCcEntry) {
+        await IndexStorageService.updateFile(
+          pnIdentifier,
+          'owner',
+          fileMetadata.fileId,
+          indexEntry,
+          token,
+          metadataFolderId,
+          accountId,
+          ccFolder
+        );
+      } else {
+        await IndexStorageService.addFile(
+          pnIdentifier,
+          'owner',
+          indexEntry,
+          token,
+          metadataFolderId,
+          accountId,
+          ccFolder
+        );
+      }
       return;
     }
 
@@ -954,42 +955,43 @@ class ProductionServer {
         if (createRes.ok) {
           const createData = await createRes.json() as { id: string };
           contentTypeFolderId = createData.id;
-          console.log(`[updateOwnerFileIndex] Created content-class folder '${contentTypeFolderName}'`);
         }
       }
     }
 
     if (contentTypeFolderId) {
-        // Get or create content class-specific owner index
-        const contentClassOwnerIndex = await this.getContentClassOwnerIndex(token, contentTypeFolderId, pnIdentifier, contentTypeFolderName as 'media' | 'thoughts' | 'collections', accountId);
-        const contentClassIndex = contentClassOwnerIndex || {
-          identifier: pnIdentifier,
-          files: [],
-          updatedAt: new Date().toISOString()
-        };
-
-        // Update content class-specific index with same logic
-        const contentClassFileIndex = contentClassIndex.files.findIndex(
-          (f: any) => f.googleDriveFileId === fileMetadata.googleDriveFileId
-        );
-
-        if (contentClassFileIndex >= 0) {
-          contentClassIndex.files[contentClassFileIndex] = indexEntry;
-        } else {
-          contentClassIndex.files.push(indexEntry);
-        }
-
-        contentClassIndex.updatedAt = new Date().toISOString();
-        await IndexStorageService.setAllFiles(
+      const ccFolder = contentTypeFolderName as 'media' | 'thoughts' | 'collections';
+      const existingCcEntry = await IndexStorageService.getFileById(
+        pnIdentifier,
+        'owner',
+        fileMetadata.fileId,
+        token,
+        contentTypeFolderId,
+        accountId,
+        ccFolder
+      );
+      if (existingCcEntry) {
+        await IndexStorageService.updateFile(
           pnIdentifier,
           'owner',
-          contentClassIndex.files,
+          fileMetadata.fileId,
+          indexEntry,
           token,
           contentTypeFolderId,
           accountId,
-          contentClassIndex.updatedAt,
-          contentTypeFolderName as 'media' | 'thoughts' | 'collections'
+          ccFolder
         );
+      } else {
+        await IndexStorageService.addFile(
+          pnIdentifier,
+          'owner',
+          indexEntry,
+          token,
+          contentTypeFolderId,
+          accountId,
+          ccFolder
+        );
+      }
     }
   }
 
@@ -1317,33 +1319,33 @@ class ProductionServer {
     fileMetadata: any,
     accountId?: string
   ): Promise<void> {
-    const accessToken = token.access_token; // Keep for backward compatibility in fetch calls
-    let index = await this.getPublicFileIndex(token, metadataFolderId, pnIdentifier, accountId);
-    
-    if (!index) {
-      index = {
-        identifier: pnIdentifier,
-        files: [],
-        updatedAt: new Date().toISOString()
-      };
-    }
+    const accessToken = token.access_token;
+    const { IndexStorageService } = await import('./server/modules/storage/indexStorageService');
+    const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+    const isPortablePublic = await isPortableStorageProvider(pnIdentifier);
 
-    // Update or add file entry
-    const fileIndex = index.files.findIndex(
-      (f: any) => f.googleDriveFileId === fileMetadata.googleDriveFileId
+    const existingRootEntry = await IndexStorageService.getFileById(
+      pnIdentifier,
+      'public',
+      fileMetadata.fileId,
+      token,
+      metadataFolderId,
+      accountId
     );
 
-    if (fileMetadata.visibility === 'public') {
-      const metadataAny = fileMetadata as any;
-      const publicContentClass = determineContentClass({
-        fileType: metadataAny.fileType,
-        collection: metadataAny.collection,
-        textPost: metadataAny.textPost,
-        thought: metadataAny.thought,
-        isThoughtThumbnail: metadataAny.isThoughtThumbnail,
-        isPartOfCollection: metadataAny.isPartOfCollection
-      });
+    const metadataAny = fileMetadata as any;
+    const contentClass = determineContentClass({
+      fileType: metadataAny.fileType,
+      collection: metadataAny.collection,
+      textPost: metadataAny.textPost,
+      thought: metadataAny.thought,
+      isThoughtThumbnail: metadataAny.isThoughtThumbnail,
+      isPartOfCollection: metadataAny.isPartOfCollection
+    });
+    const contentTypeFolderName =
+      contentClass === 'thought' ? 'thoughts' : contentClass === 'collection' ? 'collections' : contentClass;
 
+    if (fileMetadata.visibility === 'public') {
       const indexEntry: any = {
         fileId: fileMetadata.fileId,
         googleDriveFileId: fileMetadata.googleDriveFileId,
@@ -1356,9 +1358,8 @@ class ProductionServer {
         owner: fileMetadata.owner,
         tags: fileMetadata.tags || [],
         description: fileMetadata.description,
-        publicToken: fileMetadata.publicToken,
         indexingPermissions: fileMetadata.indexingPermissions,
-        contentClass: publicContentClass,
+        contentClass,
         isThoughtThumbnail: metadataAny.isThoughtThumbnail,
         mainFileId: metadataAny.mainFileId,
         thumbnailFileId: metadataAny.thumbnailFileId,
@@ -1367,123 +1368,111 @@ class ProductionServer {
         engagement: fileMetadata.engagement
       };
 
-      const isNewPublicFile = fileIndex < 0;
-      
-      if (fileIndex >= 0) {
-        // Update existing entry, preserve fields if new ones not provided
-        const existingEntry = index.files[fileIndex] as any;
-        
-        // Preserve publicToken if new one not provided
-        if (!indexEntry.publicToken && existingEntry.publicToken) {
-          indexEntry.publicToken = existingEntry.publicToken;
-        }
-        
-        // Merge engagement metrics
-        if (existingEntry.engagement) {
+      const isNewPublicFile = !existingRootEntry;
+
+      if (existingRootEntry) {
+        const existingAny = existingRootEntry as any;
+        if (existingAny.engagement) {
           indexEntry.engagement = {
-            views: indexEntry.engagement?.views ?? existingEntry.engagement.views ?? 0,
-            likes: indexEntry.engagement?.likes ?? existingEntry.engagement.likes ?? 0,
-            comments: indexEntry.engagement?.comments ?? existingEntry.engagement.comments ?? 0,
-            shares: indexEntry.engagement?.shares ?? existingEntry.engagement.shares ?? 0,
-            lastUpdated: indexEntry.engagement?.lastUpdated || existingEntry.engagement.lastUpdated || fileMetadata.uploadedAt
+            views: indexEntry.engagement?.views ?? existingAny.engagement.views ?? 0,
+            likes: indexEntry.engagement?.likes ?? existingAny.engagement.likes ?? 0,
+            comments: indexEntry.engagement?.comments ?? existingAny.engagement.comments ?? 0,
+            shares: indexEntry.engagement?.shares ?? existingAny.engagement.shares ?? 0,
+            lastUpdated:
+              indexEntry.engagement?.lastUpdated ||
+              existingAny.engagement.lastUpdated ||
+              fileMetadata.uploadedAt
           };
         }
-        
-        index.files[fileIndex] = indexEntry;
+        await IndexStorageService.updateFile(
+          pnIdentifier,
+          'public',
+          fileMetadata.fileId,
+          indexEntry,
+          token,
+          metadataFolderId,
+          accountId
+        );
       } else {
-        // Only add to index if public
-        index.files.push(indexEntry);
+        await IndexStorageService.addFile(
+          pnIdentifier,
+          'public',
+          indexEntry,
+          token,
+          metadataFolderId,
+          accountId
+        );
       }
 
-      // Share folder with service account when file becomes public (first time only)
       if (isNewPublicFile) {
         try {
           const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
           if (serviceAccountEmail) {
-            // Check if permission already exists
             const permissionsResponse = await fetch(
               `https://www.googleapis.com/drive/v3/files/${pnFolderId}/permissions?fields=permissions(emailAddress)`,
               {
                 headers: {
-                  'Authorization': `Bearer ${accessToken}`
+                  Authorization: `Bearer ${accessToken}`
                 }
               }
             );
 
             let hasPermission = false;
             if (permissionsResponse.ok) {
-              const permissionsData = await permissionsResponse.json() as { permissions?: Array<{ emailAddress?: string }> };
-              hasPermission = permissionsData.permissions?.some(
-                (p: any) => p.emailAddress === serviceAccountEmail
-              ) ?? false;
+              const permissionsData = (await permissionsResponse.json()) as {
+                permissions?: Array<{ emailAddress?: string }>;
+              };
+              hasPermission =
+                permissionsData.permissions?.some(
+                  (p: any) => p.emailAddress === serviceAccountEmail
+                ) ?? false;
             }
 
             if (!hasPermission) {
-              // Share folder with service account
-              await fetch(
-                `https://www.googleapis.com/drive/v3/files/${pnFolderId}/permissions`,
-                {
-                  method: 'POST',
-                  headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify({
-                    role: 'reader',
-                    type: 'user',
-                    emailAddress: serviceAccountEmail
-                  })
-                }
-              );
+              await fetch(`https://www.googleapis.com/drive/v3/files/${pnFolderId}/permissions`, {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  role: 'reader',
+                  type: 'user',
+                  emailAddress: serviceAccountEmail
+                })
+              });
             }
           }
         } catch (shareError: any) {
-          // Not critical, just log
-          console.warn(`[Upload] Failed to share folder with service account:`, shareError?.message || shareError);
+          console.warn(
+            `[Upload] Failed to share folder with service account:`,
+            shareError?.message || shareError
+          );
         }
       }
-    } else {
-      // Remove from index if not public (cleanup)
-      if (fileIndex >= 0) {
-        index.files.splice(fileIndex, 1);
-      }
+    } else if (existingRootEntry) {
+      await IndexStorageService.removeFile(
+        pnIdentifier,
+        'public',
+        fileMetadata.fileId,
+        token,
+        metadataFolderId,
+        accountId
+      );
     }
 
-    index.updatedAt = new Date().toISOString();
-
-    const { IndexStorageService } = await import('./server/modules/storage/indexStorageService');
-    const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
-    await IndexStorageService.setAllFiles(
-      pnIdentifier,
-      'public',
-      index.files,
-      token,
-      metadataFolderId,
-      accountId,
-      index.updatedAt
-    );
-    const isPortablePublic = await isPortableStorageProvider(pnIdentifier);
     if (!isPortablePublic) {
       const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-      const publicSheetId = await IndexSheetsService.getIndexSheet(token, metadataFolderId, 'public', pnIdentifier, accountId);
+      const publicSheetId = await IndexSheetsService.getIndexSheet(
+        token,
+        metadataFolderId,
+        'public',
+        pnIdentifier,
+        accountId
+      );
       await this.setPublicPermissionOnDriveFile(accessToken, publicSheetId);
     }
 
-    // Also update content class-specific public index
-    // Determine contentClass from fileMetadata
-    const metadataAny = fileMetadata as any;
-    const contentClass = determineContentClass({
-      fileType: metadataAny.fileType,
-      collection: metadataAny.collection,
-      textPost: metadataAny.textPost,
-      thought: metadataAny.thought,
-      isThoughtThumbnail: metadataAny.isThoughtThumbnail,
-      isPartOfCollection: metadataAny.isPartOfCollection
-    });
-    const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass === 'collection' ? 'collections' : contentClass;
-    console.log(`[updatePublicFileIndex] determineContentClass: contentClass=${contentClass} folder=${contentTypeFolderName} isThoughtThumbnail=${!!metadataAny.isThoughtThumbnail} thought=${!!metadataAny.thought} textPost=${!!metadataAny.textPost}`);
-
-    // Get or create content class folder (map contentClass to folder name: thought→thoughts, collection→collections)
     let contentTypeFolderId: string | null = null;
 
     const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -1512,89 +1501,36 @@ class ProductionServer {
           })
         });
         if (createRes.ok) {
-          const createData = await createRes.json() as { id: string };
+          const createData = (await createRes.json()) as { id: string };
           contentTypeFolderId = createData.id;
-          console.log(`[updatePublicFileIndex] Created content-class folder '${contentTypeFolderName}'`);
         }
       }
     }
-    console.log(`[updatePublicFileIndex] Content-class folder: ${contentTypeFolderId ?? 'content-class folder missing'}`);
 
-    if (isPortablePublic && contentTypeFolderName) {
-      const contentClassPublicIndex = await IndexStorageService.getContentClassPublicIndex(
-        pnIdentifier,
-        contentTypeFolderName as 'media' | 'thoughts' | 'collections',
-        token,
-        metadataFolderId,
-        accountId
-      );
-      const contentClassIndex = contentClassPublicIndex || {
-        identifier: pnIdentifier,
-        files: [],
-        updatedAt: new Date().toISOString()
-      };
-      const contentClassFileIndex = contentClassIndex.files.findIndex(
-        (f: any) => f && (f.googleDriveFileId === fileMetadata.googleDriveFileId || f.fileId === fileMetadata.fileId)
-      );
-      if (fileMetadata.visibility === 'public') {
-        const publicMetadata = this.companionToPublicMetadata(fileMetadata, fileMetadata.owner.did);
-        const contentClassIndexEntry: any = {
-          ...publicMetadata,
-          fileId: fileMetadata.fileId,
-          googleDriveFileId: fileMetadata.googleDriveFileId,
-          fileName: fileMetadata.fileName,
-          originalName: fileMetadata.originalName,
-          mimeType: fileMetadata.mimeType,
-          size: fileMetadata.size,
-          visibility: fileMetadata.visibility,
-          uploadedAt: fileMetadata.uploadedAt,
-          owner: fileMetadata.owner,
-          tags: fileMetadata.tags || [],
-          description: fileMetadata.description,
-          thumbnail: fileMetadata.thumbnail,
-          publicToken: fileMetadata.publicToken,
-          indexingPermissions: fileMetadata.indexingPermissions
-        };
-        if (contentClassFileIndex >= 0) {
-          contentClassIndex.files[contentClassFileIndex] = contentClassIndexEntry;
-        } else {
-          contentClassIndex.files.push(contentClassIndexEntry);
-        }
-      } else if (contentClassFileIndex >= 0) {
-        contentClassIndex.files.splice(contentClassFileIndex, 1);
-      }
-      contentClassIndex.updatedAt = new Date().toISOString();
-      await IndexStorageService.setAllFiles(
-        pnIdentifier,
-        'public',
-        contentClassIndex.files,
-        token,
-        metadataFolderId,
-        accountId,
-        contentClassIndex.updatedAt,
-        contentTypeFolderName as 'media' | 'thoughts' | 'collections'
-      );
+    if (!contentTypeFolderName) {
       return;
     }
 
-    if (contentTypeFolderId) {
-        const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
-        const contentClassPublicSheetId = await IndexSheetsService.getIndexSheet(token, contentTypeFolderId, 'public', pnIdentifier, accountId, contentTypeFolderName as 'media' | 'thoughts' | 'collections');
-        const { files } = await IndexSheetsService.getFiles(token, contentClassPublicSheetId, pnIdentifier, accountId);
-        const contentClassIndex = {
-          identifier: pnIdentifier,
-          files: Array.isArray(files) ? [...files] : [],
-          updatedAt: new Date().toISOString()
-        };
-        if (!Array.isArray(contentClassIndex.files)) contentClassIndex.files = [];
+    const ccFolder = contentTypeFolderName as 'media' | 'thoughts' | 'collections';
+    const contentClassFolderId = isPortablePublic ? metadataFolderId : contentTypeFolderId;
+    if (!contentClassFolderId) {
+      return;
+    }
 
-        const contentClassFileIndex = contentClassIndex.files.findIndex(
-          (f: any) => f && (f.googleDriveFileId === fileMetadata.googleDriveFileId)
-        );
+    const existingContentClassEntry = await IndexStorageService.getFileById(
+      pnIdentifier,
+      'public',
+      fileMetadata.fileId,
+      token,
+      contentClassFolderId,
+      accountId,
+      ccFolder
+    );
 
-        if (fileMetadata.visibility === 'public') {
-          const ccMeta = fileMetadata as any;
-          const contentClassIndexEntry: any = {
+    if (fileMetadata.visibility === 'public') {
+      const contentClassIndexEntry: any = isPortablePublic
+        ? {
+            ...this.companionToPublicMetadata(fileMetadata, fileMetadata.owner.did),
             fileId: fileMetadata.fileId,
             googleDriveFileId: fileMetadata.googleDriveFileId,
             fileName: fileMetadata.fileName,
@@ -1606,48 +1542,87 @@ class ProductionServer {
             owner: fileMetadata.owner,
             tags: fileMetadata.tags || [],
             description: fileMetadata.description,
-            publicToken: fileMetadata.publicToken,
+            thumbnail: fileMetadata.thumbnail,
+            indexingPermissions: fileMetadata.indexingPermissions
+          }
+        : {
+            fileId: fileMetadata.fileId,
+            googleDriveFileId: fileMetadata.googleDriveFileId,
+            fileName: fileMetadata.fileName,
+            originalName: fileMetadata.originalName,
+            mimeType: fileMetadata.mimeType,
+            size: fileMetadata.size,
+            visibility: fileMetadata.visibility,
+            uploadedAt: fileMetadata.uploadedAt,
+            owner: fileMetadata.owner,
+            tags: fileMetadata.tags || [],
+            description: fileMetadata.description,
             indexingPermissions: fileMetadata.indexingPermissions,
-            contentClass: contentClass,
-            isThoughtThumbnail: ccMeta.isThoughtThumbnail,
-            mainFileId: ccMeta.mainFileId,
-            thumbnailFileId: ccMeta.thumbnailFileId,
+            contentClass,
+            isThoughtThumbnail: metadataAny.isThoughtThumbnail,
+            mainFileId: metadataAny.mainFileId,
+            thumbnailFileId: metadataAny.thumbnailFileId,
             engagement: fileMetadata.engagement
           };
 
-          if (contentClassFileIndex >= 0) {
-            const existingEntry = contentClassIndex.files[contentClassFileIndex] as any;
-            if (!contentClassIndexEntry.publicToken && existingEntry.publicToken) {
-              contentClassIndexEntry.publicToken = existingEntry.publicToken;
-            }
-            if (existingEntry.engagement) {
-              contentClassIndexEntry.engagement = {
-                views: contentClassIndexEntry.engagement?.views ?? existingEntry.engagement.views ?? 0,
-                likes: contentClassIndexEntry.engagement?.likes ?? existingEntry.engagement.likes ?? 0,
-                comments: contentClassIndexEntry.engagement?.comments ?? existingEntry.engagement.comments ?? 0,
-                shares: contentClassIndexEntry.engagement?.shares ?? existingEntry.engagement.shares ?? 0,
-                lastUpdated: contentClassIndexEntry.engagement?.lastUpdated || existingEntry.engagement.lastUpdated || fileMetadata.uploadedAt
-              };
-            }
-            contentClassIndex.files[contentClassFileIndex] = contentClassIndexEntry;
-          } else {
-            contentClassIndex.files.push(contentClassIndexEntry);
-          }
-        } else {
-          if (contentClassFileIndex >= 0) {
-            contentClassIndex.files.splice(contentClassFileIndex, 1);
-          }
+      if (existingContentClassEntry) {
+        const existingAny = existingContentClassEntry as any;
+        if (existingAny.engagement) {
+          contentClassIndexEntry.engagement = {
+            views: contentClassIndexEntry.engagement?.views ?? existingAny.engagement.views ?? 0,
+            likes: contentClassIndexEntry.engagement?.likes ?? existingAny.engagement.likes ?? 0,
+            comments: contentClassIndexEntry.engagement?.comments ?? existingAny.engagement.comments ?? 0,
+            shares: contentClassIndexEntry.engagement?.shares ?? existingAny.engagement.shares ?? 0,
+            lastUpdated:
+              contentClassIndexEntry.engagement?.lastUpdated ||
+              existingAny.engagement.lastUpdated ||
+              fileMetadata.uploadedAt
+          };
         }
+        await IndexStorageService.updateFile(
+          pnIdentifier,
+          'public',
+          fileMetadata.fileId,
+          contentClassIndexEntry,
+          token,
+          contentClassFolderId,
+          accountId,
+          ccFolder
+        );
+      } else {
+        await IndexStorageService.addFile(
+          pnIdentifier,
+          'public',
+          contentClassIndexEntry,
+          token,
+          contentClassFolderId,
+          accountId,
+          ccFolder
+        );
+      }
+    } else if (existingContentClassEntry) {
+      await IndexStorageService.removeFile(
+        pnIdentifier,
+        'public',
+        fileMetadata.fileId,
+        token,
+        contentClassFolderId,
+        accountId,
+        ccFolder
+      );
+    }
 
-        contentClassIndex.updatedAt = new Date().toISOString();
-        try {
-          console.log(`[updatePublicFileIndex] Content-class before setAllFiles: ${contentTypeFolderName} sheetId=${contentClassPublicSheetId} files.length=${contentClassIndex.files.length}`);
-          await IndexSheetsService.setAllFiles(token, contentClassPublicSheetId, contentClassIndex.files, pnIdentifier, accountId, contentClassIndex.updatedAt, 'public');
-          await this.setPublicPermissionOnDriveFile(accessToken, contentClassPublicSheetId);
-        } catch (contentClassErr: any) {
-          console.error(`[updatePublicFileIndex] Content-class public index (${contentTypeFolderName}) failed sheetId=${contentClassPublicSheetId}:`, contentClassErr?.message || contentClassErr, contentClassErr?.stack);
-          throw contentClassErr;
-        }
+    if (!isPortablePublic && contentTypeFolderId) {
+      const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
+      const contentClassPublicSheetId = await IndexSheetsService.getIndexSheet(
+        token,
+        contentTypeFolderId,
+        'public',
+        pnIdentifier,
+        accountId,
+        ccFolder
+      );
+      await this.setPublicPermissionOnDriveFile(accessToken, contentClassPublicSheetId);
     }
   }
 

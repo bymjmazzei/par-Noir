@@ -90,7 +90,6 @@ export function slimIndexEntry(
   if (engagement) slim.engagement = engagement;
 
   if (indexKind === 'public' || (indexKind !== 'owner' && entry.visibility === 'public')) {
-    if (typeof raw.publicToken === 'string') slim.publicToken = raw.publicToken;
     if (raw.indexingPermissions && typeof raw.indexingPermissions === 'object') {
       slim.indexingPermissions = raw.indexingPermissions;
     }
@@ -100,22 +99,9 @@ export function slimIndexEntry(
     if (typeof raw.backend === 'string') slim.backend = raw.backend;
     if (typeof raw.backendFileId === 'string') slim.backendFileId = raw.backendFileId;
     if (typeof raw.backendAccountId === 'string') slim.backendAccountId = raw.backendAccountId;
-    if (typeof raw.publicToken === 'string' && !slim.publicToken) {
-      slim.publicToken = raw.publicToken;
-    }
   }
 
-  let serialized = JSON.stringify(slim);
-  const beforeLength = serialized.length;
-  if (beforeLength > SHEETS_INDEX_CELL_SAFE_CHARS && slim.publicToken) {
-    delete slim.publicToken;
-    serialized = JSON.stringify(slim);
-    if (options?.warnOnOversize !== false && typeof process !== 'undefined') {
-      console.warn(
-        `[slimIndexEntry] omitted publicToken from index row (${entry.fileId}); ${beforeLength} -> ${serialized.length} chars`
-      );
-    }
-  }
+  const serialized = JSON.stringify(slim);
 
   if (
     serialized.length > SHEETS_INDEX_CELL_SAFE_CHARS &&

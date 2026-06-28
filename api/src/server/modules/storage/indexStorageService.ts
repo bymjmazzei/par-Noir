@@ -7,6 +7,7 @@ import {
   getIndexFileByIdPortable,
   getIndexFilesPortable,
   getIndexUpdatedAtPortable,
+  removeIndexFilePortable,
   setAllIndexFilesPortable,
   updateIndexFilePortable
 } from './indexPortableService';
@@ -207,6 +208,32 @@ export class IndexStorageService {
       contentClass
     );
     await IndexSheetsService.addFile(token, spreadsheetId, entry, normalized, accountId, indexType);
+  }
+
+  static async removeFile(
+    pnIdentifier: string,
+    indexType: 'public' | 'owner',
+    fileId: string,
+    token?: GoogleDriveToken,
+    metadataFolderId?: string,
+    accountId?: string,
+    contentClass?: ContentClassFolder
+  ): Promise<void> {
+    const normalized = normalizePn(pnIdentifier);
+    if (await isPortableStorageProvider(normalized)) {
+      await removeIndexFilePortable(normalized, indexType, fileId, accountId, contentClass);
+      return;
+    }
+    if (!token || !metadataFolderId) throw new Error('Google Drive context required');
+    const spreadsheetId = await sheetId(
+      token,
+      metadataFolderId,
+      indexType,
+      normalized,
+      accountId,
+      contentClass
+    );
+    await IndexSheetsService.removeFile(token, spreadsheetId, fileId, normalized, accountId);
   }
 
   static async updateFile(

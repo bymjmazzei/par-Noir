@@ -36,8 +36,6 @@ export class GoogleDriveProxyService {
    * Handles token refresh if needed
    */
   async getAccessToken(userPnIdentifier: string, accountId?: string, additionalCandidates?: string[]): Promise<string> {
-    safeLogger.info('[GoogleDriveProxy] getAccessToken called');
-    
     // CRITICAL: Use ONLY the pn identifier (first candidate)
     // Dashboard stores credentials under pn identifier only, so we should only try that
     // The additionalCandidates array should only contain the pn identifier
@@ -63,11 +61,6 @@ export class GoogleDriveProxyService {
       }
     }
     
-    safeLogger.info('[GoogleDriveProxy] Resolving credentials by identifier candidate', {
-      subjectHash: hashIdentifier(userPnIdentifier),
-      candidates: identifierCandidates.length,
-    });
-    
     // Try to find credentials using only the pn identifier
     const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(identifierCandidates);
     
@@ -79,10 +72,7 @@ export class GoogleDriveProxyService {
       throw new Error('Google Drive not connected. Please connect in the dashboard.');
     }
     
-    console.log(`[GoogleDriveProxy] Credentials record found`);
-
     const credentials = credentialsRecord.credentials;
-    console.log(`[GoogleDriveProxy] Credential shape resolved`);
     
     // Support both googleDriveAccounts array and single googleDrive object
     let account: GoogleDriveToken | null = null;
@@ -90,8 +80,6 @@ export class GoogleDriveProxyService {
     if (accountId && credentials.googleDriveAccounts) {
       // Extract the actual account identifier if accountId includes "::"
       const actualAccountId = accountId.includes('::') ? accountId.split('::')[1] : accountId;
-      
-      console.log(`[GoogleDriveProxy] Looking up requested account`);
       
       // Find specific account by accountId (backendId, keyPrefix, or full accountId string)
       // AccountId might be in format "google_drive::email-hash" or just "backendId" or "keyPrefix"
@@ -111,19 +99,14 @@ export class GoogleDriveProxyService {
         console.error(`[GoogleDriveProxy] Requested account not found`);
         throw new Error(`Google Drive account not found for accountId: ${accountId}`);
       }
-
-      console.log(`[GoogleDriveProxy] Requested account resolved`);
     } else if (credentials.googleDriveAccounts && credentials.googleDriveAccounts.length > 0) {
       // Use first account if no accountId specified
       account = credentials.googleDriveAccounts[0];
-      console.log(`[GoogleDriveProxy] Using first account (no accountId specified)`);
     } else if (credentials.googleDrive) {
       // Fallback to single googleDrive object
       account = credentials.googleDrive;
-      console.log(`[GoogleDriveProxy] Using single googleDrive object`);
     } else {
       account = credentials as GoogleDriveToken;
-      console.log(`[GoogleDriveProxy] Using credentials as GoogleDriveToken`);
     }
 
     if (!account) {
@@ -137,8 +120,6 @@ export class GoogleDriveProxyService {
       token_type: account.token_type,
       expires_at: account.expires_at
     };
-
-    console.log(`[GoogleDriveProxy] Token metadata loaded`);
 
     if (!token.access_token) {
       console.error(`[GoogleDriveProxy] No access token found in account object`);
@@ -155,15 +136,10 @@ export class GoogleDriveProxyService {
     const expiresSoon = expiresAt < now + 300000; // 5 minutes
     const shouldRefresh = isExpired || expiresSoon;
     
-    safeLogger.info('[GoogleDriveProxy] Token check', { shouldRefresh, isExpired, expiresSoon });
-    
     // Only refresh if token is expired or about to expire
-    // Don't refresh unnecessarily - the stored token is valid if it's not expired
     if (token.refresh_token && shouldRefresh) {
       try {
-        console.log(`[GoogleDriveProxy] Refreshing access token`);
         const refreshedToken = await this.refreshAccessToken(token.refresh_token);
-        console.log(`[GoogleDriveProxy] Token refreshed successfully`);
         
         // Update stored credentials for the specific account
         // CRITICAL: Preserve refresh_token - Google often doesn't return a new one, so keep the existing one
@@ -236,7 +212,6 @@ export class GoogleDriveProxyService {
         // CRITICAL: Always save credentials after refresh to persist the refresh token
         // CRITICAL: Use the pn identifier from the credentials record, not userPnIdentifier
         await storageCredentialsService.upsertCredentials(credentialsRecord.identityId, credentials);
-        console.log(`[GoogleDriveProxy] Credentials saved after token refresh`);
         
         return refreshedToken.access_token;
       } catch (error: any) {
@@ -264,7 +239,6 @@ export class GoogleDriveProxyService {
       throw new Error('Google Drive access token has expired. Please reconnect your Google Drive account in the dashboard.');
     }
     
-    console.log(`[GoogleDriveProxy] Returning access token`);
     return finalToken;
   }
 

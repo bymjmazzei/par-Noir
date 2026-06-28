@@ -6,6 +6,7 @@
 import type { IndexFileEntry } from './indexSheetsService';
 import { AggregatorMetadataServiceDB } from './aggregatorMetadataServiceDB';
 import { IndexStorageService } from './storage/indexStorageService';
+import { isIndexSheetNotFoundError } from './indexSheetsService';
 import { getOwnerStorageContext, type OwnerStorageContext } from './storage/ownerStorageContext';
 import { storageCredentialsService } from './storageCredentialsService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
@@ -65,19 +66,7 @@ export async function loadAuthorizedPublicFileIds(
   }
 
   const { token, metadataFolderId, accountId } = ctx;
-  for (const cc of CONTENT_CLASSES) {
-    const idx = await IndexStorageService.getContentClassPublicIndex(
-      normalized,
-      cc,
-      token,
-      metadataFolderId,
-      accountId
-    );
-    if (idx?.files?.length) {
-      for (const id of collectPublicFileIds(idx.files)) authorized.add(id);
-    }
-  }
-  if (authorized.size === 0) {
+  try {
     const root = await IndexStorageService.getPublicFileIndex(
       normalized,
       token,
@@ -85,6 +74,11 @@ export async function loadAuthorizedPublicFileIds(
       accountId
     );
     for (const id of collectPublicFileIds(root.files)) authorized.add(id);
+  } catch (error) {
+    if (isIndexSheetNotFoundError(error)) {
+      return authorized;
+    }
+    throw error;
   }
   return authorized;
 }
@@ -155,6 +149,13 @@ export async function reconcilePublicAggregator(): Promise<ReconcilePublicAggreg
           safeLogger.warn('[Reconcile] Skipping user — could not read public index (auth)', {
             pnHash: hashIdentifier(pnIdentifier),
             error: error as Error,
+          });
+          continue;
+        }
+        if (isIndexSheetNotFoundError(error)) {
+          usersSkipped++;
+          safeLogger.warn('[Reconcile] Skipping user — public index sheet missing', {
+            pnHash: hashIdentifier(pnIdentifier),
           });
           continue;
         }

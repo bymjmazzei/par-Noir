@@ -47,6 +47,7 @@ describe('slimIndexEntry', () => {
       'child-2',
     ]);
     expect((slim.engagement as { engagementHistory?: unknown }).engagementHistory).toBeUndefined();
+    expect((slim as { publicToken?: string }).publicToken).toBeUndefined();
 
     const json = serializeSlimIndexEntryJson(fatEntry, { indexKind: 'public' });
     expect(json.length).toBeLessThan(50000);
