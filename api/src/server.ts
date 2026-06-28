@@ -44,7 +44,7 @@ import { registerIntegratorRoutes } from './server/modules/integratorRoutes';
 import { registerStorageRoutes } from './server/modules/storage/storageRoutes';
 import { registerCreatorFundPeriodRoutes } from './server/modules/creatorFundPeriodRoutes';
 import { registerCoreRoutes } from './server/modules/coreRoutes';
-import { hashIdentifier, safeLogger } from './utils/logger';
+import { hashIdentifier, isDevVerbose, safeLogger } from './utils/logger';
 import { getBearerTokenPayload } from './server/middleware/authMiddleware';
 import {
   gateOwnerRoute,
@@ -1220,6 +1220,7 @@ class ProductionServer {
     fileId: string,
     accountId?: string
   ): Promise<void> {
+    try {
     const accessToken = token.access_token; // Keep for backward compatibility in fetch calls
     // Get existing public index to find the file and determine contentClass
     const index = await this.getPublicFileIndex(token, metadataFolderId, pnIdentifier, accountId);
@@ -1347,6 +1348,16 @@ class ProductionServer {
           }
         }
       }
+    }
+    } catch (error) {
+      const { isIndexSheetNotFoundError } = await import('./server/modules/indexSheetsService');
+      if (isIndexSheetNotFoundError(error)) {
+        safeLogger.warn('[removeFromPublicIndex] Public index sheet missing; skipping removal', {
+          fileIdHash: hashIdentifier(fileId),
+        });
+        return;
+      }
+      throw error;
     }
   }
 
@@ -2139,7 +2150,9 @@ class ProductionServer {
           });
         }
 
-        console.log(`📤 [GET /api/aggregator/metadata-index] Returning ${response.files.length} files`);
+        if (isDevVerbose()) {
+          console.log(`📤 [GET /api/aggregator/metadata-index] Returning ${response.files.length} files`);
+        }
         return res.json(response);
       } catch (error: any) {
         console.error('❌ [GET /api/aggregator/metadata-index] Error:', error);
@@ -3477,7 +3490,9 @@ class ProductionServer {
         const service = AggregatorMetadataServiceDB.getInstance();
 
         const { fileId } = req.params;
-        console.log(`[MetadataIndex GET] Request received for fileId: ${fileId}`);
+        if (isDevVerbose()) {
+          console.log(`[MetadataIndex GET] Request received for fileId: ${fileId}`);
+        }
 
         if (!fileId) {
           return res.status(400).json({ error: 'Missing fileId parameter' });
@@ -3485,7 +3500,9 @@ class ProductionServer {
 
         // Check if metadata entry exists
         let metadata = await service.getFileMetadata(fileId);
-        console.log(`[MetadataIndex GET] Existing entry check for ${fileId}: ${metadata ? 'found' : 'not found'}`);
+        if (isDevVerbose()) {
+          console.log(`[MetadataIndex GET] Existing entry check for ${fileId}: ${metadata ? 'found' : 'not found'}`);
+        }
 
         // If not found, fileId might be a main file - try to find thumbnail that references it
         if (!metadata) {
@@ -4109,7 +4126,11 @@ class ProductionServer {
           
           console.log(`[MetadataIndex PUT] File ${fileId} is new - creating companion metadata (visibility=${finalVisibility})...`);
           const { shouldDeferCompanionMetadata } = await import('./server/modules/dmcaGate');
-          const deferCompanionCreate = shouldDeferCompanionMetadata({ isThoughtThumbnail, thought, textPost });
+          const deferCompanionCreate = shouldDeferCompanionMetadata({
+            isThoughtThumbnail: isThoughtThumbnail ?? current?.metadata?.isThoughtThumbnail,
+            thought: thought ?? current?.metadata?.thought,
+            textPost: textPost ?? current?.metadata?.textPost,
+          });
           const runCompanionMetadataCreate = async (): Promise<'drive_not_initialized' | void> => {
           try {
             {
@@ -4182,7 +4203,7 @@ class ProductionServer {
                 
                 const out = await this.getMetadataFolder(token, pnIdentifier, actualAccountId);
                 if (!out) {
-                  return this.driveNotInitialized(res);
+                  return 'drive_not_initialized';
                 }
                 const { metadataFolderId, pnFolderId } = out;
                 
@@ -4389,8 +4410,7 @@ class ProductionServer {
             if (msg.includes('DRIVE_NOT_INITIALIZED')) {
               return 'drive_not_initialized';
             }
-            console.error(`[MetadataIndex] Failed to create companion metadata file for ${fileId}:`, msg);
-            console.error(`[MetadataIndex] Stack trace:`, metadataError?.stack);
+            console.warn(`[MetadataIndex] Failed to create companion metadata file for ${fileId}: ${msg}`);
           }
           };
           if (deferCompanionCreate) {
@@ -9851,8 +9871,9 @@ class ProductionServer {
                           try {
                             await this.removeFromPublicIndex(token, pnIdentifier, metadataFolderId, indexFileId, accountIdForToken);
                             console.log(`✅ [DeleteFile] Removed ${indexFileId} from public index`);
-                          } catch (publicIndexError: any) {
-                            console.warn(`⚠️ [DeleteFile] Failed to remove ${indexFileId} from public index:`, publicIndexError);
+                          } catch (publicIndexError: unknown) {
+                            const msg = publicIndexError instanceof Error ? publicIndexError.message : String(publicIndexError);
+                            console.warn(`⚠️ [DeleteFile] Failed to remove ${indexFileId} from public index: ${msg}`);
                           }
                         }
                       }
@@ -10678,11 +10699,13 @@ class ProductionServer {
         let finalAllowedDataPoints = allowedDataPoints;
         
         if (toolPermission) {
-          console.log(`[OAuth ZKP] Found permissions for ${clientId}:`, {
-            dataPoints: toolPermission.dataPoints,
-            requiredDataPoints: toolPermission.requiredDataPoints,
-            optionalDataPoints: toolPermission.optionalDataPoints
-          });
+          if (isDevVerbose()) {
+            console.log(`[OAuth ZKP] Found permissions for ${clientId}:`, {
+              dataPoints: toolPermission.dataPoints,
+              requiredDataPoints: toolPermission.requiredDataPoints,
+              optionalDataPoints: toolPermission.optionalDataPoints
+            });
+          }
           
           // Filter data points to only those the user has granted access to
           // Required data points are always granted, optional ones must be in dataPoints array
@@ -10691,24 +10714,32 @@ class ProductionServer {
             toolPermission.dataPoints.includes(dp) // Optional must be explicitly granted
           );
           
-          console.log(`[OAuth ZKP] Filtered data points:`, {
-            requested: allowedDataPoints,
-            allowed: finalAllowedDataPoints
-          });
+          if (isDevVerbose()) {
+            console.log(`[OAuth ZKP] Filtered data points:`, {
+              requested: allowedDataPoints,
+              allowed: finalAllowedDataPoints
+            });
+          }
           
           if (finalAllowedDataPoints.length === 0) {
-            console.log(`[OAuth ZKP] No data points granted for ${clientId}`);
+            if (isDevVerbose()) {
+              console.log(`[OAuth ZKP] No data points granted for ${clientId}`);
+            }
             return res.json({ success: true, dataPoints: [] });
           }
         } else {
-          console.log(`[OAuth ZKP] No permissions found for ${clientId}`);
+          if (isDevVerbose()) {
+            console.log(`[OAuth ZKP] No permissions found for ${clientId}`);
+          }
           // No permissions found - return empty (user hasn't granted access)
           // Exception: browser-app is hard-coded, so allow if it's browser-app
           if (clientId !== 'browser-app') {
             return res.json({ success: true, dataPoints: [] });
           }
           // For browser-app, continue without permission check (backward compatibility)
-          console.log(`[OAuth ZKP] Continuing for browser-app without permission check (backward compatibility)`);
+          if (isDevVerbose()) {
+            console.log(`[OAuth ZKP] Continuing for browser-app without permission check (backward compatibility)`);
+          }
         }
 
         // Get ZKP proofs for requested data points
@@ -10717,7 +10748,9 @@ class ProductionServer {
 
         for (const dataPointId of finalAllowedDataPoints) {
           try {
-            console.log(`[OAuth ZKP] Attempting to get proof for ${dataPointId}`);
+            if (isDevVerbose()) {
+              console.log(`[OAuth ZKP] Attempting to get proof for ${dataPointId}`);
+            }
             const proof = await ZKPDataPointsService.getDataPointProof(
               userAccessToken,
               metadataFolderId,
@@ -10727,7 +10760,9 @@ class ProductionServer {
             );
             
             if (proof) {
-              console.log(`[OAuth ZKP] Found proof for ${dataPointId}`);
+              if (isDevVerbose()) {
+                console.log(`[OAuth ZKP] Found proof for ${dataPointId}`);
+              }
               zkpDataPoints.push({
                 dataPointId: proof.dataPointId,
                 proofType: proof.proofType,
@@ -10737,16 +10772,21 @@ class ProductionServer {
                 verificationLevel: proof.verificationLevel
                 // NEVER include: encryptedUserData, signature, or any actual user data
               });
-            } else {
+            } else if (isDevVerbose()) {
               console.log(`[OAuth ZKP] No proof found for ${dataPointId} (permission granted but ZKP not created yet)`);
             }
           } catch (error) {
-            console.warn(`[OAuth ZKP] Failed to get ZKP proof for ${dataPointId}:`, error);
+            const msg = error instanceof Error ? error.message : String(error);
+            if (isDevVerbose()) {
+              console.warn(`[OAuth ZKP] Failed to get ZKP proof for ${dataPointId}: ${msg}`);
+            }
             // Continue with other data points
           }
         }
         
-        console.log(`[OAuth ZKP] Returning ${zkpDataPoints.length} data point(s) for ${clientId}`);
+        if (isDevVerbose()) {
+          console.log(`[OAuth ZKP] Returning ${zkpDataPoints.length} data point(s) for ${clientId}`);
+        }
 
         return res.json({ success: true, dataPoints: zkpDataPoints });
       } catch (error: any) {

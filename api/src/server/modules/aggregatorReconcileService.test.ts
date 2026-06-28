@@ -50,6 +50,11 @@ function serviceMock(overrides: Partial<AggregatorMetadataServiceDB> = {}) {
   const base = {
     listPnIdentifiersWithPublicFiles: jest.fn().mockResolvedValue(['pn-abc']),
     listPublicFileIdsForUser: jest.fn().mockResolvedValue(['A', 'B', 'C']),
+    listPublicFileSubmissionsForUser: jest.fn().mockResolvedValue([
+      { fileId: 'A', submittedAt: new Date('2020-01-01T00:00:00Z') },
+      { fileId: 'B', submittedAt: new Date('2020-01-01T00:00:00Z') },
+      { fileId: 'C', submittedAt: new Date('2020-01-01T00:00:00Z') },
+    ]),
     removeAllMetadataForUser: jest.fn().mockResolvedValue(3),
     removeMetadata: jest.fn().mockResolvedValue(true),
   };
@@ -150,6 +155,66 @@ describe('aggregatorReconcileService', () => {
     expect(svc.removeAllMetadataForUser).not.toHaveBeenCalled();
     expect(svc.removeMetadata).not.toHaveBeenCalled();
     expect(result.usersSkipped).toBe(1);
+  });
+
+  it('does not remove recent Postgres entries missing from public index (grace period)', async () => {
+    const svc = serviceMock({
+      listPublicFileSubmissionsForUser: jest.fn().mockResolvedValue([
+        { fileId: 'A', submittedAt: new Date('2020-01-01T00:00:00Z') },
+        { fileId: 'B', submittedAt: new Date('2020-01-01T00:00:00Z') },
+        { fileId: 'C', submittedAt: new Date() },
+      ]),
+    });
+    mockGetCredentials.mockResolvedValue({ identityId: 'pn-abc', credentials: {} } as never);
+    mockGetOwnerStorageContext.mockResolvedValue({
+      kind: 'portable',
+      pnIdentifier: 'pn-abc',
+    });
+
+    jest.spyOn(IndexStorageService, 'getContentClassPublicIndex').mockResolvedValue({
+      identifier: 'pn-abc',
+      files: [
+        { fileId: 'A', visibility: 'public', uploadedAt: '' },
+        { fileId: 'B', visibility: 'public', uploadedAt: '' },
+      ],
+      updatedAt: new Date().toISOString(),
+    });
+
+    const result = await reconcilePublicAggregator();
+
+    expect(svc.removeMetadata).not.toHaveBeenCalled();
+    expect(result.filesRemoved).toBe(0);
+  });
+
+  it('skips full purge when public index empty but Postgres has recent publishes', async () => {
+    const svc = serviceMock({
+      listPublicFileSubmissionsForUser: jest.fn().mockResolvedValue([
+        { fileId: 'new1', submittedAt: new Date() },
+      ]),
+    });
+    mockGetCredentials.mockResolvedValue({ identityId: 'pn-abc', credentials: {} } as never);
+    mockGetOwnerStorageContext.mockResolvedValue({
+      kind: 'google_drive',
+      pnIdentifier: 'pn-abc',
+      token: { access_token: 't' },
+      metadataFolderId: 'meta',
+    });
+
+    jest.spyOn(IndexStorageService, 'getContentClassPublicIndex').mockResolvedValue({
+      identifier: 'pn-abc',
+      files: [],
+      updatedAt: new Date().toISOString(),
+    });
+    jest.spyOn(IndexStorageService, 'getPublicFileIndex').mockResolvedValue({
+      identifier: 'pn-abc',
+      files: [],
+      updatedAt: new Date().toISOString(),
+    });
+
+    const result = await reconcilePublicAggregator();
+
+    expect(svc.removeAllMetadataForUser).not.toHaveBeenCalled();
+    expect(result.usersPurged).toBe(0);
   });
 });
 

@@ -12,7 +12,7 @@
 
 import { getDatabasePool } from '../utils/database';
 import { PublicMetadata, CentralIndexEntry, CentralIndexResponse } from './aggregatorMetadataService';
-import { hashIdentifier, safeLogger } from '../../utils/logger';
+import { hashIdentifier, isDevVerbose, safeLogger } from '../../utils/logger';
 import { EngagementService, type EngagementMetrics } from './engagementService';
 import { computePublicRankFromMetrics } from './discoveryRank';
 
@@ -190,7 +190,9 @@ export class AggregatorMetadataServiceDB {
         validatedFileType !== 'text' && 
         validatedFileType !== 'thought' && 
         !thoughtCollectionTypes.includes(validatedFileType)) {
-      console.warn(`[AggregatorMetadataServiceDB] Text/thought data present but fileType is '${validatedFileType}', auto-setting to 'text': ${metadata.fileId}`);
+      if (process.env.LOG_LEVEL === 'debug') {
+        console.warn(`[AggregatorMetadataServiceDB] Text/thought data present but fileType is '${validatedFileType}', auto-setting to 'text': ${metadata.fileId}`);
+      }
       validatedFileType = 'text';
     }
 
@@ -795,7 +797,9 @@ export class AggregatorMetadataServiceDB {
         });
       }
 
-      console.log(`📤 [getPublicMetadata] Returning ${entries.length} files (limit=${limit}, offset=${offset}, hasMore=${hasMore}, total=${total})`);
+      if (isDevVerbose()) {
+        console.log(`📤 [getPublicMetadata] Returning ${entries.length} files (limit=${limit}, offset=${offset}, hasMore=${hasMore}, total=${total})`);
+      }
       
       return { files: entries, total, hasMore };
     } catch (error) {
@@ -1068,20 +1072,34 @@ export class AggregatorMetadataServiceDB {
    * Public file_ids for one user across all aggregator cache tables.
    */
   async listPublicFileIdsForUser(pnIdentifier: string): Promise<string[]> {
+    const submissions = await this.listPublicFileSubmissionsForUser(pnIdentifier);
+    return submissions.map((s) => s.fileId);
+  }
+
+  /** Public file ids with submitted_at — used by reconcile grace window. */
+  async listPublicFileSubmissionsForUser(
+    pnIdentifier: string
+  ): Promise<Array<{ fileId: string; submittedAt: Date }>> {
     const db = getDatabasePool();
     const where = AggregatorMetadataServiceDB.PUBLIC_METADATA_WHERE;
     const tables = this.getAllContentTypeTables();
-    const ids = new Set<string>();
+    const out: Array<{ fileId: string; submittedAt: Date }> = [];
     for (const table of tables) {
       const result = await db.query(
-        `SELECT file_id FROM ${table} WHERE pn_identifier = $1 AND ${where}`,
+        `SELECT file_id, submitted_at FROM ${table} WHERE pn_identifier = $1 AND ${where}`,
         [pnIdentifier]
       );
       for (const row of result.rows) {
-        if (row.file_id) ids.add(row.file_id);
+        if (row.file_id) {
+          out.push({
+            fileId: row.file_id,
+            submittedAt:
+              row.submitted_at instanceof Date ? row.submitted_at : new Date(row.submitted_at),
+          });
+        }
       }
     }
-    return [...ids];
+    return out;
   }
 
   /**
@@ -1505,7 +1523,9 @@ export class AggregatorMetadataServiceDB {
       const { getCachedIndex } = await import('../utils/cache');
       const cached = await getCachedIndex(filters);
       if (cached) {
-        console.log(`✅ [getIndexResponse] Cache hit for filters:`, filters);
+        if (isDevVerbose()) {
+          console.log(`✅ [getIndexResponse] Cache hit for filters:`, filters);
+        }
         return {
           ...cached,
           files: cached.files || [],
@@ -1532,7 +1552,9 @@ export class AggregatorMetadataServiceDB {
     try {
       const { setCachedIndex } = await import('../utils/cache');
       await setCachedIndex(filters, response, 300);
-      console.log(`💾 [getIndexResponse] Cached response for filters:`, filters);
+      if (isDevVerbose()) {
+        console.log(`💾 [getIndexResponse] Cached response for filters:`, filters);
+      }
     } catch (error) {
       console.warn('⚠️ [getIndexResponse] Cache set failed (non-critical):', error);
     }

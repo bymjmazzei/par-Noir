@@ -319,8 +319,12 @@ export class CompanionMetadataSheets {
       });
 
       return spreadsheetId;
-    } catch (error: any) {
-      console.error('Error creating companion metadata spreadsheet:', error);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status = (error as { status?: number })?.status;
+      console.warn(
+        `[CompanionMetadataSheets] Failed to create spreadsheet: ${message}${status ? ` (${status})` : ''}`
+      );
       throw error;
     }
   }

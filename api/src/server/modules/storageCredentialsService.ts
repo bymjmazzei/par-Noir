@@ -339,9 +339,11 @@ export class StorageCredentialsService {
         );
 
         if (result.rows.length > 0) {
-          console.log(
-            `[StorageCredentials] Found credentials using candidate: ${redactIdentityIdentifier(candidate)}`
-          );
+          if (process.env.LOG_LEVEL === 'debug') {
+            console.log(
+              `[StorageCredentials] Found credentials using candidate: ${redactIdentityIdentifier(candidate)}`
+            );
+          }
           const row = result.rows[0];
           // Decrypt and return (same logic as getCredentials)
           let credentials: any = null;

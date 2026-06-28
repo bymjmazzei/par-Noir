@@ -21,6 +21,17 @@ export interface ReconcilePublicAggregatorResult {
 
 const CONTENT_CLASSES = ['media', 'thoughts', 'collections'] as const;
 
+/** Skip reconcile removal while Sheets index catches up after publish (background writes). */
+const RECONCILE_GRACE_MS = Math.max(
+  5 * 60 * 1000,
+  parseInt(process.env.RECONCILE_GRACE_MINUTES || '15', 10) * 60 * 1000
+);
+
+function isWithinReconcileGrace(submittedAt: Date | undefined): boolean {
+  if (!submittedAt) return false;
+  return Date.now() - submittedAt.getTime() < RECONCILE_GRACE_MS;
+}
+
 function normalizePn(pnIdentifier: string): string {
   return pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 }
@@ -163,6 +174,15 @@ export async function reconcilePublicAggregator(): Promise<ReconcilePublicAggreg
       }
 
       if (authorized.size === 0) {
+        const submissions = await metadataService.listPublicFileSubmissionsForUser(pnIdentifier);
+        const hasRecent = submissions.some((s) => isWithinReconcileGrace(s.submittedAt));
+        if (hasRecent) {
+          safeLogger.warn('[Reconcile] Skipping purge — public index empty but Postgres has recent publishes', {
+            pnHash: hashIdentifier(pnIdentifier),
+            dbFileCount: submissions.length,
+          });
+          continue;
+        }
         const removed = await metadataService.removeAllMetadataForUser(pnIdentifier);
         if (removed > 0) {
           usersPurged++;
@@ -175,9 +195,18 @@ export async function reconcilePublicAggregator(): Promise<ReconcilePublicAggreg
         continue;
       }
 
-      const dbFileIds = await metadataService.listPublicFileIdsForUser(pnIdentifier);
+      const submissions = await metadataService.listPublicFileSubmissionsForUser(pnIdentifier);
+      const submittedAtById = new Map(submissions.map((s) => [s.fileId, s.submittedAt]));
+      const dbFileIds = submissions.map((s) => s.fileId);
       for (const fileId of dbFileIds) {
         if (!authorized.has(fileId)) {
+          if (isWithinReconcileGrace(submittedAtById.get(fileId))) {
+            safeLogger.info('[Reconcile] Skipping removal — file not yet in public index (grace period)', {
+              pnHash: hashIdentifier(pnIdentifier),
+              fileIdHash: hashIdentifier(fileId),
+            });
+            continue;
+          }
           const removed = await metadataService.removeMetadata(fileId);
           if (removed) filesRemoved++;
         }

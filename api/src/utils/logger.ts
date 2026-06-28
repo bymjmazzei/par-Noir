@@ -73,6 +73,11 @@ export function sanitizeForLogs(input: unknown, depth: number = 0): unknown {
   return out;
 }
 
+/** Verbose console.log paths (MetadataIndex tracing, cache hits, etc.). */
+export function isDevVerbose(): boolean {
+  return process.env.LOG_LEVEL === 'debug' || process.env.NODE_ENV !== 'production';
+}
+
 export const safeLogger = {
   info: (message: string, meta?: Record<string, unknown>) => {
     logger.info(message, sanitizeForLogs(meta));
