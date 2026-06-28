@@ -89,22 +89,25 @@ export function FeedEngagementSidebar({
   // Calculate isOwner - normalize both IDs before comparison
   const calculatedIsOwner = isOwner || (userState.isUnlocked && !!normalizedUserPnId && normalizedCreatorId === normalizedUserPnId);
 
-  // Check if file is saved when component mounts or user unlocks
+  // Check if file is saved — deferred so feed index loads first
   useEffect(() => {
-    if (userState.isUnlocked && userState.pnIdentifier && file.metadata.fileId) {
+    if (!userState.isUnlocked || !userState.pnIdentifier || !file.metadata.fileId) {
+      setIsSaved(false);
+      return;
+    }
+    const timer = setTimeout(() => {
       setIsCheckingSaved(true);
-      isFileSaved(userState.pnIdentifier, file.metadata.fileId)
-        .then(saved => {
+      isFileSaved(userState.pnIdentifier!, file.metadata.fileId)
+        .then((saved) => {
           setIsSaved(saved);
           setIsCheckingSaved(false);
         })
-        .catch(err => {
+        .catch((err) => {
           console.error('Failed to check if file is saved:', err);
           setIsCheckingSaved(false);
         });
-    } else {
-      setIsSaved(false);
-    }
+    }, 3000);
+    return () => clearTimeout(timer);
   }, [userState.isUnlocked, userState.pnIdentifier, file.metadata.fileId]);
 
   const handleSave = (e: React.MouseEvent) => {

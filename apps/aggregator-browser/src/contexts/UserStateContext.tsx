@@ -257,62 +257,60 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     loadPreferencesFromDrive();
   }, [userState.isUnlocked, userState.pnIdentifier]);
 
-  // Load tag preferences from backend when user unlocks
+  // Load tag preferences from backend when user unlocks (deferred — not needed for first feed paint)
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) {
       return;
     }
 
-    const loadTagPreferences = async () => {
-      try {
-        const { PNOAuthService } = await import('../services/pnOAuthService');
-        const session = PNOAuthService.loadSession();
-        if (!session?.accessToken) {
-          return;
-        }
-
-        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/tag-preferences`, {
-          headers: {
-            'Authorization': `Bearer ${session.accessToken}`
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const { PNOAuthService } = await import('../services/pnOAuthService');
+          const session = PNOAuthService.loadSession();
+          if (!session?.accessToken) {
+            return;
           }
-        });
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data.preferences && Array.isArray(data.preferences)) {
-            // Extract subscribed and blocked subjects from tag preferences
-            const subscribedTags: string[] = [];
-            const blockedTags: string[] = [];
+          const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/tag-preferences`, {
+            headers: {
+              Authorization: `Bearer ${session.accessToken}`,
+            },
+          });
 
-            data.preferences.forEach((pref: any) => {
-              if (pref.preference === 'like' || pref.preference === 'subscribe') {
-                subscribedTags.push(pref.tagId);
-              } else if (pref.preference === 'dislike' || pref.preference === 'block') {
-                blockedTags.push(pref.tagId);
-              }
-            });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.preferences && Array.isArray(data.preferences)) {
+              const subscribedTags: string[] = [];
+              const blockedTags: string[] = [];
 
-            // Update local state with loaded preferences
-            setUserState(prev => ({
-              ...prev,
-              preferences: {
-                ...prev.preferences,
-                subscribedSubjects: [...new Set([...prev.preferences.subscribedSubjects, ...subscribedTags])],
-                blockedSubjects: [...new Set([...prev.preferences.blockedSubjects, ...blockedTags])]
-              }
-            }));
+              data.preferences.forEach((pref: any) => {
+                if (pref.preference === 'like' || pref.preference === 'subscribe') {
+                  subscribedTags.push(pref.tagId);
+                } else if (pref.preference === 'dislike' || pref.preference === 'block') {
+                  blockedTags.push(pref.tagId);
+                }
+              });
 
+              setUserState((prev) => ({
+                ...prev,
+                preferences: {
+                  ...prev.preferences,
+                  subscribedSubjects: [...new Set([...prev.preferences.subscribedSubjects, ...subscribedTags])],
+                  blockedSubjects: [...new Set([...prev.preferences.blockedSubjects, ...blockedTags])],
+                },
+              }));
+            }
+          } else if (response.status === 404) {
+            console.log('Tag preferences endpoint not available, using local state');
           }
-        } else if (response.status === 404) {
-          // Endpoint not deployed yet - just use local state
-          console.log('Tag preferences endpoint not available, using local state');
+        } catch (error) {
+          console.warn('Failed to load tag preferences from backend:', error);
         }
-      } catch (error) {
-        console.warn('Failed to load tag preferences from backend:', error);
-      }
-    };
+      })();
+    }, 4000);
 
-    loadTagPreferences();
+    return () => clearTimeout(timer);
   }, [userState.isUnlocked, userState.pnIdentifier]);
 
   // Check ZKP age verification when user unlocks
@@ -327,14 +325,11 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const checkZKPAgeVerification = async (retryCount = 0) => {
+    const checkZKPAgeVerification = async () => {
       try {
         const { PNOAuthService } = await import('../services/pnOAuthService');
         const session = PNOAuthService.loadSession();
         if (!session?.accessToken) {
-          if (retryCount < 1) {
-            setTimeout(() => checkZKPAgeVerification(retryCount + 1), 1500);
-          }
           return;
         }
 
@@ -419,9 +414,6 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
               });
             }
           }
-          } else if (retryCount < 1) {
-            // Single retry — permissions may still be storing after unlock
-            setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000);
           } else {
             setUserState(prev => ({
               ...prev,
@@ -437,12 +429,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         } else {
           // Handle 401/403 as expected - user not authenticated or token expired
           if (zkpResponse.status === 401 || zkpResponse.status === 403) {
-            // Silently handle - user is not authenticated or token expired
-            if (retryCount === 0) {
-              // Only log once, not on retries
-              if (process.env.NODE_ENV === 'development') {
-                console.log('ℹ️ Age ZKP check skipped - user not authenticated or token expired');
-              }
+            if (import.meta.env.DEV) {
+              console.log('ℹ️ Age ZKP check skipped - user not authenticated or token expired');
             }
             // Age ZKP not available - user not authenticated
             setUserState(prev => ({
@@ -456,22 +444,16 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             return;
           }
           
-          // Retry on server errors (500+)
-          if (zkpResponse.status >= 500 && retryCount < 2) {
-            if (process.env.NODE_ENV === 'development') {
+          // Retry on server errors (500+) once after delay handled by outer timer
+          if (zkpResponse.status >= 500) {
+            if (import.meta.env.DEV) {
               const errorText = await zkpResponse.text().catch(() => 'Unknown error');
-              console.warn(`[Age ZKP Check] Server error, retrying:`, {
+              console.warn(`[Age ZKP Check] Server error:`, {
                 status: zkpResponse.status,
-                error: errorText
+                error: errorText,
               });
             }
-            setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000 * (retryCount + 1));
-          } else if (zkpResponse.status === 404 && retryCount < 1) {
-            // User hasn't granted access to age ZKP or doesn't have it
-            // Retry once in case permissions are still being stored
-            setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000);
           } else {
-            // Age ZKP not shared
             setUserState(prev => ({
               ...prev,
               preferences: {
@@ -485,27 +467,23 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error('Error checking ZKP age verification:', error);
-        // Retry on error
-        if (retryCount < 2) {
-          setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000 * (retryCount + 1));
-        } else {
-          // Final retry failed - assume no age ZKP
-          setUserState(prev => ({
-            ...prev,
-            preferences: {
-              ...prev.preferences,
-              hasAgeZKP: false,
-              isOver18: false,
-              showNSFW: false
-            }
-          }));
-        }
+        setUserState(prev => ({
+          ...prev,
+          preferences: {
+            ...prev.preferences,
+            hasAgeZKP: false,
+            isOver18: false,
+            showNSFW: false,
+          },
+        }));
       }
     };
 
-    checkZKPAgeVerification();
+    const timer = setTimeout(() => {
+      void checkZKPAgeVerification();
+    }, 3000);
 
-    return () => {};
+    return () => clearTimeout(timer);
   }, [userState.isUnlocked, userState.pnIdentifier, userState.preferences.hasAgeZKP]);
 
   const setUnlocked = (pnIdentifier: string) => {

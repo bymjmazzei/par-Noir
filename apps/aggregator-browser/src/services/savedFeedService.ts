@@ -178,6 +178,10 @@ export async function isFileSaved(
   fileId: string
 ): Promise<boolean> {
   try {
+    const cached = savedFeedCache.get(userPnIdentifier);
+    if (cached && Date.now() - cached.ts < SAVED_FEED_TTL_MS) {
+      return cached.result?.fileIds.includes(fileId) ?? false;
+    }
     const savedFeed = await getSavedFeed(userPnIdentifier);
     return savedFeed?.fileIds.includes(fileId) || false;
   } catch (error) {

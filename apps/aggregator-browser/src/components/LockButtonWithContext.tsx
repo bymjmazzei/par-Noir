@@ -15,13 +15,15 @@ interface LockButtonWithContextProps {
   currentContext?: AppContext | null;
   availableContexts?: AppContext[];
   onContextChange?: (context: AppContext) => void;
+  onContextMenuOpen?: () => void;
 }
 
 export const LockButtonWithContext: React.FC<LockButtonWithContextProps> = ({
   onLockUnlock,
   currentContext,
   availableContexts = [],
-  onContextChange
+  onContextChange,
+  onContextMenuOpen,
 }) => {
   const { userState } = useUserState();
   const [showContextMenu, setShowContextMenu] = useState(false);
@@ -80,7 +82,11 @@ export const LockButtonWithContext: React.FC<LockButtonWithContextProps> = ({
       {/* Context Switcher Arrow - Only show when unlocked and has feeds (not just pN identity) */}
       {userState.isUnlocked && hasFeeds && (
         <button
-          onClick={() => setShowContextMenu(!showContextMenu)}
+          onClick={() => {
+            const opening = !showContextMenu;
+            if (opening) onContextMenuOpen?.();
+            setShowContextMenu(opening);
+          }}
           className="p-0.5 flex items-center justify-center text-white/60 hover:text-white/85 transition-colors pointer-events-auto w-full"
           title="Switch context"
         >

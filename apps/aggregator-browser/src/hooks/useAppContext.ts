@@ -8,15 +8,29 @@ import type { Feed } from '../types/aggregator';
 import { FeedService } from '../services/feedService';
 import { PNOAuthService, FeedToken } from '../services/pnOAuthService';
 
-export type AppContext = 
-  | { type: 'pn', id: string, name: string, pnIdentifier: string }
-  | { type: 'feed', id: string, name: string, feedId: string, isOwned: boolean, feedToken?: FeedToken };
+export type AppContext =
+  | { type: 'pn'; id: string; name: string; pnIdentifier: string }
+  | { type: 'feed'; id: string; name: string; feedId: string; isOwned: boolean; feedToken?: FeedToken };
 
-export function useAppContext(pnIdentifier?: string, catalogFeeds?: Feed[]) {
+export interface UseAppContextOptions {
+  /** App catalog fetch finished — owned feeds come from catalogFeeds only (no second listFeeds). */
+  catalogReady?: boolean;
+  /** Load delegated feed contexts (deferred until context menu opens). */
+  includeDelegated?: boolean;
+}
+
+export function useAppContext(
+  pnIdentifier?: string,
+  catalogFeeds?: Feed[],
+  options: UseAppContextOptions = {}
+) {
+  const { catalogReady = false, includeDelegated = false } = options;
   const [activeContext, setActiveContext] = useState<AppContext | null>(null);
   const [availableContexts, setAvailableContexts] = useState<AppContext[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const isLoadingRef = useRef(false); // Prevent concurrent loads
+  const isLoadingRef = useRef(false);
+  const delegatedLoadedRef = useRef(false);
+  const delegatedContextsRef = useRef<AppContext[]>([]);
 
   const loadContexts = useCallback(async () => {
     if (!pnIdentifier) {
@@ -25,7 +39,6 @@ export function useAppContext(pnIdentifier?: string, catalogFeeds?: Feed[]) {
       return;
     }
 
-    // Prevent concurrent loads
     if (isLoadingRef.current) {
       return;
     }
@@ -33,92 +46,67 @@ export function useAppContext(pnIdentifier?: string, catalogFeeds?: Feed[]) {
     isLoadingRef.current = true;
     setIsLoading(true);
     try {
-      
-      // Load pN identity context
       const session = PNOAuthService.loadSession();
       const displayName = session?.nickname || 'My pN';
       const pnContext: AppContext = {
         type: 'pn',
         id: pnIdentifier,
         name: displayName,
-        pnIdentifier: pnIdentifier
+        pnIdentifier,
       };
 
-      // Owned feeds: reuse App catalog when available to avoid duplicate listFeeds
-      let ownedFeedContexts: AppContext[] = [];
-      try {
-        const ownedFeeds =
-          catalogFeeds && catalogFeeds.length > 0
-            ? catalogFeeds.filter((f) => f.creatorId === pnIdentifier)
-            : (await FeedService.listFeeds({ creatorDid: pnIdentifier, limit: 100 })).feeds;
-        
-        // Removed verbose logging
-        
-        // Get feed tokens from session
-        const feedTokens = session?.feedTokens || [];
-        const feedTokensMap = new Map(feedTokens.map(ft => [ft.feedId, ft]));
-        
-        ownedFeedContexts = ownedFeeds.map(f => ({
-          type: 'feed' as const,
-          id: f.feedId,
-          name: f.feedName,
-          feedId: f.feedId,
-          isOwned: true,
-          feedToken: feedTokensMap.get(f.feedId) // Include feed token if available
-        }));
-      } catch (err) {
-        console.error('❌ [useAppContext] Failed to load owned feeds:', err);
-      }
+      const feedTokens = session?.feedTokens || [];
+      const feedTokensMap = new Map(feedTokens.map((ft) => [ft.feedId, ft]));
 
-      // Load delegated feeds - only if user has a valid session
+      const ownedFeeds = catalogReady
+        ? (catalogFeeds ?? []).filter((f) => f.creatorId === pnIdentifier)
+        : [];
+
+      const ownedFeedContexts: AppContext[] = ownedFeeds.map((f) => ({
+        type: 'feed' as const,
+        id: f.feedId,
+        name: f.feedName,
+        feedId: f.feedId,
+        isOwned: true,
+        feedToken: feedTokensMap.get(f.feedId),
+      }));
+
       let delegatedFeedContexts: AppContext[] = [];
-      if (session?.accessToken) {
+      if (includeDelegated && session?.accessToken && !delegatedLoadedRef.current) {
         try {
           const delegatedFeeds = await FeedService.getDelegatedFeeds(pnIdentifier);
-          delegatedFeedContexts = delegatedFeeds.map(f => ({
+          delegatedLoadedRef.current = true;
+          delegatedFeedContexts = delegatedFeeds.map((f) => ({
             type: 'feed' as const,
             id: f.feedId,
             name: f.feedName,
             feedId: f.feedId,
-            isOwned: false
+            isOwned: false,
           }));
+          delegatedContextsRef.current = delegatedFeedContexts;
         } catch (err: any) {
-          // Handle 401/403 gracefully - endpoint might not be available or user might not have delegated feeds
-          if (err.message?.includes('Not authorized') || err.message?.includes('Invalid token') || err.message?.includes('403') || err.message?.includes('401')) {
-            // Silently skip - user might not have delegated feeds or endpoint not available
-          } else {
-            // Only log unexpected errors
-            if (process.env.NODE_ENV === 'development') {
-              console.error('❌ [useAppContext] Failed to load delegated feeds:', err);
-            }
+          if (
+            !err.message?.includes('Not authorized') &&
+            !err.message?.includes('Invalid token') &&
+            !err.message?.includes('403') &&
+            !err.message?.includes('401') &&
+            process.env.NODE_ENV === 'development'
+          ) {
+            console.error('❌ [useAppContext] Failed to load delegated feeds:', err);
           }
         }
+      } else if (delegatedLoadedRef.current) {
+        delegatedFeedContexts = delegatedContextsRef.current;
       }
 
-      const contexts = [
-        pnContext,
-        ...ownedFeedContexts,
-        ...delegatedFeedContexts
-      ];
-
-      // Removed verbose logging - only log errors
+      const contexts = [pnContext, ...ownedFeedContexts, ...delegatedFeedContexts];
 
       setAvailableContexts(contexts);
 
-      // Set active context - only update if it doesn't exist or if current context is no longer available
-      setActiveContext(prev => {
-        if (!prev) {
-          return pnContext;
-        }
-        // Check if current context still exists in new contexts
-        const stillExists = contexts.find(c => 
-          c.type === prev.type && c.id === prev.id
-        );
-        if (stillExists) {
-          return prev; // Keep current context
-        } else {
-          return pnContext; // Fallback to pN if current context no longer exists
-        }
+      setActiveContext((prev) => {
+        if (!prev) return pnContext;
+        const stillExists = contexts.find((c) => c.type === prev.type && c.id === prev.id);
+        return stillExists ? prev : pnContext;
       });
     } catch (error) {
       console.error('Failed to load contexts:', error);
@@ -126,29 +114,26 @@ export function useAppContext(pnIdentifier?: string, catalogFeeds?: Feed[]) {
       setIsLoading(false);
       isLoadingRef.current = false;
     }
-  }, [pnIdentifier, catalogFeeds]);
+  }, [pnIdentifier, catalogFeeds, catalogReady, includeDelegated]);
 
   useEffect(() => {
     if (pnIdentifier && !isLoadingRef.current) {
       loadContexts();
     }
-  }, [pnIdentifier, catalogFeeds, loadContexts]);
+  }, [pnIdentifier, catalogReady, includeDelegated, catalogFeeds, loadContexts]);
 
-  // Persist active context to localStorage
   useEffect(() => {
     if (activeContext) {
       localStorage.setItem('pn_active_context', JSON.stringify(activeContext));
     }
   }, [activeContext]);
 
-  // Load persisted context on mount
   useEffect(() => {
     if (!activeContext && pnIdentifier) {
       try {
         const stored = localStorage.getItem('pn_active_context');
         if (stored) {
           const parsed = JSON.parse(stored);
-          // Verify context still exists in available contexts
           if (parsed.type === 'pn' && parsed.pnIdentifier === pnIdentifier) {
             setActiveContext(parsed);
           }
@@ -164,7 +149,6 @@ export function useAppContext(pnIdentifier?: string, catalogFeeds?: Feed[]) {
     setActiveContext,
     availableContexts,
     loadContexts,
-    isLoading
+    isLoading,
   };
 }
-

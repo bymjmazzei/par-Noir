@@ -21,14 +21,19 @@ export function ContentNoticesBanner({ isUnlocked, enabled = true }: ContentNoti
       return;
     }
     let cancelled = false;
-    getContentNotices()
-      .then((list) => {
-        if (!cancelled) setNotices(list);
-      })
-      .catch(() => {
-        if (!cancelled) setNotices([]);
-      });
-    return () => { cancelled = true; };
+    const timer = setTimeout(() => {
+      getContentNotices()
+        .then((list) => {
+          if (!cancelled) setNotices(list);
+        })
+        .catch(() => {
+          if (!cancelled) setNotices([]);
+        });
+    }, 5000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [enabled, isUnlocked]);
 
   if (notices.length === 0) return null;

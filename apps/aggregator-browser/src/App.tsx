@@ -111,7 +111,13 @@ function App() {
     setFeedViewedTimestamps,
   } = useFeedState();
 
-  const { activeContext, setActiveContext, availableContexts } = useAppContext(userState.pnIdentifier, feeds);
+  const [feedsCatalogReady, setFeedsCatalogReady] = useState(false);
+  const [includeDelegatedContexts, setIncludeDelegatedContexts] = useState(false);
+
+  const { activeContext, setActiveContext, availableContexts } = useAppContext(userState.pnIdentifier, feeds, {
+    catalogReady: feedsCatalogReady,
+    includeDelegated: includeDelegatedContexts,
+  });
 
   const {
     showSearch,
@@ -217,16 +223,13 @@ function App() {
   }, [userState.isUnlocked]); // Only depend on isUnlocked, not activeFeedId (to avoid interference with manual clicks)
 
   // Fetch feeds from API - only once on mount
-  const hasLoadedFeedsRef = useRef<boolean>(false);
   useEffect(() => {
-    if (!hasLoadedFeedsRef.current) {
-      hasLoadedFeedsRef.current = true;
+    let cancelled = false;
     const loadFeeds = async () => {
       try {
         const result = await FeedService.listFeeds({ limit: 100 });
-        setFeeds(result.feeds);
+        if (!cancelled) setFeeds(result.feeds);
       } catch (error: any) {
-        // Don't log 429 errors as errors - they're handled gracefully
         if (import.meta.env.DEV) {
           if (error?.message?.includes('429') || error?.status === 429) {
             console.warn('Rate limited when loading feeds, using empty list');
@@ -234,14 +237,17 @@ function App() {
             console.error('Failed to load feeds:', error);
           }
         }
-        // Continue with empty feeds - UI will show default feeds
-        setFeeds([]);
+        if (!cancelled) setFeeds([]);
+      } finally {
+        if (!cancelled) setFeedsCatalogReady(true);
       }
     };
 
     loadFeeds();
-    }
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [setFeeds]);
 
   // Reload feeds when a new feed is created
   const handleFeedCreated = async (feed: Feed) => {
@@ -255,18 +261,17 @@ function App() {
     }
   };
 
-  // Load user subscriptions when home feed is active (not on upload/messages/etc.)
+  // Subscriptions are not needed for first paint — load after feed index settles
   useEffect(() => {
-    const loadSubscriptions = async () => {
-      if (!discoveryEnabled || !userState.isUnlocked || !userState.pnIdentifier) return;
+    if (!discoveryEnabled || !userState.isUnlocked || !userState.pnIdentifier) return;
+    const timer = setTimeout(async () => {
       try {
-        await FeedService.getUserSubscriptions(userState.pnIdentifier);
+        await FeedService.getUserSubscriptions(userState.pnIdentifier!);
       } catch (error) {
         if (import.meta.env.DEV) console.error('Failed to load subscriptions:', error);
       }
-    };
-
-    loadSubscriptions();
+    }, 5000);
+    return () => clearTimeout(timer);
   }, [discoveryEnabled, userState.isUnlocked, userState.pnIdentifier]);
 
   // Load bulk engagement stats when files are loaded
@@ -279,7 +284,9 @@ function App() {
     if (!discoveryEnabled || indexedFiles.length === 0 || !loadBulkEngagementStatsRef.current) {
       return;
     }
-    const fileIds = indexedFiles.map(file => file.metadata.fileId);
+    const timer = setTimeout(() => {
+      if (!loadBulkEngagementStatsRef.current) return;
+      const fileIds = indexedFiles.map((file) => file.metadata.fileId);
       // Only load engagement stats for files we haven't loaded yet
       const newFileIds = fileIds.filter(id => !loadedEngagementFileIdsRef.current.has(id));
       
@@ -297,6 +304,8 @@ function App() {
           });
         }
       }
+    }, 2500);
+    return () => clearTimeout(timer);
   }, [discoveryEnabled, indexedFiles.length]);
 
   // Initialize from URL params - only on mount and when file param changes
@@ -993,6 +1002,7 @@ function App() {
         setViewingBrandedFeed={setViewingBrandedFeed}
         onMeClick={handleMeClick}
         fetchContentNotices={discoveryEnabled}
+        onContextMenuOpen={() => setIncludeDelegatedContexts(true)}
       >
       {/* Conditional rendering for different views */}
       {viewingBrandedFeed ? (
