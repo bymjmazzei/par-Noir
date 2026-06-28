@@ -112,53 +112,55 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
           (fileNameWithoutEncrypted.toLowerCase().endsWith('.thought') || fileNameWithoutEncrypted.toLowerCase().endsWith('.png'));
         const isThought = isThoughtFile || isThoughtThumbnail;
 
-        if (isThoughtFile || isThoughtThumbnail) {
-          const thoughtFileId = isThoughtThumbnail ? mainFileId : fileId;
-          if (!thoughtFileId) {
+        // Thought thumbnails are encrypted PNGs on Drive — load thumb fileId, not private main .thought
+        if (isThoughtThumbnail) {
+          const session = PNOAuthService.loadSession();
+          if (!session?.did) {
+            setError(true);
+            return;
+          }
+          let publicKey = session?.publicKey;
+          if (!publicKey && session.did.startsWith('did:key:')) publicKey = session.did.substring(8);
+          if (!publicKey) {
             setError(true);
             return;
           }
           try {
-            const session = PNOAuthService.loadSession();
-            if (!session?.did) {
-              setError(true);
-              return;
-            }
-            const pnId = session.did;
-            let publicKey = session?.publicKey;
-            if (!publicKey && session.did.startsWith('did:key:')) publicKey = session.did.substring(8);
-            if (!publicKey) {
-              setError(true);
-              return;
-            }
-            const thoughtResponse = await fetch(
-              `${API_ENDPOINT}/api/drive/files/${thoughtFileId}?accountId=${accountId}&download=true`,
+            let response = await fetch(
+              `${API_ENDPOINT}/api/drive/files/${fileId}?thumbnail=true&accountId=${accountId}`,
               { headers: { Authorization: `Bearer ${accessToken}` } }
             );
-            if (!thoughtResponse.ok) {
+            if (!response.ok) {
+              response = await fetch(
+                `${API_ENDPOINT}/api/drive/files/${fileId}?accountId=${accountId}&download=true`,
+                { headers: { Authorization: `Bearer ${accessToken}` } }
+              );
+            }
+            if (!response.ok) {
               setError(true);
               return;
             }
-            const encryptedText = await thoughtResponse.text();
-            const encryptedPackage = JSON.parse(encryptedText);
-            const encryptionManager = new EncryptionManager();
-            const decryptedData = await encryptionManager.decrypt(
-              encryptedPackage.encrypted,
-              encryptedPackage.iv,
-              encryptedPackage.salt,
-              pnId,
-              publicKey
-            );
-            const thoughtData = JSON.parse(new TextDecoder().decode(decryptedData));
-            const textPost = thoughtData.textPost;
-            if (!textPost) {
-              setError(true);
-              return;
+            const contentType = response.headers.get('content-type') || '';
+            const blob = await response.blob();
+            if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
+              const encryptedText = await blob.text();
+              const encryptedPackage = JSON.parse(encryptedText);
+              const encryptionManager = new EncryptionManager();
+              const decryptedData = await encryptionManager.decrypt(
+                encryptedPackage.encrypted,
+                encryptedPackage.iv,
+                encryptedPackage.salt,
+                session.did,
+                publicKey
+              );
+              const decryptedBlob = new Blob([decryptedData as BlobPart], {
+                type: encryptedPackage.metadata?.originalMimeType || 'image/png',
+              });
+              blobUrl = URL.createObjectURL(await createThumbnailFromBlob(decryptedBlob, 300, 300));
+            } else {
+              blobUrl = URL.createObjectURL(blob);
             }
-            const { renderTextPostToBlob } = await import('../../services/textPostService');
-            const thumbnailBlob = await renderTextPostToBlob(textPost, 300 / 1080);
-            const url = URL.createObjectURL(thumbnailBlob);
-            setThumbnailUrl(url);
+            setThumbnailUrl(blobUrl);
             setError(false);
             return;
           } catch {

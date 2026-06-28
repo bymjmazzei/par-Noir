@@ -4108,6 +4108,9 @@ class ProductionServer {
           });
           
           console.log(`[MetadataIndex PUT] File ${fileId} is new - creating companion metadata (visibility=${finalVisibility})...`);
+          const { shouldDeferCompanionMetadata } = await import('./server/modules/dmcaGate');
+          const deferCompanionCreate = shouldDeferCompanionMetadata({ isThoughtThumbnail, thought, textPost });
+          const runCompanionMetadataCreate = async (): Promise<'drive_not_initialized' | void> => {
           try {
             {
               const tokenPayload = getBearerTokenPayload(req);
@@ -4384,10 +4387,20 @@ class ProductionServer {
           } catch (metadataError: any) {
             const msg = metadataError?.message || String(metadataError);
             if (msg.includes('DRIVE_NOT_INITIALIZED')) {
-              return this.driveNotInitialized(res);
+              return 'drive_not_initialized';
             }
             console.error(`[MetadataIndex] Failed to create companion metadata file for ${fileId}:`, msg);
             console.error(`[MetadataIndex] Stack trace:`, metadataError?.stack);
+          }
+          };
+          if (deferCompanionCreate) {
+            console.log(`[MetadataIndex PUT] Deferring companion metadata create for ${fileId} to background (Postgres is feed truth)`);
+            void runCompanionMetadataCreate();
+          } else {
+            const companionCreateResult = await runCompanionMetadataCreate();
+            if (companionCreateResult === 'drive_not_initialized') {
+              return this.driveNotInitialized(res);
+            }
           }
         } else {
           console.log(`[MetadataIndex PUT] File ${fileId} already existed (fileExistedBefore=${fileExistedBefore}) - skipping companion metadata creation`);

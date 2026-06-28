@@ -506,6 +506,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const addButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
   /** Drive files with no Postgres index — skip repeat metadata-index GETs (404 is expected). */
   const metadataMissingIdsRef = useRef<Set<string>>(new Set());
+  const loadFilesTimerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const loadFilesForAccountRef = useRef<(accountId: string) => Promise<void>>(async () => {});
+
+  const scheduleLoadFilesForAccount = (accountId: string, delayMs = 800) => {
+    const timers = loadFilesTimerRef.current;
+    const existing = timers.get(accountId);
+    if (existing) clearTimeout(existing);
+    timers.set(
+      accountId,
+      setTimeout(() => {
+        timers.delete(accountId);
+        void loadFilesForAccountRef.current(accountId);
+      }, delayMs)
+    );
+  };
 
   useEffect(() => {
     if (!authenticatedUser?.id || !userState.isUnlocked) {
@@ -600,12 +615,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return newMap;
         });
 
-        // Refresh file list to get the actual uploaded file (or confirm it's gone if failed)
+        // Refresh file list once queue is idle (avoid reload mid-metadata-PUT)
         if (task.status === 'completed' && task.accountId) {
-          // Small delay to ensure server has processed the upload
-          setTimeout(() => {
-            loadFilesForAccount(task.accountId);
-          }, 500);
+          const accountStillBusy = uploadQueueService.getActiveTasks().some(
+            (t) => t.accountId === task.accountId
+          );
+          if (!accountStillBusy) {
+            scheduleLoadFilesForAccount(task.accountId);
+          }
         }
       }
     };
@@ -797,6 +814,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             let mainFileIdFromMetadata: string | undefined;
             try {
               const thumbMetadata = await loadFileMetadata(thumb.id);
+              if (!thumbMetadata) {
+                return null;
+              }
               isPartOfCollection = thumbMetadata?.isPartOfCollection === true;
               fileType = thumbMetadata?.fileType; // Capture fileType for filtering
               mainFileIdFromMetadata = thumbMetadata?.mainFileId; // Get mainFileId from metadata
@@ -828,7 +848,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               mainFileType: mainFileType // Store main file's fileType for filtering
             };
           })
-        );
+        ).then((entries) => entries.filter((entry): entry is NonNullable<typeof entry> => entry != null));
         
         // Detect collections by filename pattern
         const collectionFiles = allFiles.filter((file: DriveFile) => {
@@ -841,6 +861,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           collectionFiles.map(async (file: DriveFile) => {
             try {
               const metadata = await loadFileMetadata(file.id);
+              if (!metadata) {
+                return null;
+              }
               const isThoughtCollection = metadata?.isThoughtCollection === true;
               if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Loaded collection metadata for ${file.id}:`, {
                 name: metadata?.name || metadata?.title,
@@ -864,7 +887,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               };
             }
           })
-        );
+        ).then((entries) => entries.filter((entry): entry is NonNullable<typeof entry> => entry != null));
         
         // Build set of fileIds (thumbnails and thought files) that are part of THOUGHT COLLECTIONS (to exclude them from individual display)
         // Only filter out thoughts that are in thought collections (multi-page thoughts), not regular collections or single thoughts
@@ -1122,6 +1145,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             let mainFileIdFromMetadata: string | undefined;
             try {
               const thumbMetadata = await loadFileMetadata(thumb.id);
+              if (!thumbMetadata) {
+                return null;
+              }
               isPartOfCollection = thumbMetadata?.isPartOfCollection === true;
               fileType = thumbMetadata?.fileType; // Capture fileType for filtering
               mainFileIdFromMetadata = thumbMetadata?.mainFileId; // Get mainFileId from metadata
@@ -1153,7 +1179,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               mainFileType: mainFileType // Store main file's fileType for filtering
             };
           })
-        );
+        ).then((entries) => entries.filter((entry): entry is NonNullable<typeof entry> => entry != null));
         
         // Detect collections by filename pattern
         const collectionFiles = allFiles.filter((file: DriveFile) => {
@@ -1166,6 +1192,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           collectionFiles.map(async (file: DriveFile) => {
             try {
               const metadata = await loadFileMetadata(file.id);
+              if (!metadata) {
+                return null;
+              }
               const isThoughtCollection = metadata?.isThoughtCollection === true;
               if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Loaded collection metadata for ${file.id}:`, {
                 name: metadata?.name || metadata?.title,
@@ -1189,7 +1218,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               };
             }
           })
-        );
+        ).then((entries) => entries.filter((entry): entry is NonNullable<typeof entry> => entry != null));
         
         // Build set of fileIds (thumbnails and thought files) that are part of THOUGHT COLLECTIONS (to exclude them from individual display)
         // Only filter out thoughts that are in thought collections (multi-page thoughts), not regular collections or single thoughts
@@ -1351,6 +1380,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
     }
   };
+
+  loadFilesForAccountRef.current = loadFilesForAccount;
 
   // Load files for all accounts
   useEffect(() => {
@@ -1740,9 +1771,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
         // Reload files to ensure metadata is fresh
         if (accountId) {
-          setTimeout(() => {
-            loadFilesForAccount(accountId);
-          }, 500);
+          scheduleLoadFilesForAccount(accountId);
         }
       },
       onError: (error) => {
@@ -1927,11 +1956,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         if (import.meta.env.DEV) console.log('✅ [ShareSettings] Share settings updated:', result);
         // Reload metadata and files if making public
         if (result?.isPublic && accountId) {
-          loadFileMetadata(fileId).then(() => {
-            setTimeout(() => {
-              loadFilesForAccount(accountId);
-            }, 1000);
-          });
+          scheduleLoadFilesForAccount(accountId, 1200);
         } else {
           loadFileMetadata(fileId);
         }

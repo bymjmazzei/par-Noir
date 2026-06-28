@@ -39,6 +39,15 @@ export function shouldSkipDmcaGate(params: {
   return !!(params.thought || params.textPost);
 }
 
+/** Thoughts: Postgres is feed truth; companion spreadsheet can be created after HTTP response. */
+export function shouldDeferCompanionMetadata(params: {
+  isThoughtThumbnail?: boolean;
+  thought?: unknown;
+  textPost?: unknown;
+}): boolean {
+  return shouldSkipDmcaGate(params);
+}
+
 /**
  * Run DMCA check on file before allowing it to be indexed.
  * Video/audio: samples random clips. Images: full file. Other: full file.
