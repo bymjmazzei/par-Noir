@@ -3545,6 +3545,7 @@ class ProductionServer {
     this.app.put('/api/aggregator/metadata-index/:fileId', async (req, res) => {
       try {
         const { fileId } = req.params;
+        const putStartedAt = Date.now();
         console.log(`[MetadataIndex PUT] Request received for fileId: ${fileId}, isPublic: ${req.body.isPublic}`);
         
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
@@ -3639,6 +3640,13 @@ class ProductionServer {
         let aggregatorSubmittedThisRequest = false;
         let dmcaCheckedThisRequest = false;
         let indexUpdatedThisRequest = false;
+        let companionCreatedThisRequest = false;
+        let cachedDriveFileInfo: {
+          name?: string;
+          mimeType?: string;
+          size?: string;
+          createdTime?: string;
+        } | null = null;
         const accountIdParam = (req.query.accountId as string) || undefined;
         const { createStorageRequestContext, getDriveTokenFromContext } = await import('./server/modules/storage/storageRequestContext');
         const storageCtx = tokenPayload.pnIdentifier
@@ -3685,7 +3693,8 @@ class ProductionServer {
               throw new Error(`Failed to fetch file info: ${driveResponse.status} ${errorText}`);
             }
 
-            const driveFile = await driveResponse.json() as { name?: string; mimeType?: string; createdTime?: string };
+            const driveFile = await driveResponse.json() as { name?: string; mimeType?: string; createdTime?: string; size?: string };
+            cachedDriveFileInfo = driveFile;
             console.log(`[MetadataIndex PUT] Successfully fetched file info from Google Drive for ${fileId}:`, {
               name: driveFile.name,
               mimeType: driveFile.mimeType,
@@ -3975,7 +3984,7 @@ class ProductionServer {
         // Only set to false if explicitly provided as false
         // NOTE: For private files, current will be null (they're not in database), so skip companion metadata reading
         let finalIsPublic = isPublic;
-        if (isPublic === undefined && current && current.metadata.backend === 'google_drive') {
+        if (isPublic === undefined && current && current.metadata.backend === 'google_drive' && fileExistedBefore) {
           // #region agent log
           // #endregion
           try {
@@ -4150,18 +4159,21 @@ class ProductionServer {
                     };
                 const accessToken = token.access_token; // Keep for fetch calls
                 
-                // Fetch file info from Google Drive
-                const driveResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime`, {
-                  headers: { 'Authorization': `Bearer ${accessToken}` }
-                });
-                
-                if (!driveResponse.ok) {
-                  const errorText = await driveResponse.text().catch(() => 'Unknown error');
-                  console.error(`[MetadataIndex PUT] Failed to fetch file info: ${driveResponse.status} ${driveResponse.statusText} - ${errorText}`);
-                  throw new Error(`Failed to fetch file info: ${driveResponse.status}`);
+                let driveFile = cachedDriveFileInfo;
+                if (!driveFile) {
+                  const driveResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                  });
+                  
+                  if (!driveResponse.ok) {
+                    const errorText = await driveResponse.text().catch(() => 'Unknown error');
+                    console.error(`[MetadataIndex PUT] Failed to fetch file info: ${driveResponse.status} ${driveResponse.statusText} - ${errorText}`);
+                    throw new Error(`Failed to fetch file info: ${driveResponse.status}`);
+                  }
+                  
+                  driveFile = await driveResponse.json() as { name?: string; mimeType?: string; size?: string; createdTime?: string };
+                  cachedDriveFileInfo = driveFile;
                 }
-                
-                const driveFile = await driveResponse.json() as { name?: string; mimeType?: string; size?: string; createdTime?: string };
                 const originalFileName = driveFile.name?.replace(/\.encrypted$/i, '') || fileId;
                 const originalMimeType = driveFile.mimeType || 'application/octet-stream';
                 
@@ -4266,6 +4278,7 @@ class ProductionServer {
                           actualAccountId
                         );
                         console.log(`[MetadataIndex PUT] ✅ Created new companion metadata spreadsheet for ${fileId}: ${spreadsheetId}`);
+                        companionCreatedThisRequest = true;
                       } else {
                         // Companion metadata exists - update it if needed
                         console.log(`[MetadataIndex PUT] Companion metadata already exists for ${fileId} - updating if needed...`);
@@ -4687,7 +4700,7 @@ class ProductionServer {
 
         // SIMPLIFIED: Update companion metadata if isPublic is being changed
         // For private files, current might be null if we just deleted it, so use updated metadata from updateMetadata()
-        if ((isPublic === false || isPublic === true)) {
+        if ((isPublic === false || isPublic === true) && !companionCreatedThisRequest) {
           // Use current metadata if available, otherwise use updated metadata from updateMetadata() call
           const metadataForCompanion = current?.metadata || updated;
           try {
@@ -5031,6 +5044,9 @@ class ProductionServer {
           return res.json({ success: true, metadata: updated || null, deleted: true });
         }
 
+        console.log(
+          `[MetadataIndex PUT] Completed for ${fileId} in ${Date.now() - putStartedAt}ms`
+        );
         return res.json({ success: true, metadata: result });
       } catch (error: any) {
         console.error('Error updating metadata:', error);

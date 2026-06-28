@@ -801,7 +801,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               
               // Also check the main file's type if mainFileId exists (from metadata or thoughtFile)
               const actualMainFileId = mainFileIdFromMetadata || thoughtFile?.id;
-              if (actualMainFileId) {
+              if (thumbMetadata && actualMainFileId && actualMainFileId !== thumb.id) {
                 try {
                   const mainMetadata = await loadFileMetadata(actualMainFileId);
                   mainFileType = mainMetadata?.fileType;
@@ -1146,7 +1146,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               
               // Also check the main file's type if mainFileId exists (from metadata or thoughtFile)
               const actualMainFileId = mainFileIdFromMetadata || thoughtFile?.id;
-              if (actualMainFileId) {
+              if (thumbMetadata && actualMainFileId && actualMainFileId !== thumb.id) {
                 try {
                   const mainMetadata = await loadFileMetadata(actualMainFileId);
                   mainFileType = mainMetadata?.fileType;
