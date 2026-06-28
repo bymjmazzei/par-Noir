@@ -4415,6 +4415,8 @@ class ProductionServer {
           };
           if (deferCompanionCreate) {
             console.log(`[MetadataIndex PUT] Deferring companion metadata create for ${fileId} to background (Postgres is feed truth)`);
+            indexUpdatedThisRequest = true;
+            companionCreatedThisRequest = true;
             void runCompanionMetadataCreate();
           } else {
             const companionCreateResult = await runCompanionMetadataCreate();
@@ -4427,8 +4429,8 @@ class ProductionServer {
         }
 
         // ARCHITECTURAL FIX: Update companion metadata FIRST (source of truth), then database (cache)
-        // This ensures companion metadata is always authoritative for metadata fields
-        if (name || description || keywords || tags || genre || category || locationCreated || license) {
+        // Skip when companion create already ran or was deferred to background (fields included there).
+        if (!companionCreatedThisRequest && (name || description || keywords || tags || genre || category || locationCreated || license)) {
           try {
             {
               const tokenPayload = getBearerTokenPayload(req);
@@ -8867,10 +8869,11 @@ class ProductionServer {
         // This prevents multiple API calls with different identifiers
         const identifierCandidates: string[] = [pnIdentifier];
         
-        console.log(`[DriveFiles] Using pn identifier only: ${pnIdentifier}`);
+        if (isDevVerbose()) {
+          console.log(`[DriveFiles] Using pn identifier only: ${pnIdentifier}`);
+        }
         
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-        
         const query = req.query.q as string | undefined;
         const scope = req.query.scope as string | undefined;
         const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string, 10) : 50;

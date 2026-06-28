@@ -332,9 +332,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         const { PNOAuthService } = await import('../services/pnOAuthService');
         const session = PNOAuthService.loadSession();
         if (!session?.accessToken) {
-          // Retry after a delay if no session yet (might be initializing)
-          if (retryCount < 3) {
-            setTimeout(() => checkZKPAgeVerification(retryCount + 1), 1000 * (retryCount + 1));
+          if (retryCount < 1) {
+            setTimeout(() => checkZKPAgeVerification(retryCount + 1), 1500);
           }
           return;
         }
@@ -420,12 +419,19 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
               });
             }
           }
-          } else if (retryCount < 2) {
-            // Retry after a delay - permissions might still be storing
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`ℹ️ Age ZKP not found yet, retrying in ${(retryCount + 1) * 2} seconds...`);
-            }
-            setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000 * (retryCount + 1));
+          } else if (retryCount < 1) {
+            // Single retry — permissions may still be storing after unlock
+            setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000);
+          } else {
+            setUserState(prev => ({
+              ...prev,
+              preferences: {
+                ...prev.preferences,
+                hasAgeZKP: false,
+                isOver18: false,
+                showNSFW: false
+              }
+            }));
           }
           // Age ZKP not shared - silently continue
         } else {
@@ -497,17 +503,9 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    // Initial check
     checkZKPAgeVerification();
-    
-    // Also check again after a delay to account for async permission storage
-    const delayedCheck = setTimeout(() => {
-      if (!userState.preferences.hasAgeZKP) {
-        checkZKPAgeVerification(1);
-      }
-    }, 3000);
 
-    return () => clearTimeout(delayedCheck);
+    return () => {};
   }, [userState.isUnlocked, userState.pnIdentifier, userState.preferences.hasAgeZKP]);
 
   const setUnlocked = (pnIdentifier: string) => {
