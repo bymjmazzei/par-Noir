@@ -36,6 +36,7 @@ export interface AppLayoutProps {
   setViewingCreatorId: (v: string | null) => void;
   setViewingBrandedFeed: (v: Feed | null) => void;
   onMeClick: () => void;
+  fetchContentNotices?: boolean;
   children: React.ReactNode;
 }
 
@@ -60,6 +61,7 @@ export function AppLayout({
   setViewingCreatorId,
   setViewingBrandedFeed,
   onMeClick,
+  fetchContentNotices = true,
   children,
 }: AppLayoutProps) {
   return (
@@ -74,7 +76,7 @@ export function AppLayout({
         availableContexts={userState.isUnlocked ? availableContexts : []}
         onContextChange={(c) => setActiveContext(c)}
       />
-      <ContentNoticesBanner isUnlocked={userState.isUnlocked} />
+      <ContentNoticesBanner isUnlocked={userState.isUnlocked} enabled={fetchContentNotices} />
       {children}
       <ToastContainer toasts={toasts} onClose={removeToast} />
       <BottomNav

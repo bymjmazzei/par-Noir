@@ -68,7 +68,6 @@ function App() {
   }, []);
 
   const { userState, setLocked, setUnlocked, updateDisplayName, getDisplayName } = useUserState();
-  const { activeContext, setActiveContext, availableContexts } = useAppContext(userState.pnIdentifier);
   const discover = useDiscoverFiles();
   const {
     mediaFiles,
@@ -112,6 +111,8 @@ function App() {
     setFeedViewedTimestamps,
   } = useFeedState();
 
+  const { activeContext, setActiveContext, availableContexts } = useAppContext(userState.pnIdentifier, feeds);
+
   const {
     showSearch,
     setShowSearch,
@@ -153,6 +154,7 @@ function App() {
 
   const mePageData = useMePageData({
     viewingCreatorId,
+    mePageActive: Boolean(viewingCreatorId && activeBottomTab === 'index'),
     userState,
     mediaFiles,
     thoughtsFiles,
@@ -253,26 +255,19 @@ function App() {
     }
   };
 
-  // Load user subscriptions when user connects
+  // Load user subscriptions when home feed is active (not on upload/messages/etc.)
   useEffect(() => {
     const loadSubscriptions = async () => {
-      if (userState.isUnlocked && userState.pnIdentifier) {
-        try {
-          const subscribedFeeds = await FeedService.getUserSubscriptions(userState.pnIdentifier);
-          // Update user state with subscriptions
-          subscribedFeeds.forEach(feed => {
-            if (!userState.preferences.subscribedFeedIds.includes(feed.feedId)) {
-              // This will be handled by UserStateContext
-            }
-          });
-        } catch (error) {
-          if (import.meta.env.DEV) console.error('Failed to load subscriptions:', error);
-        }
+      if (!discoveryEnabled || !userState.isUnlocked || !userState.pnIdentifier) return;
+      try {
+        await FeedService.getUserSubscriptions(userState.pnIdentifier);
+      } catch (error) {
+        if (import.meta.env.DEV) console.error('Failed to load subscriptions:', error);
       }
     };
 
     loadSubscriptions();
-  }, [userState.isUnlocked, userState.pnIdentifier]);
+  }, [discoveryEnabled, userState.isUnlocked, userState.pnIdentifier]);
 
   // Load bulk engagement stats when files are loaded
   // Store loadBulkEngagementStats in ref to avoid dependency issues
@@ -281,8 +276,10 @@ function App() {
   }, [loadBulkEngagementStats]);
 
   useEffect(() => {
-    if (indexedFiles.length > 0 && loadBulkEngagementStatsRef.current) {
-      const fileIds = indexedFiles.map(file => file.metadata.fileId);
+    if (!discoveryEnabled || indexedFiles.length === 0 || !loadBulkEngagementStatsRef.current) {
+      return;
+    }
+    const fileIds = indexedFiles.map(file => file.metadata.fileId);
       // Only load engagement stats for files we haven't loaded yet
       const newFileIds = fileIds.filter(id => !loadedEngagementFileIdsRef.current.has(id));
       
@@ -300,8 +297,7 @@ function App() {
           });
         }
       }
-    }
-  }, [indexedFiles.length]); // Only reload when count changes
+  }, [discoveryEnabled, indexedFiles.length]);
 
   // Initialize from URL params - only on mount and when file param changes
   const hasInitializedFromURLRef = useRef<boolean>(false);
@@ -472,6 +468,7 @@ function App() {
     discoverFiles,
     discoverFilesRef,
     isDiscoveringRef,
+    initialDiscoveryCompleteRef,
     refreshContentType,
     handleSearch,
     handleFilterChange,
@@ -666,11 +663,18 @@ function App() {
 
   // SCALABILITY: Infinite scroll - load more files when user scrolls near bottom
   useEffect(() => {
-    // Don't set up observer if conditions aren't met
-    if (viewMode !== 'feed' || !hasMoreRef.current || isLoadingMore || isDiscoveringRef.current) {
+    if (
+      viewMode !== 'feed' ||
+      !discoveryEnabled ||
+      !hasMoreRef.current ||
+      isLoadingMore ||
+      isDiscoveringRef.current ||
+      isLoading ||
+      !initialDiscoveryCompleteRef.current
+    ) {
       return;
     }
-    if (!discoverFilesRef.current) return; // Wait for discoverFiles to be initialized
+    if (!discoverFilesRef.current) return;
     
     let observer: IntersectionObserver | null = null;
     let sentinel: HTMLElement | null = null;
@@ -678,7 +682,7 @@ function App() {
     
     const setupObserver = () => {
       // Double-check conditions before creating observer (use ref to get current value)
-      if (!hasMoreRef.current || isLoadingMore || isDiscoveringRef.current || !discoverFilesRef.current || isReconnecting) {
+      if (!hasMoreRef.current || isLoadingMore || isDiscoveringRef.current || !discoverFilesRef.current || !initialDiscoveryCompleteRef.current || isReconnecting) {
         return;
       }
       
@@ -691,7 +695,7 @@ function App() {
         (entries) => {
           entries.forEach((entry) => {
             // Triple-check conditions in callback to prevent race conditions (use ref for hasMore)
-            if (entry.isIntersecting && hasMoreRef.current && !isLoadingMore && !isDiscoveringRef.current && discoverFilesRef.current && !isReconnecting) {
+            if (entry.isIntersecting && hasMoreRef.current && !isLoadingMore && !isDiscoveringRef.current && discoverFilesRef.current && !isReconnecting && initialDiscoveryCompleteRef.current) {
               // Disconnect observer immediately to prevent multiple triggers
               if (observer) {
                 observer.disconnect();
@@ -704,12 +708,13 @@ function App() {
               const pageToLoad = currentPage + 1;
               
               discoverFilesRef.current(undefined, false, pageToLoad, true).finally(() => {
+                setCurrentPage(pageToLoad);
                 setIsLoadingMore(false);
                 isReconnecting = false;
                 // Only reconnect observer if there's more content AND we're still in feed mode
                 // Use ref to check current hasMore value (avoids stale closure)
                 setTimeout(() => {
-                  if (viewMode === 'feed' && hasMoreRef.current && sentinel && !observer && !isReconnecting) {
+                  if (viewMode === 'feed' && hasMoreRef.current && sentinel && !observer && !isReconnecting && initialDiscoveryCompleteRef.current) {
                     setupObserver();
                   }
                 }, 500); // Increased delay to prevent rapid reconnections
@@ -749,7 +754,7 @@ function App() {
       }
       isReconnecting = false;
     };
-  }, [viewMode, hasMore, isLoadingMore]); // Removed currentPage from dependencies
+  }, [viewMode, discoveryEnabled, hasMore, isLoadingMore, isLoading]);
 
   // (Token-driven refresh, loadContentTypeIndices, discoverFiles, init, handleSearch, handleFilterChange live in useDiscovery)
 
@@ -987,6 +992,7 @@ function App() {
         setViewingCreatorId={setViewingCreatorId}
         setViewingBrandedFeed={setViewingBrandedFeed}
         onMeClick={handleMeClick}
+        fetchContentNotices={discoveryEnabled}
       >
       {/* Conditional rendering for different views */}
       {viewingBrandedFeed ? (

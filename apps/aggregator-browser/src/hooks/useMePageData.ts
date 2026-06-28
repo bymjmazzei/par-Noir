@@ -24,6 +24,8 @@ export interface ConnectionRow {
 
 export interface UseMePageDataParams {
   viewingCreatorId: string | null;
+  /** True when Me/Index tab is showing the user's profile */
+  mePageActive?: boolean;
   userState: {
     isUnlocked: boolean;
     pnIdentifier?: string;
@@ -41,6 +43,7 @@ export interface UseMePageDataParams {
 
 export function useMePageData({
   viewingCreatorId,
+  mePageActive = false,
   userState,
   mediaFiles,
   thoughtsFiles,
@@ -135,9 +138,9 @@ export function useMePageData({
   const creatorThoughtsFiles = useMemo(() => creatorFiles.filter(isThought), [creatorFiles]);
   const creatorCollectionsFiles = useMemo(() => creatorFiles.filter(isCollection), [creatorFiles]);
 
-  // --- saved feed load ---
+  // --- saved feed load (Me tab only) ---
   useEffect(() => {
-    if (viewingCreatorId !== userState.pnIdentifier || !userState.isUnlocked || !userState.pnIdentifier) {
+    if (!mePageActive || viewingCreatorId !== userState.pnIdentifier || !userState.isUnlocked || !userState.pnIdentifier) {
       setSavedFeedFileIds([]);
       setSavedFiles([]);
       savedFeedLoadingRef.current = false;
@@ -175,7 +178,7 @@ export function useMePageData({
         savedFeedLoadingRef.current = false;
       }
     })();
-  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
+  }, [mePageActive, viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
 
   // --- savedFeedFileIds + indexedFilesMap -> savedFiles ---
   const savedFeedFileIdsKey = useMemo(() => [...savedFeedFileIds].sort().join(','), [savedFeedFileIds]);
@@ -377,9 +380,9 @@ export function useMePageData({
     })();
   }, [viewingCreatorId, userState.pnIdentifier, indexedFilesKey]);
 
-  // --- connections + connectionTopPosts ---
+  // --- connections + connectionTopPosts (Me tab only) ---
   useEffect(() => {
-    if (viewingCreatorId !== userState.pnIdentifier || !userState.pnIdentifier) {
+    if (!mePageActive || viewingCreatorId !== userState.pnIdentifier || !userState.pnIdentifier) {
       setConnectionsList([]);
       setConnectionTopPosts([]);
       return;
@@ -415,7 +418,7 @@ export function useMePageData({
         setConnectionTopPosts([]);
       }
     })();
-  }, [viewingCreatorId, userState.pnIdentifier, indexedFilesKey]);
+  }, [mePageActive, viewingCreatorId, userState.pnIdentifier, indexedFilesKey]);
 
   // --- filteredMeFiles ---
   const filteredMeFilesMemo = useMemo(() => {

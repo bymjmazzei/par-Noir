@@ -43,6 +43,7 @@ export function useDiscovery({
     setCurrentPage,
     setHasMore,
     setFilters,
+    setIsLoading,
     mediaFiles,
     thoughtsFiles,
     collectionsFiles,
@@ -52,6 +53,7 @@ export function useDiscovery({
   const metadataIndexService = getMetadataIndexService();
   const discoverFilesRef = useRef<((a?: MetadataFilters, b?: boolean, c?: number, d?: boolean) => Promise<void>) | null>(null);
   const isDiscoveringRef = useRef(false);
+  const initialDiscoveryCompleteRef = useRef(false);
   const discoverFilesTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const discoveryEnabledRef = useRef(discoveryEnabled);
   const prevDiscoveryEnabledRef = useRef(discoveryEnabled);
@@ -75,8 +77,13 @@ export function useDiscovery({
       const contentTypes = resolveContentTypes(_searchFilters);
       if (contentTypes.length === 0) return;
 
+      if (page === 0) {
+        initialDiscoveryCompleteRef.current = false;
+      }
+
       try {
         setError(null);
+        if (page === 0) setIsLoading(true);
         await metadataIndexService.initialize();
         const contentTypeService = new ContentTypeIndexService();
         const limit = PAGE_SIZE;
@@ -215,10 +222,16 @@ export function useDiscovery({
             console.warn('Failed to fetch NSFW index:', e);
           }
         }
+
+        if (page === 0) {
+          initialDiscoveryCompleteRef.current = true;
+        }
       } catch (err: any) {
         console.error('Failed to load content-type indices:', err);
         setError(err.message || 'Failed to load files');
         throw err;
+      } finally {
+        if (page === 0) setIsLoading(false);
       }
     },
     [
@@ -231,6 +244,7 @@ export function useDiscovery({
       collectionsFiles,
       cleanupThumbnailsForFiles,
       setError,
+      setIsLoading,
       setMediaFiles,
       setThoughtsFiles,
       setCollectionsFiles,
@@ -270,9 +284,14 @@ export function useDiscovery({
   }, [discoverFiles]);
 
   useEffect(() => {
+    initialDiscoveryCompleteRef.current = false;
+  }, [activeFeedId, discoveryEnabled]);
+
+  useEffect(() => {
     if (!discoveryEnabled) return;
     if (activeFeedId === 'discovery') return;
     if (discoverFilesTimeoutRef.current) clearTimeout(discoverFilesTimeoutRef.current);
+    initialDiscoveryCompleteRef.current = false;
     setCurrentPage(0);
     setHasMore(true);
     hasMoreRef.current = true;
@@ -335,6 +354,7 @@ export function useDiscovery({
     discoverFiles,
     discoverFilesRef,
     isDiscoveringRef,
+    initialDiscoveryCompleteRef,
     loadContentTypeIndices,
     refreshContentType,
     handleSearch,

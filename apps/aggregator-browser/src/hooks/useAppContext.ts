@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { Feed } from '../types/aggregator';
 import { FeedService } from '../services/feedService';
 import { PNOAuthService, FeedToken } from '../services/pnOAuthService';
 
@@ -11,7 +12,7 @@ export type AppContext =
   | { type: 'pn', id: string, name: string, pnIdentifier: string }
   | { type: 'feed', id: string, name: string, feedId: string, isOwned: boolean, feedToken?: FeedToken };
 
-export function useAppContext(pnIdentifier?: string) {
+export function useAppContext(pnIdentifier?: string, catalogFeeds?: Feed[]) {
   const [activeContext, setActiveContext] = useState<AppContext | null>(null);
   const [availableContexts, setAvailableContexts] = useState<AppContext[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -43,13 +44,13 @@ export function useAppContext(pnIdentifier?: string) {
         pnIdentifier: pnIdentifier
       };
 
-      // Load owned feeds and match with feed tokens from session
+      // Owned feeds: reuse App catalog when available to avoid duplicate listFeeds
       let ownedFeedContexts: AppContext[] = [];
       try {
-        const ownedFeedsResult = await FeedService.listFeeds({ 
-          creatorId: pnIdentifier,
-          limit: 100 
-        });
+        const ownedFeeds =
+          catalogFeeds && catalogFeeds.length > 0
+            ? catalogFeeds.filter((f) => f.creatorId === pnIdentifier)
+            : (await FeedService.listFeeds({ creatorDid: pnIdentifier, limit: 100 })).feeds;
         
         // Removed verbose logging
         
@@ -57,7 +58,7 @@ export function useAppContext(pnIdentifier?: string) {
         const feedTokens = session?.feedTokens || [];
         const feedTokensMap = new Map(feedTokens.map(ft => [ft.feedId, ft]));
         
-        ownedFeedContexts = ownedFeedsResult.feeds.map(f => ({
+        ownedFeedContexts = ownedFeeds.map(f => ({
           type: 'feed' as const,
           id: f.feedId,
           name: f.feedName,
@@ -125,13 +126,13 @@ export function useAppContext(pnIdentifier?: string) {
       setIsLoading(false);
       isLoadingRef.current = false;
     }
-  }, [pnIdentifier]); // Removed activeContext from dependencies to prevent infinite loop
+  }, [pnIdentifier, catalogFeeds]);
 
   useEffect(() => {
     if (pnIdentifier && !isLoadingRef.current) {
       loadContexts();
     }
-  }, [pnIdentifier, loadContexts]);
+  }, [pnIdentifier, catalogFeeds, loadContexts]);
 
   // Persist active context to localStorage
   useEffect(() => {

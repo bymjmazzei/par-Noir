@@ -29,46 +29,67 @@ export interface SavedFeed {
   updatedAt: string;
 }
 
+const SAVED_FEED_TTL_MS = 30_000;
+const savedFeedCache = new Map<string, { result: SavedFeed | null; ts: number }>();
+const pendingSavedFeed = new Map<string, Promise<SavedFeed | null>>();
+
 /**
  * Get user's saved feed (private curated feed)
  */
 export async function getSavedFeed(userPnIdentifier: string): Promise<SavedFeed | null> {
-  try {
-    const response = await fetch(`${API_ENDPOINT}/api/feeds/saved?userPnIdentifier=${userPnIdentifier}`, {
-      headers: getAuthHeaders()
-    });
-
-    if (response.ok) {
-      const result = await response.json();
-      return result.feed || null;
-    }
-
-    if (response.status === 404) {
-      // No saved posts yet - return empty feed
-      return {
-        feedId: `saved-${userPnIdentifier}`,
-        feedName: 'Saved',
-        fileIds: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-    }
-
-    // For 500 or other errors, throw so backoff logic can work
-    const errorText = await response.text();
-    let errorMessage = `Failed to load saved feed: ${response.status}`;
-    try {
-      const errorJson = JSON.parse(errorText);
-      errorMessage = errorJson.message || errorMessage;
-    } catch {
-      errorMessage = errorText || errorMessage;
-    }
-    const error = new Error(errorMessage);
-    (error as any).status = response.status;
-    throw error;
-  } catch (error) {
-    throw error;
+  const cached = savedFeedCache.get(userPnIdentifier);
+  if (cached && Date.now() - cached.ts < SAVED_FEED_TTL_MS) {
+    return cached.result;
   }
+
+  const pending = pendingSavedFeed.get(userPnIdentifier);
+  if (pending) return pending;
+
+  const fetchPromise = (async (): Promise<SavedFeed | null> => {
+    try {
+      const response = await fetch(`${API_ENDPOINT}/api/feeds/saved?userPnIdentifier=${userPnIdentifier}`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const feed: SavedFeed | null = result.feed || null;
+        savedFeedCache.set(userPnIdentifier, { result: feed, ts: Date.now() });
+        return feed;
+      }
+
+      if (response.status === 404) {
+        const empty: SavedFeed = {
+          feedId: `saved-${userPnIdentifier}`,
+          feedName: 'Saved',
+          fileIds: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        savedFeedCache.set(userPnIdentifier, { result: empty, ts: Date.now() });
+        return empty;
+      }
+
+      const errorText = await response.text();
+      let errorMessage = `Failed to load saved feed: ${response.status}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      const error = new Error(errorMessage);
+      (error as any).status = response.status;
+      throw error;
+    } catch (error) {
+      throw error;
+    } finally {
+      pendingSavedFeed.delete(userPnIdentifier);
+    }
+  })();
+
+  pendingSavedFeed.set(userPnIdentifier, fetchPromise);
+  return fetchPromise;
 }
 
 /**

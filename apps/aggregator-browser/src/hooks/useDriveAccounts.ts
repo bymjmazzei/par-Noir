@@ -53,7 +53,7 @@ export function useDriveAccounts({ authenticatedUserId, userState }: UseDriveAcc
     };
 
     loadAccounts();
-  }, [authenticatedUserId, selectedId, userState.isUnlocked, userState.pnIdentifier]);
+  }, [authenticatedUserId, userState.isUnlocked, userState.pnIdentifier]);
 
   return { accounts, selectedId, setSelectedId, setAccounts };
 }

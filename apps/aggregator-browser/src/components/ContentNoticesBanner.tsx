@@ -9,13 +9,14 @@ import { getContentNotices, type ContentNotice } from '../services/contentNotice
 
 interface ContentNoticesBannerProps {
   isUnlocked: boolean;
+  enabled?: boolean;
 }
 
-export function ContentNoticesBanner({ isUnlocked }: ContentNoticesBannerProps) {
+export function ContentNoticesBanner({ isUnlocked, enabled = true }: ContentNoticesBannerProps) {
   const [notices, setNotices] = useState<ContentNotice[]>([]);
 
   useEffect(() => {
-    if (!isUnlocked) {
+    if (!enabled || !isUnlocked) {
       setNotices([]);
       return;
     }
@@ -28,7 +29,7 @@ export function ContentNoticesBanner({ isUnlocked }: ContentNoticesBannerProps) 
         if (!cancelled) setNotices([]);
       });
     return () => { cancelled = true; };
-  }, [isUnlocked]);
+  }, [enabled, isUnlocked]);
 
   if (notices.length === 0) return null;
 
