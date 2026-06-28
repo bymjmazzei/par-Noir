@@ -3616,6 +3616,7 @@ class ProductionServer {
         const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
         let aggregatorSubmittedThisRequest = false;
         let dmcaCheckedThisRequest = false;
+        let indexUpdatedThisRequest = false;
         const accountIdParam = (req.query.accountId as string) || undefined;
         const { createStorageRequestContext, getDriveTokenFromContext } = await import('./server/modules/storage/storageRequestContext');
         const storageCtx = tokenPayload.pnIdentifier
@@ -3764,60 +3765,7 @@ class ProductionServer {
                 // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
                 await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
                 aggregatorSubmittedThisRequest = true;
-                console.log(`[MetadataIndex] Created metadata entry for ${fileId}`);
-                
-                // Also add to Google Drive index (root + content-class e.g. thoughts-public) if file is public
-                try {
-                  const pnIdentifier = tokenPayload.pnIdentifier;
-                  if (pnIdentifier && storageCtx?.credentialsRecord?.credentials) {
-                    const { getDriveTokenFromContext } = await import('./server/modules/storage/storageRequestContext');
-                    const credentialsRecord = storageCtx.credentialsRecord;
-                    const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
-                      (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
-                    if (googleDriveAccounts.length > 0) {
-                      const account = googleDriveAccounts[0];
-                      const resolvedAccountId = accountId || this.extractAccountId(account);
-                      const token = getDriveTokenFromContext(storageCtx);
-                        const out = await this.getMetadataFolder(token, pnIdentifier, resolvedAccountId);
-                        if (!out) {
-                          return this.driveNotInitialized(res);
-                        }
-                        const fileMetadataForIndex = {
-                          fileId: initialMetadata.fileId,
-                          googleDriveFileId: initialMetadata.backendFileId || fileId,
-                          fileName: (driveFile as any).name || initialMetadata.name || initialMetadata.title || fileId,
-                          originalName: initialMetadata.name || initialMetadata.title || (driveFile as any).name,
-                          mimeType: (driveFile as any).mimeType || 'application/octet-stream',
-                          size: parseInt((driveFile as any).size || '0', 10),
-                          visibility: 'public' as const,
-                          uploadedAt: initialMetadata.uploadDate || new Date().toISOString(),
-                          owner: { did: tokenPayload.did || tokenPayload.pnIdentifier, identifier: pnIdentifier },
-                          tags: initialMetadata.tags || initialMetadata.keywords || [],
-                          description: initialMetadata.description,
-                          publicToken: initialMetadata.publicToken,
-                          engagement: initialMetadata.engagement,
-                          isThoughtThumbnail: (initialMetadata as any).isThoughtThumbnail,
-                          mainFileId: (initialMetadata as any).mainFileId,
-                          thumbnailFileId: (initialMetadata as any).thumbnailFileId,
-                          isPartOfCollection: (initialMetadata as any).isPartOfCollection,
-                          collectionFileIds: initialMetadata.collection?.collectionFileIds
-                        };
-                        await this.updateOwnerFileIndex(token, pnIdentifier, out.metadataFolderId, fileMetadataForIndex, resolvedAccountId);
-                        await this.updatePublicFileIndex(
-                          token,
-                          pnIdentifier,
-                          out.metadataFolderId,
-                          out.pnFolderId,
-                          fileMetadataForIndex,
-                          resolvedAccountId
-                        );
-                        console.log(`✅ [MetadataIndex] Added new file to Google Drive public index (root + content-class): ${fileId}`);
-                    }
-                  }
-                } catch (driveError: any) {
-                  console.warn(`⚠️ [MetadataIndex] Failed to add new file to Google Drive index (non-critical):`, driveError?.message || driveError);
-                  // Don't fail the request - database cache is updated
-                }
+                console.log(`[MetadataIndex] Created metadata entry for ${fileId} (Sheets index deferred to companion metadata block)`);
               } catch (submitError: any) {
                 console.error(`[MetadataIndex] Failed to submit initial metadata for ${fileId}:`, submitError);
                 console.error(`[MetadataIndex] Submit error details:`, {
@@ -3921,60 +3869,7 @@ class ProductionServer {
                 // CRITICAL: Pass ownerDid for ownership verification if isPublic is being set
                 await service.submitMetadata(minimalMetadata, tokenPayload.pnIdentifier, tokenPayload.did || tokenPayload.pnIdentifier);
                 aggregatorSubmittedThisRequest = true;
-                console.log(`[MetadataIndex] Created minimal metadata entry for ${fileId}`);
-                
-                // Also add to Google Drive index (root + content-class e.g. thoughts-public) if file is public
-                try {
-                  const pnIdentifier = tokenPayload.pnIdentifier;
-                  if (pnIdentifier && storageCtx?.credentialsRecord?.credentials) {
-                    const { getDriveTokenFromContext } = await import('./server/modules/storage/storageRequestContext');
-                    const credentialsRecord = storageCtx.credentialsRecord;
-                    const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
-                      (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
-                    if (googleDriveAccounts.length > 0) {
-                      const account = googleDriveAccounts[0];
-                      const resolvedAccountId = accountIdParam || this.extractAccountId(account);
-                      const token = getDriveTokenFromContext(storageCtx);
-                        const out = await this.getMetadataFolder(token, pnIdentifier, resolvedAccountId);
-                        if (!out) {
-                          return this.driveNotInitialized(res);
-                        }
-                        const fileMetadataForIndex = {
-                          fileId: minimalMetadata.fileId,
-                          googleDriveFileId: minimalMetadata.backendFileId || fileId,
-                          fileName: minimalMetadata.name || minimalMetadata.title || fileId,
-                          originalName: minimalMetadata.name || minimalMetadata.title || fileId,
-                          mimeType: 'application/octet-stream',
-                          size: 0,
-                          visibility: 'public' as const,
-                          uploadedAt: minimalMetadata.uploadDate || new Date().toISOString(),
-                          owner: { did: tokenPayload.did || tokenPayload.pnIdentifier, identifier: pnIdentifier },
-                          tags: minimalMetadata.tags || minimalMetadata.keywords || [],
-                          description: minimalMetadata.description,
-                          publicToken: minimalMetadata.publicToken,
-                          engagement: minimalMetadata.engagement,
-                          isThoughtThumbnail: (minimalMetadata as any).isThoughtThumbnail,
-                          mainFileId: (minimalMetadata as any).mainFileId,
-                          thumbnailFileId: (minimalMetadata as any).thumbnailFileId,
-                          isPartOfCollection: (minimalMetadata as any).isPartOfCollection,
-                          collectionFileIds: minimalMetadata.collection?.collectionFileIds
-                        };
-                        await this.updateOwnerFileIndex(token, pnIdentifier, out.metadataFolderId, fileMetadataForIndex, resolvedAccountId);
-                        await this.updatePublicFileIndex(
-                          token,
-                          pnIdentifier,
-                          out.metadataFolderId,
-                          out.pnFolderId,
-                          fileMetadataForIndex,
-                          resolvedAccountId
-                        );
-                        console.log(`✅ [MetadataIndex] Added new file (minimal) to Google Drive public index (root + content-class): ${fileId}`);
-                    }
-                  }
-                } catch (driveError: any) {
-                  console.warn(`⚠️ [MetadataIndex] Failed to add new file (minimal) to Google Drive index (non-critical):`, driveError?.message || driveError);
-                  // Don't fail the request - database cache is updated
-                }
+                console.log(`[MetadataIndex] Created minimal metadata entry for ${fileId} (Sheets index deferred to companion metadata block)`);
               } catch (minimalSubmitError: any) {
                 console.error(`[MetadataIndex] Failed to submit minimal metadata for ${fileId}:`, minimalSubmitError);
                 console.error(`[MetadataIndex] Minimal submit error details:`, {
@@ -4464,6 +4359,7 @@ class ProductionServer {
                             companionMetadataForIndex,
                             actualAccountId
                           );
+                          indexUpdatedThisRequest = true;
                           console.log(`[MetadataIndex] Successfully updated public file index for file ${fileId}`);
                         } catch (indexError: any) {
                           console.error(`[MetadataIndex] Failed to update public file index:`, indexError?.message || indexError);
@@ -4648,7 +4544,7 @@ class ProductionServer {
 
         // Also update Google Drive index (source of truth) if file is public
         const updatedIsPublic = finalIsPublic !== undefined ? finalIsPublic : (isPublic !== undefined ? isPublic : updated?.isPublic);
-        if (updatedIsPublic === true && updated) {
+        if (updatedIsPublic === true && updated && !indexUpdatedThisRequest) {
           try {
             const { IndexSheetsService } = await import('./server/modules/indexSheetsService');
             const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
@@ -4720,7 +4616,8 @@ class ProductionServer {
                       actualFileId,
                       indexEntry,
                       pnIdentifier,
-                      accountId
+                      accountId,
+                      'public'
                     );
                     console.log(`✅ [MetadataIndex PUT] Updated Google Drive public-file-index.xlsx for ${actualFileId}`);
                   } catch (updateError: any) {
@@ -4731,7 +4628,8 @@ class ProductionServer {
                         spreadsheetId,
                         indexEntry,
                         pnIdentifier,
-                        accountId
+                        accountId,
+                        'public'
                       );
                       console.log(`✅ [MetadataIndex PUT] Added to Google Drive public-file-index.xlsx for ${actualFileId}`);
                     } else {

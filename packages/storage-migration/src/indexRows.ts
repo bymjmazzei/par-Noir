@@ -106,12 +106,13 @@ export function slimIndexEntry(
   }
 
   let serialized = JSON.stringify(slim);
-  if (serialized.length > SHEETS_INDEX_CELL_SAFE_CHARS && slim.publicToken) {
+  const beforeLength = serialized.length;
+  if (beforeLength > SHEETS_INDEX_CELL_SAFE_CHARS && slim.publicToken) {
     delete slim.publicToken;
     serialized = JSON.stringify(slim);
     if (options?.warnOnOversize !== false && typeof process !== 'undefined') {
       console.warn(
-        `[slimIndexEntry] omitted publicToken from index row (${entry.fileId}); JSON length ${serialized.length}`
+        `[slimIndexEntry] omitted publicToken from index row (${entry.fileId}); ${beforeLength} -> ${serialized.length} chars`
       );
     }
   }
