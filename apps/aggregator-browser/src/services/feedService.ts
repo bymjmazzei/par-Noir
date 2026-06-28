@@ -42,6 +42,14 @@ export interface FeedListResponse {
   offset?: number;
 }
 
+const LIST_FEEDS_TTL_MS = 30_000;
+const listFeedsCache = new Map<string, { result: FeedListResponse; ts: number }>();
+const pendingListFeeds = new Map<string, Promise<FeedListResponse>>();
+
+function listFeedsCacheKey(filters?: Record<string, unknown>): string {
+  return JSON.stringify(filters ?? {});
+}
+
 export class FeedService {
   /**
    * Create a new feed
@@ -76,28 +84,47 @@ export class FeedService {
     limit?: number;
     offset?: number;
   }): Promise<FeedListResponse> {
-    const params = new URLSearchParams();
-    if (filters?.category) params.append('category', filters.category);
-    if (filters?.creatorDid) params.append('creatorDid', filters.creatorDid);
-    if (filters?.creatorTier) params.append('creatorTier', filters.creatorTier);
-    if (filters?.search) params.append('search', filters.search);
-    if (filters?.limit) params.append('limit', filters.limit.toString());
-    if (filters?.offset) params.append('offset', filters.offset.toString());
-
-    const response = await fetch(`${API_ENDPOINT}/api/feeds?${params.toString()}`);
-
-    if (response.status === 429) {
-      // Rate limited - return empty result instead of throwing
-      if (import.meta.env.DEV) console.warn('Rate limited (429) when listing feeds, returning empty result');
-      return { feeds: [], total: 0 };
+    const key = listFeedsCacheKey(filters as Record<string, unknown> | undefined);
+    const cached = listFeedsCache.get(key);
+    if (cached && Date.now() - cached.ts < LIST_FEEDS_TTL_MS) {
+      return cached.result;
     }
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to list feeds' }));
-      throw new Error(error.error || 'Failed to list feeds');
-    }
+    const pending = pendingListFeeds.get(key);
+    if (pending) return pending;
 
-    return response.json();
+    const fetchPromise = (async (): Promise<FeedListResponse> => {
+      const params = new URLSearchParams();
+      if (filters?.category) params.append('category', filters.category);
+      if (filters?.creatorDid) params.append('creatorDid', filters.creatorDid);
+      if (filters?.creatorTier) params.append('creatorTier', filters.creatorTier);
+      if (filters?.search) params.append('search', filters.search);
+      if (filters?.limit) params.append('limit', filters.limit.toString());
+      if (filters?.offset) params.append('offset', filters.offset.toString());
+
+      const response = await fetch(`${API_ENDPOINT}/api/feeds?${params.toString()}`);
+
+      if (response.status === 429) {
+        if (import.meta.env.DEV) console.warn('Rate limited (429) when listing feeds, returning empty result');
+        return { feeds: [], total: 0 };
+      }
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Failed to list feeds' }));
+        throw new Error(error.error || 'Failed to list feeds');
+      }
+
+      const result: FeedListResponse = await response.json();
+      listFeedsCache.set(key, { result, ts: Date.now() });
+      return result;
+    })();
+
+    pendingListFeeds.set(key, fetchPromise);
+    try {
+      return await fetchPromise;
+    } finally {
+      pendingListFeeds.delete(key);
+    }
   }
 
   /**

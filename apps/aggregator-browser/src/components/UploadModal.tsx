@@ -9,39 +9,24 @@ import { TextPostEditor } from './TextPostEditor';
 import { ContentPreferencesPanel } from './ContentPreferencesPanel';
 import { useUserState } from '../contexts/UserStateContext';
 import { TextPostData, Feed } from '../types/aggregator';
-import { PNOAuthService } from '../services/pnOAuthService';
 import { FeedService } from '../services/feedService';
 import { Settings, X } from 'lucide-react';
-import { accountsCacheService } from '../services/accountsCacheService';
 import { uploadQueueService } from '../services/uploadQueueService';
-
-import { API_ENDPOINT } from '../config/api';
-
-interface EncryptedFilePackage {
-  encrypted: string;
-  iv: string;
-  salt: string;
-  metadata: {
-    originalName: string;
-    originalSize: number;
-    originalMimeType: string;
-  };
-}
+import { useDriveAccounts } from '../hooks/useDriveAccounts';
 
 interface UploadModalProps {
   feeds?: Feed[];
   onClose: () => void;
-  onUploadComplete?: () => void;
+  onUploadComplete?: (contentClass?: 'media' | 'thought' | 'collection') => void;
 }
 
 export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: UploadModalProps) {
   const { userState } = useUserState();
   const [showTextEditor, setShowTextEditor] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [accountId, setAccountId] = useState<string | null>(null);
+  const [editorAccountId, setEditorAccountId] = useState<string | null>(null);
   const [feeds, setFeeds] = useState<Feed[]>(propsFeeds || []);
-  
-  // Convert browser app's userState to dashboard's authenticatedUser format
+
   const authenticatedUser = userState.isUnlocked && userState.pnIdentifier ? {
     id: userState.pnIdentifier,
     pnName: userState.pnName,
@@ -50,59 +35,12 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
     accessToken: userState.accessToken
   } : null;
 
-  // Load accounts to get accountId
-  useEffect(() => {
-    const loadAccounts = async () => {
-      if (!authenticatedUser?.id) return;
+  const { selectedId: driveAccountId } = useDriveAccounts({
+    authenticatedUserId: authenticatedUser?.id,
+    userState,
+  });
 
-      // Check cache first
-      const cached = accountsCacheService.get(authenticatedUser.id);
-      if (cached && cached.length > 0) {
-        // Use the first account's ID
-        setAccountId(cached[0].id || cached[0].accountId || authenticatedUser.id);
-        return;
-      }
-
-      // Cache miss - fetch from API
-      try {
-        const accessToken = await PNOAuthService.getValidAccessToken();
-        if (!accessToken) {
-          // Fallback to authenticated user ID
-          setAccountId(authenticatedUser.id);
-          return;
-        }
-
-        const response = await fetch(`${API_ENDPOINT}/api/storage/accounts/${authenticatedUser.id}`, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          const accounts = data.accounts || [];
-          // Cache the result
-          accountsCacheService.set(authenticatedUser.id, accounts);
-          if (accounts.length > 0) {
-            // Use the first account's ID
-            setAccountId(accounts[0].id || accounts[0].accountId || authenticatedUser.id);
-          } else {
-            // Fallback to authenticated user ID
-            setAccountId(authenticatedUser.id);
-          }
-        } else {
-          // Fallback to authenticated user ID
-          setAccountId(authenticatedUser.id);
-        }
-      } catch (error) {
-        console.error('Failed to load accounts:', error);
-        // Fallback to authenticated user ID
-        setAccountId(authenticatedUser.id);
-      }
-    };
-
-    loadAccounts();
-  }, [authenticatedUser?.id]);
+  const accountId = editorAccountId || driveAccountId || authenticatedUser?.id || null;
 
   // Load feeds for content preferences if not provided as prop
   useEffect(() => {
@@ -121,6 +59,10 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
     loadFeeds();
   }, [propsFeeds]);
 
+  const handleThoughtUploadComplete = () => {
+    onUploadComplete?.('thought');
+  };
+
   const handleTextPostSave = async (textPost: TextPostData | any) => {
     if (!authenticatedUser?.id) {
       alert('Please unlock your pN to create thoughts');
@@ -133,20 +75,16 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
     }
 
     try {
-      // Check if this is a multi-page thought
       const isMultiPage = (textPost as any).isMultiPage && (textPost as any).pages && Array.isArray((textPost as any).pages) && (textPost as any).pages.length > 1;
-      
+
       if (isMultiPage) {
-        // Multi-page thought: use upload queue for non-blocking upload
         const pages = (textPost as any).pages as TextPostData[];
         const metadata = textPost.metadata || {};
-        
+
         console.log(`[UploadModal] Creating multi-page thought with ${pages.length} pages via upload queue`);
-        
-        // Close editor immediately - returns to upload page
+
         setShowTextEditor(false);
-        
-        // Add to upload queue
+
         const taskId = uploadQueueService.addTask({
           type: 'multiPage',
           pages,
@@ -162,28 +100,22 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
           },
           onComplete: (result) => {
             console.log('[UploadModal] Multi-page thought upload completed:', result);
-            if (onUploadComplete) {
-              onUploadComplete();
-            }
-            // Don't close modal - user stays on upload page
+            handleThoughtUploadComplete();
           },
           onError: (error) => {
             console.error('[UploadModal] Multi-page thought upload failed:', error);
             alert(`Failed to create multi-page thought: ${error.message}`);
           },
         });
-        
+
         console.log(`[UploadModal] Multi-page thought queued for upload, taskId: ${taskId}`);
       } else {
-        // Single page thought - use upload queue for non-blocking upload
         const metadata = textPost.metadata || {};
-        
+
         console.log(`[UploadModal] Creating single-page thought via upload queue`);
-        
-        // Close editor immediately - returns to upload page
+
         setShowTextEditor(false);
-        
-        // Add to upload queue
+
         const taskId = uploadQueueService.addTask({
           type: 'textPost',
           textPost,
@@ -198,17 +130,14 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
           },
           onComplete: (result) => {
             console.log('[UploadModal] Single-page thought upload completed:', result);
-            if (onUploadComplete) {
-              onUploadComplete();
-            }
-            // Don't close modal - user stays on upload page
+            handleThoughtUploadComplete();
           },
           onError: (error) => {
             console.error('[UploadModal] Single-page thought upload failed:', error);
             alert(`Failed to create thought: ${error.message}`);
           },
         });
-        
+
         console.log(`[UploadModal] Single-page thought queued for upload, taskId: ${taskId}`);
       }
     } catch (error: any) {
@@ -228,12 +157,10 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
 
   return (
     <div className="h-full w-full bg-neutral-900 flex flex-col overflow-y-auto" style={{ paddingBottom: '64px' }}>
-      {/* Railway Header */}
       <div
         className="fixed left-0 right-0 h-12 flex items-center justify-between px-4 z-[100] bg-neutral-900 border-b border-neutral-800"
         style={{ top: 'env(safe-area-inset-top, 0px)' }}
       >
-        {/* Left - Settings Button */}
         <button
           onClick={() => setShowSettings(true)}
           className="p-2 text-text-secondary hover:text-white transition-colors"
@@ -241,12 +168,11 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         >
           <Settings className="h-5 w-5" />
         </button>
-        
-        {/* Center - Title */}
+
         <h2 className="text-sm font-medium uppercase tracking-wide text-white">
           Upload from Secure Cloud
         </h2>
-        
+
         <button
           type="button"
           onClick={onClose}
@@ -257,22 +183,20 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         </button>
       </div>
 
-      {/* FileStorageAggregator Component */}
       <div
         className="flex-1 overflow-y-auto p-6"
         style={{ marginTop: 'calc(48px + env(safe-area-inset-top, 0px))' }}
       >
-        <FileStorageAggregator 
-          authenticatedUser={authenticatedUser} 
+        <FileStorageAggregator
+          authenticatedUser={authenticatedUser}
           hideSecureFolderSection={true}
-          onOpenTextEditor={(accountId) => {
-            setAccountId(accountId);
+          onOpenTextEditor={(selectedAccountId) => {
+            setEditorAccountId(selectedAccountId);
             setShowTextEditor(true);
           }}
         />
       </div>
 
-      {/* Settings Modal */}
       {showSettings && (
         <ContentPreferencesPanel onClose={() => setShowSettings(false)} />
       )}

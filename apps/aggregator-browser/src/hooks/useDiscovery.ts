@@ -6,9 +6,15 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { IndexedFile } from '../types/aggregator';
 import type { MetadataFilters } from '../types/aggregator';
+import type { ContentType } from '../types/contentTypes';
 import { getMetadataIndexService } from '../services/metadata/MetadataIndexService';
 import { ContentTypeIndexService } from '../services/contentTypeIndexService';
 import { useDiscoverFiles } from './useDiscoverFiles';
+import {
+  CONTENT_CLASS_BY_TYPE,
+  contentClassToContentType,
+  getContentTypesForFeed,
+} from '../utils/feedContentTypes';
 
 const PAGE_SIZE = 50;
 
@@ -17,6 +23,7 @@ export interface UseDiscoveryParams {
   cleanupThumbnailsForFiles: (fileIds: string[]) => void;
   hasMoreRef: React.MutableRefObject<boolean>;
   activeFeedId: string;
+  discoveryEnabled: boolean;
   userState: { preferences: { hasAgeZKP?: boolean; isOver18?: boolean; showNSFW?: boolean }; [k: string]: any };
 }
 
@@ -25,6 +32,7 @@ export function useDiscovery({
   cleanupThumbnailsForFiles,
   hasMoreRef,
   activeFeedId,
+  discoveryEnabled,
   userState,
 }: UseDiscoveryParams) {
   const {
@@ -45,65 +53,108 @@ export function useDiscovery({
   const discoverFilesRef = useRef<((a?: MetadataFilters, b?: boolean, c?: number, d?: boolean) => Promise<void>) | null>(null);
   const isDiscoveringRef = useRef(false);
   const discoverFilesTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const discoveryEnabledRef = useRef(discoveryEnabled);
+  const prevDiscoveryEnabledRef = useRef(discoveryEnabled);
+
+  useEffect(() => {
+    discoveryEnabledRef.current = discoveryEnabled;
+  }, [discoveryEnabled]);
+
+  const resolveContentTypes = useCallback(
+    (searchFilters?: MetadataFilters): ContentType[] => {
+      if (searchFilters?.contentClass) {
+        return [contentClassToContentType(searchFilters.contentClass)];
+      }
+      return getContentTypesForFeed(activeFeedId);
+    },
+    [activeFeedId]
+  );
 
   const loadContentTypeIndices = useCallback(
     async (_searchFilters?: MetadataFilters, forceRefresh: boolean = false, page: number = 0) => {
+      const contentTypes = resolveContentTypes(_searchFilters);
+      if (contentTypes.length === 0) return;
+
       try {
         setError(null);
         await metadataIndexService.initialize();
         const contentTypeService = new ContentTypeIndexService();
         const limit = PAGE_SIZE;
         const offset = page * PAGE_SIZE;
-        const [mediaRes, thoughtsRes, collectionsRes] = await Promise.all([
-          contentTypeService.loadContentTypeIndex('media', { contentClass: 'media', limit, offset }, forceRefresh),
-          contentTypeService.loadContentTypeIndex('thoughts', { contentClass: 'thought', limit, offset }, forceRefresh),
-          contentTypeService.loadContentTypeIndex('collections', { contentClass: 'collection', limit, offset }, forceRefresh),
-        ]);
-        const media = mediaRes.files;
-        const thoughts = thoughtsRes.files;
-        const collections = collectionsRes.files;
-        const hasMore = mediaRes.hasMore || thoughtsRes.hasMore || collectionsRes.hasMore;
-        setHasMore(hasMore);
+
+        const results = await Promise.all(
+          contentTypes.map((type) =>
+            contentTypeService.loadContentTypeIndex(
+              type,
+              { contentClass: CONTENT_CLASS_BY_TYPE[type], limit, offset },
+              forceRefresh
+            )
+          )
+        );
+
+        const loaded: Partial<Record<ContentType, { files: IndexedFile[]; hasMore: boolean }>> = {};
+        contentTypes.forEach((type, i) => {
+          loaded[type] = results[i];
+        });
+
+        setHasMore(results.some((r) => r.hasMore));
 
         if (page === 0) {
-          const oldIds = new Set([
-            ...mediaFiles.map((f) => f.metadata.fileId),
-            ...thoughtsFiles.map((f) => f.metadata.fileId),
-            ...collectionsFiles.map((f) => f.metadata.fileId),
-          ]);
-          const newIds = new Set([
-            ...media.map((f) => f.metadata.fileId),
-            ...thoughts.map((f) => f.metadata.fileId),
-            ...collections.map((f) => f.metadata.fileId),
-          ]);
+          const oldIds = new Set<string>();
+          const newIds = new Set<string>();
+          if (contentTypes.includes('media')) {
+            mediaFiles.forEach((f) => oldIds.add(f.metadata.fileId));
+            (loaded.media?.files ?? []).forEach((f) => newIds.add(f.metadata.fileId));
+          }
+          if (contentTypes.includes('thoughts')) {
+            thoughtsFiles.forEach((f) => oldIds.add(f.metadata.fileId));
+            (loaded.thoughts?.files ?? []).forEach((f) => newIds.add(f.metadata.fileId));
+          }
+          if (contentTypes.includes('collections')) {
+            collectionsFiles.forEach((f) => oldIds.add(f.metadata.fileId));
+            (loaded.collections?.files ?? []).forEach((f) => newIds.add(f.metadata.fileId));
+          }
           const removed = [...oldIds].filter((id) => !newIds.has(id));
           if (removed.length > 0) cleanupThumbnailsForFiles(removed);
-          setMediaFiles(media);
-          setThoughtsFiles(thoughts);
-          setCollectionsFiles(collections);
+
+          if (contentTypes.includes('media') && loaded.media) setMediaFiles(loaded.media.files);
+          if (contentTypes.includes('thoughts') && loaded.thoughts) setThoughtsFiles(loaded.thoughts.files);
+          if (contentTypes.includes('collections') && loaded.collections) {
+            setCollectionsFiles(loaded.collections.files);
+          }
         } else {
-          setMediaFiles((prev) => {
-            const existingIds = new Set(prev.map((f) => f.metadata.fileId));
-            const newFiles = media.filter((f) => !existingIds.has(f.metadata.fileId));
-            return [...prev, ...newFiles];
-          });
-          setThoughtsFiles((prev) => {
-            const existingIds = new Set(prev.map((f) => f.metadata.fileId));
-            const newFiles = thoughts.filter((f) => !existingIds.has(f.metadata.fileId));
-            return [...prev, ...newFiles];
-          });
-          setCollectionsFiles((prev) => {
-            const existingIds = new Set(prev.map((f) => f.metadata.fileId));
-            const newFiles = collections.filter((f) => !existingIds.has(f.metadata.fileId));
-            return [...prev, ...newFiles];
-          });
+          if (contentTypes.includes('media') && loaded.media) {
+            setMediaFiles((prev) => {
+              const existingIds = new Set(prev.map((f) => f.metadata.fileId));
+              const newFiles = loaded.media!.files.filter((f) => !existingIds.has(f.metadata.fileId));
+              return [...prev, ...newFiles];
+            });
+          }
+          if (contentTypes.includes('thoughts') && loaded.thoughts) {
+            setThoughtsFiles((prev) => {
+              const existingIds = new Set(prev.map((f) => f.metadata.fileId));
+              const newFiles = loaded.thoughts!.files.filter((f) => !existingIds.has(f.metadata.fileId));
+              return [...prev, ...newFiles];
+            });
+          }
+          if (contentTypes.includes('collections') && loaded.collections) {
+            setCollectionsFiles((prev) => {
+              const existingIds = new Set(prev.map((f) => f.metadata.fileId));
+              const newFiles = loaded.collections!.files.filter((f) => !existingIds.has(f.metadata.fileId));
+              return [...prev, ...newFiles];
+            });
+          }
         }
 
-        if (userState.preferences?.hasAgeZKP && userState.preferences?.isOver18 && userState.preferences?.showNSFW) {
+        if (
+          userState.preferences?.hasAgeZKP &&
+          userState.preferences?.isOver18 &&
+          userState.preferences?.showNSFW
+        ) {
           try {
             const { CentralMetadataAggregator } = await import('../services/storage/CentralMetadataAggregator');
             const f = _searchFilters ?? filters;
-          const nsfwResult = await CentralMetadataAggregator.fetchNSFWIndex(
+            const nsfwResult = await CentralMetadataAggregator.fetchNSFWIndex(
               { tags: f?.tags, authorDid: f?.authorDid, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
               forceRefresh
             );
@@ -123,7 +174,15 @@ export function useDiscovery({
                     textPost: m.textPost || m.thought,
                     thought: m.thought || m.textPost,
                     creatorId: normalizedPnId || m.creatorId,
-                    creator: m.creator || (entry.pnIdentifier ? { '@type': 'Person', '@id': entry.pnIdentifier, identifier: { '@type': 'PropertyValue', name: 'DID', value: entry.pnIdentifier } } : undefined),
+                    creator:
+                      m.creator ||
+                      (entry.pnIdentifier
+                        ? {
+                            '@type': 'Person',
+                            '@id': entry.pnIdentifier,
+                            identifier: { '@type': 'PropertyValue', name: 'DID', value: entry.pnIdentifier },
+                          }
+                        : undefined),
                     author: m.author || (entry.pnIdentifier ? { did: entry.pnIdentifier } : undefined),
                     publicToken: entry.publicToken || m.publicToken,
                   },
@@ -132,24 +191,26 @@ export function useDiscovery({
                   pnIdentifier: entry.pnIdentifier || normalizedPnId,
                 };
               });
-            const nsfwMedia = nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'media');
-            const nsfwThoughts = nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'thought');
-            const nsfwCollections = nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'collection');
-            setMediaFiles((prev) => {
-              const existingIds = new Set(prev.map((f) => f.metadata.fileId));
-              const newFiles = nsfwMedia.filter((f) => !existingIds.has(f.metadata.fileId));
-              return [...prev, ...newFiles];
-            });
-            setThoughtsFiles((prev) => {
-              const existingIds = new Set(prev.map((f) => f.metadata.fileId));
-              const newFiles = nsfwThoughts.filter((f) => !existingIds.has(f.metadata.fileId));
-              return [...prev, ...newFiles];
-            });
-            setCollectionsFiles((prev) => {
-              const existingIds = new Set(prev.map((f) => f.metadata.fileId));
-              const newFiles = nsfwCollections.filter((f) => !existingIds.has(f.metadata.fileId));
-              return [...prev, ...newFiles];
-            });
+            const nsfwByClass: Partial<Record<ContentType, IndexedFile[]>> = {
+              media: nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'media'),
+              thoughts: nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'thought'),
+              collections: nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'collection'),
+            };
+            const mergeNsfw = (
+              type: ContentType,
+              setter: (value: IndexedFile[] | ((prev: IndexedFile[]) => IndexedFile[])) => void
+            ) => {
+              if (!contentTypes.includes(type)) return;
+              const batch = nsfwByClass[type] ?? [];
+              setter((prev) => {
+                const existingIds = new Set(prev.map((f) => f.metadata.fileId));
+                const newFiles = batch.filter((f) => !existingIds.has(f.metadata.fileId));
+                return [...prev, ...newFiles];
+              });
+            };
+            mergeNsfw('media', setMediaFiles);
+            mergeNsfw('thoughts', setThoughtsFiles);
+            mergeNsfw('collections', setCollectionsFiles);
           } catch (e) {
             console.warn('Failed to fetch NSFW index:', e);
           }
@@ -160,15 +221,43 @@ export function useDiscovery({
         throw err;
       }
     },
-    [activeFeedId, filters, userState.preferences, metadataIndexService, mediaFiles, thoughtsFiles, collectionsFiles, cleanupThumbnailsForFiles, setError, setMediaFiles, setThoughtsFiles, setCollectionsFiles, setHasMore]
+    [
+      resolveContentTypes,
+      filters,
+      userState.preferences,
+      metadataIndexService,
+      mediaFiles,
+      thoughtsFiles,
+      collectionsFiles,
+      cleanupThumbnailsForFiles,
+      setError,
+      setMediaFiles,
+      setThoughtsFiles,
+      setCollectionsFiles,
+      setHasMore,
+    ]
   );
 
   const discoverFiles = useCallback(
     async (searchFilters?: MetadataFilters, forceRefresh: boolean = false, page: number = 0, append?: boolean) => {
+      if (!discoveryEnabledRef.current && !forceRefresh) return;
       if (isDiscoveringRef.current && !forceRefresh && !append) return;
       isDiscoveringRef.current = true;
       try {
         await loadContentTypeIndices(searchFilters, forceRefresh, page);
+      } finally {
+        isDiscoveringRef.current = false;
+      }
+    },
+    [loadContentTypeIndices]
+  );
+
+  const refreshContentType = useCallback(
+    async (contentType: ContentType, forceRefresh = true) => {
+      if (isDiscoveringRef.current && !forceRefresh) return;
+      isDiscoveringRef.current = true;
+      try {
+        await loadContentTypeIndices({ contentClass: CONTENT_CLASS_BY_TYPE[contentType] }, forceRefresh, 0);
       } finally {
         isDiscoveringRef.current = false;
       }
@@ -181,6 +270,7 @@ export function useDiscovery({
   }, [discoverFiles]);
 
   useEffect(() => {
+    if (!discoveryEnabled) return;
     if (activeFeedId === 'discovery') return;
     if (discoverFilesTimeoutRef.current) clearTimeout(discoverFilesTimeoutRef.current);
     setCurrentPage(0);
@@ -194,21 +284,25 @@ export function useDiscovery({
     return () => {
       if (discoverFilesTimeoutRef.current) clearTimeout(discoverFilesTimeoutRef.current);
     };
-  }, [activeFeedId, userState.preferences.showNSFW, setCurrentPage, setHasMore]);
+  }, [activeFeedId, discoveryEnabled, userState.preferences.showNSFW, setCurrentPage, setHasMore]);
 
-  const hasInitializedRef = useRef(false);
   useEffect(() => {
-    if (!hasInitializedRef.current && discoverFilesRef.current) {
-      hasInitializedRef.current = true;
-      discoverFilesRef.current(undefined, false, 0, false);
+    if (discoveryEnabled && !prevDiscoveryEnabledRef.current) {
+      if (activeFeedId !== 'discovery' && discoverFilesRef.current && !isDiscoveringRef.current) {
+        discoverFilesRef.current(undefined, false, 0, false);
+      }
     }
-  }, []);
+    prevDiscoveryEnabledRef.current = discoveryEnabled;
+  }, [discoveryEnabled, activeFeedId]);
 
   useEffect(() => {
-    // Only run discoverFiles when token changes in another tab (storage event).
-    // Skip initial checkToken on mount to avoid overlapping with hasInitializedRef.
     const storageHandler = (e: StorageEvent) => {
-      if (e.key === 'google_drive_token' && e.newValue && discoverFilesRef.current) {
+      if (
+        e.key === 'google_drive_token' &&
+        e.newValue &&
+        discoveryEnabledRef.current &&
+        discoverFilesRef.current
+      ) {
         discoverFilesRef.current(undefined, false, 0, false);
       }
     };
@@ -217,6 +311,7 @@ export function useDiscovery({
   }, []);
 
   const handleSearch = useCallback(() => {
+    if (!discoveryEnabledRef.current) return;
     setCurrentPage(0);
     setHasMore(true);
     hasMoreRef.current = true;
@@ -225,6 +320,7 @@ export function useDiscovery({
 
   const handleFilterChange = useCallback(
     (key: keyof MetadataFilters, value: any) => {
+      if (!discoveryEnabledRef.current) return;
       const newFilters = { ...filters, [key]: value || undefined };
       setFilters(newFilters);
       setCurrentPage(0);
@@ -240,6 +336,7 @@ export function useDiscovery({
     discoverFilesRef,
     isDiscoveringRef,
     loadContentTypeIndices,
+    refreshContentType,
     handleSearch,
     handleFilterChange,
   };

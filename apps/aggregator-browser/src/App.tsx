@@ -45,6 +45,7 @@ import { HomePageContext, type HomePageContextValue } from './contexts/HomePageC
 import { uploadQueueService } from './services/uploadQueueService';
 import type { MediaDimensions } from './utils/mediaScaling';
 import { getCreatorIdentifier } from './utils/contentClass';
+import { contentClassToContentType } from './utils/feedContentTypes';
 import { useFeedFiltering } from './hooks/useFeedFiltering';
 import { useThumbnailsAndMedia } from './hooks/useThumbnailsAndMedia';
 import { useAuthAndSession } from './hooks/useAuthAndSession';
@@ -138,6 +139,17 @@ function App() {
     setShowUploadQueueOverlay,
   } = useModals();
   const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null);
+
+  const discoveryEnabled = useMemo(
+    () =>
+      !showUploadModal &&
+      !showInbox &&
+      !showSearch &&
+      !viewingCreatorId &&
+      !showSettings &&
+      activeBottomTab === 'home',
+    [showUploadModal, showInbox, showSearch, viewingCreatorId, showSettings, activeBottomTab]
+  );
 
   const mePageData = useMePageData({
     viewingCreatorId,
@@ -460,6 +472,7 @@ function App() {
     discoverFiles,
     discoverFilesRef,
     isDiscoveringRef,
+    refreshContentType,
     handleSearch,
     handleFilterChange,
   } = useDiscovery({
@@ -467,6 +480,7 @@ function App() {
     cleanupThumbnailsForFiles,
     hasMoreRef,
     activeFeedId,
+    discoveryEnabled,
     userState,
   });
 
@@ -1085,7 +1099,11 @@ function App() {
         <UploadPage
           feeds={feeds}
           onClose={() => setShowUploadModal(false)}
-          onUploadComplete={() => { setCurrentPage(0); setHasMore(true); hasMoreRef.current = true; discoverFiles(undefined, true, 0, false); }}
+          onUploadComplete={(contentClass) => {
+            if (contentClass) {
+              void refreshContentType(contentClassToContentType(contentClass));
+            }
+          }}
         />
       ) : showSettings ? (
         <SettingsPage onClose={() => setShowSettings(false)} />

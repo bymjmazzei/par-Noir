@@ -514,38 +514,6 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       isUnlocked: true,
       pnIdentifier
     }));
-
-    // Load inbox and cache it for instant inbox display
-    const loadAndCacheInbox = async () => {
-      try {
-        const { getInboxThreads } = await import('../services/messageService');
-        const threads = await getInboxThreads(pnIdentifier);
-        
-        const inboxEntries = threads
-          .filter(thread => thread.participantPnIdentifier)
-          .map(thread => ({
-            threadType: thread.threadType || 'dm',
-            participantPnIdentifier: thread.participantPnIdentifier,
-            lastMessageAt: thread.lastMessage?.timestamp || new Date().toISOString(),
-            spreadsheetId: thread.spreadsheetId,
-            connectionId: thread.threadType === 'group' ? thread.ownerPnIdentifier : thread.connectionId,
-            kemCiphertext: thread.kemCiphertext,
-            groupId: thread.groupId,
-            groupTitle: thread.groupTitle,
-            ownerPnIdentifier: thread.ownerPnIdentifier
-          }))
-          .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
-        
-        // Cache in localStorage for instant inbox loading
-        inboxCacheService.set(pnIdentifier, inboxEntries);
-      } catch (error) {
-        // Silently fail - cache loading is optional
-        console.warn('[UserStateContext] Failed to load and cache inbox:', error);
-      }
-    };
-    
-    // Start loading in background (don't await)
-    loadAndCacheInbox();
   };
 
   const setLocked = () => {
