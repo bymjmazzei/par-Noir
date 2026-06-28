@@ -504,6 +504,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
   const addButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
+  /** Drive files with no Postgres index — skip repeat metadata-index GETs (404 is expected). */
+  const metadataMissingIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!authenticatedUser?.id || !userState.isUnlocked) {
@@ -798,17 +800,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               isPartOfCollection = thumbMetadata?.isPartOfCollection === true;
               fileType = thumbMetadata?.fileType; // Capture fileType for filtering
               mainFileIdFromMetadata = thumbMetadata?.mainFileId; // Get mainFileId from metadata
-              
-              // Also check the main file's type if mainFileId exists (from metadata or thoughtFile)
               const actualMainFileId = mainFileIdFromMetadata || thoughtFile?.id;
-              if (thumbMetadata && actualMainFileId && actualMainFileId !== thumb.id) {
-                try {
-                  const mainMetadata = await loadFileMetadata(actualMainFileId);
-                  mainFileType = mainMetadata?.fileType;
-                  if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Loaded main file metadata for thumbnail ${thumb.id}: mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
-                } catch (err) {
-                  if (import.meta.env.DEV) console.warn(`[FileStorageAggregator] Failed to load main file metadata for ${actualMainFileId}:`, err);
-                }
+              // Main .thought files are private and never indexed; thumb metadata is sufficient.
+              if (fileType === 'thought-collection-thumbnail') {
+                mainFileType = 'thought-collection';
+              } else if (thoughtFile?.name.toLowerCase().endsWith('.thought-collection.encrypted')) {
+                mainFileType = 'thought-collection';
               }
               
               if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Thumbnail ${thumb.id} (${thumb.name}): fileType=${fileType}, isPartOfCollection=${isPartOfCollection}, mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
@@ -1000,24 +997,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             return false;
           }
           
-          // Include thoughts that don't have thumbnails (legacy thoughts)
-          // Only include single thoughts (fileType: 'thought'), not collection thoughts
+          // Legacy main-only thoughts (no thumb, no index) are Drive orphans — hide to avoid 404 metadata probes.
           if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
-            // Exclude if it's a collection thought (by fileType check as fallback)
-            if (fileType === 'thought-collection-page' || fileType === 'thought-collection') {
-              return false;
-            }
-            
-            // Check if this thought has a thumbnail
-            // Remove .encrypted suffix and file extension (.thought or .png) to get base name
-            const thoughtNameBase = name.replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
-            const hasThumbnail = thoughtThumbnails.some((thumb: DriveFile) => {
-              // Remove thumb_ prefix, .encrypted suffix, and file extension to get base name
-              const thumbNameBase = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
-              return thumbNameBase === thoughtNameBase;
-            });
-            // Only include thoughts without thumbnails (legacy thoughts)
-            return !hasThumbnail;
+            return false;
           }
           
           // Exclude everything else (main files already have thumbnails, collections already included)
@@ -1143,17 +1125,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               isPartOfCollection = thumbMetadata?.isPartOfCollection === true;
               fileType = thumbMetadata?.fileType; // Capture fileType for filtering
               mainFileIdFromMetadata = thumbMetadata?.mainFileId; // Get mainFileId from metadata
-              
-              // Also check the main file's type if mainFileId exists (from metadata or thoughtFile)
               const actualMainFileId = mainFileIdFromMetadata || thoughtFile?.id;
-              if (thumbMetadata && actualMainFileId && actualMainFileId !== thumb.id) {
-                try {
-                  const mainMetadata = await loadFileMetadata(actualMainFileId);
-                  mainFileType = mainMetadata?.fileType;
-                  if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Loaded main file metadata for thumbnail ${thumb.id}: mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
-                } catch (err) {
-                  if (import.meta.env.DEV) console.warn(`[FileStorageAggregator] Failed to load main file metadata for ${actualMainFileId}:`, err);
-                }
+              // Main .thought files are private and never indexed; thumb metadata is sufficient.
+              if (fileType === 'thought-collection-thumbnail') {
+                mainFileType = 'thought-collection';
+              } else if (thoughtFile?.name.toLowerCase().endsWith('.thought-collection.encrypted')) {
+                mainFileType = 'thought-collection';
               }
               
               if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Thumbnail ${thumb.id} (${thumb.name}): fileType=${fileType}, isPartOfCollection=${isPartOfCollection}, mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
@@ -1345,24 +1322,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             return false;
           }
           
-          // Include thoughts that don't have thumbnails (legacy thoughts)
-          // Only include single thoughts (fileType: 'thought'), not collection thoughts
+          // Legacy main-only thoughts (no thumb, no index) are Drive orphans — hide to avoid 404 metadata probes.
           if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
-            // Exclude if it's a collection thought (by fileType check as fallback)
-            if (fileType === 'thought-collection-page' || fileType === 'thought-collection') {
-              return false;
-            }
-            
-            // Check if this thought has a thumbnail
-            // Remove .encrypted suffix and file extension (.thought or .png) to get base name
-            const thoughtNameBase = name.replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
-            const hasThumbnail = thoughtThumbnails.some((thumb: DriveFile) => {
-              // Remove thumb_ prefix, .encrypted suffix, and file extension to get base name
-              const thumbNameBase = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
-              return thumbNameBase === thoughtNameBase;
-            });
-            // Only include thoughts without thumbnails (legacy thoughts)
-            return !hasThumbnail;
+            return false;
           }
           
           // Exclude everything else (main files already have thumbnails, collections already included)
@@ -1529,6 +1491,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   // Load file metadata
   const loadFileMetadata = async (fileId: string) => {
+    if (metadataMissingIdsRef.current.has(fileId)) {
+      return null;
+    }
     try {
       const accessToken = await PNOAuthService.getValidAccessToken();
       if (!accessToken) return null;
@@ -1563,7 +1528,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         });
         return finalMetadata;
       } else if (response.status === 404) {
-        // Metadata doesn't exist yet, return null
+        metadataMissingIdsRef.current.add(fileId);
         return null;
       }
     } catch (err) {
