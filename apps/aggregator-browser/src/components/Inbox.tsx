@@ -37,6 +37,11 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
   );
   const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [inboxRefreshKey, setInboxRefreshKey] = useState(0);
+
+  const handleConnectionRequestHandled = () => {
+    setInboxRefreshKey((k) => k + 1);
+  };
 
   // Update selectedThread if initialThread changes
   React.useEffect(() => {
@@ -178,6 +183,8 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
               <NotificationList
                 userPnIdentifier={userState.pnIdentifier}
                 onPreferencesClick={() => setShowNotificationPreferences(true)}
+                onConnectionRequestHandled={handleConnectionRequestHandled}
+                onNavigateToRequests={() => setActiveView('requests')}
               />
             ) : (
               <div className="p-4">
@@ -188,7 +195,10 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
             )}
           </div>
         ) : activeView === 'requests' ? (
-          <RequestsList />
+          <RequestsList
+            key={`requests-${inboxRefreshKey}`}
+            onRequestAccept={handleConnectionRequestHandled}
+          />
         ) : activeView === 'activity' ? (
           userState.isUnlocked && userState.pnIdentifier ? (
             <ActivityLedgerPanel userPnIdentifier={userState.pnIdentifier} />
@@ -202,6 +212,7 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
         ) : activeView === 'connections' ? (
           userState.isUnlocked && userState.pnIdentifier ? (
             <ConnectionsPanel
+              key={`connections-${inboxRefreshKey}`}
               userPnIdentifier={userState.pnIdentifier}
               onCreatorClick={onCreatorClick}
             />

@@ -33,6 +33,12 @@ const profileRequestCache = new Map<string, Promise<UserProfile>>();
 const profileResultCache = new Map<string, { profile: UserProfile; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
+/** Drop cached profile so the next fetch is fresh (e.g. after missing mlKemPublicKey). */
+export function invalidateUserProfileCache(userPnIdentifier: string): void {
+  profileResultCache.delete(userPnIdentifier);
+  profileRequestCache.delete(userPnIdentifier);
+}
+
 /**
  * Get user profile (display name and profile image fileId)
  * Uses pn identifier

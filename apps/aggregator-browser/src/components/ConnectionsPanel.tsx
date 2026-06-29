@@ -18,6 +18,10 @@ import {
   type Connection,
   type PendingRequests
 } from '../services/connectionService';
+import {
+  ensureLocalMessagingKeysForAccept,
+  reportConnectionAcceptError,
+} from '../services/messagingReconnect';
 
 interface Follower {
   followerPnIdentifier: string;
@@ -179,6 +183,11 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
       return; // Already processing
     }
 
+    const keysError = ensureLocalMessagingKeysForAccept(setError);
+    if (keysError) {
+      return;
+    }
+
     // Mark as processing and remove from UI immediately (optimistic UI)
     setProcessingConnections(prev => new Set(prev).add(connectionId));
     const originalRequest = pendingRequests.received.find(r => r.connectionId === connectionId);
@@ -203,7 +212,9 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
         }));
       }
       console.error('Failed to accept:', error);
-      setError('Failed to accept connection request');
+      reportConnectionAcceptError(error, setError, {
+        requesterPnIdentifier: originalRequest?.userPnIdentifier,
+      });
     } finally {
       // Remove from processing set
       setProcessingConnections(prev => {

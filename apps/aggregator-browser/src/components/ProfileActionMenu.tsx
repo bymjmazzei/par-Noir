@@ -10,6 +10,10 @@ import { useUserState } from '../contexts/UserStateContext';
 import { getConnectionStatus, sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest, removeConnection } from '../services/connectionService';
 import { ConnectionStatus } from '../services/connectionService';
 import { useToast } from '../hooks/useToast';
+import {
+  ensureLocalMessagingKeysForAccept,
+  reportConnectionAcceptError,
+} from '../services/messagingReconnect';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 import { IndexedFile } from '../types/aggregator';
 import { getUserProfile, updateDisplayName as updateDisplayNameAPI } from '../services/profileService';
@@ -356,6 +360,12 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
   const handleAccept = async () => {
     if (!userState.isUnlocked || !userState.pnIdentifier || !connectionStatus.connectionId) return;
 
+    const keysError = ensureLocalMessagingKeysForAccept();
+    if (keysError) {
+      showError(keysError);
+      return;
+    }
+
     setLoading(true);
     try {
       await acceptConnectionRequest(
@@ -366,8 +376,11 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
       setConnectionStatus({ status: 'connected', connectionId: connectionStatus.connectionId });
       success('Connection accepted!');
       setIsOpen(false);
-    } catch (error: any) {
-      showError(error.message || 'Failed to accept connection request');
+    } catch (error: unknown) {
+      const message = reportConnectionAcceptError(error, undefined, {
+        requesterPnIdentifier: creatorId,
+      });
+      showError(message);
     } finally {
       setLoading(false);
     }

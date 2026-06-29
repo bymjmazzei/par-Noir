@@ -12,6 +12,11 @@ import { getMessageThreads } from '../services/messageService';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
+import { ToastContainer } from './Toast';
+import {
+  ensureLocalMessagingKeysForAccept,
+  reportConnectionAcceptError,
+} from '../services/messagingReconnect';
 
 interface RequestsListProps {
   onRequestAccept?: () => void; // Callback when a request is accepted (to reload threads)
@@ -19,7 +24,7 @@ interface RequestsListProps {
 
 export function RequestsList({ onRequestAccept }: RequestsListProps) {
   const { userState } = useUserState();
-  const { success, error: showError } = useToast();
+  const { success, error: showError, toasts, removeToast } = useToast();
   const [requests, setRequests] = useState<MessageRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingRequests, setProcessingRequests] = useState<Set<string>>(new Set());
@@ -92,6 +97,14 @@ export function RequestsList({ onRequestAccept }: RequestsListProps) {
       return; // Already processing
     }
 
+    if (request.isConnectionRequest && request.connectionId) {
+      const keysError = ensureLocalMessagingKeysForAccept();
+      if (keysError) {
+        showError(keysError);
+        return;
+      }
+    }
+
     // Mark as processing and remove from UI immediately (optimistic UI)
     setProcessingRequests(prev => new Set(prev).add(request.requestId));
     setRequests(prev => prev.filter(r => r.requestId !== request.requestId));
@@ -114,10 +127,17 @@ export function RequestsList({ onRequestAccept }: RequestsListProps) {
       await getMessageThreads(userState.pnIdentifier!);
       // Notify parent to reload threads if callback provided
       onRequestAccept?.();
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Restore request on error
       setRequests(prev => [...prev, request]);
-      showError(error.message || 'Failed to accept request');
+      if (request.isConnectionRequest) {
+        const message = reportConnectionAcceptError(error, undefined, {
+          requesterPnIdentifier: request.fromPnIdentifier,
+        });
+        showError(message);
+      } else {
+        showError(error instanceof Error ? error.message : 'Failed to accept request');
+      }
     } finally {
       // Remove from processing set
       setProcessingRequests(prev => {
@@ -174,7 +194,8 @@ export function RequestsList({ onRequestAccept }: RequestsListProps) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-neutral-900">
+    <div className="h-full flex flex-col bg-neutral-900 relative">
+      <ToastContainer toasts={toasts} onClose={removeToast} />
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
