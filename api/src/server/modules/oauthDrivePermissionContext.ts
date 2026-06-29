@@ -107,7 +107,7 @@ export async function resolveOAuthDriveContext(params: {
   }
 }
 
-export const BROWSER_APP_PERMISSION_CHECK_TIMEOUT_MS = 4000;
+export const BROWSER_APP_PERMISSION_CHECK_TIMEOUT_MS = 8000;
 
 /** Race a permission lookup; returns null on timeout so unlock is not blocked by slow Drive. */
 export async function getBrowserAppExistingPermissionsWithTimeout(

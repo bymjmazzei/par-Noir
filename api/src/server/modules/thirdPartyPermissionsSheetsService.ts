@@ -88,6 +88,27 @@ export class ThirdPartyPermissionsSheetsService {
   }
 
   /**
+   * Return permissions sheet id, creating third-party-permissions.xlsx when missing.
+   * OAuth token exchange may persist grants before dashboard re-init runs.
+   */
+  static async ensureThirdPartyPermissionsSheet(
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<string> {
+    try {
+      return await this.getThirdPartyPermissionsSheet(token, metadataFolderId, userPnIdentifier, accountId);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (!msg.includes('Sheet not found') && !msg.toLowerCase().includes('not found')) {
+        throw error;
+      }
+      return await this.createThirdPartyPermissionsSheet(token, metadataFolderId, userPnIdentifier, accountId);
+    }
+  }
+
+  /**
    * Add or update permission
    */
   static async addPermission(

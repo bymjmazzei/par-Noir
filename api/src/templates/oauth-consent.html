@@ -859,10 +859,21 @@
       }
     });
     
+    async function derivePnIdentifierFromUnlock(pnName, passcode, publicKey) {
+      const combined = `${pnName}:${passcode}:${publicKey}`;
+      const encoder = new TextEncoder();
+      const data = encoder.encode(combined);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      return `pn-${hexHash.substring(0, 12)}`;
+    }
+
     async function completeOAuthUnlock(encryptedIdentity, publicKey, did, decryptedIdentity, pnName, passcode) {
       identityData = null;
       sendMessagingIdentityToOpener(encryptedIdentity, decryptedIdentity);
       sendMessagingSessionToOpener(decryptedIdentity);
+      pnIdentifier = await derivePnIdentifierFromUnlock(pnName, passcode, publicKey);
       const authResponse = await fetch(`${apiEndpoint}/oauth/authorize/authenticate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -876,7 +887,8 @@
           passcode: passcode,
           public_key: publicKey,
           did: did,
-          pn_name: pnName
+          pn_name: pnName,
+          pn_identifier: pnIdentifier
         })
       });
       
@@ -887,15 +899,6 @@
       
       const authResult = await authResponse.json();
       authorizationCode = authResult.code;
-      
-      const combined = `${pnName}:${passcode}:${publicKey}`;
-      const encoder = new TextEncoder();
-      const data = encoder.encode(combined);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      const shortHash = hexHash.substring(0, 12);
-      pnIdentifier = `pn-${shortHash}`;
       
       const existingPermissions = authResult.existingPermissions;
       console.log('[OAuth] Auth result:', {

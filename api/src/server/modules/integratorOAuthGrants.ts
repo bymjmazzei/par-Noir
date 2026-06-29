@@ -17,6 +17,7 @@ import {
 import { lookupPnFolderLayout } from './integratorFolderService';
 import { loadCachedFolderIds } from './pnDriveLayout';
 import type { TokenPayload } from './pnOAuthService';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 
 export async function persistIntegratorGrantAfterTokenExchange(params: {
   clientId: string;
@@ -93,4 +94,10 @@ export async function persistIntegratorGrantAfterTokenExchange(params: {
     normalizedPn,
     accountId
   );
+
+  safeLogger.info('[OAuth] Persisted integrator grant to Drive third-party-permissions', {
+    clientId,
+    pnIdHash: hashIdentifier(normalizedPn),
+    status: permission.status,
+  });
 }

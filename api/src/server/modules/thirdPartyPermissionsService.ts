@@ -119,7 +119,7 @@ export class ThirdPartyPermissionsService {
 
       const token: GoogleDriveToken = { access_token: accessToken };
       const { ThirdPartyPermissionsSheetsService } = await import('./thirdPartyPermissionsSheetsService');
-      const spreadsheetId = await ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(
+      const spreadsheetId = await ThirdPartyPermissionsSheetsService.ensureThirdPartyPermissionsSheet(
         token,
         metadataFolderId,
         normalized,

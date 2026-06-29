@@ -10389,6 +10389,11 @@ class ProductionServer {
                 accountId: driveCtx.accountId,
                 ageShared: client_id === 'browser-app' ? shareAge : undefined,
               });
+            } else {
+              safeLogger.warn('[OAuth] Skipped Drive permission persist — no Drive context', {
+                clientId: client_id,
+                pnIdHash: hashIdentifier(tokenPayload.pnIdentifier),
+              });
             }
           }
         } catch (permError: unknown) {
