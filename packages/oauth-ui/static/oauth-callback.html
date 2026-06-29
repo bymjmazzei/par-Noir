@@ -168,11 +168,11 @@
         };
       }
 
-      (function deliverMessagingHandoffFromWindowName() {
+      function collectMessagingHandoffPayload() {
         var windowPart = parseMessagingHandoffFromWindowName(window.name);
         var identityFromHash = parseMessagingIdentityFromHash(window.location.hash);
         var payload = mergeMessagingHandoffParts(windowPart, identityFromHash);
-        if (!payload || (!payload.identity && !payload.session)) return;
+        if (!payload || (!payload.identity && !payload.session)) return null;
 
         if (window.name.indexOf(MESSAGING_HANDOFF_PREFIX) === 0) {
           window.name = '';
@@ -182,6 +182,14 @@
             history.replaceState(null, '', window.location.pathname + window.location.search);
           } catch (e) {}
         }
+        return payload;
+      }
+
+      var messagingHandoffPayload = collectMessagingHandoffPayload();
+
+      (function deliverMessagingHandoff() {
+        var payload = messagingHandoffPayload;
+        if (!payload) return;
 
         try {
           localStorage.setItem(MESSAGING_HANDOFF_STORAGE, JSON.stringify(payload));
@@ -254,7 +262,8 @@
         state: state,
         error: error,
         age_shared: ageShared,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        messagingHandoff: messagingHandoffPayload || undefined
       };
 
       var callbackKey = 'pn_oauth_callback_' + Date.now();

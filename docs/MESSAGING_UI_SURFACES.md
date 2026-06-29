@@ -12,17 +12,16 @@ Same E2E behavior on every surface: **one pN unlock** (OAuth consent with identi
 
 ## OAuth handoff (single unlock)
 
-When the user unlocks pN on the API consent page (`browser-app`):
+When the user unlocks pN on the API consent page (`browser-app`), **one unlock** delivers both the OAuth authorization code and messaging keys:
 
-1. Consent stashes `{ identity, session }` in the **popup `window.name`** (`pn_messaging_handoff_v1:` prefix) before redirecting to `oauth-callback.html`.
-2. **`oauth-callback.html`** (same origin as the app) reads `window.name`, writes `pn_messaging_oauth_handoff` to `localStorage`, and delivers via same-origin `postMessage` + `BroadcastChannel` (`par-noir-messaging-oauth-v1`) with redelivery retries — same pattern as OAuth code handoff.
-3. The browse app applies the handoff in `runOAuthCallback` / `restoreMessagingAfterOAuth()`:
-   - `pn_messaging_identity` → `pn_encrypted_identity_v1` in `localStorage` (encrypted blob only).
-   - `pn_messaging_session` → ML-KEM keys in memory via `applyDmSessionHandoff` and `pn_dm_session_v1` in `sessionStorage` (tab refresh).
+1. Consent decrypts the identity file locally and extracts ML-KEM session + encrypted identity blob.
+2. Redirect to `oauth-callback.html` stashes session in popup `window.name`, identity in URL hash (large blob), and embeds **`messagingHandoff`** in the same `oauth_callback` localStorage/postMessage payload as the authorization code.
+3. `runOAuthCallback` applies `messagingHandoff` and polls for backup delivery **before** marking the user unlocked. On **messaging.parnoir.com** (`VITE_MESSAGING_ONLY`), unlock **fails** if messaging keys did not land (no “OAuth-only” broken state).
+4. Stored: `pn_encrypted_identity_v1` (localStorage), `pn_dm_session_v1` (sessionStorage), ML-KEM in memory.
 
-Cross-origin `postMessage` from the API consent page to the opener is **supplementary only** (works when `window.opener` survives); the callback bridge is the primary path.
+Cross-origin consent `postMessage` is supplementary only; the oauth-callback bundle is the primary path.
 
-`identity_handoff=required` on authorize is used **only** when OAuth is already valid but `pn_encrypted_identity_v1` is missing on device — it forces the identity unlock form on consent instead of the fast redirect-only path. General lock/unlock does **not** set this flag.
+`identity_handoff=required` forces the identity unlock form when OAuth exists but messaging material is missing on device. Messaging-only builds set this automatically until keys are present.
 
 ## Key modals
 

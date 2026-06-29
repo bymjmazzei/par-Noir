@@ -48,6 +48,8 @@ export interface PnOAuthPopupResult {
   error?: string;
   error_description?: string;
   age_shared?: string;
+  /** ML-KEM session + encrypted identity from consent (same unlock as OAuth code). */
+  messagingHandoff?: Record<string, unknown>;
 }
 
 function generateRandomHex(bytes: number): string {
@@ -128,12 +130,17 @@ function parseOAuthPayload(raw: Record<string, unknown>): PnOAuthPopupResult | n
   const err = coerceOAuthString(raw.error);
   const errDesc = coerceOAuthString(raw.error_description);
   const age = coerceOAuthString(raw.age_shared);
+  const messagingHandoff =
+    raw.messagingHandoff && typeof raw.messagingHandoff === 'object'
+      ? (raw.messagingHandoff as Record<string, unknown>)
+      : undefined;
   return {
     code: code !== undefined && code.length > 0 ? code : undefined,
     state: state !== undefined ? state : undefined,
     error: err !== undefined && err.length > 0 ? err : undefined,
     error_description: errDesc !== undefined && errDesc.length > 0 ? errDesc : undefined,
     age_shared: age !== undefined && age.length > 0 ? age : undefined,
+    messagingHandoff,
   };
 }
 

@@ -3,11 +3,18 @@
  */
 
 import {
+  PN_MESSAGING_OAUTH_BROADCAST,
   PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
+  isMessagingOAuthHandoffPayload,
   parseMessagingHandoffFromStorage,
   type MessagingOAuthHandoffPayload,
 } from '@par-noir/oauth-ui';
-import { applyDmSessionHandoff, restoreDmSessionFromStorage } from './dmIdentitySession';
+import {
+  applyDmSessionHandoff,
+  hasStoredEncryptedIdentity,
+  isDmIdentityReady,
+  restoreDmSessionFromStorage,
+} from './dmIdentitySession';
 import { persistMessagingIdentityFromOAuth } from './oauthMessagingIdentityBridge';
 
 export function applyMessagingOAuthHandoff(payload: MessagingOAuthHandoffPayload): boolean {
@@ -21,6 +28,11 @@ export function applyMessagingOAuthHandoff(payload: MessagingOAuthHandoffPayload
     applied = true;
   }
   return applied;
+}
+
+export function applyMessagingHandoffFromUnknown(raw: unknown): boolean {
+  if (!isMessagingOAuthHandoffPayload(raw)) return false;
+  return applyMessagingOAuthHandoff(raw);
 }
 
 export function applyPendingMessagingOAuthHandoffFromStorage(): boolean {
@@ -40,4 +52,79 @@ export function applyPendingMessagingOAuthHandoffFromStorage(): boolean {
 export function restoreMessagingAfterOAuth(): void {
   applyPendingMessagingOAuthHandoffFromStorage();
   restoreDmSessionFromStorage();
+}
+
+/** True when messaging can work: keys in memory, or encrypted identity on device for passcode restore. */
+export function isMessagingUnlockSatisfied(): boolean {
+  return isDmIdentityReady() || hasStoredEncryptedIdentity();
+}
+
+/**
+ * Poll for messaging handoff written by oauth-callback.html (storage + BroadcastChannel).
+ * Call during OAuth popup wait and immediately after receiving the authorization code.
+ */
+export async function waitForAndApplyMessagingHandoff(maxMs = 8_000): Promise<boolean> {
+  const deadline = Date.now() + maxMs;
+  let applied = applyPendingMessagingOAuthHandoffFromStorage();
+  if (applied) {
+    restoreDmSessionFromStorage();
+    return isMessagingUnlockSatisfied();
+  }
+
+  return new Promise((resolve) => {
+    let bc: BroadcastChannel | undefined;
+    let settled = false;
+
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      try {
+        bc?.close();
+      } catch {
+        /* ignore */
+      }
+      resolve(ok);
+    };
+
+    const tryApply = (): boolean => {
+      const didApply = applyPendingMessagingOAuthHandoffFromStorage();
+      if (didApply) {
+        restoreDmSessionFromStorage();
+      }
+      return isMessagingUnlockSatisfied();
+    };
+
+    try {
+      bc = new BroadcastChannel(PN_MESSAGING_OAUTH_BROADCAST);
+      bc.onmessage = (event: MessageEvent) => {
+        if (isMessagingOAuthHandoffPayload(event.data)) {
+          applyMessagingOAuthHandoff(event.data);
+          restoreDmSessionFromStorage();
+        }
+        if (tryApply()) finish(true);
+      };
+    } catch {
+      /* BroadcastChannel unavailable */
+    }
+
+    const poll = () => {
+      if (tryApply()) {
+        finish(true);
+        return;
+      }
+      if (Date.now() >= deadline) {
+        finish(isMessagingUnlockSatisfied());
+        return;
+      }
+      setTimeout(poll, 80);
+    };
+
+    poll();
+  });
+}
+
+export const MESSAGING_HANDOFF_INCOMPLETE = 'MESSAGING_HANDOFF_INCOMPLETE';
+
+export function messagingHandoffIncompleteMessage(): string {
+  return 'Unlock did not load messaging keys. Use your current pN identity file at pn.parnoir.com, then try again.';
 }
