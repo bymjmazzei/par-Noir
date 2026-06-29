@@ -19,7 +19,6 @@ import { PN_OAUTH_RESUME_SEARCH_KEY } from '../oauthResumeBootstrap';
 import { installOAuthMessagingIdentityListener } from '../services/oauthMessagingIdentityBridge';
 import {
   clearDmIdentity,
-  needsMessagingIdentityHandoff,
   restoreDmSessionFromStorage,
 } from '../services/dmIdentitySession';
 import { registerMessagingReconnect } from '../services/messagingReconnect';
@@ -511,8 +510,10 @@ export function useAuthAndSession({
       const redirectUri = `${window.location.origin}/oauth-callback.html`;
       let authUrl = PNOAuthService.getAuthorizationUrl({
         usePopup: true,
-        identityHandoffRequired:
-          options?.identityHandoffRequired ?? needsMessagingIdentityHandoff(),
+        // Only force identity unlock on explicit messaging reconnect — not on general lock/unlock.
+        // Otherwise returning users with existing OAuth permissions get stuck on consent instead of
+        // the fast redirect path, and often close the popup before oauth-callback completes.
+        identityHandoffRequired: options?.identityHandoffRequired === true,
       });
       const authUrlObj = new URL(authUrl);
       const actualRedirectUri = authUrlObj.searchParams.get('redirect_uri') || redirectUri;

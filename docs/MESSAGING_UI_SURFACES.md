@@ -17,7 +17,7 @@ When the user unlocks pN on the API consent page (`browser-app`):
 1. `postMessage({ type: 'pn_messaging_identity', identity })` — browser stores `pn_encrypted_identity_v1` in `localStorage` (encrypted blob only).
 2. `postMessage({ type: 'pn_messaging_session', session })` — browser applies ML-KEM keys in memory via `applyDmSessionHandoff` and `pn_dm_session_v1` in `sessionStorage` (tab refresh).
 
-If OAuth permissions already exist but messaging material is missing, the browser adds `identity_handoff=required` to the authorize URL so consent shows the unlock form instead of skipping straight to redirect.
+If OAuth permissions already exist but messaging material is missing, **messaging reconnect** (send, create group, etc.) adds `identity_handoff=required` to the authorize URL so consent shows the unlock form instead of skipping straight to redirect. General lock/unlock does **not** set this flag.
 
 ## Key modals
 
