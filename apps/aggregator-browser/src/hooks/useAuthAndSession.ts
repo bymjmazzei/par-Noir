@@ -40,6 +40,91 @@ async function waitForValidOAuthSession(maxMs: number): Promise<boolean> {
   return false;
 }
 
+type OAuthCallbackStoragePayload = {
+  code?: string;
+  state?: string;
+  error?: string;
+  error_description?: string;
+  age_shared?: string;
+  timestamp?: number;
+};
+
+function findNewestOAuthCallbackPayload(): { key: string; data: OAuthCallbackStoragePayload } | null {
+  const callbackKeys: string[] = [];
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('pn_oauth_callback_')) callbackKeys.push(k);
+  }
+  if (callbackKeys.length === 0) return null;
+
+  callbackKeys.sort((a, b) => {
+    const at = Number(a.replace('pn_oauth_callback_', ''));
+    const bt = Number(b.replace('pn_oauth_callback_', ''));
+    return bt - at;
+  });
+
+  for (const key of callbackKeys) {
+    const raw = localStorage.getItem(key);
+    if (!raw) continue;
+    try {
+      const data = JSON.parse(raw) as OAuthCallbackStoragePayload;
+      const ts = Number(data.timestamp);
+      if (Number.isFinite(ts) && Date.now() - ts > 120_000) continue;
+      if (data.code || data.error) return { key, data };
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
+/**
+ * Popup may close before postMessage arrives; oauth-callback.html writes pn_oauth_callback_* first.
+ * Poll storage and session together instead of waiting only on session.
+ */
+async function recoverAfterPopupClosed(
+  runOAuthCallback: (
+    data: OAuthCallbackStoragePayload,
+    options?: { redirectUri?: string }
+  ) => Promise<void>,
+  redirectUri: string,
+  maxMs = 30_000
+): Promise<boolean> {
+  const deadline = Date.now() + maxMs;
+  let consumedStorageKey: string | null = null;
+
+  while (Date.now() < deadline) {
+    const session = PNOAuthService.loadSession();
+    if (session && PNOAuthService.isSessionValid(session) && session.did) {
+      return true;
+    }
+
+    const payload = findNewestOAuthCallbackPayload();
+    if (payload && payload.key !== consumedStorageKey) {
+      consumedStorageKey = payload.key;
+      pushPnOAuthDebug('popup_closed_storage_fallback', {
+        hasCode: Boolean(payload.data.code),
+        hasError: Boolean(payload.data.error),
+      });
+      try {
+        localStorage.removeItem(payload.key);
+        localStorage.removeItem(PN_OAUTH_STORAGE_LATEST_KEY);
+        localStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
+      } catch {
+        /* ignore */
+      }
+      await runOAuthCallback(payload.data, { redirectUri });
+      if (await waitForValidOAuthSession(10_000)) {
+        return true;
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  return false;
+}
+
 export interface UseAuthAndSessionParams {
   setViewingCreatorId: (id: string | null) => void;
   setActiveBottomTab: (tab: string) => void;
@@ -616,10 +701,14 @@ export function useAuthAndSession({
           PNOAuthService.clearSession();
           showErrorToast('Authentication timeout. Please try again.');
         } else if (msg === 'POPUP_CLOSED') {
-          pushPnOAuthDebug('popup_closed_wait_for_session', {});
-          const recovered = await waitForValidOAuthSession(25_000);
+          pushPnOAuthDebug('popup_closed_recovery_start', {});
+          const recovered = await recoverAfterPopupClosed(
+            runOAuthCallback,
+            redirectUriForOAuth,
+            30_000
+          );
           if (recovered) {
-            pushPnOAuthDebug('popup_closed_recovered_session', {});
+            pushPnOAuthDebug('popup_closed_recovered', {});
             const session = PNOAuthService.loadSession()!;
             const pnId = session.pnIdentifier || session.did;
             setUnlocked(pnId);
@@ -630,68 +719,6 @@ export function useAuthAndSession({
               discoverFilesRef.current(undefined, true);
             }
             return;
-          }
-          // Deterministic fallback: consume callback payload directly from
-          // pn_oauth_callback_* entries when popup messaging is missed.
-          try {
-            const callbackKeys: string[] = [];
-            for (let i = 0; i < localStorage.length; i += 1) {
-              const k = localStorage.key(i);
-              if (k && k.startsWith('pn_oauth_callback_')) callbackKeys.push(k);
-            }
-
-            // Try newest first by suffix timestamp.
-            callbackKeys.sort((a, b) => {
-              const at = Number(a.replace('pn_oauth_callback_', ''));
-              const bt = Number(b.replace('pn_oauth_callback_', ''));
-              return bt - at;
-            });
-
-            for (const key of callbackKeys) {
-              const raw = localStorage.getItem(key);
-              if (!raw) continue;
-              const data = JSON.parse(raw) as {
-                code?: string;
-                state?: string;
-                error?: string;
-                error_description?: string;
-                age_shared?: string;
-                timestamp?: number;
-              };
-              // Ignore stale leftovers from older attempts.
-              const ts = Number(data.timestamp);
-              if (Number.isFinite(ts) && Date.now() - ts > 120_000) {
-                continue;
-              }
-
-              pushPnOAuthDebug('popup_closed_storage_fallback', {
-                hasCode: Boolean(data?.code),
-                hasError: Boolean(data?.error),
-              });
-              try {
-                localStorage.removeItem(key);
-                localStorage.removeItem(PN_OAUTH_STORAGE_LATEST_KEY);
-                localStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
-              } catch {
-                /* ignore */
-              }
-              if (data?.code || data?.error) {
-                const fallbackRedirectUri = `${window.location.origin}/oauth-callback.html`;
-                await runOAuthCallback(
-                  {
-                    code: data.code,
-                    state: data.state,
-                    error: data.error,
-                    error_description: data.error_description,
-                    age_shared: data.age_shared,
-                  },
-                  { redirectUri: fallbackRedirectUri }
-                );
-                return;
-              }
-            }
-          } catch {
-            /* ignore */
           }
           setLocked();
           PNOAuthService.clearSession();
@@ -719,6 +746,7 @@ export function useAuthAndSession({
     showErrorToast,
     discoverFilesRef,
     loadUserDisplayName,
+    redirectUriForOAuth,
   ]);
 
   return { handleLockUnlock, handleMeClick, loadUserDisplayName };

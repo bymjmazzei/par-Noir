@@ -93,6 +93,28 @@ describe('oauthDrivePermissionContext', () => {
     expect(result).toBeNull();
   });
 
+  it('returns null when browser-app permission is revoked (non-active)', async () => {
+    mockFindCreds.mockResolvedValue({
+      identityId: 'pn-59e4692524b7',
+      credentials: { googleDrive: { access_token: 'tok' } },
+    });
+    mockGetToken.mockResolvedValue('drive-access-token');
+    mockLayout.mockResolvedValue({ pnFolderId: 'pn-folder', metadataFolderId: 'meta-folder' });
+    mockGetPerms.mockResolvedValue({
+      'browser-app': {
+        toolId: 'browser-app',
+        status: 'revoked',
+        dataPoints: [],
+      },
+    });
+
+    const result = await getBrowserAppExistingPermissions({
+      pnIdentifier: 'pn-59e4692524b7',
+    });
+
+    expect(result).toBeNull();
+  });
+
   it('returns empty candidates for missing inputs', () => {
     expect(buildOAuthIdentityCandidates({})).toEqual([]);
   });

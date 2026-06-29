@@ -461,7 +461,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
 
     // Wait after popup closes before failing: callback defers window.close() so parent can still
     // receive postMessage / BroadcastChannel / poll localStorage in slow browsers.
-    const POPUP_CLOSED_GRACE_MS = 15_000;
+    const POPUP_CLOSED_GRACE_MS = 25_000;
     checkClosedInterval = setInterval(() => {
       if (settled) return;
       tryAcceptFromOpenerUrl();

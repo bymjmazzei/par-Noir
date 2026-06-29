@@ -10271,9 +10271,16 @@ class ProductionServer {
           console.log('[OAuth Auth] Using pN identifier from client:', redactPnIdentifier(pnIdentifier));
         }
 
-        // Generate authorization code immediately (before async checks)
-        // SECURITY FIX: Store pnIdentifier directly instead of secrets
+        // Start Drive permission lookup in parallel with code generation so unlock is not blocked.
         const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
+        const existingPermissionsPromise =
+          pnIdentifier && client_id === 'browser-app'
+            ? import('./server/modules/oauthDrivePermissionContext').then(({ getBrowserAppExistingPermissionsWithTimeout }) =>
+                getBrowserAppExistingPermissionsWithTimeout({ pnIdentifier, did })
+              )
+            : null;
+
+        // SECURITY FIX: Store pnIdentifier directly instead of secrets
         let code: string;
         try {
           code = PNOAuthService.generateAuthorizationCode({
@@ -10298,17 +10305,9 @@ class ProductionServer {
           throw oauthErr;
         }
 
-        // Check third-party-permissions so we can skip consent when user already granted browser-app
-        let existingPermissions: { ageShared: boolean } | null = null;
-        if (pnIdentifier && client_id === 'browser-app') {
-          const { getBrowserAppExistingPermissions } = await import(
-            './server/modules/oauthDrivePermissionContext'
-          );
-          existingPermissions = await getBrowserAppExistingPermissions({
-            pnIdentifier,
-            did,
-          });
-        }
+        const existingPermissions = existingPermissionsPromise
+          ? await existingPermissionsPromise
+          : null;
 
         return res.json({
           code,

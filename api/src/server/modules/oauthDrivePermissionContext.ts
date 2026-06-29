@@ -107,6 +107,23 @@ export async function resolveOAuthDriveContext(params: {
   }
 }
 
+export const BROWSER_APP_PERMISSION_CHECK_TIMEOUT_MS = 4000;
+
+/** Race a permission lookup; returns null on timeout so unlock is not blocked by slow Drive. */
+export async function getBrowserAppExistingPermissionsWithTimeout(
+  params: { pnIdentifier?: string; did?: string },
+  timeoutMs: number = BROWSER_APP_PERMISSION_CHECK_TIMEOUT_MS
+): Promise<{ ageShared: boolean } | null> {
+  try {
+    return await Promise.race([
+      getBrowserAppExistingPermissions(params),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ]);
+  } catch {
+    return null;
+  }
+}
+
 /** Returns consent skip hint when browser-app grant is active on user Drive. */
 export async function getBrowserAppExistingPermissions(params: {
   pnIdentifier?: string;
@@ -131,9 +148,6 @@ export async function getBrowserAppExistingPermissions(params: {
       return {
         ageShared: browserApp.dataPoints.includes('age_attestation'),
       };
-    }
-    if (browserApp) {
-      return { ageShared: false };
     }
     return null;
   } catch (error: unknown) {
