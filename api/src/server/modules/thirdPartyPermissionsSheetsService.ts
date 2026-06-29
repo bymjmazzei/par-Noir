@@ -15,6 +15,98 @@ import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 
 export class ThirdPartyPermissionsSheetsService {
   private static readonly THIRD_PARTY_PERMISSIONS_FILE_NAME = 'third-party-permissions.xlsx';
+  private static readonly PERMISSION_COLUMN_COUNT = 13;
+  private static readonly PERMISSION_HEADERS = [
+    'Tool ID',
+    'Tool Name',
+    'Tool Description',
+    'Permissions (JSON)',
+    'Data Points (JSON)',
+    'Required Data Points (JSON)',
+    'Optional Data Points (JSON)',
+    'Granted At',
+    'Expires At',
+    'Status',
+    'Created At',
+    'Updated At',
+    'Integrator Folder ID',
+  ];
+
+  /** Normalize status from sheet cells (trim, lowercase). */
+  static normalizePermissionStatus(status: unknown): ThirdPartyPermission['status'] | null {
+    if (typeof status !== 'string' || !status.trim()) return null;
+    const normalized = status.trim().toLowerCase();
+    if (normalized === 'active' || normalized === 'pending' || normalized === 'revoked') {
+      return normalized;
+    }
+    return null;
+  }
+
+  /**
+   * Parse a sheet row; tolerates legacy misaligned rows where Tool ID is not in column A.
+   */
+  static parsePermissionRow(row: string[]): ThirdPartyPermission | null {
+    if (!row?.length) return null;
+
+    let offset = 0;
+    if (!row[0] || !String(row[0]).trim()) {
+      const toolIdx = row.findIndex((cell) => {
+        if (typeof cell !== 'string' || !cell.trim()) return false;
+        const t = cell.trim();
+        if (t.startsWith('[') || t.startsWith('{')) return false;
+        return /^[\w-]+$/.test(t);
+      });
+      if (toolIdx < 0) return null;
+      offset = toolIdx;
+    }
+
+    const cells = row.slice(offset);
+    const toolId = cells[0] ? String(cells[0]).trim() : '';
+    if (!toolId) return null;
+
+    let permissionsArray: string[] = [];
+    let dataPointsArray: string[] = [];
+    let requiredDataPointsArray: string[] = [];
+    let optionalDataPointsArray: string[] = [];
+
+    try {
+      if (cells[3]) permissionsArray = JSON.parse(cells[3] as string);
+      if (cells[4]) dataPointsArray = JSON.parse(cells[4] as string);
+      if (cells[5]) requiredDataPointsArray = JSON.parse(cells[5] as string);
+      if (cells[6]) optionalDataPointsArray = JSON.parse(cells[6] as string);
+    } catch {
+      /* use empty arrays */
+    }
+
+    const status = this.normalizePermissionStatus(cells[9]) ?? 'pending';
+    const integratorFolderId =
+      cells[12] && String(cells[12]).trim() ? String(cells[12]).trim() : undefined;
+
+    return {
+      toolId,
+      toolName: (cells[1] as string) || toolId,
+      toolDescription: (cells[2] as string) || '',
+      permissions: permissionsArray,
+      dataPoints: dataPointsArray,
+      requiredDataPoints: requiredDataPointsArray,
+      optionalDataPoints: optionalDataPointsArray,
+      grantedAt: (cells[7] as string) || new Date().toISOString(),
+      expiresAt: cells[8] ? (cells[8] as string) : undefined,
+      status,
+      integratorFolderId,
+    };
+  }
+
+  private static shouldPreferPermission(
+    candidate: ThirdPartyPermission,
+    incumbent: ThirdPartyPermission
+  ): boolean {
+    const candStatus = this.normalizePermissionStatus(candidate.status);
+    const incStatus = this.normalizePermissionStatus(incumbent.status);
+    if (candStatus === 'active' && incStatus !== 'active') return true;
+    if (incStatus === 'active' && candStatus !== 'active') return false;
+    return (candidate.grantedAt || '') >= (incumbent.grantedAt || '');
+  }
 
   /**
    * Create third-party permissions sheet in _metadata. Used only at Drive connection init.
@@ -32,8 +124,13 @@ export class ThirdPartyPermissionsSheetsService {
     const spreadsheet = await sheets.spreadsheets.create({
       requestBody: {
         properties: { title: this.THIRD_PARTY_PERMISSIONS_FILE_NAME },
-        sheets: [{ properties: { title: 'Permissions', gridProperties: { rowCount: 10000, columnCount: 12 } } }]
-      }
+        sheets: [{
+          properties: {
+            title: 'Permissions',
+            gridProperties: { rowCount: 10000, columnCount: this.PERMISSION_COLUMN_COUNT },
+          },
+        }],
+      },
     });
 
     const spreadsheetId = spreadsheet.data.spreadsheetId;
@@ -50,11 +147,11 @@ export class ThirdPartyPermissionsSheetsService {
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'Permissions!A1:L1',
+      range: 'Permissions!A1:M1',
       valueInputOption: 'RAW',
       requestBody: {
-        values: [['Tool ID', 'Tool Name', 'Tool Description', 'Permissions (JSON)', 'Data Points (JSON)', 'Required Data Points (JSON)', 'Optional Data Points (JSON)', 'Granted At', 'Expires At', 'Status', 'Created At', 'Updated At', 'Integrator Folder ID']]
-      }
+        values: [this.PERMISSION_HEADERS],
+      },
     });
 
     return spreadsheetId;
@@ -109,7 +206,7 @@ export class ThirdPartyPermissionsSheetsService {
   }
 
   /**
-   * Add or update permission
+   * Upsert one permission and rewrite the sheet (dedupes misaligned duplicate rows).
    */
   static async addPermission(
     token: GoogleDriveToken,
@@ -118,61 +215,20 @@ export class ThirdPartyPermissionsSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
-    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
-    const sheets = google.sheets({ version: 'v4', auth });
-
-    // Check if permission already exists
-    const response = await sheets.spreadsheets.values.get({
+    const existing = await this.getPermissions(token, spreadsheetId, userPnIdentifier, accountId);
+    const prev = existing[permission.toolId];
+    const merged: ThirdPartyPermission = {
+      ...permission,
+      grantedAt: prev?.grantedAt || permission.grantedAt,
+      status: permission.status,
+    };
+    await this.setAllPermissions(
+      token,
       spreadsheetId,
-      range: 'Permissions!A2:M'
-    });
-
-    const rows = response.data.values || [];
-    const existingRowIndex = rows.findIndex((row: any[]) => row[0] === permission.toolId);
-
-    const now = new Date().toISOString();
-    const rowData = [
-      permission.toolId,
-      permission.toolName,
-      permission.toolDescription,
-      JSON.stringify(permission.permissions),
-      JSON.stringify(permission.dataPoints),
-      JSON.stringify(permission.requiredDataPoints),
-      JSON.stringify(permission.optionalDataPoints),
-      permission.grantedAt,
-      permission.expiresAt || '',
-      permission.status,
-      now, // Created At (use existing if updating)
-      now, // Updated At
-      permission.integratorFolderId || ''
-    ];
-
-    if (existingRowIndex >= 0) {
-      // Update existing row (add 2 because row 1 is header, and array is 0-indexed)
-      const rowNumber = existingRowIndex + 2;
-      const existingRow = rows[existingRowIndex];
-      // Preserve original Created At
-      rowData[10] = existingRow[10] || now;
-
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `Permissions!A${rowNumber}:M${rowNumber}`,
-        valueInputOption: 'RAW',
-        requestBody: {
-          values: [rowData]
-        }
-      });
-    } else {
-      // Append new row
-      await sheets.spreadsheets.values.append({
-        spreadsheetId,
-        range: 'Permissions!A:M',
-        valueInputOption: 'RAW',
-        requestBody: {
-          values: [rowData]
-        }
-      });
-    }
+      Object.values({ ...existing, [permission.toolId]: merged }),
+      userPnIdentifier,
+      accountId
+    );
   }
 
   /**
@@ -196,41 +252,12 @@ export class ThirdPartyPermissionsSheetsService {
     const permissions: Record<string, ThirdPartyPermission> = {};
 
     for (const row of rows) {
-      if (!row[0]) continue; // Skip empty rows
-
-      let permissionsArray: string[] = [];
-      let dataPointsArray: string[] = [];
-      let requiredDataPointsArray: string[] = [];
-      let optionalDataPointsArray: string[] = [];
-
-      try {
-        if (row[3]) permissionsArray = JSON.parse(row[3] as string);
-        if (row[4]) dataPointsArray = JSON.parse(row[4] as string);
-        if (row[5]) requiredDataPointsArray = JSON.parse(row[5] as string);
-        if (row[6]) optionalDataPointsArray = JSON.parse(row[6] as string);
-      } catch (e) {
-        // If JSON parsing fails, use empty arrays
-        console.warn('[ThirdPartyPermissionsSheetsService] Failed to parse JSON arrays:', e);
+      const permission = this.parsePermissionRow(row);
+      if (!permission) continue;
+      const incumbent = permissions[permission.toolId];
+      if (!incumbent || this.shouldPreferPermission(permission, incumbent)) {
+        permissions[permission.toolId] = permission;
       }
-
-      const integratorFolderId =
-        row[12] && String(row[12]).trim() ? String(row[12]).trim() : undefined;
-
-      const permission: ThirdPartyPermission = {
-        toolId: row[0] as string,
-        toolName: row[1] as string,
-        toolDescription: row[2] as string,
-        permissions: permissionsArray,
-        dataPoints: dataPointsArray,
-        requiredDataPoints: requiredDataPointsArray,
-        optionalDataPoints: optionalDataPointsArray,
-        grantedAt: row[7] as string,
-        expiresAt: row[8] ? (row[8] as string) : undefined,
-        status: row[9] as ThirdPartyPermission['status'],
-        integratorFolderId
-      };
-
-      permissions[permission.toolId] = permission;
     }
 
     return permissions;
@@ -266,11 +293,14 @@ export class ThirdPartyPermissionsSheetsService {
     // Find the row with this tool ID
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Permissions!A2:L'
+      range: 'Permissions!A2:M'
     });
 
     const rows = response.data.values || [];
-    const rowIndex = rows.findIndex((row: any[]) => row[0] === toolId);
+    const rowIndex = rows.findIndex((row: string[]) => {
+      const parsed = this.parsePermissionRow(row);
+      return parsed?.toolId === toolId;
+    });
 
     if (rowIndex < 0) {
       return; // Permission not found
@@ -308,6 +338,12 @@ export class ThirdPartyPermissionsSheetsService {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Permissions!A2:M' });
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Permissions!A1:M1',
+      valueInputOption: 'RAW',
+      requestBody: { values: [this.PERMISSION_HEADERS] },
+    });
     if (permissions.length === 0) return;
     const now = new Date().toISOString();
     const rows = permissions.map((p) => [
@@ -321,15 +357,15 @@ export class ThirdPartyPermissionsSheetsService {
       p.grantedAt,
       p.expiresAt ?? '',
       p.status,
+      p.grantedAt,
       now,
-      now,
-      p.integratorFolderId ?? ''
+      p.integratorFolderId ?? '',
     ]);
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'Permissions!A2:M',
+      range: `Permissions!A2:M${permissions.length + 1}`,
       valueInputOption: 'RAW',
-      requestBody: { values: rows }
+      requestBody: { values: rows },
     });
   }
 }

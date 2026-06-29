@@ -7,6 +7,7 @@ import { lookupPnFolderLayout } from './integratorFolderService';
 import { normalizePnIdentifier } from './integratorStoragePaths';
 import { storageCredentialsService, type StoredCredentialsRecord } from './storageCredentialsService';
 import { ThirdPartyPermissionsService } from './thirdPartyPermissionsService';
+import { ThirdPartyPermissionsSheetsService } from './thirdPartyPermissionsSheetsService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 
 export interface OAuthDrivePermissionContext {
@@ -107,7 +108,7 @@ export async function resolveOAuthDriveContext(params: {
   }
 }
 
-export const BROWSER_APP_PERMISSION_CHECK_TIMEOUT_MS = 8000;
+export const BROWSER_APP_PERMISSION_CHECK_TIMEOUT_MS = 15_000;
 
 /** Race a permission lookup; returns null on timeout so unlock is not blocked by slow Drive. */
 export async function getBrowserAppExistingPermissionsWithTimeout(
@@ -117,7 +118,15 @@ export async function getBrowserAppExistingPermissionsWithTimeout(
   try {
     return await Promise.race([
       getBrowserAppExistingPermissions(params),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+      new Promise<null>((resolve) =>
+        setTimeout(() => {
+          safeLogger.warn('[OAuth] browser-app permission Drive lookup timed out', {
+            pnIdHash: params.pnIdentifier ? hashIdentifier(params.pnIdentifier) : undefined,
+            timeoutMs,
+          });
+          resolve(null);
+        }, timeoutMs)
+      ),
     ]);
   } catch {
     return null;
@@ -141,7 +150,10 @@ export async function getBrowserAppExistingPermissions(params: {
     );
 
     const browserApp = permissions['browser-app'];
-    if (browserApp?.status === 'active') {
+    const browserStatus = browserApp
+      ? ThirdPartyPermissionsSheetsService.normalizePermissionStatus(browserApp.status)
+      : null;
+    if (browserApp && browserStatus === 'active') {
       safeLogger.info('[OAuth] Found active browser-app permissions on Drive', {
         ageShared: browserApp.dataPoints.includes('age_attestation'),
       });

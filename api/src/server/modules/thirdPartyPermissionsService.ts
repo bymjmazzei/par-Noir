@@ -126,15 +126,20 @@ export class ThirdPartyPermissionsService {
         accountId
       );
 
-      for (const permission of Object.values(permissions)) {
-        await ThirdPartyPermissionsSheetsService.addPermission(
-          token,
-          spreadsheetId,
-          permission,
-          normalized,
-          accountId
-        );
-      }
+      const existing = await ThirdPartyPermissionsSheetsService.getPermissions(
+        token,
+        spreadsheetId,
+        normalized,
+        accountId
+      );
+      const merged = { ...existing, ...permissions };
+      await ThirdPartyPermissionsSheetsService.setAllPermissions(
+        token,
+        spreadsheetId,
+        Object.values(merged),
+        normalized,
+        accountId
+      );
     } catch (error) {
       console.error('Error storing third-party permissions:', error);
       throw error;
