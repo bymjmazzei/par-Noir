@@ -10301,149 +10301,13 @@ class ProductionServer {
         // Check third-party-permissions so we can skip consent when user already granted browser-app
         let existingPermissions: { ageShared: boolean } | null = null;
         if (pnIdentifier && client_id === 'browser-app') {
-          try {
-            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-
-            const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-            const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-
-            if (userCredentials?.credentials) {
-              const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts ||
-                (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-
-              if (googleDriveAccounts.length > 0) {
-          const account = googleDriveAccounts[0];
-          const accountId = this.extractAccountId(account);
-          const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
-
-                // Find pN folder and _metadata folder
-                const pnFolderName = `par Noir - ${pnIdentifier}`;
-                const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-
-                const pnFolderResponse = await fetch(pnFolderSearchUrl, {
-                  headers: { 'Authorization': `Bearer ${userAccessToken}` }
-                });
-
-                if (pnFolderResponse.ok) {
-                  const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                  if (pnFolderData.files && pnFolderData.files.length > 0) {
-                    const pnFolderId = pnFolderData.files[0].id;
-
-                    // Find _metadata folder (where third-party-permissions.xlsx lives)
-                    const metadataFolderName = '_metadata';
-                    const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                    const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
-
-                    const metadataFolderResponse = await fetch(metadataSearchUrl, {
-                      headers: { 'Authorization': `Bearer ${userAccessToken}` }
-                    });
-
-                    if (metadataFolderResponse.ok) {
-                      const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-                      if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-                        const metadataFolderId = metadataFolderData.files[0].id;
-
-                        const { ThirdPartyPermissionsService } = await import('./server/modules/thirdPartyPermissionsService');
-                        const permissions = await ThirdPartyPermissionsService.getPermissions(
-                          userAccessToken,
-                          metadataFolderId,
-                          normalizedPnIdentifier,
-                          accountId
-                        );
-
-                        const browserApp = permissions['browser-app'];
-                        if (browserApp && browserApp.status === 'active') {
-                          existingPermissions = {
-                            ageShared: browserApp.dataPoints.includes('age_attestation')
-                          };
-                          console.log('[OAuth Auth] Found existing permissions in third-party-permissions, skipping consent:', existingPermissions);
-                        } else if (browserApp) {
-                          existingPermissions = { ageShared: false };
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          } catch (permError: unknown) {
-            const msg = permError instanceof Error ? permError.message : String(permError);
-            console.log('[OAuth Auth] Could not check third-party-permissions (Drive not connected or sheet missing):', msg);
-          }
-
-          // Fire-and-forget: check if user has age_attestation ZKP (for logging only)
-          (async () => {
-            try {
-              const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-
-              // Get user's credentials to check for age ZKP
-              const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-              const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-              const { ZKPDataPointsService } = await import('./server/modules/zkpDataPointsService');
-              
-              const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-              
-              if (userCredentials?.credentials) {
-                const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-                  (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-                
-                if (googleDriveAccounts.length > 0) {
-          const account = googleDriveAccounts[0];
-          const accountId = this.extractAccountId(account);
-          const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
-                  
-                  // Find pN folder and _metadata folder
-                  const pnFolderName = `par Noir - ${pnIdentifier}`;
-                  const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                  const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-                  
-                  const pnFolderResponse = await fetch(pnFolderSearchUrl, {
-                    headers: { 'Authorization': `Bearer ${userAccessToken}` }
-                  });
-                  
-                  if (pnFolderResponse.ok) {
-                    const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                    if (pnFolderData.files && pnFolderData.files.length > 0) {
-                      const pnFolderId = pnFolderData.files[0].id;
-                      
-                      // Find _metadata folder
-                      const metadataFolderName = '_metadata';
-                      const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                      const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
-                      
-                      const metadataFolderResponse = await fetch(metadataSearchUrl, {
-                        headers: { 'Authorization': `Bearer ${userAccessToken}` }
-                      });
-                      
-                      if (metadataFolderResponse.ok) {
-                        const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-                        if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-                          const metadataFolderId = metadataFolderData.files[0].id;
-                          
-                          // Check if user has age_attestation ZKP
-                          const availableDataPoints = await ZKPDataPointsService.getAvailableDataPoints(
-                            userAccessToken,
-                            metadataFolderId,
-                            normalizedPnIdentifier,
-                            accountId
-                          );
-                          
-                          const hasAgeZKP = availableDataPoints.some(dp => dp.dataPointId === 'age_attestation');
-                          console.log(`[OAuth Auth] User ${pnIdentifier} has age ZKP (async): ${hasAgeZKP}`);
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            } catch (ageCheckError: unknown) {
-              // Log but don't fail - age check is optional
-              const msg = ageCheckError instanceof Error ? ageCheckError.message : String(ageCheckError);
-              console.log('[OAuth Auth] Could not check for age ZKP (async):', msg);
-            }
-          })().catch(err => console.error('[OAuth Auth] Age ZKP check failed (async):', err));
+          const { getBrowserAppExistingPermissions } = await import(
+            './server/modules/oauthDrivePermissionContext'
+          );
+          existingPermissions = await getBrowserAppExistingPermissions({
+            pnIdentifier,
+            did,
+          });
         }
 
         return res.json({
@@ -10500,52 +10364,38 @@ class ProductionServer {
         try {
           const tokenPayload = PNOAuthService.validateAccessToken(tokenResponse.access_token);
           if (tokenPayload?.pnIdentifier) {
-            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+            const { resolveOAuthDriveContext } = await import('./server/modules/oauthDrivePermissionContext');
             const { persistIntegratorGrantAfterTokenExchange } = await import(
               './server/modules/integratorOAuthGrants'
             );
 
-            const normalizedPnIdentifier = tokenPayload.pnIdentifier.startsWith('pn-')
-              ? tokenPayload.pnIdentifier
-              : `pn-${tokenPayload.pnIdentifier}`;
-            const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+            const driveCtx = await resolveOAuthDriveContext({
+              pnIdentifier: tokenPayload.pnIdentifier,
+              did: tokenPayload.did,
+            });
 
-            if (userCredentials?.credentials) {
-              const googleDriveAccounts =
-                userCredentials.credentials.googleDriveAccounts ||
-                (userCredentials.credentials.googleDrive
-                  ? [userCredentials.credentials.googleDrive]
-                  : []);
+            if (driveCtx) {
+              const shareAge =
+                age_shared === true || age_shared === 'true'
+                  ? true
+                  : age_shared === false || age_shared === 'false'
+                    ? false
+                    : undefined;
 
-              if (googleDriveAccounts.length > 0) {
-                const account = googleDriveAccounts[0];
-                const accountId = this.extractAccountId(account);
-                const userAccessToken = await googleDriveProxyService.getAccessToken(
-                  normalizedPnIdentifier,
-                  accountId
-                );
-
-                const shareAge =
-                  age_shared === true || age_shared === 'true'
-                    ? true
-                    : age_shared === false || age_shared === 'false'
-                      ? false
-                      : undefined;
-
-                await persistIntegratorGrantAfterTokenExchange({
-                  clientId: client_id,
-                  scopes: tokenPayload.scope || [],
-                  tokenPayload,
-                  userAccessToken,
-                  accountId,
-                  ageShared: client_id === 'browser-app' ? shareAge : undefined
-                });
-              }
+              await persistIntegratorGrantAfterTokenExchange({
+                clientId: client_id,
+                scopes: tokenPayload.scope || [],
+                tokenPayload,
+                userAccessToken: driveCtx.userAccessToken,
+                accountId: driveCtx.accountId,
+                ageShared: client_id === 'browser-app' ? shareAge : undefined,
+              });
             }
           }
-        } catch (permError) {
-          console.error('[OAuth] Failed to persist integrator grant:', permError);
+        } catch (permError: unknown) {
+          safeLogger.error('[OAuth] Failed to persist integrator grant', {
+            message: permError instanceof Error ? permError.message : String(permError),
+          });
         }
 
         return res.json(tokenResponse);

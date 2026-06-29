@@ -6,6 +6,7 @@ import { getDatabasePool } from '../utils/database';
 import { PlatformRegistrySheetsService } from './platformRegistrySheetsService';
 import { requirePlatformRegistryDriveContext } from './platformRegistryContext';
 import { isPlatformRegistryConfigured } from './platformOperatorService';
+import { isFirstPartyClient } from './integratorStoragePaths';
 import type { PlatformRegistrySyncResult } from './platformRegistryTypes';
 
 const SEEDED_CLIENT_IDS = new Set([
@@ -251,6 +252,9 @@ export class PlatformCommercialLicenseService {
   }
 
   static async getClientVerified(clientId: string): Promise<boolean> {
+    if (isFirstPartyClient(clientId)) {
+      return true;
+    }
     const pool = getDatabasePool();
     const result = await pool.query(
       `SELECT verified FROM oauth_clients WHERE client_id = $1`,
