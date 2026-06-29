@@ -7,6 +7,8 @@
  */
 
 export const PN_MESSAGING_HANDOFF_WINDOW_PREFIX = 'pn_messaging_handoff_v1:' as const;
+/** Large encrypted identity travels in the redirect URL hash (session stays in window.name). */
+export const PN_MESSAGING_IDENTITY_HASH_PREFIX = 'pn_messaging_identity_v1:' as const;
 export const PN_MESSAGING_OAUTH_HANDOFF_STORAGE = 'pn_messaging_oauth_handoff' as const;
 export const PN_MESSAGING_OAUTH_BROADCAST = 'par-noir-messaging-oauth-v1' as const;
 
@@ -62,6 +64,52 @@ export function buildMessagingHandoffWindowName(payload: MessagingOAuthHandoffPa
   return PN_MESSAGING_HANDOFF_WINDOW_PREFIX + JSON.stringify(payload);
 }
 
+/** Session-only window.name payload (small; reliable across browsers). */
+export function buildMessagingSessionWindowName(
+  session: MessagingHandoffSession,
+  timestamp = Date.now()
+): string {
+  return buildMessagingHandoffWindowName({ v: 1, session, timestamp });
+}
+
+export function buildMessagingIdentityHash(
+  identity: MessagingHandoffIdentity,
+  timestamp = Date.now()
+): string {
+  const payload = { v: 1 as const, identity, timestamp };
+  return `${PN_MESSAGING_IDENTITY_HASH_PREFIX}${encodeURIComponent(JSON.stringify(payload))}`;
+}
+
+export function parseMessagingIdentityFromHash(
+  hash: string | null | undefined
+): MessagingHandoffIdentity | null {
+  if (!hash) return null;
+  const raw = hash.startsWith('#') ? hash.slice(1) : hash;
+  if (!raw.startsWith(PN_MESSAGING_IDENTITY_HASH_PREFIX)) return null;
+  const encoded = raw.slice(PN_MESSAGING_IDENTITY_HASH_PREFIX.length);
+  try {
+    const parsed: unknown = JSON.parse(decodeURIComponent(encoded));
+    if (!isRecord(parsed) || parsed.v !== 1) return null;
+    return isMessagingHandoffIdentity(parsed.identity) ? parsed.identity : null;
+  } catch {
+    return null;
+  }
+}
+
+export function mergeMessagingHandoffParts(
+  windowPart: MessagingOAuthHandoffPayload | null,
+  identity: MessagingHandoffIdentity | null
+): MessagingOAuthHandoffPayload | null {
+  const session = windowPart?.session;
+  if (!session && !identity) return null;
+  return {
+    v: 1,
+    timestamp: windowPart?.timestamp ?? Date.now(),
+    session,
+    identity: identity ?? windowPart?.identity,
+  };
+}
+
 export function parseMessagingHandoffFromWindowName(
   windowName: string | null | undefined
 ): MessagingOAuthHandoffPayload | null {
@@ -71,7 +119,10 @@ export function parseMessagingHandoffFromWindowName(
   const json = windowName.slice(PN_MESSAGING_HANDOFF_WINDOW_PREFIX.length);
   try {
     const parsed: unknown = JSON.parse(json);
-    return isMessagingOAuthHandoffPayload(parsed) ? parsed : null;
+    if (!isMessagingOAuthHandoffPayload(parsed)) return null;
+    // Session-only payloads are valid (identity may be in URL hash).
+    if (parsed.session && !parsed.identity) return parsed;
+    return parsed;
   } catch {
     return null;
   }

@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildMessagingHandoffWindowName,
+  buildMessagingIdentityHash,
+  buildMessagingSessionWindowName,
   clearMessagingHandoffFromWindowName,
+  mergeMessagingHandoffParts,
   parseMessagingHandoffFromStorage,
   parseMessagingHandoffFromWindowName,
+  parseMessagingIdentityFromHash,
   PN_MESSAGING_HANDOFF_WINDOW_PREFIX,
   serializeMessagingHandoffForStorage,
   type MessagingOAuthHandoffPayload,
@@ -49,5 +53,14 @@ describe('messagingOAuthHandoff', () => {
     expect(parseMessagingHandoffFromWindowName('not-a-handoff')).toBeNull();
     expect(parseMessagingHandoffFromStorage('{"v":2}')).toBeNull();
     expect(parseMessagingHandoffFromStorage('{"v":1,"timestamp":1}')).toBeNull();
+  });
+
+  it('supports split session window.name + identity hash', () => {
+    const ts = samplePayload.timestamp;
+    const sessionName = buildMessagingSessionWindowName(samplePayload.session!, ts);
+    const identityHash = buildMessagingIdentityHash(samplePayload.identity!, ts);
+    const windowPart = parseMessagingHandoffFromWindowName(sessionName);
+    const identity = parseMessagingIdentityFromHash(identityHash);
+    expect(mergeMessagingHandoffParts(windowPart, identity)).toEqual(samplePayload);
   });
 });

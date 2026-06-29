@@ -5,9 +5,9 @@ import {
   DM_IDENTITY_CHANGE_EVENT,
   hasStoredEncryptedIdentity,
   isDmIdentityReady,
-  restoreDmSessionFromStorage,
 } from '../services/dmIdentitySession';
 import { requestMessagingReconnect } from '../services/messagingReconnect';
+import { restoreMessagingAfterOAuth } from '../services/messagingOAuthHandoff';
 
 export const ConnectionHealthBanner: React.FC = () => {
   const [driveOk, setDriveOk] = useState<boolean | null>(null);
@@ -16,7 +16,7 @@ export const ConnectionHealthBanner: React.FC = () => {
   const oauthOk = !!session?.accessToken;
 
   const refreshMessagingState = useCallback(() => {
-    restoreDmSessionFromStorage();
+    restoreMessagingAfterOAuth();
     setMessagingOk(isDmIdentityReady());
   }, []);
 

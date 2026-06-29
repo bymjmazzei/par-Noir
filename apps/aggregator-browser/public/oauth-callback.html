@@ -105,6 +105,7 @@
        * Must match packages/oauth-ui/src/messagingOAuthHandoff.ts
        */
       var MESSAGING_HANDOFF_PREFIX = 'pn_messaging_handoff_v1:';
+      var MESSAGING_IDENTITY_HASH_PREFIX = 'pn_messaging_identity_v1:';
       var MESSAGING_HANDOFF_STORAGE = 'pn_messaging_oauth_handoff';
       var MESSAGING_BC_NAME = 'par-noir-messaging-oauth-v1';
       var MESSAGING_IDENTITY_TYPE = 'pn_messaging_identity';
@@ -136,12 +137,50 @@
         }
       }
 
+      function parseMessagingIdentityFromHash(hash) {
+        if (!hash) return null;
+        var raw = hash.charAt(0) === '#' ? hash.slice(1) : hash;
+        if (raw.indexOf(MESSAGING_IDENTITY_HASH_PREFIX) !== 0) return null;
+        try {
+          var parsed = JSON.parse(decodeURIComponent(raw.slice(MESSAGING_IDENTITY_HASH_PREFIX.length)));
+          if (!parsed || parsed.v !== 1 || !parsed.identity) return null;
+          var id = parsed.identity;
+          if (
+            typeof id.encryptedData !== 'string' ||
+            typeof id.iv !== 'string' ||
+            typeof id.salt !== 'string'
+          ) {
+            return null;
+          }
+          return id;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function mergeMessagingHandoffParts(windowPart, identity) {
+        if (!windowPart && !identity) return null;
+        return {
+          v: 1,
+          timestamp: (windowPart && windowPart.timestamp) || Date.now(),
+          session: windowPart && windowPart.session,
+          identity: identity || (windowPart && windowPart.identity)
+        };
+      }
+
       (function deliverMessagingHandoffFromWindowName() {
-        var payload = parseMessagingHandoffFromWindowName(window.name);
-        if (!payload) return;
+        var windowPart = parseMessagingHandoffFromWindowName(window.name);
+        var identityFromHash = parseMessagingIdentityFromHash(window.location.hash);
+        var payload = mergeMessagingHandoffParts(windowPart, identityFromHash);
+        if (!payload || (!payload.identity && !payload.session)) return;
 
         if (window.name.indexOf(MESSAGING_HANDOFF_PREFIX) === 0) {
           window.name = '';
+        }
+        if (identityFromHash) {
+          try {
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+          } catch (e) {}
         }
 
         try {

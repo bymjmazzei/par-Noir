@@ -14,8 +14,8 @@ import {
   DM_IDENTITY_CHANGE_EVENT,
   hasStoredEncryptedIdentity,
   isDmIdentityReady,
-  restoreDmSessionFromStorage,
 } from '../services/dmIdentitySession';
+import { restoreMessagingAfterOAuth } from '../services/messagingOAuthHandoff';
 
 const SHOW_DM_UNLOCK_EVENT = 'pn_show_dm_unlock_modal';
 
@@ -31,7 +31,7 @@ export function MessagesPage({ initialThread, onCreatorClick, onNotificationClic
   const [dmUnlockDismissed, setDmUnlockDismissed] = useState(false);
 
   const refreshDmUnlockOffer = useCallback(() => {
-    restoreDmSessionFromStorage();
+    restoreMessagingAfterOAuth();
 
     if (!userState.isUnlocked || !userState.pnIdentifier) {
       setShowDmUnlock(false);

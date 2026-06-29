@@ -35,10 +35,15 @@ export {
 } from './pnOAuthResumeBootstrap';
 export {
   PN_MESSAGING_HANDOFF_WINDOW_PREFIX,
+  PN_MESSAGING_IDENTITY_HASH_PREFIX,
   PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
   PN_MESSAGING_OAUTH_BROADCAST,
   buildMessagingHandoffWindowName,
+  buildMessagingSessionWindowName,
+  buildMessagingIdentityHash,
   parseMessagingHandoffFromWindowName,
+  parseMessagingIdentityFromHash,
+  mergeMessagingHandoffParts,
   clearMessagingHandoffFromWindowName,
   serializeMessagingHandoffForStorage,
   parseMessagingHandoffFromStorage,
