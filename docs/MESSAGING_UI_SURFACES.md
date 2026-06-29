@@ -40,4 +40,4 @@ If OAuth permissions already exist but messaging material is missing, the browse
 4. Set B to `readOnly` in group settings; B has no composer; A can still send; B cannot (403).
 5. A adds C (connected); C sees history only from join onward (no backfill).
 
-See [MESSAGING_ARCHITECTURE.md](./MESSAGING_ARCHITECTURE.md).
+See [MESSAGING_ARCHITECTURE.md](./MESSAGING_ARCHITECTURE.md) and [security/MESSAGING_COORDINATOR_POLICY.md](./security/MESSAGING_COORDINATOR_POLICY.md) (what the operator may see vs message content).

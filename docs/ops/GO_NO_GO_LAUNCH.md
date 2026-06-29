@@ -2,6 +2,8 @@
 
 Use this as a **gate checklist** before calling a release “GA” or widening store distribution. Owners initial when satisfied.
 
+For the full remaining-work breakdown (Stripe, Veriff, mobile, ops, deferred scope), see [LAUNCH_REMAINING_WORK.md](./LAUNCH_REMAINING_WORK.md).
+
 ## Engineering
 
 - [ ] **API deployed** with the same commit as tested (Railway / host).

@@ -49,15 +49,28 @@ See [developer/IDENTITY_REKEY_MIGRATION.md](./developer/IDENTITY_REKEY_MIGRATION
 
 ## Threat model (summary)
 
-| API may learn | API must not learn |
-|---------------|-------------------|
-| Who messages whom (connection graph) | Plaintext content |
+The API is a **coordinator**, not a **conversation participant**.
+
+| Role | Description |
+|------|-------------|
+| **Coordinator** | Sees routing metadata **in transit** to dual-write ciphertext, accept connections, grant attachment ACLs, and push realtime hints. |
+| **Not a participant** | Must not decrypt bodies, derive `messageRootKey` / `chatKey`, or retain passcode for messaging. |
+
+| API may learn (in transit) | API must not learn |
+|----------------------------|-------------------|
+| Who messages whom (connection graph while coordinating) | Plaintext content |
 | Timestamps, approximate sizes | `messageRootKey`, `chatKey`, passcode, pn name |
 | `kemCiphertext` blobs (opaque) | ML-KEM secret keys |
 
+**Persistence:** Canonical message and connection data lives on **user-owned storage** (Drive / portable providers), not par Noir Postgres. The operator does not maintain a central social-graph database for DMs.
+
+**Third parties:** The storage host (e.g. Google Drive) has its own metadata layer (files, sharing, timing).
+
+**Operator policy:** See [security/MESSAGING_COORDINATOR_POLICY.md](./security/MESSAGING_COORDINATOR_POLICY.md) for retention, logging rules, and commitments.
+
 ## OAuth passcode debt
 
-Browser OAuth may still send passcode to the server for legacy unlock flows. **E2E messaging does not rely on the server retaining passcode**—use local `pn_encrypted_identity_v1` + `DmCryptoUnlockModal` for ML-KEM secret in memory only.
+Browser OAuth may still send passcode to the server for legacy unlock flows. **E2E messaging does not rely on the server retaining passcode**—messaging ML-KEM keys are handed off client-side at OAuth unlock (`pn_messaging_session`) and held in browser memory / `sessionStorage` only.
 
 ## Implementation packages
 

@@ -45,6 +45,7 @@ import { registerStorageRoutes } from './server/modules/storage/storageRoutes';
 import { registerCreatorFundPeriodRoutes } from './server/modules/creatorFundPeriodRoutes';
 import { registerCoreRoutes } from './server/modules/coreRoutes';
 import { hashIdentifier, isDevVerbose, safeLogger } from './utils/logger';
+import { messagingLog } from './server/utils/messagingLog';
 import { getBearerTokenPayload } from './server/middleware/authMiddleware';
 import {
   gateOwnerRoute,
@@ -11693,7 +11694,7 @@ class ProductionServer {
     // POST with body used when passing cached credentials (avoids URL length / encoding issues)
     const conversationHandler = async (req: express.Request, res: express.Response) => {
       const src = req.method === 'POST' ? (req.body as Record<string, unknown>) : req.query as Record<string, unknown>;
-      console.log('[GetConversation] Endpoint called', { 
+      messagingLog.debug('[GetConversation] Endpoint called', { 
         userPnIdentifier: src.userPnIdentifier, 
         participantPnIdentifier: src.participantPnIdentifier,
         hasConnectionId: !!src.connectionId,
@@ -11708,14 +11709,14 @@ class ProductionServer {
         const offset = src.offset != null ? parseInt(String(src.offset), 10) : 0;
         const connectionId = src.connectionId as string | undefined;
         const spreadsheetId = src.spreadsheetId as string | undefined;
-        console.log('[GetConversation] Request received', {
+        messagingLog.debug('[GetConversation] Request received', {
           hasConnectionId: !!connectionId,
           hasSpreadsheetId: !!spreadsheetId,
           method: req.method
         });
 
         if (!userPnIdentifier || !participantPnIdentifier) {
-          console.error('[GetConversation] Missing required parameters');
+          messagingLog.error('[GetConversation] Missing required parameters');
           return res.status(400).json({ error: 'userPnIdentifier and participantPnIdentifier are required' });
         }
 
@@ -11732,7 +11733,7 @@ class ProductionServer {
         // Get user's credentials
         const credentialsStart = Date.now();
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-        console.log(`[GetConversation] getCredentials took ${Date.now() - credentialsStart}ms`);
+        messagingLog.debug(`[GetConversation] getCredentials took ${Date.now() - credentialsStart}ms`);
         if (!userCredentials?.credentials) {
           return res.json({ messages: [] });
         }
@@ -11768,7 +11769,7 @@ class ProductionServer {
           conversationSheetId = spreadsheetId;
         } else {
           // Fallback path: Try inbox first (fast path), then fall back to connections sheet
-          console.log('[GetConversation] Looking up connection (fallback path)');
+          messagingLog.debug('[GetConversation] Looking up connection (fallback path)');
           
           const cachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
           let messagesFolderId: string | undefined = cachedFolderIds.messagesFolderId;
@@ -11794,10 +11795,10 @@ class ProductionServer {
               };
               userCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
               storageCredentialsService.upsertCredentials(pnIdentifier, userCredentials.credentials).catch(err => {
-                console.warn('[GetConversation] Failed to cache inboxSheetId:', err?.message);
+                messagingLog.warn('[GetConversation] Failed to cache inboxSheetId:', { message: err?.message });
               });
             } catch (error) {
-              console.warn('[GetConversation] Failed to get inbox sheet:', error);
+              messagingLog.warn('[GetConversation] Failed to get inbox sheet', { message: (error as Error)?.message });
             }
           }
 
@@ -11821,7 +11822,7 @@ class ProductionServer {
                 throw new Error('Inbox entry not found or missing data');
               }
             } catch (inboxError: any) {
-              console.warn('[GetConversation] Failed to read from inbox, falling back to connections sheet:', inboxError?.message);
+              messagingLog.warn('[GetConversation] Failed to read from inbox, falling back to connections sheet', { message: inboxError?.message });
               // Fall through to connections sheet lookup
             }
           }
@@ -11834,7 +11835,7 @@ class ProductionServer {
               // Get metadata folder (includes pnFolderId)
               const metadataFolder = await this.getMetadataFolder(token, pnIdentifier, accountId);
               if (!metadataFolder) {
-                console.error('[GetConversation] Metadata folder not found for', pnIdentifier);
+                messagingLog.error('[GetConversation] Metadata folder not found', { pnIdentifier });
                 return res.json({ messages: [], total: 0 });
               }
               metadataFolderId = metadataFolder.metadataFolderId;
@@ -11868,7 +11869,7 @@ class ProductionServer {
             );
 
             if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
-              console.error('[GetConversation] Connection not found or not connected', {
+              messagingLog.error('[GetConversation] Connection not found or not connected', {
                 connectionId: connectionStatus.connectionId,
                 status: connectionStatus.status,
                 userPnIdentifier: pnIdentifier,
@@ -11898,7 +11899,7 @@ class ProductionServer {
               accountId
             );
             if (!connection) {
-              console.error('[GetConversation] Connection not found in sheet, connectionId:', connectionStatus.connectionId);
+              messagingLog.error('[GetConversation] Connection not found in sheet', { connectionId: connectionStatus.connectionId });
               return res.status(500).json({
                 error: 'Connection not found',
                 error_description: `Connection ${connectionStatus.connectionId} not found in connections sheet`
@@ -11937,14 +11938,14 @@ class ProductionServer {
                 conversationSheets: updatedConversationSheets
               };
               storageCredentialsService.upsertCredentials(pnIdentifier, userCredentials.credentials).catch(err => {
-                console.warn('[GetConversation] Failed to cache conversation sheet ID:', err?.message);
+                messagingLog.warn('[GetConversation] Failed to cache conversation sheet ID:', { message: err?.message });
               });
             }
           }
         }
 
         if (!finalConnectionId || !conversationSheetId) {
-          console.error('[GetConversation] Missing required connection data', {
+          messagingLog.error('[GetConversation] Missing required connection data', {
             hasConnectionId: !!finalConnectionId,
             hasConversationSheetId: !!conversationSheetId
           });
@@ -11959,7 +11960,7 @@ class ProductionServer {
         const messageLimit = limit || 10;
         const messageOffset = offset || 0;
         const fetchStart = Date.now();
-        console.log('[GetConversation] Fetching messages from sheet', { limit: messageLimit, offset: messageOffset });
+        messagingLog.debug('[GetConversation] Fetching messages from sheet', { limit: messageLimit, offset: messageOffset });
         const result = await MessageSheetsService.getMessages(
           token,
           conversationSheetId,
@@ -11974,18 +11975,20 @@ class ProductionServer {
             relayOnly: true
           }
         );
-        console.log(`[GetConversation] getMessages took ${Date.now() - fetchStart}ms`);
+        messagingLog.debug(`[GetConversation] getMessages took ${Date.now() - fetchStart}ms`);
 
         // Set toPnIdentifier for all messages (use normalized)
         result.messages.forEach(msg => {
           msg.toPnIdentifier = normalizedParticipantPnIdentifier;
         });
 
-        console.log(`[GetConversation] ✅ Returning ${result.messages.length} messages (total time: ${Date.now() - requestStart}ms)`);
+        messagingLog.info(`[GetConversation] Returning ${result.messages.length} messages`, {
+          durationMs: Date.now() - requestStart,
+        });
         return res.json({ messages: result.messages, total: result.total });
       } catch (error: any) {
-        console.error('[GetConversation] ERROR:', error);
-        console.error('[GetConversation] ERROR stack:', error?.stack);
+        messagingLog.error('[GetConversation] ERROR', { message: error?.message, name: error?.name });
+        messagingLog.error('[GetConversation] ERROR stack', { stack: error?.stack });
         // Check for authentication errors and return 401 instead of 500
         if (error.message?.includes('authentication failed') || 
             error?.response?.status === 401 || 
@@ -12006,7 +12009,7 @@ class ProductionServer {
     this.app.post('/api/messages/conversation', conversationHandler);
 
     this.app.post('/api/messages/send', async (req, res) => {
-        console.log('[SendMessage] Endpoint called', { 
+        messagingLog.info('[SendMessage] Endpoint called', { 
         fromPnIdentifier: req.body?.fromPnIdentifier, 
         toPnIdentifier: req.body?.toPnIdentifier,
         hasContent: !!req.body?.content,
@@ -12027,7 +12030,7 @@ class ProductionServer {
         
         // Normalize pn-identifiers (handles legacy data)
         // Use pn identifiers directly (already normalized)
-        console.log('[SendMessage] Request validated, starting message processing', { fromPnIdentifier, toPnIdentifier, messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` });
+        messagingLog.info('[SendMessage] Request validated, starting message processing', { fromPnIdentifier, toPnIdentifier, messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` });
 
         // Import services at the top
         const { ConnectionsService } = await import('./server/modules/connectionsService');
@@ -12252,7 +12255,7 @@ class ProductionServer {
                 };
                 senderCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
                 storageCredentialsService.upsertCredentials(fromPnIdentifier, senderCredentials.credentials).catch(err => {
-                  console.warn('[SendMessage] Failed to cache sender folder IDs:', err?.message);
+                  messagingLog.warn('[SendMessage] Failed to cache sender folder IDs:', { message: err?.message });
                 });
               }
             }).catch((error: any) => {
@@ -12289,7 +12292,7 @@ class ProductionServer {
                 };
                 recipientCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
                 storageCredentialsService.upsertCredentials(toPnIdentifier, recipientCredentials.credentials).catch(err => {
-                  console.warn('[SendMessage] Failed to cache recipient folder IDs:', err?.message);
+                  messagingLog.warn('[SendMessage] Failed to cache recipient folder IDs:', { message: err?.message });
                 });
               }
             }).catch((error: any) => {
@@ -12343,7 +12346,7 @@ class ProductionServer {
               };
               senderCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
               storageCredentialsService.upsertCredentials(fromPnIdentifier, senderCredentials.credentials).catch(err => {
-                console.warn('[SendMessage] Failed to cache sender messages folder ID:', err?.message);
+                messagingLog.warn('[SendMessage] Failed to cache sender messages folder ID:', { message: err?.message });
               });
             })
           );
@@ -12364,7 +12367,7 @@ class ProductionServer {
                 };
                 recipientCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
                 storageCredentialsService.upsertCredentials(toPnIdentifier, recipientCredentials.credentials).catch(err => {
-                  console.warn('[SendMessage] Failed to cache recipient messages folder ID:', err?.message);
+                  messagingLog.warn('[SendMessage] Failed to cache recipient messages folder ID:', { message: err?.message });
                 });
               }
             })
@@ -12403,7 +12406,7 @@ class ProductionServer {
               };
               senderCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
               storageCredentialsService.upsertCredentials(fromPnIdentifier, senderCredentials.credentials).catch(err => {
-                console.warn('[SendMessage] Failed to cache sender conversation sheet ID:', err?.message);
+                messagingLog.warn('[SendMessage] Failed to cache sender conversation sheet ID:', { message: err?.message });
               });
             })
           );
@@ -12428,7 +12431,7 @@ class ProductionServer {
                 };
                 recipientCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
                 storageCredentialsService.upsertCredentials(toPnIdentifier, recipientCredentials.credentials).catch(err => {
-                  console.warn('[SendMessage] Failed to cache recipient conversation sheet ID:', err?.message);
+                  messagingLog.warn('[SendMessage] Failed to cache recipient conversation sheet ID:', { message: err?.message });
                 });
               }
             })
@@ -12588,10 +12591,10 @@ class ProductionServer {
                 '[Encrypted message]',
                 kemCiphertext || ''
               );
-              console.log('[SendMessage] Updated sender inbox');
+              messagingLog.info('[SendMessage] Updated sender inbox');
             } catch (inboxError: any) {
               // Log but don't fail - inbox update is non-critical
-              console.warn('[SendMessage] Failed to update sender inbox:', inboxError?.message);
+              messagingLog.warn('[SendMessage] Failed to update sender inbox:', { message: inboxError?.message });
             }
           })(),
           recipientToken && recipientInboxSheetId ? (async () => {
@@ -12608,14 +12611,14 @@ class ProductionServer {
                 '[Encrypted message]',
                 recipientKemCiphertext || kemCiphertext || ''
               );
-              console.log('[SendMessage] Updated recipient inbox');
+              messagingLog.info('[SendMessage] Updated recipient inbox');
             } catch (inboxError: any) {
               // Log but don't fail - inbox update is non-critical
-              console.warn('[SendMessage] Failed to update recipient inbox:', inboxError?.message);
+              messagingLog.warn('[SendMessage] Failed to update recipient inbox:', { message: inboxError?.message });
             }
           })() : Promise.resolve()
         ]).catch(err => {
-          console.warn('[SendMessage] Error updating inboxes:', err?.message);
+          messagingLog.warn('[SendMessage] Error updating inboxes:', { message: err?.message });
         });
 
         // Record activity for sender (non-blocking - fire and forget)
@@ -12634,7 +12637,7 @@ class ProductionServer {
               }
             );
           } catch (error: any) {
-            console.warn('[SendMessage] Failed to record sender activity:', error?.message);
+            messagingLog.warn('[SendMessage] Failed to record sender activity:', { message: error?.message });
           }
         })();
 
@@ -12655,12 +12658,12 @@ class ProductionServer {
               }
             );
           } catch (error: any) {
-            console.warn('[SendMessage] Failed to record sender messaging activity:', error?.message);
+            messagingLog.warn('[SendMessage] Failed to record sender messaging activity:', { message: error?.message });
           }
         })();
 
         // Append messages to both sheets in parallel (opaque ciphertext; no server crypto)
-        console.log('[SendMessage] Appending messages to both sheets in parallel', { 
+        messagingLog.info('[SendMessage] Appending messages to both sheets in parallel', { 
           senderSheetId: senderConversationSheetId, 
           recipientSheetId: recipientConversationSheetId, 
           messageId, 
@@ -12708,7 +12711,7 @@ class ProductionServer {
           } catch (appendError: any) {
             // If spreadsheet not found, it was deleted - recreate it
             if (appendError?.message?.includes('Spreadsheet not found') || appendError?.response?.status === 404) {
-              console.warn(`[SendMessage] Spreadsheet ${currentSheetId} not found (deleted), recreating conversation sheet for ${otherUserPnIdentifier}`);
+              messagingLog.warn(`[SendMessage] Spreadsheet ${currentSheetId} not found (deleted), recreating conversation sheet for ${otherUserPnIdentifier}`);
               
               // Clear cached ID
               const updatedConversationSheets = { ...(cachedFolderIds.conversationSheets || {}) };
@@ -12752,7 +12755,7 @@ class ProductionServer {
                 accountId
               );
               
-              console.log(`[SendMessage] Recreated and appended to conversation sheet ${currentSheetId} for ${otherUserPnIdentifier}`);
+              messagingLog.debug(`[SendMessage] Recreated and appended to conversation sheet ${currentSheetId} for ${otherUserPnIdentifier}`);
               return currentSheetId;
             } else {
               // Re-throw other errors
@@ -12795,7 +12798,7 @@ class ProductionServer {
             recipientConversationSheetId = newSheetId;
           })
         ]);
-        console.log('[SendMessage] Messages appended to both sheets successfully');
+        messagingLog.info('[SendMessage] Messages appended to both sheets successfully');
         // Note: Inbox updates are already handled above in parallel
 
         // Record activity for recipient (non-blocking - fire and forget)
@@ -12814,7 +12817,7 @@ class ProductionServer {
               }
             );
           } catch (error: any) {
-            console.warn('[SendMessage] Failed to record recipient activity:', error?.message);
+            messagingLog.warn('[SendMessage] Failed to record recipient activity:', { message: error?.message });
           }
         })();
 
@@ -12835,7 +12838,7 @@ class ProductionServer {
               }
             );
           } catch (error: any) {
-            console.warn('[SendMessage] Failed to record recipient messaging activity:', error?.message);
+            messagingLog.warn('[SendMessage] Failed to record recipient messaging activity:', { message: error?.message });
           }
         })();
 
@@ -12849,12 +12852,11 @@ class ProductionServer {
             toPnIdentifier,
             threadId
           ).catch((notificationError: any) => {
-            console.warn('Failed to send notification:', notificationError);
+            messagingLog.warn('[SendMessage] Failed to send notification', { message: notificationError?.message });
           });
           this.emitRealtime(toPnIdentifier, 'new_message', {
             threadId,
             messageId,
-            fromPnIdentifier
           });
         }
 
@@ -12864,8 +12866,10 @@ class ProductionServer {
             messageId,
             fromPnIdentifier,
             toPnIdentifier,
-            content,
+            encryptedContent,
+            cryptoVersion: 2 as const,
             mediaFileId,
+            mediaMimeType,
             timestamp,
             read: false,
             encrypted: true
@@ -12873,9 +12877,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         const { fromPnIdentifier: reqFromPnIdentifier, toPnIdentifier: reqToPnIdentifier } = req.body || {};
-        console.error('[SendMessage] Error sending message:', error);
-        console.error('[SendMessage] Error stack:', error?.stack);
-        console.error('[SendMessage] Error details:', {
+        messagingLog.error('[SendMessage] Error sending message', {
           fromPnIdentifier: reqFromPnIdentifier,
           toPnIdentifier: reqToPnIdentifier,
           message: safeClientErrorMessage(error, NODE_ENV === 'production'),
@@ -14992,7 +14994,6 @@ class ProductionServer {
                 this.emitRealtime(member.memberPnIdentifier, 'new_message', {
                   threadId: groupId,
                   messageId,
-                  fromPnIdentifier: senderPn
                 });
               } catch (notifyErr: unknown) {
                 console.warn('[GroupMessage] push notify failed:', (notifyErr as Error)?.message);
@@ -15854,24 +15855,24 @@ class ProductionServer {
         // Get connection to find other user
         const connectionsFile = await ConnectionsService.getConnectionsFile(userAccessToken, metadataFolderId, pnIdentifier, accountId);
         if (!connectionsFile) {
-          console.error(`[AcceptConnection] Connections file not found for user: ${pnIdentifier}`);
+          messagingLog.error('[AcceptConnection] Connections file not found for user', { pnIdentifier });
           return res.status(404).json({ error: 'Connection request not found' });
         }
 
-        console.log(`[AcceptConnection] Looking for connection ${connectionId} in user's connections file`);
-        console.log(`[AcceptConnection] User has ${connectionsFile.connections.length} connections:`, 
-          connectionsFile.connections.map(c => ({
+        messagingLog.debug(`[AcceptConnection] Looking for connection ${connectionId} in user's connections file`);
+        messagingLog.debug(`[AcceptConnection] User has ${connectionsFile.connections.length} connections`, {
+          connections: connectionsFile.connections.map(c => ({
             connectionId: c.connectionId,
             userPnIdentifier: c.userPnIdentifier,
             status: c.status
           }))
-        );
+        });
 
         // Find connection - prioritize pending_received, but also check for pending_sent (mutual request scenario)
         const allMatchingConnections = connectionsFile.connections.filter(c => c.connectionId === connectionId);
-        console.log(`[AcceptConnection] Found ${allMatchingConnections.length} connections with ID ${connectionId}:`, 
-          allMatchingConnections.map(c => ({ userPnIdentifier: c.userPnIdentifier, status: c.status }))
-        );
+        messagingLog.debug(`[AcceptConnection] Found ${allMatchingConnections.length} connections with ID ${connectionId}`, {
+          matches: allMatchingConnections.map(c => ({ userPnIdentifier: c.userPnIdentifier, status: c.status }))
+        });
 
         // Prioritize pending_received connection (the one we want to accept)
         let connection = allMatchingConnections.find(c => c.status === 'pending_received');
@@ -15881,22 +15882,24 @@ class ProductionServer {
         if (!connection && allMatchingConnections.length > 0) {
           connection = allMatchingConnections.find(c => c.status === 'pending_sent');
           if (connection) {
-            console.log(`[AcceptConnection] Found pending_sent connection - this is a mutual request scenario`);
-            console.log(`[AcceptConnection] Will accept by updating both users' files to accepted status`);
+            messagingLog.debug(`[AcceptConnection] Found pending_sent connection - this is a mutual request scenario`);
+            messagingLog.debug(`[AcceptConnection] Will accept by updating both users' files to accepted status`);
           }
         }
 
         if (!connection) {
-          console.error(`[AcceptConnection] Connection ${connectionId} not found in user's connections file`);
-          console.error(`[AcceptConnection] Available connections:`,           connectionsFile.connections.map(c => ({
-            connectionId: c.connectionId,
-            userPnIdentifier: c.userPnIdentifier,
-            status: c.status
-          })));
+          messagingLog.error(`[AcceptConnection] Connection ${connectionId} not found in user's connections file`);
+          messagingLog.error('[AcceptConnection] Available connections', {
+            connections: connectionsFile.connections.map(c => ({
+              connectionId: c.connectionId,
+              userPnIdentifier: c.userPnIdentifier,
+              status: c.status
+            }))
+          });
           return res.status(404).json({ error: 'Connection request not found' });
         }
 
-        console.log(`[AcceptConnection] Found connection:`, {
+        messagingLog.debug(`[AcceptConnection] Found connection:`, {
           connectionId: connection.connectionId,
           userPnIdentifier: connection.userPnIdentifier,
           status: connection.status,
@@ -15931,10 +15934,10 @@ class ProductionServer {
         // Allow accepting pending_sent connections (mutual request scenario)
         // In this case, both users sent requests, so accepting either one should connect them
         if (connection.status === 'pending_sent') {
-          console.log(`[AcceptConnection] Accepting pending_sent connection (mutual request scenario)`);
+          messagingLog.debug(`[AcceptConnection] Accepting pending_sent connection (mutual request scenario)`);
           // We'll treat this as accepting the connection - update both files to accepted
         } else if (connection.status !== 'pending_received') {
-          console.error(`[AcceptConnection] Connection status is '${connection.status}', expected 'pending_received' or 'pending_sent'`);
+          messagingLog.error(`[AcceptConnection] Connection status is '${connection.status}', expected 'pending_received' or 'pending_sent'`);
           return res.status(400).json({ 
             error: 'Connection request is not in pending_received status',
             error_description: `Current status: ${connection.status}. Only pending_received or pending_sent connections can be accepted.`
@@ -15943,7 +15946,7 @@ class ProductionServer {
 
         // Normalize connection.userPnIdentifier when reading (handles legacy data)
         if (!connection.userPnIdentifier) {
-          console.error('[AcceptConnection] Connection missing userPnIdentifier:', connection);
+          messagingLog.error('[AcceptConnection] Connection missing userPnIdentifier', { connection });
           throw new Error('Connection missing userPnIdentifier');
         }
         const otherUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-') ? connection.userPnIdentifier : `pn-${connection.userPnIdentifier}`;
@@ -16124,7 +16127,7 @@ class ProductionServer {
           
           // Ensure connectionId and sharedSecret are available for system messages
           if (!connectionId) {
-            console.warn('[AcceptConnection] No connectionId available for system messages');
+            messagingLog.warn('[AcceptConnection] No connectionId available for system messages');
             return res.json({ success: true });
           }
           
@@ -16163,10 +16166,10 @@ class ProductionServer {
                 if (_g) {
                   otherMetadataFolderId = _g.metadataFolderId;
                 } else {
-                  console.warn(`[AcceptConnection] Other user's metadata folder not found, continuing anyway`);
+                  messagingLog.warn(`[AcceptConnection] Other user's metadata folder not found, continuing anyway`);
                 }
               } catch (error: any) {
-                console.warn(`[AcceptConnection] Failed to get other user's metadata folder, continuing anyway:`, error.message);
+                messagingLog.warn('[AcceptConnection] Failed to get other user metadata folder, continuing anyway', { message: error.message });
                 // Continue even if we can't access other user's folder
               }
               
@@ -16286,9 +16289,9 @@ class ProductionServer {
                   systemMessageContent,
                   kemCiphertext
                 );
-                console.log('[AcceptConnection] Updated acceptor inbox');
+                messagingLog.debug('[AcceptConnection] Updated acceptor inbox');
               } catch (inboxError: any) {
-                console.warn('[AcceptConnection] Failed to update acceptor inbox:', inboxError?.message);
+                messagingLog.warn('[AcceptConnection] Failed to update acceptor inbox', { message: inboxError?.message });
               }
             }
           }
@@ -16397,16 +16400,16 @@ class ProductionServer {
                     systemMessageContent2,
                     kemCiphertext
                   );
-                  console.log('[AcceptConnection] Updated requester inbox');
+                  messagingLog.debug('[AcceptConnection] Updated requester inbox');
                 } catch (inboxError: any) {
-                  console.warn('[AcceptConnection] Failed to update requester inbox:', inboxError?.message);
+                  messagingLog.warn('[AcceptConnection] Failed to update requester inbox', { message: inboxError?.message });
                 }
               }
             }
           }
         } catch (conversationError: any) {
-          console.error('[AcceptConnection] Failed to create conversation sheets:', conversationError);
-          console.error('[AcceptConnection] Error details:', {
+          messagingLog.error('[AcceptConnection] Failed to create conversation sheets', { message: conversationError?.message });
+          messagingLog.error('[AcceptConnection] Error details:', {
             connectionId,
             acceptorPnIdentifier: userCredentials.identityId,
             requesterPnIdentifier: otherUserPnIdentifier,
@@ -16418,7 +16421,10 @@ class ProductionServer {
 
         return res.json({ success: true });
       } catch (error: any) {
-        console.error('Error accepting connection request:', error);
+        messagingLog.error('[AcceptConnection] Error accepting connection request', {
+          message: error?.message,
+          name: error?.name,
+        });
         return res.status(500).json({
           error: 'Failed to accept connection request',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to accept connection request'

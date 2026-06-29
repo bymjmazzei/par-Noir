@@ -29,6 +29,22 @@ export const logger = winston.createLogger({
 const SENSITIVE_KEY_PATTERN =
   /(authorization|access[_-]?token|refresh[_-]?token|token|secret|api[_-]?key|client[_-]?secret|cookie|passcode|pnname|email)/i;
 
+/** Keys whose string values are hashed (routing metadata minimization). */
+const PN_IDENTIFIER_KEY_PATTERN =
+  /pnidentifier|pn_identifier|participantpn|targetpn|actorpn|otheruserpn|frompn|topn|userpn|memberpn|ownerpn|creatorpn/i;
+
+function looksLikePnIdentifier(value: string): boolean {
+  return /^pn-[a-f0-9]{8,}$/i.test(value) || value.startsWith('did:key:');
+}
+
+function hashPnFieldValue(key: string, value: string): string {
+  const normalizedKey = key.replace(/_/g, '').toLowerCase();
+  if (PN_IDENTIFIER_KEY_PATTERN.test(normalizedKey) || looksLikePnIdentifier(value)) {
+    return hashIdentifier(value) ?? '[REDACTED]';
+  }
+  return value;
+}
+
 function redactString(value: string): string {
   if (!value) return value;
   if (value.length <= 8) return '[REDACTED]';
@@ -45,6 +61,7 @@ export function sanitizeForLogs(input: unknown, depth: number = 0): unknown {
   if (depth > 4) return '[TRUNCATED]';
   if (typeof input === 'string') {
     if (input.length > 4096) return `${input.slice(0, 256)}...[TRUNCATED]`;
+    if (looksLikePnIdentifier(input)) return hashIdentifier(input) ?? '[REDACTED]';
     return input;
   }
   if (typeof input !== 'object') return input;
@@ -56,6 +73,10 @@ export function sanitizeForLogs(input: unknown, depth: number = 0): unknown {
     if (SENSITIVE_KEY_PATTERN.test(key)) {
       out[key] = '[REDACTED]';
       continue;
+    }
+    if (typeof value === 'string') {
+      out[key] = hashPnFieldValue(key, value);
+      if (out[key] !== value) continue;
     }
     if (typeof value === 'string' && /(bearer\s+|^pn_[a-f0-9]{64}$|^eyJ)/i.test(value)) {
       out[key] = redactString(value);
@@ -73,9 +94,14 @@ export function sanitizeForLogs(input: unknown, depth: number = 0): unknown {
   return out;
 }
 
-/** Verbose console.log paths (MetadataIndex tracing, cache hits, etc.). */
+/** Verbose console.log paths (MetadataIndex tracing, cache hits, messaging sheet traces, etc.). */
 export function isDevVerbose(): boolean {
   return process.env.LOG_LEVEL === 'debug' || process.env.NODE_ENV !== 'production';
+}
+
+/** Messaging sheet/folder debug traces (see messagingLog.debug). */
+export function isMessagingDebugLogs(): boolean {
+  return process.env.MESSAGING_DEBUG_LOGS === '1' || process.env.MESSAGING_DEBUG_LOGS === 'true';
 }
 
 export const safeLogger = {

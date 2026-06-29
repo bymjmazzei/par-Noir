@@ -3,7 +3,7 @@
  */
 
 export type RealtimeEvent =
-  | { type: 'new_message'; threadId: string; messageId: string; fromPnIdentifier: string }
+  | { type: 'new_message'; threadId: string; messageId: string }
   | { type: 'new_notification'; notificationType: string }
   | { type: 'data_point_request'; requestId: string };
 

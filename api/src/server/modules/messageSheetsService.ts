@@ -8,6 +8,7 @@ import { google } from 'googleapis';
 import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 import { isPortableStorageProvider } from './storage/storageProviderUtils';
 import * as MsgPortable from './storage/messagePortableService';
+import { messagingLog } from '../utils/messagingLog';
 
 export interface Message {
   messageId: string;
@@ -71,7 +72,7 @@ export class MessageSheetsService {
 
       if (searchResponse.data.files && searchResponse.data.files.length > 0) {
         const spreadsheetId = searchResponse.data.files[0].id!;
-        console.log(`[MessageSheetsService] Found existing Inbox sheet: ${spreadsheetId}`);
+        messagingLog.debug(`[MessageSheetsService] Found existing Inbox sheet: ${spreadsheetId}`);
         
         // Ensure headers are set (for existing sheets that might not have them)
         try {
@@ -135,7 +136,7 @@ export class MessageSheetsService {
 
       if (searchResponse.data.files && searchResponse.data.files.length > 0) {
         const spreadsheetId = searchResponse.data.files[0].id!;
-        console.log(`[MessageSheetsService] Found existing Inbox sheet: ${spreadsheetId}`);
+        messagingLog.debug(`[MessageSheetsService] Found existing Inbox sheet: ${spreadsheetId}`);
         
         // Ensure headers are set (for existing sheets that might not have them)
         try {
@@ -159,7 +160,7 @@ export class MessageSheetsService {
       }
 
       // Create new Inbox sheet
-      console.log(`[MessageSheetsService] Creating new Inbox sheet in ${messagesFolderId}`);
+      messagingLog.debug(`[MessageSheetsService] Creating new Inbox sheet in ${messagesFolderId}`);
       const spreadsheet = await sheets.spreadsheets.create({
         requestBody: {
           properties: {
@@ -201,7 +202,7 @@ export class MessageSheetsService {
         }
       });
 
-      console.log(`[MessageSheetsService] Created Inbox sheet: ${spreadsheetId}`);
+      messagingLog.debug(`[MessageSheetsService] Created Inbox sheet: ${spreadsheetId}`);
       return spreadsheetId;
     } catch (error: any) {
       console.error('[MessageSheetsService] Error in getOrCreateInboxSheet:', {
@@ -239,7 +240,7 @@ export class MessageSheetsService {
         });
 
         if (searchResponse.data.files && searchResponse.data.files.length > 0) {
-          console.log(`[MessageSheetsService] Found existing messages folder: ${searchResponse.data.files[0].id}`);
+          messagingLog.debug(`[MessageSheetsService] Found existing messages folder: ${searchResponse.data.files[0].id}`);
           return searchResponse.data.files[0].id!;
         }
       } catch (searchError: any) {
@@ -252,7 +253,7 @@ export class MessageSheetsService {
       }
 
       // Create messages folder
-      console.log(`[MessageSheetsService] Creating new messages folder in ${pnFolderId}`);
+      messagingLog.debug(`[MessageSheetsService] Creating new messages folder in ${pnFolderId}`);
       try {
         const createResponse = await drive.files.create({
           requestBody: {
@@ -268,7 +269,7 @@ export class MessageSheetsService {
           throw new Error('Failed to create messages folder: no ID returned');
         }
 
-        console.log(`[MessageSheetsService] Created messages folder: ${folderId}`);
+        messagingLog.debug(`[MessageSheetsService] Created messages folder: ${folderId}`);
         return folderId;
       } catch (createError: any) {
         console.error('[MessageSheetsService] Failed to create messages folder:', {
@@ -319,7 +320,7 @@ export class MessageSheetsService {
     });
 
     if (searchResponse.data.files && searchResponse.data.files.length > 0) {
-      console.log(`[MessageSheetsService] Found existing conversation sheet for ${otherUserPnIdentifier}: ${searchResponse.data.files[0].id}`);
+      messagingLog.debug(`[MessageSheetsService] Found existing conversation sheet for ${otherUserPnIdentifier}: ${searchResponse.data.files[0].id}`);
       return searchResponse.data.files[0].id!;
     }
 
@@ -346,7 +347,7 @@ export class MessageSheetsService {
     const sheetFileName = `conversation-${otherUserPnIdentifier}`;
 
     // Create new conversation sheet
-    console.log(`[MessageSheetsService] Creating new conversation sheet for ${otherUserPnIdentifier}`);
+    messagingLog.debug(`[MessageSheetsService] Creating new conversation sheet for ${otherUserPnIdentifier}`);
     let spreadsheet;
     try {
       spreadsheet = await sheets.spreadsheets.create({
@@ -389,7 +390,7 @@ export class MessageSheetsService {
         addParents: messagesFolderId,
         fields: 'id, parents'
       });
-      console.log(`[MessageSheetsService] Moved conversation sheet ${spreadsheetId} to messages folder`);
+      messagingLog.debug(`[MessageSheetsService] Moved conversation sheet ${spreadsheetId} to messages folder`);
     } catch (moveError: any) {
       console.error('[MessageSheetsService] Failed to move conversation sheet to folder:', {
         spreadsheetId,
@@ -398,7 +399,7 @@ export class MessageSheetsService {
         status: moveError?.response?.status
       });
       // Don't fail - sheet exists, just not in the right folder
-      console.warn('[MessageSheetsService] Continuing despite folder move failure');
+      messagingLog.warn('[MessageSheetsService] Continuing despite folder move failure');
     }
 
     // Set up headers
@@ -421,7 +422,7 @@ export class MessageSheetsService {
           ]]
         }
       });
-      console.log(`[MessageSheetsService] Set up headers for conversation sheet ${spreadsheetId}`);
+      messagingLog.debug(`[MessageSheetsService] Set up headers for conversation sheet ${spreadsheetId}`);
     } catch (headerError: any) {
       console.error('[MessageSheetsService] Failed to set up headers for conversation sheet:', {
         spreadsheetId,
@@ -429,7 +430,7 @@ export class MessageSheetsService {
         status: headerError?.response?.status
       });
       // Don't fail - headers can be set manually if needed
-      console.warn('[MessageSheetsService] Continuing despite header setup failure');
+      messagingLog.warn('[MessageSheetsService] Continuing despite header setup failure');
     }
 
     return spreadsheetId;
@@ -646,12 +647,12 @@ export class MessageSheetsService {
       
       try {
         const sheetsApiStart = Date.now();
-        console.log(`[MessageSheetsService] Reading range ${range} from sheet ${spreadsheetId.substring(0, 10)}...`);
+        messagingLog.debug(`[MessageSheetsService] Reading range ${range} from sheet ${spreadsheetId.substring(0, 10)}...`);
         const response = await sheets.spreadsheets.values.get({
           spreadsheetId,
           range
         });
-        console.log(`[MessageSheetsService] Sheets API call took ${Date.now() - sheetsApiStart}ms, got ${(response.data.values || []).length} rows`);
+        messagingLog.debug(`[MessageSheetsService] Sheets API call took ${Date.now() - sheetsApiStart}ms, got ${(response.data.values || []).length} rows`);
         rowsToProcess = response.data.values || [];
         
         // Only count if explicitly requested (for pagination UI)
@@ -674,7 +675,7 @@ export class MessageSheetsService {
           total = rowsToProcess.length;
         }
       } catch (error: any) {
-        console.warn('[MessageSheetsService] Failed to read message range, reading all rows:', error?.message);
+        messagingLog.warn('[MessageSheetsService] Failed to read message range, reading all rows', { message: error?.message });
         // Fallback: read all rows
         const fullResponse = await sheets.spreadsheets.values.get({
           spreadsheetId,
@@ -694,7 +695,7 @@ export class MessageSheetsService {
         total = (countResponse.data.values || []).length;
       } catch (error: any) {
         // Fallback: read all rows to count
-        console.warn('[MessageSheetsService] Failed to get row count, reading all rows:', error?.message);
+        messagingLog.warn('[MessageSheetsService] Failed to get row count, reading all rows', { message: error?.message });
         const fullResponse = await sheets.spreadsheets.values.get({
           spreadsheetId,
           range: 'Messages!A2:I'
@@ -716,7 +717,7 @@ export class MessageSheetsService {
           });
           rowsToProcess = response.data.values || [];
         } catch (error: any) {
-          console.warn('[MessageSheetsService] Failed to read specific range, reading all rows:', error?.message);
+          messagingLog.warn('[MessageSheetsService] Failed to read specific range, reading all rows', { message: error?.message });
           // Fallback: read all rows
           const fullResponse = await sheets.spreadsheets.values.get({
             spreadsheetId,
@@ -814,7 +815,7 @@ export class MessageSheetsService {
           // Only treat as plain text if it doesn't look like encrypted JSON
           if (MessageEncryption.isEncrypted(encryptedContent)) {
             // This is encrypted but we don't have a shared secret
-            console.warn(`[MessageSheetsService] Encrypted message found but no shared secret available for message ${row[3] || actualIndex}`);
+            messagingLog.warn(`[MessageSheetsService] Encrypted message found but no shared secret available for message ${row[3] || actualIndex}`);
             decryptedContent = '[Message requires connection to decrypt. Please reconnect with this user.]';
           } else {
             decryptedContent = encryptedContent;
@@ -845,7 +846,7 @@ export class MessageSheetsService {
     const iterationSummary = Object.entries(iterationCounts)
       .map(([iterations, count]) => `${count} msg(s) @ ${iterations === '100000' ? '100k' : iterations === '1000000' ? '1M' : iterations} iter`)
       .join(', ');
-    console.log(`[MessageSheetsService] Decryption of ${rowsToProcess.length} messages took ${decryptionTime}ms${iterationSummary ? ` (${iterationSummary})` : ''}`);
+    messagingLog.debug(`[MessageSheetsService] Decryption of ${rowsToProcess.length} messages took ${decryptionTime}ms${iterationSummary ? ` (${iterationSummary})` : ''}`);
 
     // Messages are already sorted newest first (stored that way), no need to sort
 
@@ -1002,7 +1003,7 @@ export class MessageSheetsService {
         
         // Skip if filename doesn't contain a valid identifier
         if (!extractedOtherUserPnIdentifier || extractedOtherUserPnIdentifier === fileName) {
-          console.warn('[MessageSheetsService] Skipping conversation file with invalid name:', fileName);
+          messagingLog.warn('[MessageSheetsService] Skipping conversation file with invalid name', { fileName });
           continue;
         }
         
@@ -1011,7 +1012,7 @@ export class MessageSheetsService {
         
         // Ensure normalized identifier is valid (not just 'pn-')
         if (normalizedOtherUserPnIdentifier === 'pn-' || normalizedOtherUserPnIdentifier.length <= 3) {
-          console.warn('[MessageSheetsService] Skipping conversation with invalid otherUserPnIdentifier:', { fileName, extractedOtherUserPnIdentifier, normalizedOtherUserPnIdentifier });
+          messagingLog.warn('[MessageSheetsService] Skipping conversation with invalid otherUserPnIdentifier:', { fileName, extractedOtherUserPnIdentifier, normalizedOtherUserPnIdentifier });
           continue;
         }
         
@@ -1214,9 +1215,9 @@ export class MessageSheetsService {
             }]
           }
         });
-        console.log(`[MessageSheetsService] Removed inbox entry for ${participantPnIdentifier}`);
+        messagingLog.debug(`[MessageSheetsService] Removed inbox entry for ${participantPnIdentifier}`);
       } else {
-        console.warn(`[MessageSheetsService] Inbox entry not found for ${participantPnIdentifier}`);
+        messagingLog.warn(`[MessageSheetsService] Inbox entry not found for ${participantPnIdentifier}`);
       }
     } catch (error: any) {
       console.error('[MessageSheetsService] Error removing inbox entry:', {
@@ -1431,9 +1432,9 @@ export class MessageSheetsService {
         await drive.files.delete({
           fileId: fileId
         });
-        console.log(`[MessageSheetsService] Deleted conversation sheet ${fileId} for ${otherUserPnIdentifier}`);
+        messagingLog.debug(`[MessageSheetsService] Deleted conversation sheet ${fileId} for ${otherUserPnIdentifier}`);
       } else {
-        console.warn(`[MessageSheetsService] Conversation sheet not found for ${otherUserPnIdentifier}`);
+        messagingLog.warn(`[MessageSheetsService] Conversation sheet not found for ${otherUserPnIdentifier}`);
       }
     } catch (error: any) {
       console.error('[MessageSheetsService] Error deleting conversation sheet:', {
@@ -1488,7 +1489,7 @@ export class MessageSheetsService {
 
       if (!otherUserFileResponse.data.files || otherUserFileResponse.data.files.length === 0) {
         // Other user's file doesn't exist, create empty conversation sheet
-        console.log(`[MessageSheetsService] Other user's conversation file not found, creating empty sheet`);
+        messagingLog.debug(`[MessageSheetsService] Other user's conversation file not found, creating empty sheet`);
         return await this.createConversationSheet(userToken, userMessagesFolderId, otherUserPnIdentifier, userPnIdentifier, userAccountId);
       }
 
@@ -1504,7 +1505,7 @@ export class MessageSheetsService {
 
       if (otherMessages.length === 0) {
         // No messages to restore, create empty sheet
-        console.log(`[MessageSheetsService] Other user's conversation file is empty, creating empty sheet`);
+        messagingLog.debug(`[MessageSheetsService] Other user's conversation file is empty, creating empty sheet`);
         return await this.createConversationSheet(userToken, userMessagesFolderId, otherUserPnIdentifier, userPnIdentifier, userAccountId);
       }
 
@@ -1523,7 +1524,7 @@ export class MessageSheetsService {
       });
 
       if (plainTextMessages.length === 0) {
-        console.log(`[MessageSheetsService] No plain text messages to restore (all were encrypted with old connection), creating empty sheet`);
+        messagingLog.debug(`[MessageSheetsService] No plain text messages to restore (all were encrypted with old connection), creating empty sheet`);
         return userSheetId;
       }
 
@@ -1546,7 +1547,7 @@ export class MessageSheetsService {
         }
       });
 
-      console.log(`[MessageSheetsService] Restored ${values.length} plain text messages from ${otherUserPnIdentifier}'s conversation file (skipped ${otherMessages.length - plainTextMessages.length} encrypted messages)`);
+      messagingLog.debug(`[MessageSheetsService] Restored ${values.length} plain text messages from ${otherUserPnIdentifier}'s conversation file (skipped ${otherMessages.length - plainTextMessages.length} encrypted messages)`);
       return userSheetId;
     } catch (error: any) {
       console.error('[MessageSheetsService] Error restoring conversation from other user:', {

@@ -1,6 +1,6 @@
 # Production readiness: close the “disagree” gaps
 
-**Engineering track:** **complete** (passes 1–2 shipped on `main`: `d182f55f`, `17794200`). What is left is **operational execution** (backup drill, external monitors, store listings, sign-off) — see [GO_NO_GO_LAUNCH.md](./GO_NO_GO_LAUNCH.md).
+**Engineering track:** **complete** (passes 1–2 shipped on `main`: `d182f55f`, `17794200`). What is left is **operational execution** (backup drill, external monitors, store listings, sign-off) — see [GO_NO_GO_LAUNCH.md](./GO_NO_GO_LAUNCH.md). Full remaining-work reference (payments, identity, mobile, integrators): [LAUNCH_REMAINING_WORK.md](./LAUNCH_REMAINING_WORK.md).
 
 This document is the **in-repo** copy of the plan. Cursor’s **Build Plan** UI reads `~/.cursor/plans/*.md` YAML todos; those must be updated separately or only the first todo will show struck through. **Truth for shipped work:** `git log` and the tables below.
 

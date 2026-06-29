@@ -29,6 +29,7 @@ export function useRealtimeSync(onEvent?: () => void): boolean {
         });
 
         s.on('new_message', () => callbackRef.current?.());
+        // Server payload is { threadId, messageId } only — client refetches inbox/thread.
         s.on('new_notification', () => callbackRef.current?.());
         s.on('connect', () => setConnected(true));
         s.on('disconnect', () => setConnected(false));
