@@ -23,6 +23,14 @@ export interface DmSessionHandoff {
 
 let state: DmIdentityState | null = null;
 
+export const DM_IDENTITY_CHANGE_EVENT = 'pn_dm_identity_change';
+
+function notifyDmIdentityChange(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(DM_IDENTITY_CHANGE_EVENT));
+  }
+}
+
 export function isDmIdentityReady(): boolean {
   return state !== null;
 }
@@ -91,6 +99,7 @@ export function restoreDmSessionFromStorage(): boolean {
     if (parsed.mlKemPublicKey) {
       void publishMlKemPublicKey(parsed.mlKemPublicKey).catch(() => {});
     }
+    notifyDmIdentityChange();
     return true;
   } catch {
     return false;
@@ -109,12 +118,14 @@ export function applyDmSessionHandoff(session: DmSessionHandoff): void {
   if (session.mlKemPublicKey) {
     void publishMlKemPublicKey(session.mlKemPublicKey).catch(() => {});
   }
+  notifyDmIdentityChange();
 }
 
 export function clearDmIdentity(): void {
   state = null;
   clearDmSessionCache();
   clearDmSessionStorage();
+  notifyDmIdentityChange();
 }
 
 function loadStoredIdentity(): EncryptedIdentityPayload | null {
@@ -130,6 +141,7 @@ function loadStoredIdentity(): EncryptedIdentityPayload | null {
 /** Call after OAuth if identity blob was stored locally during consent. */
 export function storeEncryptedIdentityForMessaging(payload: EncryptedIdentityPayload): void {
   localStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(payload));
+  notifyDmIdentityChange();
 }
 
 export async function unlockDmIdentity(pnName: string, passcode: string): Promise<DmIdentityState> {
@@ -183,6 +195,7 @@ export async function unlockDmIdentity(pnName: string, passcode: string): Promis
     }
   })();
 
+  notifyDmIdentityChange();
   return state;
 }
 

@@ -655,6 +655,10 @@
      * triggers location.replace(/?oauth_resume=...) and the app unlocks in the wrong window.
      */
     function redirectWithAuthCodeFixed(code, ageShared) {
+      resendMessagingHandoff();
+      [0, 40, 120, 250, 500].forEach(function (ms) {
+        setTimeout(resendMessagingHandoff, ms);
+      });
       var u;
       try {
         u = new URL(redirectUri);
@@ -747,7 +751,17 @@
       lastMessagingSession = session;
       postMessagingToOpener({ type: 'pn_messaging_session', session: session });
     }
-    
+
+    function resendMessagingHandoff() {
+      if (!isBrowserApp) return;
+      if (lastMessagingIdentity) {
+        sendMessagingIdentityToOpener(lastMessagingIdentity, null);
+      }
+      if (lastMessagingSession) {
+        postMessagingToOpener({ type: 'pn_messaging_session', session: lastMessagingSession });
+      }
+    }
+
     // Show/hide toggle for pN name
     let showPnName = false;
     const togglePnNameBtn = document.getElementById('togglePnName');

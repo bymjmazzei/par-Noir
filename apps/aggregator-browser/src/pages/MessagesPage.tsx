@@ -2,7 +2,7 @@
  * Messages page - Inbox (messages and notifications).
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Inbox } from '../components/Inbox';
 import { Notification } from '../services/notificationService';
 import { KeyDeviceBanner } from '../components/KeyDeviceBanner';
@@ -11,11 +11,13 @@ import { DmCryptoUnlockModal } from '../components/DmCryptoUnlockModal';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNOAuthService } from '../services/pnOAuthService';
 import {
+  DM_IDENTITY_CHANGE_EVENT,
   hasStoredEncryptedIdentity,
   isDmIdentityReady,
-  needsMessagingIdentityHandoff,
   restoreDmSessionFromStorage,
 } from '../services/dmIdentitySession';
+
+const SHOW_DM_UNLOCK_EVENT = 'pn_show_dm_unlock_modal';
 
 export interface MessagesPageProps {
   initialThread: { participantPnIdentifier: string; participantName?: string } | null;
@@ -28,7 +30,7 @@ export function MessagesPage({ initialThread, onCreatorClick, onNotificationClic
   const [showDmUnlock, setShowDmUnlock] = useState(false);
   const [dmUnlockDismissed, setDmUnlockDismissed] = useState(false);
 
-  useEffect(() => {
+  const refreshDmUnlockOffer = useCallback(() => {
     restoreDmSessionFromStorage();
 
     if (!userState.isUnlocked || !userState.pnIdentifier) {
@@ -42,15 +44,29 @@ export function MessagesPage({ initialThread, onCreatorClick, onNotificationClic
     }
     const shouldOfferUnlock =
       !dmUnlockDismissed &&
-      needsMessagingIdentityHandoff() &&
       hasStoredEncryptedIdentity() &&
       !isDmIdentityReady();
     setShowDmUnlock(shouldOfferUnlock);
   }, [userState.isUnlocked, userState.pnIdentifier, dmUnlockDismissed]);
 
+  useEffect(() => {
+    refreshDmUnlockOffer();
+    const onIdentityChange = () => refreshDmUnlockOffer();
+    const onShowModal = () => {
+      setDmUnlockDismissed(false);
+      setShowDmUnlock(true);
+    };
+    window.addEventListener(DM_IDENTITY_CHANGE_EVENT, onIdentityChange);
+    window.addEventListener(SHOW_DM_UNLOCK_EVENT, onShowModal);
+    return () => {
+      window.removeEventListener(DM_IDENTITY_CHANGE_EVENT, onIdentityChange);
+      window.removeEventListener(SHOW_DM_UNLOCK_EVENT, onShowModal);
+    };
+  }, [refreshDmUnlockOffer]);
+
   const session = PNOAuthService.loadSession();
-  const pnName =
-    (session as { pnName?: string } | null)?.pnName || session?.nickname || '';
+  const pnNameHint =
+    (session as { pnName?: string } | null)?.pnName || session?.nickname || undefined;
 
   return (
     <div className="h-screen w-full bg-neutral-900 flex flex-col">
@@ -63,12 +79,13 @@ export function MessagesPage({ initialThread, onCreatorClick, onNotificationClic
           onNotificationClick={onNotificationClick}
         />
       </div>
-      {showDmUnlock && pnName && (
+      {showDmUnlock && hasStoredEncryptedIdentity() && (
         <DmCryptoUnlockModal
-          pnName={pnName}
+          pnName={pnNameHint}
           onUnlocked={() => {
             setShowDmUnlock(false);
             setDmUnlockDismissed(false);
+            refreshDmUnlockOffer();
           }}
           onCancel={() => {
             setShowDmUnlock(false);

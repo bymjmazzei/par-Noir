@@ -20,6 +20,7 @@ import { installOAuthMessagingIdentityListener } from '../services/oauthMessagin
 import {
   clearDmIdentity,
   restoreDmSessionFromStorage,
+  isDmIdentityReady,
 } from '../services/dmIdentitySession';
 import { registerMessagingReconnect } from '../services/messagingReconnect';
 
@@ -193,6 +194,7 @@ export function useAuthAndSession({
         if (session && PNOAuthService.isSessionValid(session) && session.did) {
           const pnId = session.pnIdentifier || session.did;
           setUnlocked(pnId);
+          restoreDmSessionFromStorage();
           if (discoverFilesRef.current) {
             discoverFilesRef.current(undefined, true);
           }
@@ -592,13 +594,16 @@ export function useAuthAndSession({
 
   const runOAuthPopupUnlock = useCallback(
     async (options?: { identityHandoffRequired?: boolean }) => {
+      restoreDmSessionFromStorage();
+      const needMessagingHandoff =
+        options?.identityHandoffRequired === true || !isDmIdentityReady();
+
       const redirectUri = `${window.location.origin}/oauth-callback.html`;
       let authUrl = PNOAuthService.getAuthorizationUrl({
         usePopup: true,
-        // Only force identity unlock on explicit messaging reconnect — not on general lock/unlock.
-        // Otherwise returning users with existing OAuth permissions get stuck on consent instead of
-        // the fast redirect path, and often close the popup before oauth-callback completes.
-        identityHandoffRequired: options?.identityHandoffRequired === true,
+        // When ML-KEM session is missing, require identity unlock on consent so messaging
+        // postMessage handoff runs (not the fast redirect-only path for existing OAuth grants).
+        identityHandoffRequired: needMessagingHandoff,
       });
       const authUrlObj = new URL(authUrl);
       const actualRedirectUri = authUrlObj.searchParams.get('redirect_uri') || redirectUri;
