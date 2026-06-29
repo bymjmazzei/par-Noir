@@ -2,7 +2,7 @@
  * Allows messaging UI to trigger OAuth re-unlock when ML-KEM session is missing.
  */
 
-import { isDmIdentityReady } from './dmIdentitySession';
+import { isDmIdentityReady, hasStoredEncryptedIdentity } from './dmIdentitySession';
 import { invalidateUserProfileCache } from './profileService';
 
 let reconnectHandler: (() => void) | null = null;
@@ -39,6 +39,20 @@ const REQUESTER_KEY_MESSAGE =
 const LOCAL_KEYS_MESSAGE =
   'Messaging keys unavailable. Lock and unlock your pN again to accept connections.';
 
+function promptPasscodeUnlock(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('pn_show_dm_unlock_modal'));
+  }
+}
+
+function promptMessagingReconnect(): void {
+  if (hasStoredEncryptedIdentity()) {
+    promptPasscodeUnlock();
+  } else {
+    requestMessagingReconnect();
+  }
+}
+
 function normalizeErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === 'string' && error) return error;
@@ -52,7 +66,7 @@ export function ensureLocalMessagingKeysForAccept(
   if (isDmIdentityReady()) return null;
   const message = LOCAL_KEYS_MESSAGE;
   setLocalError?.(message);
-  requestMessagingReconnect();
+  promptMessagingReconnect();
   return message;
 }
 
@@ -72,7 +86,7 @@ export function reportConnectionAcceptError(
       invalidateUserProfileCache(options.requesterPnIdentifier);
     }
   } else if (isMessagingKeysError(message)) {
-    requestMessagingReconnect();
+    promptMessagingReconnect();
   }
 
   setLocalError?.(message);

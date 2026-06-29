@@ -14,10 +14,15 @@ Same E2E behavior on every surface: **one pN unlock** (OAuth consent with identi
 
 When the user unlocks pN on the API consent page (`browser-app`):
 
-1. `postMessage({ type: 'pn_messaging_identity', identity })` — browser stores `pn_encrypted_identity_v1` in `localStorage` (encrypted blob only).
-2. `postMessage({ type: 'pn_messaging_session', session })` — browser applies ML-KEM keys in memory via `applyDmSessionHandoff` and `pn_dm_session_v1` in `sessionStorage` (tab refresh).
+1. Consent stashes `{ identity, session }` in the **popup `window.name`** (`pn_messaging_handoff_v1:` prefix) before redirecting to `oauth-callback.html`.
+2. **`oauth-callback.html`** (same origin as the app) reads `window.name`, writes `pn_messaging_oauth_handoff` to `localStorage`, and delivers via same-origin `postMessage` + `BroadcastChannel` (`par-noir-messaging-oauth-v1`) with redelivery retries — same pattern as OAuth code handoff.
+3. The browse app applies the handoff in `runOAuthCallback` / `restoreMessagingAfterOAuth()`:
+   - `pn_messaging_identity` → `pn_encrypted_identity_v1` in `localStorage` (encrypted blob only).
+   - `pn_messaging_session` → ML-KEM keys in memory via `applyDmSessionHandoff` and `pn_dm_session_v1` in `sessionStorage` (tab refresh).
 
-If OAuth permissions already exist but messaging material is missing, **messaging reconnect** (send, create group, etc.) adds `identity_handoff=required` to the authorize URL so consent shows the unlock form instead of skipping straight to redirect. General lock/unlock does **not** set this flag.
+Cross-origin `postMessage` from the API consent page to the opener is **supplementary only** (works when `window.opener` survives); the callback bridge is the primary path.
+
+`identity_handoff=required` on authorize is used **only** when OAuth is already valid but `pn_encrypted_identity_v1` is missing on device — it forces the identity unlock form on consent instead of the fast redirect-only path. General lock/unlock does **not** set this flag.
 
 ## Key modals
 
@@ -25,7 +30,7 @@ If OAuth permissions already exist but messaging material is missing, **messagin
 - **GroupSettingsModal** — owner: title, roles, add/remove members
 - **MessageThread** / **MessageList** — DM and group threads; read-only groups hide composer
 - **MessageList** — merged inbox (`getInboxThreads`): DMs + groups sorted by `lastMessageAt`
-- **DmCryptoUnlockModal** — rare fallback only when encrypted identity exists but session handoff failed (passcode re-derive on device)
+- **DmCryptoUnlockModal** — when encrypted identity exists in `localStorage` but the ML-KEM session is missing (passcode re-derive on device; no full OAuth re-consent)
 
 ## API (ciphertext only)
 
@@ -39,5 +44,13 @@ If OAuth permissions already exist but messaging material is missing, **messagin
 3. A sends a message; B sees decrypted text; network shows `encryptedContent` only on group send.
 4. Set B to `readOnly` in group settings; B has no composer; A can still send; B cannot (403).
 5. A adds C (connected); C sees history only from join onward (no backfill).
+
+## Manual E2E checklist (messaging handoff)
+
+1. **Fresh unlock:** Lock pN → unlock via OAuth popup with identity file → Messages tab shows no amber banner; `isDmIdentityReady()` true.
+2. **Connection accept:** Send request from user B → user A accepts from Notifications, Connection Requests, and Connections tab — all succeed without extra OAuth.
+3. **Tab refresh:** Reload page → `restoreDmSessionFromStorage()` restores session; accept still works.
+4. **Reconnect without re-consent:** OAuth valid + `pn_encrypted_identity_v1` present but session cleared → "Enter passcode" opens `DmCryptoUnlockModal`, not full OAuth consent.
+5. **Fast path unchanged:** User with existing OAuth grants who never stored identity → reconnect shows identity unlock on consent (`identity_handoff=required`), one time, then keys persist.
 
 See [MESSAGING_ARCHITECTURE.md](./MESSAGING_ARCHITECTURE.md) and [security/MESSAGING_COORDINATOR_POLICY.md](./security/MESSAGING_COORDINATOR_POLICY.md) (what the operator may see vs message content).

@@ -656,9 +656,7 @@
      */
     function redirectWithAuthCodeFixed(code, ageShared) {
       resendMessagingHandoff();
-      [0, 40, 120, 250, 500].forEach(function (ms) {
-        setTimeout(resendMessagingHandoff, ms);
-      });
+      stashMessagingHandoffInWindowName();
       var u;
       try {
         u = new URL(redirectUri);
@@ -687,6 +685,22 @@
     let lastMessagingIdentity = null;
     let lastMessagingSession = null;
     const identityHandoffRequired = urlParams.get('identity_handoff') === 'required';
+
+    /** Must match packages/oauth-ui/src/messagingOAuthHandoff.ts */
+    var PN_MESSAGING_HANDOFF_WINDOW_PREFIX = 'pn_messaging_handoff_v1:';
+
+    function stashMessagingHandoffInWindowName() {
+      if (!isBrowserApp) return;
+      if (!lastMessagingIdentity && !lastMessagingSession) return;
+      var payload = { v: 1, timestamp: Date.now() };
+      if (lastMessagingIdentity) payload.identity = lastMessagingIdentity;
+      if (lastMessagingSession) payload.session = lastMessagingSession;
+      try {
+        window.name = PN_MESSAGING_HANDOFF_WINDOW_PREFIX + JSON.stringify(payload);
+      } catch (e) {
+        console.warn('[OAuth] messaging window.name handoff failed', e);
+      }
+    }
 
     function extractMessagingSession(decrypted) {
       if (!decrypted) return null;

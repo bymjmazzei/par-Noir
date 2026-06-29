@@ -19,10 +19,11 @@ import { PN_OAUTH_RESUME_SEARCH_KEY } from '../oauthResumeBootstrap';
 import { installOAuthMessagingIdentityListener } from '../services/oauthMessagingIdentityBridge';
 import {
   clearDmIdentity,
-  restoreDmSessionFromStorage,
   isDmIdentityReady,
+  hasStoredEncryptedIdentity,
 } from '../services/dmIdentitySession';
 import { registerMessagingReconnect } from '../services/messagingReconnect';
+import { restoreMessagingAfterOAuth } from '../services/messagingOAuthHandoff';
 
 /**
  * oauth-callback.html may hand off via `opener.location.replace(/?oauth_resume=1&code=...)`.
@@ -194,7 +195,7 @@ export function useAuthAndSession({
         if (session && PNOAuthService.isSessionValid(session) && session.did) {
           const pnId = session.pnIdentifier || session.did;
           setUnlocked(pnId);
-          restoreDmSessionFromStorage();
+          restoreMessagingAfterOAuth();
           if (discoverFilesRef.current) {
             discoverFilesRef.current(undefined, true);
           }
@@ -246,7 +247,7 @@ export function useAuthAndSession({
 
         if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
           setUnlocked(userInfo.pn_identifier);
-          restoreDmSessionFromStorage();
+          restoreMessagingAfterOAuth();
           try {
             const { wireLocalDeviceProofSigner } = await import('../services/deviceService');
             await wireLocalDeviceProofSigner(userInfo.pn_identifier, tokenResponse.access_token);
@@ -564,7 +565,7 @@ export function useAuthAndSession({
     const session = PNOAuthService.loadSession();
     const sessionValid = session && PNOAuthService.isSessionValid(session);
     if (sessionValid) {
-      restoreDmSessionFromStorage();
+      restoreMessagingAfterOAuth();
     }
     if (userState.isUnlocked) {
       if (!sessionValid) {
@@ -594,16 +595,12 @@ export function useAuthAndSession({
 
   const runOAuthPopupUnlock = useCallback(
     async (options?: { identityHandoffRequired?: boolean }) => {
-      restoreDmSessionFromStorage();
-      const needMessagingHandoff =
-        options?.identityHandoffRequired === true || !isDmIdentityReady();
+      restoreMessagingAfterOAuth();
 
       const redirectUri = `${window.location.origin}/oauth-callback.html`;
       let authUrl = PNOAuthService.getAuthorizationUrl({
         usePopup: true,
-        // When ML-KEM session is missing, require identity unlock on consent so messaging
-        // postMessage handoff runs (not the fast redirect-only path for existing OAuth grants).
-        identityHandoffRequired: needMessagingHandoff,
+        identityHandoffRequired: options?.identityHandoffRequired === true,
       });
       const authUrlObj = new URL(authUrl);
       const actualRedirectUri = authUrlObj.searchParams.get('redirect_uri') || redirectUri;
@@ -664,27 +661,37 @@ export function useAuthAndSession({
       if (sessionAfter && PNOAuthService.isSessionValid(sessionAfter) && sessionAfter.did) {
         const pnId = sessionAfter.pnIdentifier || sessionAfter.did;
         setUnlocked(pnId);
-        restoreDmSessionFromStorage();
+        restoreMessagingAfterOAuth();
       }
     },
     [runOAuthCallback, setLocked, setUnlocked, showErrorToast]
   );
 
   const reconnectPnForMessaging = useCallback(async () => {
-    if (!userState.isUnlocked) {
-      await runOAuthPopupUnlock({ identityHandoffRequired: true });
+    restoreMessagingAfterOAuth();
+    if (isDmIdentityReady()) return;
+
+    if (hasStoredEncryptedIdentity()) {
+      window.dispatchEvent(new CustomEvent('pn_show_dm_unlock_modal'));
       return;
     }
-    showErrorToast('Reconnect your pN to send messages');
+
+    const session = PNOAuthService.loadSession();
+    const oauthUnlocked = !!session?.accessToken && userState.isUnlocked;
+
     try {
-      await runOAuthPopupUnlock({ identityHandoffRequired: true });
+      if (!oauthUnlocked) {
+        await runOAuthPopupUnlock();
+      } else {
+        await runOAuthPopupUnlock({ identityHandoffRequired: true });
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg !== 'POPUP_BLOCKED' && msg !== 'POPUP_CLOSED' && msg !== 'POPUP_TIMEOUT') {
         console.error('Messaging reconnect OAuth error:', err);
       }
     }
-  }, [userState.isUnlocked, runOAuthPopupUnlock, showErrorToast]);
+  }, [userState.isUnlocked, runOAuthPopupUnlock]);
 
   useEffect(() => registerMessagingReconnect(reconnectPnForMessaging), [reconnectPnForMessaging]);
 

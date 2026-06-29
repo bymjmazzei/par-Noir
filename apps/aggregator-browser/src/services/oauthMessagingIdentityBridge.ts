@@ -6,9 +6,15 @@ import type { EncryptedIdentityPayload } from '@par-noir/dm-crypto';
 import {
   PN_MESSAGING_IDENTITY_MESSAGE,
   PN_MESSAGING_SESSION_MESSAGE,
-  type DmSessionHandoff
+  type DmSessionHandoff,
 } from '@par-noir/messaging-ui';
+import {
+  PN_MESSAGING_OAUTH_BROADCAST,
+  isMessagingOAuthHandoffPayload,
+} from '@par-noir/oauth-ui';
+import { API_ENDPOINT } from '../config/api';
 import { applyDmSessionHandoff, storeEncryptedIdentityForMessaging } from './dmIdentitySession';
+import { applyMessagingOAuthHandoff } from './messagingOAuthHandoff';
 
 export { PN_MESSAGING_IDENTITY_MESSAGE, PN_MESSAGING_SESSION_MESSAGE };
 
@@ -39,18 +45,37 @@ export function isMessagingSessionMessage(data: unknown): data is {
   return !!(session && typeof session.mlKemSecretKey === 'string' && session.mlKemSecretKey.length > 0);
 }
 
+function getAllowedMessagingOrigins(): Set<string> {
+  const origins = new Set<string>();
+  if (typeof window !== 'undefined') {
+    origins.add(window.location.origin);
+  }
+  try {
+    if (API_ENDPOINT) {
+      origins.add(new URL(API_ENDPOINT).origin);
+    }
+  } catch {
+    /* ignore invalid API_ENDPOINT */
+  }
+  return origins;
+}
+
 export function persistMessagingIdentityFromOAuth(identity: EncryptedIdentityPayload): void {
   storeEncryptedIdentityForMessaging({
     encryptedData: identity.encryptedData,
     iv: identity.iv,
     salt: identity.salt,
     publicKey: identity.publicKey,
-    mlKemPublicKey: identity.mlKemPublicKey
+    mlKemPublicKey: identity.mlKemPublicKey,
   });
 }
 
 export function installOAuthMessagingIdentityListener(): () => void {
+  const allowedOrigins = getAllowedMessagingOrigins();
+
   const handler = (event: MessageEvent) => {
+    if (!allowedOrigins.has(event.origin)) return;
+
     if (isMessagingIdentityMessage(event.data)) {
       try {
         persistMessagingIdentityFromOAuth(event.data.identity);
@@ -67,6 +92,27 @@ export function installOAuthMessagingIdentityListener(): () => void {
       }
     }
   };
+
   window.addEventListener('message', handler, true);
-  return () => window.removeEventListener('message', handler, true);
+
+  let broadcastChannel: BroadcastChannel | null = null;
+  try {
+    broadcastChannel = new BroadcastChannel(PN_MESSAGING_OAUTH_BROADCAST);
+    broadcastChannel.onmessage = (event: MessageEvent) => {
+      if (isMessagingOAuthHandoffPayload(event.data)) {
+        try {
+          applyMessagingOAuthHandoff(event.data);
+        } catch {
+          /* ignore malformed */
+        }
+      }
+    };
+  } catch {
+    /* BroadcastChannel unavailable */
+  }
+
+  return () => {
+    window.removeEventListener('message', handler, true);
+    broadcastChannel?.close();
+  };
 }

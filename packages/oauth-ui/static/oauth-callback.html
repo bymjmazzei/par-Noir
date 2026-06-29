@@ -87,6 +87,128 @@
         pnPopupFlow: pnPopupFlow
       });
 
+      /** Parent origin for postMessage targetOrigin — must match opener, not only this frame. */
+      function getOpenerTargetOrigin() {
+        var o = window.location.origin;
+        try {
+          if (window.opener && !window.opener.closed && window.opener.location && window.opener.location.origin) {
+            o = window.opener.location.origin;
+          }
+        } catch (e) {
+          /* cross-origin opener: keep this window's origin (same as app when same-site OAuth) */
+        }
+        return o;
+      }
+
+      /**
+       * Messaging handoff from API consent via popup window.name.
+       * Must match packages/oauth-ui/src/messagingOAuthHandoff.ts
+       */
+      var MESSAGING_HANDOFF_PREFIX = 'pn_messaging_handoff_v1:';
+      var MESSAGING_HANDOFF_STORAGE = 'pn_messaging_oauth_handoff';
+      var MESSAGING_BC_NAME = 'par-noir-messaging-oauth-v1';
+      var MESSAGING_IDENTITY_TYPE = 'pn_messaging_identity';
+      var MESSAGING_SESSION_TYPE = 'pn_messaging_session';
+
+      function parseMessagingHandoffFromWindowName(name) {
+        if (!name || name.indexOf(MESSAGING_HANDOFF_PREFIX) !== 0) return null;
+        try {
+          var parsed = JSON.parse(name.slice(MESSAGING_HANDOFF_PREFIX.length));
+          if (!parsed || parsed.v !== 1) return null;
+          if (!parsed.identity && !parsed.session) return null;
+          if (parsed.identity) {
+            if (
+              typeof parsed.identity.encryptedData !== 'string' ||
+              typeof parsed.identity.iv !== 'string' ||
+              typeof parsed.identity.salt !== 'string'
+            ) {
+              return null;
+            }
+          }
+          if (parsed.session) {
+            if (typeof parsed.session.mlKemSecretKey !== 'string' || !parsed.session.mlKemSecretKey) {
+              return null;
+            }
+          }
+          return parsed;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      (function deliverMessagingHandoffFromWindowName() {
+        var payload = parseMessagingHandoffFromWindowName(window.name);
+        if (!payload) return;
+
+        if (window.name.indexOf(MESSAGING_HANDOFF_PREFIX) === 0) {
+          window.name = '';
+        }
+
+        try {
+          localStorage.setItem(MESSAGING_HANDOFF_STORAGE, JSON.stringify(payload));
+        } catch (e) {
+          console.warn('messaging handoff localStorage failed', e);
+        }
+
+        oauthDbg('messaging_handoff_stashed', {
+          hasIdentity: !!payload.identity,
+          hasSession: !!payload.session
+        });
+
+        function postMessagingToBroadcast() {
+          try {
+            var ch = new BroadcastChannel(MESSAGING_BC_NAME);
+            ch.postMessage(payload);
+            ch.close();
+          } catch (e) {}
+        }
+
+        function postMessagingToOpener(targetOrigin) {
+          if (!window.opener || window.opener.closed) return;
+          if (payload.identity) {
+            try {
+              window.opener.postMessage(
+                { type: MESSAGING_IDENTITY_TYPE, identity: payload.identity },
+                targetOrigin
+              );
+            } catch (e) {
+              try {
+                window.opener.postMessage(
+                  { type: MESSAGING_IDENTITY_TYPE, identity: payload.identity },
+                  window.location.origin
+                );
+              } catch (e2) {}
+            }
+          }
+          if (payload.session) {
+            try {
+              window.opener.postMessage(
+                { type: MESSAGING_SESSION_TYPE, session: payload.session },
+                targetOrigin
+              );
+            } catch (e) {
+              try {
+                window.opener.postMessage(
+                  { type: MESSAGING_SESSION_TYPE, session: payload.session },
+                  window.location.origin
+                );
+              } catch (e2) {}
+            }
+          }
+        }
+
+        var targetOrigin = getOpenerTargetOrigin();
+        var delays = [0, 30, 80, 150, 300, 600, 1200, 2000];
+        for (var mi = 0; mi < delays.length; mi++) {
+          (function (ms) {
+            setTimeout(function () {
+              postMessagingToBroadcast();
+              postMessagingToOpener(targetOrigin);
+            }, ms);
+          })(delays[mi]);
+        }
+      })();
+
       var oauthData = {
         type: 'oauth_callback',
         code: code,
@@ -103,19 +225,6 @@
         localStorage.setItem('pn_oauth_latest_key', callbackKey);
       } catch (e) {
         console.warn('localStorage failed', e);
-      }
-
-      /** Parent origin for postMessage targetOrigin — must match opener, not only this frame. */
-      function getOpenerTargetOrigin() {
-        var o = window.location.origin;
-        try {
-          if (window.opener && !window.opener.closed && window.opener.location && window.opener.location.origin) {
-            o = window.opener.location.origin;
-          }
-        } catch (e) {
-          /* cross-origin opener: keep this window's origin (same as app when same-site OAuth) */
-        }
-        return o;
       }
 
       function postToBroadcastChannel() {

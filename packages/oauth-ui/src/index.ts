@@ -33,3 +33,19 @@ export {
   isOAuthResumeUrl,
   PN_OAUTH_RESUME_SEARCH_KEY,
 } from './pnOAuthResumeBootstrap';
+export {
+  PN_MESSAGING_HANDOFF_WINDOW_PREFIX,
+  PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
+  PN_MESSAGING_OAUTH_BROADCAST,
+  buildMessagingHandoffWindowName,
+  parseMessagingHandoffFromWindowName,
+  clearMessagingHandoffFromWindowName,
+  serializeMessagingHandoffForStorage,
+  parseMessagingHandoffFromStorage,
+  isMessagingOAuthHandoffPayload,
+} from './messagingOAuthHandoff';
+export type {
+  MessagingHandoffIdentity,
+  MessagingHandoffSession,
+  MessagingOAuthHandoffPayload,
+} from './messagingOAuthHandoff';
