@@ -295,7 +295,7 @@ export async function sendMessage(
   mediaMimeType?: string
 ): Promise<Message> {
   if (!isDmIdentityReady()) {
-    throw new Error('Unlock messaging with your passcode before sending');
+    throw new Error('Messaging keys unavailable. Lock and unlock your pN again to send messages.');
   }
   let connId = connectionId;
   let kem = kemCiphertext;
@@ -395,7 +395,7 @@ export async function sendMessageRequest(
 ): Promise<MessageRequest> {
   try {
     if (!isDmIdentityReady()) {
-      throw new Error('Unlock messaging before sending a request');
+      throw new Error('Messaging keys unavailable. Lock and unlock your pN again to send messages.');
     }
     const recipientKey = await fetchRecipientMlKemPublicKey(toPnIdentifier);
     const { encryptedContent, kemCiphertext } = await encryptMessageRequest(content, recipientKey);

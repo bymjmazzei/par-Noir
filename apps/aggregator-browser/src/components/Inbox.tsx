@@ -3,8 +3,8 @@
  * Tabbed interface for Messages and Notifications
  */
 
-import React, { useState, useEffect } from 'react';
-import { MessageCircle, Bell, List, Users, UserPlus, Inbox as InboxIcon } from 'lucide-react';
+import React, { useState } from 'react';
+import { Bell, List, Users, UserPlus, Inbox as InboxIcon } from 'lucide-react';
 import { MessageList } from './MessageList';
 import { MessageThread } from './MessageThread';
 import { Notification } from '../services/notificationService';
@@ -14,10 +14,7 @@ import { NotificationList } from './NotificationList';
 import { ConnectionsPanel } from './ConnectionsPanel';
 import { RequestsList } from './RequestsList';
 import { useUserState } from '../contexts/UserStateContext';
-import { DmCryptoUnlockModal } from './DmCryptoUnlockModal';
 import { CreateGroupModal } from './CreateGroupModal';
-import { isDmIdentityReady } from '../services/dmIdentitySession';
-import { PNOAuthService } from '../services/pnOAuthService';
 import type { SelectedInboxThread } from '../types/messaging';
 import { listGroups } from '../services/groupService';
 
@@ -39,10 +36,8 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
       : null
   );
   const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
-  const [showDmUnlock, setShowDmUnlock] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
-  const [dmReady, setDmReady] = useState(isDmIdentityReady());
-  
+
   // Update selectedThread if initialThread changes
   React.useEffect(() => {
     if (initialThread) {
@@ -83,9 +78,6 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
     );
   }
 
-  const session = PNOAuthService.loadSession();
-  const pnName = session?.pnName || userState.preferences?.displayName || '';
-
   return (
     <div className="h-full flex flex-col bg-neutral-900" style={{ paddingBottom: '64px' }}>
       {/* Header with Icon Navigation */}
@@ -95,7 +87,7 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
           {activeView === 'messages' && userState.isUnlocked && userState.pnIdentifier && (
             <button
               type="button"
-              onClick={() => (dmReady ? setShowCreateGroup(true) : setShowDmUnlock(true))}
+              onClick={() => setShowCreateGroup(true)}
               className="mr-2 rounded-lg bg-neutral-800 px-3 py-1.5 text-xs text-white hover:bg-neutral-700"
             >
               New group
@@ -179,22 +171,7 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         {activeView === 'messages' ? (
-          !dmReady && userState.isUnlocked ? (
-            <div className="p-6 text-center">
-              <p className="text-neutral-400 text-sm mb-4">
-                Unlock messaging with your passcode to read and send encrypted messages.
-              </p>
-              <button
-                type="button"
-                onClick={() => setShowDmUnlock(true)}
-                className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black"
-              >
-                Unlock messaging
-              </button>
-            </div>
-          ) : (
           <MessageList onThreadSelect={(thread) => setSelectedThread(thread)} />
-          )
         ) : activeView === 'notifications' ? (
           <div className="h-full overflow-y-auto">
             {userState.isUnlocked && userState.pnIdentifier ? (
@@ -238,40 +215,6 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
         ) : null}
       </div>
 
-      {showDmUnlock && pnName && (
-        <DmCryptoUnlockModal
-          pnName={pnName}
-          onUnlocked={() => {
-            setDmReady(true);
-            setShowDmUnlock(false);
-          }}
-          onCancel={() => setShowDmUnlock(false)}
-        />
-      )}
-      {showDmUnlock && !pnName && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-xl border border-neutral-700 bg-neutral-900 p-6 shadow-xl text-center">
-            <p className="text-sm text-neutral-300 mb-4">
-              Unlock your pN in the dashboard first so messaging can use your identity.
-            </p>
-            <a
-              href="https://pn.parnoir.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block mb-3 px-4 py-2 bg-white text-black rounded-lg text-sm font-medium"
-            >
-              Open dashboard
-            </a>
-            <button
-              type="button"
-              onClick={() => setShowDmUnlock(false)}
-              className="block w-full text-sm text-neutral-400 hover:text-white"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
       {showCreateGroup && userState.pnIdentifier && (
         <CreateGroupModal
           ownerPnIdentifier={userState.pnIdentifier}

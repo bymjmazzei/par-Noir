@@ -681,6 +681,38 @@
     let decryptedIdentity = null;
     /** Retained for messaging E2E handoff to browser-app opener (postMessage). */
     let lastMessagingIdentity = null;
+    let lastMessagingSession = null;
+    const identityHandoffRequired = urlParams.get('identity_handoff') === 'required';
+
+    function extractMessagingSession(decrypted) {
+      if (!decrypted) return null;
+      var mlKemSecretKey =
+        (decrypted.pqcSecrets && decrypted.pqcSecrets.mlKemSecretKey) ||
+        decrypted.mlKemSecretKey;
+      if (!mlKemSecretKey) return null;
+      var mlKemPublicKey =
+        (decrypted.pqcSecrets && decrypted.pqcSecrets.mlKemPublicKey) ||
+        decrypted.mlKemPublicKey ||
+        undefined;
+      return { mlKemSecretKey: mlKemSecretKey, mlKemPublicKey: mlKemPublicKey };
+    }
+
+    function postMessagingToOpener(message) {
+      if (!isBrowserApp) return;
+      var appOrigin = '';
+      try {
+        appOrigin = new URL(redirectUri).origin;
+      } catch (_) {
+        return;
+      }
+      if (window.opener && !window.opener.closed && appOrigin) {
+        try {
+          window.opener.postMessage(message, appOrigin);
+        } catch (e) {
+          console.warn('[OAuth] messaging postMessage failed', e);
+        }
+      }
+    }
 
     function normalizeMessagingIdentityPayload(encryptedIdentity, decrypted) {
       if (!encryptedIdentity || !encryptedIdentity.encryptedData || !encryptedIdentity.iv || !encryptedIdentity.salt) {
@@ -705,19 +737,15 @@
       var payload = normalizeMessagingIdentityPayload(encryptedIdentity, decrypted);
       if (!payload) return;
       lastMessagingIdentity = payload;
-      var appOrigin = '';
-      try {
-        appOrigin = new URL(redirectUri).origin;
-      } catch (_) {
-        return;
-      }
-      if (window.opener && !window.opener.closed && appOrigin) {
-        try {
-          window.opener.postMessage({ type: 'pn_messaging_identity', identity: payload }, appOrigin);
-        } catch (e) {
-          console.warn('[OAuth] messaging identity postMessage failed', e);
-        }
-      }
+      postMessagingToOpener({ type: 'pn_messaging_identity', identity: payload });
+    }
+
+    function sendMessagingSessionToOpener(decrypted) {
+      if (!isBrowserApp) return;
+      var session = extractMessagingSession(decrypted);
+      if (!session) return;
+      lastMessagingSession = session;
+      postMessagingToOpener({ type: 'pn_messaging_session', session: session });
     }
     
     // Show/hide toggle for pN name
@@ -834,6 +862,7 @@
     async function completeOAuthUnlock(encryptedIdentity, publicKey, did, decryptedIdentity, pnName, passcode) {
       identityData = null;
       sendMessagingIdentityToOpener(encryptedIdentity, decryptedIdentity);
+      sendMessagingSessionToOpener(decryptedIdentity);
       const authResponse = await fetch(`${apiEndpoint}/oauth/authorize/authenticate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -876,7 +905,7 @@
         clientId: clientId
       });
       
-      if (existingPermissions && clientId === 'browser-app') {
+      if (existingPermissions && clientId === 'browser-app' && !identityHandoffRequired) {
         redirectWithAuthCodeFixed(authorizationCode, !!existingPermissions.ageShared);
         return;
       }
@@ -1049,6 +1078,9 @@
       }
       if (lastMessagingIdentity) {
         sendMessagingIdentityToOpener(lastMessagingIdentity, null);
+      }
+      if (lastMessagingSession) {
+        postMessagingToOpener({ type: 'pn_messaging_session', session: lastMessagingSession });
       }
       redirectWithAuthCodeFixed(authorizationCode, shareAge);
     });

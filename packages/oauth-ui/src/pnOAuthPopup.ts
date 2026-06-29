@@ -38,6 +38,8 @@ export interface OAuthConsentUrlConfig {
   nonce?: string;
   /** When true (default), adds popup=true so API consent knows to close/popup UX */
   forPopup?: boolean;
+  /** Force identity unlock on consent even when OAuth permissions already exist */
+  identityHandoffRequired?: boolean;
 }
 
 export interface PnOAuthPopupResult {
@@ -73,6 +75,9 @@ export function buildOAuthConsentUrl(config: OAuthConsentUrlConfig): string {
   });
   if (forPopup) {
     params.set('popup', 'true');
+  }
+  if (config.identityHandoffRequired) {
+    params.set('identity_handoff', 'required');
   }
 
   const base = config.apiEndpoint.replace(/\/$/, '');

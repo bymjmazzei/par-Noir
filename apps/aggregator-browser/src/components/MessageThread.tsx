@@ -27,6 +27,7 @@ import {
 } from '../services/messagingMediaService';
 import { useDriveAccounts } from '../hooks/useDriveAccounts';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
+import { isMessagingKeysError, requestMessagingReconnect } from '../services/messagingReconnect';
 
 interface MessageThreadProps {
   participantPnIdentifier?: string;
@@ -487,6 +488,9 @@ export function MessageThread({
         errorMessage = error.error;
       }
       showError(errorMessage);
+      if (isMessagingKeysError(errorMessage)) {
+        requestMessagingReconnect();
+      }
       setNewMessage(content); // Restore message on error
     } finally {
       setSending(false);
@@ -531,6 +535,9 @@ export function MessageThread({
       setMessages((prev) => prev.filter((msg) => msg.messageId !== tempMessageId));
       const errorMessage = error instanceof Error ? error.message : 'Failed to send media';
       showError(errorMessage);
+      if (isMessagingKeysError(errorMessage)) {
+        requestMessagingReconnect();
+      }
       if (caption) {
         setNewMessage(caption);
       }
@@ -554,6 +561,9 @@ export function MessageThread({
       console.error('Failed to delete conversation:', error);
       const errorMessage = error?.message || 'Failed to delete conversation';
       showError(errorMessage);
+      if (isMessagingKeysError(errorMessage)) {
+        requestMessagingReconnect();
+      }
     } finally {
       setDeleting(false);
       setShowDeleteConfirm(false);

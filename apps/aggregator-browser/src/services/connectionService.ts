@@ -97,7 +97,7 @@ export async function acceptConnectionRequest(
   requesterPnIdentifier: string
 ): Promise<void> {
   if (!isDmIdentityReady()) {
-    throw new Error('Unlock messaging with your passcode before accepting connections');
+    throw new Error('Messaging keys unavailable. Lock and unlock your pN again to accept connections.');
   }
   const profile = await getUserProfile(requesterPnIdentifier);
   if (!profile.mlKemPublicKey) {

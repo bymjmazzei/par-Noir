@@ -45,7 +45,9 @@ export const ConnectionHealthBanner: React.FC = () => {
             </a>
           </li>
         )}
-        {oauthOk && !messagingOk && <li>Messaging locked — enter passcode to decrypt messages</li>}
+        {oauthOk && !messagingOk && (
+          <li>Messaging encryption not loaded — lock and unlock your pN again</li>
+        )}
       </ul>
     </div>
   );

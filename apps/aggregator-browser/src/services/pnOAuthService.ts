@@ -68,6 +68,7 @@ export class PNOAuthService {
     state?: string;
     nonce?: string;
     usePopup?: boolean;
+    identityHandoffRequired?: boolean;
   }): string {
     // Browser app requests age ZKP scope (optional) for 18+/NSFW content access
     const scope = params?.scope || ['openid', 'profile', 'zkp:age_attestation'];
@@ -93,6 +94,7 @@ export class PNOAuthService {
       state,
       nonce,
       forPopup: usePopup,
+      identityHandoffRequired: params?.identityHandoffRequired,
     });
   }
 

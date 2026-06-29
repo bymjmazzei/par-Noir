@@ -5,6 +5,12 @@
 export type MessagingSurface = 'messaging_app' | 'browse_modal' | 'l5_embed';
 
 export const PN_MESSAGING_IDENTITY_MESSAGE = 'pn_messaging_identity' as const;
+export const PN_MESSAGING_SESSION_MESSAGE = 'pn_messaging_session' as const;
+
+export interface DmSessionHandoff {
+  mlKemSecretKey: string;
+  mlKemPublicKey?: string;
+}
 
 export type InboxThreadType = 'dm' | 'group';
 

@@ -7,6 +7,7 @@ import { X } from 'lucide-react';
 import { getConnections, type Connection } from '../services/connectionService';
 import { createGroup } from '../services/groupService';
 import { isDmIdentityReady } from '../services/dmIdentitySession';
+import { requestMessagingReconnect } from '../services/messagingReconnect';
 
 interface CreateGroupModalProps {
   ownerPnIdentifier: string;
@@ -34,7 +35,8 @@ export function CreateGroupModal({ ownerPnIdentifier, onClose, onCreated }: Crea
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isDmIdentityReady()) {
-      setError('Unlock messaging before creating a group');
+      setError('Lock and unlock your pN again to create a group.');
+      requestMessagingReconnect();
       return;
     }
     const members = Object.entries(selected)

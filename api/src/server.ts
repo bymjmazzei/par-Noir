@@ -10195,6 +10195,10 @@ class ProductionServer {
       // Canonical contract: popup behavior is controlled only by the explicit query parameter.
       const popupParam = req.query.popup;
       if (popupParam === 'true') consentUrl.searchParams.set('popup', 'true');
+      const identityHandoff = req.query.identity_handoff;
+      if (identityHandoff === 'required') {
+        consentUrl.searchParams.set('identity_handoff', 'required');
+      }
 
       return res.redirect(consentUrl.toString());
     });

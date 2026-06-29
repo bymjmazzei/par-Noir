@@ -69,7 +69,7 @@ export async function createGroup(
   memberInputs: CreateGroupMemberInput[]
 ): Promise<{ groupId: string; title: string }> {
   if (!isDmIdentityReady()) {
-    throw new Error('Unlock messaging with your passcode before creating a group');
+    throw new Error('Messaging keys unavailable. Lock and unlock your pN again to send messages.');
   }
 
   const groupId = generateGroupId();
@@ -310,7 +310,7 @@ export async function sendGroupMessage(
   mediaMimeType?: string
 ): Promise<void> {
   if (!isDmIdentityReady()) {
-    throw new Error('Unlock messaging with your passcode before sending');
+    throw new Error('Messaging keys unavailable. Lock and unlock your pN again to send messages.');
   }
   if (record.accessRole === 'readOnly') {
     throw new Error('You have read-only access in this group');
@@ -341,7 +341,7 @@ export async function addGroupMember(
   accessRole: GroupAccessRole = 'readWrite'
 ): Promise<void> {
   if (!isDmIdentityReady()) {
-    throw new Error('Unlock messaging with your passcode before adding members');
+    throw new Error('Messaging keys unavailable. Lock and unlock your pN again to send messages.');
   }
   const groups = await listGroups(ownerPnIdentifier);
   const groupRow = groups.find((g) => g.groupId === groupId && g.ownerPnIdentifier === ownerPnIdentifier);

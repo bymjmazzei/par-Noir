@@ -17,7 +17,12 @@ import { getUserProfile } from '../services/profileService';
 import { API_ENDPOINT } from '../config/api';
 import { PN_OAUTH_RESUME_SEARCH_KEY } from '../oauthResumeBootstrap';
 import { installOAuthMessagingIdentityListener } from '../services/oauthMessagingIdentityBridge';
-import { clearDmIdentity } from '../services/dmIdentitySession';
+import {
+  clearDmIdentity,
+  needsMessagingIdentityHandoff,
+  restoreDmSessionFromStorage,
+} from '../services/dmIdentitySession';
+import { registerMessagingReconnect } from '../services/messagingReconnect';
 
 /**
  * oauth-callback.html may hand off via `opener.location.replace(/?oauth_resume=1&code=...)`.
@@ -155,6 +160,7 @@ export function useAuthAndSession({
 
         if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
           setUnlocked(userInfo.pn_identifier);
+          restoreDmSessionFromStorage();
           try {
             const { wireLocalDeviceProofSigner } = await import('../services/deviceService');
             await wireLocalDeviceProofSigner(userInfo.pn_identifier, tokenResponse.access_token);
@@ -470,8 +476,12 @@ export function useAuthAndSession({
   // Validate OAuth session on mount and sync with user state
   useEffect(() => {
     const session = PNOAuthService.loadSession();
+    const sessionValid = session && PNOAuthService.isSessionValid(session);
+    if (sessionValid) {
+      restoreDmSessionFromStorage();
+    }
     if (userState.isUnlocked) {
-      if (!session || !PNOAuthService.isSessionValid(session)) {
+      if (!sessionValid) {
         setLocked();
         clearDmIdentity();
         PNOAuthService.clearSession();
@@ -484,7 +494,7 @@ export function useAuthAndSession({
       } else if (userState.pnIdentifier && !userState.preferences.displayName) {
         loadUserDisplayName(userState.pnIdentifier);
       }
-    } else if (session && PNOAuthService.isSessionValid(session) && session.did) {
+    } else if (sessionValid && session.did) {
       const pnId = session.pnIdentifier || session.did;
       setUnlocked(pnId);
       if (pnId && !pnId.startsWith('did:key:')) {
@@ -496,77 +506,105 @@ export function useAuthAndSession({
 
   useEffect(() => installOAuthMessagingIdentityListener(), []);
 
+  const runOAuthPopupUnlock = useCallback(
+    async (options?: { identityHandoffRequired?: boolean }) => {
+      const redirectUri = `${window.location.origin}/oauth-callback.html`;
+      let authUrl = PNOAuthService.getAuthorizationUrl({
+        usePopup: true,
+        identityHandoffRequired:
+          options?.identityHandoffRequired ?? needsMessagingIdentityHandoff(),
+      });
+      const authUrlObj = new URL(authUrl);
+      const actualRedirectUri = authUrlObj.searchParams.get('redirect_uri') || redirectUri;
+
+      try {
+        const url = new URL(authUrl);
+        url.searchParams.set('popup', 'true');
+        authUrl = url.toString();
+      } catch (e) {
+        console.error('Failed to add popup parameter:', e);
+      }
+
+      const expectedState = new URL(authUrl).searchParams.get('state') || '';
+
+      pushPnOAuthDebug('lock_unlock_popup_open', {
+        expectedStateLen: expectedState.length,
+      });
+
+      if (Capacitor.isNativePlatform()) {
+        const u = new URL(authUrl);
+        u.searchParams.set('popup', 'false');
+        window.location.href = u.toString();
+        return;
+      }
+
+      const result = await startPnOAuthPopup({
+        url: authUrl,
+        expectedState,
+        timeoutMs: 120_000,
+        completeViaParentNavigation: false,
+      });
+
+      if (!result.code && !result.error) {
+        pushPnOAuthDebug('lock_unlock_popup_empty_result', {});
+        setLocked();
+        PNOAuthService.clearSession();
+        showErrorToast('Sign-in did not complete. Please try again.');
+        return;
+      }
+
+      pushPnOAuthDebug('lock_unlock_popup_got_result', {
+        hasCode: Boolean(result.code),
+        hasError: Boolean(result.error),
+      });
+
+      await runOAuthCallback(
+        {
+          code: result.code,
+          state: result.state,
+          error: result.error,
+          error_description: result.error_description,
+          age_shared: result.age_shared,
+        },
+        { redirectUri: actualRedirectUri }
+      );
+
+      const sessionAfter = PNOAuthService.loadSession();
+      if (sessionAfter && PNOAuthService.isSessionValid(sessionAfter) && sessionAfter.did) {
+        const pnId = sessionAfter.pnIdentifier || sessionAfter.did;
+        setUnlocked(pnId);
+        restoreDmSessionFromStorage();
+      }
+    },
+    [runOAuthCallback, setLocked, setUnlocked, showErrorToast]
+  );
+
+  const reconnectPnForMessaging = useCallback(async () => {
+    if (!userState.isUnlocked) {
+      await runOAuthPopupUnlock({ identityHandoffRequired: true });
+      return;
+    }
+    showErrorToast('Reconnect your pN to send messages');
+    try {
+      await runOAuthPopupUnlock({ identityHandoffRequired: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg !== 'POPUP_BLOCKED' && msg !== 'POPUP_CLOSED' && msg !== 'POPUP_TIMEOUT') {
+        console.error('Messaging reconnect OAuth error:', err);
+      }
+    }
+  }, [userState.isUnlocked, runOAuthPopupUnlock, showErrorToast]);
+
+  useEffect(() => registerMessagingReconnect(reconnectPnForMessaging), [reconnectPnForMessaging]);
+
   const handleLockUnlock = useCallback(async () => {
     if (userState.isUnlocked) {
       setLocked();
       clearDmIdentity();
       PNOAuthService.clearSession();
     } else {
-      const redirectUri = `${window.location.origin}/oauth-callback.html`;
-      let authUrl = PNOAuthService.getAuthorizationUrl({ usePopup: true });
-      const authUrlObj = new URL(authUrl);
-      const actualRedirectUri = authUrlObj.searchParams.get('redirect_uri') || redirectUri;
-
       try {
-        try {
-          const url = new URL(authUrl);
-          url.searchParams.set('popup', 'true');
-          authUrl = url.toString();
-        } catch (e) {
-          console.error('Failed to add popup parameter:', e);
-        }
-
-        const expectedState = new URL(authUrl).searchParams.get('state') || '';
-
-        pushPnOAuthDebug('lock_unlock_popup_open', {
-          expectedStateLen: expectedState.length,
-        });
-
-        // Native: full-screen OAuth — oauth-callback navigates main window to /?oauth_resume=1&code=...
-        if (Capacitor.isNativePlatform()) {
-          const u = new URL(authUrl);
-          u.searchParams.set('popup', 'false');
-          window.location.href = u.toString();
-          return;
-        }
-
-        // completeViaParentNavigation: false — token exchange in this tab after oauth-callback.html postMessage (same origin).
-        const result = await startPnOAuthPopup({
-          url: authUrl,
-          expectedState,
-          timeoutMs: 120_000,
-          completeViaParentNavigation: false,
-        });
-
-        if (!result.code && !result.error) {
-          pushPnOAuthDebug('lock_unlock_popup_empty_result', {});
-          setLocked();
-          PNOAuthService.clearSession();
-          showErrorToast('Sign-in did not complete. Please try again.');
-          return;
-        }
-
-        pushPnOAuthDebug('lock_unlock_popup_got_result', {
-          hasCode: Boolean(result.code),
-          hasError: Boolean(result.error),
-        });
-
-        await runOAuthCallback(
-          {
-            code: result.code,
-            state: result.state,
-            error: result.error,
-            error_description: result.error_description,
-            age_shared: result.age_shared,
-          },
-          { redirectUri: actualRedirectUri }
-        );
-
-        const sessionAfter = PNOAuthService.loadSession();
-        if (sessionAfter && PNOAuthService.isSessionValid(sessionAfter) && sessionAfter.did) {
-          const pnId = sessionAfter.pnIdentifier || sessionAfter.did;
-          setUnlocked(pnId);
-        }
+        await runOAuthPopupUnlock();
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         pushPnOAuthDebug('lock_unlock_popup_catch', { msg });
@@ -637,6 +675,7 @@ export function useAuthAndSession({
                 /* ignore */
               }
               if (data?.code || data?.error) {
+                const fallbackRedirectUri = `${window.location.origin}/oauth-callback.html`;
                 await runOAuthCallback(
                   {
                     code: data.code,
@@ -645,7 +684,7 @@ export function useAuthAndSession({
                     error_description: data.error_description,
                     age_shared: data.age_shared,
                   },
-                  { redirectUri: actualRedirectUri }
+                  { redirectUri: fallbackRedirectUri }
                 );
                 return;
               }
@@ -672,13 +711,12 @@ export function useAuthAndSession({
     }
   }, [
     userState.isUnlocked,
-    userState.preferences.displayName,
     setLocked,
+    runOAuthPopupUnlock,
+    runOAuthCallback,
     setUnlocked,
-    updateDisplayName,
     showErrorToast,
     discoverFilesRef,
-    runOAuthCallback,
     loadUserDisplayName,
   ]);
 

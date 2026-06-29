@@ -37,10 +37,10 @@ export function DmCryptoUnlockModal({ pnName, onUnlocked, onCancel }: DmCryptoUn
       <div className="w-full max-w-md rounded-xl border border-neutral-700 bg-neutral-900 p-6 shadow-xl">
         <div className="mb-4 flex items-center gap-2 text-white">
           <Lock className="h-5 w-5" />
-          <h2 className="text-lg font-semibold">Unlock messaging</h2>
+          <h2 className="text-lg font-semibold">Enter passcode</h2>
         </div>
         <p className="mb-4 text-sm text-neutral-400">
-          Enter your passcode to decrypt messages on this device. Your passcode never leaves the browser.
+          Enter your passcode to restore messaging on this device. Your passcode never leaves the browser.
         </p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
