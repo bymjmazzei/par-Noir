@@ -669,7 +669,7 @@
           } catch (e) {}
         }
       }
-      resendMessagingHandoff();
+      burstMessagingToOpener();
       stashMessagingHandoffInWindowName();
       var identityHash = buildMessagingIdentityHash();
       try {
@@ -687,17 +687,10 @@
           window.location.href = targetUrl;
           return;
         }
-        var burst = [0, 40, 100, 180];
-        for (var bi = 0; bi < burst.length; bi++) {
-          (function (ms) {
-            setTimeout(function () {
-              resendMessagingHandoff();
-            }, ms);
-          })(burst[bi]);
-        }
+        burstMessagingToOpener();
         setTimeout(function () {
           window.location.href = targetUrl;
-        }, 220);
+        }, 400);
       };
       var u;
       try {
@@ -764,7 +757,10 @@
       if (!isBrowserApp || !lastMessagingIdentity) return '';
       try {
         var identityPayload = { v: 1, identity: lastMessagingIdentity, timestamp: Date.now() };
-        return PN_MESSAGING_IDENTITY_HASH_PREFIX + encodeURIComponent(JSON.stringify(identityPayload));
+        var hash = PN_MESSAGING_IDENTITY_HASH_PREFIX + encodeURIComponent(JSON.stringify(identityPayload));
+        // Oversized hashes truncate in some browsers and poison handoff merge — use postMessage only.
+        if (hash.length > 1500) return '';
+        return hash;
       } catch (e) {
         console.warn('[OAuth] messaging identity hash handoff failed', e);
         return '';
@@ -792,12 +788,28 @@
       } catch (_) {
         return;
       }
-      if (window.opener && !window.opener.closed && appOrigin) {
-        try {
-          window.opener.postMessage(message, appOrigin);
-        } catch (e) {
-          console.warn('[OAuth] messaging postMessage failed', e);
+      var targets = [appOrigin];
+      if (window.opener && !window.opener.closed) {
+        for (var ti = 0; ti < targets.length; ti++) {
+          try {
+            window.opener.postMessage(message, targets[ti]);
+          } catch (e) {
+            console.warn('[OAuth] messaging postMessage failed', e);
+          }
         }
+      }
+    }
+
+    function burstMessagingToOpener() {
+      if (!isBrowserApp) return;
+      resendMessagingHandoff();
+      var delays = [0, 50, 120, 200, 350, 500];
+      for (var di = 0; di < delays.length; di++) {
+        (function (ms) {
+          setTimeout(function () {
+            resendMessagingHandoff();
+          }, ms);
+        })(delays[di]);
       }
     }
 

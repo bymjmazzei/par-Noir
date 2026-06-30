@@ -50,19 +50,27 @@ function isMessagingHandoffSession(v: unknown): v is MessagingHandoffSession {
   return typeof v.mlKemSecretKey === 'string' && v.mlKemSecretKey.length > 0;
 }
 
+/**
+ * Drop invalid handoff parts instead of rejecting the whole payload.
+ * A corrupt identity hash must not block a valid ML-KEM session.
+ */
+export function normalizeMessagingHandoffPayload(v: unknown): MessagingOAuthHandoffPayload | null {
+  if (!isRecord(v) || v.v !== 1) return null;
+  if (typeof v.timestamp !== 'number' || !Number.isFinite(v.timestamp)) return null;
+  const identity = isMessagingHandoffIdentity(v.identity) ? v.identity : undefined;
+  const session = isMessagingHandoffSession(v.session) ? v.session : undefined;
+  if (!identity && !session) return null;
+  return { v: 1, timestamp: v.timestamp, identity, session };
+}
+
 export function isMessagingOAuthHandoffPayload(v: unknown): v is MessagingOAuthHandoffPayload {
-  if (!isRecord(v)) return false;
-  if (v.v !== 1) return false;
-  if (typeof v.timestamp !== 'number' || !Number.isFinite(v.timestamp)) return false;
-  if (v.identity !== undefined && !isMessagingHandoffIdentity(v.identity)) return false;
-  if (v.session !== undefined && !isMessagingHandoffSession(v.session)) return false;
-  if (!v.identity && !v.session) return false;
-  return true;
+  return normalizeMessagingHandoffPayload(v) !== null;
 }
 
 /** OAuth unlock requires ML-KEM session in handoff (identity-only is not enough for messaging). */
 export function handoffProvidesMessagingSession(v: unknown): boolean {
-  return isMessagingOAuthHandoffPayload(v) && isMessagingHandoffSession(v.session);
+  if (!isRecord(v)) return false;
+  return isMessagingHandoffSession(v.session);
 }
 
 export function buildMessagingHandoffWindowName(payload: MessagingOAuthHandoffPayload): string {
@@ -124,10 +132,7 @@ export function parseMessagingHandoffFromWindowName(
   const json = windowName.slice(PN_MESSAGING_HANDOFF_WINDOW_PREFIX.length);
   try {
     const parsed: unknown = JSON.parse(json);
-    if (!isMessagingOAuthHandoffPayload(parsed)) return null;
-    // Session-only payloads are valid (identity may be in URL hash).
-    if (parsed.session && !parsed.identity) return parsed;
-    return parsed;
+    return normalizeMessagingHandoffPayload(parsed);
   } catch {
     return null;
   }
@@ -150,7 +155,7 @@ export function parseMessagingHandoffFromStorage(
   if (!raw) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
-    return isMessagingOAuthHandoffPayload(parsed) ? parsed : null;
+    return normalizeMessagingHandoffPayload(parsed);
   } catch {
     return null;
   }

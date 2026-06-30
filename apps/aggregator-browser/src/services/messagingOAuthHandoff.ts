@@ -5,7 +5,7 @@
 import {
   PN_MESSAGING_OAUTH_BROADCAST,
   PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
-  isMessagingOAuthHandoffPayload,
+  normalizeMessagingHandoffPayload,
   parseMessagingHandoffFromStorage,
   type MessagingOAuthHandoffPayload,
 } from '@par-noir/oauth-ui';
@@ -31,8 +31,18 @@ export function applyMessagingOAuthHandoff(payload: MessagingOAuthHandoffPayload
 }
 
 export function applyMessagingHandoffFromUnknown(raw: unknown): boolean {
-  if (!isMessagingOAuthHandoffPayload(raw)) return false;
-  return applyMessagingOAuthHandoff(raw);
+  const payload = normalizeMessagingHandoffPayload(raw);
+  if (!payload) return false;
+  return applyMessagingOAuthHandoff(payload);
+}
+
+/** Apply every known messaging handoff source (callback payload + localStorage stash). */
+export function applyAllMessagingHandoffSources(messagingHandoff?: unknown): void {
+  if (messagingHandoff) {
+    applyMessagingHandoffFromUnknown(messagingHandoff);
+  }
+  applyPendingMessagingOAuthHandoffFromStorage();
+  restoreDmSessionFromStorage();
 }
 
 export function applyPendingMessagingOAuthHandoffFromStorage(): boolean {
@@ -117,8 +127,7 @@ export async function waitForAndApplyMessagingHandoff(maxMs = 8_000): Promise<bo
     try {
       bc = new BroadcastChannel(PN_MESSAGING_OAUTH_BROADCAST);
       bc.onmessage = (event: MessageEvent) => {
-        if (isMessagingOAuthHandoffPayload(event.data)) {
-          applyMessagingOAuthHandoff(event.data);
+        if (applyMessagingHandoffFromUnknown(event.data)) {
           restoreDmSessionFromStorage();
           if (isDmIdentityReady()) {
             try {

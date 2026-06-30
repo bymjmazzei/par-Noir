@@ -10,11 +10,10 @@ import {
 } from '@par-noir/messaging-ui';
 import {
   PN_MESSAGING_OAUTH_BROADCAST,
-  isMessagingOAuthHandoffPayload,
 } from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from '../config/api';
 import { applyDmSessionHandoff, storeEncryptedIdentityForMessaging } from './dmIdentitySession';
-import { applyMessagingOAuthHandoff } from './messagingOAuthHandoff';
+import { applyMessagingHandoffFromUnknown } from './messagingOAuthHandoff';
 
 export { PN_MESSAGING_IDENTITY_MESSAGE, PN_MESSAGING_SESSION_MESSAGE };
 
@@ -99,12 +98,8 @@ export function installOAuthMessagingIdentityListener(): () => void {
   try {
     broadcastChannel = new BroadcastChannel(PN_MESSAGING_OAUTH_BROADCAST);
     broadcastChannel.onmessage = (event: MessageEvent) => {
-      if (isMessagingOAuthHandoffPayload(event.data)) {
-        try {
-          applyMessagingOAuthHandoff(event.data);
-        } catch {
-          /* ignore malformed */
-        }
+      if (applyMessagingHandoffFromUnknown(event.data)) {
+        /* applied via normalize */
       }
     };
   } catch {

@@ -51,6 +51,7 @@ export {
   parseMessagingHandoffFromStorage,
   isMessagingOAuthHandoffPayload,
   handoffProvidesMessagingSession,
+  normalizeMessagingHandoffPayload,
 } from './messagingOAuthHandoff';
 export type {
   MessagingHandoffIdentity,

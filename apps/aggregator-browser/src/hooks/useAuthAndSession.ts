@@ -26,6 +26,7 @@ import {
 } from '../services/dmIdentitySession';
 import { registerMessagingReconnect } from '../services/messagingReconnect';
 import {
+  applyAllMessagingHandoffSources,
   applyMessagingHandoffFromUnknown,
   applyMessagingOAuthHandoff,
   MESSAGING_HANDOFF_INCOMPLETE,
@@ -220,10 +221,7 @@ export function useAuthAndSession({
 
       const work = (async () => {
         try {
-          restoreMessagingAfterOAuth();
-          if (data.messagingHandoff) {
-            applyMessagingHandoffFromUnknown(data.messagingHandoff);
-          }
+          applyAllMessagingHandoffSources(data.messagingHandoff);
 
           const ageShared = data.age_shared === 'true';
           pushPnOAuthDebug('run_oauth_callback_exchange', {
@@ -238,8 +236,8 @@ export function useAuthAndSession({
           const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
 
           if (!isDmIdentityReady()) {
-            await waitForAndApplyMessagingHandoff(15_000);
-            restoreMessagingAfterOAuth();
+            await waitForAndApplyMessagingHandoff(20_000);
+            applyAllMessagingHandoffSources(data.messagingHandoff);
           }
 
           pushPnOAuthDebug('run_oauth_callback_messaging_gate', {

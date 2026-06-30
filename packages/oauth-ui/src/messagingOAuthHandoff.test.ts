@@ -5,6 +5,7 @@ import {
   buildMessagingSessionWindowName,
   clearMessagingHandoffFromWindowName,
   handoffProvidesMessagingSession,
+  normalizeMessagingHandoffPayload,
   mergeMessagingHandoffParts,
   parseMessagingHandoffFromStorage,
   parseMessagingHandoffFromWindowName,
@@ -85,5 +86,16 @@ describe('messagingOAuthHandoff', () => {
       handoffProvidesMessagingSession({ v: 1, timestamp: 1, identity: samplePayload.identity })
     ).toBe(false);
     expect(handoffProvidesMessagingSession(null)).toBe(false);
+  });
+
+  it('normalize keeps valid session when identity is corrupt', () => {
+    const normalized = normalizeMessagingHandoffPayload({
+      v: 1,
+      timestamp: 1,
+      session: samplePayload.session,
+      identity: { encryptedData: 'bad' },
+    });
+    expect(normalized?.session).toEqual(samplePayload.session);
+    expect(normalized?.identity).toBeUndefined();
   });
 });
