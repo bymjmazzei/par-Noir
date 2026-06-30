@@ -223,11 +223,14 @@ export function useAuthAndSession({
 
       const work = (async () => {
         try {
+          restoreMessagingAfterOAuth();
           if (data.messagingHandoff) {
             applyMessagingHandoffFromUnknown(data.messagingHandoff);
           }
-          await waitForAndApplyMessagingHandoff(8_000);
-          restoreMessagingAfterOAuth();
+          if (!isDmIdentityReady()) {
+            await waitForAndApplyMessagingHandoff(12_000);
+            restoreMessagingAfterOAuth();
+          }
 
           if (!isDmIdentityReady()) {
             setLocked();
@@ -690,7 +693,7 @@ export function useAuthAndSession({
         completeViaParentNavigation: false,
         requireMessagingHandoff: needsMessagingHandoff,
         isMessagingReady: () => isDmIdentityReady(),
-        messagingHandoffTimeoutMs: 8_000,
+        messagingHandoffTimeoutMs: 12_000,
       });
 
       if (!result.code && !result.error) {

@@ -60,6 +60,11 @@ export function isMessagingOAuthHandoffPayload(v: unknown): v is MessagingOAuthH
   return true;
 }
 
+/** OAuth unlock requires ML-KEM session in handoff (identity-only is not enough for messaging). */
+export function handoffProvidesMessagingSession(v: unknown): boolean {
+  return isMessagingOAuthHandoffPayload(v) && isMessagingHandoffSession(v.session);
+}
+
 export function buildMessagingHandoffWindowName(payload: MessagingOAuthHandoffPayload): string {
   return PN_MESSAGING_HANDOFF_WINDOW_PREFIX + JSON.stringify(payload);
 }

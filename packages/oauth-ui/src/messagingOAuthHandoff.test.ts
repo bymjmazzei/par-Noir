@@ -4,6 +4,7 @@ import {
   buildMessagingIdentityHash,
   buildMessagingSessionWindowName,
   clearMessagingHandoffFromWindowName,
+  handoffProvidesMessagingSession,
   mergeMessagingHandoffParts,
   parseMessagingHandoffFromStorage,
   parseMessagingHandoffFromWindowName,
@@ -76,5 +77,13 @@ describe('messagingOAuthHandoff', () => {
     const merged = mergeMessagingHandoffParts(null, identity);
     expect(merged?.identity).toEqual(identity);
     expect(merged?.session).toBeUndefined();
+  });
+
+  it('handoffProvidesMessagingSession requires ML-KEM session', () => {
+    expect(handoffProvidesMessagingSession(samplePayload)).toBe(true);
+    expect(
+      handoffProvidesMessagingSession({ v: 1, timestamp: 1, identity: samplePayload.identity })
+    ).toBe(false);
+    expect(handoffProvidesMessagingSession(null)).toBe(false);
   });
 });

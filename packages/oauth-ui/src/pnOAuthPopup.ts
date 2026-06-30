@@ -1,5 +1,5 @@
 import { pushPnOAuthDebug } from './pnOAuthDebug';
-import { isMessagingOAuthHandoffPayload } from './messagingOAuthHandoff';
+import { handoffProvidesMessagingSession } from './messagingOAuthHandoff';
 
 /**
  * Shared pN OAuth popup flow. Must stay in sync with static oauth-callback.html
@@ -269,13 +269,12 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
 
   const messagingHandoffSatisfied = (parsed: PnOAuthPopupResult): boolean => {
     if (!requireMessagingHandoff || parsed.error) return true;
-    if (isMessagingOAuthHandoffPayload(parsed.messagingHandoff)) return true;
     try {
       if (isMessagingReady?.()) return true;
     } catch {
       /* ignore */
     }
-    return false;
+    return handoffProvidesMessagingSession(parsed.messagingHandoff);
   };
 
   return new Promise((resolve, reject) => {

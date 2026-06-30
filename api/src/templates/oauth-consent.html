@@ -662,7 +662,11 @@
           );
         }
         if (!lastMessagingIdentity) {
-          throw new Error('Messaging identity handoff incomplete. Try unlocking again.');
+          try {
+            if (typeof localStorage !== 'undefined' && localStorage.getItem('pn_debug_oauth') === '1') {
+              console.warn('[OAuth] redirect without identity hash — session-only handoff');
+            }
+          } catch (e) {}
         }
       }
       resendMessagingHandoff();
@@ -974,8 +978,8 @@
         clientId: clientId
       });
       
-      if (existingPermissions && clientId === 'browser-app' && !identityHandoffRequired) {
-        if (!lastMessagingSession || !lastMessagingIdentity) {
+      if (existingPermissions && clientId === 'browser-app') {
+        if (!lastMessagingSession) {
           document.getElementById('pnIdentifierDisplay').textContent = pnIdentifier;
           document.getElementById('unlockStep').style.display = 'none';
           document.getElementById('consentStep').style.display = 'block';
@@ -1157,7 +1161,12 @@
       if (lastMessagingSession) {
         postMessagingToOpener({ type: 'pn_messaging_session', session: lastMessagingSession });
       }
-      redirectWithAuthCodeFixed(authorizationCode, shareAge);
+      try {
+        redirectWithAuthCodeFixed(authorizationCode, shareAge);
+      } catch (err) {
+        var msg = (err && err.message) ? err.message : 'Could not complete unlock. Try again.';
+        alert(msg);
+      }
     });
     
     document.getElementById('denyBtn').addEventListener('click', () => {
