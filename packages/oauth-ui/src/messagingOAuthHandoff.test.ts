@@ -55,12 +55,26 @@ describe('messagingOAuthHandoff', () => {
     expect(parseMessagingHandoffFromStorage('{"v":1,"timestamp":1}')).toBeNull();
   });
 
-  it('supports split session window.name + identity hash', () => {
+  it('merges session-only window.name with identity from hash', () => {
     const ts = samplePayload.timestamp;
     const sessionName = buildMessagingSessionWindowName(samplePayload.session!, ts);
     const identityHash = buildMessagingIdentityHash(samplePayload.identity!, ts);
-    const windowPart = parseMessagingHandoffFromWindowName(sessionName);
-    const identity = parseMessagingIdentityFromHash(identityHash);
-    expect(mergeMessagingHandoffParts(windowPart, identity)).toEqual(samplePayload);
+    const merged = mergeMessagingHandoffParts(
+      parseMessagingHandoffFromWindowName(sessionName),
+      parseMessagingIdentityFromHash(identityHash)
+    );
+    expect(merged?.session).toEqual(samplePayload.session);
+    expect(merged?.identity).toEqual(samplePayload.identity);
+  });
+
+  it('returns null when merge has neither session nor identity', () => {
+    expect(mergeMessagingHandoffParts(null, null)).toBeNull();
+  });
+
+  it('accepts identity-only merge for hash-only handoff', () => {
+    const identity = samplePayload.identity!;
+    const merged = mergeMessagingHandoffParts(null, identity);
+    expect(merged?.identity).toEqual(identity);
+    expect(merged?.session).toBeUndefined();
   });
 });

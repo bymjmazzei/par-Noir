@@ -32,9 +32,7 @@ import {
   messagingHandoffIncompleteMessage,
   restoreMessagingAfterOAuth,
   waitForAndApplyMessagingHandoff,
-  isMessagingUnlockSatisfied,
 } from '../services/messagingOAuthHandoff';
-import { MESSAGING_ONLY } from '../config/buildFlags';
 
 /**
  * oauth-callback.html may hand off via `opener.location.replace(/?oauth_resume=1&code=...)`.
@@ -101,10 +99,7 @@ async function recoverAfterPopupClosed(
     if (!session || !PNOAuthService.isSessionValid(session) || !session.did) {
       return false;
     }
-    if (MESSAGING_ONLY && !isMessagingUnlockSatisfied()) {
-      return false;
-    }
-    return true;
+    return isDmIdentityReady();
   };
 
   while (Date.now() < deadline) {
@@ -212,7 +207,7 @@ export function useAuthAndSession({
           session &&
           PNOAuthService.isSessionValid(session) &&
           session.did &&
-          isMessagingUnlockSatisfied()
+          isDmIdentityReady()
         ) {
           const pnId = session.pnIdentifier || session.did;
           setUnlocked(pnId);
@@ -228,6 +223,20 @@ export function useAuthAndSession({
 
       const work = (async () => {
         try {
+          if (data.messagingHandoff) {
+            applyMessagingHandoffFromUnknown(data.messagingHandoff);
+          }
+          await waitForAndApplyMessagingHandoff(8_000);
+          restoreMessagingAfterOAuth();
+
+          if (!isDmIdentityReady()) {
+            setLocked();
+            clearDmIdentity();
+            PNOAuthService.clearSession();
+            showErrorToast(messagingHandoffIncompleteMessage());
+            throw new Error(MESSAGING_HANDOFF_INCOMPLETE);
+          }
+
           const ageShared = data.age_shared === 'true';
           pushPnOAuthDebug('run_oauth_callback_exchange', {
             redirectUriLen: exchangeRedirectUri.length,
@@ -265,20 +274,6 @@ export function useAuthAndSession({
           feedTokens,
         };
         PNOAuthService.saveSession(sessionWithIdentifier);
-
-        if (data.messagingHandoff) {
-          applyMessagingHandoffFromUnknown(data.messagingHandoff);
-        }
-        await waitForAndApplyMessagingHandoff(8_000);
-        restoreMessagingAfterOAuth();
-
-        if (!isMessagingUnlockSatisfied()) {
-          setLocked();
-          clearDmIdentity();
-          PNOAuthService.clearSession();
-          showErrorToast(messagingHandoffIncompleteMessage());
-          throw new Error(MESSAGING_HANDOFF_INCOMPLETE);
-        }
 
         if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
           setUnlocked(userInfo.pn_identifier);
@@ -614,7 +609,7 @@ export function useAuthAndSession({
     const sessionValid = session && PNOAuthService.isSessionValid(session);
     if (sessionValid) {
       restoreMessagingAfterOAuth();
-      if (MESSAGING_ONLY && !isMessagingUnlockSatisfied()) {
+      if (!isDmIdentityReady()) {
         setLocked();
         clearDmIdentity();
         PNOAuthService.clearSession();
@@ -636,7 +631,7 @@ export function useAuthAndSession({
         loadUserDisplayName(userState.pnIdentifier);
       }
     } else if (sessionValid && session.did) {
-      if (MESSAGING_ONLY && !isMessagingUnlockSatisfied()) {
+      if (!isDmIdentityReady()) {
         setLocked();
         clearDmIdentity();
         PNOAuthService.clearSession();
@@ -654,10 +649,10 @@ export function useAuthAndSession({
   useEffect(() => installOAuthMessagingIdentityListener(), []);
 
   const runOAuthPopupUnlock = useCallback(
-    async (options?: { identityHandoffRequired?: boolean }) => {
+    async () => {
       restoreMessagingAfterOAuth();
 
-      const needsMessagingHandoff = !isMessagingUnlockSatisfied();
+      const needsMessagingHandoff = !isDmIdentityReady();
 
       const redirectUri = `${window.location.origin}/oauth-callback.html`;
       let authUrl = PNOAuthService.getAuthorizationUrl({
@@ -693,6 +688,9 @@ export function useAuthAndSession({
         expectedState,
         timeoutMs: 120_000,
         completeViaParentNavigation: false,
+        requireMessagingHandoff: needsMessagingHandoff,
+        isMessagingReady: () => isDmIdentityReady(),
+        messagingHandoffTimeoutMs: 8_000,
       });
 
       if (!result.code && !result.error) {
@@ -732,29 +730,11 @@ export function useAuthAndSession({
       return;
     }
 
-    const session = PNOAuthService.loadSession();
-    const oauthUnlocked = !!session?.accessToken && userState.isUnlocked;
-
-    try {
-      if (!oauthUnlocked) {
-        await runOAuthPopupUnlock();
-      } else {
-        await runOAuthPopupUnlock({ identityHandoffRequired: true });
-      }
-      restoreMessagingAfterOAuth();
-      if (!isDmIdentityReady() && !hasStoredEncryptedIdentity()) {
-        showErrorToast(messagingHandoffIncompleteMessage());
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg === MESSAGING_HANDOFF_INCOMPLETE) {
-        showErrorToast(messagingHandoffIncompleteMessage());
-      } else if (msg !== 'POPUP_BLOCKED' && msg !== 'POPUP_CLOSED' && msg !== 'POPUP_TIMEOUT') {
-        console.error('Messaging reconnect OAuth error:', err);
-        showErrorToast('Could not restore messaging keys. Try again with your pN identity file.');
-      }
-    }
-  }, [userState.isUnlocked, runOAuthPopupUnlock, showErrorToast]);
+    setLocked();
+    clearDmIdentity();
+    PNOAuthService.clearSession();
+    showErrorToast('Lock and unlock your pN to restore messaging keys.');
+  }, [setLocked, showErrorToast]);
 
   useEffect(() => registerMessagingReconnect(reconnectPnForMessaging), [reconnectPnForMessaging]);
 
@@ -785,6 +765,13 @@ export function useAuthAndSession({
           if (recovered) {
             pushPnOAuthDebug('popup_closed_recovered', {});
             const session = PNOAuthService.loadSession()!;
+            if (!isDmIdentityReady()) {
+              setLocked();
+              clearDmIdentity();
+              PNOAuthService.clearSession();
+              showErrorToast(messagingHandoffIncompleteMessage());
+              return;
+            }
             const pnId = session.pnIdentifier || session.did;
             setUnlocked(pnId);
             if (pnId && !pnId.startsWith('did:key:')) {
@@ -798,6 +785,11 @@ export function useAuthAndSession({
           setLocked();
           PNOAuthService.clearSession();
           showErrorToast('Popup closed before sign-in completed. Please try again.');
+        } else if (msg === 'MESSAGING_HANDOFF_INCOMPLETE') {
+          setLocked();
+          clearDmIdentity();
+          PNOAuthService.clearSession();
+          showErrorToast(messagingHandoffIncompleteMessage());
         } else if (msg === 'OAUTH_STATE_MISMATCH') {
           setLocked();
           PNOAuthService.clearSession();

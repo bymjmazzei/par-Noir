@@ -187,6 +187,12 @@
 
       var messagingHandoffPayload = collectMessagingHandoffPayload();
 
+      oauthDbg('messaging_handoff_collect', {
+        hasPayload: !!messagingHandoffPayload,
+        hasIdentity: !!(messagingHandoffPayload && messagingHandoffPayload.identity),
+        hasSession: !!(messagingHandoffPayload && messagingHandoffPayload.session)
+      });
+
       (function deliverMessagingHandoff() {
         var payload = messagingHandoffPayload;
         if (!payload) return;

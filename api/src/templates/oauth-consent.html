@@ -655,9 +655,28 @@
      * triggers location.replace(/?oauth_resume=...) and the app unlocks in the wrong window.
      */
     function redirectWithAuthCodeFixed(code, ageShared) {
+      if (isBrowserApp) {
+        if (!lastMessagingSession) {
+          throw new Error(
+            'This pN identity does not include messaging encryption keys. Create or update your identity at pn.parnoir.com, then try again.'
+          );
+        }
+        if (!lastMessagingIdentity) {
+          throw new Error('Messaging identity handoff incomplete. Try unlocking again.');
+        }
+      }
       resendMessagingHandoff();
       stashMessagingHandoffInWindowName();
       var identityHash = buildMessagingIdentityHash();
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage.getItem('pn_debug_oauth') === '1') {
+          console.log('[OAuth] redirect handoff', {
+            hasSession: !!lastMessagingSession,
+            hasIdentity: !!lastMessagingIdentity,
+            hashLen: identityHash ? identityHash.length : 0
+          });
+        }
+      } catch (e) {}
       var u;
       try {
         u = new URL(redirectUri);
@@ -956,6 +975,12 @@
       });
       
       if (existingPermissions && clientId === 'browser-app' && !identityHandoffRequired) {
+        if (!lastMessagingSession || !lastMessagingIdentity) {
+          document.getElementById('pnIdentifierDisplay').textContent = pnIdentifier;
+          document.getElementById('unlockStep').style.display = 'none';
+          document.getElementById('consentStep').style.display = 'block';
+          return;
+        }
         redirectWithAuthCodeFixed(authorizationCode, !!existingPermissions.ageShared);
         return;
       }

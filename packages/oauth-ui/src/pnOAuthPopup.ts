@@ -1,4 +1,5 @@
 import { pushPnOAuthDebug } from './pnOAuthDebug';
+import { isMessagingOAuthHandoffPayload } from './messagingOAuthHandoff';
 
 /**
  * Shared pN OAuth popup flow. Must stay in sync with static oauth-callback.html
@@ -94,6 +95,8 @@ export function buildOAuthAuthorizeUrl(config: OAuthConsentUrlConfig): string {
 /** popup=yes helps some browsers keep window.opener for cross-origin OAuth flows */
 const DEFAULT_POPUP_FEATURES = 'popup=yes,width=500,height=600,scrollbars=yes,resizable=yes';
 
+export const MESSAGING_HANDOFF_INCOMPLETE = 'MESSAGING_HANDOFF_INCOMPLETE' as const;
+
 export interface StartPnOAuthPopupOptions {
   url: string;
   expectedState: string;
@@ -113,6 +116,12 @@ export interface StartPnOAuthPopupOptions {
    * Use **true** for full-window / native flows that complete OAuth from a fresh load.
    */
   completeViaParentNavigation?: boolean;
+  /** When true, do not resolve until messagingHandoff is valid or isMessagingReady() returns true. */
+  requireMessagingHandoff?: boolean;
+  /** Check whether messaging keys landed (e.g. after handoff applied from storage). */
+  isMessagingReady?: () => boolean;
+  /** Max wait for messaging handoff when requireMessagingHandoff (default 8000). */
+  messagingHandoffTimeoutMs?: number;
 }
 
 function coerceOAuthString(v: unknown): string | undefined {
@@ -250,15 +259,30 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     popupName = defaultPopupName(),
     popupFeatures = DEFAULT_POPUP_FEATURES,
     completeViaParentNavigation = false,
+    requireMessagingHandoff = false,
+    isMessagingReady,
+    messagingHandoffTimeoutMs = 8_000,
   } = options;
 
   const isAllowedOrigin = (eventOrigin: string) =>
     eventOrigin === origin || allowedMessageOrigins.some((a) => a === eventOrigin);
 
+  const messagingHandoffSatisfied = (parsed: PnOAuthPopupResult): boolean => {
+    if (!requireMessagingHandoff || parsed.error) return true;
+    if (isMessagingOAuthHandoffPayload(parsed.messagingHandoff)) return true;
+    try {
+      if (isMessagingReady?.()) return true;
+    } catch {
+      /* ignore */
+    }
+    return false;
+  };
+
   return new Promise((resolve, reject) => {
     pushPnOAuthDebug('popup_flow_start', {
       completeViaParentNavigation,
       expectedStateEmpty: expectedState === '',
+      requireMessagingHandoff,
     });
     // Named window lets oauth-callback.html navigate this tab when window.opener is lost.
     try {
@@ -287,6 +311,8 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     let popupEverSeenOpen = false;
 
     let oauthBc: BroadcastChannel | undefined;
+    let pendingOAuthResult: PnOAuthPopupResult | null = null;
+    let messagingHandoffWaitStarted: number | null = null;
 
     const closeOauthBc = () => {
       try {
@@ -327,6 +353,26 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       reject(err);
     };
 
+    const tryFinishWithMessaging = (parsed: PnOAuthPopupResult, source: string) => {
+      if (messagingHandoffSatisfied(parsed)) {
+        pushPnOAuthDebug('popup_finish', {
+          source,
+          hasMessagingHandoff: Boolean(parsed.messagingHandoff),
+        });
+        finish(parsed);
+        return true;
+      }
+      pendingOAuthResult = parsed;
+      if (messagingHandoffWaitStarted === null) {
+        messagingHandoffWaitStarted = Date.now();
+      }
+      pushPnOAuthDebug('popup_wait_messaging_handoff', {
+        source,
+        hasMessagingHandoff: Boolean(parsed.messagingHandoff),
+      });
+      return false;
+    };
+
     const acceptPayload = (raw: Record<string, unknown>, source: string) => {
       const parsed = parseOAuthPayload(raw);
       if (!parsed) {
@@ -342,6 +388,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
         source,
         hasCode: Boolean(parsed.code),
         hasError: Boolean(parsed.error),
+        hasMessagingHandoff: Boolean(parsed.messagingHandoff),
       });
 
       // CSRF: when we sent a non-empty state, require a match (payload or sessionStorage fallback).
@@ -368,8 +415,28 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
         window.location.replace(buildOAuthResumeUrl(origin, parsed));
         return;
       }
-      pushPnOAuthDebug('popup_finish', { source });
-      finish(parsed);
+
+      if (parsed.error) {
+        pushPnOAuthDebug('popup_finish', { source, isError: true });
+        finish(parsed);
+        return;
+      }
+
+      tryFinishWithMessaging(parsed, source);
+    };
+
+    const pollMessagingHandoffReady = () => {
+      if (settled || !pendingOAuthResult) return;
+      if (messagingHandoffSatisfied(pendingOAuthResult)) {
+        tryFinishWithMessaging(pendingOAuthResult, 'messaging_poll');
+        return;
+      }
+      if (
+        messagingHandoffWaitStarted !== null &&
+        Date.now() - messagingHandoffWaitStarted > messagingHandoffTimeoutMs
+      ) {
+        fail(new Error(MESSAGING_HANDOFF_INCOMPLETE));
+      }
     };
 
     /** oauth-callback.html may call opener.location.replace(/?oauth_resume=1&code=...) before postMessage is observed. */
@@ -464,7 +531,10 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     };
 
     queueMicrotask(() => pollStorageOnce());
-    pollInterval = setInterval(pollStorageOnce, 50);
+    pollInterval = setInterval(() => {
+      pollStorageOnce();
+      pollMessagingHandoffReady();
+    }, 50);
 
     // Wait after popup closes before failing: callback defers window.close() so parent can still
     // receive postMessage / BroadcastChannel / poll localStorage in slow browsers.
@@ -473,6 +543,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       if (settled) return;
       tryAcceptFromOpenerUrl();
       if (settled) return;
+      pollMessagingHandoffReady();
       try {
         if (!popup.closed) {
           popupEverSeenOpen = true;

@@ -8,8 +8,6 @@ import { Notification } from '../services/notificationService';
 import { KeyDeviceBanner } from '../components/KeyDeviceBanner';
 import { ConnectionHealthBanner } from '../components/ConnectionHealthBanner';
 import { DmCryptoUnlockModal } from '../components/DmCryptoUnlockModal';
-import { MessagingIdentityImportModal } from '../components/MessagingIdentityImportModal';
-import { PN_SHOW_IDENTITY_IMPORT_EVENT } from '../services/messagingIdentityImport';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNOAuthService } from '../services/pnOAuthService';
 import {
@@ -31,7 +29,6 @@ export function MessagesPage({ initialThread, onCreatorClick, onNotificationClic
   const { userState } = useUserState();
   const [showDmUnlock, setShowDmUnlock] = useState(false);
   const [dmUnlockDismissed, setDmUnlockDismissed] = useState(false);
-  const [showIdentityImport, setShowIdentityImport] = useState(false);
 
   const refreshDmUnlockOffer = useCallback(() => {
     restoreMessagingAfterOAuth();
@@ -59,14 +56,11 @@ export function MessagesPage({ initialThread, onCreatorClick, onNotificationClic
       setDmUnlockDismissed(false);
       setShowDmUnlock(true);
     };
-    const onShowImport = () => setShowIdentityImport(true);
     window.addEventListener(DM_IDENTITY_CHANGE_EVENT, onIdentityChange);
     window.addEventListener(SHOW_DM_UNLOCK_EVENT, onShowModal);
-    window.addEventListener(PN_SHOW_IDENTITY_IMPORT_EVENT, onShowImport);
     return () => {
       window.removeEventListener(DM_IDENTITY_CHANGE_EVENT, onIdentityChange);
       window.removeEventListener(SHOW_DM_UNLOCK_EVENT, onShowModal);
-      window.removeEventListener(PN_SHOW_IDENTITY_IMPORT_EVENT, onShowImport);
     };
   }, [refreshDmUnlockOffer]);
 
@@ -97,15 +91,6 @@ export function MessagesPage({ initialThread, onCreatorClick, onNotificationClic
             setShowDmUnlock(false);
             setDmUnlockDismissed(true);
           }}
-        />
-      )}
-      {showIdentityImport && (
-        <MessagingIdentityImportModal
-          onImported={() => {
-            setShowIdentityImport(false);
-            refreshDmUnlockOffer();
-          }}
-          onCancel={() => setShowIdentityImport(false)}
         />
       )}
     </div>

@@ -16,12 +16,16 @@ When the user unlocks pN on the API consent page (`browser-app`), **one unlock**
 
 1. Consent decrypts the identity file locally and extracts ML-KEM session + encrypted identity blob.
 2. Redirect to `oauth-callback.html` stashes session in popup `window.name`, identity in URL hash (large blob), and embeds **`messagingHandoff`** in the same `oauth_callback` localStorage/postMessage payload as the authorization code.
-3. `runOAuthCallback` applies `messagingHandoff` and polls for backup delivery **before** marking the user unlocked. On **messaging.parnoir.com** (`VITE_MESSAGING_ONLY`), unlock **fails** if messaging keys did not land (no “OAuth-only” broken state).
+3. `runOAuthCallback` applies `messagingHandoff` **before** token exchange and **before** `setUnlocked`. Unlock **fails** if `isDmIdentityReady()` is false (no “OAuth-only” broken state) on **both** `browse.parnoir.com` and `messaging.parnoir.com`.
 4. Stored: `pn_encrypted_identity_v1` (localStorage), `pn_dm_session_v1` (sessionStorage), ML-KEM in memory.
 
 Cross-origin consent `postMessage` is supplementary only; the oauth-callback bundle is the primary path.
 
-`identity_handoff=required` forces the identity unlock form when OAuth exists but messaging material is missing on device. Messaging-only builds set this automatically until keys are present.
+`identity_handoff=required` is set on authorize when messaging keys are not in memory on that origin.
+
+## Connection status banner
+
+[`ConnectionHealthBanner`](apps/aggregator-browser/src/components/ConnectionHealthBanner.tsx) is **read-only diagnostics** (OAuth, Drive, messaging). It does not trigger a second unlock. If messaging keys are missing, the user **locks and unlocks once** via the padlock OAuth flow.
 
 ## Key modals
 
@@ -49,7 +53,7 @@ Cross-origin consent `postMessage` is supplementary only; the oauth-callback bun
 1. **Fresh unlock:** Lock pN → unlock via OAuth popup with identity file → Messages tab shows no amber banner; `isDmIdentityReady()` true.
 2. **Connection accept:** Send request from user B → user A accepts from Notifications, Connection Requests, and Connections tab — all succeed without extra OAuth.
 3. **Tab refresh:** Reload page → `restoreDmSessionFromStorage()` restores session; accept still works.
-4. **Reconnect without re-consent:** OAuth valid + `pn_encrypted_identity_v1` present but session cleared → "Enter passcode" opens `DmCryptoUnlockModal`, not full OAuth consent.
-5. **Fast path unchanged:** User with existing OAuth grants who never stored identity → reconnect shows identity unlock on consent (`identity_handoff=required`), one time, then keys persist.
+4. **Tab refresh:** Reload page → `restoreDmSessionFromStorage()` restores in-memory keys when possible; otherwise `DmCryptoUnlockModal` (passcode only, no OAuth).
+5. **Per origin:** Unlock on `browse.parnoir.com` does not provision `messaging.parnoir.com` — each origin needs one atomic unlock.
 
 See [MESSAGING_ARCHITECTURE.md](./MESSAGING_ARCHITECTURE.md) and [security/MESSAGING_COORDINATOR_POLICY.md](./security/MESSAGING_COORDINATOR_POLICY.md) (what the operator may see vs message content).

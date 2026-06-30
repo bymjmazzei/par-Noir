@@ -3,11 +3,8 @@ import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from '../services/pnOAuthService';
 import {
   DM_IDENTITY_CHANGE_EVENT,
-  hasStoredEncryptedIdentity,
   isDmIdentityReady,
 } from '../services/dmIdentitySession';
-import { requestMessagingIdentityImport } from '../services/messagingIdentityImport';
-import { requestMessagingReconnect } from '../services/messagingReconnect';
 import { restoreMessagingAfterOAuth } from '../services/messagingOAuthHandoff';
 
 export const ConnectionHealthBanner: React.FC = () => {
@@ -51,23 +48,11 @@ export const ConnectionHealthBanner: React.FC = () => {
 
   if (oauthOk && driveOk && messagingOk) return null;
 
-  const handleRestoreMessaging = () => {
-    if (hasStoredEncryptedIdentity()) {
-      window.dispatchEvent(new CustomEvent('pn_show_dm_unlock_modal'));
-      return;
-    }
-    if (oauthOk) {
-      requestMessagingIdentityImport();
-      return;
-    }
-    requestMessagingReconnect();
-  };
-
   return (
     <div className="mx-3 mb-3 p-3 rounded-lg bg-amber-950/50 border border-amber-800/60 text-amber-100 text-xs space-y-2">
       <p className="font-medium">Connection status</p>
       <ul className="list-disc pl-4 space-y-0.5">
-        {!oauthOk && <li>Not connected — unlock with pN OAuth</li>}
+        {!oauthOk && <li>Not connected — use the lock icon to unlock with pN OAuth</li>}
         {oauthOk && driveOk === false && (
           <li>
             Google Drive not connected — connect at{' '}
@@ -77,18 +62,12 @@ export const ConnectionHealthBanner: React.FC = () => {
           </li>
         )}
         {oauthOk && !messagingOk && (
-          <li>Messaging encryption not loaded — restore keys to send or accept connections</li>
+          <li>
+            Messaging encryption not loaded — lock and unlock your pN with the lock icon to restore
+            messaging keys
+          </li>
         )}
       </ul>
-      {oauthOk && !messagingOk && (
-        <button
-          type="button"
-          onClick={handleRestoreMessaging}
-          className="rounded-md bg-amber-500 px-3 py-1.5 text-xs font-medium text-black hover:bg-amber-400"
-        >
-          {hasStoredEncryptedIdentity() ? 'Enter passcode' : 'Unlock with identity file'}
-        </button>
-      )}
     </div>
   );
 };

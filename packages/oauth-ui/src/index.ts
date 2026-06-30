@@ -14,6 +14,7 @@ export {
   PN_OAUTH_OPENER_WINDOW_NAME,
   PN_OAUTH_STORAGE_PENDING,
   PN_OAUTH_STORAGE_LATEST_KEY,
+  MESSAGING_HANDOFF_INCOMPLETE,
 } from './pnOAuthPopup';
 export const PN_MESSAGING_IDENTITY_MESSAGE = 'pn_messaging_identity' as const;
 export const PN_MESSAGING_SESSION_MESSAGE = 'pn_messaging_session' as const;

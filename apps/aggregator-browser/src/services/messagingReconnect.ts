@@ -1,9 +1,8 @@
 /**
- * Allows messaging UI to trigger OAuth re-unlock when ML-KEM session is missing.
+ * Allows messaging UI to trigger passcode restore when encrypted identity exists on device.
  */
 
 import { isDmIdentityReady, hasStoredEncryptedIdentity } from './dmIdentitySession';
-import { requestMessagingIdentityImport } from './messagingIdentityImport';
 import { invalidateUserProfileCache } from './profileService';
 
 let reconnectHandler: (() => void) | null = null;
@@ -50,7 +49,7 @@ function promptMessagingReconnect(): void {
   if (hasStoredEncryptedIdentity()) {
     promptPasscodeUnlock();
   } else {
-    requestMessagingIdentityImport();
+    requestMessagingReconnect();
   }
 }
 

@@ -54,7 +54,14 @@ export function restoreMessagingAfterOAuth(): void {
   restoreDmSessionFromStorage();
 }
 
-/** True when messaging can work: keys in memory, or encrypted identity on device for passcode restore. */
+/** Encrypted identity on disk — passcode re-derive after tab refresh only; not OAuth unlock success. */
+export function hasRestorableMessagingMaterial(): boolean {
+  return hasStoredEncryptedIdentity();
+}
+
+/**
+ * @deprecated Use isDmIdentityReady() for OAuth gates or hasRestorableMessagingMaterial() for passcode modal.
+ */
 export function isMessagingUnlockSatisfied(): boolean {
   return isDmIdentityReady() || hasStoredEncryptedIdentity();
 }
@@ -68,7 +75,7 @@ export async function waitForAndApplyMessagingHandoff(maxMs = 8_000): Promise<bo
   let applied = applyPendingMessagingOAuthHandoffFromStorage();
   if (applied) {
     restoreDmSessionFromStorage();
-    return isMessagingUnlockSatisfied();
+    return isDmIdentityReady();
   }
 
   return new Promise((resolve) => {
@@ -91,7 +98,7 @@ export async function waitForAndApplyMessagingHandoff(maxMs = 8_000): Promise<bo
       if (didApply) {
         restoreDmSessionFromStorage();
       }
-      return isMessagingUnlockSatisfied();
+      return isDmIdentityReady();
     };
 
     try {
@@ -113,7 +120,7 @@ export async function waitForAndApplyMessagingHandoff(maxMs = 8_000): Promise<bo
         return;
       }
       if (Date.now() >= deadline) {
-        finish(isMessagingUnlockSatisfied());
+        finish(isDmIdentityReady());
         return;
       }
       setTimeout(poll, 80);
@@ -126,5 +133,5 @@ export async function waitForAndApplyMessagingHandoff(maxMs = 8_000): Promise<bo
 export const MESSAGING_HANDOFF_INCOMPLETE = 'MESSAGING_HANDOFF_INCOMPLETE';
 
 export function messagingHandoffIncompleteMessage(): string {
-  return 'Unlock did not load messaging keys. Use your current pN identity file at pn.parnoir.com, then try again.';
+  return 'Unlock did not load messaging keys. Lock your pN and unlock again with your identity file.';
 }
