@@ -54,6 +54,8 @@ import { usePushNotifications } from './hooks/usePushNotifications';
 import { reportCopyright } from './services/reportCopyrightService';
 import { PNOAuthService } from './services/pnOAuthService';
 import { MESSAGING_ONLY } from './config/buildFlags';
+import { MessagingIdentityImportModal } from './components/MessagingIdentityImportModal';
+import { PN_SHOW_IDENTITY_IMPORT_EVENT } from './services/messagingIdentityImport';
 import { SplashScreen } from '@capacitor/splash-screen';
 
 // Shared types - importing from id-dashboard
@@ -146,6 +148,13 @@ function App() {
     setShowUploadQueueOverlay,
   } = useModals();
   const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null);
+  const [showIdentityImport, setShowIdentityImport] = useState(false);
+
+  useEffect(() => {
+    const onShowImport = () => setShowIdentityImport(true);
+    window.addEventListener(PN_SHOW_IDENTITY_IMPORT_EVENT, onShowImport);
+    return () => window.removeEventListener(PN_SHOW_IDENTITY_IMPORT_EVENT, onShowImport);
+  }, []);
 
   const discoveryEnabled = useMemo(
     () =>
@@ -1154,6 +1163,12 @@ function App() {
             try { const { CentralMetadataAggregator } = await import('./services/storage/CentralMetadataAggregator'); CentralMetadataAggregator.clearCache(); } catch (_) {}
             if (discoverFilesRef.current) await discoverFilesRef.current(undefined, true, 0, false);
           }}
+        />
+      )}
+      {showIdentityImport && (
+        <MessagingIdentityImportModal
+          onImported={() => setShowIdentityImport(false)}
+          onCancel={() => setShowIdentityImport(false)}
         />
       )}
       </AppLayout>

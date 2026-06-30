@@ -3,6 +3,7 @@
  */
 
 import { isDmIdentityReady, hasStoredEncryptedIdentity } from './dmIdentitySession';
+import { requestMessagingIdentityImport } from './messagingIdentityImport';
 import { invalidateUserProfileCache } from './profileService';
 
 let reconnectHandler: (() => void) | null = null;
@@ -49,7 +50,7 @@ function promptMessagingReconnect(): void {
   if (hasStoredEncryptedIdentity()) {
     promptPasscodeUnlock();
   } else {
-    requestMessagingReconnect();
+    requestMessagingIdentityImport();
   }
 }
 

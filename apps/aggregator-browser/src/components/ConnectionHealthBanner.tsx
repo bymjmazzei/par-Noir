@@ -6,6 +6,7 @@ import {
   hasStoredEncryptedIdentity,
   isDmIdentityReady,
 } from '../services/dmIdentitySession';
+import { requestMessagingIdentityImport } from '../services/messagingIdentityImport';
 import { requestMessagingReconnect } from '../services/messagingReconnect';
 import { restoreMessagingAfterOAuth } from '../services/messagingOAuthHandoff';
 
@@ -53,6 +54,10 @@ export const ConnectionHealthBanner: React.FC = () => {
   const handleRestoreMessaging = () => {
     if (hasStoredEncryptedIdentity()) {
       window.dispatchEvent(new CustomEvent('pn_show_dm_unlock_modal'));
+      return;
+    }
+    if (oauthOk) {
+      requestMessagingIdentityImport();
       return;
     }
     requestMessagingReconnect();

@@ -208,7 +208,12 @@ export function useAuthAndSession({
         pushPnOAuthDebug('run_oauth_callback_await_inflight', {});
         await inflight;
         const session = PNOAuthService.loadSession();
-        if (session && PNOAuthService.isSessionValid(session) && session.did) {
+        if (
+          session &&
+          PNOAuthService.isSessionValid(session) &&
+          session.did &&
+          isMessagingUnlockSatisfied()
+        ) {
           const pnId = session.pnIdentifier || session.did;
           setUnlocked(pnId);
           restoreMessagingAfterOAuth();
@@ -267,7 +272,7 @@ export function useAuthAndSession({
         await waitForAndApplyMessagingHandoff(8_000);
         restoreMessagingAfterOAuth();
 
-        if (MESSAGING_ONLY && !isMessagingUnlockSatisfied()) {
+        if (!isMessagingUnlockSatisfied()) {
           setLocked();
           clearDmIdentity();
           PNOAuthService.clearSession();
@@ -652,9 +657,7 @@ export function useAuthAndSession({
     async (options?: { identityHandoffRequired?: boolean }) => {
       restoreMessagingAfterOAuth();
 
-      const needsMessagingHandoff =
-        options?.identityHandoffRequired === true ||
-        (MESSAGING_ONLY && !isMessagingUnlockSatisfied());
+      const needsMessagingHandoff = !isMessagingUnlockSatisfied();
 
       const redirectUri = `${window.location.origin}/oauth-callback.html`;
       let authUrl = PNOAuthService.getAuthorizationUrl({
