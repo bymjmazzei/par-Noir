@@ -168,24 +168,46 @@
         };
       }
 
-      function collectMessagingHandoffPayload() {
+      function collectMessagingHandoffPayload(clearSources) {
         var windowPart = parseMessagingHandoffFromWindowName(window.name);
         var identityFromHash = parseMessagingIdentityFromHash(window.location.hash);
         var payload = mergeMessagingHandoffParts(windowPart, identityFromHash);
+        if (!payload && windowPart && windowPart.session) {
+          payload = windowPart;
+        }
         if (!payload || (!payload.identity && !payload.session)) return null;
 
-        if (window.name.indexOf(MESSAGING_HANDOFF_PREFIX) === 0) {
-          window.name = '';
-        }
-        if (identityFromHash) {
-          try {
-            history.replaceState(null, '', window.location.pathname + window.location.search);
-          } catch (e) {}
+        if (clearSources) {
+          if (window.name.indexOf(MESSAGING_HANDOFF_PREFIX) === 0) {
+            window.name = '';
+          }
+          if (identityFromHash) {
+            try {
+              history.replaceState(null, '', window.location.pathname + window.location.search);
+            } catch (e) {}
+          }
         }
         return payload;
       }
 
-      var messagingHandoffPayload = collectMessagingHandoffPayload();
+      function enrichHandoffPayload(payload) {
+        if (!payload) return null;
+        if (payload.session) return payload;
+        try {
+          var storedRaw = localStorage.getItem(MESSAGING_HANDOFF_STORAGE);
+          if (!storedRaw) return payload;
+          var stored = JSON.parse(storedRaw);
+          if (stored && stored.session) {
+            return mergeMessagingHandoffParts(
+              { v: 1, timestamp: stored.timestamp || Date.now(), session: stored.session },
+              payload.identity || stored.identity || null
+            );
+          }
+        } catch (e) {}
+        return payload;
+      }
+
+      var messagingHandoffPayload = enrichHandoffPayload(collectMessagingHandoffPayload(false));
 
       oauthDbg('messaging_handoff_collect', {
         hasPayload: !!messagingHandoffPayload,
@@ -394,6 +416,8 @@
       } else {
         tryClosePopup();
       }
+
+      collectMessagingHandoffPayload(true);
     })();
   </script>
 </body>

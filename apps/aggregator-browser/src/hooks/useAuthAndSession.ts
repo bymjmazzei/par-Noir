@@ -227,10 +227,27 @@ export function useAuthAndSession({
           if (data.messagingHandoff) {
             applyMessagingHandoffFromUnknown(data.messagingHandoff);
           }
+
+          const ageShared = data.age_shared === 'true';
+          pushPnOAuthDebug('run_oauth_callback_exchange', {
+            redirectUriLen: exchangeRedirectUri.length,
+            messagingReadyBeforeExchange: isDmIdentityReady(),
+          });
+          const tokenResponse = await PNOAuthService.exchangeCodeForToken(
+            data.code!,
+            exchangeRedirectUri,
+            ageShared
+          );
+          const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
+
           if (!isDmIdentityReady()) {
-            await waitForAndApplyMessagingHandoff(12_000);
+            await waitForAndApplyMessagingHandoff(15_000);
             restoreMessagingAfterOAuth();
           }
+
+          pushPnOAuthDebug('run_oauth_callback_messaging_gate', {
+            messagingReady: isDmIdentityReady(),
+          });
 
           if (!isDmIdentityReady()) {
             setLocked();
@@ -239,17 +256,6 @@ export function useAuthAndSession({
             showErrorToast(messagingHandoffIncompleteMessage());
             throw new Error(MESSAGING_HANDOFF_INCOMPLETE);
           }
-
-          const ageShared = data.age_shared === 'true';
-          pushPnOAuthDebug('run_oauth_callback_exchange', {
-            redirectUriLen: exchangeRedirectUri.length,
-          });
-          const tokenResponse = await PNOAuthService.exchangeCodeForToken(
-            data.code!,
-            exchangeRedirectUri,
-            ageShared
-          );
-        const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
 
         let feedTokens: unknown[] = [];
         try {
@@ -693,7 +699,7 @@ export function useAuthAndSession({
         completeViaParentNavigation: false,
         requireMessagingHandoff: needsMessagingHandoff,
         isMessagingReady: () => isDmIdentityReady(),
-        messagingHandoffTimeoutMs: 12_000,
+        messagingHandoffTimeoutMs: 15_000,
       });
 
       if (!result.code && !result.error) {

@@ -39,10 +39,14 @@ export function applyPendingMessagingOAuthHandoffFromStorage(): boolean {
   try {
     const raw = localStorage.getItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE);
     if (!raw) return false;
-    localStorage.removeItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE);
     const payload = parseMessagingHandoffFromStorage(raw);
     if (!payload) return false;
-    return applyMessagingOAuthHandoff(payload);
+    applyMessagingOAuthHandoff(payload);
+    // Keep stashed payload until ML-KEM session is in memory (identity-only is not enough).
+    if (isDmIdentityReady()) {
+      localStorage.removeItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE);
+    }
+    return isDmIdentityReady();
   } catch {
     return false;
   }
@@ -72,10 +76,9 @@ export function isMessagingUnlockSatisfied(): boolean {
  */
 export async function waitForAndApplyMessagingHandoff(maxMs = 8_000): Promise<boolean> {
   const deadline = Date.now() + maxMs;
-  let applied = applyPendingMessagingOAuthHandoffFromStorage();
-  if (applied) {
+  if (applyPendingMessagingOAuthHandoffFromStorage()) {
     restoreDmSessionFromStorage();
-    return isDmIdentityReady();
+    if (isDmIdentityReady()) return true;
   }
 
   return new Promise((resolve) => {
@@ -90,16 +93,26 @@ export async function waitForAndApplyMessagingHandoff(maxMs = 8_000): Promise<bo
       } catch {
         /* ignore */
       }
+      window.removeEventListener('storage', onStorage);
       resolve(ok);
     };
 
     const tryApply = (): boolean => {
-      const didApply = applyPendingMessagingOAuthHandoffFromStorage();
-      if (didApply) {
-        restoreDmSessionFromStorage();
-      }
+      applyPendingMessagingOAuthHandoffFromStorage();
+      restoreDmSessionFromStorage();
       return isDmIdentityReady();
     };
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== PN_MESSAGING_OAUTH_HANDOFF_STORAGE || !event.newValue) return;
+      if (tryApply()) finish(true);
+    };
+
+    try {
+      window.addEventListener('storage', onStorage);
+    } catch {
+      /* ignore */
+    }
 
     try {
       bc = new BroadcastChannel(PN_MESSAGING_OAUTH_BROADCAST);
@@ -107,6 +120,13 @@ export async function waitForAndApplyMessagingHandoff(maxMs = 8_000): Promise<bo
         if (isMessagingOAuthHandoffPayload(event.data)) {
           applyMessagingOAuthHandoff(event.data);
           restoreDmSessionFromStorage();
+          if (isDmIdentityReady()) {
+            try {
+              localStorage.removeItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE);
+            } catch {
+              /* ignore */
+            }
+          }
         }
         if (tryApply()) finish(true);
       };

@@ -677,10 +677,28 @@
           console.log('[OAuth] redirect handoff', {
             hasSession: !!lastMessagingSession,
             hasIdentity: !!lastMessagingIdentity,
-            hashLen: identityHash ? identityHash.length : 0
+            hashLen: identityHash ? identityHash.length : 0,
+            windowNameLen: window.name ? window.name.length : 0
           });
         }
       } catch (e) {}
+      var navigateToCallback = function (targetUrl) {
+        if (!isBrowserApp) {
+          window.location.href = targetUrl;
+          return;
+        }
+        var burst = [0, 40, 100, 180];
+        for (var bi = 0; bi < burst.length; bi++) {
+          (function (ms) {
+            setTimeout(function () {
+              resendMessagingHandoff();
+            }, ms);
+          })(burst[bi]);
+        }
+        setTimeout(function () {
+          window.location.href = targetUrl;
+        }, 220);
+      };
       var u;
       try {
         u = new URL(redirectUri);
@@ -693,7 +711,7 @@
         if (popupFlow) qs0 += '&pn_popup=1';
         var fallbackUrl = redirectUri + sep0 + qs0;
         if (identityHash) fallbackUrl += '#' + identityHash;
-        window.location.href = fallbackUrl;
+        navigateToCallback(fallbackUrl);
         return;
       }
       u.searchParams.set('code', code);
@@ -701,7 +719,7 @@
       if (ageShared !== undefined && ageShared !== null) u.searchParams.set('age_shared', ageShared ? 'true' : 'false');
       if (popupFlow) u.searchParams.set('pn_popup', '1');
       if (identityHash) u.hash = identityHash;
-      window.location.href = u.toString();
+      navigateToCallback(u.toString());
     }
     
     let identityData = null;
@@ -718,9 +736,23 @@
     var PN_MESSAGING_IDENTITY_HASH_PREFIX = 'pn_messaging_identity_v1:';
 
     function stashMessagingHandoffInWindowName() {
-      if (!isBrowserApp) return;
-      if (!lastMessagingSession) return;
+      if (!isBrowserApp || !lastMessagingSession) return;
       var payload = { v: 1, timestamp: Date.now(), session: lastMessagingSession };
+      if (lastMessagingIdentity) {
+        var withIdentity = {
+          v: 1,
+          timestamp: payload.timestamp,
+          session: lastMessagingSession,
+          identity: lastMessagingIdentity
+        };
+        try {
+          var fullName = PN_MESSAGING_HANDOFF_WINDOW_PREFIX + JSON.stringify(withIdentity);
+          if (fullName.length <= 3800) {
+            window.name = fullName;
+            return;
+          }
+        } catch (e) {}
+      }
       try {
         window.name = PN_MESSAGING_HANDOFF_WINDOW_PREFIX + JSON.stringify(payload);
       } catch (e) {
