@@ -5,6 +5,8 @@ import { pushPnOAuthDebug } from './pnOAuthDebug';
  * Survives Strict Mode remount and races where the URL is read after replaceState.
  */
 export const PN_OAUTH_RESUME_SEARCH_KEY = 'pn_oauth_resume_search_v1';
+/** Encrypted identity hash from consent redirect (paired with oauth_resume search). */
+export const PN_OAUTH_RESUME_HASH_KEY = 'pn_oauth_resume_hash_v1';
 
 export function isOAuthResumeUrl(search?: string): boolean {
   if (typeof window === 'undefined') return false;
@@ -22,6 +24,7 @@ export function clearOAuthResumeSnapshotUnlessOnResumeUrl(): void {
   try {
     if (!isOAuthResumeUrl()) {
       sessionStorage.removeItem(PN_OAUTH_RESUME_SEARCH_KEY);
+      sessionStorage.removeItem(PN_OAUTH_RESUME_HASH_KEY);
     }
   } catch {
     /* ignore */
@@ -51,8 +54,12 @@ export function snapshotOAuthResumeSearchFromUrl(): void {
   try {
     if (isOAuthResumeUrl()) {
       sessionStorage.setItem(PN_OAUTH_RESUME_SEARCH_KEY, window.location.search);
+      if (window.location.hash) {
+        sessionStorage.setItem(PN_OAUTH_RESUME_HASH_KEY, window.location.hash);
+      }
       pushPnOAuthDebug('bootstrap_snapshot_resume', {
         searchLen: window.location.search.length,
+        hashLen: window.location.hash.length,
         hasCodeParam: new URLSearchParams(window.location.search).has('code'),
         hasErrorParam: new URLSearchParams(window.location.search).has('error'),
       });

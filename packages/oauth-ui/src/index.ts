@@ -32,6 +32,7 @@ export {
   getOAuthResumeSearchParams,
   isOAuthResumeUrl,
   PN_OAUTH_RESUME_SEARCH_KEY,
+  PN_OAUTH_RESUME_HASH_KEY,
 } from './pnOAuthResumeBootstrap';
 export {
   PN_MESSAGING_HANDOFF_WINDOW_PREFIX,

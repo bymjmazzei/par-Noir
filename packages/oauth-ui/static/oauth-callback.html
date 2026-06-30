@@ -311,7 +311,11 @@
       function buildResumeUrl() {
         var q = new URLSearchParams(window.location.search);
         q.set('oauth_resume', '1');
-        return window.location.origin + '/?' + q.toString();
+        var url = window.location.origin + '/?' + q.toString();
+        if (window.location.hash) {
+          url += window.location.hash;
+        }
+        return url;
       }
       var resumeUrl = buildResumeUrl();
 

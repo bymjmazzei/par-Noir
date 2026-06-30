@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { initPnOAuthDebugFromUrl } from '@par-noir/oauth-ui';
 import { snapshotOAuthResumeSearchFromUrl } from './oauthResumeBootstrap';
+import { sanitizeMessagingOAuthOnStartup } from './messagingStartupSanitize';
 import { initBrowserSentry } from './config/sentry';
 import App from './App';
 import './index.css';
@@ -13,6 +14,7 @@ initBrowserSentry();
 /** Opt-in: ?pn_debug_oauth=1 — then pnOAuthDebugCopy() or window.__PN_OAUTH_DEBUG__ (production strips console.*). */
 initPnOAuthDebugFromUrl();
 snapshotOAuthResumeSearchFromUrl();
+sanitizeMessagingOAuthOnStartup();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

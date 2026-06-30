@@ -10,6 +10,8 @@ import {
   startPnOAuthPopup,
   PN_OAUTH_STORAGE_LATEST_KEY,
   PN_OAUTH_STORAGE_PENDING,
+  PN_OAUTH_RESUME_HASH_KEY,
+  parseMessagingIdentityFromHash,
 } from '@par-noir/oauth-ui';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNOAuthService } from '../services/pnOAuthService';
@@ -25,6 +27,7 @@ import {
 import { registerMessagingReconnect } from '../services/messagingReconnect';
 import {
   applyMessagingHandoffFromUnknown,
+  applyMessagingOAuthHandoff,
   MESSAGING_HANDOFF_INCOMPLETE,
   messagingHandoffIncompleteMessage,
   restoreMessagingAfterOAuth,
@@ -38,17 +41,6 @@ import { MESSAGING_ONLY } from '../config/buildFlags';
  * The page reloads and saves the session there, while `startPnOAuthPopup` in the old document
  * often rejects with POPUP_CLOSED (no postMessage). Poll until the new session appears.
  */
-async function waitForValidOAuthSession(maxMs: number): Promise<boolean> {
-  const deadline = Date.now() + maxMs;
-  while (Date.now() < deadline) {
-    const session = PNOAuthService.loadSession();
-    if (session && PNOAuthService.isSessionValid(session) && session.did) {
-      return true;
-    }
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  return false;
-}
 
 type OAuthCallbackStoragePayload = {
   code?: string;
@@ -104,9 +96,19 @@ async function recoverAfterPopupClosed(
   const deadline = Date.now() + maxMs;
   let consumedStorageKey: string | null = null;
 
-  while (Date.now() < deadline) {
+  const oauthSessionReady = (): boolean => {
     const session = PNOAuthService.loadSession();
-    if (session && PNOAuthService.isSessionValid(session) && session.did) {
+    if (!session || !PNOAuthService.isSessionValid(session) || !session.did) {
+      return false;
+    }
+    if (MESSAGING_ONLY && !isMessagingUnlockSatisfied()) {
+      return false;
+    }
+    return true;
+  };
+
+  while (Date.now() < deadline) {
+    if (oauthSessionReady()) {
       return true;
     }
 
@@ -124,8 +126,12 @@ async function recoverAfterPopupClosed(
       } catch {
         /* ignore */
       }
-      await runOAuthCallback(payload.data, { redirectUri });
-      if (await waitForValidOAuthSession(10_000)) {
+      try {
+        await runOAuthCallback(payload.data, { redirectUri });
+      } catch {
+        /* runOAuthCallback surfaces toast for messaging handoff failures */
+      }
+      if (oauthSessionReady()) {
         return true;
       }
     }
@@ -369,8 +375,16 @@ export function useAuthAndSession({
     const age_shared = params.get('age_shared');
     const error_description = params.get('error_description') || undefined;
 
+    const resumeHash =
+      (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(PN_OAUTH_RESUME_HASH_KEY)) ||
+      window.location.hash;
+    const identityFromHash = parseMessagingIdentityFromHash(resumeHash);
+    if (identityFromHash) {
+      applyMessagingOAuthHandoff({ v: 1, timestamp: Date.now(), identity: identityFromHash });
+    }
+
     const clearOAuthQuery = () => {
-      window.history.replaceState({}, '', `${window.location.pathname}${window.location.hash}`);
+      window.history.replaceState({}, '', window.location.pathname);
     };
 
     void (async () => {
@@ -393,6 +407,7 @@ export function useAuthAndSession({
         pushPnOAuthDebug('oauth_resume_replace_state', {});
         try {
           sessionStorage.removeItem(PN_OAUTH_RESUME_SEARCH_KEY);
+          sessionStorage.removeItem(PN_OAUTH_RESUME_HASH_KEY);
         } catch {
           /* ignore */
         }
@@ -617,6 +632,8 @@ export function useAuthAndSession({
       }
     } else if (sessionValid && session.did) {
       if (MESSAGING_ONLY && !isMessagingUnlockSatisfied()) {
+        setLocked();
+        clearDmIdentity();
         PNOAuthService.clearSession();
         return;
       }
@@ -721,13 +738,20 @@ export function useAuthAndSession({
       } else {
         await runOAuthPopupUnlock({ identityHandoffRequired: true });
       }
+      restoreMessagingAfterOAuth();
+      if (!isDmIdentityReady() && !hasStoredEncryptedIdentity()) {
+        showErrorToast(messagingHandoffIncompleteMessage());
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg !== 'POPUP_BLOCKED' && msg !== 'POPUP_CLOSED' && msg !== 'POPUP_TIMEOUT') {
+      if (msg === MESSAGING_HANDOFF_INCOMPLETE) {
+        showErrorToast(messagingHandoffIncompleteMessage());
+      } else if (msg !== 'POPUP_BLOCKED' && msg !== 'POPUP_CLOSED' && msg !== 'POPUP_TIMEOUT') {
         console.error('Messaging reconnect OAuth error:', err);
+        showErrorToast('Could not restore messaging keys. Try again with your pN identity file.');
       }
     }
-  }, [userState.isUnlocked, runOAuthPopupUnlock]);
+  }, [userState.isUnlocked, runOAuthPopupUnlock, showErrorToast]);
 
   useEffect(() => registerMessagingReconnect(reconnectPnForMessaging), [reconnectPnForMessaging]);
 

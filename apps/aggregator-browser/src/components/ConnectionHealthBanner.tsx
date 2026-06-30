@@ -13,7 +13,7 @@ export const ConnectionHealthBanner: React.FC = () => {
   const [driveOk, setDriveOk] = useState<boolean | null>(null);
   const [messagingOk, setMessagingOk] = useState(() => isDmIdentityReady());
   const session = PNOAuthService.loadSession();
-  const oauthOk = !!session?.accessToken;
+  const oauthOk = !!(session?.accessToken && PNOAuthService.isSessionValid(session));
 
   const refreshMessagingState = useCallback(() => {
     restoreMessagingAfterOAuth();
