@@ -1,5 +1,5 @@
 import { pushPnOAuthDebug } from './pnOAuthDebug';
-import { handoffProvidesMessagingSession } from './messagingOAuthHandoff';
+import { handoffProvidesMessagingSession, PN_MESSAGING_OAUTH_HANDOFF_STORAGE } from './messagingOAuthHandoff';
 
 /**
  * Shared pN OAuth popup flow. Must stay in sync with static oauth-callback.html
@@ -479,13 +479,18 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     const onStorage = (event: StorageEvent) => {
       const key = event.key;
       if (!key || !event.newValue) return;
-      // oauth-callback.html uses pn_oauth_callback_<timestamp>, not a fixed key
-      if (!key.startsWith('pn_oauth_callback_')) return;
-      try {
-        const data = JSON.parse(event.newValue) as Record<string, unknown>;
-        acceptPayload(data, 'storage');
-      } catch {
-        /* ignore */
+      if (key.startsWith('pn_oauth_callback_')) {
+        try {
+          const data = JSON.parse(event.newValue) as Record<string, unknown>;
+          acceptPayload(data, 'storage');
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      // Messaging handoff may land after oauth code when popup is already closing.
+      if (key === PN_MESSAGING_OAUTH_HANDOFF_STORAGE && pendingOAuthResult?.code) {
+        pollMessagingHandoffReady();
       }
     };
 
@@ -558,6 +563,17 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
         if (popupClosedTime === null) popupClosedTime = Date.now();
         else if (Date.now() - popupClosedTime > POPUP_CLOSED_GRACE_MS) {
           tryAcceptFromOpenerUrl();
+          pollStorageOnce();
+          if (pendingOAuthResult?.code) {
+            if (messagingHandoffSatisfied(pendingOAuthResult)) {
+              finish(pendingOAuthResult);
+              return;
+            }
+            if (requireMessagingHandoff) {
+              fail(new Error(MESSAGING_HANDOFF_INCOMPLETE));
+              return;
+            }
+          }
           if (!settled) fail(new Error('POPUP_CLOSED'));
         }
       } catch {

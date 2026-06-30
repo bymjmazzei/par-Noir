@@ -96,10 +96,7 @@ async function recoverAfterPopupClosed(
 
   const oauthSessionReady = (): boolean => {
     const session = PNOAuthService.loadSession();
-    if (!session || !PNOAuthService.isSessionValid(session) || !session.did) {
-      return false;
-    }
-    return isDmIdentityReady();
+    return !!(session && PNOAuthService.isSessionValid(session) && session.did);
   };
 
   while (Date.now() < deadline) {
@@ -697,7 +694,9 @@ export function useAuthAndSession({
         expectedState,
         timeoutMs: 120_000,
         completeViaParentNavigation: false,
-        requireMessagingHandoff: needsMessagingHandoff,
+        // Messaging gate lives in runOAuthCallback (token exchange + wait loop).
+        // Blocking the popup on handoff causes POPUP_CLOSED when the callback tab closes first.
+        requireMessagingHandoff: false,
         isMessagingReady: () => isDmIdentityReady(),
         messagingHandoffTimeoutMs: 15_000,
       });
