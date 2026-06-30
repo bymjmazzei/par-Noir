@@ -87,6 +87,48 @@ export function buildOAuthConsentUrl(config: OAuthConsentUrlConfig): string {
   return `${base}/oauth/authorize/consent?${params.toString()}`;
 }
 
+/** browser-app / messaging: same-origin unlock page (not API consent). */
+export interface BrowserAppOAuthUnlockUrlConfig {
+  clientId: string;
+  appOrigin: string;
+  redirectUri: string;
+  /** Passed to oauth-authorize.html for POST /oauth/authorize/authenticate */
+  apiEndpoint?: string;
+  scope?: string[];
+  state?: string;
+  nonce?: string;
+  forPopup?: boolean;
+  identityHandoffRequired?: boolean;
+}
+
+export function buildBrowserAppOAuthUnlockUrl(config: BrowserAppOAuthUnlockUrlConfig): string {
+  const state = config.state ?? generateRandomHex(16);
+  const nonce = config.nonce ?? generateRandomHex(16);
+  const scope = (config.scope ?? ['openid', 'profile']).join(' ');
+  const forPopup = config.forPopup !== false;
+
+  const params = new URLSearchParams({
+    client_id: config.clientId,
+    redirect_uri: config.redirectUri,
+    response_type: 'code',
+    scope,
+    state,
+    nonce,
+  });
+  if (forPopup) {
+    params.set('popup', 'true');
+  }
+  if (config.identityHandoffRequired) {
+    params.set('identity_handoff', 'required');
+  }
+  if (config.apiEndpoint) {
+    params.set('api_endpoint', config.apiEndpoint.replace(/\/$/, ''));
+  }
+
+  const base = config.appOrigin.replace(/\/$/, '');
+  return `${base}/oauth-authorize.html?${params.toString()}`;
+}
+
 /** @deprecated Use buildOAuthConsentUrl */
 export function buildOAuthAuthorizeUrl(config: OAuthConsentUrlConfig): string {
   return buildOAuthConsentUrl(config);

@@ -66,6 +66,8 @@ On **native**, unlock uses **full-page** OAuth (`popup=false`) instead of `windo
 
 ### Aggregator browser: pN unlock (OAuth authorize page)
 
-`public/oauth-authorize.html` uses **`https://api.parnoir.com`** unless the page is opened from the Vite dev server (**`http://localhost:3001`** / **`http://127.0.0.1:3001`** only). Do not infer “localhost → :3001” from hostname alone — some WebViews mis-report `protocol`, which caused **`ERR_CLEARTEXT_NOT_PERMITTED`** for Capacitor’s **`https://localhost`**.
+`apps/aggregator-browser/public/oauth-authorize.html` is served on the **same origin** as the browse/messaging app (`browse.parnoir.com`, `messaging.parnoir.com`). The popup decrypts locally, stashes ML-KEM keys to `localStorage`, POSTs to `api.parnoir.com/oauth/authorize/authenticate`, then redirects to same-origin `oauth-callback.html`.
 
-**Physical keys (USB / NFC):** The authorize page matches the dashboard: **File** (upload `.json`), **USB** (key + drive passcode + optional payload, same as dashboard export), or **NFC** (Web NFC on Chrome/Android). Shared logic lives in `public/js/oauth-physical-unlock.js` (also copied under Prism). Native Android apps declare **`android.permission.NFC`** so Web NFC can work in the WebView where the OS allows it.
+API endpoint: `api_endpoint` query param (set by the React app from `VITE_API_ENDPOINT`), default `https://api.parnoir.com`. Do not infer “localhost → local API” from hostname alone — some WebViews mis-report `protocol`, which caused **`ERR_CLEARTEXT_NOT_PERMITTED`** for Capacitor’s **`https://localhost`**.
+
+**Physical keys (USB / NFC):** The authorize page matches the dashboard: **File** (upload `.json`), **USB** (key + drive passcode + optional payload, same as dashboard export), or **NFC** (Web NFC on Chrome/Android). Shared logic lives in `public/js/oauth-physical-unlock.js` (source: `api/src/static/oauth/oauth-physical-unlock.js`). Messaging stash: `public/js/oauth-messaging-stash.js` (from `@par-noir/oauth-ui`). Native Android apps declare **`android.permission.NFC`** so Web NFC can work in the WebView where the OS allows it.

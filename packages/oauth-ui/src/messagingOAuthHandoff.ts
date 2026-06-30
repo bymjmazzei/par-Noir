@@ -1,6 +1,7 @@
 /**
  * Messaging OAuth handoff contract — must stay in sync with:
- * - api/src/templates/oauth-consent.html (stash in window.name before redirect)
+ * - apps/aggregator-browser/public/oauth-authorize.html (same-origin stash before redirect)
+ * - packages/oauth-ui/static/oauth-messaging-stash.js
  * - packages/oauth-ui/static/oauth-callback.html (read + deliver same-origin)
  * - apps/aggregator-browser/public/oauth-callback.html
  * - sdk/identity-sdk/static/oauth-callback.html
@@ -158,5 +159,144 @@ export function parseMessagingHandoffFromStorage(
     return normalizeMessagingHandoffPayload(parsed);
   } catch {
     return null;
+  }
+}
+
+/** Extract ML-KEM session from decrypted identity (matches oauth-consent / oauth-authorize). */
+export function extractMessagingSessionFromDecrypted(
+  decrypted: unknown
+): MessagingHandoffSession | null {
+  if (!isRecord(decrypted)) return null;
+  const pqc = isRecord(decrypted.pqcSecrets) ? decrypted.pqcSecrets : null;
+  const mlKemSecretKey =
+    (pqc && typeof pqc.mlKemSecretKey === 'string' ? pqc.mlKemSecretKey : undefined) ||
+    (typeof decrypted.mlKemSecretKey === 'string' ? decrypted.mlKemSecretKey : undefined);
+  if (!mlKemSecretKey) return null;
+  const mlKemPublicKey =
+    (pqc && typeof pqc.mlKemPublicKey === 'string' ? pqc.mlKemPublicKey : undefined) ||
+    (typeof decrypted.mlKemPublicKey === 'string' ? decrypted.mlKemPublicKey : undefined);
+  return { mlKemSecretKey, mlKemPublicKey };
+}
+
+/** Build encrypted identity handoff payload from unlock material. */
+export function buildMessagingIdentityPayload(
+  encryptedIdentity: unknown,
+  decrypted: unknown
+): MessagingHandoffIdentity | null {
+  if (!isRecord(encryptedIdentity)) return null;
+  const { encryptedData, iv, salt } = encryptedIdentity;
+  if (
+    typeof encryptedData !== 'string' ||
+    typeof iv !== 'string' ||
+    typeof salt !== 'string'
+  ) {
+    return null;
+  }
+  const dec = isRecord(decrypted) ? decrypted : null;
+  const pqc = dec && isRecord(dec.pqcSecrets) ? dec.pqcSecrets : null;
+  const mlKemPublicKey =
+    (typeof encryptedIdentity.mlKemPublicKey === 'string'
+      ? encryptedIdentity.mlKemPublicKey
+      : undefined) ||
+    (pqc && typeof pqc.mlKemPublicKey === 'string' ? pqc.mlKemPublicKey : undefined) ||
+    (dec && typeof dec.mlKemPublicKey === 'string' ? dec.mlKemPublicKey : undefined);
+  return {
+    encryptedData,
+    iv,
+    salt,
+    publicKey:
+      typeof encryptedIdentity.publicKey === 'string'
+        ? encryptedIdentity.publicKey
+        : undefined,
+    mlKemPublicKey,
+  };
+}
+
+/** Build full handoff payload after unlock decrypt. */
+export function buildMessagingHandoffFromUnlock(
+  encryptedIdentity: unknown,
+  decrypted: unknown,
+  timestamp = Date.now()
+): MessagingOAuthHandoffPayload | null {
+  const session = extractMessagingSessionFromDecrypted(decrypted);
+  const identity = buildMessagingIdentityPayload(encryptedIdentity, decrypted);
+  if (!session && !identity) return null;
+  return {
+    v: 1,
+    timestamp,
+    session: session ?? undefined,
+    identity: identity ?? undefined,
+  };
+}
+
+export interface StashMessagingHandoffOptions {
+  /** When true (browser-app), throw if ML-KEM session is missing. */
+  requireSession?: boolean;
+  /** Notify opener via postMessage (same-origin unlock popup). */
+  notifyOpener?: boolean;
+}
+
+/**
+ * Write messaging handoff to same-origin localStorage + BroadcastChannel.
+ * Must run before redirect to oauth-callback.html on app origin.
+ */
+export function stashMessagingHandoffOnOrigin(
+  payload: MessagingOAuthHandoffPayload,
+  options: StashMessagingHandoffOptions = {}
+): void {
+  const normalized = normalizeMessagingHandoffPayload(payload);
+  if (!normalized) {
+    throw new Error('Invalid messaging handoff payload');
+  }
+  if (options.requireSession && !handoffProvidesMessagingSession(normalized)) {
+    throw new Error(
+      'This pN identity does not include messaging encryption keys. Create or update your identity at pn.parnoir.com, then try again.'
+    );
+  }
+
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(
+      PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
+      serializeMessagingHandoffForStorage(normalized)
+    );
+  }
+
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      const ch = new BroadcastChannel(PN_MESSAGING_OAUTH_BROADCAST);
+      ch.postMessage(normalized);
+      ch.close();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (
+    options.notifyOpener &&
+    typeof window !== 'undefined' &&
+    window.opener &&
+    !window.opener.closed
+  ) {
+    const origin = window.location.origin;
+    if (normalized.identity) {
+      try {
+        window.opener.postMessage(
+          { type: 'pn_messaging_identity', identity: normalized.identity },
+          origin
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+    if (normalized.session) {
+      try {
+        window.opener.postMessage(
+          { type: 'pn_messaging_session', session: normalized.session },
+          origin
+        );
+      } catch {
+        /* ignore */
+      }
+    }
   }
 }

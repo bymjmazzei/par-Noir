@@ -1,17 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildMessagingHandoffFromUnlock,
   buildMessagingHandoffWindowName,
   buildMessagingIdentityHash,
+  buildMessagingIdentityPayload,
   buildMessagingSessionWindowName,
   clearMessagingHandoffFromWindowName,
+  extractMessagingSessionFromDecrypted,
   handoffProvidesMessagingSession,
   normalizeMessagingHandoffPayload,
   mergeMessagingHandoffParts,
   parseMessagingHandoffFromStorage,
   parseMessagingHandoffFromWindowName,
   parseMessagingIdentityFromHash,
+  PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
   PN_MESSAGING_HANDOFF_WINDOW_PREFIX,
   serializeMessagingHandoffForStorage,
+  stashMessagingHandoffOnOrigin,
   type MessagingOAuthHandoffPayload,
 } from './messagingOAuthHandoff';
 
@@ -97,5 +102,63 @@ describe('messagingOAuthHandoff', () => {
     });
     expect(normalized?.session).toEqual(samplePayload.session);
     expect(normalized?.identity).toBeUndefined();
+  });
+
+  it('extractMessagingSessionFromDecrypted reads pqcSecrets', () => {
+    const session = extractMessagingSessionFromDecrypted({
+      pqcSecrets: { mlKemSecretKey: 'sk', mlKemPublicKey: 'pk' },
+    });
+    expect(session).toEqual({ mlKemSecretKey: 'sk', mlKemPublicKey: 'pk' });
+  });
+
+  it('buildMessagingHandoffFromUnlock combines identity and session', () => {
+    const decrypted = {
+      pqcSecrets: { mlKemSecretKey: 'sk', mlKemPublicKey: 'pk' },
+    };
+    const encrypted = samplePayload.identity!;
+    const handoff = buildMessagingHandoffFromUnlock(encrypted, decrypted, 42);
+    expect(handoff?.session?.mlKemSecretKey).toBe('sk');
+    expect(handoff?.identity?.encryptedData).toBe('enc');
+    expect(handoff?.timestamp).toBe(42);
+  });
+
+  it('buildMessagingIdentityPayload normalizes encrypted identity', () => {
+    const identity = buildMessagingIdentityPayload(samplePayload.identity, {
+      pqcSecrets: { mlKemPublicKey: 'kem-pk' },
+    });
+    expect(identity?.mlKemPublicKey).toBe('kem-pk');
+  });
+
+  it('stashMessagingHandoffOnOrigin writes localStorage', () => {
+    const store = new Map<string, string>();
+    const ls = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        store.set(k, v);
+      },
+      clear: () => store.clear(),
+    };
+    const prev = globalThis.localStorage;
+    Object.defineProperty(globalThis, 'localStorage', { value: ls, configurable: true });
+    try {
+      stashMessagingHandoffOnOrigin(samplePayload, { requireSession: true });
+      const raw = ls.getItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE);
+      expect(parseMessagingHandoffFromStorage(raw)).toEqual(samplePayload);
+      expect(handoffProvidesMessagingSession(parseMessagingHandoffFromStorage(raw))).toBe(true);
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', {
+        value: prev,
+        configurable: true,
+      });
+    }
+  });
+
+  it('stashMessagingHandoffOnOrigin fails closed without session when required', () => {
+    expect(() =>
+      stashMessagingHandoffOnOrigin(
+        { v: 1, timestamp: 1, identity: samplePayload.identity },
+        { requireSession: true }
+      )
+    ).toThrow(/messaging encryption keys/);
   });
 });

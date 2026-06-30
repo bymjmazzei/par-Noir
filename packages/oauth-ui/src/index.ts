@@ -4,10 +4,11 @@ export {
   UnlockButton,
   buildOAuthAuthorizeUrl,
   buildOAuthConsentUrl,
+  buildBrowserAppOAuthUnlockUrl,
   startPnOAuthPopup,
 } from './UnlockButton';
 export type { UnlockButtonConfig, UnlockButtonProps } from './UnlockButton';
-export type { OAuthConsentUrlConfig, PnOAuthPopupResult, StartPnOAuthPopupOptions } from './pnOAuthPopup';
+export type { OAuthConsentUrlConfig, BrowserAppOAuthUnlockUrlConfig, PnOAuthPopupResult, StartPnOAuthPopupOptions } from './pnOAuthPopup';
 export {
   PN_OAUTH_BROADCAST_CHANNEL,
   PN_OAUTH_MESSAGE_TYPE,
@@ -52,6 +53,10 @@ export {
   isMessagingOAuthHandoffPayload,
   handoffProvidesMessagingSession,
   normalizeMessagingHandoffPayload,
+  extractMessagingSessionFromDecrypted,
+  buildMessagingIdentityPayload,
+  buildMessagingHandoffFromUnlock,
+  stashMessagingHandoffOnOrigin,
 } from './messagingOAuthHandoff';
 export type {
   MessagingHandoffIdentity,

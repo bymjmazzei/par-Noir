@@ -90,6 +90,22 @@ const DEFAULT_ORIGINS = [
 const ENV_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean) || [];
 const ALLOWED_ORIGINS = [...new Set([...DEFAULT_ORIGINS, ...ENV_ORIGINS])]; // Merge and deduplicate
 
+/** First-party browser/messaging app origins — unlock runs on app host, not API consent. */
+const BROWSER_APP_UNLOCK_ORIGINS = new Set([
+  'https://browse.parnoir.com',
+  'https://messaging.parnoir.com',
+  'http://localhost:3001',
+  'http://127.0.0.1:3001',
+]);
+
+function isBrowserAppUnlockOrigin(redirectUri: string): boolean {
+  try {
+    return BROWSER_APP_UNLOCK_ORIGINS.has(new URL(redirectUri).origin);
+  } catch {
+    return false;
+  }
+}
+
 /** True when Origin is this server's own public host (consent HTML on API calling API). */
 function isSameOriginAsApiHost(origin: string, req: express.Request): boolean {
   try {
@@ -10185,7 +10201,35 @@ class ProductionServer {
         }
       }
 
-      // All clients: use API-hosted canonical consent page
+      // browser-app: same-origin unlock on browse/messaging (not API consent)
+      if (isBrowserApp && isBrowserAppUnlockOrigin(redirect_uri as string)) {
+        let appOrigin: string;
+        try {
+          appOrigin = new URL(redirect_uri as string).origin;
+        } catch {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'Invalid redirect_uri',
+          });
+        }
+        const unlockUrl = new URL(`${appOrigin}/oauth-authorize.html`);
+        unlockUrl.searchParams.set('client_id', client_id as string);
+        unlockUrl.searchParams.set('redirect_uri', redirect_uri as string);
+        unlockUrl.searchParams.set('response_type', 'code');
+        if (scope) unlockUrl.searchParams.set('scope', scope as string);
+        if (state) unlockUrl.searchParams.set('state', state as string);
+        if (nonce) unlockUrl.searchParams.set('nonce', nonce as string);
+        const popupParam = req.query.popup;
+        if (popupParam === 'true') unlockUrl.searchParams.set('popup', 'true');
+        const identityHandoff = req.query.identity_handoff;
+        if (identityHandoff === 'required') {
+          unlockUrl.searchParams.set('identity_handoff', 'required');
+        }
+        unlockUrl.searchParams.set('api_endpoint', `${req.protocol}://${req.get('host')}`);
+        return res.redirect(unlockUrl.toString());
+      }
+
+      // Third parties: API-hosted canonical consent page
       const consentUrl = new URL(`${req.protocol}://${req.get('host')}/oauth/consent`);
       consentUrl.searchParams.set('client_id', client_id as string);
       consentUrl.searchParams.set('redirect_uri', redirect_uri as string);

@@ -795,7 +795,7 @@ export function useAuthAndSession({
           setLocked();
           clearDmIdentity();
           PNOAuthService.clearSession();
-          showErrorToast(messagingHandoffIncompleteMessage());
+          // Toast already shown in runOAuthCallback
         } else if (msg === 'OAUTH_STATE_MISMATCH') {
           setLocked();
           PNOAuthService.clearSession();

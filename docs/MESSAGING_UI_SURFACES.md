@@ -12,14 +12,15 @@ Same E2E behavior on every surface: **one pN unlock** (OAuth consent with identi
 
 ## OAuth handoff (single unlock)
 
-When the user unlocks pN on the API consent page (`browser-app`), **one unlock** delivers both the OAuth authorization code and messaging keys:
+When the user unlocks pN via the padlock on `browse.parnoir.com` or `messaging.parnoir.com`, **one unlock** delivers both the OAuth authorization code and messaging keys:
 
-1. Consent decrypts the identity file locally and extracts ML-KEM session + encrypted identity blob.
-2. Redirect to `oauth-callback.html` stashes session in popup `window.name`, identity in URL hash (large blob), and embeds **`messagingHandoff`** in the same `oauth_callback` localStorage/postMessage payload as the authorization code.
-3. `runOAuthCallback` applies `messagingHandoff` **before** token exchange and **before** `setUnlocked`. Unlock **fails** if `isDmIdentityReady()` is false (no “OAuth-only” broken state) on **both** `browse.parnoir.com` and `messaging.parnoir.com`.
-4. Stored: `pn_encrypted_identity_v1` (localStorage), `pn_dm_session_v1` (sessionStorage), ML-KEM in memory.
+1. Popup opens **same-origin** [`oauth-authorize.html`](apps/aggregator-browser/public/oauth-authorize.html) (not API consent). The page decrypts the identity file locally and extracts ML-KEM session + encrypted identity blob.
+2. Before redirect, `oauth-authorize.html` writes **`pn_messaging_oauth_handoff`** to same-origin `localStorage` (shared with the main tab). Then it redirects the popup to `oauth-callback.html` with the authorization code.
+3. `oauth-callback.html` reads the stashed handoff from `localStorage` first, delivers `oauth_callback` + `messagingHandoff` to the opener via postMessage/BroadcastChannel.
+4. `runOAuthCallback` applies `messagingHandoff` **before** token exchange and **before** `setUnlocked`. Unlock **fails** if `isDmIdentityReady()` is false (no “OAuth-only” broken state) on **both** origins.
+5. Stored: `pn_encrypted_identity_v1` (localStorage), `pn_dm_session_v1` (sessionStorage), ML-KEM in memory.
 
-Cross-origin consent `postMessage` is supplementary only; the oauth-callback bundle is the primary path.
+**Third-party OAuth** (Prism, developer portal, L5 integrators) still uses API-hosted `/oauth/consent` — they do not need ML-KEM handoff.
 
 `identity_handoff=required` is set on authorize when messaging keys are not in memory on that origin.
 

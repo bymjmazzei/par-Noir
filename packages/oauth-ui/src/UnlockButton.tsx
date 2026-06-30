@@ -6,8 +6,8 @@ import {
   type PnOAuthPopupResult,
 } from './pnOAuthPopup';
 
-export type { OAuthConsentUrlConfig } from './pnOAuthPopup';
-export { buildOAuthConsentUrl, buildOAuthAuthorizeUrl, startPnOAuthPopup } from './pnOAuthPopup';
+export type { OAuthConsentUrlConfig, BrowserAppOAuthUnlockUrlConfig } from './pnOAuthPopup';
+export { buildOAuthConsentUrl, buildOAuthAuthorizeUrl, buildBrowserAppOAuthUnlockUrl, startPnOAuthPopup } from './pnOAuthPopup';
 export type { PnOAuthPopupResult } from './pnOAuthPopup';
 
 export interface UnlockButtonConfig {

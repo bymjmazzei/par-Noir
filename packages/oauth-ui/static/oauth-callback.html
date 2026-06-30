@@ -168,7 +168,43 @@
         };
       }
 
+      function parseMessagingHandoffFromStorage(raw) {
+        if (!raw) return null;
+        try {
+          var parsed = JSON.parse(raw);
+          if (!parsed || parsed.v !== 1) return null;
+          if (!parsed.identity && !parsed.session) return null;
+          if (parsed.identity) {
+            if (
+              typeof parsed.identity.encryptedData !== 'string' ||
+              typeof parsed.identity.iv !== 'string' ||
+              typeof parsed.identity.salt !== 'string'
+            ) {
+              parsed.identity = undefined;
+            }
+          }
+          if (parsed.session) {
+            if (typeof parsed.session.mlKemSecretKey !== 'string' || !parsed.session.mlKemSecretKey) {
+              parsed.session = undefined;
+            }
+          }
+          if (!parsed.identity && !parsed.session) return null;
+          return parsed;
+        } catch (e) {
+          return null;
+        }
+      }
+
       function collectMessagingHandoffPayload(clearSources) {
+        var fromStorage = null;
+        try {
+          fromStorage = parseMessagingHandoffFromStorage(localStorage.getItem(MESSAGING_HANDOFF_STORAGE));
+        } catch (e) {}
+
+        if (fromStorage && (fromStorage.session || fromStorage.identity)) {
+          return fromStorage;
+        }
+
         var windowPart = parseMessagingHandoffFromWindowName(window.name);
         var identityFromHash = parseMessagingIdentityFromHash(window.location.hash);
         var payload = mergeMessagingHandoffParts(windowPart, identityFromHash);
