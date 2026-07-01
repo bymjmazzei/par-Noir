@@ -1591,6 +1591,72 @@ export class AggregatorMetadataServiceDB {
   }
 
   /**
+   * Sync engagement counts from the engagement table into file metadata (correct content table).
+   */
+  async syncEngagementStats(fileId: string): Promise<PublicMetadata | null> {
+    const db = getDatabasePool();
+
+    try {
+      const current = await this.getFileMetadata(fileId);
+      if (!current) {
+        return null;
+      }
+
+      const engagementStats = await EngagementService.getEngagementStats(fileId);
+      const metadata = current.metadata;
+      const existingEngagement = metadata.engagement || {
+        views: 0,
+        likes: 0,
+        comments: 0,
+        shares: 0,
+        saves: 0,
+        lastUpdated: metadata.uploadDate || new Date().toISOString(),
+        engagementHistory: []
+      };
+
+      const updatedMetadata: PublicMetadata = {
+        ...metadata,
+        engagement: {
+          views: existingEngagement.views || 0,
+          likes: engagementStats.likes || 0,
+          comments: engagementStats.comments || 0,
+          shares: engagementStats.shares || 0,
+          saves: engagementStats.saves || 0,
+          lastUpdated: new Date().toISOString(),
+          engagementHistory: existingEngagement.engagementHistory || []
+        }
+      };
+
+      const allTables = this.getAllContentTypeTables();
+      let targetTable: string | null = null;
+
+      for (const table of allTables) {
+        const checkResult = await db.query(`SELECT file_id FROM ${table} WHERE file_id = $1`, [fileId]);
+        if (checkResult.rows.length > 0) {
+          targetTable = table;
+          break;
+        }
+      }
+
+      if (!targetTable) {
+        throw new Error(`File ${fileId} not found in any table`);
+      }
+
+      await db.query(
+        `UPDATE ${targetTable}
+         SET metadata = $1, updated_at = NOW()
+         WHERE file_id = $2`,
+        [JSON.stringify(updatedMetadata), fileId]
+      );
+
+      return updatedMetadata;
+    } catch (error) {
+      console.error(`❌ Failed to sync engagement stats for file ${fileId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Update engagement metrics for a file
    */
   async updateEngagement(

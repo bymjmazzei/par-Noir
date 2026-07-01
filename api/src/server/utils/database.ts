@@ -533,9 +533,14 @@ export async function initializeDatabase(): Promise<void> {
         user_did VARCHAR(255) NOT NULL,
         type VARCHAR(20) NOT NULL,
         content TEXT,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-        UNIQUE(file_id, user_did, type)
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
+    `);
+
+    await db.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS engagement_file_user_type_toggle_unique
+      ON engagement (file_id, user_did, type)
+      WHERE type IN ('like', 'dislike', 'share', 'save')
     `);
 
     await db.query(`

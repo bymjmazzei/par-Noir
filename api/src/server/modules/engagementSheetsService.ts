@@ -108,6 +108,26 @@ export class EngagementSheetsService {
   }
 
   /**
+   * Get or create engagement sheet (lazy init on first engagement action).
+   */
+  static async ensureEngagementSheet(
+    token: GoogleDriveToken,
+    metadataFolderId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<string> {
+    try {
+      return await this.getEngagementSheet(token, metadataFolderId, userPnIdentifier, accountId);
+    } catch (getError: unknown) {
+      const message = getError instanceof Error ? getError.message : String(getError);
+      if (!message.includes('not found')) {
+        throw getError;
+      }
+      return await this.createEngagementSheet(token, metadataFolderId, userPnIdentifier, accountId);
+    }
+  }
+
+  /**
    * Add like
    */
   static async addLike(

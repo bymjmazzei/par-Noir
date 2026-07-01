@@ -11,6 +11,7 @@ export interface EngagementMetrics {
   likes: number;
   comments: number;
   shares: number;
+  saves?: number;
   lastUpdated: string;
   engagementHistory?: Array<{
     type: 'like' | 'comment' | 'share' | 'view';

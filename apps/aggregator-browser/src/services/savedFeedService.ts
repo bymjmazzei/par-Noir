@@ -101,7 +101,7 @@ export async function saveToFeed(
 ): Promise<SavedFeed> {
   try {
     // The API expects pnIdentifier
-    const response = await fetch(`${API_ENDPOINT}/api/feeds/saved/add`, {
+    const response = await fetch(`${API_ENDPOINT}/api/feeds/saved`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({

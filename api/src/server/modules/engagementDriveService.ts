@@ -162,7 +162,7 @@ export class EngagementDriveService {
 
     const token: GoogleDriveToken = { access_token: accessToken };
 
-    const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
+    const spreadsheetId = await EngagementSheetsService.ensureEngagementSheet(
       token,
       metadataFolderId,
       userPnIdentifier,
@@ -220,7 +220,7 @@ export class EngagementDriveService {
 
     const token: GoogleDriveToken = { access_token: accessToken };
 
-    const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
+    const spreadsheetId = await EngagementSheetsService.ensureEngagementSheet(
       token,
       metadataFolderId,
       userPnIdentifier,
@@ -264,7 +264,7 @@ export class EngagementDriveService {
 
     const token: GoogleDriveToken = { access_token: accessToken };
 
-    const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
+    const spreadsheetId = await EngagementSheetsService.ensureEngagementSheet(
       token,
       metadataFolderId,
       userPnIdentifier,
@@ -293,7 +293,7 @@ export class EngagementDriveService {
 
     const token: GoogleDriveToken = { access_token: accessToken };
 
-    const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
+    const spreadsheetId = await EngagementSheetsService.ensureEngagementSheet(
       token,
       metadataFolderId,
       userPnIdentifier,
@@ -326,7 +326,7 @@ export class EngagementDriveService {
 
     const token: GoogleDriveToken = { access_token: accessToken };
 
-    const spreadsheetId = await EngagementSheetsService.getEngagementSheet(
+    const spreadsheetId = await EngagementSheetsService.ensureEngagementSheet(
       token,
       metadataFolderId,
       userPnIdentifier,

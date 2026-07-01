@@ -178,37 +178,50 @@ export function useEngagement() {
     }
   }, [userState.isUnlocked, userState.pnIdentifier]);
 
+  const parseEngagementApiError = async (response: Response): Promise<string> => {
+    try {
+      const text = await response.text();
+      try {
+        const json = JSON.parse(text) as { message?: string; error?: string };
+        return json.message || json.error || text || `Request failed (${response.status})`;
+      } catch {
+        return text || `Request failed (${response.status})`;
+      }
+    } catch {
+      return `Request failed (${response.status})`;
+    }
+  };
+
   const toggleLike = useCallback(async (fileId: string) => {
     if (userState.isUnlocked && userState.pnIdentifier) {
-      // Use backend API
-      try {
-        const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/like`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userPnIdentifier: userState.pnIdentifier })
-        });
+      const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/like`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userPnIdentifier: userState.pnIdentifier })
+      });
 
-        if (response.ok) {
-          const result = await response.json();
-          setEngagement(prev => {
-            const newLikes = new Set(prev.likes);
-            const newDislikes = new Set(prev.dislikes || []);
-            if (result.liked) {
-              newLikes.add(fileId);
-              newDislikes.delete(fileId); // Remove dislike if exists
-            } else {
-              newLikes.delete(fileId);
-            }
-            return { ...prev, likes: newLikes, dislikes: newDislikes };
-          });
-          return;
-        }
-      } catch (error) {
-        console.error('Failed to toggle like:', error);
+      if (!response.ok) {
+        const message = await parseEngagementApiError(response);
+        console.error('Failed to toggle like:', message);
+        throw new Error(message);
       }
+
+      const result = await response.json();
+      setEngagement(prev => {
+        const newLikes = new Set(prev.likes);
+        const newDislikes = new Set(prev.dislikes || []);
+        if (result.liked) {
+          newLikes.add(fileId);
+          newDislikes.delete(fileId);
+        } else {
+          newLikes.delete(fileId);
+        }
+        return { ...prev, likes: newLikes, dislikes: newDislikes };
+      });
+      return;
     }
 
-    // Fallback to localStorage
+    // Fallback to localStorage when not unlocked
     setEngagement(prev => {
       const newLikes = new Set(prev.likes);
       const newDislikes = new Set(prev.dislikes || []);
@@ -224,37 +237,35 @@ export function useEngagement() {
 
   const toggleDislike = useCallback(async (fileId: string) => {
     if (userState.isUnlocked && userState.pnIdentifier) {
-      // Use backend API
-      try {
-        const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/dislike`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userPnIdentifier: userState.pnIdentifier })
-        });
+      const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/dislike`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userPnIdentifier: userState.pnIdentifier })
+      });
 
-        if (response.ok) {
-          const result = await response.json();
-          setEngagement(prev => {
-            const newDislikes = new Set(prev.dislikes || []);
-            const newLikes = new Set(prev.likes);
-            // Remove from likes if it was liked
-            newLikes.delete(fileId);
-            
-            if (result.disliked) {
-              newDislikes.add(fileId);
-            } else {
-              newDislikes.delete(fileId);
-            }
-            return { ...prev, likes: newLikes, dislikes: newDislikes };
-          });
-          return;
-        }
-      } catch (error) {
-        console.error('Failed to toggle dislike:', error);
+      if (!response.ok) {
+        const message = await parseEngagementApiError(response);
+        console.error('Failed to toggle dislike:', message);
+        throw new Error(message);
       }
+
+      const result = await response.json();
+      setEngagement(prev => {
+        const newDislikes = new Set(prev.dislikes || []);
+        const newLikes = new Set(prev.likes);
+        newLikes.delete(fileId);
+
+        if (result.disliked) {
+          newDislikes.add(fileId);
+        } else {
+          newDislikes.delete(fileId);
+        }
+        return { ...prev, likes: newLikes, dislikes: newDislikes };
+      });
+      return;
     }
 
-    // Fallback to localStorage
+    // Fallback to localStorage when not unlocked
     setEngagement(prev => {
       const newDislikes = new Set(prev.dislikes || []);
       const newLikes = new Set(prev.likes);
@@ -283,76 +294,75 @@ export function useEngagement() {
     postReply?: { fileId: string; thumbnail?: string; title?: string }
   ) => {
     if (userState.isUnlocked && userState.pnIdentifier) {
-      // Use backend API
-      try {
-        const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/comment`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userPnIdentifier: userState.pnIdentifier,
-            content,
-            authorName,
-            parentCommentId,
-            postReply
-          })
-        });
+      const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/comment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userPnIdentifier: userState.pnIdentifier,
+          content,
+          authorName,
+          parentCommentId,
+          postReply
+        })
+      });
 
-        if (response.ok) {
-          const comment = await response.json();
-          setEngagement(prev => {
-            const newComments = new Map(prev.comments);
-            const fileComments = newComments.get(fileId) || [];
-            
-            if (parentCommentId) {
-              // Add as reply to parent comment
-              const updatedComments = fileComments.map(c => {
-                if (c.id === parentCommentId) {
-                  return {
-                    ...c,
-                    replies: [...(c.replies || []), comment]
-                  };
-                }
-                // Also check nested replies
-                if (c.replies) {
-                  const updateNestedReplies = (replies: Comment[]): Comment[] => {
-                    return replies.map(r => {
-                      if (r.id === parentCommentId) {
-                        return {
-                          ...r,
-                          replies: [...(r.replies || []), comment]
-                        };
-                      }
-                      if (r.replies) {
-                        return {
-                          ...r,
-                          replies: updateNestedReplies(r.replies)
-                        };
-                      }
-                      return r;
-                    });
-                  };
-                  return {
-                    ...c,
-                    replies: updateNestedReplies(c.replies)
-                  };
-                }
-                return c;
-              });
-              newComments.set(fileId, updatedComments);
-            } else {
-              newComments.set(fileId, [...fileComments, comment]);
-            }
-            
-            return { ...prev, comments: newComments };
-          });
-          return;
-        }
-      } catch (error) {
-        console.error('Failed to add comment:', error);
+      if (!response.ok) {
+        const message = await parseEngagementApiError(response);
+        console.error('Failed to add comment:', message);
+        throw new Error(message);
       }
+
+      const comment = await response.json();
+      setEngagement(prev => {
+        const newComments = new Map(prev.comments);
+        const fileComments = newComments.get(fileId) || [];
+        
+        if (parentCommentId) {
+          // Add as reply to parent comment
+          const updatedComments = fileComments.map(c => {
+            if (c.id === parentCommentId) {
+              return {
+                ...c,
+                replies: [...(c.replies || []), comment]
+              };
+            }
+            // Also check nested replies
+            if (c.replies) {
+              const updateNestedReplies = (replies: Comment[]): Comment[] => {
+                return replies.map(r => {
+                  if (r.id === parentCommentId) {
+                    return {
+                      ...r,
+                      replies: [...(r.replies || []), comment]
+                    };
+                  }
+                  if (r.replies) {
+                    return {
+                      ...r,
+                      replies: updateNestedReplies(r.replies)
+                    };
+                  }
+                  return r;
+                });
+              };
+              return {
+                ...c,
+                replies: updateNestedReplies(c.replies)
+              };
+            }
+            return c;
+          });
+          newComments.set(fileId, updatedComments);
+        } else {
+          newComments.set(fileId, [...fileComments, comment]);
+        }
+        
+        return { ...prev, comments: newComments };
+      });
+      return;
     }
 
-    // Fallback to localStorage
+    // Fallback to localStorage when not unlocked
     const comment: Comment = {
       id: `comment-${Date.now()}-${Math.random()}`,
       fileId,

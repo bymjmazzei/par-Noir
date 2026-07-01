@@ -1150,29 +1150,6 @@ export class EngagementService {
     }
   }
 
-  /**
-   * Increment public comment count
-   * Note: Individual comment content is stored in Google Drive, this is only for counting
-   */
-  static async incrementCommentCount(fileId: string, userPnIdentifier: string): Promise<void> {
-    const db = getDatabasePool();
-    
-    try {
-      // Insert a record to increment count
-      // Note: The UNIQUE constraint limits one record per user per file per type,
-      // but comments can be multiple per user. This is a limitation of the current schema.
-      // For now, we'll insert and let it fail silently on conflict (best effort counting)
-      await db.query(`
-        INSERT INTO engagement (file_id, user_did, type)
-        VALUES ($1, $2, 'comment')
-        ON CONFLICT (file_id, user_did, type) DO NOTHING
-      `, [fileId, userPnIdentifier]);
-    } catch (error) {
-      console.error('Failed to increment comment count:', error);
-      // Don't throw - counting is best effort
-    }
-  }
-
   /** Creator fund / monetization: same rule as engagement — active row in verified_identities. */
   static async isIdentityVerifiedForMonetization(pnIdentifier: string): Promise<boolean> {
     const db = getDatabasePool();
