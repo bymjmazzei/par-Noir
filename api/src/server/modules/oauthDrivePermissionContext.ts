@@ -3,7 +3,7 @@
  * Uses credential candidate lookup (pn + DID) consistent with googleDriveProxy.
  */
 
-import { lookupPnFolderLayout } from './integratorFolderService';
+import { isPnDriveIndexComplete, readPnDriveIndex, PN_DRIVE_SHEET_KEYS } from './pnDriveIndex';
 import { normalizePnIdentifier } from './integratorStoragePaths';
 import { storageCredentialsService, type StoredCredentialsRecord } from './storageCredentialsService';
 import { ThirdPartyPermissionsService } from './thirdPartyPermissionsService';
@@ -15,6 +15,7 @@ export interface OAuthDrivePermissionContext {
   userAccessToken: string;
   accountId: string | undefined;
   metadataFolderId: string;
+  thirdPartyPermissionsSheetId: string;
   normalizedPn: string;
 }
 
@@ -89,14 +90,15 @@ export async function resolveOAuthDriveContext(params: {
       extraCandidates
     );
 
-    const layout = await lookupPnFolderLayout(userAccessToken, normalizedPn);
-    if (!layout?.metadataFolderId) return null;
+    const index = readPnDriveIndex(credentialsRecord.credentials as Record<string, unknown>);
+    if (!isPnDriveIndexComplete(index)) return null;
 
     return {
       credentialsRecord,
       userAccessToken,
       accountId,
-      metadataFolderId: layout.metadataFolderId,
+      metadataFolderId: index.metadataFolderId,
+      thirdPartyPermissionsSheetId: index.sheetIds[PN_DRIVE_SHEET_KEYS.THIRD_PARTY_PERMISSIONS],
       normalizedPn,
     };
   } catch (error: unknown) {
@@ -146,7 +148,8 @@ export async function getBrowserAppExistingPermissions(params: {
       ctx.userAccessToken,
       ctx.metadataFolderId,
       ctx.normalizedPn,
-      ctx.accountId
+      ctx.accountId,
+      ctx.thirdPartyPermissionsSheetId
     );
 
     const browserApp = permissions['browser-app'];

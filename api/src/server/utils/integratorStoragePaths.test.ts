@@ -1,3 +1,10 @@
+jest.mock('../modules/storageCredentialsService', () => ({
+  storageCredentialsService: {
+    getCredentials: jest.fn(),
+    upsertCredentials: jest.fn(),
+  },
+}));
+
 import {
   integratorFolderName,
   integratorPathLabel,
@@ -8,10 +15,28 @@ import {
 } from '../modules/integratorStoragePaths';
 import { IntegratorStorageError } from '../modules/integratorFolderService';
 import {
-  hasCachedDriveLayout,
-  mergeCachedFolderIds,
-  readCachedFolderIds
-} from '../modules/pnDriveLayout';
+  isPnDriveIndexComplete,
+  PN_DRIVE_SHEET_KEYS,
+  readPnDriveIndex,
+  type PnDriveIndex,
+} from '../modules/pnDriveIndex';
+
+function minimalTestIndex(overrides: Partial<PnDriveIndex> = {}): PnDriveIndex {
+  const sheetIds = Object.fromEntries(
+    Object.values(PN_DRIVE_SHEET_KEYS).map((k) => [k, `sheet-${k}`])
+  );
+  return {
+    schemaVersion: 1,
+    pnFolderId: 'pn-root',
+    metadataFolderId: 'meta',
+    integratorsRootId: 'int-root',
+    messagesFolderId: 'msg-folder',
+    inboxSheetId: 'inbox',
+    sheetIds,
+    conversationSheets: {},
+    ...overrides,
+  };
+}
 
 describe('integratorStoragePaths', () => {
   it('normalizes pn identifier', () => {
@@ -56,49 +81,21 @@ describe('IntegratorStorageError', () => {
   });
 });
 
-describe('pnDriveLayout cache', () => {
-  it('readCachedFolderIds parses known keys', () => {
-    const parsed = readCachedFolderIds({
-      cachedFolderIds: {
-        pnFolderId: 'pn-root',
-        metadataFolderId: 'meta',
-        integratorsRootId: 'int-root',
-        messagesFolderId: 'msg',
-        inboxSheetId: 'inbox',
-        junk: 123
-      }
-    });
-    expect(parsed).toEqual({
-      pnFolderId: 'pn-root',
-      metadataFolderId: 'meta',
-      integratorsRootId: 'int-root',
-      messagesFolderId: 'msg',
-      inboxSheetId: 'inbox'
-    });
+describe('pnDriveIndex', () => {
+  it('readPnDriveIndex parses complete index', () => {
+    const index = minimalTestIndex();
+    const parsed = readPnDriveIndex({ pnDriveIndex: index });
+    expect(parsed?.metadataFolderId).toBe('meta');
+    expect(isPnDriveIndexComplete(parsed)).toBe(true);
   });
 
-  it('readCachedFolderIds returns empty object when missing', () => {
-    expect(readCachedFolderIds({})).toEqual({});
-    expect(readCachedFolderIds({ cachedFolderIds: null })).toEqual({});
+  it('readPnDriveIndex returns null when core folders missing', () => {
+    expect(readPnDriveIndex({ pnDriveIndex: { sheetIds: {} } })).toBeNull();
   });
 
-  it('hasCachedDriveLayout requires core folder ids', () => {
-    expect(hasCachedDriveLayout({})).toBe(false);
-    expect(
-      hasCachedDriveLayout({
-        pnFolderId: 'a',
-        metadataFolderId: 'b',
-        integratorsRootId: 'c'
-      })
-    ).toBe(true);
-  });
-
-  it('mergeCachedFolderIds overlays patches', () => {
-    expect(
-      mergeCachedFolderIds({ pnFolderId: 'old' }, { integratorsRootId: 'new' })
-    ).toEqual({
-      pnFolderId: 'old',
-      integratorsRootId: 'new'
-    });
+  it('isPnDriveIndexComplete requires all sheet keys', () => {
+    const incomplete = minimalTestIndex();
+    delete incomplete.sheetIds[PN_DRIVE_SHEET_KEYS.CONNECTIONS];
+    expect(isPnDriveIndexComplete(incomplete)).toBe(false);
   });
 });

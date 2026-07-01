@@ -72,24 +72,12 @@ async function getSenderDriveContext(senderPn: string, accountId?: string): Prom
 
   const accessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, resolvedAccountId);
 
-  const cachedPnFolderId = credentials.cachedFolderIds?.pnFolderId as string | undefined;
-  let pnFolderId = cachedPnFolderId;
-  if (!pnFolderId) {
-    const pnFolderName = `par Noir - ${pnIdentifier}`;
-    const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    const folderRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id)&pageSize=1`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    if (!folderRes.ok) {
-      throw new Error('Failed to locate sender pN folder on Drive');
-    }
-    const folderData = (await folderRes.json()) as { files?: Array<{ id: string }> };
-    pnFolderId = folderData.files?.[0]?.id;
-    if (!pnFolderId) {
-      throw new Error('Sender pN folder not found on Drive');
-    }
+  const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
+  const index = readPnDriveIndex(credentials as Record<string, unknown>);
+  if (!isPnDriveIndexComplete(index)) {
+    throw new Error('Sender Google Drive index not initialized');
   }
+  const pnFolderId = index.pnFolderId;
 
   return { pnIdentifier, accessToken, token, accountId: resolvedAccountId, pnFolderId };
 }

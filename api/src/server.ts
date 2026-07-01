@@ -372,15 +372,15 @@ class ProductionServer {
    * Do not create anything. Use in usage paths; if null, return 409 DRIVE_NOT_INITIALIZED.
    */
   private async getMetadataFolder(
-    token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
+    _token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
     pnIdentifier: string,
-    accountId?: string
+    _accountId?: string
   ): Promise<{ metadataFolderId: string; pnFolderId: string } | null> {
-    const { resolvePnDriveFolders } = await import('./server/modules/resolvePnDriveFolders');
-    const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+    const { loadPnDriveIndex, isPnDriveIndexComplete } = await import('./server/modules/pnDriveIndex');
     const normalizedPn = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-    const pinnedFolderId = await storageCredentialsService.getDriveFolderId(normalizedPn);
-    return resolvePnDriveFolders(token, normalizedPn, accountId, pinnedFolderId);
+    const index = await loadPnDriveIndex(normalizedPn);
+    if (!isPnDriveIndexComplete(index)) return null;
+    return { metadataFolderId: index.metadataFolderId, pnFolderId: index.pnFolderId };
   }
 
   private async getRecoveryDriveContext(userPnIdentifier: string): Promise<{
@@ -600,6 +600,91 @@ class ProductionServer {
     } catch (error: any) {
       console.error(`[initializeIndexFiles] Error creating owner-file-index.xlsx:`, error);
     }
+  }
+
+  /** Init-only: discover folders/sheets, persist complete pnDriveIndex. */
+  private async initializeGoogleDriveStorage(
+    token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
+    pnIdentifier: string,
+    accountId: string | undefined,
+    credentials: Record<string, unknown>,
+    identityId: string,
+    logPrefix: string
+  ): Promise<{ metadataFolderId: string; pnFolderId: string }> {
+    const { initializeGoogleDriveIndex } = await import('./server/modules/pnDriveInit');
+    const { persistPnDriveIndex, PN_DRIVE_SHEET_KEYS } = await import('./server/modules/pnDriveIndex');
+
+    const index = await initializeGoogleDriveIndex(token, pnIdentifier, accountId, {
+      initializeContentClassFolders: (t, m, p, a) =>
+        this.initializeContentClassFolders(t, m, p, a),
+      initializeProfileAndMetadataFiles: async (t, m, p, a) => {
+        const now = new Date().toISOString();
+        const { PreferencesService } = await import('./server/modules/preferencesService');
+        const { ProfileService } = await import('./server/modules/profileService');
+        try {
+          const existingPreferences = await PreferencesService.getPreferencesFile(
+            t.access_token,
+            m,
+            p
+          );
+          if (!existingPreferences) {
+            await PreferencesService.updatePreferencesFile(
+              t.access_token,
+              m,
+              p,
+              { identifier: p, updatedAt: now, tagPreferences: [] },
+              p,
+              a
+            );
+            console.log(`${logPrefix} Initialized preferences.json`);
+          }
+        } catch (prefError: unknown) {
+          console.warn(
+            `${logPrefix} Failed to initialize preferences.json:`,
+            prefError instanceof Error ? prefError.message : prefError
+          );
+        }
+        try {
+          const existingProfile = await ProfileService.getProfileFile(t.access_token, m);
+          if (!existingProfile) {
+            await ProfileService.updateProfileFile(t.access_token, m, identityId, {
+              identifier: identityId,
+              updatedAt: now,
+            });
+            console.log(`${logPrefix} Initialized profile.json`);
+          }
+        } catch (profileError: unknown) {
+          console.warn(
+            `${logPrefix} Failed to initialize profile.json:`,
+            profileError instanceof Error ? profileError.message : profileError
+          );
+        }
+      },
+    });
+
+    const publicSheetId = index.sheetIds[PN_DRIVE_SHEET_KEYS.PUBLIC_FILE_INDEX];
+    if (publicSheetId) {
+      try {
+        const { google } = await import('googleapis');
+        const auth = new google.auth.OAuth2();
+        auth.setCredentials({ access_token: token.access_token });
+        const drive = google.drive({ version: 'v3', auth });
+        await drive.permissions.create({
+          fileId: publicSheetId,
+          requestBody: { role: 'reader', type: 'anyone' },
+        });
+        console.log(`${logPrefix} Set public permissions on public-file-index.xlsx`);
+      } catch (permError: unknown) {
+        console.warn(
+          `${logPrefix} Failed to set public permissions on public-file-index.xlsx:`,
+          permError instanceof Error ? permError.message : permError
+        );
+      }
+    }
+
+    await persistPnDriveIndex(pnIdentifier, credentials, index);
+    console.log(`${logPrefix} Persisted complete pnDriveIndex`);
+    return { metadataFolderId: index.metadataFolderId, pnFolderId: index.pnFolderId };
   }
 
   private setupMiddleware(): void {
@@ -5384,297 +5469,16 @@ class ProductionServer {
               };
               const accessToken = token.access_token; // Keep for backward compatibility
               
-              // Initialize folder structure (creates pN folder and _metadata folder if they don't exist)
-              console.log(`[StorageCredentials PUT] Initializing folder structure for identityId: ${sanitizedIdentityId}`);
-              const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnIdentifier);
-              
-              const { findPnRootFolderId, ensureIntegratorsRootCached } = await import('./server/modules/pnDriveLayout');
-              const pnFolderId = await findPnRootFolderId(accessToken, pnIdentifier);
-              
-              // Initialize messages folder (in pN folder, not _metadata)
-              if (pnFolderId) {
-                try {
-                  const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
-                  const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(token, pnFolderId, pnIdentifier, accountId);
-                  console.log(`[StorageCredentials PUT] Initialized messages folder for identityId: ${sanitizedIdentityId}`);
-                  
-                  // Initialize inbox sheet for fast conversation loading
-                  try {
-                    const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(token, messagesFolderId, pnIdentifier, accountId);
-                    console.log(`[StorageCredentials PUT] Initialized inbox sheet for identityId: ${sanitizedIdentityId}`);
-                    
-                    await ensureIntegratorsRootCached(accessToken, pnIdentifier, metadataFolderId, credentials, {
-                      inboxSheetId,
-                      messagesFolderId,
-                      pnFolderId
-                    });
-                    console.log(`[StorageCredentials PUT] Cached folder IDs (including integrators/) for identityId: ${sanitizedIdentityId}`);
-                  } catch (inboxError: any) {
-                    console.warn(`[StorageCredentials PUT] Failed to initialize inbox sheet:`, inboxError?.message || inboxError);
-                    try {
-                      await ensureIntegratorsRootCached(accessToken, pnIdentifier, metadataFolderId, credentials, {
-                        messagesFolderId,
-                        pnFolderId
-                      });
-                    } catch (integratorsErr: any) {
-                      console.warn(`[StorageCredentials PUT] Failed to cache integrators root:`, integratorsErr?.message);
-                    }
-                  }
-                } catch (msgFolderError: any) {
-                  console.warn(`[StorageCredentials PUT] Failed to initialize messages folder:`, msgFolderError?.message || msgFolderError);
-                  try {
-                    await ensureIntegratorsRootCached(accessToken, pnIdentifier, metadataFolderId, credentials, {
-                      pnFolderId
-                    });
-                  } catch (integratorsErr: any) {
-                    console.warn(`[StorageCredentials PUT] Failed to initialize integrators folder:`, integratorsErr?.message);
-                  }
-                }
-              }
-              
-              // Initialize all content class folders (media, thoughts, collections)
-              console.log(`[StorageCredentials PUT] Initializing content class folders for identityId: ${sanitizedIdentityId}`);
-              await this.initializeContentClassFolders(token, metadataFolderId, pnIdentifier, accountId);
-              
-              // Initialize root index files (public-file-index.xlsx and owner-file-index.xlsx)
-              console.log(`[StorageCredentials PUT] Initializing index files for identityId: ${sanitizedIdentityId}`);
-              await this.initializeIndexFiles(token, metadataFolderId, pnIdentifier, accountId);
-              
-              console.log(`[StorageCredentials PUT] Successfully initialized folder structure for identityId: ${sanitizedIdentityId}`);
-              
-              // Initialize all metadata files with default structures
-              const { PreferencesService } = await import('./server/modules/preferencesService');
-              const { EngagementDriveService } = await import('./server/modules/engagementDriveService');
-              const { NotificationService } = await import('./server/modules/notificationService');
-              const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
-              const { ProfileService } = await import('./server/modules/profileService');
-              const { ConnectionsService } = await import('./server/modules/connectionsService');
-              const { MessagingLedgerService } = await import('./server/modules/messagingLedgerService');
-              const { ZKPDataPointsService } = await import('./server/modules/zkpDataPointsService');
-              const { ThirdPartyPermissionsService } = await import('./server/modules/thirdPartyPermissionsService');
-              
-              const now = new Date().toISOString();
-              
-              // Initialize preferences.json (for fast filtering) and preferences.xlsx (for history)
-              try {
-                // Initialize preferences.json (pass identityId for caching)
-                const existingPreferences = await PreferencesService.getPreferencesFile(accessToken, metadataFolderId, pnIdentifier);
-                if (!existingPreferences) {
-                  await PreferencesService.updatePreferencesFile(accessToken, metadataFolderId, pnIdentifier, {
-                    identifier: pnIdentifier,
-                    updatedAt: now,
-                    tagPreferences: []
-                  }, pnIdentifier, accountId);
-                  console.log(`[StorageCredentials PUT] Initialized preferences.json for identityId: ${sanitizedIdentityId}`);
-                }
-                
-                // Initialize preferences.xlsx (for interaction history logging)
-                const { PreferencesSheetsService } = await import('./server/modules/preferencesSheetsService');
-                try {
-                  await PreferencesSheetsService.getPreferencesSheet(token, metadataFolderId, pnIdentifier, accountId);
-                } catch (prefSheetError: any) {
-                  if (prefSheetError?.message?.includes('not found')) {
-                    await PreferencesSheetsService.createPreferencesSheet(token, metadataFolderId, pnIdentifier, accountId);
-                  } else {
-                    throw prefSheetError;
-                  }
-                }
-                console.log(`[StorageCredentials PUT] Initialized preferences.xlsx for identityId: ${sanitizedIdentityId}`);
-              } catch (prefError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize preferences:`, prefError?.message || prefError);
-              }
-              
-              // Note: engagement.json is no longer initialized - we use engagement.xlsx (Sheets) instead
-              
-              // Initialize notifications.xlsx
-              try {
-                const { NotificationsSheetsService } = await import('./server/modules/notificationsSheetsService');
-                try {
-                  await NotificationsSheetsService.getNotificationsSheet(token, metadataFolderId, pnIdentifier, accountId);
-                } catch (notifSheetError: any) {
-                  if (notifSheetError?.message?.includes('not found')) {
-                    await NotificationsSheetsService.createNotificationsSheet(token, metadataFolderId, pnIdentifier, accountId);
-                  } else {
-                    throw notifSheetError;
-                  }
-                }
-                console.log(`[StorageCredentials PUT] Initialized notifications.xlsx for identityId: ${sanitizedIdentityId}`);
-              } catch (notifError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize notifications.xlsx:`, notifError?.message || notifError);
-              }
-              
-              // Initialize activity_ledger.xlsx
-              try {
-                const { ActivityLedgerSheetsService } = await import('./server/modules/activityLedgerSheetsService');
-                try {
-                  await ActivityLedgerSheetsService.getActivityLedgerSheet(token, metadataFolderId, pnIdentifier, accountId);
-                } catch (activitySheetError: any) {
-                  if (activitySheetError?.message?.includes('not found')) {
-                    await ActivityLedgerSheetsService.createActivityLedgerSheet(token, metadataFolderId, pnIdentifier, accountId);
-                  } else {
-                    throw activitySheetError;
-                  }
-                }
-                console.log(`[StorageCredentials PUT] Initialized activity_ledger.xlsx for identityId: ${sanitizedIdentityId}`);
-              } catch (activityError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize activity_ledger.xlsx:`, activityError?.message || activityError);
-              }
-              
-              // Initialize connections.xlsx - ONLY create if truly doesn't exist
-              try {
-                const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-                try {
-                  await ConnectionsSheetsService.getConnectionsSheet(token, metadataFolderId, pnIdentifier, accountId);
-                  console.log(`[StorageCredentials PUT] Found existing connections.xlsx for identityId: ${sanitizedIdentityId}`);
-                } catch (getError: any) {
-                  // CRITICAL: Only create if the sheet genuinely doesn't exist, not on any error
-                  // This prevents accidentally overwriting existing connections due to transient errors
-                  if (getError?.message?.includes('not found')) {
-                    console.log(`[StorageCredentials PUT] connections.xlsx not found, creating new one for identityId: ${sanitizedIdentityId}`);
-                    await ConnectionsSheetsService.createConnectionsSheet(token, metadataFolderId, pnIdentifier, accountId);
-                  } else {
-                    // Don't create on auth errors, API errors, etc - these indicate a real problem
-                    console.error(`[StorageCredentials PUT] Failed to access connections.xlsx (will NOT create new one):`, getError?.message || getError);
-                    throw getError;
-                  }
-                }
-              } catch (connError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize connections.xlsx:`, connError?.message || connError);
-              }
-              
-              // Initialize engagement.xlsx
-              try {
-                const { EngagementSheetsService } = await import('./server/modules/engagementSheetsService');
-                try {
-                  await EngagementSheetsService.getEngagementSheet(token, metadataFolderId, pnIdentifier, accountId);
-                } catch (engSheetError: any) {
-                  if (engSheetError?.message?.includes('not found')) {
-                    await EngagementSheetsService.createEngagementSheet(token, metadataFolderId, pnIdentifier, accountId);
-                  } else {
-                    throw engSheetError;
-                  }
-                }
-                console.log(`[StorageCredentials PUT] Initialized engagement.xlsx for identityId: ${sanitizedIdentityId}`);
-              } catch (engError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize engagement.xlsx:`, engError?.message || engError);
-              }
-              
-              // Initialize messaging_ledger.xlsx
-              try {
-                const { MessagingLedgerSheetsService } = await import('./server/modules/messagingLedgerSheetsService');
-                try {
-                  await MessagingLedgerSheetsService.getMessagingLedgerSheet(token, metadataFolderId, pnIdentifier, accountId);
-                } catch (msgSheetError: any) {
-                  if (msgSheetError?.message?.includes('not found')) {
-                    await MessagingLedgerSheetsService.createMessagingLedgerSheet(token, metadataFolderId, pnIdentifier, accountId);
-                  } else {
-                    throw msgSheetError;
-                  }
-                }
-                console.log(`[StorageCredentials PUT] Initialized messaging_ledger.xlsx for identityId: ${sanitizedIdentityId}`);
-              } catch (msgError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize messaging_ledger.xlsx:`, msgError?.message || msgError);
-              }
-
-              // Initialize prism_ledger.xlsx (reports, flagged content, Ray vote history)
-              try {
-                const { PrismLedgerSheetsService } = await import('./server/modules/prismLedgerSheetsService');
-                try {
-                  await PrismLedgerSheetsService.getPrismLedgerSheet(token, metadataFolderId, pnIdentifier, accountId);
-                } catch (prismSheetError: any) {
-                  if (prismSheetError?.message?.includes('not found')) {
-                    await PrismLedgerSheetsService.createPrismLedgerSheet(token, metadataFolderId, pnIdentifier, accountId);
-                  } else {
-                    throw prismSheetError;
-                  }
-                }
-                console.log(`[StorageCredentials PUT] Initialized prism_ledger.xlsx for identityId: ${sanitizedIdentityId}`);
-              } catch (prismError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize prism_ledger.xlsx:`, prismError?.message || prismError);
-              }
-              
-              // Note: public-file-index.xlsx and owner-file-index.xlsx are initialized in initializeIndexFiles() above (line 4846)
-              // Note: preferences.xlsx is already initialized above (line 4879) - no need to initialize again
-              
-              // Initialize profile.json
-              try {
-                const existingProfile = await ProfileService.getProfileFile(accessToken, metadataFolderId);
-                if (!existingProfile) {
-                  await ProfileService.updateProfileFile(accessToken, metadataFolderId, identityId, {
-                    identifier: identityId,
-                    updatedAt: now
-                  });
-                  console.log(`[StorageCredentials PUT] Initialized profile.json for identityId: ${sanitizedIdentityId}`);
-                }
-              } catch (profileError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize profile.json:`, profileError?.message || profileError);
-              }
-              
-              // Note: connections.json is no longer initialized - we use connections.xlsx (Sheets) instead
-              
-              // Note: messaging_ledger.json is no longer initialized - we use messaging_ledger.xlsx (Sheets) instead
-              
-              // Initialize zkp-data-points.xlsx
-              try {
-                const { ZKPDataPointsSheetsService } = await import('./server/modules/zkpDataPointsSheetsService');
-                try {
-                  await ZKPDataPointsSheetsService.getZKPDataPointsSheet(token, metadataFolderId, pnIdentifier, accountId);
-                } catch (zkpSheetError: any) {
-                  if (zkpSheetError?.message?.includes('not found')) {
-                    await ZKPDataPointsSheetsService.createZKPDataPointsSheet(token, metadataFolderId, pnIdentifier, accountId);
-                  } else {
-                    throw zkpSheetError;
-                  }
-                }
-                console.log(`[StorageCredentials PUT] Initialized zkp-data-points.xlsx for identityId: ${sanitizedIdentityId}`);
-              } catch (zkpError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize zkp-data-points.xlsx:`, zkpError?.message || zkpError);
-              }
-
-              // Initialize third-party-permissions.xlsx
-              try {
-                const { ThirdPartyPermissionsSheetsService } = await import('./server/modules/thirdPartyPermissionsSheetsService');
-                try {
-                  await ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(token, metadataFolderId, pnIdentifier, accountId);
-                } catch (permSheetError: any) {
-                  if (permSheetError?.message?.includes('not found')) {
-                    await ThirdPartyPermissionsSheetsService.createThirdPartyPermissionsSheet(token, metadataFolderId, pnIdentifier, accountId);
-                  } else {
-                    throw permSheetError;
-                  }
-                }
-                console.log(`[StorageCredentials PUT] Initialized third-party-permissions.xlsx for identityId: ${sanitizedIdentityId}`);
-              } catch (permError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize third-party-permissions.xlsx:`, permError?.message || permError);
-              }
-
-              // Initialize followers.xlsx and following.xlsx
-              try {
-                const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-                try {
-                  await ConnectionsSheetsService.getFollowersSheet(token, metadataFolderId, pnIdentifier, accountId);
-                } catch (followersSheetError: any) {
-                  if (followersSheetError?.message?.includes('not found')) {
-                    await ConnectionsSheetsService.createFollowersSheet(token, metadataFolderId, pnIdentifier, accountId);
-                  } else {
-                    throw followersSheetError;
-                  }
-                }
-                try {
-                  await ConnectionsSheetsService.getFollowingSheet(token, metadataFolderId, pnIdentifier, accountId);
-                } catch (followingSheetError: any) {
-                  if (followingSheetError?.message?.includes('not found')) {
-                    await ConnectionsSheetsService.createFollowingSheet(token, metadataFolderId, pnIdentifier, accountId);
-                  } else {
-                    throw followingSheetError;
-                  }
-                }
-                console.log(`[StorageCredentials PUT] Initialized followers.xlsx and following.xlsx for identityId: ${sanitizedIdentityId}`);
-              } catch (ffError: any) {
-                console.warn(`[StorageCredentials PUT] Failed to initialize followers/following:`, ffError?.message || ffError);
-              }
-
-              console.log(`[StorageCredentials PUT] Successfully initialized all metadata files for identityId: ${sanitizedIdentityId}`);
+              console.log(`[StorageCredentials PUT] Initializing Google Drive index for identityId: ${sanitizedIdentityId}`);
+              await this.initializeGoogleDriveStorage(
+                token,
+                pnIdentifier,
+                accountId,
+                credentials,
+                identityId,
+                `[StorageCredentials PUT]`
+              );
+              console.log(`[StorageCredentials PUT] Successfully initialized Google Drive for identityId: ${sanitizedIdentityId}`);
             }
           } catch (err: any) {
             // Don't fail the credential save if folder initialization fails
@@ -5822,112 +5626,15 @@ class ProductionServer {
         console.log(`[StorageInitialize POST] Re-initializing folder structure for identityId: ${sanitizedIdentityId}`);
         
         try {
-          const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnIdentifier);
-          
-          const { findPnRootFolderId, ensureIntegratorsRootCached } = await import('./server/modules/pnDriveLayout');
-          const pnFolderId = await findPnRootFolderId(accessToken, pnIdentifier);
-          
-          if (pnFolderId) {
-            try {
-              const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
-              const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(token, pnFolderId, pnIdentifier, accountId);
-              const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(token, messagesFolderId, pnIdentifier, accountId);
-              await ensureIntegratorsRootCached(accessToken, pnIdentifier, metadataFolderId, credentials.credentials, {
-                pnFolderId,
-                messagesFolderId,
-                inboxSheetId
-              });
-            } catch (msgError: any) {
-              console.warn(`[StorageInitialize POST] Failed to initialize messages folder:`, msgError?.message);
-              try {
-                await ensureIntegratorsRootCached(accessToken, pnIdentifier, metadataFolderId, credentials.credentials, {
-                  pnFolderId
-                });
-              } catch (integratorsErr: any) {
-                console.warn(`[StorageInitialize POST] Failed to initialize integrators folder:`, integratorsErr?.message);
-              }
-            }
-          }
-          
-          await this.initializeContentClassFolders(token, metadataFolderId, pnIdentifier, accountId);
-          await this.initializeIndexFiles(token, metadataFolderId, pnIdentifier, accountId);
-          
-          // Initialize preferences.json (for fast filtering) and preferences.xlsx (for history)
-          const { PreferencesService } = await import('./server/modules/preferencesService');
-          try {
-            const now = new Date().toISOString();
-            const existingPreferences = await PreferencesService.getPreferencesFile(accessToken, metadataFolderId, pnIdentifier);
-            if (!existingPreferences) {
-              await PreferencesService.updatePreferencesFile(accessToken, metadataFolderId, pnIdentifier, {
-                identifier: pnIdentifier,
-                updatedAt: now,
-                tagPreferences: []
-              }, pnIdentifier, accountId);
-              console.log(`[StorageInitialize POST] Initialized preferences.json for identityId: ${sanitizedIdentityId}`);
-            }
-          } catch (prefJsonError: any) {
-            console.warn(`[StorageInitialize POST] Failed to initialize preferences.json:`, prefJsonError?.message || prefJsonError);
-          }
-          
-          // Initialize all metadata Sheets files
-          const { PreferencesSheetsService } = await import('./server/modules/preferencesSheetsService');
-          const { NotificationsSheetsService } = await import('./server/modules/notificationsSheetsService');
-          const { ActivityLedgerSheetsService } = await import('./server/modules/activityLedgerSheetsService');
-          const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-          const { EngagementSheetsService } = await import('./server/modules/engagementSheetsService');
-          const { MessagingLedgerSheetsService } = await import('./server/modules/messagingLedgerSheetsService');
-          const { PrismLedgerSheetsService } = await import('./server/modules/prismLedgerSheetsService');
-          const { ZKPDataPointsSheetsService } = await import('./server/modules/zkpDataPointsSheetsService');
-          const { ThirdPartyPermissionsSheetsService } = await import('./server/modules/thirdPartyPermissionsSheetsService');
-          
-          // Initialize each sheet (get or create)
-          const initSheet = async (service: any, getMethod: string, createMethod: string, name: string) => {
-            try {
-              await service[getMethod](token, metadataFolderId, pnIdentifier, accountId);
-            } catch (getError: any) {
-              if (getError?.message?.includes('not found')) {
-                await service[createMethod](token, metadataFolderId, pnIdentifier, accountId);
-                console.log(`[StorageInitialize POST] Created ${name}`);
-              } else {
-                throw getError;
-              }
-            }
-          };
-          
-          // Initialize preferences.xlsx (for interaction history logging)
-          try {
-            await PreferencesSheetsService.getPreferencesSheet(token, metadataFolderId, pnIdentifier, accountId);
-          } catch (prefSheetError: any) {
-            if (prefSheetError?.message?.includes('not found')) {
-              await PreferencesSheetsService.createPreferencesSheet(token, metadataFolderId, pnIdentifier, accountId);
-              console.log(`[StorageInitialize POST] Created preferences.xlsx`);
-            } else {
-              throw prefSheetError;
-            }
-          }
-          console.log(`[StorageInitialize POST] Initialized preferences.xlsx for identityId: ${sanitizedIdentityId}`);
-          
-          await initSheet(NotificationsSheetsService, 'getNotificationsSheet', 'createNotificationsSheet', 'notifications.xlsx');
-          await initSheet(ActivityLedgerSheetsService, 'getActivityLedgerSheet', 'createActivityLedgerSheet', 'activity_ledger.xlsx');
-          await initSheet(ConnectionsSheetsService, 'getConnectionsSheet', 'createConnectionsSheet', 'connections.xlsx');
-          await initSheet(EngagementSheetsService, 'getEngagementSheet', 'createEngagementSheet', 'engagement.xlsx');
-          await initSheet(MessagingLedgerSheetsService, 'getMessagingLedgerSheet', 'createMessagingLedgerSheet', 'messaging_ledger.xlsx');
-          await initSheet(PrismLedgerSheetsService, 'getPrismLedgerSheet', 'createPrismLedgerSheet', 'prism_ledger.xlsx');
-          await initSheet(ZKPDataPointsSheetsService, 'getZKPDataPointsSheet', 'createZKPDataPointsSheet', 'zkp-data-points.xlsx');
-          await initSheet(ThirdPartyPermissionsSheetsService, 'getThirdPartyPermissionsSheet', 'createThirdPartyPermissionsSheet', 'third-party-permissions.xlsx');
-          
-          // Initialize followers/following sheets
-          try {
-            await ConnectionsSheetsService.getFollowersSheet(token, metadataFolderId, pnIdentifier, accountId);
-          } catch {
-            await ConnectionsSheetsService.createFollowersSheet(token, metadataFolderId, pnIdentifier, accountId);
-          }
-          try {
-            await ConnectionsSheetsService.getFollowingSheet(token, metadataFolderId, pnIdentifier, accountId);
-          } catch {
-            await ConnectionsSheetsService.createFollowingSheet(token, metadataFolderId, pnIdentifier, accountId);
-          }
-          
+          const { metadataFolderId, pnFolderId } = await this.initializeGoogleDriveStorage(
+            token,
+            pnIdentifier,
+            accountId,
+            credentials.credentials as Record<string, unknown>,
+            sanitizedIdentityId,
+            `[StorageInitialize POST]`
+          );
+
           return res.json({
             success: true,
             message: 'Google Drive folder structure initialized successfully',
@@ -10794,58 +10501,65 @@ class ProductionServer {
           expires_in: account.expires_in
         };
 
-        // Check for cached inbox sheet ID in credentials (fastest path)
-        const cachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
-        let inboxSheetId: string | undefined = cachedFolderIds.inboxSheetId;
+        const { readPnDriveIndex, isPnDriveIndexComplete, PN_DRIVE_SHEET_KEYS } = await import('./server/modules/pnDriveIndex');
+        const driveIndex = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);
+        if (!isPnDriveIndexComplete(driveIndex)) {
+          return res.json({ conversations: [], threads: [] });
+        }
 
-        // If we have cached inbox sheet ID, use it directly (fastest path - no folder lookups!)
-        if (inboxSheetId) {
+        const inboxSheetId = driveIndex.inboxSheetId;
+
+        try {
+          const inboxConversations = await MessageSheetsService.getInboxConversations(
+            token,
+            inboxSheetId,
+            pnIdentifier,
+            accountId
+          );
+
+          const { GroupSheetsService } = await import('./server/modules/groupSheetsService');
+          let groupTitleById = new Map<string, string>();
           try {
-            const inboxConversations = await MessageSheetsService.getInboxConversations(
+            const groupsSheetId = driveIndex.sheetIds[PN_DRIVE_SHEET_KEYS.GROUPS];
+            const groupRows = await GroupSheetsService.listGroupsForUser(
               token,
-              inboxSheetId,
+              groupsSheetId,
               pnIdentifier,
               accountId
             );
-            
-            // Inbox already contains sharedSecret - no connections lookup needed!
-            const { GroupSheetsService } = await import('./server/modules/groupSheetsService');
-            let groupTitleById = new Map<string, string>();
-            try {
-              const metadataFolder = await this.getMetadataFolder(token, pnIdentifier, accountId);
-              if (metadataFolder?.metadataFolderId) {
-                const groupsSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
-                  token,
-                  metadataFolder.metadataFolderId,
-                  pnIdentifier,
-                  accountId
-                );
-                const groupRows = await GroupSheetsService.listGroupsForUser(
-                  token,
-                  groupsSheetId,
-                  pnIdentifier,
-                  accountId
-                );
-                for (const g of groupRows) {
-                  if (!groupTitleById.has(g.groupId)) {
-                    groupTitleById.set(g.groupId, g.title);
-                  }
-                }
+            for (const g of groupRows) {
+              if (!groupTitleById.has(g.groupId)) {
+                groupTitleById.set(g.groupId, g.title);
               }
-            } catch {
-              /* optional enrichment */
             }
+          } catch {
+            /* optional enrichment */
+          }
 
-            const enrichedConversations = inboxConversations.map((conv) => {
-              const lastMessage = conv.lastMessagePreview ? {
-                messageId: '',
-                fromPnIdentifier: '',
-                toPnIdentifier: conv.participantPnIdentifier,
-                content: conv.lastMessagePreview,
-                timestamp: conv.lastMessageAt,
-                read: false,
-                encrypted: false
-              } : undefined;
+          const enrichedConversations = await Promise.all(
+            inboxConversations.map(async (conv) => {
+              const lastMessage = conv.lastMessagePreview
+                ? {
+                    messageId: '',
+                    fromPnIdentifier: '',
+                    toPnIdentifier: conv.participantPnIdentifier,
+                    content: conv.lastMessagePreview,
+                    timestamp: conv.lastMessageAt,
+                    read: false,
+                    encrypted: false,
+                  }
+                : undefined;
+
+              let unreadCount = 0;
+              if (conv.spreadsheetId) {
+                unreadCount = await MessageSheetsService.countUnreadMessages(
+                  token,
+                  conv.spreadsheetId,
+                  pnIdentifier,
+                  pnIdentifier,
+                  accountId
+                );
+              }
 
               const isGroup = conv.threadType === 'group';
               return {
@@ -10859,185 +10573,29 @@ class ProductionServer {
                 lastMessageAt: conv.lastMessageAt,
                 lastMessagePreview: conv.lastMessagePreview,
                 lastMessage,
+                unreadCount,
                 ...(isGroup && {
                   groupId: conv.groupId || conv.participantPnIdentifier,
                   ownerPnIdentifier: conv.ownerPnIdentifier || conv.connectionId,
-                  groupTitle: groupTitleById.get(conv.groupId || conv.participantPnIdentifier) || 'Group'
-                })
+                  groupTitle: groupTitleById.get(conv.groupId || conv.participantPnIdentifier) || 'Group',
+                }),
               };
-            });
+            })
+          );
 
-            const threads = enrichedConversations.map(conv => ({
-              participantPnIdentifier: conv.participantPnIdentifier,
-              lastMessageAt: conv.lastMessageAt
-            }));
+          const threads = enrichedConversations.map((conv) => ({
+            participantPnIdentifier: conv.participantPnIdentifier,
+            lastMessageAt: conv.lastMessageAt,
+          }));
 
-            return res.json({ conversations: enrichedConversations, threads });
-          } catch (inboxError: any) {
-            console.warn('[GetConversations] Cached inbox sheet failed, falling back to lookup:', inboxError?.message);
-            // Fall through to lookup path
-          }
-        }
-
-        // Fallback: Use cached folder IDs if available, only search if missing
-        let messagesFolderId: string | undefined = cachedFolderIds.messagesFolderId;
-        let metadataFolderId: string | undefined = cachedFolderIds.metadataFolderId;
-        let pnFolderId: string | undefined = cachedFolderIds.pnFolderId;
-
-        // Only search if cache is missing
-        if (!messagesFolderId || !metadataFolderId || !pnFolderId) {
-          // Get metadata folder (includes pnFolderId)
-          // Pass full token object for automatic refresh
-          const metadataFolder = await this.getMetadataFolder(token, pnIdentifier, accountId);
-          if (!metadataFolder) {
-            console.warn('[GetConversations] Metadata folder not found, returning empty conversations');
-            return res.json({ conversations: [], threads: [] });
-          }
-          metadataFolderId = metadataFolder.metadataFolderId;
-          pnFolderId = metadataFolder.pnFolderId;
-
-          // Get or create messages folder if not cached
-          if (!messagesFolderId && pnFolderId) {
-            messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-              token,
-              pnFolderId,
-              pnIdentifier,
-              accountId
-            );
-          }
-
-          // Cache folder IDs for next time (async, don't wait)
-          const updatedCached = {
-            ...cachedFolderIds,
-            messagesFolderId: messagesFolderId || cachedFolderIds.messagesFolderId,
-            metadataFolderId,
-            pnFolderId
-          };
-          userCredentials.credentials.cachedFolderIds = updatedCached;
-          storageCredentialsService.upsertCredentials(pnIdentifier, userCredentials.credentials).catch(err => {
-            console.warn('[GetConversations] Failed to cache folder IDs:', err?.message);
-          });
-        }
-
-        if (!messagesFolderId || !metadataFolderId) {
+          return res.json({ conversations: enrichedConversations, threads });
+        } catch (inboxError: unknown) {
+          console.warn(
+            '[GetConversations] Inbox read failed:',
+            inboxError instanceof Error ? inboxError.message : inboxError
+          );
           return res.json({ conversations: [], threads: [] });
         }
-
-        // Get inbox sheet and cache the ID
-        let inboxConversations: Array<{
-          threadType?: 'dm' | 'group';
-          participantPnIdentifier: string;
-          spreadsheetId: string;
-          connectionId: string;
-          lastMessageAt: string;
-          lastMessagePreview?: string;
-          kemCiphertext?: string;
-          wrappedMessageRootKey?: string;
-          groupId?: string;
-          ownerPnIdentifier?: string;
-        }> = [];
-
-        try {
-          inboxSheetId = await MessageSheetsService.getInboxSheet(
-            token,
-            messagesFolderId,
-            pnIdentifier,
-            accountId,
-            cachedFolderIds.inboxSheetId // Pass cached ID to skip search
-          );
-          
-          // Cache folder IDs for next time (async, don't wait)
-          const existingCached = userCredentials.credentials.cachedFolderIds || {};
-          if (!existingCached.inboxSheetId || !existingCached.messagesFolderId || !existingCached.metadataFolderId) {
-            const updatedCredentials = {
-              ...userCredentials.credentials,
-              cachedFolderIds: {
-                inboxSheetId,
-                messagesFolderId,
-                metadataFolderId,
-                ...existingCached
-              }
-            };
-            storageCredentialsService.upsertCredentials(pnIdentifier, updatedCredentials).catch(err => {
-              console.warn('[GetConversations] Failed to cache folder IDs:', err?.message);
-            });
-          }
-          
-          inboxConversations = await MessageSheetsService.getInboxConversations(
-            token,
-            inboxSheetId,
-            pnIdentifier,
-            accountId
-          );
-        } catch (inboxError: any) {
-          console.warn('[GetConversations] Failed to read inbox, falling back to file listing:', inboxError?.message);
-          const conversations = await MessageSheetsService.getConversations(
-            token,
-            messagesFolderId,
-            pnIdentifier,
-            accountId
-          );
-          inboxConversations = conversations.map(conv => ({
-            threadType: 'dm' as const,
-            participantPnIdentifier: conv.otherUserPnIdentifier,
-            spreadsheetId: conv.spreadsheetId,
-            connectionId: '',
-            lastMessageAt: conv.lastMessageAt,
-            lastMessagePreview: undefined,
-            kemCiphertext: undefined
-          }));
-        }
-
-        // Inbox already contains sharedSecret - no connections lookup needed!
-        const enrichedConversations = await Promise.all(
-          inboxConversations.map(async (conv) => {
-            const lastMessage = conv.lastMessagePreview
-              ? {
-                  messageId: '',
-                  fromPnIdentifier: '',
-                  toPnIdentifier: conv.participantPnIdentifier,
-                  content: conv.lastMessagePreview,
-                  timestamp: conv.lastMessageAt,
-                  read: false,
-                  encrypted: false
-                }
-              : undefined;
-
-            let unreadCount = 0;
-            if (conv.spreadsheetId) {
-              unreadCount = await MessageSheetsService.countUnreadMessages(
-                token,
-                conv.spreadsheetId,
-                pnIdentifier,
-                pnIdentifier,
-                accountId
-              );
-            }
-
-            return {
-              otherUserPnIdentifier: conv.participantPnIdentifier,
-              participantPnIdentifier: conv.participantPnIdentifier,
-              spreadsheetId: conv.spreadsheetId,
-              connectionId: conv.connectionId,
-              kemCiphertext: conv.kemCiphertext,
-              wrappedMessageRootKey: conv.wrappedMessageRootKey,
-              lastMessageAt: conv.lastMessageAt,
-              lastMessagePreview: conv.lastMessagePreview,
-              lastMessage,
-              threadType: conv.threadType || 'dm',
-              groupId: conv.groupId,
-              ownerPnIdentifier: conv.ownerPnIdentifier,
-              unreadCount
-            };
-          })
-        );
-
-        const threads = enrichedConversations.map(conv => ({
-          participantPnIdentifier: conv.participantPnIdentifier,
-          lastMessageAt: conv.lastMessageAt
-        }));
-
-        return res.json({ conversations: enrichedConversations, threads }); // Return both for compatibility
       } catch (error: any) {
         console.error('Error getting message conversations:', error);
         // Check for authentication errors and return 401 instead of 500
@@ -11096,17 +10654,13 @@ class ProductionServer {
           expires_in: account.expires_in
         };
 
-        const metadataFolder = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!metadataFolder) {
+        const { readPnDriveIndex, isPnDriveIndexComplete, PN_DRIVE_SHEET_KEYS } = await import('./server/modules/pnDriveIndex');
+        const driveIndex = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);
+        if (!isPnDriveIndexComplete(driveIndex)) {
           return res.json({ requests: [] });
         }
 
-        const sheetId = await MessageRequestSheetsService.findRequestsSpreadsheetId(
-          token,
-          metadataFolder.metadataFolderId,
-          pnIdentifier,
-          accountId
-        );
+        const sheetId = driveIndex.sheetIds[PN_DRIVE_SHEET_KEYS.MESSAGE_REQUESTS];
         if (!sheetId) {
           return res.json({ requests: [] });
         }
@@ -11204,59 +10758,13 @@ class ProductionServer {
           expires_in: account.expires_in
         };
 
-        // Use cached folder IDs first (optimized - avoids Google Drive API calls)
-        const cachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
-        let messagesFolderId: string | undefined = cachedFolderIds.messagesFolderId;
-        let pnFolderId: string | undefined = cachedFolderIds.pnFolderId;
-        let inboxSheetId: string | undefined = cachedFolderIds.inboxSheetId;
-
-        // Only do folder lookups if cache is missing
-        if (!messagesFolderId || !pnFolderId || !inboxSheetId) {
-          // Get metadata folder (includes pnFolderId) - this is the only lookup needed
-          const metadataFolder = await this.getMetadataFolder(token, pnIdentifier, accountId);
-          if (!metadataFolder) {
-            return res.json({ messages: [] });
-          }
-          pnFolderId = metadataFolder.pnFolderId;
-          
-          // Get or create messages folder if not cached
-          if (!messagesFolderId && pnFolderId) {
-            messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-              token,
-              pnFolderId,
-              pnIdentifier,
-              accountId
-            );
-          }
-
-          // Get inbox sheet if not cached
-          if (!inboxSheetId && messagesFolderId) {
-            inboxSheetId = await MessageSheetsService.getInboxSheet(
-              token,
-              messagesFolderId,
-              pnIdentifier,
-              accountId
-            );
-          }
-
-          // Cache folder IDs for next time (async update, don't wait)
-          if (messagesFolderId && pnFolderId && inboxSheetId) {
-            const updatedCachedFolderIds = {
-              ...cachedFolderIds,
-              messagesFolderId,
-              pnFolderId,
-              inboxSheetId
-            };
-            userCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
-            storageCredentialsService.upsertCredentials(pnIdentifier, userCredentials.credentials).catch(err => {
-              console.warn('[Inbox] Failed to cache folder IDs:', err?.message);
-            });
-          }
-        }
-
-        if (!messagesFolderId || !inboxSheetId) {
+        const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./server/modules/pnDriveIndex');
+        const driveIndex = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);
+        if (!isPnDriveIndexComplete(driveIndex)) {
           return res.json({ messages: [] });
         }
+
+        const inboxSheetId = driveIndex.inboxSheetId;
 
         // Get inbox sheet to read conversations with sharedSecret (optimized path)
         const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
@@ -11398,98 +10906,41 @@ class ProductionServer {
           finalConnectionId = connectionId;
           conversationSheetId = spreadsheetId;
         } else {
-          // Fallback path: Try inbox first (fast path), then fall back to connections sheet
-          messagingLog.debug('[GetConversation] Looking up connection (fallback path)');
-          
-          const cachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
-          let messagesFolderId: string | undefined = cachedFolderIds.messagesFolderId;
-          let metadataFolderId: string | undefined = cachedFolderIds.metadataFolderId;
-          let pnFolderId: string | undefined = cachedFolderIds.pnFolderId;
-          let inboxSheetId: string | undefined = cachedFolderIds.inboxSheetId;
+          messagingLog.debug('[GetConversation] Looking up connection (index path)');
 
-          // ALWAYS try inbox first - it has everything we need (spreadsheetId, connectionId, sharedSecret)
-          // If inboxSheetId is not cached, try to get it from messagesFolderId
-          if (!inboxSheetId && messagesFolderId) {
-            try {
-              inboxSheetId = await MessageSheetsService.getInboxSheet(
-                token,
-                messagesFolderId,
-                pnIdentifier,
-                accountId,
-                undefined // No cached ID available
-              );
-              // Cache it for next time
-              const updatedCachedFolderIds = {
-                ...cachedFolderIds,
-                inboxSheetId
-              };
-              userCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
-              storageCredentialsService.upsertCredentials(pnIdentifier, userCredentials.credentials).catch(err => {
-                messagingLog.warn('[GetConversation] Failed to cache inboxSheetId:', { message: err?.message });
-              });
-            } catch (error) {
-              messagingLog.warn('[GetConversation] Failed to get inbox sheet', { message: (error as Error)?.message });
-            }
+          const { readPnDriveIndex, isPnDriveIndexComplete, patchPnDriveIndex, PN_DRIVE_SHEET_KEYS } =
+            await import('./server/modules/pnDriveIndex');
+          const driveIndex = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);
+          if (!isPnDriveIndexComplete(driveIndex)) {
+            return res.json({ messages: [], total: 0 });
           }
 
-          // Try to get data from inbox first (fastest path - inbox has everything we need!)
-          if (messagesFolderId && inboxSheetId) {
-            try {
-              // OPTIMIZED: Read only first 50 rows instead of entire sheet
-              const inboxEntry = await MessageSheetsService.getInboxConversationByParticipant(
-                token,
-                inboxSheetId,
-                normalizedParticipantPnIdentifier,
-                pnIdentifier,
-                accountId,
-                50 // Only read first 50 most recent conversations
-              );
-              
-              if (inboxEntry?.connectionId && inboxEntry?.spreadsheetId) {
-                finalConnectionId = inboxEntry.connectionId;
-                conversationSheetId = inboxEntry.spreadsheetId;
-              } else {
-                throw new Error('Inbox entry not found or missing data');
-              }
-            } catch (inboxError: any) {
-              messagingLog.warn('[GetConversation] Failed to read from inbox, falling back to connections sheet', { message: inboxError?.message });
-              // Fall through to connections sheet lookup
+          const inboxSheetId = driveIndex.inboxSheetId;
+          const metadataFolderId = driveIndex.metadataFolderId;
+          const messagesFolderId = driveIndex.messagesFolderId;
+
+          try {
+            const inboxEntry = await MessageSheetsService.getInboxConversationByParticipant(
+              token,
+              inboxSheetId,
+              normalizedParticipantPnIdentifier,
+              pnIdentifier,
+              accountId,
+              50
+            );
+
+            if (inboxEntry?.connectionId && inboxEntry?.spreadsheetId) {
+              finalConnectionId = inboxEntry.connectionId;
+              conversationSheetId = inboxEntry.spreadsheetId;
             }
+          } catch (inboxError: unknown) {
+            messagingLog.warn('[GetConversation] Failed to read from inbox', {
+              message: inboxError instanceof Error ? inboxError.message : String(inboxError),
+            });
           }
 
           if (!finalConnectionId || !conversationSheetId) {
-            finalConnectionId = undefined;
-            conversationSheetId = undefined;
-            // Only search if cache is missing
-            if (!messagesFolderId || !metadataFolderId || !pnFolderId) {
-              // Get metadata folder (includes pnFolderId)
-              const metadataFolder = await this.getMetadataFolder(token, pnIdentifier, accountId);
-              if (!metadataFolder) {
-                messagingLog.error('[GetConversation] Metadata folder not found', { pnIdentifier });
-                return res.json({ messages: [], total: 0 });
-              }
-              metadataFolderId = metadataFolder.metadataFolderId;
-              pnFolderId = metadataFolder.pnFolderId;
-
-              // Get or create messages folder if not cached
-              if (!messagesFolderId && pnFolderId) {
-                messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-                  token,
-                  pnFolderId,
-                  pnIdentifier,
-                  accountId
-                );
-              }
-            }
-
-            if (!messagesFolderId || !metadataFolderId) {
-              return res.json({ messages: [], total: 0 });
-            }
-
             const { ConnectionsService } = await import('./server/modules/connectionsService');
-            const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
-            
-            // Ensure both identifiers are normalized before checking connection
             const normalizedUserPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
             const connectionStatus = await ConnectionsService.getConnectionStatus(
               token.access_token,
@@ -11499,28 +10950,14 @@ class ProductionServer {
             );
 
             if (!connectionStatus.connectionId || connectionStatus.status !== 'connected') {
-              messagingLog.error('[GetConversation] Connection not found or not connected', {
-                connectionId: connectionStatus.connectionId,
-                status: connectionStatus.status,
-                userPnIdentifier: pnIdentifier,
-                participantPnIdentifier: normalizedParticipantPnIdentifier
-              });
               return res.status(403).json({
                 error: 'Connection not found. Users must be connected to view messages.',
-                error_description: `Connection not found. Status: ${connectionStatus.status || 'not_connected'}`
+                error_description: `Connection not found. Status: ${connectionStatus.status || 'not_connected'}`,
               });
             }
 
-            // Get connection to retrieve shared secret - use Sheets directly
             const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-            const connectionsSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-              token,
-              metadataFolderId,
-              pnIdentifier,
-              accountId
-            );
-            
-            // Get connection directly by connectionId (more efficient than loading all connections)
+            const connectionsSpreadsheetId = driveIndex.sheetIds[PN_DRIVE_SHEET_KEYS.CONNECTIONS];
             const connection = await ConnectionsSheetsService.getConnectionById(
               token,
               connectionsSpreadsheetId,
@@ -11528,29 +10965,17 @@ class ProductionServer {
               pnIdentifier,
               accountId
             );
-            if (!connection) {
-              messagingLog.error('[GetConversation] Connection not found in sheet', { connectionId: connectionStatus.connectionId });
-              return res.status(500).json({
-                error: 'Connection not found',
-                error_description: `Connection ${connectionStatus.connectionId} not found in connections sheet`
-              });
-            }
-
-            if (!connection.kemCiphertext) {
+            if (!connection?.kemCiphertext) {
               return res.status(403).json({
                 error: 'Connection missing KEM session. Re-accept the connection with messaging unlocked.',
-                error_description: 'No kemCiphertext on connection'
+                error_description: 'No kemCiphertext on connection',
               });
             }
 
             finalConnectionId = connectionStatus.connectionId;
+            conversationSheetId = driveIndex.conversationSheets[normalizedParticipantPnIdentifier];
 
-            // Get conversation sheet - check cache first
-            const conversationSheets = cachedFolderIds.conversationSheets || {};
-            conversationSheetId = conversationSheets[normalizedParticipantPnIdentifier];
-            
             if (!conversationSheetId) {
-              // Not cached - get it and cache it
               conversationSheetId = await MessageSheetsService.getConversationSheet(
                 token,
                 messagesFolderId,
@@ -11558,17 +10983,12 @@ class ProductionServer {
                 pnIdentifier,
                 accountId
               );
-              // Cache for next time (async, don't wait)
-              const updatedConversationSheets = {
-                ...conversationSheets,
-                [normalizedParticipantPnIdentifier]: conversationSheetId
-              };
-              userCredentials.credentials.cachedFolderIds = {
-                ...cachedFolderIds,
-                conversationSheets: updatedConversationSheets
-              };
-              storageCredentialsService.upsertCredentials(pnIdentifier, userCredentials.credentials).catch(err => {
-                messagingLog.warn('[GetConversation] Failed to cache conversation sheet ID:', { message: err?.message });
+              patchPnDriveIndex(pnIdentifier, {
+                conversationSheets: { [normalizedParticipantPnIdentifier]: conversationSheetId },
+              }).catch((err: unknown) => {
+                messagingLog.warn('[GetConversation] Failed to patch conversation sheet index', {
+                  message: err instanceof Error ? err.message : String(err),
+                });
               });
             }
           }
@@ -11737,33 +11157,23 @@ class ProductionServer {
               expires_in: senderAccount.expires_in
             };
 
-            // Use cached folder IDs when available (fast path)
-            const senderCachedFolderIds = senderCredentials.credentials.cachedFolderIds || {};
-            let metadataFolderId: string | undefined = senderCachedFolderIds.metadataFolderId;
-            const inboxSheetId: string | undefined = senderCachedFolderIds.inboxSheetId;
+            const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./server/modules/pnDriveIndex');
+            const senderDriveIndex = readPnDriveIndex(senderCredentials.credentials as Record<string, unknown>);
+            if (!isPnDriveIndexComplete(senderDriveIndex)) {
+              return this.driveNotInitialized(res);
+            }
+            const metadataFolderId = senderDriveIndex.metadataFolderId;
+            const inboxSheetId = senderDriveIndex.inboxSheetId;
 
-            let connected = false;
-            if (inboxSheetId) {
-              connected = await ConnectionsService.areConnectedViaInbox(
-                senderToken,
-                inboxSheetId,
-                fromPnIdentifier,
-                toPnIdentifier,
-                accountId
-              );
-            }
-            
-            if (!metadataFolderId) {
-              // Fallback: get metadata folder (slower)
-              const senderTokenForMetadata = senderToken;
-              const senderAccountIdForMetadata = accountId;
-              const metadataFolder = await this.getMetadataFolder(senderTokenForMetadata, fromPnIdentifier, senderAccountIdForMetadata);
-              if (metadataFolder) {
-                metadataFolderId = metadataFolder.metadataFolderId;
-              }
-            }
-            
-            if (!connected && metadataFolderId) {
+            let connected = await ConnectionsService.areConnectedViaInbox(
+              senderToken,
+              inboxSheetId,
+              fromPnIdentifier,
+              toPnIdentifier,
+              accountId
+            );
+
+            if (!connected) {
               connected = await ConnectionsService.areConnected(
                 senderAccessTokenForCheck,
                 metadataFolderId,
@@ -11773,7 +11183,7 @@ class ProductionServer {
               );
             }
 
-            if ((inboxSheetId || metadataFolderId) && !connected) {
+            if (!connected) {
               return res.status(403).json({ 
                 error: 'Only connections can message each other',
                 requiresConnection: true
@@ -11872,226 +11282,57 @@ class ProductionServer {
           }
         }
         
-        // Use cached folder IDs first - these are static and never change
-        const senderCachedFolderIds = senderCredentials.credentials.cachedFolderIds || {};
-        let senderMetadataFolderId: string | undefined = senderCachedFolderIds.metadataFolderId;
-        let senderPnFolderId: string | undefined = senderCachedFolderIds.pnFolderId;
-        let senderMessagesFolderId: string | undefined = senderCachedFolderIds.messagesFolderId;
-
+        const { readPnDriveIndex, isPnDriveIndexComplete, patchPnDriveIndex, PN_DRIVE_SHEET_KEYS } =
+          await import('./server/modules/pnDriveIndex');
+        const senderIndex = readPnDriveIndex(senderCredentials.credentials as Record<string, unknown>);
         if (!recipientCredentials?.credentials) {
           return res.status(404).json({ error: 'Recipient credentials not found' });
         }
-        
-        const recipientCachedFolderIds = recipientCredentials.credentials.cachedFolderIds || {};
-        let recipientMetadataFolderId: string | undefined = recipientCachedFolderIds.metadataFolderId;
-        let recipientPnFolderId: string | undefined = recipientCachedFolderIds.pnFolderId;
-        let recipientMessagesFolderId: string | undefined = recipientCachedFolderIds.messagesFolderId;
-
-        // Parallelize folder lookups if cache is missing
-        const folderLookupPromises: Promise<any>[] = [];
-        
-        if (!senderMetadataFolderId || !senderPnFolderId) {
-          folderLookupPromises.push(
-            this.getMetadataFolder(senderToken, fromPnIdentifier, senderAccountId).then(senderMetadataFolder => {
-              if (!senderMetadataFolder) {
-                throw new Error('Sender metadata folder not found');
-              }
-              senderMetadataFolderId = senderMetadataFolder.metadataFolderId;
-              senderPnFolderId = senderMetadataFolder.pnFolderId;
-              // Cache the IDs for next time (async update)
-              if (senderPnFolderId && senderMetadataFolderId) {
-                const updatedCachedFolderIds = {
-                  ...senderCachedFolderIds,
-                  metadataFolderId: senderMetadataFolderId,
-                  pnFolderId: senderPnFolderId
-                };
-                senderCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
-                storageCredentialsService.upsertCredentials(fromPnIdentifier, senderCredentials.credentials).catch(err => {
-                  messagingLog.warn('[SendMessage] Failed to cache sender folder IDs:', { message: err?.message });
-                });
-              }
-            }).catch((error: any) => {
-              const errorMessage = error?.message || 'Unknown error';
-              if (errorMessage.includes('authentication failed (401)') || errorMessage.includes('authentication failed (403)')) {
-                throw new Error(`Google Drive authentication failed: ${errorMessage}`);
-              }
-              throw new Error(`Failed to access sender's Google Drive: ${errorMessage}`);
-            })
-          );
+        const recipientIndex = readPnDriveIndex(recipientCredentials.credentials as Record<string, unknown>);
+        if (!isPnDriveIndexComplete(senderIndex) || !isPnDriveIndexComplete(recipientIndex)) {
+          return this.driveNotInitialized(res);
         }
 
-        if (!recipientMetadataFolderId || !recipientPnFolderId) {
-          folderLookupPromises.push(
-            (async () => {
-              if (!recipientToken) {
-                throw new Error('Recipient token not available');
-              }
-              const recipientAccountIdForMetadata = recipientCredentials?.credentials?.googleDriveAccounts?.[0] 
-                ? this.extractAccountId(recipientCredentials.credentials.googleDriveAccounts[0])
-                : undefined;
-              return this.getMetadataFolder(recipientToken, toPnIdentifier, recipientAccountIdForMetadata).then(recipientMetadataFolder => {
-              if (!recipientMetadataFolder) {
-                throw new Error('Recipient metadata folder not found');
-              }
-              recipientMetadataFolderId = recipientMetadataFolder.metadataFolderId;
-              recipientPnFolderId = recipientMetadataFolder.pnFolderId;
-              // Cache the IDs for next time (async update)
-              if (recipientPnFolderId && recipientMetadataFolderId && recipientCredentials?.credentials) {
-                const updatedCachedFolderIds = {
-                  ...recipientCachedFolderIds,
-                  metadataFolderId: recipientMetadataFolderId,
-                  pnFolderId: recipientPnFolderId
-                };
-                recipientCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
-                storageCredentialsService.upsertCredentials(toPnIdentifier, recipientCredentials.credentials).catch(err => {
-                  messagingLog.warn('[SendMessage] Failed to cache recipient folder IDs:', { message: err?.message });
-                });
-              }
-            }).catch((error: any) => {
-              const errorMessage = error?.message || 'Unknown error';
-              if (errorMessage.includes('authentication failed (401)') || errorMessage.includes('authentication failed (403)')) {
-                throw new Error(`Google Drive authentication failed: ${errorMessage}`);
-              }
-              throw new Error(`Failed to access recipient's Google Drive: ${errorMessage}`);
-            });
-            })()
-          );
-        }
+        const senderMetadataFolderId = senderIndex.metadataFolderId;
+        const senderPnFolderId = senderIndex.pnFolderId;
+        const senderMessagesFolderId = senderIndex.messagesFolderId;
+        const senderInboxSheetIdFromIndex = senderIndex.inboxSheetId;
 
-        // Wait for all folder lookups to complete
-        if (folderLookupPromises.length > 0) {
-          try {
-            await Promise.all(folderLookupPromises);
-          } catch (error: any) {
-            const errorMessage = error?.message || 'Unknown error';
-            if (errorMessage.includes('authentication failed')) {
-              return res.status(401).json({ 
-                error: 'Google Drive authentication failed',
-                error_description: errorMessage
-              });
-            }
-            if (errorMessage.includes('not found')) {
-              return this.driveNotInitialized(res);
-            }
-            return res.status(500).json({ 
-              error: 'Failed to access Google Drive',
-              error_description: errorMessage
-            });
-          }
-        }
+        const recipientMetadataFolderId = recipientIndex.metadataFolderId;
+        const recipientPnFolderId = recipientIndex.pnFolderId;
+        const recipientMessagesFolderId = recipientIndex.messagesFolderId;
+        const recipientInboxSheetIdFromIndex = recipientIndex.inboxSheetId;
 
-        if (!senderPnFolderId || !recipientPnFolderId) {
-          return res.status(500).json({ error: 'pN folder not found' });
-        }
+        let senderConversationSheetId: string | undefined = senderIndex.conversationSheets[toPnIdentifier];
+        let recipientConversationSheetId: string | undefined = recipientIndex.conversationSheets[fromPnIdentifier];
 
-        // Get or create messages folders in parallel if cache is missing
-        const messagesFolderPromises: Promise<any>[] = [];
-        
-        if (!senderMessagesFolderId) {
-          messagesFolderPromises.push(
-            MessageSheetsService.getOrCreateMessagesFolder(senderToken, senderPnFolderId, fromPnIdentifier, senderAccountId).then(folderId => {
-              senderMessagesFolderId = folderId;
-              // Cache messages folder ID for next time
-              const updatedCachedFolderIds = {
-                ...senderCachedFolderIds,
-                messagesFolderId: folderId
-              };
-              senderCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
-              storageCredentialsService.upsertCredentials(fromPnIdentifier, senderCredentials.credentials).catch(err => {
-                messagingLog.warn('[SendMessage] Failed to cache sender messages folder ID:', { message: err?.message });
-              });
-            })
-          );
-        }
-
-        if (!recipientMessagesFolderId && recipientToken) {
-          const recipientAccountId = recipientCredentials?.credentials?.googleDriveAccounts?.[0] 
-            ? this.extractAccountId(recipientCredentials.credentials.googleDriveAccounts[0])
-            : undefined;
-          messagesFolderPromises.push(
-            MessageSheetsService.getOrCreateMessagesFolder(recipientToken, recipientPnFolderId, toPnIdentifier, recipientAccountId).then(folderId => {
-              recipientMessagesFolderId = folderId;
-              // Cache messages folder ID for next time
-              if (recipientCredentials?.credentials) {
-                const updatedCachedFolderIds = {
-                  ...recipientCachedFolderIds,
-                  messagesFolderId: folderId
-                };
-                recipientCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
-                storageCredentialsService.upsertCredentials(toPnIdentifier, recipientCredentials.credentials).catch(err => {
-                  messagingLog.warn('[SendMessage] Failed to cache recipient messages folder ID:', { message: err?.message });
-                });
-              }
-            })
-          );
-        }
-
-        if (messagesFolderPromises.length > 0) {
-          await Promise.all(messagesFolderPromises);
-        }
-
-        if (!senderMessagesFolderId || !recipientMessagesFolderId) {
-          return res.status(500).json({ error: 'Messages folder not found' });
-        }
-
-        // Get conversation sheets in parallel (check cache first)
-        const senderConversationSheets = senderCachedFolderIds.conversationSheets || {};
-        let senderConversationSheetId: string | undefined = senderConversationSheets[toPnIdentifier];
-        
-        const recipientConversationSheets = recipientCachedFolderIds.conversationSheets || {};
-        let recipientConversationSheetId: string | undefined = recipientConversationSheets[fromPnIdentifier];
-
-        const conversationSheetPromises: Promise<any>[] = [];
-        
         if (!senderConversationSheetId) {
-          conversationSheetPromises.push(
-            MessageSheetsService.getConversationSheet(senderToken, senderMessagesFolderId, toPnIdentifier, fromPnIdentifier, senderAccountId).then(sheetId => {
-              senderConversationSheetId = sheetId;
-              // Cache conversation sheet ID for next time
-              const updatedConversationSheets = {
-                ...senderConversationSheets,
-                [toPnIdentifier]: sheetId
-              };
-              const updatedCachedFolderIds = {
-                ...senderCachedFolderIds,
-                conversationSheets: updatedConversationSheets
-              };
-              senderCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
-              storageCredentialsService.upsertCredentials(fromPnIdentifier, senderCredentials.credentials).catch(err => {
-                messagingLog.warn('[SendMessage] Failed to cache sender conversation sheet ID:', { message: err?.message });
-              });
-            })
+          senderConversationSheetId = await MessageSheetsService.getConversationSheet(
+            senderToken,
+            senderMessagesFolderId,
+            toPnIdentifier,
+            fromPnIdentifier,
+            senderAccountId
           );
+          patchPnDriveIndex(fromPnIdentifier, {
+            conversationSheets: { [toPnIdentifier]: senderConversationSheetId },
+          }).catch(() => undefined);
         }
 
         if (!recipientConversationSheetId && recipientToken) {
-          const recipientAccountId = recipientCredentials?.credentials?.googleDriveAccounts?.[0] 
+          const recipientAccountId = recipientCredentials.credentials.googleDriveAccounts?.[0]
             ? this.extractAccountId(recipientCredentials.credentials.googleDriveAccounts[0])
             : undefined;
-          conversationSheetPromises.push(
-            MessageSheetsService.getConversationSheet(recipientToken, recipientMessagesFolderId, fromPnIdentifier, toPnIdentifier, recipientAccountId).then(sheetId => {
-              recipientConversationSheetId = sheetId;
-              // Cache conversation sheet ID for next time
-              const updatedConversationSheets = {
-                ...recipientConversationSheets,
-                [fromPnIdentifier]: sheetId
-              };
-              if (recipientCredentials?.credentials) {
-                const updatedCachedFolderIds = {
-                  ...recipientCachedFolderIds,
-                  conversationSheets: updatedConversationSheets
-                };
-                recipientCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
-                storageCredentialsService.upsertCredentials(toPnIdentifier, recipientCredentials.credentials).catch(err => {
-                  messagingLog.warn('[SendMessage] Failed to cache recipient conversation sheet ID:', { message: err?.message });
-                });
-              }
-            })
+          recipientConversationSheetId = await MessageSheetsService.getConversationSheet(
+            recipientToken,
+            recipientMessagesFolderId,
+            fromPnIdentifier,
+            toPnIdentifier,
+            recipientAccountId
           );
-        }
-
-        if (conversationSheetPromises.length > 0) {
-          await Promise.all(conversationSheetPromises);
+          patchPnDriveIndex(toPnIdentifier, {
+            conversationSheets: { [fromPnIdentifier]: recipientConversationSheetId },
+          }).catch(() => undefined);
         }
 
         if (!senderConversationSheetId || !recipientConversationSheetId) {
@@ -12120,16 +11361,9 @@ class ProductionServer {
 
         const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
         try {
-          const senderInboxSheetId = await MessageSheetsService.getInboxSheet(
-            senderToken,
-            senderMessagesFolderId!,
-            fromPnIdentifier,
-            senderAccountId,
-            senderCachedFolderIds.inboxSheetId
-          );
           const inboxConversations = await MessageSheetsService.getInboxConversations(
             senderToken,
-            senderInboxSheetId,
+            senderInboxSheetIdFromIndex,
             fromPnIdentifier,
             senderAccountId
           );
@@ -12144,12 +11378,7 @@ class ProductionServer {
         }
 
         if (!kemCiphertext) {
-          const senderSpreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-            senderToken,
-            senderMetadataFolderId,
-            fromPnIdentifier,
-            senderAccountId
-          );
+          const senderSpreadsheetId = senderIndex.sheetIds[PN_DRIVE_SHEET_KEYS.CONNECTIONS];
           const connection = await ConnectionsSheetsService.getConnectionById(
             senderToken,
             senderSpreadsheetId,
@@ -12190,22 +11419,10 @@ class ProductionServer {
           ? this.extractAccountId(recipientCredentials.credentials.googleDriveAccounts[0])
           : undefined;
         
-        const [senderInboxSheetId, recipientInboxSheetId] = await Promise.all([
-          MessageSheetsService.getInboxSheet(
-            senderToken,
-            senderMessagesFolderId!,
-            fromPnIdentifier,
-            senderAccountId,
-            senderCachedFolderIds.inboxSheetId // Pass cached ID to skip search
-          ),
-          recipientToken ? MessageSheetsService.getInboxSheet(
-            recipientToken,
-            recipientMessagesFolderId!,
-            toPnIdentifier,
-            recipientAccountIdForInbox,
-            recipientCachedFolderIds.inboxSheetId // Pass cached ID to skip search
-          ) : Promise.resolve('')
-        ]);
+        const [senderInboxSheetId, recipientInboxSheetId] = [
+          senderInboxSheetIdFromIndex,
+          recipientInboxSheetIdFromIndex,
+        ];
 
         let recipientKemCiphertext: string | undefined;
         if (recipientToken && recipientInboxSheetId) {
@@ -12341,8 +11558,7 @@ class ProductionServer {
           connectionId: string,
           sharedSecret: string,
           cachedSheetIdKey: string,
-          credentials: any,
-          cachedFolderIds: any
+          credentials: Record<string, unknown>
         ): Promise<string> => {
           let currentSheetId = spreadsheetId;
           
@@ -12365,15 +11581,21 @@ class ProductionServer {
             if (appendError?.message?.includes('Spreadsheet not found') || appendError?.response?.status === 404) {
               messagingLog.warn(`[SendMessage] Spreadsheet ${currentSheetId} not found (deleted), recreating conversation sheet for ${otherUserPnIdentifier}`);
               
-              // Clear cached ID
-              const updatedConversationSheets = { ...(cachedFolderIds.conversationSheets || {}) };
-              delete updatedConversationSheets[cachedSheetIdKey];
-              const updatedCachedFolderIds = {
-                ...cachedFolderIds,
-                conversationSheets: updatedConversationSheets
-              };
-              credentials.cachedFolderIds = updatedCachedFolderIds;
-              await storageCredentialsService.upsertCredentials(userPnIdentifier, credentials).catch(() => {});
+              const { loadPnDriveIndex, persistPnDriveIndex, patchPnDriveIndex } =
+                await import('./server/modules/pnDriveIndex');
+              const idx = await loadPnDriveIndex(userPnIdentifier);
+              if (idx?.conversationSheets[cachedSheetIdKey]) {
+                const next = {
+                  ...idx,
+                  conversationSheets: { ...idx.conversationSheets },
+                };
+                delete next.conversationSheets[cachedSheetIdKey];
+                await persistPnDriveIndex(
+                  userPnIdentifier,
+                  credentials as Record<string, unknown>,
+                  next
+                ).catch(() => undefined);
+              }
               
               // Create new conversation sheet
               currentSheetId = await MessageSheetsService.createConversationSheet(
@@ -12384,17 +11606,9 @@ class ProductionServer {
                 accountId
               );
               
-              // Cache new sheet ID
-              const newConversationSheets = {
-                ...updatedConversationSheets,
-                [cachedSheetIdKey]: currentSheetId
-              };
-              const newCachedFolderIds = {
-                ...updatedCachedFolderIds,
-                conversationSheets: newConversationSheets
-              };
-              credentials.cachedFolderIds = newCachedFolderIds;
-              await storageCredentialsService.upsertCredentials(userPnIdentifier, credentials).catch(() => {});
+              patchPnDriveIndex(userPnIdentifier, {
+                conversationSheets: { [cachedSheetIdKey]: currentSheetId },
+              }).catch(() => undefined);
               
               // Retry append with new sheet
               await MessageSheetsService.appendMessage(
@@ -12428,8 +11642,7 @@ class ProductionServer {
             connectionId,
             '',
             toPnIdentifier,
-            senderCredentials.credentials,
-            senderCachedFolderIds
+            senderCredentials.credentials as Record<string, unknown>
           ).then(newSheetId => {
             senderConversationSheetId = newSheetId;
           }),
@@ -12444,8 +11657,7 @@ class ProductionServer {
             connectionId,
             '',
             fromPnIdentifier,
-            recipientCredentials?.credentials,
-            recipientCachedFolderIds
+            recipientCredentials?.credentials as Record<string, unknown>
           ).then(newSheetId => {
             recipientConversationSheetId = newSheetId;
           })
@@ -13016,62 +12228,21 @@ class ProductionServer {
           expires_in: account.expires_in
         };
 
-        // Get metadata folder
-        let metadataFolderId: string;
-        try {
-          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-          if (!_g) {
-            return this.driveNotInitialized(res);
-          }
-          metadataFolderId = _g.metadataFolderId;
-        } catch (error: any) {
-          console.error('Error getting metadata folder:', error);
-          // Check for authentication errors
-          if (error.message?.includes('authentication failed') || 
-              error?.response?.status === 401 || 
-              error?.code === 401) {
-            return res.status(401).json({
-              error: 'Google Drive authentication failed',
-              code: 'DRIVE_AUTH_FAILED',
-              message: 'Please reconnect your Google Drive account in the dashboard.'
-            });
-          }
-          return res.status(500).json({ 
-            error: 'Failed to access Google Drive', 
-            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Drive API error'
-          });
+        const { readPnDriveIndex, isPnDriveIndexComplete, loadPnDriveIndex, persistPnDriveIndex } =
+          await import('./server/modules/pnDriveIndex');
+        const driveIndex = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);
+        if (!isPnDriveIndexComplete(driveIndex)) {
+          return this.driveNotInitialized(res);
         }
+        const messagesFolderId = driveIndex.messagesFolderId;
+        const inboxSheetId = driveIndex.inboxSheetId;
+        const metadataFolderId = driveIndex.metadataFolderId;
+        const connectionsSpreadsheetId = driveIndex.sheetIds['connections'];
 
-        // Find user's pN folder
-        const pnFolderName = `par Noir - ${pnIdentifier}`;
-        const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const foldersResponse = await fetch(
-          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
-          { headers: { 'Authorization': `Bearer ${token.access_token}` } }
-        );
+        const normalizedParticipantPnIdentifier = participantPnIdentifier.startsWith('pn-')
+          ? participantPnIdentifier
+          : `pn-${participantPnIdentifier}`;
 
-        if (!foldersResponse.ok) {
-          return res.status(500).json({ error: 'Failed to find user folder' });
-        }
-
-        const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
-        const pnFolder = foldersData.files?.[0];
-        if (!pnFolder) {
-          return res.status(500).json({ error: 'User folder not found' });
-        }
-
-        // Get or create messages folder
-        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-          token,
-          pnFolder.id,
-          pnIdentifier,
-          accountId
-        );
-
-        // Use participantPnIdentifier directly (already normalized)
-        const normalizedParticipantPnIdentifier = participantPnIdentifier;
-
-        // Delete conversation sheet (use normalized)
         await MessageSheetsService.deleteConversation(
           token,
           messagesFolderId,
@@ -13080,32 +12251,25 @@ class ProductionServer {
           accountId
         );
 
-        // Clear cached conversation sheet ID (sheet was deleted)
-        const cachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
-        const conversationSheets = cachedFolderIds.conversationSheets || {};
-        let updatedCachedFolderIds = cachedFolderIds;
-        if (conversationSheets[normalizedParticipantPnIdentifier]) {
-          delete conversationSheets[normalizedParticipantPnIdentifier];
-          updatedCachedFolderIds = {
-            ...cachedFolderIds,
-            conversationSheets
-          };
-          userCredentials.credentials.cachedFolderIds = updatedCachedFolderIds;
-          await storageCredentialsService.upsertCredentials(pnIdentifier, userCredentials.credentials).catch(err => {
-            console.warn('[DeleteConversation] Failed to clear cached conversation sheet ID:', err?.message);
-          });
-          console.log('[DeleteConversation] Cleared cached conversation sheet ID');
+        if (driveIndex.conversationSheets[normalizedParticipantPnIdentifier]) {
+          const idx = await loadPnDriveIndex(pnIdentifier);
+          if (idx) {
+            const next = { ...idx, conversationSheets: { ...idx.conversationSheets } };
+            delete next.conversationSheets[normalizedParticipantPnIdentifier];
+            await persistPnDriveIndex(
+              pnIdentifier,
+              userCredentials.credentials as Record<string, unknown>,
+              next
+            ).catch((err: unknown) => {
+              console.warn(
+                '[DeleteConversation] Failed to clear conversation sheet index:',
+                err instanceof Error ? err.message : err
+              );
+            });
+          }
         }
 
-        // Remove from inbox
         try {
-          const inboxSheetId = await MessageSheetsService.getInboxSheet(
-            token,
-            messagesFolderId,
-            pnIdentifier,
-            accountId,
-            updatedCachedFolderIds.inboxSheetId // Pass cached ID to skip search
-          );
           await MessageSheetsService.removeInboxEntry(
             token,
             inboxSheetId,
@@ -13138,15 +12302,9 @@ class ProductionServer {
             if (connection) {
               connectionId = connection.connectionId;
               const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-              const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-                token,
-                metadataFolderId,
-                pnIdentifier,
-                accountId
-              );
               await ConnectionsSheetsService.removeConnection(
                 token,
-                spreadsheetId,
+                connectionsSpreadsheetId,
                 connection.connectionId,
                 pnIdentifier,
                 accountId
@@ -14338,28 +13496,12 @@ class ProductionServer {
 
         let convSheetId = spreadsheetId || selfRow.conversationSpreadsheetId;
         if (!convSheetId) {
-          const cached = userCreds.credentials.cachedFolderIds || {};
-          let inboxSheetId: string | undefined = cached.inboxSheetId;
-          if (inboxSheetId && metadataFolder.pnFolderId) {
-            const messagesFolderId =
-              cached.messagesFolderId ||
-              (await MessageSheetsService.getOrCreateMessagesFolder(
-                token,
-                metadataFolder.pnFolderId,
-                userPnIdentifier,
-                accountId
-              ));
-            if (!cached.inboxSheetId) {
-              inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
-                token,
-                messagesFolderId,
-                userPnIdentifier,
-                accountId
-              );
-            }
+          const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./server/modules/pnDriveIndex');
+          const groupIndex = readPnDriveIndex(userCreds.credentials as Record<string, unknown>);
+          if (isPnDriveIndexComplete(groupIndex)) {
             const entries = await MessageSheetsService.getInboxEntries(
               token,
-              inboxSheetId!,
+              groupIndex.inboxSheetId,
               userPnIdentifier,
               accountId
             );
@@ -15917,14 +15059,16 @@ class ProductionServer {
 
               // Update inbox for acceptor
               try {
-                const acceptorCachedFolderIds = userCredentials.credentials.cachedFolderIds || {};
-                const acceptorInboxSheetId = await MessageSheetsService.getInboxSheet(
-                  token,
-                  acceptorMessagesFolderId,
-                  pnIdentifier,
-                  accountId,
-                  acceptorCachedFolderIds.inboxSheetId // Pass cached ID to skip search
-                );
+                const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./server/modules/pnDriveIndex');
+                const acceptorIndex = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);
+                const acceptorInboxSheetId = isPnDriveIndexComplete(acceptorIndex)
+                  ? acceptorIndex.inboxSheetId
+                  : await MessageSheetsService.getInboxSheet(
+                      token,
+                      acceptorMessagesFolderId,
+                      pnIdentifier,
+                      accountId
+                    );
                 await MessageSheetsService.updateInboxEntry(
                   token,
                   acceptorInboxSheetId,
@@ -16017,14 +15161,18 @@ class ProductionServer {
 
                 // Update inbox for requester
                 try {
-                  const requesterCachedFolderIds = otherUserCredentials?.credentials?.cachedFolderIds || {};
-                  const requesterInboxSheetId = await MessageSheetsService.getInboxSheet(
-                    otherToken,
-                    requesterMessagesFolderId,
-                    otherUserPnIdentifier,
-                    otherAccountId,
-                    requesterCachedFolderIds.inboxSheetId // Pass cached ID to skip search
+                  const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./server/modules/pnDriveIndex');
+                  const requesterIndex = readPnDriveIndex(
+                    otherUserCredentials.credentials as Record<string, unknown>
                   );
+                  const requesterInboxSheetId = isPnDriveIndexComplete(requesterIndex)
+                    ? requesterIndex.inboxSheetId
+                    : await MessageSheetsService.getInboxSheet(
+                        otherToken,
+                        requesterMessagesFolderId,
+                        otherUserPnIdentifier,
+                        otherAccountId
+                      );
                   await MessageSheetsService.updateInboxEntry(
                     otherToken,
                     requesterInboxSheetId,

@@ -2,6 +2,7 @@ import {
   buildOAuthIdentityCandidates,
   getBrowserAppExistingPermissions,
 } from '../modules/oauthDrivePermissionContext';
+import { PN_DRIVE_SHEET_KEYS } from '../modules/pnDriveIndex';
 
 jest.mock('../modules/storageCredentialsService', () => ({
   storageCredentialsService: {
@@ -15,10 +16,6 @@ jest.mock('../modules/googleDriveProxy', () => ({
   },
 }));
 
-jest.mock('../modules/integratorFolderService', () => ({
-  lookupPnFolderLayout: jest.fn(),
-}));
-
 jest.mock('../modules/thirdPartyPermissionsService', () => ({
   ThirdPartyPermissionsService: {
     getPermissions: jest.fn(),
@@ -27,13 +24,27 @@ jest.mock('../modules/thirdPartyPermissionsService', () => ({
 
 import { storageCredentialsService } from '../modules/storageCredentialsService';
 import { googleDriveProxyService } from '../modules/googleDriveProxy';
-import { lookupPnFolderLayout } from '../modules/integratorFolderService';
 import { ThirdPartyPermissionsService } from '../modules/thirdPartyPermissionsService';
 
 const mockFindCreds = storageCredentialsService.findCredentialsByIdentityCandidates as jest.Mock;
 const mockGetToken = googleDriveProxyService.getAccessToken as jest.Mock;
-const mockLayout = lookupPnFolderLayout as jest.Mock;
 const mockGetPerms = ThirdPartyPermissionsService.getPermissions as jest.Mock;
+
+function testPnDriveIndex() {
+  const sheetIds = Object.fromEntries(
+    Object.values(PN_DRIVE_SHEET_KEYS).map((k) => [k, `sheet-${k}`])
+  );
+  return {
+    schemaVersion: 1,
+    pnFolderId: 'pn-folder',
+    metadataFolderId: 'meta-folder',
+    integratorsRootId: 'int-root',
+    messagesFolderId: 'msg-folder',
+    inboxSheetId: 'inbox',
+    sheetIds,
+    conversationSheets: {},
+  };
+}
 
 describe('oauthDrivePermissionContext', () => {
   beforeEach(() => {
@@ -43,10 +54,12 @@ describe('oauthDrivePermissionContext', () => {
   it('returns existing permissions when credentials resolve via DID candidate', async () => {
     mockFindCreds.mockResolvedValue({
       identityId: 'did:key:abc',
-      credentials: { googleDriveAccounts: [{ backendId: 'acc-1', access_token: 'tok' }] },
+      credentials: {
+        googleDriveAccounts: [{ backendId: 'acc-1', access_token: 'tok' }],
+        pnDriveIndex: testPnDriveIndex(),
+      },
     });
     mockGetToken.mockResolvedValue('drive-access-token');
-    mockLayout.mockResolvedValue({ pnFolderId: 'pn-folder', metadataFolderId: 'meta-folder' });
     mockGetPerms.mockResolvedValue({
       'browser-app': {
         toolId: 'browser-app',
@@ -80,10 +93,12 @@ describe('oauthDrivePermissionContext', () => {
   it('returns null when browser-app permission is missing', async () => {
     mockFindCreds.mockResolvedValue({
       identityId: 'pn-59e4692524b7',
-      credentials: { googleDrive: { access_token: 'tok' } },
+      credentials: {
+        googleDrive: { access_token: 'tok' },
+        pnDriveIndex: testPnDriveIndex(),
+      },
     });
     mockGetToken.mockResolvedValue('drive-access-token');
-    mockLayout.mockResolvedValue({ pnFolderId: 'pn-folder', metadataFolderId: 'meta-folder' });
     mockGetPerms.mockResolvedValue({});
 
     const result = await getBrowserAppExistingPermissions({
@@ -96,10 +111,12 @@ describe('oauthDrivePermissionContext', () => {
   it('returns null when browser-app permission is revoked (non-active)', async () => {
     mockFindCreds.mockResolvedValue({
       identityId: 'pn-59e4692524b7',
-      credentials: { googleDrive: { access_token: 'tok' } },
+      credentials: {
+        googleDrive: { access_token: 'tok' },
+        pnDriveIndex: testPnDriveIndex(),
+      },
     });
     mockGetToken.mockResolvedValue('drive-access-token');
-    mockLayout.mockResolvedValue({ pnFolderId: 'pn-folder', metadataFolderId: 'meta-folder' });
     mockGetPerms.mockResolvedValue({
       'browser-app': {
         toolId: 'browser-app',

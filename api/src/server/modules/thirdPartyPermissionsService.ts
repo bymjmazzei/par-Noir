@@ -37,7 +37,8 @@ export class ThirdPartyPermissionsService {
     accessToken: string,
     metadataFolderId: string,
     userPnIdentifier: string,
-    accountId?: string
+    accountId?: string,
+    spreadsheetId?: string
   ): Promise<Record<string, ThirdPartyPermission> | null> {
     try {
       const normalized = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
@@ -58,16 +59,18 @@ export class ThirdPartyPermissionsService {
 
       const token: GoogleDriveToken = { access_token: accessToken };
       const { ThirdPartyPermissionsSheetsService } = await import('./thirdPartyPermissionsSheetsService');
-      const spreadsheetId = await ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(
-        token,
-        metadataFolderId,
-        normalized,
-        accountId
-      );
+      const resolvedSpreadsheetId =
+        spreadsheetId ||
+        (await ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(
+          token,
+          metadataFolderId,
+          normalized,
+          accountId
+        ));
 
       const permissions = await ThirdPartyPermissionsSheetsService.getPermissions(
         token,
-        spreadsheetId,
+        resolvedSpreadsheetId,
         normalized,
         accountId
       );
@@ -83,13 +86,15 @@ export class ThirdPartyPermissionsService {
     accessToken: string,
     metadataFolderId: string,
     userPnIdentifier: string,
-    accountId?: string
+    accountId?: string,
+    spreadsheetId?: string
   ): Promise<Record<string, ThirdPartyPermission>> {
     const permissions = await this.getPermissionsFile(
       accessToken,
       metadataFolderId,
       userPnIdentifier,
-      accountId
+      accountId,
+      spreadsheetId
     );
     return permissions || {};
   }

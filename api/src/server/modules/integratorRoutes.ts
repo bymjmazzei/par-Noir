@@ -14,7 +14,7 @@ import {
   SCOPE_CLOUD_APP
 } from './integratorStoragePaths';
 import { integratorStorageErrorResponse } from './integratorDriveContext';
-import { loadCachedFolderIds } from './pnDriveLayout';
+import { isPnDriveIndexComplete, loadPnDriveIndex } from './pnDriveIndex';
 
 export function registerIntegratorRoutes(app: Application): void {
   /**
@@ -63,13 +63,20 @@ export function registerIntegratorRoutes(app: Application): void {
         [normalized]
       );
 
-      const cached = await loadCachedFolderIds(normalized);
+      const index = await loadPnDriveIndex(normalized);
+      if (!isPnDriveIndexComplete(index)) {
+        return res.status(409).json({
+          error: 'drive_not_initialized',
+          error_description: 'Google Drive storage not initialized. Connect storage in the dashboard first.'
+        });
+      }
+
       const result = await IntegratorFolderService.ensureIntegratorFolder(
         accessToken,
         normalized,
         tokenPayload.clientId,
         accountId,
-        cached
+        index
       );
 
       return res.json({

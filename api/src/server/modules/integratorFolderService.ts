@@ -1,23 +1,22 @@
 /**
  * Ensures and resolves integrator silo folders on Google Drive (integrators/{client_id}/).
+ * Runtime layout IDs come from pnDriveIndex — no pN root / _metadata discovery.
  */
 
 import {
   findFolderByNameUnderParent,
   findOrCreateFolderUnderParent,
-  findPnRootFolderId,
-  hasCachedDriveLayout,
-  initializeIntegratorsRoot,
-  loadCachedFolderIds,
-  persistCachedFolderIds,
-  type PnCachedFolderIds
 } from './pnDriveLayout';
 import {
-  INTEGRATORS_ROOT,
+  isPnDriveIndexComplete,
+  loadPnDriveIndex,
+  type PnDriveIndex,
+} from './pnDriveIndex';
+import {
   integratorFolderName,
   integratorPathLabel,
   isFirstPartyClient,
-  normalizePnIdentifier
+  normalizePnIdentifier,
 } from './integratorStoragePaths';
 import type { TokenPayload } from './pnOAuthService';
 
@@ -49,30 +48,21 @@ async function driveFetch(
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
-      ...(init?.headers || {})
-    }
+      ...(init?.headers || {}),
+    },
   });
 }
 
-export interface PnFolderLayout {
-  pnFolderId: string;
-  metadataFolderId: string;
-}
-
-/** Lookup pN root + _metadata; does not create. */
-export async function lookupPnFolderLayout(
-  accessToken: string,
-  pnIdentifier: string
-): Promise<PnFolderLayout | null> {
-  const pnFolderId = await findPnRootFolderId(accessToken, pnIdentifier);
-  if (!pnFolderId) return null;
-  const metadataFolderId = await findFolderByNameUnderParent(
-    accessToken,
-    '_metadata',
-    pnFolderId
-  );
-  if (!metadataFolderId) return null;
-  return { pnFolderId, metadataFolderId };
+async function requireDriveIndex(pnIdentifier: string): Promise<PnDriveIndex> {
+  const normalized = normalizePnIdentifier(pnIdentifier);
+  const index = await loadPnDriveIndex(normalized);
+  if (!isPnDriveIndexComplete(index)) {
+    throw new IntegratorStorageError(
+      'Google Drive pN folder is not initialized. Connect storage in the dashboard first.',
+      'DRIVE_NOT_INITIALIZED'
+    );
+  }
+  return index;
 }
 
 export class IntegratorFolderService {
@@ -80,8 +70,8 @@ export class IntegratorFolderService {
     accessToken: string,
     pnIdentifier: string,
     clientId: string,
-    accountId?: string,
-    cached?: PnCachedFolderIds | null
+    _accountId?: string,
+    indexOverride?: PnDriveIndex | null
   ): Promise<IntegratorFolderResult> {
     if (isFirstPartyClient(clientId)) {
       throw new IntegratorStorageError(
@@ -91,60 +81,23 @@ export class IntegratorFolderService {
     }
 
     const normalized = normalizePnIdentifier(pnIdentifier);
+    const index = indexOverride && isPnDriveIndexComplete(indexOverride)
+      ? indexOverride
+      : await requireDriveIndex(normalized);
+
     const folderSegment = integratorFolderName(clientId);
-    let layout = cached ?? (await loadCachedFolderIds(normalized));
-
-    if (hasCachedDriveLayout(layout)) {
-      const integratorFolderId = await findOrCreateFolderUnderParent(
-        accessToken,
-        folderSegment,
-        layout.integratorsRootId
-      );
-      return {
-        integratorFolderId,
-        integratorsRootId: layout.integratorsRootId,
-        pnFolderId: layout.pnFolderId,
-        metadataFolderId: layout.metadataFolderId,
-        integratorPath: integratorPathLabel(clientId)
-      };
-    }
-
-    const looked = await lookupPnFolderLayout(accessToken, normalized);
-    if (!looked) {
-      throw new IntegratorStorageError(
-        'Google Drive pN folder is not initialized. Connect storage in the dashboard first.',
-        'DRIVE_NOT_INITIALIZED'
-      );
-    }
-
-    const { pnFolderId, metadataFolderId } = looked;
-    const integratorsRootId = await initializeIntegratorsRoot(accessToken, pnFolderId);
     const integratorFolderId = await findOrCreateFolderUnderParent(
       accessToken,
       folderSegment,
-      integratorsRootId
+      index.integratorsRootId
     );
-
-    try {
-      const { storageCredentialsService } = await import('./storageCredentialsService');
-      const credRecord = await storageCredentialsService.getCredentials(normalized);
-      if (credRecord?.credentials) {
-        await persistCachedFolderIds(normalized, credRecord.credentials, {
-          pnFolderId,
-          metadataFolderId,
-          integratorsRootId
-        });
-      }
-    } catch {
-      // Repair cache is best-effort; folder creation already succeeded
-    }
 
     return {
       integratorFolderId,
-      integratorsRootId,
-      pnFolderId,
-      metadataFolderId,
-      integratorPath: integratorPathLabel(clientId)
+      integratorsRootId: index.integratorsRootId,
+      pnFolderId: index.pnFolderId,
+      metadataFolderId: index.metadataFolderId,
+      integratorPath: integratorPathLabel(clientId),
     };
   }
 
@@ -153,34 +106,20 @@ export class IntegratorFolderService {
     accessToken: string,
     pnIdentifier: string,
     clientId: string,
-    cached?: PnCachedFolderIds | null
+    indexOverride?: PnDriveIndex | null
   ): Promise<string | null> {
     if (isFirstPartyClient(clientId)) return null;
 
     const normalized = normalizePnIdentifier(pnIdentifier);
-    const cache = cached ?? (await loadCachedFolderIds(normalized));
-    const folderSegment = integratorFolderName(clientId);
+    const index = indexOverride && isPnDriveIndexComplete(indexOverride)
+      ? indexOverride
+      : await loadPnDriveIndex(normalized);
+    if (!isPnDriveIndexComplete(index)) return null;
 
-    if (cache?.integratorsRootId) {
-      return findFolderByNameUnderParent(
-        accessToken,
-        folderSegment,
-        cache.integratorsRootId
-      );
-    }
-
-    const layout = await lookupPnFolderLayout(accessToken, normalized);
-    if (!layout) return null;
-    const integratorsRootId = await findFolderByNameUnderParent(
-      accessToken,
-      INTEGRATORS_ROOT,
-      layout.pnFolderId
-    );
-    if (!integratorsRootId) return null;
     return findFolderByNameUnderParent(
       accessToken,
-      folderSegment,
-      integratorsRootId
+      integratorFolderName(clientId),
+      index.integratorsRootId
     );
   }
 

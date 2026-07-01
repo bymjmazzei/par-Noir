@@ -14,8 +14,7 @@ import {
   ThirdPartyPermission,
   ThirdPartyPermissionsService
 } from './thirdPartyPermissionsService';
-import { lookupPnFolderLayout } from './integratorFolderService';
-import { loadCachedFolderIds } from './pnDriveLayout';
+import { isPnDriveIndexComplete, loadPnDriveIndex } from './pnDriveIndex';
 import type { TokenPayload } from './pnOAuthService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 
@@ -32,10 +31,10 @@ export async function persistIntegratorGrantAfterTokenExchange(params: {
   if (!pnIdentifier) return;
 
   const normalizedPn = normalizePnIdentifier(pnIdentifier);
-  const layout = await lookupPnFolderLayout(userAccessToken, normalizedPn);
-  if (!layout) return;
+  const index = await loadPnDriveIndex(normalizedPn);
+  if (!isPnDriveIndexComplete(index)) return;
 
-  const { metadataFolderId } = layout;
+  const { metadataFolderId } = index;
   const existing = await ThirdPartyPermissionsService.getPermissions(
     userAccessToken,
     metadataFolderId,
@@ -47,13 +46,12 @@ export async function persistIntegratorGrantAfterTokenExchange(params: {
     existing[clientId]?.integratorFolderId;
 
   if (scopesIncludeCloudApp(scopes) && !isFirstPartyClient(clientId)) {
-    const cached = await loadCachedFolderIds(normalizedPn);
     const folder = await IntegratorFolderService.ensureIntegratorFolder(
       userAccessToken,
       normalizedPn,
       clientId,
       accountId,
-      cached
+      index
     );
     integratorFolderId = folder.integratorFolderId;
   }

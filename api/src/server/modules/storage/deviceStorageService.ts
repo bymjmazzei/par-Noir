@@ -31,12 +31,10 @@ export async function loadDeviceBundle(pn: string): Promise<DeviceStorageBundle 
     };
   }
 
-  const spreadsheetId = await DeviceSheetsService.getOrCreateSpreadsheet(
-    ctx.token,
-    ctx.metadataFolderId,
-    ctx.pnIdentifier,
-    ctx.accountId
-  );
+  const { loadPnDriveIndex, getSheetIdFromIndex, PN_DRIVE_SHEET_KEYS } = await import('../pnDriveIndex');
+  const index = await loadPnDriveIndex(ctx.pnIdentifier);
+  if (!index) return null;
+  const spreadsheetId = getSheetIdFromIndex(index, PN_DRIVE_SHEET_KEYS.DEVICES);
 
   return {
     pnIdentifier: ctx.pnIdentifier,

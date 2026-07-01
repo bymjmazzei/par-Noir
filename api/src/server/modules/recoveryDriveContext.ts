@@ -30,15 +30,14 @@ export async function getRecoveryDriveContext(userPnIdentifier: string): Promise
     expires_in: account.expires_in,
   };
 
-  const { resolvePnDriveFolders } = await import('./resolvePnDriveFolders');
-  const pinned = await storageCredentialsService.getDriveFolderId(pnIdentifier);
-  const folders = await resolvePnDriveFolders(token, pnIdentifier, accountId, pinned);
-  if (!folders) return null;
+  const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
+  const index = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);
+  if (!isPnDriveIndexComplete(index)) return null;
 
   return {
     pnIdentifier,
     token,
     accountId,
-    metadataFolderId: folders.metadataFolderId,
+    metadataFolderId: index.metadataFolderId,
   };
 }

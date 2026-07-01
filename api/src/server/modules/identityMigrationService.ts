@@ -57,19 +57,17 @@ async function resolveMigrationDriveAccess(migrationId: string): Promise<{
     access_token: account.access_token || account.accessToken,
     refresh_token: account.refresh_token || account.refreshToken,
   };
-  const pinned =
-    (row.pinned_drive_folder_id as string | null)
-    || (await storageCredentialsService.getDriveFolderId(pred));
-  const { resolvePnDriveFolders } = await import('./resolvePnDriveFolders');
-  const folders = await resolvePnDriveFolders(token, pred, account.accountId, pinned);
+  const { loadPnDriveFolders } = await import('./pnDriveIndex');
+  const folders = await loadPnDriveFolders(pred);
   if (!folders) return null;
+  const pinned = await storageCredentialsService.getDriveFolderId(pred);
   return {
     pred,
     succ,
     token,
     accountId: account.accountId,
     folders,
-    pinnedFolderId: pinned,
+    pinnedFolderId: pinned ?? folders.pnFolderId,
   };
 }
 
@@ -298,7 +296,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
 
       const pn = normalizePn(String(userPnIdentifier));
       const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
-      const { resolvePnDriveFolders } = await import('./resolvePnDriveFolders');
+      const { loadPnDriveFolders } = await import('./pnDriveIndex');
       const creds = await storageCredentialsService.getCredentials(pn);
       if (!creds?.credentials) return res.status(404).json({ error: 'Drive not connected' });
 
@@ -311,8 +309,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
         access_token: account.access_token || account.accessToken,
         refresh_token: account.refresh_token || account.refreshToken,
       };
-      const pinned = await storageCredentialsService.getDriveFolderId(pn);
-      const folders = await resolvePnDriveFolders(token, pn, account.accountId, pinned);
+      const folders = await loadPnDriveFolders(pn);
       if (!folders) return res.status(404).json({ error: 'Drive folders not found' });
 
       const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
@@ -371,25 +368,28 @@ export function registerIdentityMigrationRoutes(app: Application): void {
         refresh_token: account.refresh_token || account.refreshToken,
       };
       const { MessageSheetsService } = await import('./messageSheetsService');
-      const { resolvePnDriveFolders } = await import('./resolvePnDriveFolders');
-      const pinned = await storageCredentialsService.getDriveFolderId(pn);
-      const folders = await resolvePnDriveFolders(token, pn, account.accountId, pinned);
+      const { loadPnDriveFolders } = await import('./pnDriveIndex');
+      const folders = await loadPnDriveFolders(pn);
       if (!folders?.pnFolderId) return res.status(404).json({ error: 'Drive folders not found' });
 
-      const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-        token,
-        folders.pnFolderId,
-        pn,
-        account.accountId
-      );
-      const cachedFolderIds = creds.credentials.cachedFolderIds || {};
-      const inboxSheetId = await MessageSheetsService.getInboxSheet(
-        token,
-        messagesFolderId,
-        pn,
-        account.accountId,
-        cachedFolderIds.inboxSheetId
-      );
+      const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
+      const driveIndex = readPnDriveIndex(creds.credentials as Record<string, unknown>);
+      const messagesFolderId = isPnDriveIndexComplete(driveIndex)
+        ? driveIndex.messagesFolderId
+        : await MessageSheetsService.getOrCreateMessagesFolder(
+            token,
+            folders.pnFolderId,
+            pn,
+            account.accountId
+          );
+      const inboxSheetId = isPnDriveIndexComplete(driveIndex)
+        ? driveIndex.inboxSheetId
+        : await MessageSheetsService.getInboxSheet(
+            token,
+            messagesFolderId,
+            pn,
+            account.accountId
+          );
       const inboxEntry = await MessageSheetsService.getInboxConversationByParticipant(
         token,
         inboxSheetId,
@@ -445,9 +445,8 @@ export function registerIdentityMigrationRoutes(app: Application): void {
         access_token: account.access_token || account.accessToken,
         refresh_token: account.refresh_token || account.refreshToken,
       };
-      const { resolvePnDriveFolders } = await import('./resolvePnDriveFolders');
-      const pinned = await storageCredentialsService.getDriveFolderId(ownerPn);
-      const folders = await resolvePnDriveFolders(token, ownerPn, account.accountId, pinned);
+      const { loadPnDriveFolders } = await import('./pnDriveIndex');
+      const folders = await loadPnDriveFolders(ownerPn);
       if (!folders) return res.status(404).json({ error: 'Drive folders not found' });
 
       const { GroupSheetsService } = await import('./groupSheetsService');
@@ -546,9 +545,8 @@ export function registerIdentityMigrationRoutes(app: Application): void {
         const account = accounts[0];
         token = { access_token: account.access_token || account.accessToken };
         accountId = account.accountId;
-        const { resolvePnDriveFolders } = await import('./resolvePnDriveFolders');
-        const pinned = await storageCredentialsService.getDriveFolderId(pn);
-        const folders = await resolvePnDriveFolders(token, pn, account.accountId, pinned);
+      const { loadPnDriveFolders } = await import('./pnDriveIndex');
+      const folders = await loadPnDriveFolders(pn);
         if (!folders) return res.status(404).json({ error: 'Drive folders not found' });
         metadataFolderId = folders.metadataFolderId;
       }

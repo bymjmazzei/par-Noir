@@ -8,7 +8,6 @@ import { googleDriveProxyService } from './googleDriveProxy';
 import {
   IntegratorFolderService,
   IntegratorStorageError,
-  lookupPnFolderLayout
 } from './integratorFolderService';
 import {
   isFirstPartyClient,
@@ -16,7 +15,7 @@ import {
   scopesIncludeCloudApp,
   SCOPE_CLOUD_APP
 } from './integratorStoragePaths';
-import { loadCachedFolderIds } from './pnDriveLayout';
+import { isPnDriveIndexComplete, loadPnDriveIndex } from './pnDriveIndex';
 import type { TokenPayload } from './pnOAuthService';
 
 export interface IntegratorDriveContext {
@@ -90,13 +89,8 @@ export async function resolveIntegratorDriveContext(
     };
   }
 
-  const cached = await loadCachedFolderIds(userIdentifier);
-  const layout =
-    cached?.pnFolderId && cached?.metadataFolderId
-      ? { pnFolderId: cached.pnFolderId, metadataFolderId: cached.metadataFolderId }
-      : await lookupPnFolderLayout(accessToken, userIdentifier);
-
-  if (!layout) {
+  const index = await loadPnDriveIndex(userIdentifier);
+  if (!isPnDriveIndexComplete(index)) {
     return {
       error: 'Google Drive pN folder is not initialized',
       status: 409,
@@ -104,14 +98,14 @@ export async function resolveIntegratorDriveContext(
     };
   }
 
-  ctx.metadataFolderId = layout.metadataFolderId;
-  ctx.pnFolderId = layout.pnFolderId;
+  ctx.metadataFolderId = index.metadataFolderId;
+  ctx.pnFolderId = index.pnFolderId;
 
   let integratorFolderId = await IntegratorFolderService.resolveIntegratorFolderId(
     accessToken,
     userIdentifier,
     tokenPayload.clientId,
-    cached
+    index
   );
 
   if (!integratorFolderId) {
@@ -120,7 +114,7 @@ export async function resolveIntegratorDriveContext(
       userIdentifier,
       tokenPayload.clientId,
       accountId,
-      cached
+      index
     );
     integratorFolderId = ensured.integratorFolderId;
     ctx.metadataFolderId = ensured.metadataFolderId;

@@ -4,7 +4,7 @@
 
 import { CompanionMetadataSheets } from './companionMetadataSheets';
 import { GoogleDriveToken } from './googleOAuth2Helper';
-import { resolvePnDriveFolders } from './resolvePnDriveFolders';
+import { loadPnDriveFolders } from './pnDriveIndex';
 import { storageCredentialsService } from './storageCredentialsService';
 
 function extractAccountId(account: Record<string, unknown>): string | undefined {
@@ -57,8 +57,7 @@ export async function appendOwnerCompanionEngagement(
       expires_in: account.expires_in
     };
 
-    const pinnedFolderId = await storageCredentialsService.getDriveFolderId(ownerPnIdentifier);
-    const folders = await resolvePnDriveFolders(token, ownerPnIdentifier, accountId, pinnedFolderId);
+    const folders = await loadPnDriveFolders(ownerPnIdentifier);
     if (!folders) {
       console.warn(
         `[CompanionEngagement] Metadata folder not found for owner fileId=${fileId}`
