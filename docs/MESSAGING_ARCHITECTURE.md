@@ -8,12 +8,16 @@ The par Noir API is a **storage coordinator**, not a **conversation participant*
 
 1. Each user may publish `mlKemPublicKey` on their Drive `profile.json` (and via `POST /api/profile/ml-kem-public-key`) for **discovery** and cold-DM flows.
 2. On **connection send**, the requester attaches `requesterMlKemPublicKey` to the recipient’s `pending_received` row (`peerMlKemPublicKey` in column F of the connections sheet).
-3. On **connection accept**, the acceptor reads `peerMlKemPublicKey` from that pending row (profile publish is a legacy fallback for requests sent before this change). The acceptor runs ML-KEM-768 encapsulation client-side and sends `kemCiphertext` to `POST /api/connections/:id/accept`. The API stores the blob only.
-4. Both sides derive `messageRootKey` locally, then per-message keys via HKDF (`par-noir-dm-v1` + `connectionId`).
-5. **Send:** `POST /api/messages/send` with `encryptedContent` and `cryptoVersion: 2` only.
-6. **Read:** `GET|POST /api/messages/conversation` returns `encryptedContent`; the browser decrypts.
+3. On **connection accept**, the acceptor reads `peerMlKemPublicKey` from that pending row (profile publish is a legacy fallback for requests sent before this change). The acceptor runs ML-KEM-768 encapsulation client-side and sends `kemCiphertext` and `wrappedMessageRootKey` to `POST /api/connections/:id/accept`. The API stores both blobs only (no server-side derivation).
+4. On **every open** (after identity unlock), each party re-derives `messageRootKey` from their own Drive inbox:
+   - **Requester:** `openDmSession(kemCiphertext, mlKemSecretKey)` — inbox column **F** (`kemCiphertext`).
+   - **Acceptor:** `unwrapMessageRootKey(wrappedMessageRootKey, mlKemSecretKey, connectionId)` — inbox column **H** (`wrappedMessageRootKey`).
+   Both paths require an unlocked identity session (`mlKemSecretKey` from OAuth handoff). `@par-noir/dm-crypto` `resolveMessageRootKey` tries wrapped, then kem, then optional legacy root (identity migration only).
+5. Per-message keys via HKDF (`par-noir-dm-v1` + `connectionId`).
+6. **Send:** `POST /api/messages/send` with `encryptedContent` and `cryptoVersion: 2` only.
+7. **Read:** `GET|POST /api/messages/conversation` returns `encryptedContent`; the browser decrypts.
 
-Inbox sheets cache `kemCiphertext` (column F) for fast session open—opaque KEM blob, not a server-held secret.
+Inbox sheets cache opaque recovery blobs on user Drive—column F (`kemCiphertext`) for the requester, column H (`wrappedMessageRootKey`) for the acceptor—not a server-held secret and never plaintext `messageRootKey`.
 
 ## Media attachments (E2E)
 
@@ -43,8 +47,8 @@ The API never sees plaintext media; it coordinates upload, ACL, and sheet metada
 When the owner rotates ML-KEM keys (new `pn-*`):
 
 1. Dashboard stores a short-lived `pn_identity_migration_kem_handoff` in **sessionStorage** (predecessor + successor ML-KEM material).
-2. On browser unlock, `migrateConnectionsOnUnlock` self-rekeys requester-side `kemCiphertext` per connection and re-wraps owned group `chatKey` rows via `POST /api/identity/migration/:id/groups/rewrap`.
-3. **Historical DMs:** `ensureMessageRootKey` falls back to legacy roots cached during migration for decrypt-only.
+2. On browser unlock, `migrateConnectionsOnUnlock` self-rekeys requester-side `kemCiphertext` per connection (`POST /api/identity/migration/:id/connections/rekey`), re-wraps acceptor-side `wrappedMessageRootKey` on the acceptor inbox (`POST /api/identity/migration/:id/connections/rewrap-root`), and re-wraps owned group `chatKey` rows via `POST /api/identity/migration/:id/groups/rewrap`.
+3. **Historical DMs:** `resolveMessageRootKey` falls back to legacy roots cached during migration for decrypt-only.
 
 See [developer/IDENTITY_REKEY_MIGRATION.md](./developer/IDENTITY_REKEY_MIGRATION.md).
 
@@ -61,7 +65,8 @@ The API is a **coordinator**, not a **conversation participant**.
 |----------------------------|-------------------|
 | Who messages whom (connection graph while coordinating) | Plaintext content |
 | Timestamps, approximate sizes | `messageRootKey`, `chatKey`, passcode, pn name |
-| `kemCiphertext` blobs (opaque) | ML-KEM secret keys |
+| `kemCiphertext` blobs (opaque) | `wrappedMessageRootKey` blobs (opaque) |
+| ML-KEM secret keys | Plaintext `messageRootKey` |
 
 **Persistence:** Canonical message and connection data lives on **user-owned storage** (Drive / portable providers), not par Noir Postgres. The operator does not maintain a central social-graph database for DMs.
 
@@ -75,5 +80,5 @@ Browser OAuth may still send passcode to the server for legacy unlock flows. **E
 
 ## Implementation packages
 
-- `@par-noir/dm-crypto` — KEM session, DM v2, group wrap helpers
+- `@par-noir/dm-crypto` — KEM session, DM v2, group wrap helpers, `wrapMessageRootKey` / `resolveMessageRootKey`
 - `apps/aggregator-browser` — encrypt/decrypt, unlock modal, connection accept with KEM

@@ -25,6 +25,13 @@ export {
   encryptMessageRequest,
   decryptMessageRequest
 } from './messageRequest';
+export {
+  deriveDmSessionWrapKey,
+  wrapMessageRootKey,
+  unwrapMessageRootKey,
+  resolveMessageRootKey,
+  type ResolveMessageRootKeyOpts
+} from './dmSessionWrap';
 export { encryptMediaBytes, decryptMediaBytes } from './media';
 export { bytesToBase64, base64ToBytes } from './encoding';
 export {

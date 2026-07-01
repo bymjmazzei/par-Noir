@@ -10855,6 +10855,7 @@ class ProductionServer {
                 spreadsheetId: conv.spreadsheetId,
                 connectionId: conv.connectionId,
                 kemCiphertext: conv.kemCiphertext,
+                wrappedMessageRootKey: conv.wrappedMessageRootKey,
                 lastMessageAt: conv.lastMessageAt,
                 lastMessagePreview: conv.lastMessagePreview,
                 lastMessage,
@@ -10931,6 +10932,7 @@ class ProductionServer {
           lastMessageAt: string;
           lastMessagePreview?: string;
           kemCiphertext?: string;
+          wrappedMessageRootKey?: string;
           groupId?: string;
           ownerPnIdentifier?: string;
         }> = [];
@@ -11018,6 +11020,7 @@ class ProductionServer {
               spreadsheetId: conv.spreadsheetId,
               connectionId: conv.connectionId,
               kemCiphertext: conv.kemCiphertext,
+              wrappedMessageRootKey: conv.wrappedMessageRootKey,
               lastMessageAt: conv.lastMessageAt,
               lastMessagePreview: conv.lastMessagePreview,
               lastMessage,
@@ -15412,13 +15415,13 @@ class ProductionServer {
     this.app.post('/api/connections/:connectionId/accept', async (req, res) => {
       try {
         const { connectionId } = req.params;
-        const { userPnIdentifier, kemCiphertext, kemAlgId } = req.body;
+        const { userPnIdentifier, kemCiphertext, wrappedMessageRootKey, kemAlgId } = req.body;
         if (!connectionId || !userPnIdentifier) {
           return res.status(400).json({ error: 'connectionId and userPnIdentifier are required' });
         }
-        if (!kemCiphertext || kemAlgId !== 'ML-KEM-768') {
+        if (!kemCiphertext || !wrappedMessageRootKey || kemAlgId !== 'ML-KEM-768') {
           return res.status(400).json({
-            error: 'kemCiphertext and kemAlgId (ML-KEM-768) are required'
+            error: 'kemCiphertext, wrappedMessageRootKey, and kemAlgId (ML-KEM-768) are required'
           });
         }
 
@@ -15904,7 +15907,8 @@ class ProductionServer {
                   pnIdentifier,
                   accountId,
                   systemMessageContent,
-                  kemCiphertext
+                  kemCiphertext,
+                  wrappedMessageRootKey
                 );
                 messagingLog.debug('[AcceptConnection] Updated acceptor inbox');
               } catch (inboxError: any) {

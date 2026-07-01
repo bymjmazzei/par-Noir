@@ -2,7 +2,11 @@
  * Resume DM/group migration steps after identity re-key (browser unlock).
  */
 
-import { openDmSession } from '@par-noir/dm-crypto';
+import {
+  openDmSession,
+  unwrapMessageRootKey,
+  wrapMessageRootKey,
+} from '@par-noir/dm-crypto';
 import {
   MIGRATION_STATE_KEY,
   parseMigrationState,
@@ -18,6 +22,7 @@ import { cacheLegacyMessageRoot } from './dmCryptoClient';
 import { setMessageRootKey, getLegacyMessageRootKey } from './dmSessionCache';
 import {
   rekeyConnection,
+  rewrapConnectionRoot,
   rewrapGroupKeys,
   fetchConversationRowsForMigration,
   postDmMessageRowUpdates,
@@ -62,10 +67,13 @@ export async function migrateConnectionsOnUnlock(params: {
   const rekeyResults: Array<{ participantPnIdentifier: string; newMessageRootKey: string }> = [];
 
   for (const thread of threads) {
-    if (!thread.connectionId || !thread.kemCiphertext || !thread.participantPnIdentifier) continue;
+    if (!thread.connectionId || !thread.participantPnIdentifier) continue;
     if (thread.threadType === 'group') continue;
+    if (!thread.kemCiphertext && !thread.wrappedMessageRootKey) continue;
 
-    const isRequester = isRequesterForKem(thread.kemCiphertext, params.predecessorMlKemSecretKey);
+    const isRequester = thread.kemCiphertext
+      ? isRequesterForKem(thread.kemCiphertext, params.predecessorMlKemSecretKey)
+      : false;
 
     try {
       let newKem: string | undefined;
@@ -76,7 +84,7 @@ export async function migrateConnectionsOnUnlock(params: {
         const result = rekeyConnectionAsRequester(
           {
             connectionId: thread.connectionId,
-            kemCiphertext: thread.kemCiphertext,
+            kemCiphertext: thread.kemCiphertext!,
             participantPnIdentifier: thread.participantPnIdentifier,
             isRequester: true,
           },
@@ -102,11 +110,30 @@ export async function migrateConnectionsOnUnlock(params: {
           );
         }
       } else {
-        legacyRoot = getLegacyMessageRootKey(thread.connectionId);
-        try {
-          newRoot = openDmSession(thread.kemCiphertext, params.successorMlKemSecretKey);
-        } catch {
-          continue;
+        if (thread.wrappedMessageRootKey) {
+          legacyRoot = await unwrapMessageRootKey(
+            thread.wrappedMessageRootKey,
+            params.predecessorMlKemSecretKey,
+            thread.connectionId
+          );
+          newRoot = legacyRoot;
+          const newWrapped = await wrapMessageRootKey(
+            legacyRoot,
+            params.successorMlKemSecretKey,
+            thread.connectionId
+          );
+          await rewrapConnectionRoot(
+            params.authToken,
+            migrationId,
+            thread.connectionId,
+            userPn,
+            thread.participantPnIdentifier,
+            newWrapped
+          );
+        } else {
+          legacyRoot = getLegacyMessageRootKey(thread.connectionId);
+          if (!legacyRoot) continue;
+          newRoot = legacyRoot;
         }
       }
 

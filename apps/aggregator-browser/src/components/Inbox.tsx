@@ -83,6 +83,7 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
         onBack={() => setSelectedThread(null)}
         connectionId={selectedThread.connectionId}
         kemCiphertext={selectedThread.kemCiphertext}
+        wrappedMessageRootKey={selectedThread.wrappedMessageRootKey}
         spreadsheetId={selectedThread.spreadsheetId}
       />
     );

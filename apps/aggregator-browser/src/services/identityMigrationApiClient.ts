@@ -25,6 +25,30 @@ export async function rekeyConnection(
   if (!res.ok) throw new Error('Failed to rekey connection');
 }
 
+export async function rewrapConnectionRoot(
+  authToken: string,
+  migrationId: string,
+  connectionId: string,
+  userPnIdentifier: string,
+  participantPnIdentifier: string,
+  wrappedMessageRootKey: string
+): Promise<void> {
+  const res = await fetch(
+    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/connections/rewrap-root`,
+    {
+      method: 'POST',
+      headers: authHeaders(authToken),
+      body: JSON.stringify({
+        connectionId,
+        userPnIdentifier,
+        participantPnIdentifier,
+        wrappedMessageRootKey,
+      }),
+    }
+  );
+  if (!res.ok) throw new Error('Failed to rewrap connection root');
+}
+
 export async function rewrapGroupKeys(
   authToken: string,
   migrationId: string,

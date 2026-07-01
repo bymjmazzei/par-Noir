@@ -13,6 +13,9 @@ import {
   unwrapChatKey,
   generateChatKey,
   isDmCiphertext,
+  wrapMessageRootKey,
+  unwrapMessageRootKey,
+  resolveMessageRootKey,
 } from '../src/index';
 
 describe('@par-noir/dm-crypto', () => {
@@ -55,5 +58,60 @@ describe('@par-noir/dm-crypto', () => {
     const key2 = deriveMessageKey(root, 'conn_b_a');
     const ct = await encryptDmMessage('secret', key1);
     await expect(decryptDmMessage(ct, key2)).rejects.toThrow();
+  });
+
+  it('messageRootKey wrap/unwrap roundtrip', async () => {
+    const acceptor = ml_kem768.keygen(randomBytes(64));
+    const acceptorSk = bytesToBase64(acceptor.secretKey);
+    const root = bytesToBase64(randomBytes(32));
+    const connectionId = 'conn_wrap_test';
+    const wrapped = await wrapMessageRootKey(root, acceptorSk, connectionId);
+    const opened = await unwrapMessageRootKey(wrapped, acceptorSk, connectionId);
+    expect(opened).toBe(root);
+  });
+
+  it('resolveMessageRootKey via kem (requester)', async () => {
+    const kem = ml_kem768.keygen(randomBytes(64));
+    const requesterSk = bytesToBase64(kem.secretKey);
+    const requesterPk = bytesToBase64(kem.publicKey);
+    const acceptor = ml_kem768.keygen(randomBytes(64));
+    const acceptorSk = bytesToBase64(acceptor.secretKey);
+    const connectionId = 'conn_resolve_kem';
+
+    const { kemCiphertext, messageRootKey } = establishDmSession(requesterPk, acceptorSk);
+    const resolved = await resolveMessageRootKey(connectionId, requesterSk, { kemCiphertext });
+    expect(resolved).toBe(messageRootKey);
+  });
+
+  it('resolveMessageRootKey via wrapped (acceptor)', async () => {
+    const kem = ml_kem768.keygen(randomBytes(64));
+    const requesterPk = bytesToBase64(kem.publicKey);
+    const acceptor = ml_kem768.keygen(randomBytes(64));
+    const acceptorSk = bytesToBase64(acceptor.secretKey);
+    const connectionId = 'conn_resolve_wrap';
+
+    const { kemCiphertext, messageRootKey } = establishDmSession(requesterPk, acceptorSk);
+    const wrapped = await wrapMessageRootKey(messageRootKey, acceptorSk, connectionId);
+    const resolved = await resolveMessageRootKey(connectionId, acceptorSk, {
+      kemCiphertext,
+      wrappedMessageRootKey: wrapped,
+    });
+    expect(resolved).toBe(messageRootKey);
+  });
+
+  it('resolveMessageRootKey fails with wrong secret', async () => {
+    const kem = ml_kem768.keygen(randomBytes(64));
+    const requesterPk = bytesToBase64(kem.publicKey);
+    const acceptor = ml_kem768.keygen(randomBytes(64));
+    const acceptorSk = bytesToBase64(acceptor.secretKey);
+    const other = ml_kem768.keygen(randomBytes(64));
+    const otherSk = bytesToBase64(other.secretKey);
+    const connectionId = 'conn_wrong_secret';
+
+    const { messageRootKey } = establishDmSession(requesterPk, acceptorSk);
+    const wrapped = await wrapMessageRootKey(messageRootKey, acceptorSk, connectionId);
+    await expect(
+      resolveMessageRootKey(connectionId, otherSk, { wrappedMessageRootKey: wrapped })
+    ).rejects.toThrow();
   });
 });

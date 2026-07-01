@@ -6,9 +6,10 @@ import {
   deriveMessageKey,
   encryptDmMessage,
   decryptDmMessage,
-  openDmSession,
   establishDmSession,
-  isDmCiphertext
+  isDmCiphertext,
+  resolveMessageRootKey,
+  wrapMessageRootKey,
 } from '@par-noir/dm-crypto';
 import {
   getMessageRootKey,
@@ -18,31 +19,29 @@ import {
 } from './dmSessionCache';
 import { getDmIdentity } from './dmIdentitySession';
 
+/** Recovery blobs from user Drive inbox (not localStorage). */
+export interface DmSessionRecovery {
+  kemCiphertext?: string;
+  wrappedMessageRootKey?: string;
+}
+
 export async function ensureMessageRootKey(
   connectionId: string,
-  kemCiphertext?: string,
+  recovery?: DmSessionRecovery,
   opts?: { allowLegacyFallback?: boolean }
 ): Promise<string> {
-  const cached = getMessageRootKey(connectionId);
-  if (cached) return cached;
+  const { mlKemSecretKey } = getDmIdentity();
+  const legacy =
+    opts?.allowLegacyFallback !== false ? getLegacyMessageRootKey(connectionId) : undefined;
 
-  if (kemCiphertext) {
-    try {
-      const { mlKemSecretKey } = getDmIdentity();
-      const root = openDmSession(kemCiphertext, mlKemSecretKey);
-      setMessageRootKey(connectionId, root);
-      return root;
-    } catch {
-      /* try legacy */
-    }
-  }
+  const root = await resolveMessageRootKey(connectionId, mlKemSecretKey, {
+    kemCiphertext: recovery?.kemCiphertext,
+    wrappedMessageRootKey: recovery?.wrappedMessageRootKey,
+    legacyRoot: legacy,
+  });
 
-  if (opts?.allowLegacyFallback !== false) {
-    const legacy = getLegacyMessageRootKey(connectionId);
-    if (legacy) return legacy;
-  }
-
-  throw new Error('Missing KEM session data for this conversation');
+  setMessageRootKey(connectionId, root);
+  return root;
 }
 
 export function cacheLegacyMessageRoot(connectionId: string, rootB64: string): void {
@@ -52,9 +51,9 @@ export function cacheLegacyMessageRoot(connectionId: string, rootB64: string): v
 export async function encryptOutgoingMessage(
   plaintext: string,
   connectionId: string,
-  kemCiphertext?: string
+  recovery?: DmSessionRecovery
 ): Promise<string> {
-  const root = await ensureMessageRootKey(connectionId, kemCiphertext);
+  const root = await ensureMessageRootKey(connectionId, recovery);
   const messageKey = deriveMessageKey(root, connectionId);
   return encryptDmMessage(plaintext, messageKey);
 }
@@ -62,13 +61,13 @@ export async function encryptOutgoingMessage(
 export async function decryptIncomingMessage(
   encryptedContent: string,
   connectionId: string,
-  kemCiphertext?: string
+  recovery?: DmSessionRecovery
 ): Promise<string> {
   if (!encryptedContent) return '';
   if (!isDmCiphertext(encryptedContent)) {
     return encryptedContent;
   }
-  const root = await ensureMessageRootKey(connectionId, kemCiphertext, { allowLegacyFallback: true });
+  const root = await ensureMessageRootKey(connectionId, recovery, { allowLegacyFallback: true });
   const messageKey = deriveMessageKey(root, connectionId);
   return decryptDmMessage(encryptedContent, messageKey);
 }
@@ -80,4 +79,12 @@ export function createKemSession(peerMlKemPublicKey: string): {
   const { mlKemSecretKey } = getDmIdentity();
   const { kemCiphertext, messageRootKey } = establishDmSession(peerMlKemPublicKey, mlKemSecretKey);
   return { kemCiphertext, messageRootKey };
+}
+
+export async function wrapAcceptorMessageRootKey(
+  messageRootKey: string,
+  connectionId: string
+): Promise<string> {
+  const { mlKemSecretKey } = getDmIdentity();
+  return wrapMessageRootKey(messageRootKey, mlKemSecretKey, connectionId);
 }

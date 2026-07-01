@@ -6,7 +6,7 @@
 import { PNOAuthService } from './pnOAuthService';
 import { API_ENDPOINT } from '../config/api';
 import { inboxCacheService } from './inboxCacheService';
-import { encryptOutgoingMessage, decryptIncomingMessage } from './dmCryptoClient';
+import { encryptOutgoingMessage, decryptIncomingMessage, type DmSessionRecovery } from './dmCryptoClient';
 import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
 import { encryptMessageRequest, decryptMessageRequest } from '@par-noir/dm-crypto';
 import { messageAuthHeaders, messageFetch } from './messageAuthFetch';
@@ -67,6 +67,7 @@ export interface MessageThread {
   spreadsheetId?: string;
   connectionId?: string;
   kemCiphertext?: string;
+  wrappedMessageRootKey?: string;
   groupId?: string;
   groupTitle?: string;
   ownerPnIdentifier?: string;
@@ -195,6 +196,7 @@ export async function getMessageThreads(userPnIdentifier: string): Promise<Messa
       spreadsheetId: conv.spreadsheetId,
       connectionId: conv.connectionId,
       kemCiphertext: conv.kemCiphertext,
+      wrappedMessageRootKey: conv.wrappedMessageRootKey,
       groupId: conv.groupId,
       groupTitle: conv.groupTitle,
       ownerPnIdentifier: conv.ownerPnIdentifier,
@@ -210,7 +212,8 @@ export async function getMessageThreads(userPnIdentifier: string): Promise<Messa
 /**
  * Get messages in a conversation with a specific user
  * @param connectionId - Optional: connectionId from inbox (optimized path)
- * @param kemCiphertext - Optional: KEM ciphertext from inbox (optimized path)
+ * @param kemCiphertext - Optional: KEM ciphertext from inbox (requester recovery)
+ * @param wrappedMessageRootKey - Optional: wrapped root from inbox (acceptor recovery)
  * @param spreadsheetId - Optional: spreadsheetId from inbox (optimized path)
  * Uses POST with body when cached credentials provided (avoids URL length/encoding issues).
  */
@@ -221,7 +224,8 @@ export async function getConversationMessages(
   offset?: number,
   connectionId?: string,
   kemCiphertext?: string,
-  spreadsheetId?: string
+  spreadsheetId?: string,
+  wrappedMessageRootKey?: string
 ): Promise<{ messages: Message[]; total: number }> {
   const hasCached = !!(
     connectionId &&
@@ -259,11 +263,13 @@ export async function getConversationMessages(
 
   const result = await response.json();
   const raw = result.messages || [];
-  const kem =
-    kemCiphertext ||
-    (await getMessageThreads(userPnIdentifier)).find(
-      (t) => t.participantPnIdentifier === participantPnIdentifier
-    )?.kemCiphertext;
+  const threadMeta = (await getMessageThreads(userPnIdentifier)).find(
+    (t) => t.participantPnIdentifier === participantPnIdentifier
+  );
+  const recovery: DmSessionRecovery = {
+    kemCiphertext: kemCiphertext || threadMeta?.kemCiphertext,
+    wrappedMessageRootKey: wrappedMessageRootKey || threadMeta?.wrappedMessageRootKey,
+  };
 
   const messages: Message[] = await Promise.all(
     raw.map(async (row: Message & { encryptedContent?: string; cryptoVersion?: number }) => {
@@ -271,7 +277,7 @@ export async function getConversationMessages(
       let content = '';
       if (connectionId && enc) {
         try {
-          content = await decryptIncomingMessage(enc, connectionId, kem);
+          content = await decryptIncomingMessage(enc, connectionId, recovery);
         } catch {
           content = '[Unable to decrypt message]';
         }
@@ -308,25 +314,32 @@ export async function sendMessage(
   mediaFileId?: string,
   connectionId?: string,
   kemCiphertext?: string,
-  mediaMimeType?: string
+  mediaMimeType?: string,
+  wrappedMessageRootKey?: string
 ): Promise<Message> {
   if (!isDmIdentityReady()) {
     throw new Error('Messaging keys unavailable. Lock and unlock your pN again to send messages.');
   }
   let connId = connectionId;
-  let kem = kemCiphertext;
-  if (!connId || !kem) {
+  let recovery: DmSessionRecovery = {
+    kemCiphertext,
+    wrappedMessageRootKey,
+  };
+  if (!connId || (!recovery.kemCiphertext && !recovery.wrappedMessageRootKey)) {
     const thread = (await getMessageThreads(fromPnIdentifier)).find(
       (t) => t.participantPnIdentifier === toPnIdentifier
     );
     connId = thread?.connectionId;
-    kem = thread?.kemCiphertext;
+    recovery = {
+      kemCiphertext: thread?.kemCiphertext,
+      wrappedMessageRootKey: thread?.wrappedMessageRootKey,
+    };
   }
-  if (!connId || !kem) {
+  if (!connId || (!recovery.kemCiphertext && !recovery.wrappedMessageRootKey)) {
     throw new Error('No encrypted session for this conversation. Re-accept the connection.');
   }
 
-  const encryptedContent = await encryptOutgoingMessage(content, connId, kem);
+  const encryptedContent = await encryptOutgoingMessage(content, connId, recovery);
 
   try {
     const sendPayload = {

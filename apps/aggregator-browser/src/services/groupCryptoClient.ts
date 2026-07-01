@@ -13,7 +13,7 @@ import {
   encryptDmMessage,
   decryptDmMessage
 } from '@par-noir/dm-crypto';
-import { ensureMessageRootKey } from './dmCryptoClient';
+import { ensureMessageRootKey, type DmSessionRecovery } from './dmCryptoClient';
 
 export { generateChatKey, generateGroupId };
 
@@ -44,10 +44,10 @@ export async function wrapChatKeyForMember(
   chatKeyB64: string,
   ownerPnIdentifier: string,
   connectionId: string,
-  kemCiphertext: string | undefined,
+  sessionRecovery: DmSessionRecovery | undefined,
   groupId: string
 ): Promise<string> {
-  const messageRootKey = await ensureMessageRootKey(connectionId, kemCiphertext);
+  const messageRootKey = await ensureMessageRootKey(connectionId, sessionRecovery);
   const wrapKey = deriveGroupWrapKey(ownerPnIdentifier, messageRootKey, groupId);
   return wrapChatKey(chatKeyB64, wrapKey);
 }
@@ -56,10 +56,10 @@ export async function unwrapGroupChatKey(
   wrappedChatKey: string,
   ownerPnIdentifier: string,
   connectionId: string,
-  kemCiphertext: string | undefined,
+  sessionRecovery: DmSessionRecovery | undefined,
   groupId: string
 ): Promise<string> {
-  const messageRootKey = await ensureMessageRootKey(connectionId, kemCiphertext);
+  const messageRootKey = await ensureMessageRootKey(connectionId, sessionRecovery);
   const wrapKey = deriveGroupWrapKey(ownerPnIdentifier, messageRootKey, groupId);
   return unwrapChatKey(wrappedChatKey, wrapKey);
 }

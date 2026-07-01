@@ -14,7 +14,8 @@ import {
   encryptGroupMessage,
   decryptGroupMessage
 } from './groupCryptoClient';
-import { getMessageThreads } from './messageService';
+import { getMessageThreads, type MessageThread } from './messageService';
+import type { DmSessionRecovery } from './dmCryptoClient';
 import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
 import type { Message } from './messageService';
 
@@ -109,7 +110,7 @@ export async function createGroup(
       chatKey,
       ownerPnIdentifier,
       thread.connectionId,
-      thread.kemCiphertext,
+      dmSessionFromThread(thread),
       groupId
     );
     const input = memberInputs.find((m) => m.memberPnIdentifier === pn);
@@ -214,7 +215,7 @@ export async function removeGroupMember(
         newChatKey,
         ownerPnIdentifier,
         thread.connectionId,
-        thread.kemCiphertext,
+        dmSessionFromThread(thread),
         groupId
       ),
       accessRole: row.accessRole
@@ -234,13 +235,25 @@ export async function removeGroupMember(
   }
 }
 
+function dmSessionFromThread(thread: MessageThread | undefined): DmSessionRecovery | undefined {
+  if (!thread) return undefined;
+  return {
+    kemCiphertext: thread.kemCiphertext,
+    wrappedMessageRootKey: thread.wrappedMessageRootKey,
+  };
+}
+
 async function getDmThreadToOwner(
   userPn: string,
   ownerPn: string
-): Promise<{ connectionId?: string; kemCiphertext?: string }> {
+): Promise<DmSessionRecovery & { connectionId?: string }> {
   const threads = await getMessageThreads(userPn);
   const t = threads.find((x) => x.participantPnIdentifier === ownerPn);
-  return { connectionId: t?.connectionId, kemCiphertext: t?.kemCiphertext };
+  return {
+    connectionId: t?.connectionId,
+    kemCiphertext: t?.kemCiphertext,
+    wrappedMessageRootKey: t?.wrappedMessageRootKey,
+  };
 }
 
 export async function getGroupChatKey(
@@ -254,11 +267,17 @@ export async function getGroupChatKey(
     const { mlKemSecretKey } = getDmIdentity();
     return unwrapChatKeyForOwner(wrappedChatKey, mlKemSecretKey, groupId);
   }
-  const { connectionId, kemCiphertext } = await getDmThreadToOwner(userPn, ownerPnIdentifier);
+  const { connectionId, kemCiphertext, wrappedMessageRootKey } = await getDmThreadToOwner(userPn, ownerPnIdentifier);
   if (!connectionId) {
     throw new Error('No encrypted session with group owner. Connect first.');
   }
-  return unwrapGroupChatKey(wrappedChatKey, ownerPnIdentifier, connectionId, kemCiphertext, groupId);
+  return unwrapGroupChatKey(
+    wrappedChatKey,
+    ownerPnIdentifier,
+    connectionId,
+    { kemCiphertext, wrappedMessageRootKey },
+    groupId
+  );
 }
 
 export async function getGroupMessages(
@@ -358,7 +377,7 @@ export async function addGroupMember(
     chatKey,
     ownerPnIdentifier,
     thread.connectionId,
-    thread.kemCiphertext,
+    dmSessionFromThread(thread),
     groupId
   );
   const res = await fetch(`${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}/members`, {

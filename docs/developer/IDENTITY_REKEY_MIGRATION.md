@@ -40,7 +40,8 @@ Distinct from **Shamir custodian recovery**, which keeps the same `publicKey` an
 | GET | `/api/identity/migration/:id/zkp-data-points/from-drive` | Read ZKP envelopes from Drive sheet for client re-sign |
 | GET | `/api/identity/migration/:id/conversations/:participantPn/rows` | Conversation rows for DM history re-encrypt |
 | POST | `/api/identity/migration/:id/drive/messages/rows` | Persist re-encrypted message rows + connection kem ack |
-| POST | `/api/identity/migration/:id/connections/rekey` | Update connection sheet `kemCiphertext` |
+| POST | `/api/identity/migration/:id/connections/rekey` | Update connection sheet `kemCiphertext` (requester) |
+| POST | `/api/identity/migration/:id/connections/rewrap-root` | Update acceptor inbox `wrappedMessageRootKey` |
 | POST | `/api/identity/migration/:id/groups/rewrap` | Owner group key re-wrap fan-out |
 | POST | `/api/identity/migration/:id/zkp-data-points/batch` | Batch ZKP sheet updates |
 | POST | `/api/identity/migration/:id/recovery/custodians` | Recovery custodian rows (predecessor Drive creds + pinned folder) |

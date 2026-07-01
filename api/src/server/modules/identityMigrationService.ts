@@ -340,6 +340,88 @@ export function registerIdentityMigrationRoutes(app: Application): void {
     }
   });
 
+  /** POST /api/identity/migration/:id/connections/rewrap-root — acceptor inbox wrappedMessageRootKey after ML-KEM rotation */
+  app.post('/api/identity/migration/:id/connections/rewrap-root', async (req: Request, res: Response) => {
+    try {
+      if (!(await gateMigration(req, res))) return;
+      const auth = bearerPn(req);
+      if (!auth) return res.status(401).json({ error: 'unauthorized' });
+
+      const { connectionId, userPnIdentifier, participantPnIdentifier, wrappedMessageRootKey } = req.body ?? {};
+      if (!connectionId || !userPnIdentifier || !participantPnIdentifier || !wrappedMessageRootKey) {
+        return res.status(400).json({
+          error: 'connectionId, userPnIdentifier, participantPnIdentifier, and wrappedMessageRootKey required',
+        });
+      }
+
+      const row = await getMigrationRow(req.params.id);
+      if (!row) return res.status(404).json({ error: 'not_found' });
+
+      const pn = normalizePn(String(userPnIdentifier));
+      const creds = await storageCredentialsService.getCredentials(pn);
+      if (!creds?.credentials) return res.status(404).json({ error: 'Drive not connected' });
+
+      const accounts = creds.credentials.googleDriveAccounts
+        || (creds.credentials.googleDrive ? [creds.credentials.googleDrive] : []);
+      if (!accounts.length) return res.status(404).json({ error: 'Drive not connected' });
+
+      const account = accounts[0];
+      const token = {
+        access_token: account.access_token || account.accessToken,
+        refresh_token: account.refresh_token || account.refreshToken,
+      };
+      const { MessageSheetsService } = await import('./messageSheetsService');
+      const { resolvePnDriveFolders } = await import('./resolvePnDriveFolders');
+      const pinned = await storageCredentialsService.getDriveFolderId(pn);
+      const folders = await resolvePnDriveFolders(token, pn, account.accountId, pinned);
+      if (!folders?.pnFolderId) return res.status(404).json({ error: 'Drive folders not found' });
+
+      const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+        token,
+        folders.pnFolderId,
+        pn,
+        account.accountId
+      );
+      const cachedFolderIds = creds.credentials.cachedFolderIds || {};
+      const inboxSheetId = await MessageSheetsService.getInboxSheet(
+        token,
+        messagesFolderId,
+        pn,
+        account.accountId,
+        cachedFolderIds.inboxSheetId
+      );
+      const inboxEntry = await MessageSheetsService.getInboxConversationByParticipant(
+        token,
+        inboxSheetId,
+        String(participantPnIdentifier),
+        pn,
+        account.accountId
+      );
+      if (!inboxEntry) {
+        return res.status(404).json({ error: 'inbox_entry_not_found' });
+      }
+
+      await MessageSheetsService.updateInboxEntry(
+        token,
+        inboxSheetId,
+        String(participantPnIdentifier),
+        inboxEntry.spreadsheetId,
+        String(connectionId),
+        inboxEntry.lastMessageAt,
+        pn,
+        account.accountId,
+        inboxEntry.lastMessagePreview,
+        inboxEntry.kemCiphertext,
+        String(wrappedMessageRootKey)
+      );
+
+      return res.json({ success: true, connectionId });
+    } catch (error: unknown) {
+      console.error('[migration] connections/rewrap-root:', error);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  });
+
   /** POST /api/identity/migration/:id/groups/rewrap */
   app.post('/api/identity/migration/:id/groups/rewrap', async (req: Request, res: Response) => {
     try {

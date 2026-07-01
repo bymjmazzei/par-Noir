@@ -107,6 +107,7 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
           spreadsheetId: thread.spreadsheetId,
           connectionId: thread.threadType === 'group' ? thread.ownerPnIdentifier : thread.connectionId,
           kemCiphertext: thread.kemCiphertext,
+          wrappedMessageRootKey: thread.wrappedMessageRootKey,
           groupId: thread.groupId,
           groupTitle: thread.groupTitle,
           ownerPnIdentifier: thread.ownerPnIdentifier
@@ -148,7 +149,8 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
         // Include cached credentials for fast conversation loading (critical for optimization!)
         spreadsheetId: entry.spreadsheetId,
         connectionId: entry.connectionId,
-        kemCiphertext: entry.kemCiphertext
+        kemCiphertext: entry.kemCiphertext,
+        wrappedMessageRootKey: entry.wrappedMessageRootKey
       }));
       setThreads(cachedThreads);
       setLoading(false); // Show instantly, no loading spinner
@@ -217,6 +219,9 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
     try {
       // Optimistically remove from list
       setThreads(prev => prev.filter(t => t.participantPnIdentifier !== participantPnIdentifier));
+      if (userState.pnIdentifier) {
+        inboxCacheService.clear(userState.pnIdentifier);
+      }
       
       await deleteConversation(userState.pnIdentifier, participantPnIdentifier);
       success('Conversation deleted');
@@ -297,6 +302,7 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
                         participantName: thread.participantName,
                         connectionId: thread.connectionId,
                         kemCiphertext: thread.kemCiphertext,
+                        wrappedMessageRootKey: thread.wrappedMessageRootKey,
                         spreadsheetId: thread.spreadsheetId
                       });
                     }

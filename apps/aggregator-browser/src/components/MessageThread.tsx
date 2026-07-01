@@ -36,6 +36,7 @@ interface MessageThreadProps {
   onBack: () => void;
   connectionId?: string;
   kemCiphertext?: string;
+  wrappedMessageRootKey?: string;
   spreadsheetId?: string;
   groupId?: string;
   groupTitle?: string;
@@ -51,6 +52,7 @@ export function MessageThread({
   onBack,
   connectionId,
   kemCiphertext,
+  wrappedMessageRootKey,
   spreadsheetId,
   groupId,
   groupTitle,
@@ -121,7 +123,8 @@ export function MessageThread({
         fromPnIdentifier: userState.pnIdentifier,
         toPnIdentifier: participantPnIdentifier,
         connectionId,
-        kemCiphertext
+        kemCiphertext,
+        wrappedMessageRootKey
       };
     }
     return null;
@@ -132,7 +135,8 @@ export function MessageThread({
     groupId,
     connectionId,
     participantPnIdentifier,
-    kemCiphertext
+    kemCiphertext,
+    wrappedMessageRootKey
   ]);
 
   const fetchMessages = async (limit: number, offset: number) => {
@@ -156,7 +160,8 @@ export function MessageThread({
       offset,
       connectionId,
       kemCiphertext,
-      spreadsheetId
+      spreadsheetId,
+      wrappedMessageRootKey
     );
   };
 
@@ -466,7 +471,9 @@ export function MessageThread({
           content,
           undefined,
           connectionId,
-          kemCiphertext
+          kemCiphertext,
+          undefined,
+          wrappedMessageRootKey
         );
         setMessages((prev) =>
           prev.map((msg) => (msg.messageId === tempMessageId ? sentMessage : msg))

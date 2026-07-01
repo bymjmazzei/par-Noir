@@ -1048,7 +1048,8 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined,
     lastMessagePreview?: string,
-    kemCiphertext?: string
+    kemCiphertext?: string,
+    wrappedMessageRootKey?: string
   ): Promise<void> {
     if (await isPortableStorageProvider(userPnIdentifier)) {
       await MsgPortable.updateInboxEntryPortable(
@@ -1059,24 +1060,26 @@ export class MessageSheetsService {
           connectionId,
           lastMessageAt,
           lastMessagePreview,
-          kemCiphertext
+          kemCiphertext,
+          wrappedMessageRootKey
         },
         accountId
       );
       return;
     }
     try {
+      await this.ensureInboxWrappedRootColumn(token, inboxSheetId, userPnIdentifier, accountId);
       const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const sheets = google.sheets({ version: 'v4', auth });
 
-      // Read all rows to find existing entry (include sharedSecret column)
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId: inboxSheetId,
-        range: 'Inbox!A2:F'
+        range: 'Inbox!A2:H'
       });
 
       const rows = response.data.values || [];
       const rowIndex = rows.findIndex(row => row[0] === participantPnIdentifier);
+      const existing = rowIndex !== -1 ? rows[rowIndex] : undefined;
 
       const newRow = [
         participantPnIdentifier,
@@ -1084,24 +1087,26 @@ export class MessageSheetsService {
         connectionId,
         lastMessageAt,
         lastMessagePreview || '',
-        kemCiphertext || ''
+        kemCiphertext !== undefined ? kemCiphertext : (existing?.[5] || ''),
+        existing?.[6] || 'dm',
+        wrappedMessageRootKey !== undefined
+          ? wrappedMessageRootKey
+          : (existing?.[7] || '')
       ];
 
       if (rowIndex !== -1) {
-        // Update existing row (rowIndex + 2 because of header and 0-based index)
         await sheets.spreadsheets.values.update({
           spreadsheetId: inboxSheetId,
-          range: `Inbox!A${rowIndex + 2}:F${rowIndex + 2}`,
+          range: `Inbox!A${rowIndex + 2}:H${rowIndex + 2}`,
           valueInputOption: 'RAW',
           requestBody: {
             values: [newRow]
           }
         });
       } else {
-        // Append new row
         await sheets.spreadsheets.values.append({
           spreadsheetId: inboxSheetId,
-          range: 'Inbox!A:F',
+          range: 'Inbox!A:H',
           valueInputOption: 'RAW',
           requestBody: {
             values: [newRow]
@@ -1109,34 +1114,28 @@ export class MessageSheetsService {
         });
       }
 
-      // Re-sort by lastMessageAt descending (most recent first)
-      // Read all rows again after update
       const allRowsResponse = await sheets.spreadsheets.values.get({
         spreadsheetId: inboxSheetId,
-        range: 'Inbox!A2:F'
+        range: 'Inbox!A2:H'
       });
 
       const allRows = allRowsResponse.data.values || [];
       if (allRows.length > 1) {
-        // Sort by lastMessageAt (column D, index 3) descending
         allRows.sort((a, b) => {
           const dateA = new Date(a[3] || '').getTime();
           const dateB = new Date(b[3] || '').getTime();
-          return dateB - dateA; // Descending
+          return dateB - dateA;
         });
 
-        // Clear and rewrite all rows (maintains sort order)
-        // First clear existing data (keep header)
         await sheets.spreadsheets.values.clear({
           spreadsheetId: inboxSheetId,
-          range: 'Inbox!A2:F'
+          range: 'Inbox!A2:H'
         });
 
-        // Write sorted rows
         if (allRows.length > 0) {
           await sheets.spreadsheets.values.update({
             spreadsheetId: inboxSheetId,
-            range: 'Inbox!A2:F',
+            range: 'Inbox!A2:H',
             valueInputOption: 'RAW',
             requestBody: {
               values: allRows
@@ -1246,6 +1245,7 @@ export class MessageSheetsService {
     lastMessageAt: string;
     lastMessagePreview?: string;
     kemCiphertext?: string;
+    wrappedMessageRootKey?: string;
     groupId?: string;
     ownerPnIdentifier?: string;
   }>> {
@@ -1259,6 +1259,7 @@ export class MessageSheetsService {
         lastMessageAt: e.lastMessageAt,
         lastMessagePreview: e.lastMessagePreview,
         kemCiphertext: e.kemCiphertext,
+        wrappedMessageRootKey: e.wrappedMessageRootKey,
         groupId: e.groupId,
         ownerPnIdentifier: e.ownerPnIdentifier
       }));
@@ -1291,6 +1292,7 @@ export class MessageSheetsService {
     lastMessageAt: string;
     lastMessagePreview?: string;
     kemCiphertext?: string;
+    wrappedMessageRootKey?: string;
   } | null> {
     try {
       if (await isPortableStorageProvider(userPnIdentifier)) {
@@ -1306,15 +1308,15 @@ export class MessageSheetsService {
           connectionId: row.connectionId,
           lastMessageAt: row.lastMessageAt,
           lastMessagePreview: row.lastMessagePreview,
-          kemCiphertext: row.kemCiphertext
+          kemCiphertext: row.kemCiphertext,
+          wrappedMessageRootKey: row.wrappedMessageRootKey
         };
       }
       const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const sheets = google.sheets({ version: 'v4', auth });
 
-      // Read only first N rows (most recent conversations are at top)
-      const endRow = maxRowsToRead + 1; // +1 for header
-      const range = `Inbox!A2:F${endRow}`;
+      const endRow = maxRowsToRead + 1;
+      const range = `Inbox!A2:H${endRow}`;
       
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId: inboxSheetId,
@@ -1323,7 +1325,6 @@ export class MessageSheetsService {
 
       const rows = response.data.values || [];
       
-      // Find matching conversation (should be in first N rows if recent)
       for (const row of rows) {
         if (row[0] === participantPnIdentifier) {
           return {
@@ -1332,7 +1333,8 @@ export class MessageSheetsService {
             connectionId: row[2] || '',
             lastMessageAt: row[3] || new Date().toISOString(),
             lastMessagePreview: row[4] || undefined,
-            kemCiphertext: row[5] || undefined
+            kemCiphertext: row[5] || undefined,
+            wrappedMessageRootKey: row[7] || undefined
           };
         }
       }
@@ -1574,7 +1576,8 @@ export class MessageSheetsService {
     'lastMessageAt',
     'lastMessagePreview',
     'kemCiphertext',
-    'threadType'
+    'threadType',
+    'wrappedMessageRootKey'
   ];
 
   static async ensureInboxThreadTypeColumn(
@@ -1602,7 +1605,7 @@ export class MessageSheetsService {
       spreadsheetId: inboxSheetId,
       range: 'Inbox!A1:G1',
       valueInputOption: 'RAW',
-      requestBody: { values: [this.INBOX_HEADERS_WITH_THREAD] }
+      requestBody: { values: [this.INBOX_HEADERS_WITH_THREAD.slice(0, 7)] }
     });
     const data = await sheets.spreadsheets.values.get({
       spreadsheetId: inboxSheetId,
@@ -1619,6 +1622,36 @@ export class MessageSheetsService {
         requestBody: { values: withType }
       });
     }
+  }
+
+  static async ensureInboxWrappedRootColumn(
+    token: GoogleDriveToken,
+    inboxSheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return;
+    }
+    await this.ensureInboxThreadTypeColumn(token, inboxSheetId, userPnIdentifier, accountId);
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    try {
+      const hdr = await sheets.spreadsheets.values.get({
+        spreadsheetId: inboxSheetId,
+        range: 'Inbox!A1:H1'
+      });
+      const row = hdr.data.values?.[0] || [];
+      if (row[7] === 'wrappedMessageRootKey') return;
+    } catch {
+      /* migrate */
+    }
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: inboxSheetId,
+      range: 'Inbox!A1:H1',
+      valueInputOption: 'RAW',
+      requestBody: { values: [this.INBOX_HEADERS_WITH_THREAD] }
+    });
   }
 
   static async createGroupConversationSheet(
@@ -1792,6 +1825,7 @@ export class MessageSheetsService {
       lastMessageAt: string;
       lastMessagePreview?: string;
       kemCiphertext?: string;
+      wrappedMessageRootKey?: string;
       groupId?: string;
       ownerPnIdentifier?: string;
       groupTitle?: string;
@@ -1800,12 +1834,12 @@ export class MessageSheetsService {
     if (await isPortableStorageProvider(userPnIdentifier)) {
       return MsgPortable.getInboxEntriesPortable(userPnIdentifier, accountId);
     }
-    await this.ensureInboxThreadTypeColumn(token, inboxSheetId, userPnIdentifier, accountId);
+    await this.ensureInboxWrappedRootColumn(token, inboxSheetId, userPnIdentifier, accountId);
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: inboxSheetId,
-      range: 'Inbox!A2:G'
+      range: 'Inbox!A2:H'
     });
     const rows = response.data.values || [];
     const out: Array<{
@@ -1816,6 +1850,7 @@ export class MessageSheetsService {
       lastMessageAt: string;
       lastMessagePreview?: string;
       kemCiphertext?: string;
+      wrappedMessageRootKey?: string;
       groupId?: string;
       ownerPnIdentifier?: string;
       groupTitle?: string;
@@ -1833,6 +1868,7 @@ export class MessageSheetsService {
           lastMessageAt: row[3] || new Date().toISOString(),
           lastMessagePreview: row[4] || undefined,
           kemCiphertext: row[5] || undefined,
+          wrappedMessageRootKey: row[7] || undefined,
           groupId: row[0],
           ownerPnIdentifier: row[2]
         });
@@ -1845,7 +1881,8 @@ export class MessageSheetsService {
           connectionId: row[2],
           lastMessageAt: row[3] || new Date().toISOString(),
           lastMessagePreview: row[4] || undefined,
-          kemCiphertext: row[5] || undefined
+          kemCiphertext: row[5] || undefined,
+          wrappedMessageRootKey: row[7] || undefined
         });
       }
     }
@@ -1908,6 +1945,7 @@ export class MessageSheetsService {
       lastMessageAt: string;
       lastMessagePreview?: string;
       kemCiphertext?: string;
+      wrappedMessageRootKey?: string;
       threadType?: 'dm' | 'group';
       groupId?: string;
       ownerPnIdentifier?: string;
@@ -1915,10 +1953,10 @@ export class MessageSheetsService {
     userPnIdentifier: string,
     accountId?: string
   ): Promise<void> {
-    await this.ensureInboxThreadTypeColumn(token, inboxSheetId, userPnIdentifier, accountId);
+    await this.ensureInboxWrappedRootColumn(token, inboxSheetId, userPnIdentifier, accountId);
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
-    await sheets.spreadsheets.values.clear({ spreadsheetId: inboxSheetId, range: 'Inbox!A2:G' });
+    await sheets.spreadsheets.values.clear({ spreadsheetId: inboxSheetId, range: 'Inbox!A2:H' });
     if (entries.length === 0) return;
     const rows = entries.map((e) => {
       const threadType = e.threadType ?? 'dm';
@@ -1930,7 +1968,8 @@ export class MessageSheetsService {
           e.lastMessageAt,
           e.lastMessagePreview || '',
           e.kemCiphertext || '',
-          'group'
+          'group',
+          e.wrappedMessageRootKey || ''
         ];
       }
       return [
@@ -1940,12 +1979,13 @@ export class MessageSheetsService {
         e.lastMessageAt,
         e.lastMessagePreview || '',
         e.kemCiphertext || '',
-        'dm'
+        'dm',
+        e.wrappedMessageRootKey || ''
       ];
     });
     await sheets.spreadsheets.values.update({
       spreadsheetId: inboxSheetId,
-      range: 'Inbox!A2:G',
+      range: 'Inbox!A2:H',
       valueInputOption: 'RAW',
       requestBody: { values: rows }
     });

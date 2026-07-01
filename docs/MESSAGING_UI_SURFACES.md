@@ -20,6 +20,8 @@ When the user unlocks pN via the padlock on `browse.parnoir.com` or `messaging.p
 4. `runOAuthCallback` applies `messagingHandoff` **before** token exchange and **before** `setUnlocked`. Unlock **fails** if `isDmIdentityReady()` is false (no “OAuth-only” broken state) on **both** origins.
 5. Stored: `pn_encrypted_identity_v1` (localStorage), `pn_dm_session_v1` (sessionStorage), ML-KEM in memory.
 
+**Conversation recovery:** DM session keys are **not** stored in `localStorage`. Each thread’s opaque recovery blob lives on the user’s Drive inbox (`kemCiphertext` for the requester, `wrappedMessageRootKey` for the acceptor). Opening or sending a thread always re-derives `messageRootKey` from that blob plus the unlocked ML-KEM secret. The in-memory session cache is performance-only; lock/unlock or tab refresh recovers from Drive after unlock.
+
 **Third-party OAuth** (Prism, developer portal, L5 integrators) still uses API-hosted `/oauth/consent` — they do not need ML-KEM handoff.
 
 `identity_handoff=required` is set on authorize when messaging keys are not in memory on that origin.
@@ -56,5 +58,15 @@ When the user unlocks pN via the padlock on `browse.parnoir.com` or `messaging.p
 3. **Tab refresh:** Reload page → `restoreDmSessionFromStorage()` restores session; accept still works.
 4. **Tab refresh:** Reload page → `restoreDmSessionFromStorage()` restores in-memory keys when possible; otherwise `DmCryptoUnlockModal` (passcode only, no OAuth).
 5. **Per origin:** Unlock on `browse.parnoir.com` does not provision `messaging.parnoir.com` — each origin needs one atomic unlock.
+
+## Manual E2E checklist (DM session recovery)
+
+1. User A sends connection request; User B accepts → both send and receive decrypted messages.
+2. **Acceptor lock/unlock:** B locks pN, unlocks → still decrypts and can send (reads `wrappedMessageRootKey` from Drive).
+3. **Requester lock/unlock:** A locks pN, unlocks → still decrypts and can send (reads `kemCiphertext` from Drive).
+4. Delete conversation on both sides, reconnect, repeat steps 1–3.
+5. Tab refresh with unlocked session → decrypt without re-accept.
+
+Run on **both** browse and messaging (`VITE_MESSAGING_ONLY`) builds.
 
 See [MESSAGING_ARCHITECTURE.md](./MESSAGING_ARCHITECTURE.md) and [security/MESSAGING_COORDINATOR_POLICY.md](./security/MESSAGING_COORDINATOR_POLICY.md) (what the operator may see vs message content).

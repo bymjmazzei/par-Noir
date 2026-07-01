@@ -32,6 +32,7 @@ export interface SelectedMessagingThread {
   ownerPnIdentifier?: string;
   connectionId?: string;
   kemCiphertext?: string;
+  wrappedMessageRootKey?: string;
   spreadsheetId?: string;
   accessRole?: 'readWrite' | 'readOnly';
 }

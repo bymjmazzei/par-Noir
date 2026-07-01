@@ -6,9 +6,8 @@
 
 import { PNOAuthService } from './pnOAuthService';
 import { getUserProfile } from './profileService';
-import { createKemSession } from './dmCryptoClient';
+import { createKemSession, wrapAcceptorMessageRootKey } from './dmCryptoClient';
 import { getMessagingMlKemPublicKey, isDmIdentityReady } from './dmIdentitySession';
-import { setMessageRootKey } from './dmSessionCache';
 import { notifyMessagingInboxRefresh } from './messageService';
 import { API_ENDPOINT } from '../config/api';
 
@@ -132,7 +131,7 @@ export async function acceptConnectionRequest(
   }
 
   const { kemCiphertext, messageRootKey } = createKemSession(kemPk);
-  setMessageRootKey(connectionId, messageRootKey);
+  const wrappedMessageRootKey = await wrapAcceptorMessageRootKey(messageRootKey, connectionId);
 
   try {
     const response = await fetch(`${API_ENDPOINT}/api/connections/${connectionId}/accept`, {
@@ -141,6 +140,7 @@ export async function acceptConnectionRequest(
       body: JSON.stringify({
         userPnIdentifier,
         kemCiphertext,
+        wrappedMessageRootKey,
         kemAlgId: 'ML-KEM-768'
       })
     });

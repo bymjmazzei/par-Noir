@@ -23,8 +23,9 @@ This document defines what the par Noir **API operator** may see, store, and log
 | `fromPnIdentifier` / `toPnIdentifier` | Yes | User Drive inbox + conversation sheets | Request-scoped memory only | Log as `hashIdentifier()` only |
 | Timestamps | Yes | User Drive sheets | Request-scoped memory only | Safe to log (no PII) |
 | Approximate sizes | Yes | — | Request-scoped memory only | Safe to log |
-| `kemCiphertext` | Yes (opaque) | User Drive connections / inbox | Request-scoped memory only | Never log full blob |
-| `messageRootKey` / `chatKey` | **No** | Client memory only | — | Never |
+| `kemCiphertext` | Yes (opaque) | User Drive connections / inbox (col F) | Request-scoped memory only | Never log full blob |
+| `wrappedMessageRootKey` | Yes (opaque) | User Drive inbox (col H, acceptor) | Request-scoped memory only | Never log full blob |
+| `messageRootKey` / `chatKey` | **No** | Client memory only (derived from blobs + unlock) | — | Never |
 | Passcode / pn name | **No** (messaging path) | — | — | Never |
 | ML-KEM secret keys | **No** | Client memory / sessionStorage | — | Never |
 | Connection rows | Yes (during accept/list) | User Drive `connections` sheet | Request-scoped memory only | Hash pn identifiers |

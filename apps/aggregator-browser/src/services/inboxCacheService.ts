@@ -12,6 +12,7 @@ export interface CachedInboxEntry {
   spreadsheetId?: string;
   connectionId?: string;
   kemCiphertext?: string;
+  wrappedMessageRootKey?: string;
   groupId?: string;
   groupTitle?: string;
   ownerPnIdentifier?: string;

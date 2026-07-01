@@ -23,6 +23,7 @@ export type DmThreadContext = {
   toPnIdentifier: string;
   connectionId: string;
   kemCiphertext?: string;
+  wrappedMessageRootKey?: string;
 };
 
 export type GroupThreadContext = {
@@ -70,7 +71,10 @@ async function resolveAttachmentKeyB64(ctx: MessagingThreadContext): Promise<str
     const chatKey = await getGroupChatKey(ctx.fromPnIdentifier, ctx.groupRecord);
     return chatKey;
   }
-  const root = await ensureMessageRootKey(ctx.connectionId, ctx.kemCiphertext);
+  const root = await ensureMessageRootKey(ctx.connectionId, {
+    kemCiphertext: ctx.kemCiphertext,
+    wrappedMessageRootKey: ctx.wrappedMessageRootKey,
+  });
   const messageKey = deriveMessageKey(root, ctx.connectionId);
   return bytesToBase64(messageKey);
 }
@@ -296,7 +300,8 @@ export async function sendMessageWithMedia(
     mediaFileId,
     ctx.connectionId,
     ctx.kemCiphertext,
-    mimeType
+    mimeType,
+    ctx.wrappedMessageRootKey
   );
 }
 

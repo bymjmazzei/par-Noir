@@ -187,6 +187,7 @@ export interface InboxRow {
   lastMessageAt: string;
   lastMessagePreview?: string;
   kemCiphertext?: string;
+  wrappedMessageRootKey?: string;
   groupId?: string;
 }
 
@@ -246,6 +247,7 @@ export async function getInboxEntriesPortable(
     lastMessageAt: string;
     lastMessagePreview?: string;
     kemCiphertext?: string;
+    wrappedMessageRootKey?: string;
     groupId?: string;
     ownerPnIdentifier?: string;
     groupTitle?: string;
@@ -261,9 +263,10 @@ export async function getInboxEntriesPortable(
         spreadsheetId: r.spreadsheetId,
         connectionId: r.connectionId,
         lastMessageAt: r.lastMessageAt,
-        lastMessagePreview: r.lastMessagePreview,
-        kemCiphertext: r.kemCiphertext,
-        groupId: r.groupId ?? r.participantPnIdentifier,
+      lastMessagePreview: r.lastMessagePreview,
+      kemCiphertext: r.kemCiphertext,
+      wrappedMessageRootKey: r.wrappedMessageRootKey,
+      groupId: r.groupId ?? r.participantPnIdentifier,
         ownerPnIdentifier: r.connectionId
       };
     }
@@ -274,7 +277,8 @@ export async function getInboxEntriesPortable(
       connectionId: r.connectionId,
       lastMessageAt: r.lastMessageAt,
       lastMessagePreview: r.lastMessagePreview,
-      kemCiphertext: r.kemCiphertext
+      kemCiphertext: r.kemCiphertext,
+      wrappedMessageRootKey: r.wrappedMessageRootKey
     };
   });
 }
