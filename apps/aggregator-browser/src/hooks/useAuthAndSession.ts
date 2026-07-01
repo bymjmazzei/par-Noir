@@ -279,6 +279,13 @@ export function useAuthAndSession({
         };
         PNOAuthService.saveSession(sessionWithIdentifier);
 
+        try {
+          const { retryPublishMlKemPublicKey } = await import('../services/dmIdentitySession');
+          void retryPublishMlKemPublicKey();
+        } catch {
+          /* non-fatal */
+        }
+
         if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
           setUnlocked(userInfo.pn_identifier);
           try {

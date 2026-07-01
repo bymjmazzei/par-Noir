@@ -15369,9 +15369,20 @@ class ProductionServer {
     // POST /api/connections/request - Send connection request
     this.app.post('/api/connections/request', async (req, res) => {
       try {
-        const { requesterPnIdentifier, recipientPnIdentifier } = req.body;
+        const { requesterPnIdentifier, recipientPnIdentifier, requesterMlKemPublicKey } = req.body;
         if (!requesterPnIdentifier || !recipientPnIdentifier) {
           return res.status(400).json({ error: 'requesterPnIdentifier and recipientPnIdentifier are required' });
+        }
+        if (!requesterMlKemPublicKey || typeof requesterMlKemPublicKey !== 'string') {
+          return res.status(400).json({ error: 'requesterMlKemPublicKey is required' });
+        }
+        try {
+          const kemBuf = Buffer.from(String(requesterMlKemPublicKey).replace(/\s/g, ''), 'base64');
+          if (kemBuf.length < 1000) {
+            return res.status(400).json({ error: 'requesterMlKemPublicKey is invalid' });
+          }
+        } catch {
+          return res.status(400).json({ error: 'requesterMlKemPublicKey is invalid' });
         }
 
         if (requesterPnIdentifier === recipientPnIdentifier) {
@@ -15564,6 +15575,7 @@ class ProductionServer {
             recipientAccessToken,
             recipientMetadataFolderId,
             recipientPnIdentifier,
+            requesterMlKemPublicKey,
             requesterAccountId,
             recipientAccountId
           );

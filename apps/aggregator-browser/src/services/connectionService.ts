@@ -7,7 +7,7 @@
 import { PNOAuthService } from './pnOAuthService';
 import { getUserProfile } from './profileService';
 import { createKemSession } from './dmCryptoClient';
-import { isDmIdentityReady } from './dmIdentitySession';
+import { getDmIdentity, isDmIdentityReady } from './dmIdentitySession';
 import { setMessageRootKey } from './dmSessionCache';
 import { API_ENDPOINT } from '../config/api';
 
@@ -31,6 +31,7 @@ export interface Connection {
   status: 'pending_sent' | 'pending_received' | 'accepted' | 'blocked';
   createdAt: string;
   acceptedAt?: string;
+  peerMlKemPublicKey?: string;
 }
 
 export interface ConnectionStatus {
@@ -43,6 +44,9 @@ export interface PendingRequests {
   received: Connection[];
 }
 
+export const LEGACY_CONNECTION_REQUEST_KEY_MESSAGE =
+  'This connection request was sent before messaging keys were attached. Ask them to cancel and send a new request.';
+
 /**
  * Send connection request to another user
  * Uses Google Drive via API (no IPFS)
@@ -51,6 +55,16 @@ export async function sendConnectionRequest(
   requesterPnIdentifier: string,
   recipientPnIdentifier: string
 ): Promise<Connection> {
+  if (!isDmIdentityReady()) {
+    throw new Error(
+      'Messaging keys unavailable. Lock and unlock your pN before sending connection requests.'
+    );
+  }
+  const { mlKemPublicKey } = getDmIdentity();
+  if (!mlKemPublicKey) {
+    throw new Error('Messaging public key missing. Lock and unlock your pN again.');
+  }
+
   // Use Google Drive API directly (no IPFS)
   try {
     const response = await fetch(`${API_ENDPOINT}/api/connections/request`, {
@@ -58,7 +72,8 @@ export async function sendConnectionRequest(
       headers: getAuthHeaders(),
       body: JSON.stringify({
         requesterPnIdentifier,
-        recipientPnIdentifier
+        recipientPnIdentifier,
+        requesterMlKemPublicKey: mlKemPublicKey,
       })
     });
 
@@ -94,16 +109,28 @@ export async function sendConnectionRequest(
 export async function acceptConnectionRequest(
   connectionId: string,
   userPnIdentifier: string,
-  requesterPnIdentifier: string
+  requesterPnIdentifier: string,
+  requesterMlKemPublicKey?: string
 ): Promise<void> {
   if (!isDmIdentityReady()) {
     throw new Error('Messaging keys unavailable. Lock and unlock your pN again to accept connections.');
   }
-  const profile = await getUserProfile(requesterPnIdentifier);
-  if (!profile.mlKemPublicKey) {
-    throw new Error('Requester has no messaging public key on file');
+
+  let kemPk = requesterMlKemPublicKey;
+  if (!kemPk) {
+    const pending = await getPendingRequests(userPnIdentifier);
+    const pendingRow = pending.received.find((r) => r.connectionId === connectionId);
+    kemPk = pendingRow?.peerMlKemPublicKey;
   }
-  const { kemCiphertext, messageRootKey } = createKemSession(profile.mlKemPublicKey);
+  if (!kemPk && requesterPnIdentifier) {
+    const profile = await getUserProfile(requesterPnIdentifier);
+    kemPk = profile.mlKemPublicKey ?? undefined;
+  }
+  if (!kemPk) {
+    throw new Error(LEGACY_CONNECTION_REQUEST_KEY_MESSAGE);
+  }
+
+  const { kemCiphertext, messageRootKey } = createKemSession(kemPk);
   setMessageRootKey(connectionId, messageRootKey);
 
   try {

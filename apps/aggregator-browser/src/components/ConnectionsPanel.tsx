@@ -200,7 +200,8 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
       await acceptConnectionRequest(
         connectionId,
         userPnIdentifier,
-        originalRequest?.userPnIdentifier || ''
+        originalRequest?.userPnIdentifier || '',
+        originalRequest?.peerMlKemPublicKey
       );
       await loadData();
     } catch (error) {

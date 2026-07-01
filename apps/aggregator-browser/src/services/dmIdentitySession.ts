@@ -207,9 +207,24 @@ async function publishMlKemPublicKey(mlKemPublicKey: string): Promise<void> {
   if (session?.accessToken) {
     headers['Authorization'] = `Bearer ${session.accessToken}`;
   }
-  await fetch(`${API_ENDPOINT}/api/profile/ml-kem-public-key`, {
+  const response = await fetch(`${API_ENDPOINT}/api/profile/ml-kem-public-key`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ userPnIdentifier: pnIdentifier, mlKemPublicKey })
   });
+  if (!response.ok) {
+    throw new Error(`publish ml-kem-public-key failed: ${response.status}`);
+  }
+}
+
+/** Retry profile publish after OAuth session has pnIdentifier (cold DM / discovery). */
+export async function retryPublishMlKemPublicKey(): Promise<void> {
+  if (!isDmIdentityReady()) return;
+  const { mlKemPublicKey } = getDmIdentity();
+  if (!mlKemPublicKey) return;
+  try {
+    await publishMlKemPublicKey(mlKemPublicKey);
+  } catch (err) {
+    console.warn('[dmIdentity] retryPublishMlKemPublicKey failed:', err);
+  }
 }

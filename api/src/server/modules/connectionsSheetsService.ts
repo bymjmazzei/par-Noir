@@ -15,8 +15,42 @@ export interface Connection {
   status: 'pending_sent' | 'pending_received' | 'accepted' | 'blocked';
   createdAt: string;
   acceptedAt?: string;
-  sharedSecret?: string; // Deprecated — use kemCiphertext
+  /** @deprecated Legacy column F — use peerMlKemPublicKey */
+  sharedSecret?: string;
+  /** Requester's ML-KEM public key (column F on pending_received rows). */
+  peerMlKemPublicKey?: string;
   kemCiphertext?: string; // ML-KEM-768 encapsulation (E2E)
+}
+
+/** ML-KEM-768 raw public key is 1184 bytes; base64 is ~1580 chars. */
+function parsePeerMlKemPublicKey(columnF: unknown): string | undefined {
+  if (typeof columnF !== 'string' || !columnF.trim()) return undefined;
+  try {
+    const buf = Buffer.from(columnF.replace(/\s/g, ''), 'base64');
+    if (buf.length >= 1000) return columnF;
+  } catch {
+    /* legacy shared-secret values are not valid base64 ML-KEM */
+  }
+  return undefined;
+}
+
+function connectionFromSheetRow(row: string[]): Connection {
+  const connectionId = row[0];
+  const userPnIdentifier = row[1];
+  const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-')
+    ? userPnIdentifier
+    : `pn-${userPnIdentifier}`;
+  const peerMlKemPublicKey = parsePeerMlKemPublicKey(row[5]);
+  return {
+    connectionId,
+    userPnIdentifier: normalizedUserPnIdentifier,
+    status: (row[2] || 'pending_sent') as Connection['status'],
+    createdAt: row[3] || new Date().toISOString(),
+    acceptedAt: row[4] || undefined,
+    peerMlKemPublicKey,
+    sharedSecret: peerMlKemPublicKey ? undefined : row[5] || undefined,
+    kemCiphertext: row[6] || undefined,
+  };
 }
 
 export interface Follower {
@@ -80,7 +114,20 @@ export class ConnectionsSheetsService {
       requestBody: {
         valueInputOption: 'RAW',
         data: [
-          { range: 'Connections!A1:G1', values: [['Connection ID', 'User DID', 'Status', 'Created At', 'Accepted At', 'Shared Secret', 'KEM Ciphertext']] },
+          {
+            range: 'Connections!A1:G1',
+            values: [
+              [
+                'Connection ID',
+                'User DID',
+                'Status',
+                'Created At',
+                'Accepted At',
+                'Peer ML-KEM Public Key',
+                'KEM Ciphertext',
+              ],
+            ],
+          },
           { range: 'Blocked!A1:A1', values: [['Blocked DID']] },
           { range: 'Metadata!A1:B2', values: [['Identifier', ''], ['UpdatedAt', '']] }
         ]
@@ -218,16 +265,24 @@ export class ConnectionsSheetsService {
   ): Promise<void> {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
-    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Connections!A2:F' });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Connections!A2:G' });
     if (connections.length) {
       // Normalize userPnIdentifier in all connections before writing (handles legacy data)
       const rows = connections.map(c => {
         const normalizedUserPnIdentifier = c.userPnIdentifier.startsWith('pn-') ? c.userPnIdentifier : `pn-${c.userPnIdentifier}`;
-        return [c.connectionId, normalizedUserPnIdentifier, c.status, c.createdAt, c.acceptedAt || '', '', c.kemCiphertext || ''];
+        return [
+          c.connectionId,
+          normalizedUserPnIdentifier,
+          c.status,
+          c.createdAt,
+          c.acceptedAt || '',
+          c.peerMlKemPublicKey || '',
+          c.kemCiphertext || '',
+        ];
       });
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: 'Connections!A2:F',
+        range: 'Connections!A2:G',
         valueInputOption: 'RAW',
         requestBody: { values: rows }
       });
@@ -462,8 +517,8 @@ export class ConnectionsSheetsService {
           connection.status,
           connection.createdAt,
           connection.acceptedAt || '',
-          '',
-          connection.kemCiphertext || ''
+          connection.peerMlKemPublicKey || '',
+          connection.kemCiphertext || '',
         ]]
       }
     });
@@ -489,41 +544,28 @@ export class ConnectionsSheetsService {
     // Get all connections (skip header row)
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Connections!A2:F'
+      range: 'Connections!A2:G'
     });
 
     const rows = response.data.values || [];
     let connections: Connection[] = [];
     
     for (const row of rows) {
-      // Validate required fields - connectionId and userPnIdentifier are required
       const connectionId = row[0];
       const userPnIdentifier = row[1];
       
-      // Skip invalid rows (missing required fields)
       if (!connectionId || !userPnIdentifier) {
         console.warn('[ConnectionsSheetsService] Skipping invalid connection row:', { connectionId, userPnIdentifier, row });
         continue;
       }
       
-      // Normalize userPnIdentifier when reading from sheet (handles legacy data)
-      const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
-      
-      // Ensure normalized identifier is valid (not just 'pn-')
-      if (normalizedUserPnIdentifier === 'pn-' || normalizedUserPnIdentifier.length <= 3) {
-        console.warn('[ConnectionsSheetsService] Skipping connection with invalid userPnIdentifier:', { connectionId, userPnIdentifier, normalizedUserPnIdentifier });
+      const conn = connectionFromSheetRow(row);
+      if (conn.userPnIdentifier === 'pn-' || conn.userPnIdentifier.length <= 3) {
+        console.warn('[ConnectionsSheetsService] Skipping connection with invalid userPnIdentifier:', { connectionId, userPnIdentifier });
         continue;
       }
       
-      connections.push({
-        connectionId,
-        userPnIdentifier: normalizedUserPnIdentifier,
-        status: (row[2] || 'pending_sent') as Connection['status'],
-        createdAt: row[3] || new Date().toISOString(),
-        acceptedAt: row[4] || undefined,
-        sharedSecret: row[5] || undefined,
-        kemCiphertext: row[6] || undefined
-      });
+      connections.push(conn);
     }
 
     // Filter by status if specified
@@ -582,12 +624,11 @@ export class ConnectionsSheetsService {
     // Get all connections (skip header row)
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Connections!A2:F'
+      range: 'Connections!A2:G'
     });
 
     const rows = response.data.values || [];
     
-    // Find the connection by connectionId (stop early if found)
     for (const row of rows) {
       const rowConnectionId = row[0];
       if (rowConnectionId === connectionId) {
@@ -595,24 +636,11 @@ export class ConnectionsSheetsService {
         if (!userPnIdentifier) {
           return null;
         }
-        
-        // Normalize userPnIdentifier when reading from sheet (handles legacy data)
-        const normalizedUserPnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
-        
-        // Ensure normalized identifier is valid
-        if (normalizedUserPnIdentifier === 'pn-' || normalizedUserPnIdentifier.length <= 3) {
+        const conn = connectionFromSheetRow(row);
+        if (conn.userPnIdentifier === 'pn-' || conn.userPnIdentifier.length <= 3) {
           return null;
         }
-        
-        return {
-          connectionId: rowConnectionId,
-          userPnIdentifier: normalizedUserPnIdentifier,
-          status: (row[2] || 'pending_sent') as Connection['status'],
-          createdAt: row[3] || new Date().toISOString(),
-          acceptedAt: row[4] || undefined,
-          sharedSecret: row[5] || undefined,
-        kemCiphertext: row[6] || undefined
-        };
+        return conn;
       }
     }
     
@@ -711,7 +739,7 @@ export class ConnectionsSheetsService {
     // Get all connections to find the row
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Connections!A2:F'
+      range: 'Connections!A2:G'
     });
 
     const rows = response.data.values || [];

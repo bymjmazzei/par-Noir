@@ -6,11 +6,12 @@ The par Noir API is a **storage coordinator**, not a **conversation participant*
 
 ## Direct messages (1:1)
 
-1. Each user publishes `mlKemPublicKey` on their Drive `profile.json` (and via `POST /api/profile/ml-kem-public-key`).
-2. On **connection accept**, the acceptor runs ML-KEM-768 encapsulation client-side and sends `kemCiphertext` to `POST /api/connections/:id/accept`. The API stores the blob only.
-3. Both sides derive `messageRootKey` locally, then per-message keys via HKDF (`par-noir-dm-v1` + `connectionId`).
-4. **Send:** `POST /api/messages/send` with `encryptedContent` and `cryptoVersion: 2` only.
-5. **Read:** `GET|POST /api/messages/conversation` returns `encryptedContent`; the browser decrypts.
+1. Each user may publish `mlKemPublicKey` on their Drive `profile.json` (and via `POST /api/profile/ml-kem-public-key`) for **discovery** and cold-DM flows.
+2. On **connection send**, the requester attaches `requesterMlKemPublicKey` to the recipient’s `pending_received` row (`peerMlKemPublicKey` in column F of the connections sheet).
+3. On **connection accept**, the acceptor reads `peerMlKemPublicKey` from that pending row (profile publish is a legacy fallback for requests sent before this change). The acceptor runs ML-KEM-768 encapsulation client-side and sends `kemCiphertext` to `POST /api/connections/:id/accept`. The API stores the blob only.
+4. Both sides derive `messageRootKey` locally, then per-message keys via HKDF (`par-noir-dm-v1` + `connectionId`).
+5. **Send:** `POST /api/messages/send` with `encryptedContent` and `cryptoVersion: 2` only.
+6. **Read:** `GET|POST /api/messages/conversation` returns `encryptedContent`; the browser decrypts.
 
 Inbox sheets cache `kemCiphertext` (column F) for fast session open—opaque KEM blob, not a server-held secret.
 

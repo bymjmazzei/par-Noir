@@ -59,7 +59,8 @@ export function RequestsList({ onRequestAccept }: RequestsListProps) {
             timestamp: conn.createdAt,
             status: 'pending' as const,
             isConnectionRequest: true,
-            connectionId: conn.connectionId
+            connectionId: conn.connectionId,
+            peerMlKemPublicKey: conn.peerMlKemPublicKey,
           }));
         
         // Filter out requests that are currently being processed
@@ -115,7 +116,8 @@ export function RequestsList({ onRequestAccept }: RequestsListProps) {
         await acceptConnectionRequest(
           request.connectionId,
           userState.pnIdentifier,
-          request.fromPnIdentifier
+          request.fromPnIdentifier,
+          (request as { peerMlKemPublicKey?: string }).peerMlKemPublicKey
         );
         success('Connection request accepted');
       } else {

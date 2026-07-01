@@ -30,11 +30,15 @@ export function isMessagingKeysError(message: string): boolean {
 
 export function isRequesterPublicKeyMissingError(message: string): boolean {
   const lower = message.toLowerCase();
-  return lower.includes('no messaging public key') || lower.includes('messaging public key on file');
+  return (
+    lower.includes('no messaging public key') ||
+    lower.includes('messaging public key on file') ||
+    lower.includes('before messaging keys were attached')
+  );
 }
 
 const REQUESTER_KEY_MESSAGE =
-  'The person who sent this request needs to unlock their pN with their identity file so their messaging key is published.';
+  'This connection request was sent before messaging keys were attached. Ask them to cancel and send a new request.';
 
 const LOCAL_KEYS_MESSAGE =
   'Messaging keys unavailable. Lock and unlock your pN again to accept connections.';

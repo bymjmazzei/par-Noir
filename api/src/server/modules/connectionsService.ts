@@ -23,6 +23,7 @@ export interface Connection {
   createdAt: string;
   acceptedAt?: string;
   sharedSecret?: string; // Deprecated
+  peerMlKemPublicKey?: string;
   kemCiphertext?: string;
 }
 
@@ -227,6 +228,7 @@ export class ConnectionsService {
     recipientAccessToken: string,
     recipientMetadataFolder: string,
     recipientPnIdentifier: string,
+    requesterMlKemPublicKey: string,
     requesterAccountId?: string,
     recipientAccountId?: string
   ): Promise<Connection> {
@@ -315,7 +317,8 @@ export class ConnectionsService {
             connectionId,
             userPnIdentifier: requesterPnIdentifier,
             status: 'pending_received',
-            createdAt: now
+            createdAt: now,
+            peerMlKemPublicKey: requesterMlKemPublicKey,
           },
           recipientAccountId
         );
@@ -358,7 +361,8 @@ export class ConnectionsService {
             connectionId,
             userPnIdentifier: requesterPnIdentifier,
             status: 'pending_received',
-            createdAt: now
+            createdAt: now,
+            peerMlKemPublicKey: requesterMlKemPublicKey,
           },
           recipientPnIdentifier,
           recipientAccountId
@@ -458,7 +462,8 @@ export class ConnectionsService {
           connectionId,
           userPnIdentifier: requesterPnIdentifier,
           status: 'pending_received',
-          createdAt: now
+          createdAt: now,
+          peerMlKemPublicKey: requesterMlKemPublicKey,
         },
         recipientPnIdentifier,
         recipientAccountId
