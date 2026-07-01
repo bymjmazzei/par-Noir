@@ -28,6 +28,10 @@ export interface Message {
 export class MessageSheetsService {
   private static readonly MESSAGES_FOLDER_NAME = 'par-noir-messages';
   private static readonly INBOX_SHEET_NAME = 'Inbox';
+  /** Per-process: inbox sheets that already have threadType column (avoids repeated Sheets reads). */
+  private static inboxThreadTypeEnsured = new Set<string>();
+  /** Per-process: inbox sheets that already have wrappedMessageRootKey column. */
+  private static inboxWrappedRootEnsured = new Set<string>();
 
   /**
    * Normalize identifier to pn-identifier format (for legacy data compatibility only)
@@ -1589,6 +1593,9 @@ export class MessageSheetsService {
     if (await isPortableStorageProvider(userPnIdentifier)) {
       return;
     }
+    if (this.inboxThreadTypeEnsured.has(inboxSheetId)) {
+      return;
+    }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     try {
@@ -1597,7 +1604,10 @@ export class MessageSheetsService {
         range: 'Inbox!A1:G1'
       });
       const row = hdr.data.values?.[0] || [];
-      if (row[6] === 'threadType') return;
+      if (row[6] === 'threadType') {
+        this.inboxThreadTypeEnsured.add(inboxSheetId);
+        return;
+      }
     } catch {
       /* migrate */
     }
@@ -1622,6 +1632,7 @@ export class MessageSheetsService {
         requestBody: { values: withType }
       });
     }
+    this.inboxThreadTypeEnsured.add(inboxSheetId);
   }
 
   static async ensureInboxWrappedRootColumn(
@@ -1633,6 +1644,9 @@ export class MessageSheetsService {
     if (await isPortableStorageProvider(userPnIdentifier)) {
       return;
     }
+    if (this.inboxWrappedRootEnsured.has(inboxSheetId)) {
+      return;
+    }
     await this.ensureInboxThreadTypeColumn(token, inboxSheetId, userPnIdentifier, accountId);
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
@@ -1642,7 +1656,10 @@ export class MessageSheetsService {
         range: 'Inbox!A1:H1'
       });
       const row = hdr.data.values?.[0] || [];
-      if (row[7] === 'wrappedMessageRootKey') return;
+      if (row[7] === 'wrappedMessageRootKey') {
+        this.inboxWrappedRootEnsured.add(inboxSheetId);
+        return;
+      }
     } catch {
       /* migrate */
     }
@@ -1652,6 +1669,7 @@ export class MessageSheetsService {
       valueInputOption: 'RAW',
       requestBody: { values: [this.INBOX_HEADERS_WITH_THREAD] }
     });
+    this.inboxWrappedRootEnsured.add(inboxSheetId);
   }
 
   static async createGroupConversationSheet(
@@ -1834,7 +1852,6 @@ export class MessageSheetsService {
     if (await isPortableStorageProvider(userPnIdentifier)) {
       return MsgPortable.getInboxEntriesPortable(userPnIdentifier, accountId);
     }
-    await this.ensureInboxWrappedRootColumn(token, inboxSheetId, userPnIdentifier, accountId);
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const response = await sheets.spreadsheets.values.get({

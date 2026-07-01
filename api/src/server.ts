@@ -11050,6 +11050,12 @@ class ProductionServer {
             message: 'Please reconnect your Google Drive account in the dashboard.'
           });
         }
+        if (error?.code === 429 || error?.response?.status === 429) {
+          return res.status(503).json({
+            error: 'drive_rate_limited',
+            message: 'Google Drive is temporarily busy. Please wait a moment and try again.',
+          });
+        }
         return res.status(500).json({
           error: 'Failed to get message conversations',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get message conversations'
@@ -11723,44 +11729,66 @@ class ProductionServer {
             
             recipientAccessToken = fetchedRecipientAccessToken;
             
-            // Use cached metadata folder ID if available (fast path)
+            const senderAccount = senderGoogleDriveAccounts[0];
+            const senderToken = {
+              access_token: senderAccount.access_token || senderAccount.accessToken,
+              refresh_token: senderAccount.refresh_token || senderAccount.refreshToken,
+              expires_at: senderAccount.expires_at,
+              expires_in: senderAccount.expires_in
+            };
+
+            // Use cached folder IDs when available (fast path)
             const senderCachedFolderIds = senderCredentials.credentials.cachedFolderIds || {};
             let metadataFolderId: string | undefined = senderCachedFolderIds.metadataFolderId;
+            const inboxSheetId: string | undefined = senderCachedFolderIds.inboxSheetId;
+
+            let connected = false;
+            if (inboxSheetId) {
+              connected = await ConnectionsService.areConnectedViaInbox(
+                senderToken,
+                inboxSheetId,
+                fromPnIdentifier,
+                toPnIdentifier,
+                accountId
+              );
+            }
             
             if (!metadataFolderId) {
               // Fallback: get metadata folder (slower)
-              // Build token object for sender
-              const senderAccountForMetadata = senderGoogleDriveAccounts[0];
-              const senderTokenForMetadata = {
-                access_token: senderAccountForMetadata.access_token || senderAccountForMetadata.accessToken,
-                refresh_token: senderAccountForMetadata.refresh_token || senderAccountForMetadata.refreshToken,
-                expires_at: senderAccountForMetadata.expires_at,
-                expires_in: senderAccountForMetadata.expires_in
-              };
-              const senderAccountIdForMetadata = this.extractAccountId(senderAccountForMetadata);
+              const senderTokenForMetadata = senderToken;
+              const senderAccountIdForMetadata = accountId;
               const metadataFolder = await this.getMetadataFolder(senderTokenForMetadata, fromPnIdentifier, senderAccountIdForMetadata);
               if (metadataFolder) {
                 metadataFolderId = metadataFolder.metadataFolderId;
               }
             }
             
-            if (metadataFolderId) {
-              // Check if connected
-              const areConnected = await ConnectionsService.areConnected(
+            if (!connected && metadataFolderId) {
+              connected = await ConnectionsService.areConnected(
                 senderAccessTokenForCheck,
                 metadataFolderId,
                 fromPnIdentifier,
-                toPnIdentifier
+                toPnIdentifier,
+                accountId
               );
+            }
 
-              if (!areConnected) {
-                return res.status(403).json({ 
-                  error: 'Only connections can message each other',
-                  requiresConnection: true
-                });
-              }
+            if ((inboxSheetId || metadataFolderId) && !connected) {
+              return res.status(403).json({ 
+                error: 'Only connections can message each other',
+                requiresConnection: true
+              });
             }
           } catch (connectionCheckError: unknown) {
+            const rateLimited =
+              (connectionCheckError as { code?: number })?.code === 429 ||
+              (connectionCheckError as { response?: { status?: number } })?.response?.status === 429;
+            if (rateLimited) {
+              return res.status(503).json({
+                error: 'drive_rate_limited',
+                message: 'Google Drive is temporarily busy. Please wait a moment and try again.',
+              });
+            }
             console.error('Connection check failed:', (connectionCheckError as Error)?.message || connectionCheckError);
             return res.status(503).json({
               error: 'connection_check_failed',

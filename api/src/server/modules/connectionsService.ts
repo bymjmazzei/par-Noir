@@ -190,6 +190,9 @@ export class ConnectionsService {
       };
     } catch (error) {
       console.error('Error getting connection status from sheets:', error);
+      if (isGoogleSheetsRateLimit(error)) {
+        throw error;
+      }
       const connectionsFile = await this.getConnectionsFile(user1AccessToken, user1MetadataFolder, user1PnIdentifier, accountId);
       if (!connectionsFile) {
         return { status: 'not_connected' };
@@ -855,10 +858,39 @@ export class ConnectionsService {
     user1AccessToken: string,
     user1MetadataFolder: string,
     user1Did: string,
-    user2Did: string
+    user2Did: string,
+    accountId?: string
   ): Promise<boolean> {
-    const status = await this.getConnectionStatus(user1AccessToken, user1MetadataFolder, user1Did, user2Did);
+    const status = await this.getConnectionStatus(user1AccessToken, user1MetadataFolder, user1Did, user2Did, accountId);
     return status.status === 'connected';
   }
+
+  /**
+   * Fast path: accepted DM threads appear in the user's inbox with a connectionId.
+   * One bounded inbox read instead of loading the full connections sheet.
+   */
+  static async areConnectedViaInbox(
+    token: GoogleDriveToken,
+    inboxSheetId: string,
+    userPnIdentifier: string,
+    otherPnIdentifier: string,
+    accountId?: string
+  ): Promise<boolean> {
+    const { MessageSheetsService } = await import('./messageSheetsService');
+    const entry = await MessageSheetsService.getInboxConversationByParticipant(
+      token,
+      inboxSheetId,
+      otherPnIdentifier,
+      userPnIdentifier,
+      accountId,
+      100
+    );
+    return Boolean(entry?.connectionId);
+  }
+}
+
+function isGoogleSheetsRateLimit(error: unknown): boolean {
+  const err = error as { code?: number; response?: { status?: number } };
+  return err?.code === 429 || err?.response?.status === 429;
 }
 

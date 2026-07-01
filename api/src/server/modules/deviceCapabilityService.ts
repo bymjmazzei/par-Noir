@@ -56,11 +56,22 @@ async function loadDeviceContext(pn: string): Promise<{
 } | null> {
   const bundle = await loadDeviceBundle(pn);
   if (!bundle) return null;
-  const [policy, devices] = await Promise.all([
-    readPolicy(bundle),
-    listDevices(bundle, true)
-  ]);
-  return { bundle, policy, devices };
+  try {
+    const [policy, devices] = await Promise.all([
+      readPolicy(bundle),
+      listDevices(bundle, true)
+    ]);
+    return { bundle, policy, devices };
+  } catch (error) {
+    console.warn('[deviceCapability] device sheet read failed; using unkeyed fallback:', (error as Error)?.message);
+    let policy = defaultDevicePolicy();
+    try {
+      policy = await readPolicy(bundle);
+    } catch {
+      /* keep default */
+    }
+    return { bundle, policy, devices: [] };
+  }
 }
 
 export async function verifyDeviceProofFromRequest(
