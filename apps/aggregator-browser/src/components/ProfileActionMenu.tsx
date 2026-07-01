@@ -10,6 +10,7 @@ import { useUserState } from '../contexts/UserStateContext';
 import { getConnectionStatus, sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest, removeConnection } from '../services/connectionService';
 import { ConnectionStatus } from '../services/connectionService';
 import { useToast } from '../hooks/useToast';
+import { ToastContainer } from './Toast';
 import {
   ensureLocalMessagingKeysForAccept,
   reportConnectionAcceptError,
@@ -28,7 +29,7 @@ interface ProfileActionMenuProps {
 
 export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexedFiles = [], isOwner = false }: ProfileActionMenuProps) {
   const { userState, getDisplayName, updateDisplayName, setUserDisplayName } = useUserState();
-  const { success, error: showError } = useToast();
+  const { success, error: showError, toasts, removeToast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -322,25 +323,6 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
     loadStatus();
   }, [userState.isUnlocked, userState.pnIdentifier, creatorId, isOwnProfile]);
 
-  // Close menu when clicking outside
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('[data-profile-menu]')) {
-        setIsOpen(false);
-        if (isEditingName) {
-          setIsEditingName(false);
-          setEditNameValue(displayName); // Reset to original value
-        }
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen, isEditingName, displayName]);
-
   const handleConnect = async () => {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
 
@@ -495,7 +477,15 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
       return (
         <div className="flex flex-col space-y-1 w-full">
           <button
-            onClick={handleAccept}
+            type="button"
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleAccept();
+            }}
             disabled={loading}
             className="flex items-center space-x-2 px-4 py-2 text-green-400 hover:bg-neutral-700 rounded-lg transition-colors w-full text-left disabled:opacity-50"
           >
@@ -503,7 +493,15 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
             <span>Accept</span>
           </button>
           <button
-            onClick={handleReject}
+            type="button"
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleReject();
+            }}
             disabled={loading}
             className="flex items-center space-x-2 px-4 py-2 text-red-400 hover:bg-neutral-700 rounded-lg transition-colors w-full text-left disabled:opacity-50"
           >
@@ -517,12 +515,20 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
     // Not connected
     return (
       <button
-        onClick={handleConnect}
+        type="button"
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          void handleConnect();
+        }}
         disabled={loading || !userState.isUnlocked}
         className="flex items-center space-x-2 px-4 py-2 text-white hover:bg-neutral-700 rounded-lg transition-colors w-full text-left disabled:opacity-50"
       >
         <UserPlus className="h-4 w-4" />
-        <span>Connect</span>
+        <span>{loading ? 'Sending...' : 'Connect'}</span>
       </button>
     );
   };
@@ -561,6 +567,7 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
       {isOpen && createPortal(
         <div 
           ref={menuRef}
+          data-profile-menu
           className="fixed w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-[99999]"
           style={{ 
             top: `${menuPosition.top}px`,
@@ -696,6 +703,7 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
         </div>,
         document.body
       )}
+      <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
   );
 }, (prevProps, nextProps) => {

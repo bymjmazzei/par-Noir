@@ -7,7 +7,7 @@
 import { PNOAuthService } from './pnOAuthService';
 import { getUserProfile } from './profileService';
 import { createKemSession } from './dmCryptoClient';
-import { getDmIdentity, isDmIdentityReady } from './dmIdentitySession';
+import { getMessagingMlKemPublicKey, isDmIdentityReady } from './dmIdentitySession';
 import { setMessageRootKey } from './dmSessionCache';
 import { API_ENDPOINT } from '../config/api';
 
@@ -60,7 +60,7 @@ export async function sendConnectionRequest(
       'Messaging keys unavailable. Lock and unlock your pN before sending connection requests.'
     );
   }
-  const { mlKemPublicKey } = getDmIdentity();
+  const mlKemPublicKey = getMessagingMlKemPublicKey();
   if (!mlKemPublicKey) {
     throw new Error('Messaging public key missing. Lock and unlock your pN again.');
   }

@@ -284,8 +284,8 @@ async function processShareSettingsUpdate(
 
   uploadQueueService.updateTaskProgress(task.id, 80);
 
-  // Update index visibility if public and permissions changed
-  if (makePublic && nextPermissions) {
+  // Persist indexer permissions whenever the file is (or will be) public
+  if ((makePublic || isCurrentlyPublic) && nextPermissions) {
     const response = await fetch(
       `${API_ENDPOINT}/api/third-party/files/${encodeURIComponent(targetFileId)}/index-visibility`,
       {

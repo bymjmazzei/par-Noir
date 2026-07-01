@@ -61,6 +61,13 @@ export function getDmIdentity(): DmIdentityState {
   return state;
 }
 
+/** ML-KEM public key for connection send — memory first, then unencrypted field on stored identity blob. */
+export function getMessagingMlKemPublicKey(): string | undefined {
+  if (state?.mlKemPublicKey) return state.mlKemPublicKey;
+  const stored = loadStoredIdentity();
+  return stored?.mlKemPublicKey;
+}
+
 function persistDmSessionToStorage(session: DmSessionHandoff): void {
   try {
     sessionStorage.setItem(
