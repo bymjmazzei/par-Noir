@@ -15731,8 +15731,9 @@ class ProductionServer {
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
 
-        // Get metadata folder
+        // Get metadata folder and pN root folder (for conversation sheets)
         let metadataFolderId: string;
+        let acceptorPnFolderId: string;
         try {
           const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
           if (!_g) {
@@ -15740,6 +15741,7 @@ class ProductionServer {
             return this.driveNotInitialized(res);
           }
           metadataFolderId = _g.metadataFolderId;
+          acceptorPnFolderId = _g.pnFolderId;
         } catch (error: any) {
           // Drive API error (token, permissions, etc.) - return appropriate error
           if (error.message?.includes('authentication failed')) {
@@ -16090,23 +16092,11 @@ class ProductionServer {
             }
           }
 
-          // Find acceptor's pN folder
-          const acceptorPnFolderName = `par Noir - ${userCredentials.identityId}`;
-          const acceptorFolderQuery = `name='${acceptorPnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-          const acceptorFoldersResponse = await fetch(
-            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(acceptorFolderQuery)}&fields=files(id,name)`,
-            { headers: { 'Authorization': `Bearer ${userAccessToken}` } }
-          );
-
-          if (acceptorFoldersResponse.ok) {
-            const acceptorFoldersData = await acceptorFoldersResponse.json() as { files?: Array<{ id: string }> };
-            const acceptorPnFolder = acceptorFoldersData.files?.[0];
-            
-            if (acceptorPnFolder) {
+          if (acceptorPnFolderId) {
               // Get or create messages folder for acceptor
               const acceptorMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
                 token,
-                acceptorPnFolder.id,
+                acceptorPnFolderId,
                 pnIdentifier,
                 accountId
               );
@@ -16197,27 +16187,15 @@ class ProductionServer {
               } catch (inboxError: any) {
                 messagingLog.warn('[AcceptConnection] Failed to update acceptor inbox', { message: inboxError?.message });
               }
-            }
           }
 
-          // Find requester's pN folder and create conversation (if we have their credentials)
-          if (otherAccessToken && otherMetadataFolderId && otherUserCredentials?.credentials) {
-            const requesterPnFolderName = `par Noir - ${otherUserCredentials.identityId}`;
-            const requesterFolderQuery = `name='${requesterPnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-            const requesterFoldersResponse = await fetch(
-              `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(requesterFolderQuery)}&fields=files(id,name)`,
-              { headers: { 'Authorization': `Bearer ${otherAccessToken}` } }
-            );
-
-            if (requesterFoldersResponse.ok) {
-              const requesterFoldersData = await requesterFoldersResponse.json() as { files?: Array<{ id: string }> };
-              const requesterPnFolder = requesterFoldersData.files?.[0];
-              
-              if (requesterPnFolder) {
+          // Create conversation for requester (if we have their Drive credentials)
+          const requesterPnFolderId = otherMetadataFolder.pnFolderId;
+          if (otherAccessToken && otherMetadataFolderId && requesterPnFolderId && otherUserCredentials?.credentials) {
                 // Get or create messages folder for requester
                 const requesterMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
                   otherToken,
-                  requesterPnFolder.id,
+                  requesterPnFolderId,
                   otherUserPnIdentifier,
                   otherAccountId
                 );
@@ -16308,8 +16286,6 @@ class ProductionServer {
                 } catch (inboxError: any) {
                   messagingLog.warn('[AcceptConnection] Failed to update requester inbox', { message: inboxError?.message });
                 }
-              }
-            }
           }
         } catch (conversationError: any) {
           messagingLog.error('[AcceptConnection] Failed to create conversation sheets', { message: conversationError?.message });
@@ -16495,7 +16471,7 @@ class ProductionServer {
           });
         }
 
-        const connections = await ConnectionsService.getConnections(userAccessToken, metadataFolderId);
+        const connections = await ConnectionsService.getConnections(userAccessToken, metadataFolderId, pnIdentifier, accountId);
         console.log(`[GetConnections] Found ${connections.length} accepted connections for user ${pnIdentifier}`);
 
         // Normalize userPnIdentifier in returned connections (handles legacy data)
@@ -17164,7 +17140,7 @@ class ProductionServer {
           });
         }
 
-        const pending = await ConnectionsService.getPendingRequests(token.access_token, metadataFolderId);
+        const pending = await ConnectionsService.getPendingRequests(token.access_token, metadataFolderId, pnIdentifier, accountId);
 
         // Normalize userPnIdentifier in returned connections (handles legacy data)
         // Filter out invalid connections first, then normalize

@@ -17,6 +17,7 @@ import { useUserState } from '../contexts/UserStateContext';
 import { CreateGroupModal } from './CreateGroupModal';
 import type { SelectedInboxThread } from '../types/messaging';
 import { listGroups } from '../services/groupService';
+import { inboxCacheService } from '../services/inboxCacheService';
 
 interface InboxProps {
   onNotificationClick?: (notification: Notification) => void;
@@ -40,7 +41,11 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
   const [inboxRefreshKey, setInboxRefreshKey] = useState(0);
 
   const handleConnectionRequestHandled = () => {
+    if (userState.pnIdentifier) {
+      inboxCacheService.clear(userState.pnIdentifier);
+    }
     setInboxRefreshKey((k) => k + 1);
+    setActiveView('messages');
   };
 
   // Update selectedThread if initialThread changes
@@ -176,7 +181,11 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         {activeView === 'messages' ? (
-          <MessageList onThreadSelect={(thread) => setSelectedThread(thread)} />
+          <MessageList
+            key={`messages-${inboxRefreshKey}`}
+            refreshKey={inboxRefreshKey}
+            onThreadSelect={(thread) => setSelectedThread(thread)}
+          />
         ) : activeView === 'notifications' ? (
           <div className="h-full overflow-y-auto">
             {userState.isUnlocked && userState.pnIdentifier ? (

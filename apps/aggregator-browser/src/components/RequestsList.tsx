@@ -8,7 +8,7 @@ import { UserPlus, Check, X } from 'lucide-react';
 import { MessageRequest } from '../services/messageService';
 import { getMessageRequests, respondToRequest } from '../services/messageService';
 import { getPendingRequests as getConnectionPendingRequests, acceptConnectionRequest, rejectConnectionRequest } from '../services/connectionService';
-import { getMessageThreads } from '../services/messageService';
+import { getMessageThreads, refreshMessagingInbox } from '../services/messageService';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
@@ -126,7 +126,7 @@ export function RequestsList({ onRequestAccept }: RequestsListProps) {
         success('Message request accepted');
       }
       // Reload threads to show new conversation
-      await getMessageThreads(userState.pnIdentifier!);
+      await refreshMessagingInbox(userState.pnIdentifier!);
       // Notify parent to reload threads if callback provided
       onRequestAccept?.();
     } catch (error: unknown) {

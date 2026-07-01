@@ -9,6 +9,7 @@ import { getUserProfile } from './profileService';
 import { createKemSession } from './dmCryptoClient';
 import { getMessagingMlKemPublicKey, isDmIdentityReady } from './dmIdentitySession';
 import { setMessageRootKey } from './dmSessionCache';
+import { notifyMessagingInboxRefresh } from './messageService';
 import { API_ENDPOINT } from '../config/api';
 
 // Helper function to get auth headers
@@ -160,6 +161,7 @@ export async function acceptConnectionRequest(
       }
       throw new Error(errorMessage);
     }
+    notifyMessagingInboxRefresh();
   } catch (error) {
     console.error('Failed to accept connection request:', error);
     throw error;

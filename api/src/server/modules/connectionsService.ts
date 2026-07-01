@@ -770,7 +770,9 @@ export class ConnectionsService {
       return result.connections;
     } catch (error) {
       console.error('Error getting connections from sheets, falling back to JSON:', error);
-      // Fallback to JSON for backward compatibility
+      if (!userPnIdentifier) {
+        return [];
+      }
       const connectionsFile = await this.getConnectionsFile(accessToken, metadataFolderId, userPnIdentifier, accountId);
       if (!connectionsFile) {
         return [];
@@ -833,7 +835,9 @@ export class ConnectionsService {
       };
     } catch (error) {
       console.error('Error getting pending requests from sheets, falling back to JSON:', error);
-      // Fallback to JSON for backward compatibility
+      if (!userPnIdentifier) {
+        return { sent: [], received: [] };
+      }
       const connectionsFile = await this.getConnectionsFile(accessToken, metadataFolderId, userPnIdentifier, accountId);
       if (!connectionsFile) {
         return { sent: [], received: [] };

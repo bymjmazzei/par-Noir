@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, MoreVertical, Trash2, Users } from 'lucide-react';
 import { MessageThread as MessageThreadType } from '../services/messageService';
-import { getInboxThreads, deleteConversation } from '../services/messageService';
+import { getInboxThreads, deleteConversation, MESSAGING_INBOX_REFRESH_EVENT } from '../services/messageService';
 import type { SelectedInboxThread } from '../types/messaging';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
@@ -16,9 +16,10 @@ import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 interface MessageListProps {
   onThreadSelect: (thread: SelectedInboxThread) => void;
+  refreshKey?: number;
 }
 
-export function MessageList({ onThreadSelect }: MessageListProps) {
+export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps) {
   const { userState, getDisplayName, setUserDisplayName } = useUserState();
   const { success, error: showError } = useToast();
   const [threads, setThreads] = useState<MessageThreadType[]>([]);
@@ -70,13 +71,64 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
     }
   };
 
+  const loadThreadsFromApi = async (isInitial = false) => {
+    if (!userState.pnIdentifier) return;
+    try {
+      if (refreshKey > 0) {
+        inboxCacheService.clear(userState.pnIdentifier);
+      }
+      const threadsData = await getInboxThreads(userState.pnIdentifier);
+      
+      const threadsWithoutPreview = threadsData.map(thread => ({
+        ...thread,
+        lastMessage: thread.lastMessage ? {
+          messageId: '',
+          fromPnIdentifier: '',
+          toPnIdentifier: thread.participantPnIdentifier,
+          content: '',
+          timestamp: thread.lastMessage.timestamp,
+          read: false,
+          encrypted: false
+        } : undefined
+      }));
+      setThreads(threadsWithoutPreview);
+      
+      const participantIds = threadsData
+        .map(thread => thread.participantPnIdentifier)
+        .filter(Boolean) as string[];
+      loadDisplayNames(participantIds);
+      
+      const inboxEntries = threadsData
+        .filter(thread => thread.participantPnIdentifier)
+        .map(thread => ({
+          threadType: thread.threadType || 'dm',
+          participantPnIdentifier: thread.participantPnIdentifier,
+          lastMessageAt: thread.lastMessage?.timestamp || new Date().toISOString(),
+          spreadsheetId: thread.spreadsheetId,
+          connectionId: thread.threadType === 'group' ? thread.ownerPnIdentifier : thread.connectionId,
+          kemCiphertext: thread.kemCiphertext,
+          groupId: thread.groupId,
+          groupTitle: thread.groupTitle,
+          ownerPnIdentifier: thread.ownerPnIdentifier
+        }))
+        .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+      inboxCacheService.set(userState.pnIdentifier, inboxEntries);
+    } catch (error) {
+      console.error('Failed to load messages:', error);
+    } finally {
+      if (isInitial) {
+        setLoading(false);
+      }
+    }
+  };
+
   // Load threads and requests
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
 
     // Load from cache instantly (no API call)
     const cachedInbox = inboxCacheService.get(userState.pnIdentifier);
-    if (cachedInbox && cachedInbox.length > 0) {
+    if (cachedInbox && cachedInbox.length > 0 && refreshKey === 0) {
       // Convert cached entries to MessageThread format for display
       // Create minimal lastMessage object with timestamp for date display (no content preview)
       const cachedThreads: MessageThreadType[] = cachedInbox.map(entry => ({
@@ -110,68 +162,28 @@ export function MessageList({ onThreadSelect }: MessageListProps) {
       setLoading(true); // Only show loading if no cache
     }
 
-    const loadData = async (isInitial = false) => {
-      try {
-        const threadsData = await getInboxThreads(userState.pnIdentifier!);
-        
-        // Update threads (keep timestamp but remove preview content)
-        const threadsWithoutPreview = threadsData.map(thread => ({
-          ...thread,
-          lastMessage: thread.lastMessage ? {
-            messageId: '',
-            fromPnIdentifier: '',
-            toPnIdentifier: thread.participantPnIdentifier,
-            content: '', // No preview
-            timestamp: thread.lastMessage.timestamp,
-            read: false,
-            encrypted: false
-          } : undefined
-        }));
-        setThreads(threadsWithoutPreview);
-        
-        // Load display names for all participants
-        const participantIds = threadsData
-          .map(thread => thread.participantPnIdentifier)
-          .filter(Boolean) as string[];
-        loadDisplayNames(participantIds);
-        
-        // Update cache with latest data (including conversation credentials for fast loading)
-        const inboxEntries = threadsData
-          .filter(thread => thread.participantPnIdentifier)
-          .map(thread => ({
-            threadType: thread.threadType || 'dm',
-            participantPnIdentifier: thread.participantPnIdentifier,
-            lastMessageAt: thread.lastMessage?.timestamp || new Date().toISOString(),
-            spreadsheetId: thread.spreadsheetId,
-            connectionId: thread.threadType === 'group' ? thread.ownerPnIdentifier : thread.connectionId,
-            kemCiphertext: thread.kemCiphertext,
-            groupId: thread.groupId,
-            groupTitle: thread.groupTitle,
-            ownerPnIdentifier: thread.ownerPnIdentifier
-          }))
-          .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
-        inboxCacheService.set(userState.pnIdentifier!, inboxEntries);
-      } catch (error) {
-        console.error('Failed to load messages:', error);
-      } finally {
-        if (isInitial) {
-          setLoading(false);
-        }
+    void loadThreadsFromApi(true);
+
+    const onInboxRefresh = () => {
+      if (userState.pnIdentifier) {
+        inboxCacheService.clear(userState.pnIdentifier);
+        void loadThreadsFromApi(false);
       }
     };
-
-    // Initial load from API (background refresh)
-    loadData(true);
+    window.addEventListener(MESSAGING_INBOX_REFRESH_EVENT, onInboxRefresh);
 
     // Poll for updates - only when tab is visible and socket is disconnected
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible' && !socketConnected) {
-        loadData(false);
+        void loadThreadsFromApi(false);
       }
     }, 30000);
     
-    return () => clearInterval(interval);
-  }, [userState.isUnlocked, userState.pnIdentifier, socketConnected]);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener(MESSAGING_INBOX_REFRESH_EVENT, onInboxRefresh);
+    };
+  }, [userState.isUnlocked, userState.pnIdentifier, socketConnected, refreshKey]);
 
   // Close menu when clicking outside
   useEffect(() => {

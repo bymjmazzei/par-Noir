@@ -11,6 +11,15 @@ import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
 import { encryptMessageRequest, decryptMessageRequest } from '@par-noir/dm-crypto';
 import { messageAuthHeaders, messageFetch } from './messageAuthFetch';
 
+export const MESSAGING_INBOX_REFRESH_EVENT = 'pn_messaging_inbox_refresh';
+
+/** Tell MessageList (and other listeners) to reload inbox after connection accept, etc. */
+export function notifyMessagingInboxRefresh(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(MESSAGING_INBOX_REFRESH_EVENT));
+  }
+}
+
 export interface Message {
   messageId: string;
   fromPnIdentifier: string;
@@ -150,6 +159,13 @@ export async function getInboxThreads(userPnIdentifier: string): Promise<Message
     return new Date(tb).getTime() - new Date(ta).getTime();
   });
   return merged;
+}
+
+export async function refreshMessagingInbox(userPnIdentifier: string): Promise<MessageThread[]> {
+  inboxCacheService.clear(userPnIdentifier);
+  const threads = await getInboxThreads(userPnIdentifier);
+  notifyMessagingInboxRefresh();
+  return threads;
 }
 
 /**
