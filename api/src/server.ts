@@ -5468,36 +5468,18 @@ class ProductionServer {
               (credentials.googleDrive ? [credentials.googleDrive] : []);
             
             if (googleDriveAccounts.length > 0) {
-              const account = googleDriveAccounts[0];
-              const accountId = this.extractAccountId(account);
-              
-              // Build token object for helper methods
-              const token = {
-                access_token: account.access_token || account.accessToken,
-                refresh_token: account.refresh_token || account.refreshToken,
-                expires_at: account.expires_at,
-                expires_in: account.expires_in
-              };
-              const accessToken = token.access_token; // Keep for backward compatibility
-              
-              console.log(`[StorageCredentials PUT] Queueing Google Drive index init for identityId: ${sanitizedIdentityId}`);
-              const { runDriveInitOnce } = await import('./server/modules/driveInitCoordinator');
-              void runDriveInitOnce(pnIdentifier, () =>
-                this.initializeGoogleDriveStorage(
-                  token,
-                  pnIdentifier,
-                  accountId,
-                  credentials,
-                  identityId,
-                  `[StorageCredentials PUT]`
-                )
-              );
+              // Credentials are saved. The full Drive layout build is a long, multi-minute
+              // operation that must run inside a request that is actually awaited by the client.
+              // The dashboard always calls POST /api/storage/initialize right after this PUT and
+              // awaits it, so we do NOT fire-and-forget here (that races and can be abandoned when
+              // the HTTP response returns). Just report that init still needs to run.
+              console.log(`[StorageCredentials PUT] Credentials saved; Drive layout build deferred to /storage/initialize for identityId: ${sanitizedIdentityId}`);
               directoryBuilt = false;
             }
           } catch (err: any) {
             directoryBuilt = false;
             folderInitError = err?.message || String(err);
-            console.warn(`[StorageCredentials PUT] Failed to queue folder init for identityId: ${sanitizedIdentityId}`, folderInitError);
+            console.warn(`[StorageCredentials PUT] Failed to prepare folder init for identityId: ${sanitizedIdentityId}`, folderInitError);
           }
         }
 
@@ -5626,14 +5608,36 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
         const accountId = this.extractAccountId(account);
-        
+
+        // Use a fresh (auto-refreshed) access token from the proxy. Init can take several minutes;
+        // a token minted at OAuth time may expire mid-build and silently stall folder/sheet creation.
+        let freshAccessToken: string | null = null;
+        try {
+          freshAccessToken = await googleDriveProxyService.getAccessToken(
+            pnIdentifier,
+            accountId,
+            [pnIdentifier]
+          );
+        } catch (tokenErr: any) {
+          console.warn(
+            `[StorageInitialize POST] Could not refresh access token, falling back to stored token:`,
+            tokenErr?.message || tokenErr
+          );
+        }
+
         const token = {
-          access_token: account.access_token || account.accessToken,
+          access_token: freshAccessToken || account.access_token || account.accessToken,
           refresh_token: account.refresh_token || account.refreshToken,
           expires_at: account.expires_at,
           expires_in: account.expires_in
         };
         const accessToken = token.access_token;
+
+        if (!accessToken) {
+          return res.status(400).json({
+            error: 'No Google Drive access token available for this identity'
+          });
+        }
 
         console.log(`[StorageInitialize POST] Re-initializing folder structure for identityId: ${sanitizedIdentityId}`);
         

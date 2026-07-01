@@ -490,7 +490,9 @@ function App() {
   });
 
   React.useEffect(() => {
-    if (!authenticatedUser?.id || apiToken) return;
+    if (!authenticatedUser?.id) return;
+    // Re-acquire per active identity: a stale apiToken may belong to a previously unlocked pN.
+    // ensureApiTokenAfterUnlock validates the token's pN and re-mints if it differs.
     if (apiTokenAttemptedForUserRef.current === authenticatedUser.id) return;
 
     const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);

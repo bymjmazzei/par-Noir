@@ -7,6 +7,8 @@ const OAUTH_STATE_KEY = 'pn_oauth_state';
 export interface StoredToken {
   accessToken: string;
   expiresAt: number;
+  /** pN identifier this token was issued for (so we never reuse it for a different pN). */
+  pnIdentifier?: string;
 }
 
 export interface InlineOAuthAcquireInput {
@@ -71,12 +73,16 @@ export function clearStoredToken(): void {
   setStoredToken(null);
 }
 
-export async function acquireApiTokenInline(input: InlineOAuthAcquireInput): Promise<string> {
+export async function acquireApiTokenInline(
+  input: InlineOAuthAcquireInput
+): Promise<{ accessToken: string; pnIdentifier: string }> {
   const redirectUri = input.redirectUri || `${window.location.origin}/oauth-callback.html`;
   const scope = getScope(input.scope);
   const state = randomHex(16);
   const nonce = randomHex(16);
   sessionStorage.setItem(OAUTH_STATE_KEY, state);
+
+  const pnIdentifier = await derivePnIdentifier(input.pnName, input.passcode, input.publicKey);
 
   const authResponse = await fetch(`${API_ENDPOINT}/oauth/authorize/authenticate`, {
     method: 'POST',
@@ -91,7 +97,7 @@ export async function acquireApiTokenInline(input: InlineOAuthAcquireInput): Pro
       passcode: input.passcode,
       public_key: input.publicKey,
       did: input.did,
-      pn_identifier: await derivePnIdentifier(input.pnName, input.passcode, input.publicKey)
+      pn_identifier: pnIdentifier
     })
   });
 
@@ -105,7 +111,17 @@ export async function acquireApiTokenInline(input: InlineOAuthAcquireInput): Pro
     throw new Error('No authorization code received from OAuth authentication');
   }
 
-  return exchangeCodeForToken(authResult.code, redirectUri);
+  const accessToken = await exchangeCodeForToken(authResult.code, redirectUri);
+  return { accessToken, pnIdentifier };
+}
+
+/** Public: derive the pN identifier used for OAuth (matches the token's embedded pN). */
+export async function derivePnIdentifierForToken(
+  pnName: string,
+  passcode: string,
+  publicKey: string
+): Promise<string> {
+  return derivePnIdentifier(pnName, passcode, publicKey);
 }
 
 export async function exchangeCodeForToken(code: string, redirectUri: string): Promise<string> {

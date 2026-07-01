@@ -9,6 +9,7 @@ import {
   acquireApiTokenInline,
   clearStoredToken,
   consumeOAuthResumeFromUrl,
+  derivePnIdentifierForToken,
   exchangeCodeForToken,
   getStoredToken,
   setStoredToken,
@@ -69,20 +70,35 @@ export function useApiToken() {
 
   const ensureApiTokenAfterUnlock = useCallback(
     async (input: InlineOAuthAcquireInput): Promise<string | null> => {
+      // The OAuth access token embeds a pN identifier; the API rejects (403) any owner route
+      // whose URL pN differs from the token's pN. When switching between pNs we MUST re-acquire
+      // a token for the active pN instead of reusing a stored token from a different pN.
+      const wantedPn = await derivePnIdentifierForToken(
+        input.pnName,
+        input.passcode,
+        input.publicKey
+      );
+
       const existing = getStoredToken();
-      if (existing?.accessToken) {
+      if (existing?.accessToken && existing.pnIdentifier === wantedPn) {
         setApiToken(existing.accessToken);
         return existing.accessToken;
+      }
+
+      // Stored token is missing or belongs to a different pN — drop it and mint a new one.
+      if (existing && existing.pnIdentifier !== wantedPn) {
+        clearStoredToken();
+        setApiToken(null);
       }
 
       setIsConnecting(true);
       setConnectError(null);
       try {
-        const token = await acquireApiTokenInline(input);
+        const { accessToken, pnIdentifier } = await acquireApiTokenInline(input);
         const expiresAt = Date.now() + 60 * 60 * 1000;
-        setStoredToken({ accessToken: token, expiresAt });
-        setApiToken(token);
-        return token;
+        setStoredToken({ accessToken, expiresAt, pnIdentifier });
+        setApiToken(accessToken);
+        return accessToken;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         setConnectError(msg);
