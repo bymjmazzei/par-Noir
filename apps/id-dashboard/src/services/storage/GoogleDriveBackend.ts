@@ -181,6 +181,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     this.refreshToken = null;
     this.userEmail = null;
     this.parNoirFolderId = null;
+    this.clearAllFolderCache();
     
     try {
       localStorage.removeItem(`${this.keyPrefix}_token`);
@@ -189,8 +190,25 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     } catch (e) {
       // localStorage might not be available
     }
+
+    try {
+      await IntegrationCredentialManager.removeCredentials(this.backendId);
+    } catch (e) {
+      console.warn('[GoogleDriveBackend] Failed to remove encrypted credentials on disconnect:', e);
+    }
     
     this.connected = false;
+  }
+
+  /** Clear cached pN folder IDs (e.g. after disconnect or deleted Drive folders). */
+  clearAllFolderCache(): void {
+    this.pnFolderCache.clear();
+    try {
+      localStorage.removeItem(`${this.keyPrefix}_folder_cache`);
+      localStorage.removeItem(`${this.keyPrefix}_last_folder_id`);
+    } catch {
+      /* ignore */
+    }
   }
 
   isConnected(): boolean {

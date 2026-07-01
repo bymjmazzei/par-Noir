@@ -97,7 +97,11 @@ export class GoogleDriveProxyService {
       
       if (!account) {
         console.error(`[GoogleDriveProxy] Requested account not found`);
-        throw new Error(`Google Drive account not found for accountId: ${accountId}`);
+        if (accountId === 'default' && credentials.googleDriveAccounts.length > 0) {
+          account = credentials.googleDriveAccounts[0];
+        } else {
+          throw new Error(`Google Drive account not found for accountId: ${accountId}`);
+        }
       }
     } else if (credentials.googleDriveAccounts && credentials.googleDriveAccounts.length > 0) {
       // Use first account if no accountId specified

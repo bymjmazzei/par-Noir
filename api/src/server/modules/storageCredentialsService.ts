@@ -221,6 +221,16 @@ export class StorageCredentialsService {
       }
     }
 
+    // No Google Drive accounts — drop stale layout index so unlock does not use deleted folder IDs.
+    const hasGoogleDrive =
+      (Array.isArray(credentials.googleDriveAccounts) && credentials.googleDriveAccounts.length > 0) ||
+      (!!credentials.googleDrive && typeof credentials.googleDrive === 'object' && !Array.isArray(credentials.googleDrive));
+    if (!hasGoogleDrive) {
+      delete credentials.pnDriveIndex;
+      delete credentials.cachedFolderIds;
+      delete credentials.driveFolderId;
+    }
+
     const db = getDatabasePool();
     const serialized = JSON.stringify(credentials);
     const encryptedPayload = await this.encryptPayload(serialized);

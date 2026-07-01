@@ -7,8 +7,13 @@ export interface RecoveryDriveContext {
   metadataFolderId: string;
 }
 
-function extractAccountId(account: { accountId?: string; id?: string }): string | undefined {
-  return account.accountId || account.id;
+function extractAccountId(account: Record<string, unknown>): string | undefined {
+  return (
+    (account.backendId as string | undefined) ||
+    (account.keyPrefix as string | undefined) ||
+    (account.accountId as string | undefined) ||
+    (account.id as string | undefined)
+  );
 }
 
 export async function getRecoveryDriveContext(userPnIdentifier: string): Promise<RecoveryDriveContext | null> {

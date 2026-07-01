@@ -34,9 +34,21 @@ export async function getUserDriveMetadataContext(
     return null;
   }
 
-  const account = googleDriveAccounts[0] as { accountId?: string; id?: string };
-  const accountId = account.accountId || account.id || 'default';
-  const accessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+  const account = googleDriveAccounts[0] as {
+    backendId?: string;
+    keyPrefix?: string;
+    accountId?: string;
+    id?: string;
+  };
+  const accountId =
+    account.backendId ||
+    account.keyPrefix ||
+    account.accountId ||
+    account.id;
+  const accessToken = await googleDriveProxyService.getAccessToken(
+    normalizedPnIdentifier,
+    accountId
+  );
 
   const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
   const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -73,5 +85,10 @@ export async function getUserDriveMetadataContext(
     return null;
   }
 
-  return { normalizedPnIdentifier, accessToken, accountId, metadataFolderId };
+  return {
+    normalizedPnIdentifier,
+    accessToken,
+    accountId: accountId ?? '',
+    metadataFolderId,
+  };
 }

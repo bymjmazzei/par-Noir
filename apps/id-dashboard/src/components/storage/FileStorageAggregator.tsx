@@ -1885,7 +1885,36 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   // CRITICAL: Track when disconnect happens to prevent immediate re-hydration and re-connection
   const disconnectTimestampRef = React.useRef<number>(0);
   const disconnectedBackendIdsRef = React.useRef<Set<string>>(new Set());
+  const driveLayoutRebuildInFlightRef = React.useRef<Set<string>>(new Set());
   const DISCONNECT_BLOCK_DURATION_MS = 10000; // Block re-adding disconnected accounts for 10 seconds (reduced from 30s to not block unlock)
+
+  const requestDriveLayoutRebuild = React.useCallback(async (pnId: string): Promise<boolean> => {
+    if (!pnId.startsWith('pn-')) return false;
+    if (driveLayoutRebuildInFlightRef.current.has(pnId)) return false;
+    const accessToken = resolveOwnerApiToken();
+    if (!accessToken) return false;
+    driveLayoutRebuildInFlightRef.current.add(pnId);
+    try {
+      console.log('🔄 [Storage] Rebuilding Google Drive layout via API (folders or index were stale)...');
+      const initRes = await ownerFetch(
+        accessToken,
+        'POST',
+        `/api/storage/initialize/${encodeURIComponent(pnId)}`
+      );
+      if (!initRes.ok) {
+        const errText = await initRes.text().catch(() => 'Unknown error');
+        console.warn('⚠️ [Storage] Drive layout rebuild failed:', errText);
+        return false;
+      }
+      console.log('✅ [Storage] Drive layout rebuilt via API');
+      return true;
+    } catch (err) {
+      console.warn('⚠️ [Storage] Drive layout rebuild error:', err);
+      return false;
+    } finally {
+      driveLayoutRebuildInFlightRef.current.delete(pnId);
+    }
+  }, [resolveOwnerApiToken]);
 
   const hydrateStorageCredentialsFromAPI = React.useCallback(async (forceRefresh?: boolean) => {
     if (hydrationInProgressRef.current) {
@@ -3211,7 +3240,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               ownerApiToken,
               `/api/storage/owner-index/${encodeURIComponent(pnId)}`
             );
-            if (idxRes.ok) {
+            if (idxRes.status === 409) {
+              const rebuilt = await requestDriveLayoutRebuild(pnId);
+              if (rebuilt) {
+                const retryRes = await ownerGet(
+                  ownerApiToken,
+                  `/api/storage/owner-index/${encodeURIComponent(pnId)}`
+                );
+                if (retryRes.ok) {
+                  const idxData = await retryRes.json();
+                  const provider = backendId.includes('::') ? backendId.split('::')[0] : backendId;
+                  const filteredFiles = (idxData.files || []).filter(
+                    (entry: any) => (entry.backend || 'google_drive') === provider
+                  );
+                  if (filteredFiles.length > 0) {
+                    ownerIndex = { ...idxData, files: filteredFiles };
+                  }
+                }
+              }
+            } else if (idxRes.ok) {
               const idxData = await idxRes.json();
               const provider = backendId.includes('::') ? backendId.split('::')[0] : backendId;
               const filteredFiles = (idxData.files || []).filter(
@@ -4941,7 +4988,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       
       const backend = aggregatorService.getBackend(backendId);
       if (backend) {
-        // Disconnect the backend (clears tokens, etc.)
+        // Disconnect the backend (clears tokens, folder cache, encrypted credentials)
         await backend.disconnect();
         console.log(`✅ [handleDisconnect] Backend ${backendId} disconnected`);
       }

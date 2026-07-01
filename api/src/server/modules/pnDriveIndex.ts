@@ -47,11 +47,46 @@ export interface PnDriveIndex {
 export class DriveIndexError extends Error {
   constructor(
     message: string,
-    public readonly code: 'DRIVE_NOT_INITIALIZED' | 'DRIVE_INDEX_INCOMPLETE' = 'DRIVE_NOT_INITIALIZED'
+    public readonly code:
+      | 'DRIVE_NOT_INITIALIZED'
+      | 'DRIVE_INDEX_INCOMPLETE'
+      | 'DRIVE_INDEX_STALE' = 'DRIVE_NOT_INITIALIZED'
   ) {
     super(message);
     this.name = 'DriveIndexError';
   }
+}
+
+/** True when indexed pN / _metadata folders still exist on Drive. */
+export async function pnDriveFoldersExistOnDrive(
+  accessToken: string,
+  pnFolderId: string,
+  metadataFolderId: string
+): Promise<boolean> {
+  for (const folderId of [pnFolderId, metadataFolderId]) {
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${folderId}?fields=id,trashed`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (res.status === 404) return false;
+    if (res.ok) {
+      const data = (await res.json()) as { trashed?: boolean };
+      if (data.trashed) return false;
+    }
+  }
+  return true;
+}
+
+/** Remove stale pnDriveIndex from stored credentials (e.g. after Drive folders deleted). */
+export async function clearPnDriveIndex(pnIdentifier: string): Promise<void> {
+  const normalized = normalizePnIdentifier(pnIdentifier);
+  const record = await storageCredentialsService.getCredentials(normalized);
+  if (!record?.credentials) return;
+  const credentials = { ...(record.credentials as Record<string, unknown>) };
+  delete credentials.pnDriveIndex;
+  delete credentials.cachedFolderIds;
+  delete credentials.driveFolderId;
+  await storageCredentialsService.upsertCredentials(normalized, credentials, record.cid ?? undefined);
 }
 
 function pickString(v: unknown): string | undefined {

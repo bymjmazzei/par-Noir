@@ -7,8 +7,10 @@ import { normalizePnIdentifier } from './integratorStoragePaths';
 import { storageCredentialsService } from './storageCredentialsService';
 import {
   assertPnDriveIndexComplete,
+  clearPnDriveIndex,
   DriveIndexError,
   getSheetIdFromIndex,
+  pnDriveFoldersExistOnDrive,
   readPnDriveIndex,
   type PnDriveIndex,
   type PnDriveSheetKey,
@@ -78,6 +80,19 @@ export async function requireOwnerDriveContext(
     expires_at: account.expires_at as number | undefined,
     expires_in: account.expires_in as number | undefined,
   };
+
+  const foldersExist = await pnDriveFoldersExistOnDrive(
+    accessToken,
+    index.pnFolderId,
+    index.metadataFolderId
+  );
+  if (!foldersExist) {
+    await clearPnDriveIndex(normalized);
+    throw new DriveIndexError(
+      'Google Drive folders were deleted or moved. Re-initialize storage in the dashboard.',
+      'DRIVE_INDEX_STALE'
+    );
+  }
 
   return {
     pnIdentifier: normalized,

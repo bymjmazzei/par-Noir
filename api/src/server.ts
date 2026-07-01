@@ -372,14 +372,25 @@ class ProductionServer {
    * Do not create anything. Use in usage paths; if null, return 409 DRIVE_NOT_INITIALIZED.
    */
   private async getMetadataFolder(
-    _token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
+    token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
     pnIdentifier: string,
     _accountId?: string
   ): Promise<{ metadataFolderId: string; pnFolderId: string } | null> {
-    const { loadPnDriveIndex, isPnDriveIndexComplete } = await import('./server/modules/pnDriveIndex');
+    const { loadPnDriveIndex, isPnDriveIndexComplete, pnDriveFoldersExistOnDrive, clearPnDriveIndex } =
+      await import('./server/modules/pnDriveIndex');
     const normalizedPn = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
     const index = await loadPnDriveIndex(normalizedPn);
     if (!isPnDriveIndexComplete(index)) return null;
+    if (!token.access_token) return null;
+    const foldersExist = await pnDriveFoldersExistOnDrive(
+      token.access_token,
+      index.pnFolderId,
+      index.metadataFolderId
+    );
+    if (!foldersExist) {
+      await clearPnDriveIndex(normalizedPn);
+      return null;
+    }
     return { metadataFolderId: index.metadataFolderId, pnFolderId: index.pnFolderId };
   }
 
@@ -5704,7 +5715,12 @@ class ProductionServer {
 
         const out = await this.getMetadataFolder(token, pnIdentifier, accountId);
         if (!out) {
-          return res.json({ identifier: identityId, files: [], updatedAt: new Date().toISOString() });
+          return res.status(409).json({
+            error: 'drive_not_initialized',
+            code: 'DRIVE_INDEX_INCOMPLETE',
+            message:
+              'Google Drive layout is missing or was deleted. Re-save Google Drive in Storage settings to rebuild.',
+          });
         }
 
         // Merged view: aggregate from content-class indices, fallback to root
@@ -5737,6 +5753,32 @@ class ProductionServer {
         return res.json({ identifier: identityId, files: rootIndex.files, updatedAt: rootIndex.updatedAt });
       } catch (error: any) {
         console.error('[OwnerIndex] Error:', error?.message || error);
+        const msg = error?.message || String(error);
+        if (error?.name === 'DriveIndexError' && error?.code === 'DRIVE_INDEX_STALE') {
+          return res.status(409).json({
+            error: 'drive_index_stale',
+            code: 'DRIVE_INDEX_STALE',
+            message: msg,
+          });
+        }
+        if (msg.includes('Sheet not found') || msg.includes('File not found')) {
+          try {
+            const rawId = req.params.identityId;
+            if (rawId) {
+              const stalePn = rawId.startsWith('pn-') ? rawId : `pn-${rawId}`;
+              const { clearPnDriveIndex } = await import('./server/modules/pnDriveIndex');
+              await clearPnDriveIndex(stalePn);
+            }
+          } catch {
+            /* best-effort */
+          }
+          return res.status(409).json({
+            error: 'drive_index_stale',
+            code: 'DRIVE_INDEX_STALE',
+            message:
+              'Google Drive metadata was deleted or is out of date. Re-save Google Drive in Storage settings to rebuild.',
+          });
+        }
         return res.status(500).json({
           error: 'Failed to read owner index',
           message: safeClientErrorMessage(error, NODE_ENV === 'production')
