@@ -21,6 +21,17 @@ export interface StoredMessageRequestRow {
   timestamp: string;
 }
 
+const HEADER_ROW = [
+  'Request ID',
+  'From pN',
+  'To pN',
+  'Content',
+  'Status',
+  'Created At',
+  'KEM Ciphertext',
+  'Crypto Version',
+];
+
 export class MessageRequestSheetsService {
   /** List-only: returns spreadsheet id if `message_requests.xlsx` exists under metadata. */
   static async findRequestsSpreadsheetId(
@@ -57,6 +68,7 @@ export class MessageRequestSheetsService {
     const list = await drive.files.list({ q, fields: 'files(id)', pageSize: 1 });
     const existing = list.data.files?.[0]?.id;
     if (existing) {
+      await this.ensureHeaders(sheets, existing);
       return existing;
     }
 
@@ -87,16 +99,34 @@ export class MessageRequestSheetsService {
       fields: 'id, parents'
     });
 
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: id,
-      range: `${SHEET_TITLE}!A1:F1`,
-      valueInputOption: 'RAW',
-      requestBody: {
-        values: [['Request ID', 'From pN', 'To pN', 'Content', 'Status', 'Created At', 'KEM Ciphertext', 'Crypto Version']]
-      }
-    });
+    await this.ensureHeaders(sheets, id);
 
     return id;
+  }
+
+  /** Idempotent: repair header row (fixes partial init when create succeeded but header write failed). */
+  private static async ensureHeaders(
+    sheets: ReturnType<typeof google.sheets>,
+    spreadsheetId: string
+  ): Promise<void> {
+    try {
+      const hdr = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${SHEET_TITLE}!A1:H1`,
+      });
+      const row = hdr.data.values?.[0] || [];
+      if (row[0] === HEADER_ROW[0] && row.length >= HEADER_ROW.length) {
+        return;
+      }
+    } catch {
+      /* write full header row */
+    }
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${SHEET_TITLE}!A1:H1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [HEADER_ROW] },
+    });
   }
 
   static async listRequests(
