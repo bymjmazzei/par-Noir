@@ -663,12 +663,11 @@ export function useAuthAndSession({
     async () => {
       restoreMessagingAfterOAuth();
 
-      const needsMessagingHandoff = !isDmIdentityReady();
-
       const redirectUri = `${window.location.origin}/oauth-callback.html`;
       let authUrl = PNOAuthService.getAuthorizationUrl({
         usePopup: true,
-        identityHandoffRequired: needsMessagingHandoff,
+        // Permissions skip is independent of messaging handoff (unlock step always stashes keys).
+        identityHandoffRequired: false,
       });
       const authUrlObj = new URL(authUrl);
       const actualRedirectUri = authUrlObj.searchParams.get('redirect_uri') || redirectUri;

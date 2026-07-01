@@ -30,7 +30,6 @@ function notifyDmIdentityChange(): void {
     window.dispatchEvent(new CustomEvent(DM_IDENTITY_CHANGE_EVENT));
   }
 }
-
 export function isDmIdentityReady(): boolean {
   return state !== null;
 }
@@ -116,10 +115,14 @@ export function restoreDmSessionFromStorage(): boolean {
 /** Apply ML-KEM keys handed off from OAuth consent (postMessage). */
 export function applyDmSessionHandoff(session: DmSessionHandoff): void {
   if (!session.mlKemSecretKey) return;
+  const unchanged =
+    state?.mlKemSecretKey === session.mlKemSecretKey &&
+    state?.mlKemPublicKey === session.mlKemPublicKey;
+  if (unchanged) return;
   state = {
     mlKemSecretKey: session.mlKemSecretKey,
     mlKemPublicKey: session.mlKemPublicKey,
-    pnName: ''
+    pnName: state?.pnName || ''
   };
   persistDmSessionToStorage(session);
   if (session.mlKemPublicKey) {
@@ -147,6 +150,10 @@ function loadStoredIdentity(): EncryptedIdentityPayload | null {
 
 /** Call after OAuth if identity blob was stored locally during consent. */
 export function storeEncryptedIdentityForMessaging(payload: EncryptedIdentityPayload): void {
+  const existing = loadStoredIdentity();
+  if (existing && JSON.stringify(existing) === JSON.stringify(payload)) {
+    return;
+  }
   localStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(payload));
   notifyDmIdentityChange();
 }

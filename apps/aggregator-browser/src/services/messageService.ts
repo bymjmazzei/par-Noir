@@ -489,12 +489,18 @@ export async function respondToRequest(
  * Mark message as read
  */
 export async function markAsRead(messageId: string, userPnIdentifier: string, participantPnIdentifier?: string): Promise<void> {
+  if (!messageId || messageId.startsWith('temp-')) {
+    return;
+  }
   try {
     const response = await messageFetch(`/api/messages/${messageId}/read`, {
       method: 'POST',
       bodyObject: { userPnIdentifier, participantPnIdentifier },
     });
 
+    if (response.status === 404) {
+      return;
+    }
     if (!response.ok) {
       throw new Error('Failed to mark message as read');
     }

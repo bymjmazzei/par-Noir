@@ -814,7 +814,7 @@
         clientId: clientId
       });
       
-      if (existingPermissions && clientId === 'browser-app' && !identityHandoffRequired) {
+      if (existingPermissions && clientId === 'browser-app') {
         const ageSharedParam = existingPermissions.ageShared ? 'true' : 'false';
         if (isInPopup) {
           window.location.href = buildCallbackUrl(authorizationCode, ageSharedParam);

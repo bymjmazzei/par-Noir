@@ -13028,28 +13028,14 @@ class ProductionServer {
           expires_in: account.expires_in
         };
 
-        // Find user's pN folder
-        const pnFolderName = `par Noir - ${pnIdentifier}`;
-        const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const foldersResponse = await fetch(
-          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)`,
-          { headers: { 'Authorization': `Bearer ${token.access_token}` } }
-        );
-
-        if (!foldersResponse.ok) {
-          return res.status(500).json({ error: 'Failed to find user folder' });
+        const metadataFolder = await this.getMetadataFolder(token, pnIdentifier, accountId);
+        if (!metadataFolder) {
+          return this.driveNotInitialized(res);
         }
 
-        const foldersData = await foldersResponse.json() as { files?: Array<{ id: string }> };
-        const pnFolder = foldersData.files?.[0];
-        if (!pnFolder) {
-          return res.status(500).json({ error: 'User folder not found' });
-        }
-
-        // Get or create messages folder
         const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
           token,
-          pnFolder.id,
+          metadataFolder.pnFolderId,
           pnIdentifier,
           accountId
         );
@@ -13071,13 +13057,21 @@ class ProductionServer {
         );
 
         // Mark message as read
-        await MessageSheetsService.markAsRead(
-          token,
-          conversationSheetId,
-          messageId,
-          pnIdentifier,
-          accountId
-        );
+        try {
+          await MessageSheetsService.markAsRead(
+            token,
+            conversationSheetId,
+            messageId,
+            pnIdentifier,
+            accountId
+          );
+        } catch (readError: unknown) {
+          const msg = readError instanceof Error ? readError.message : String(readError);
+          if (msg.includes('Message not found')) {
+            return res.status(404).json({ error: 'Message not found' });
+          }
+          throw readError;
+        }
 
         return res.json({ success: true });
       } catch (error: any) {

@@ -20,7 +20,13 @@ export const ConnectionHealthBanner: React.FC = () => {
 
   useEffect(() => {
     refreshMessagingState();
-    const onChange = () => refreshMessagingState();
+    const onChange = () => {
+      if (isDmIdentityReady()) {
+        setMessagingOk(true);
+        return;
+      }
+      refreshMessagingState();
+    };
     window.addEventListener(DM_IDENTITY_CHANGE_EVENT, onChange);
     return () => window.removeEventListener(DM_IDENTITY_CHANGE_EVENT, onChange);
   }, [refreshMessagingState]);
