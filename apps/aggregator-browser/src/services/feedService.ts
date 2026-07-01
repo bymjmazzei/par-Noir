@@ -259,9 +259,20 @@ export class FeedService {
    * Get user's subscriptions
    */
   static async getUserSubscriptions(userPnIdentifier: string): Promise<Feed[]> {
-    const response = await fetch(`${API_ENDPOINT}/api/users/${userPnIdentifier}/subscriptions`);
+    const token = await PNOAuthService.getValidAccessToken();
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const response = await fetch(`${API_ENDPOINT}/api/users/${userPnIdentifier}/subscriptions`, {
+      headers,
+    });
 
     if (!response.ok) {
+      if (response.status === 429) {
+        console.warn('[FeedService] subscriptions rate limited; using empty list');
+        return [];
+      }
       const error = await response.json().catch(() => ({ error: 'Failed to get subscriptions' }));
       throw new Error(error.error || 'Failed to get subscriptions');
     }

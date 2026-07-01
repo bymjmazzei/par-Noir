@@ -261,19 +261,6 @@ function App() {
     }
   };
 
-  // Subscriptions are not needed for first paint — load after feed index settles
-  useEffect(() => {
-    if (!discoveryEnabled || !userState.isUnlocked || !userState.pnIdentifier) return;
-    const timer = setTimeout(async () => {
-      try {
-        await FeedService.getUserSubscriptions(userState.pnIdentifier!);
-      } catch (error) {
-        if (import.meta.env.DEV) console.error('Failed to load subscriptions:', error);
-      }
-    }, 5000);
-    return () => clearTimeout(timer);
-  }, [discoveryEnabled, userState.isUnlocked, userState.pnIdentifier]);
-
   // Load bulk engagement stats when files are loaded
   // Store loadBulkEngagementStats in ref to avoid dependency issues
   useEffect(() => {

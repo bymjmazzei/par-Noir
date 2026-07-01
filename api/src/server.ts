@@ -743,6 +743,7 @@ class ProductionServer {
         (req.method === 'GET' && (
           req.path.startsWith('/api/profile/') ||
           req.path.startsWith('/api/feeds') ||
+          req.path.startsWith('/api/users/') ||
           req.path.startsWith('/api/engagement/') ||
           req.path.startsWith('/api/notifications') ||
           req.path.startsWith('/api/activity-ledger') ||
