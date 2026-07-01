@@ -1,6 +1,7 @@
 export {
   establishDmSession,
   openDmSession,
+  deriveMlKemPublicKeyFromSecretKey,
   KEM_ALG_ID,
   type DmSessionMaterial
 } from './session';

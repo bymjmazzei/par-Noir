@@ -21,6 +21,13 @@ export function establishDmSession(
   };
 }
 
+/** Derive ML-KEM-768 public key from secret key (base64). */
+export function deriveMlKemPublicKeyFromSecretKey(secretKeyB64: string): string {
+  const sk = base64ToBytes(secretKeyB64);
+  const pk = ml_kem768.getPublicKey(sk);
+  return bytesToBase64(pk);
+}
+
 /** Requester (or either party) opens session from stored kem ciphertext. */
 export function openDmSession(kemCiphertextB64: string, myMlKemSecretKeyB64: string): string {
   const ct = base64ToBytes(kemCiphertextB64);

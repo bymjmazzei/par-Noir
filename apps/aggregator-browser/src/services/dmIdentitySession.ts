@@ -2,7 +2,7 @@
  * Messaging crypto unlock — ML-KEM secret in memory only.
  */
 
-import { unlockIdentityMlKemSecret, type EncryptedIdentityPayload } from '@par-noir/dm-crypto';
+import { unlockIdentityMlKemSecret, deriveMlKemPublicKeyFromSecretKey, type EncryptedIdentityPayload } from '@par-noir/dm-crypto';
 import { clearDmSessionCache } from './dmSessionCache';
 import { PNOAuthService } from './pnOAuthService';
 import { API_ENDPOINT } from '../config/api';
@@ -60,11 +60,26 @@ export function getDmIdentity(): DmIdentityState {
   return state;
 }
 
-/** ML-KEM public key for connection send — memory first, then unencrypted field on stored identity blob. */
+function resolveMlKemPublicKey(secretKey: string, _publicKey?: string): string {
+  return deriveMlKemPublicKeyFromSecretKey(secretKey);
+}
+
+function syncDmIdentityPublicKey(): void {
+  if (!state?.mlKemSecretKey) return;
+  const derived = resolveMlKemPublicKey(state.mlKemSecretKey, state.mlKemPublicKey);
+  if (state.mlKemPublicKey === derived) return;
+  state = { ...state, mlKemPublicKey: derived };
+  persistDmSessionToStorage({
+    mlKemSecretKey: state.mlKemSecretKey,
+    mlKemPublicKey: derived,
+  });
+}
+
+/** ML-KEM public key for connection send — always derived from the unlocked secret key. */
 export function getMessagingMlKemPublicKey(): string | undefined {
-  if (state?.mlKemPublicKey) return state.mlKemPublicKey;
-  const stored = loadStoredIdentity();
-  return stored?.mlKemPublicKey;
+  if (!state?.mlKemSecretKey) return undefined;
+  syncDmIdentityPublicKey();
+  return state?.mlKemPublicKey;
 }
 
 function persistDmSessionToStorage(session: DmSessionHandoff): void {
@@ -97,14 +112,17 @@ export function restoreDmSessionFromStorage(): boolean {
     if (!raw) return false;
     const parsed = JSON.parse(raw) as DmSessionHandoff;
     if (!parsed.mlKemSecretKey) return false;
+    const mlKemPublicKey = resolveMlKemPublicKey(
+      parsed.mlKemSecretKey,
+      parsed.mlKemPublicKey
+    );
     state = {
       mlKemSecretKey: parsed.mlKemSecretKey,
-      mlKemPublicKey: parsed.mlKemPublicKey,
+      mlKemPublicKey,
       pnName: ''
     };
-    if (parsed.mlKemPublicKey) {
-      void publishMlKemPublicKey(parsed.mlKemPublicKey).catch(() => {});
-    }
+    persistDmSessionToStorage({ mlKemSecretKey: parsed.mlKemSecretKey, mlKemPublicKey });
+    void publishMlKemPublicKey(mlKemPublicKey).catch(() => {});
     notifyDmIdentityChange();
     return true;
   } catch {
@@ -115,19 +133,21 @@ export function restoreDmSessionFromStorage(): boolean {
 /** Apply ML-KEM keys handed off from OAuth consent (postMessage). */
 export function applyDmSessionHandoff(session: DmSessionHandoff): void {
   if (!session.mlKemSecretKey) return;
-  const unchanged =
-    state?.mlKemSecretKey === session.mlKemSecretKey &&
-    state?.mlKemPublicKey === session.mlKemPublicKey;
-  if (unchanged) return;
+  if (state?.mlKemSecretKey === session.mlKemSecretKey) {
+    syncDmIdentityPublicKey();
+    return;
+  }
+  const mlKemPublicKey = resolveMlKemPublicKey(
+    session.mlKemSecretKey,
+    session.mlKemPublicKey
+  );
   state = {
     mlKemSecretKey: session.mlKemSecretKey,
-    mlKemPublicKey: session.mlKemPublicKey,
+    mlKemPublicKey,
     pnName: state?.pnName || ''
   };
-  persistDmSessionToStorage(session);
-  if (session.mlKemPublicKey) {
-    void publishMlKemPublicKey(session.mlKemPublicKey).catch(() => {});
-  }
+  persistDmSessionToStorage({ mlKemSecretKey: session.mlKemSecretKey, mlKemPublicKey });
+  void publishMlKemPublicKey(mlKemPublicKey).catch(() => {});
   notifyDmIdentityChange();
 }
 
@@ -166,18 +186,17 @@ export async function unlockDmIdentity(pnName: string, passcode: string): Promis
     );
   }
   const secrets = await unlockIdentityMlKemSecret(payload, pnName, passcode);
+  const mlKemPublicKey = secrets.mlKemPublicKey!;
   state = {
     mlKemSecretKey: secrets.mlKemSecretKey,
-    mlKemPublicKey: secrets.mlKemPublicKey,
+    mlKemPublicKey,
     pnName: secrets.pnName || pnName
   };
   persistDmSessionToStorage({
     mlKemSecretKey: secrets.mlKemSecretKey,
-    mlKemPublicKey: secrets.mlKemPublicKey
+    mlKemPublicKey
   });
-  if (secrets.mlKemPublicKey) {
-    void publishMlKemPublicKey(secrets.mlKemPublicKey).catch(() => {});
-  }
+  void publishMlKemPublicKey(mlKemPublicKey).catch(() => {});
 
   void (async () => {
     try {
@@ -233,8 +252,7 @@ async function publishMlKemPublicKey(mlKemPublicKey: string): Promise<void> {
 
 /** Retry profile publish after OAuth session has pnIdentifier (cold DM / discovery). */
 export async function retryPublishMlKemPublicKey(): Promise<void> {
-  if (!isDmIdentityReady()) return;
-  const { mlKemPublicKey } = getDmIdentity();
+  const mlKemPublicKey = getMessagingMlKemPublicKey();
   if (!mlKemPublicKey) return;
   try {
     await publishMlKemPublicKey(mlKemPublicKey);

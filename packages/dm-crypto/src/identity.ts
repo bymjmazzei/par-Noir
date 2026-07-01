@@ -4,6 +4,7 @@
  */
 
 import { base64ToBytes, bytesToUtf8 } from './encoding';
+import { deriveMlKemPublicKeyFromSecretKey } from './session';
 
 export interface EncryptedIdentityPayload {
   encryptedData: string;
@@ -82,7 +83,7 @@ export async function unlockIdentityMlKemSecret(
 
   return {
     mlKemSecretKey,
-    mlKemPublicKey: payload.mlKemPublicKey ?? identity.mlKemPublicKey ?? identity.pqcSecrets?.mlKemPublicKey,
+    mlKemPublicKey: deriveMlKemPublicKeyFromSecretKey(mlKemSecretKey),
     publicKey: payload.publicKey ?? identity.publicKey,
     pnName: username ?? pnName,
   };
