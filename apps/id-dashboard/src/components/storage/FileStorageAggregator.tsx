@@ -1090,32 +1090,32 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         } else {
           const result = (await response.json().catch(() => ({}))) as {
             directoryBuilt?: boolean;
+            initInProgress?: boolean;
             folderInitError?: string;
           };
           console.log('✅ [StorageCredentials] Credentials persisted to API', {
             accountsCount: payload.googleDriveAccounts.length,
             directoryBuilt: result.directoryBuilt,
+            initInProgress: result.initInProgress,
           });
-          if (result.directoryBuilt === false) {
-            console.warn('⚠️ [StorageCredentials] Drive layout incomplete; requesting server re-init', {
-              folderInitError: result.folderInitError,
-            });
-            try {
-              const initRes = await ownerFetch(
-                accessToken,
-                'POST',
-                `/api/storage/initialize/${encodeURIComponent(pnIdentifier)}`
-              );
-              if (!initRes.ok) {
-                const initErr = await initRes.text().catch(() => 'Unknown error');
-                console.warn('⚠️ [StorageCredentials] Drive initialize retry failed:', initErr);
-              } else {
-                console.log('✅ [StorageCredentials] Drive layout initialized via retry');
-              }
-            } catch (initError) {
-              console.warn('⚠️ [StorageCredentials] Drive initialize retry error:', initError);
-            }
+        }
+
+        // Always await server-side layout build (PUT returns immediately; init can take several minutes).
+        console.log('🔄 [StorageCredentials] Building Drive layout on server (may take a few minutes)...');
+        try {
+          const initRes = await ownerFetch(
+            accessToken,
+            'POST',
+            `/api/storage/initialize/${encodeURIComponent(pnIdentifier)}`
+          );
+          if (!initRes.ok) {
+            const initErr = await initRes.text().catch(() => 'Unknown error');
+            console.warn('⚠️ [StorageCredentials] Drive layout build failed:', initErr);
+          } else {
+            console.log('✅ [StorageCredentials] Drive layout built on server');
           }
+        } catch (initError) {
+          console.warn('⚠️ [StorageCredentials] Drive layout build error:', initError);
         }
       } catch (error) {
         console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {

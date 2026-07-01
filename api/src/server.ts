@@ -5480,23 +5480,24 @@ class ProductionServer {
               };
               const accessToken = token.access_token; // Keep for backward compatibility
               
-              console.log(`[StorageCredentials PUT] Initializing Google Drive index for identityId: ${sanitizedIdentityId}`);
-              await this.initializeGoogleDriveStorage(
-                token,
-                pnIdentifier,
-                accountId,
-                credentials,
-                identityId,
-                `[StorageCredentials PUT]`
+              console.log(`[StorageCredentials PUT] Queueing Google Drive index init for identityId: ${sanitizedIdentityId}`);
+              const { runDriveInitOnce } = await import('./server/modules/driveInitCoordinator');
+              void runDriveInitOnce(pnIdentifier, () =>
+                this.initializeGoogleDriveStorage(
+                  token,
+                  pnIdentifier,
+                  accountId,
+                  credentials,
+                  identityId,
+                  `[StorageCredentials PUT]`
+                )
               );
-              console.log(`[StorageCredentials PUT] Successfully initialized Google Drive for identityId: ${sanitizedIdentityId}`);
+              directoryBuilt = false;
             }
           } catch (err: any) {
-            // Don't fail the credential save if folder initialization fails
-            // This is non-critical - folders will be created on-demand if needed
             directoryBuilt = false;
             folderInitError = err?.message || String(err);
-            console.warn(`[StorageCredentials PUT] Failed to initialize folder structure for identityId: ${sanitizedIdentityId}`, folderInitError);
+            console.warn(`[StorageCredentials PUT] Failed to queue folder init for identityId: ${sanitizedIdentityId}`, folderInitError);
           }
         }
 
@@ -5506,6 +5507,7 @@ class ProductionServer {
           cid: record.cid ?? null,
           updatedAt: record.updatedAt,
           directoryBuilt,
+          initInProgress: hasGoogleDrive && !directoryBuilt,
           ...(folderInitError != null && { folderInitError })
         });
       } catch (error: any) {
@@ -5633,17 +5635,19 @@ class ProductionServer {
         };
         const accessToken = token.access_token;
 
-        // Re-run the initialization process (extract the initialization logic)
         console.log(`[StorageInitialize POST] Re-initializing folder structure for identityId: ${sanitizedIdentityId}`);
         
         try {
-          const { metadataFolderId, pnFolderId } = await this.initializeGoogleDriveStorage(
-            token,
-            pnIdentifier,
-            accountId,
-            credentials.credentials as Record<string, unknown>,
-            sanitizedIdentityId,
-            `[StorageInitialize POST]`
+          const { runDriveInitOnce } = await import('./server/modules/driveInitCoordinator');
+          const { metadataFolderId, pnFolderId } = await runDriveInitOnce(pnIdentifier, () =>
+            this.initializeGoogleDriveStorage(
+              token,
+              pnIdentifier,
+              accountId,
+              credentials.credentials as Record<string, unknown>,
+              sanitizedIdentityId,
+              `[StorageInitialize POST]`
+            )
           );
 
           return res.json({

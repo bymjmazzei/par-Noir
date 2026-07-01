@@ -15,6 +15,7 @@ import {
   PN_DRIVE_SHEET_KEYS,
   type PnDriveIndex,
 } from './pnDriveIndex';
+import { fetchGoogleDriveWithRetry, withGoogleRetry } from './googleApiRetry';
 
 export interface DriveInitHooks {
   initializeContentClassFolders?(
@@ -39,17 +40,21 @@ async function ensurePnAndMetadataFolders(
   let pnFolderId = await findPnRootFolderId(accessToken, normalized);
   if (!pnFolderId) {
     const pnFolderName = pnFolderDisplayName(normalized);
-    const res = await fetch('https://www.googleapis.com/drive/v3/files', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
+    const res = await fetchGoogleDriveWithRetry(
+      'https://www.googleapis.com/drive/v3/files',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: pnFolderName,
+          mimeType: 'application/vnd.google-apps.folder',
+        }),
       },
-      body: JSON.stringify({
-        name: pnFolderName,
-        mimeType: 'application/vnd.google-apps.folder',
-      }),
-    });
+      `create pN folder ${normalized}`
+    );
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new Error(`Failed to create pN folder: ${res.status} ${text.slice(0, 200)}`);
@@ -108,28 +113,35 @@ export async function initializeGoogleDriveIndex(
   accountId?: string,
   hooks: DriveInitHooks = {}
 ): Promise<PnDriveIndex> {
+  const normalized = normalizePnIdentifier(pnIdentifier);
+  console.log(`[pnDriveInit] Begin full layout for ${normalized}`);
   const accessToken = token.access_token;
-  const { pnFolderId, metadataFolderId } = await ensurePnAndMetadataFolders(accessToken, pnIdentifier);
-  const integratorsRootId = await initializeIntegratorsRoot(accessToken, pnFolderId);
+  const { pnFolderId, metadataFolderId } = await withGoogleRetry(
+    'ensurePnAndMetadataFolders',
+    () => ensurePnAndMetadataFolders(accessToken, pnIdentifier)
+  );
+  console.log(`[pnDriveInit] pN folder + _metadata ready for ${normalized}`);
+  const integratorsRootId = await withGoogleRetry('integratorsRoot', () =>
+    initializeIntegratorsRoot(accessToken, pnFolderId)
+  );
 
   if (hooks.initializeContentClassFolders) {
-    await hooks.initializeContentClassFolders(token, metadataFolderId, pnIdentifier, accountId);
+    console.log(`[pnDriveInit] Content-class folders for ${normalized}`);
+    await withGoogleRetry('contentClassFolders', () =>
+      hooks.initializeContentClassFolders!(token, metadataFolderId, pnIdentifier, accountId)
+    );
   }
 
   const { MessageSheetsService } = await import('./messageSheetsService');
-  const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-    token,
-    pnFolderId,
-    pnIdentifier,
-    accountId
+  console.log(`[pnDriveInit] Messages folder + inbox for ${normalized}`);
+  const messagesFolderId = await withGoogleRetry('messagesFolder', () =>
+    MessageSheetsService.getOrCreateMessagesFolder(token, pnFolderId, pnIdentifier, accountId)
   );
-  const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
-    token,
-    messagesFolderId,
-    pnIdentifier,
-    accountId
+  const inboxSheetId = await withGoogleRetry('inboxSheet', () =>
+    MessageSheetsService.getOrCreateInboxSheet(token, messagesFolderId, pnIdentifier, accountId)
   );
 
+  console.log(`[pnDriveInit] Metadata sheets (connections → prism) for ${normalized}`);
   const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
   const connections = await ensureSheet(
     () => ConnectionsSheetsService.getConnectionsSheet(token, metadataFolderId, pnIdentifier, accountId),
@@ -163,19 +175,13 @@ export async function initializeGoogleDriveIndex(
   );
 
   const { DeviceSheetsService } = await import('./deviceSheetsService');
-  const devices = await DeviceSheetsService.getOrCreateSpreadsheet(
-    token,
-    metadataFolderId,
-    pnIdentifier,
-    accountId
+  const devices = await withGoogleRetry('devicesSheet', () =>
+    DeviceSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId)
   );
 
   const { GroupSheetsService } = await import('./groupSheetsService');
-  const groups = await GroupSheetsService.getOrCreateGroupsSheet(
-    token,
-    metadataFolderId,
-    pnIdentifier,
-    accountId
+  const groups = await withGoogleRetry('groupsSheet', () =>
+    GroupSheetsService.getOrCreateGroupsSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
 
   const { NotificationsSheetsService } = await import('./notificationsSheetsService');
@@ -201,19 +207,13 @@ export async function initializeGoogleDriveIndex(
   );
 
   const { MessageRequestSheetsService } = await import('./messageRequestSheetsService');
-  const messageRequests = await MessageRequestSheetsService.getOrCreateSpreadsheet(
-    token,
-    metadataFolderId,
-    pnIdentifier,
-    accountId
+  const messageRequests = await withGoogleRetry('messageRequestsSheet', () =>
+    MessageRequestSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId)
   );
 
   const { DataPointRequestSheetsService } = await import('./dataPointRequestSheetsService');
-  const dataPointRequests = await DataPointRequestSheetsService.getOrCreateSpreadsheet(
-    token,
-    metadataFolderId,
-    pnIdentifier,
-    accountId
+  const dataPointRequests = await withGoogleRetry('dataPointRequestsSheet', () =>
+    DataPointRequestSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId)
   );
 
   const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
@@ -240,17 +240,18 @@ export async function initializeGoogleDriveIndex(
     () => PrismLedgerSheetsService.createPrismLedgerSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
 
-  const { publicFileIndex, ownerFileIndex } = await ensureIndexSheets(
-    token,
-    metadataFolderId,
-    pnIdentifier,
-    accountId
+  const { publicFileIndex, ownerFileIndex } = await withGoogleRetry('rootIndexSheets', () =>
+    ensureIndexSheets(token, metadataFolderId, pnIdentifier, accountId)
   );
 
   if (hooks.initializeProfileAndMetadataFiles) {
-    await hooks.initializeProfileAndMetadataFiles(token, metadataFolderId, pnIdentifier, accountId);
+    console.log(`[pnDriveInit] profile.json + preferences.json for ${normalized}`);
+    await withGoogleRetry('profileAndPreferences', () =>
+      hooks.initializeProfileAndMetadataFiles!(token, metadataFolderId, pnIdentifier, accountId)
+    );
   }
 
+  console.log(`[pnDriveInit] Complete layout for ${normalized}`);
   return {
     schemaVersion: PN_DRIVE_INDEX_SCHEMA_VERSION,
     pnFolderId,
