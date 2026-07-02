@@ -192,6 +192,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [driveSetupProgress, setDriveSetupProgress] = useState<DriveSetupProgress | null>(null);
   const driveSetupProgressRef = React.useRef<DriveSetupProgress | null>(null);
+
+  const clearDriveSetupProgress = React.useCallback(() => {
+    driveSetupProgressRef.current = null;
+    setDriveSetupProgress(null);
+  }, []);
+
+  const showDriveSetupProgress =
+    driveSetupProgress != null &&
+    driveSetupProgress.phase !== 'complete' &&
+    driveSetupProgress.phase !== 'failed';
   const [files, setFiles] = useState<AggregatedFile[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -1037,7 +1047,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const statusData = (await statusRes.json()) as {
             progress?: DriveSetupProgress | null;
           };
-          if (statusData.progress) {
+          if (
+            statusData.progress &&
+            statusData.progress.phase !== 'complete' &&
+            statusData.progress.phase !== 'failed'
+          ) {
             onProgress?.(statusData.progress);
             setDriveSetupProgress(statusData.progress);
           }
@@ -1070,33 +1084,33 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           }
         }, maxAttempts, 2000);
 
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const idxRes = await ownerGet(
-            accessToken,
-            `/api/storage/owner-index/${encodeURIComponent(normalized)}`
-          );
-          if (idxRes.ok) break;
-          if (attempt < 2) {
-            await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
-          }
+        stopPolling();
+
+        const idxRes = await ownerGet(
+          accessToken,
+          `/api/storage/owner-index/${encodeURIComponent(normalized)}`
+        );
+        if (!idxRes.ok) {
+          console.warn('⚠️ [StorageCredentials] Owner index not ready immediately after init', {
+            status: idxRes.status,
+          });
         }
 
         driveLayoutInitJustCompletedRef.current.set(normalized, Date.now());
-        onProgress?.({ phase: 'complete', stepLabel: 'Drive setup complete', percent: 100 });
-        setDriveSetupProgress({ phase: 'complete', stepLabel: 'Drive setup complete', percent: 100 });
+        clearDriveSetupProgress();
         console.log('✅ [StorageCredentials] Drive layout built on server');
         return true;
       } catch (initError) {
         console.warn('⚠️ [StorageCredentials] Drive layout build failed after retries:', initError);
         setError('Drive setup failed. Please try disconnecting and reconnecting Google Drive.');
-        setDriveSetupProgress(null);
+        clearDriveSetupProgress();
         return false;
       } finally {
         stopPolling();
         driveLayoutInitInFlightRef.current.delete(normalized);
       }
     },
-    []
+    [clearDriveSetupProgress]
   );
 
   const persistStorageCredentialsToAPI = React.useCallback(async (credentialsPayload?: any, cid?: string | null) => {
@@ -1254,7 +1268,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         await postDriveInitializeWithRetry(pnIdentifier, accessToken, {
           onProgress: setDriveSetupProgress,
         });
-        setDriveSetupProgress(null);
+        clearDriveSetupProgress();
+        if (loadFilesRef.current) {
+          void loadFilesRef.current();
+        }
       } catch (error) {
         console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
           error: error?.message || error,
@@ -3158,7 +3175,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         ) {
           void loadFilesRef.current();
         }
-      }, 2500);
+      }, 500);
       return;
     }
     if (driveReadBlocked) {
@@ -3368,6 +3385,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           console.debug('⏳ [loadFiles] Waiting for refreshed token', { backendId });
         }
         let ownerIndex: any = null;
+        let ownerIndexFromApi = false;
         let skipClientDriveDiscovery = false;
 
         const ownerApiToken = resolveOwnerApiToken();
@@ -3401,9 +3419,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     const filteredFiles = (idxData.files || []).filter(
                       (entry: any) => (entry.backend || 'google_drive') === provider
                     );
-                    if (filteredFiles.length > 0) {
-                      ownerIndex = { ...idxData, files: filteredFiles };
-                    }
+                    ownerIndex = { ...idxData, files: filteredFiles };
+                    ownerIndexFromApi = true;
+                    skipClientDriveDiscovery = true;
                   }
                 }
               }
@@ -3413,9 +3431,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               const filteredFiles = (idxData.files || []).filter(
                 (entry: any) => (entry.backend || 'google_drive') === provider
               );
-              if (filteredFiles.length > 0) {
-                ownerIndex = { ...idxData, files: filteredFiles };
-              }
+              ownerIndex = { ...idxData, files: filteredFiles };
+              ownerIndexFromApi = true;
+              skipClientDriveDiscovery = true;
             }
           } catch {
             /* non-blocking */
@@ -3474,7 +3492,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
         let filesForBackend: AggregatedFile[] = [];
 
-        if (ownerIndex?.files?.length) {
+        if (ownerIndexFromApi && (!ownerIndex?.files || ownerIndex.files.length === 0)) {
+          console.debug('ℹ️ [loadFiles] Owner index empty from API; skipping Drive scan', { backendId });
+          filesForBackend = [];
+        } else if (ownerIndex?.files?.length) {
           ownerIndexRetryCountsRef.current.delete(backendId);
           
           // IMPORTANT: Always scan Google Drive to verify files exist before using owner index entries
@@ -3671,8 +3692,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               }))
             });
           }
-        } else {
-          console.debug('ℹ️ [loadFiles] Owner index empty; scanning Drive contents', { backendId });
+        } else if (!ownerIndexFromApi) {
+          console.debug('ℹ️ [loadFiles] No API owner index; scanning Drive contents', { backendId });
           try {
             const scannedFiles = await backend.listFiles(undefined, currentPnIdentifier);
             filesForBackend = scannedFiles.map((file: any) => ({
@@ -4936,7 +4957,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       const clientId = await getGoogleDriveClientId();
       if (!clientId || clientId.trim() === '') {
         setError('Google Drive OAuth not configured. Set VITE_GOOGLE_DRIVE_CLIENT_ID or configure GOOGLE_DRIVE_CLIENT_ID on the API.');
-        setDriveSetupProgress(null);
+        clearDriveSetupProgress();
         return;
       }
       // Google OAuth requires an exact redirect URI match with the configured callback.
@@ -5115,14 +5136,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       console.warn('⚠️ [handleConnectGoogleDrive] Failed to persist credentials to API (non-critical):', persistError);
     }
 
-      setDriveSetupProgress(null);
+      clearDriveSetupProgress();
 
-      // Load files in background — setup progress bar covers the long init phase.
+      // loadFiles also triggered from persistStorageCredentialsToAPI after init
       void loadFiles();
       void loadStorageQuota();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect to Google Drive');
-      setDriveSetupProgress(null);
+      clearDriveSetupProgress();
       console.error('Error connecting to Google Drive:', err);
     }
   };
@@ -6929,8 +6950,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           <div className="flex items-center gap-3 shrink-0 self-start sm:self-center">
               <button
                 onClick={handleConnectGoogleDrive}
-              className={`p-2 rounded-lg border border-blue-500/40 bg-blue-600/10 hover:bg-blue-600/20 transition-colors ${isLoading || driveSetupProgress ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                disabled={isLoading || Boolean(driveSetupProgress)}
+              className={`p-2 rounded-lg border border-blue-500/40 bg-blue-600/10 hover:bg-blue-600/20 transition-colors ${isLoading || showDriveSetupProgress ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                disabled={isLoading || showDriveSetupProgress}
               title={hasConnectedBackends ? 'Google Drive connected — tap to add or re-authenticate' : 'Connect Google Drive'}
             >
               <img
@@ -7149,7 +7170,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   </div>
                 )}
 
-                {driveSetupProgress ? (
+                {showDriveSetupProgress && driveSetupProgress ? (
                   <DriveLayoutSetupProgress progress={driveSetupProgress} />
                 ) : isLoading && files.length === 0 ? (
                   <div className="text-center py-12">

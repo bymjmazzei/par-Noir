@@ -30,7 +30,6 @@ export function runDriveInitOnce(
   setDriveInitProgress(key, 'starting', 'Preparing your par Noir storage…', 0);
   const promise = runner()
     .then((result) => {
-      setDriveInitProgress(key, 'complete', 'Drive setup complete', 100);
       console.log(`[DriveInit] Completed init for ${key}`);
       return result;
     })
@@ -42,7 +41,7 @@ export function runDriveInitOnce(
     })
     .finally(() => {
       inflight.delete(key);
-      setTimeout(() => clearDriveInitProgress(key), 120_000);
+      clearDriveInitProgress(key);
     });
   inflight.set(key, promise);
   return promise;
