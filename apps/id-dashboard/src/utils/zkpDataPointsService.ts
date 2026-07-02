@@ -79,7 +79,7 @@ export class ZKPDataPointsService {
       }
     } catch (error) {
       console.error('Error getting data points from API:', error);
-      throw error;
+      return [];
     }
   }
 

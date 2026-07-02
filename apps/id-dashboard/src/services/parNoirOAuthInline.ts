@@ -1,4 +1,5 @@
 import { API_ENDPOINT } from '../config/api';
+import { retry } from '../utils/helpers';
 
 const PN_CLIENT_ID = import.meta.env.VITE_PN_CLIENT_ID || 'browser-app';
 const STORAGE_KEY = 'pn_api_token';
@@ -134,24 +135,38 @@ export async function derivePnIdentifierForToken(
 }
 
 export async function exchangeCodeForToken(code: string, redirectUri: string): Promise<string> {
-  const res = await fetch(`${API_ENDPOINT}/oauth/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      code,
-      client_id: PN_CLIENT_ID,
-      redirect_uri: redirectUri,
-      grant_type: 'authorization_code'
-    })
-  });
+  return retry(async () => {
+    const res = await fetch(`${API_ENDPOINT}/oauth/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code,
+        client_id: PN_CLIENT_ID,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+      }),
+    });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error_description?: string }).error_description || 'Token exchange failed');
-  }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const message =
+        res.status === 429
+          ? 'API is busy — retrying sign-in…'
+          : (err as { error_description?: string }).error_description || 'Token exchange failed';
+      const error = new Error(message);
+      if (res.status === 429) {
+        const retryAfterHeader = res.headers.get('Retry-After');
+        const retryAfterSec = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : NaN;
+        (error as { retryAfter?: number }).retryAfter = Number.isFinite(retryAfterSec)
+          ? retryAfterSec * 1000
+          : 5000;
+      }
+      throw error;
+    }
 
-  const data = (await res.json()) as { access_token: string };
-  return data.access_token;
+    const data = (await res.json()) as { access_token: string };
+    return data.access_token;
+  }, 5, 2000);
 }
 
 export async function consumeOAuthResumeFromUrl(redirectUri?: string): Promise<OAuthResumeResult | null> {

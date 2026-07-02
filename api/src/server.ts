@@ -222,7 +222,7 @@ const authLimiter = rateLimit({
 // Users may unlock multiple pN accounts, so we need a higher limit
 const oauthTokenLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // Increased from 30 to 50 - users may unlock multiple pN accounts
+  max: 100, // Multiple pN unlocks + reconnects during setup
   message: 'Too many OAuth token requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -598,6 +598,22 @@ class ProductionServer {
       }
       // Skip rate limiting for OAuth authentication endpoints (proof-of-work based)
       if (req.path === '/oauth/authorize/authenticate' && req.method === 'POST') {
+        return next();
+      }
+      // OAuth token exchange has oauthTokenLimiter; avoid double-counting on the general limiter
+      if (req.path === '/oauth/token' && req.method === 'POST') {
+        return next();
+      }
+      // Public config is needed before unlock / Drive connect; keep it off the strict IP bucket
+      if (req.path === '/api/public-config' && req.method === 'GET') {
+        return next();
+      }
+      // Drive init status polling during multi-minute setup
+      if (req.method === 'GET' && /^\/api\/storage\/initialize\/[^/]+\/status$/.test(req.path)) {
+        return next();
+      }
+      // Public successor lookup on unlock (no auth)
+      if (req.path === '/api/v1/identity/successor' && req.method === 'GET') {
         return next();
       }
       // Apply lenient limiter for read-only endpoints and bulk operations

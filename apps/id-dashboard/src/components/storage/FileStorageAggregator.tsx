@@ -40,7 +40,7 @@ type DriveSetupProgress = {
 };
 
 const DRIVE_INIT_POLL_TIMEOUT_MS = 12 * 60 * 1000;
-const DRIVE_INIT_POLL_INTERVAL_MS = 1000;
+const DRIVE_INIT_POLL_INTERVAL_MS = 2000;
 
 function DriveLayoutSetupProgress({ progress }: { progress: DriveSetupProgress }) {
   const [now, setNow] = React.useState(() => Date.now());
