@@ -9322,31 +9322,34 @@ class ProductionServer {
    * are anonymous; keep handlers public / non-sensitive only.
    */
   private setupWebSockets(): void {
-    if (process.env.SOCKET_REQUIRE_AUTH === 'true') {
-      const { PNOAuthService } = require('./server/modules/pnOAuthService');
-      this.io.use((socket, next) => {
-        try {
-          const auth = socket.handshake.auth as { token?: string } | undefined;
-          const header = socket.handshake.headers.authorization;
-          const raw =
-            (auth?.token && String(auth.token).trim()) ||
-            (typeof header === 'string' && header.startsWith('Bearer ')
-              ? header.slice(7).trim()
-              : '');
-          if (!raw) {
-            return next(new Error('Unauthorized'));
-          }
-          const tokenPayload = PNOAuthService.validateAccessToken(raw);
-          if (!tokenPayload) {
-            return next(new Error('Unauthorized'));
-          }
-          (socket.data as { oauth?: typeof tokenPayload }).oauth = tokenPayload;
-          return next();
-        } catch {
-          return next(new Error('Unauthorized'));
+    const { PNOAuthService } = require('./server/modules/pnOAuthService');
+    const requireAuth = process.env.SOCKET_REQUIRE_AUTH === 'true';
+
+    // Always resolve the token when present so we can join the per-pN room for
+    // realtime delivery. When SOCKET_REQUIRE_AUTH is on, reject unauthenticated
+    // sockets; otherwise allow anonymous connects but still key authenticated ones.
+    this.io.use((socket, next) => {
+      try {
+        const auth = socket.handshake.auth as { token?: string } | undefined;
+        const header = socket.handshake.headers.authorization;
+        const raw =
+          (auth?.token && String(auth.token).trim()) ||
+          (typeof header === 'string' && header.startsWith('Bearer ')
+            ? header.slice(7).trim()
+            : '');
+        if (!raw) {
+          return requireAuth ? next(new Error('Unauthorized')) : next();
         }
-      });
-    }
+        const tokenPayload = PNOAuthService.validateAccessToken(raw);
+        if (!tokenPayload) {
+          return requireAuth ? next(new Error('Unauthorized')) : next();
+        }
+        (socket.data as { oauth?: typeof tokenPayload }).oauth = tokenPayload;
+        return next();
+      } catch {
+        return requireAuth ? next(new Error('Unauthorized')) : next();
+      }
+    });
 
     this.io.on('connection', (socket) => {
       if (process.env.NODE_ENV === 'development') {

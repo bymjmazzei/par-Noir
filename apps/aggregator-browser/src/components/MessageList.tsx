@@ -187,12 +187,15 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
     };
     window.addEventListener(MESSAGING_INBOX_REFRESH_EVENT, onInboxRefresh);
 
-    // Poll for updates - only when tab is visible and socket is disconnected
+    // Poll for updates when tab is visible. Realtime is primary; polling is a
+    // safety net (slower with a socket, faster without) so a missed event never
+    // leaves the inbox stale until a manual refresh.
+    const pollMs = socketConnected ? 20000 : 15000;
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible' && !socketConnected) {
+      if (document.visibilityState === 'visible') {
         void loadThreadsFromApi(false);
       }
-    }, 30000);
+    }, pollMs);
     
     return () => {
       clearInterval(interval);

@@ -310,10 +310,12 @@ export function MessageThread({
       loadMessages(true, false);
     }
 
-    // Poll for new messages - only when tab is visible, with exponential backoff on errors
-    // Increased interval to 30 seconds to reduce unnecessary API calls
+    // Poll for new messages when tab is visible. Realtime (socket) is the primary
+    // delivery path; polling is a safety net so a missed event never requires a
+    // manual refresh. Poll faster without a socket, slower as a backstop with one.
+    const pollMs = socketConnected ? 15000 : 8000;
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible' && !isPollingRef.current && !socketConnected) {
+      if (document.visibilityState === 'visible' && !isPollingRef.current) {
         // Stop polling if too many consecutive errors
         if (errorCountRef.current >= 3) {
           console.warn('Too many polling errors, stopping automatic refresh');
@@ -321,7 +323,7 @@ export function MessageThread({
         }
         loadMessages(false, false);
       }
-    }, 30000); // 30 seconds - reduced frequency to minimize API calls
+    }, pollMs);
     
     return () => clearInterval(interval);
   }, [userState.isUnlocked, userState.pnIdentifier, participantPnIdentifier, preloadedMessages, groupId, spreadsheetId, socketConnected]);
