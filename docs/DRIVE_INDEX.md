@@ -51,6 +51,8 @@ Transient Google API errors (503, 429, 5xx) during init are handled at three lay
 | Verify | `driveInitVerify.ts` | Probes folders + all content-class index sheets + every `sheetIds` entry **before** persist; throws `DRIVE_LAYOUT_INCOMPLETE` if anything missing |
 | Persist | `pnDriveIndex.ts` | Single atomic `persistPnDriveIndex` only after verify passes |
 
+**Dashboard progress:** `driveInitProgress.ts` tracks phase + percent in memory during init. Poll `GET /api/storage/initialize/:identityId/status` for `{ inFlight, progress }`. The dashboard shows a progress bar with the current step label instead of “Loading files…” during setup.
+
 Metadata sheet creation uses a short inter-step delay (`INIT_SHEET_STEP_DELAY_MS`) to reduce Google 503 burst rate limits.
 
 ## Runtime resolver

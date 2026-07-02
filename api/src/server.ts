@@ -5453,6 +5453,41 @@ class ProductionServer {
       }
     });
 
+    // GET /api/storage/initialize/:identityId/status - Poll Drive layout init progress
+    this.app.get('/api/storage/initialize/:identityId/status', async (req, res) => {
+      try {
+        const { identityId } = req.params;
+        if (!identityId) {
+          return res.status(400).json({ error: 'Missing identityId parameter' });
+        }
+
+        const sanitizedIdentityId = identityId.replace(/[^a-zA-Z0-9-]/g, '');
+        const pnIdentifier = sanitizedIdentityId.startsWith('pn-')
+          ? sanitizedIdentityId
+          : `pn-${sanitizedIdentityId}`;
+
+        const { isDriveInitInFlight } = await import('./server/modules/driveInitCoordinator');
+        const { getDriveInitProgress, isDriveInitProgressActive } = await import(
+          './server/modules/driveInitProgress'
+        );
+
+        const progress = getDriveInitProgress(pnIdentifier);
+        const inFlight = isDriveInitInFlight(pnIdentifier) || isDriveInitProgressActive(pnIdentifier);
+
+        return res.json({
+          identityId: pnIdentifier,
+          inFlight,
+          progress,
+        });
+      } catch (error: unknown) {
+        console.error('Error in storage initialize status endpoint:', error);
+        return res.status(500).json({
+          error: 'Failed to read storage initialize status',
+          message: safeClientErrorMessage(error, NODE_ENV === 'production'),
+        });
+      }
+    });
+
     // GET /api/storage/owner-index/:identityId - Read owner file index from Sheets (merged: content-class + root)
     this.app.get('/api/storage/owner-index/:identityId', async (req, res) => {
       try {

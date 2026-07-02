@@ -11,9 +11,16 @@ import {
   setPublicPermissionWithRetry,
   type ContentClassName,
 } from './googleApiRetry';
-import { PN_DRIVE_SHEET_KEYS, type PnDriveIndex } from './pnDriveIndex';
+import { PN_DRIVE_SHEET_KEYS, persistPnDriveIndex, type PnDriveIndex } from './pnDriveIndex';
+import { setDriveInitProgress } from './driveInitProgress';
+import { verifyPnDriveLayout } from './driveInitVerify';
 
 const CONTENT_CLASSES: ContentClassName[] = ['media', 'thoughts', 'collections'];
+const CONTENT_CLASS_PROGRESS: Record<ContentClassName, number> = {
+  media: 18,
+  thoughts: 28,
+  collections: 38,
+};
 
 export interface DriveInitStepsOptions {
   identityId: string;
@@ -45,6 +52,13 @@ export async function initializeContentClassFolders(
   const accessToken = token.access_token;
 
   for (const folderName of CONTENT_CLASSES) {
+    const cc = folderName as ContentClassName;
+    setDriveInitProgress(
+      pnIdentifier,
+      'contentClass',
+      `Building ${folderName} folder and indexes…`,
+      CONTENT_CLASS_PROGRESS[cc]
+    );
     const folderQuery = `name='${folderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
     const searchResponse = await fetchGoogleDriveWithRetry(
@@ -198,8 +212,6 @@ export async function runFullDriveInitAndPersist(
   logPrefix: string
 ): Promise<{ metadataFolderId: string; pnFolderId: string }> {
   const { initializeGoogleDriveIndex } = await import('./pnDriveInit');
-  const { persistPnDriveIndex } = await import('./pnDriveIndex');
-  const { verifyPnDriveLayout } = await import('./driveInitVerify');
 
   console.log(`[DriveInit] phase=layout for ${pnIdentifier}`);
   const index = await initializeGoogleDriveIndex(
@@ -210,12 +222,15 @@ export async function runFullDriveInitAndPersist(
   );
 
   console.log(`[DriveInit] phase=permissions for ${pnIdentifier}`);
+  setDriveInitProgress(pnIdentifier, 'permissions', 'Setting public file index permissions…', 88);
   await applyPostLayoutPermissions(token, index, logPrefix);
 
   console.log(`[DriveInit] phase=verify for ${pnIdentifier}`);
+  setDriveInitProgress(pnIdentifier, 'verify', 'Verifying Drive layout…', 93);
   await verifyPnDriveLayout(token, index, pnIdentifier, accountId);
 
   console.log(`[DriveInit] phase=persist for ${pnIdentifier}`);
+  setDriveInitProgress(pnIdentifier, 'persist', 'Saving storage index…', 97);
   await persistPnDriveIndex(pnIdentifier, credentials, index);
   console.log(`${logPrefix} Persisted complete pnDriveIndex`);
 

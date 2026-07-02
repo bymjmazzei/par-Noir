@@ -16,6 +16,7 @@ import {
   type PnDriveIndex,
 } from './pnDriveIndex';
 import { fetchGoogleDriveWithRetry, INIT_SHEET_STEP_DELAY_MS, sleep, withGoogleRetry } from './googleApiRetry';
+import { setDriveInitProgress } from './driveInitProgress';
 
 export interface DriveInitHooks {
   initializeContentClassFolders?(
@@ -146,45 +147,59 @@ export async function initializeGoogleDriveIndex(
     'ensurePnAndMetadataFolders',
     () => ensurePnAndMetadataFolders(accessToken, pnIdentifier)
   );
+  setDriveInitProgress(normalized, 'folders', 'Created pN folder and _metadata', 8);
   console.log(`[pnDriveInit] pN folder + _metadata ready for ${normalized}`);
   const integratorsRootId = await withGoogleRetry('integratorsRoot', () =>
     initializeIntegratorsRoot(accessToken, pnFolderId)
   );
+  setDriveInitProgress(normalized, 'folders', 'Created integrators folder', 12);
 
   if (hooks.initializeContentClassFolders) {
     console.log(`[pnDriveInit] Content-class folders for ${normalized}`);
+    setDriveInitProgress(normalized, 'contentClass', 'Building media, thoughts, and collections…', 15);
     await withGoogleRetry('contentClassFolders', () =>
       hooks.initializeContentClassFolders!(token, metadataFolderId, pnIdentifier, accountId)
     );
+    setDriveInitProgress(normalized, 'contentClass', 'Content-class folders and indexes ready', 38);
   }
 
   const { MessageSheetsService } = await import('./messageSheetsService');
   console.log(`[pnDriveInit] Messages folder + inbox for ${normalized}`);
+  setDriveInitProgress(normalized, 'messages', 'Creating messages folder and inbox…', 40);
   const messagesFolderId = await withGoogleRetry('messagesFolder', () =>
     MessageSheetsService.getOrCreateMessagesFolder(token, pnFolderId, pnIdentifier, accountId)
   );
   const inboxSheetId = await withGoogleRetry('inboxSheet', () =>
     MessageSheetsService.getOrCreateInboxSheet(token, messagesFolderId, pnIdentifier, accountId)
   );
+  setDriveInitProgress(normalized, 'messages', 'Messages folder and inbox ready', 42);
 
   console.log(`[pnDriveInit] Metadata sheets (connections → prism) for ${normalized}`);
   metadataSheetStep = 0;
+  let metadataPercent = 44;
+  const bumpMetadataProgress = (label: string) => {
+    metadataPercent = Math.min(76, metadataPercent + 2);
+    setDriveInitProgress(normalized, 'metadataSheets', label, metadataPercent);
+  };
   const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
   const connections = await ensureMetadataSheet(
     'connections',
     () => ConnectionsSheetsService.getConnectionsSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => ConnectionsSheetsService.createConnectionsSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
+  bumpMetadataProgress('Connections sheet');
   const followers = await ensureMetadataSheet(
     'followers',
     () => ConnectionsSheetsService.getFollowersSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => ConnectionsSheetsService.createFollowersSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
+  bumpMetadataProgress('Followers sheet');
   const following = await ensureMetadataSheet(
     'following',
     () => ConnectionsSheetsService.getFollowingSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => ConnectionsSheetsService.createFollowingSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
+  bumpMetadataProgress('Following sheet');
 
   const { ThirdPartyPermissionsSheetsService } = await import('./thirdPartyPermissionsSheetsService');
   const thirdPartyPermissions = await ensureMetadataSheet(
@@ -204,16 +219,19 @@ export async function initializeGoogleDriveIndex(
         accountId
       )
   );
+  bumpMetadataProgress('Third-party permissions sheet');
 
   const { DeviceSheetsService } = await import('./deviceSheetsService');
   const devices = await runMetadataSheetStep('devicesSheet', () =>
     DeviceSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId)
   );
+  bumpMetadataProgress('Devices sheet');
 
   const { GroupSheetsService } = await import('./groupSheetsService');
   const groups = await runMetadataSheetStep('groupsSheet', () =>
     GroupSheetsService.getOrCreateGroupsSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
+  bumpMetadataProgress('Groups sheet');
 
   const { NotificationsSheetsService } = await import('./notificationsSheetsService');
   const notifications = await ensureMetadataSheet(
@@ -221,6 +239,7 @@ export async function initializeGoogleDriveIndex(
     () => NotificationsSheetsService.getNotificationsSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => NotificationsSheetsService.createNotificationsSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
+  bumpMetadataProgress('Notifications sheet');
 
   const { ActivityLedgerSheetsService } = await import('./activityLedgerSheetsService');
   const activityLedger = await ensureMetadataSheet(
@@ -230,6 +249,7 @@ export async function initializeGoogleDriveIndex(
     () =>
       ActivityLedgerSheetsService.createActivityLedgerSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
+  bumpMetadataProgress('Activity ledger sheet');
 
   const { MessagingLedgerSheetsService } = await import('./messagingLedgerSheetsService');
   const messagingLedger = await ensureMetadataSheet(
@@ -239,16 +259,19 @@ export async function initializeGoogleDriveIndex(
     () =>
       MessagingLedgerSheetsService.createMessagingLedgerSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
+  bumpMetadataProgress('Messaging ledger sheet');
 
   const { MessageRequestSheetsService } = await import('./messageRequestSheetsService');
   const messageRequests = await runMetadataSheetStep('messageRequestsSheet', () =>
     MessageRequestSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId)
   );
+  bumpMetadataProgress('Message requests sheet');
 
   const { DataPointRequestSheetsService } = await import('./dataPointRequestSheetsService');
   const dataPointRequests = await runMetadataSheetStep('dataPointRequestsSheet', () =>
     DataPointRequestSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId)
   );
+  bumpMetadataProgress('Data point requests sheet');
 
   const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
   const zkpDataPoints = await ensureMetadataSheet(
@@ -256,6 +279,7 @@ export async function initializeGoogleDriveIndex(
     () => ZKPDataPointsSheetsService.getZKPDataPointsSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => ZKPDataPointsSheetsService.createZKPDataPointsSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
+  bumpMetadataProgress('ZKP data points sheet');
 
   const { PreferencesSheetsService } = await import('./preferencesSheetsService');
   const preferences = await ensureMetadataSheet(
@@ -263,6 +287,7 @@ export async function initializeGoogleDriveIndex(
     () => PreferencesSheetsService.getPreferencesSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => PreferencesSheetsService.createPreferencesSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
+  bumpMetadataProgress('Preferences sheet');
 
   const { EngagementSheetsService } = await import('./engagementSheetsService');
   const engagement = await ensureMetadataSheet(
@@ -270,6 +295,7 @@ export async function initializeGoogleDriveIndex(
     () => EngagementSheetsService.getEngagementSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => EngagementSheetsService.createEngagementSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
+  bumpMetadataProgress('Engagement sheet');
 
   const { PrismLedgerSheetsService } = await import('./prismLedgerSheetsService');
   const prismLedger = await ensureMetadataSheet(
@@ -277,16 +303,20 @@ export async function initializeGoogleDriveIndex(
     () => PrismLedgerSheetsService.getPrismLedgerSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => PrismLedgerSheetsService.createPrismLedgerSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
+  bumpMetadataProgress('Prism ledger sheet');
 
   const { publicFileIndex, ownerFileIndex } = await withGoogleRetry('rootIndexSheets', () =>
     ensureIndexSheets(token, metadataFolderId, pnIdentifier, accountId)
   );
+  bumpMetadataProgress('File index sheets');
 
   if (hooks.initializeProfileAndMetadataFiles) {
     console.log(`[pnDriveInit] profile.json + preferences.json for ${normalized}`);
+    setDriveInitProgress(normalized, 'profile', 'Creating profile.json and preferences.json…', 80);
     await withGoogleRetry('profileAndPreferences', () =>
       hooks.initializeProfileAndMetadataFiles!(token, metadataFolderId, pnIdentifier, accountId)
     );
+    setDriveInitProgress(normalized, 'profile', 'Profile and preferences ready', 84);
   }
 
   console.log(`[pnDriveInit] Complete layout for ${normalized}`);

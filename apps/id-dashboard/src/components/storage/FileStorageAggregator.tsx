@@ -32,6 +32,31 @@ const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
 const METADATA_SYNC_MIN_INTERVAL_MS = 90_000;
 const INDEXER_CACHE_TTL_MS = 5 * 60 * 1000;
 
+type DriveSetupProgress = {
+  phase: string;
+  stepLabel: string;
+  percent: number;
+};
+
+function DriveLayoutSetupProgress({ progress }: { progress: DriveSetupProgress }) {
+  return (
+    <div className="text-center py-12 px-4">
+      <p className="text-text-primary font-medium mb-1">Setting up your Google Drive</p>
+      <p className="text-text-secondary text-sm mb-4">{progress.stepLabel}</p>
+      <div className="w-full max-w-md mx-auto h-2.5 bg-neutral-800 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-blue-600 transition-all duration-500 ease-out rounded-full"
+          style={{ width: `${Math.max(4, progress.percent)}%` }}
+        />
+      </div>
+      <p className="text-text-secondary text-xs mt-2">{progress.percent}%</p>
+      <p className="text-text-secondary text-xs mt-4 max-w-sm mx-auto">
+        This usually takes a few minutes. Your files will appear when setup finishes.
+      </p>
+    </div>
+  );
+}
+
 const isDesktopShell = typeof window !== 'undefined' && Boolean(window.parNoirDesktop);
 
 type DesktopUnlockPayload = {
@@ -165,6 +190,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const loadStorageQuotaRef = React.useRef<(() => Promise<void>) | null>(null);
   const makeShareTokenCacheKey = React.useCallback((backendId: string, backendFileId: string) => `${backendId}|${backendFileId}`, []);
   const [isLoading, setIsLoading] = useState(false);
+  const [driveSetupProgress, setDriveSetupProgress] = useState<DriveSetupProgress | null>(null);
+  const driveSetupProgressRef = React.useRef<DriveSetupProgress | null>(null);
   const [files, setFiles] = useState<AggregatedFile[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -279,6 +306,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   /** Skip redundant rebuild for this long after a successful connect init. */
   const driveLayoutInitJustCompletedRef = React.useRef<Map<string, number>>(new Map());
   const DRIVE_INIT_REBUILD_COOLDOWN_MS = 30_000;
+
+  React.useEffect(() => {
+    driveSetupProgressRef.current = driveSetupProgress;
+  }, [driveSetupProgress]);
   
   // Use refs to avoid accessing state/props during initialization
   // Initialize with null to completely avoid any initialization order issues
@@ -973,13 +1004,55 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const globalPersistenceLockRef = React.useRef(false);
 
   const postDriveInitializeWithRetry = React.useCallback(
-    async (pnId: string, accessToken: string, maxAttempts = 3): Promise<boolean> => {
+    async (
+      pnId: string,
+      accessToken: string,
+      options?: { onProgress?: (progress: DriveSetupProgress) => void; maxAttempts?: number }
+    ): Promise<boolean> => {
       const normalized = pnId.startsWith('pn-') ? pnId : `pn-${pnId}`;
+      const maxAttempts = options?.maxAttempts ?? 3;
+      const onProgress = options?.onProgress;
+
       if (driveLayoutInitInFlightRef.current.has(normalized)) {
         console.log('⏭️ [Storage] Drive layout init already in flight');
         return false;
       }
       driveLayoutInitInFlightRef.current.add(normalized);
+
+      let pollTimer: ReturnType<typeof setInterval> | null = null;
+      const stopPolling = () => {
+        if (pollTimer != null) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      };
+
+      const pollProgress = async () => {
+        try {
+          const statusRes = await ownerGet(
+            accessToken,
+            `/api/storage/initialize/${encodeURIComponent(normalized)}/status`
+          );
+          if (!statusRes.ok) return;
+          const statusData = (await statusRes.json()) as {
+            progress?: DriveSetupProgress | null;
+          };
+          if (statusData.progress) {
+            onProgress?.(statusData.progress);
+            setDriveSetupProgress(statusData.progress);
+          }
+        } catch {
+          /* non-blocking */
+        }
+      };
+
+      if (onProgress) {
+        void pollProgress();
+        pollTimer = setInterval(() => {
+          void pollProgress();
+        }, 1000);
+      }
+
       try {
         await retry(async () => {
           const initRes = await ownerFetch(
@@ -1009,13 +1082,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
 
         driveLayoutInitJustCompletedRef.current.set(normalized, Date.now());
+        onProgress?.({ phase: 'complete', stepLabel: 'Drive setup complete', percent: 100 });
+        setDriveSetupProgress({ phase: 'complete', stepLabel: 'Drive setup complete', percent: 100 });
         console.log('✅ [StorageCredentials] Drive layout built on server');
         return true;
       } catch (initError) {
         console.warn('⚠️ [StorageCredentials] Drive layout build failed after retries:', initError);
         setError('Drive setup failed. Please try disconnecting and reconnecting Google Drive.');
+        setDriveSetupProgress(null);
         return false;
       } finally {
+        stopPolling();
         driveLayoutInitInFlightRef.current.delete(normalized);
       }
     },
@@ -1169,7 +1246,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
         // Always await server-side layout build (PUT returns immediately; init can take several minutes).
         console.log('🔄 [StorageCredentials] Building Drive layout on server (may take a few minutes)...');
-        await postDriveInitializeWithRetry(pnIdentifier, accessToken);
+        setDriveSetupProgress({
+          phase: 'starting',
+          stepLabel: 'Preparing your par Noir storage…',
+          percent: 0,
+        });
+        await postDriveInitializeWithRetry(pnIdentifier, accessToken, {
+          onProgress: setDriveSetupProgress,
+        });
+        setDriveSetupProgress(null);
       } catch (error) {
         console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
           error: error?.message || error,
@@ -3063,6 +3148,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       console.log('⏳ [loadFiles] Load already in progress, skipping');
       return;
     }
+    if (driveLayoutInitInFlightRef.current.size > 0 || driveSetupProgressRef.current) {
+      console.log('⏳ [loadFiles] Drive layout setup in progress, deferring file load');
+      window.setTimeout(() => {
+        if (
+          driveLayoutInitInFlightRef.current.size === 0 &&
+          !driveSetupProgressRef.current &&
+          loadFilesRef.current
+        ) {
+          void loadFilesRef.current();
+        }
+      }, 2500);
+      return;
+    }
     if (driveReadBlocked) {
       setFiles([]);
       setError(deviceGate?.blockedMessage ?? null);
@@ -4828,12 +4926,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       if (!checkDeviceCapability('drive.upload')) {
         return;
       }
-      setIsLoading(true);
       setError(null);
+      setDriveSetupProgress({
+        phase: 'starting',
+        stepLabel: 'Connecting to Google Drive…',
+        percent: 0,
+      });
 
       const clientId = await getGoogleDriveClientId();
       if (!clientId || clientId.trim() === '') {
         setError('Google Drive OAuth not configured. Set VITE_GOOGLE_DRIVE_CLIENT_ID or configure GOOGLE_DRIVE_CLIENT_ID on the API.');
+        setDriveSetupProgress(null);
         return;
       }
       // Google OAuth requires an exact redirect URI match with the configured callback.
@@ -5012,17 +5115,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       console.warn('⚠️ [handleConnectGoogleDrive] Failed to persist credentials to API (non-critical):', persistError);
     }
 
-      // SECURITY: Do not store refresh token in plaintext localStorage
-      // Token is stored in encrypted storage via IntegrationCredentialManager above
+      setDriveSetupProgress(null);
 
-      // Load files and quota
-      await loadFiles();
-      await loadStorageQuota();
+      // Load files in background — setup progress bar covers the long init phase.
+      void loadFiles();
+      void loadStorageQuota();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect to Google Drive');
+      setDriveSetupProgress(null);
       console.error('Error connecting to Google Drive:', err);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -6828,8 +6929,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           <div className="flex items-center gap-3 shrink-0 self-start sm:self-center">
               <button
                 onClick={handleConnectGoogleDrive}
-              className={`p-2 rounded-lg border border-blue-500/40 bg-blue-600/10 hover:bg-blue-600/20 transition-colors ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                disabled={isLoading}
+              className={`p-2 rounded-lg border border-blue-500/40 bg-blue-600/10 hover:bg-blue-600/20 transition-colors ${isLoading || driveSetupProgress ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                disabled={isLoading || Boolean(driveSetupProgress)}
               title={hasConnectedBackends ? 'Google Drive connected — tap to add or re-authenticate' : 'Connect Google Drive'}
             >
               <img
@@ -7048,7 +7149,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   </div>
                 )}
 
-                {isLoading && files.length === 0 ? (
+                {driveSetupProgress ? (
+                  <DriveLayoutSetupProgress progress={driveSetupProgress} />
+                ) : isLoading && files.length === 0 ? (
                   <div className="text-center py-12">
                     <RefreshCw className="h-8 w-8 text-text-secondary animate-spin mx-auto mb-4" />
                     <p className="text-text-secondary">Loading files...</p>

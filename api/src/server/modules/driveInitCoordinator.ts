@@ -3,6 +3,10 @@
  */
 
 import { normalizePnIdentifier } from './integratorStoragePaths';
+import {
+  clearDriveInitProgress,
+  setDriveInitProgress,
+} from './driveInitProgress';
 
 export type DriveInitResult = { metadataFolderId: string; pnFolderId: string };
 
@@ -23,20 +27,22 @@ export function runDriveInitOnce(
     return existing;
   }
   console.log(`[DriveInit] Starting init for ${key}`);
+  setDriveInitProgress(key, 'starting', 'Preparing your par Noir storage…', 0);
   const promise = runner()
     .then((result) => {
+      setDriveInitProgress(key, 'complete', 'Drive setup complete', 100);
       console.log(`[DriveInit] Completed init for ${key}`);
       return result;
     })
     .catch((err) => {
-      console.warn(
-        `[DriveInit] Failed init for ${key}:`,
-        err instanceof Error ? err.message : err
-      );
+      const msg = err instanceof Error ? err.message : String(err);
+      setDriveInitProgress(key, 'failed', msg.slice(0, 200), 0);
+      console.warn(`[DriveInit] Failed init for ${key}:`, msg);
       throw err;
     })
     .finally(() => {
       inflight.delete(key);
+      setTimeout(() => clearDriveInitProgress(key), 120_000);
     });
   inflight.set(key, promise);
   return promise;
