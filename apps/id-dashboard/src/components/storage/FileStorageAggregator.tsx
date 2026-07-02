@@ -36,22 +36,40 @@ type DriveSetupProgress = {
   phase: string;
   stepLabel: string;
   percent: number;
+  updatedAt?: number;
 };
 
+const DRIVE_INIT_POLL_TIMEOUT_MS = 12 * 60 * 1000;
+const DRIVE_INIT_POLL_INTERVAL_MS = 1000;
+
 function DriveLayoutSetupProgress({ progress }: { progress: DriveSetupProgress }) {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 5000);
+    return () => window.clearInterval(id);
+  }, []);
+  const staleMs = progress.updatedAt ? now - progress.updatedAt : 0;
+  const showSlowHint = staleMs > 20_000;
+
   return (
     <div className="text-center py-12 px-4">
       <p className="text-text-primary font-medium mb-1">Setting up your Google Drive</p>
       <p className="text-text-secondary text-sm mb-4">{progress.stepLabel}</p>
-      <div className="w-full max-w-md mx-auto h-2.5 bg-neutral-800 rounded-full overflow-hidden">
+      <div className="w-full max-w-md mx-auto h-2.5 bg-neutral-800 rounded-full overflow-hidden relative overflow-hidden">
         <div
-          className="h-full bg-blue-600 transition-all duration-500 ease-out rounded-full"
+          className="h-full bg-blue-600 transition-all duration-500 ease-out rounded-full relative"
           style={{ width: `${Math.max(4, progress.percent)}%` }}
-        />
+        >
+          {showSlowHint && (
+            <div className="absolute inset-0 bg-blue-400/40 animate-pulse rounded-full" />
+          )}
+        </div>
       </div>
       <p className="text-text-secondary text-xs mt-2">{progress.percent}%</p>
       <p className="text-text-secondary text-xs mt-4 max-w-sm mx-auto">
-        This usually takes a few minutes. Your files will appear when setup finishes.
+        {showSlowHint
+          ? 'Google Drive is responding slowly — setup is still running. This can take a few minutes.'
+          : 'This usually takes a few minutes. Your files will appear when setup finishes.'}
       </p>
     </div>
   );
@@ -1029,6 +1047,82 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
       driveLayoutInitInFlightRef.current.add(normalized);
 
+      const applyProgress = (progress: DriveSetupProgress) => {
+        onProgress?.(progress);
+        setDriveSetupProgress(progress);
+      };
+
+      const pollInitStatus = async (): Promise<{
+        inFlight: boolean;
+        progress: DriveSetupProgress | null;
+      }> => {
+        const statusRes = await ownerGet(
+          accessToken,
+          `/api/storage/initialize/${encodeURIComponent(normalized)}/status`
+        );
+        if (!statusRes.ok) {
+          return { inFlight: false, progress: null };
+        }
+        const statusData = (await statusRes.json()) as {
+          inFlight?: boolean;
+          progress?: DriveSetupProgress | null;
+        };
+        return {
+          inFlight: Boolean(statusData.inFlight),
+          progress: statusData.progress ?? null,
+        };
+      };
+
+      const waitForOwnerIndexReady = async (): Promise<boolean> => {
+        for (let attempt = 0; attempt < 6; attempt++) {
+          const idxRes = await ownerGet(
+            accessToken,
+            `/api/storage/owner-index/${encodeURIComponent(normalized)}`
+          );
+          if (idxRes.ok) return true;
+          if (attempt < 5) {
+            await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+          }
+        }
+        return false;
+      };
+
+      const waitForServerInit = async (postStartedAt: number): Promise<boolean> => {
+        const deadline = Date.now() + DRIVE_INIT_POLL_TIMEOUT_MS;
+        let sawInFlight = false;
+
+        while (Date.now() < deadline) {
+          try {
+            const { inFlight, progress } = await pollInitStatus();
+            if (inFlight) sawInFlight = true;
+
+            if (
+              progress &&
+              progress.phase !== 'complete' &&
+              progress.phase !== 'failed'
+            ) {
+              applyProgress(progress);
+            }
+            if (progress?.phase === 'failed') {
+              return false;
+            }
+
+            if (sawInFlight && !inFlight) {
+              return waitForOwnerIndexReady();
+            }
+
+            if (!sawInFlight && Date.now() - postStartedAt > 90_000) {
+              console.warn('⚠️ [Storage] Drive init status never reported in-flight');
+              return false;
+            }
+          } catch {
+            /* keep polling */
+          }
+          await new Promise((r) => setTimeout(r, DRIVE_INIT_POLL_INTERVAL_MS));
+        }
+        return false;
+      };
+
       let pollTimer: ReturnType<typeof setInterval> | null = null;
       const stopPolling = () => {
         if (pollTimer != null) {
@@ -1037,63 +1131,70 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
       };
 
-      const pollProgress = async () => {
+      const pollProgressTick = async () => {
         try {
-          const statusRes = await ownerGet(
-            accessToken,
-            `/api/storage/initialize/${encodeURIComponent(normalized)}/status`
-          );
-          if (!statusRes.ok) return;
-          const statusData = (await statusRes.json()) as {
-            progress?: DriveSetupProgress | null;
-          };
+          const { progress } = await pollInitStatus();
           if (
-            statusData.progress &&
-            statusData.progress.phase !== 'complete' &&
-            statusData.progress.phase !== 'failed'
+            progress &&
+            progress.phase !== 'complete' &&
+            progress.phase !== 'failed'
           ) {
-            onProgress?.(statusData.progress);
-            setDriveSetupProgress(statusData.progress);
+            applyProgress(progress);
           }
         } catch {
           /* non-blocking */
         }
       };
 
-      if (onProgress) {
-        void pollProgress();
-        pollTimer = setInterval(() => {
-          void pollProgress();
-        }, 1000);
-      }
-
       try {
-        await retry(async () => {
-          const initRes = await ownerFetch(
+        const result = await retry(async () => {
+          const postStartedAt = Date.now();
+          applyProgress({
+            phase: 'starting',
+            stepLabel: 'Preparing your par Noir storage…',
+            percent: 0,
+          });
+
+          void pollProgressTick();
+          pollTimer = setInterval(() => {
+            void pollProgressTick();
+          }, DRIVE_INIT_POLL_INTERVAL_MS);
+
+          let postError: Error | null = null;
+          const postPromise = ownerFetch(
             accessToken,
             'POST',
             `/api/storage/initialize/${encodeURIComponent(normalized)}`
-          );
-          if (!initRes.ok) {
-            const initErr = await initRes.text().catch(() => 'Unknown error');
-            const err = new Error(
-              `Drive layout init failed (${initRes.status}): ${initErr.slice(0, 200)}`
-            );
-            (err as { status?: number }).status = initRes.status;
-            throw err;
+          ).then(async (initRes) => {
+            if (!initRes.ok) {
+              const initErr = await initRes.text().catch(() => 'Unknown error');
+              const err = new Error(
+                `Drive layout init failed (${initRes.status}): ${initErr.slice(0, 200)}`
+              );
+              (err as { status?: number }).status = initRes.status;
+              throw err;
+            }
+            return initRes;
+          }).catch((err) => {
+            postError = err instanceof Error ? err : new Error(String(err));
+            return null;
+          });
+
+          const serverOk = await waitForServerInit(postStartedAt);
+
+          if (serverOk) {
+            return true;
           }
+
+          await postPromise;
+          if (postError) {
+            throw postError;
+          }
+          throw new Error('Drive layout init timed out waiting for server');
         }, maxAttempts, 2000);
 
-        stopPolling();
-
-        const idxRes = await ownerGet(
-          accessToken,
-          `/api/storage/owner-index/${encodeURIComponent(normalized)}`
-        );
-        if (!idxRes.ok) {
-          console.warn('⚠️ [StorageCredentials] Owner index not ready immediately after init', {
-            status: idxRes.status,
-          });
+        if (!result) {
+          return false;
         }
 
         driveLayoutInitJustCompletedRef.current.set(normalized, Date.now());
