@@ -17,7 +17,8 @@ import {
 } from '../services/parNoirOAuthInline';
 
 export function useApiToken() {
-  const [apiToken, setApiToken] = useState<string | null>(() => getStoredToken()?.accessToken ?? null);
+  // Do not hydrate from sessionStorage here — token is pN-scoped and may belong to a different identity.
+  const [apiToken, setApiToken] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
 
@@ -40,9 +41,9 @@ export function useApiToken() {
           const redirectUri = `${window.location.origin}/oauth-callback.html`;
           const token = await exchangeCodeForToken(resume.code, redirectUri);
           if (token) {
-            const expiresAt = Date.now() + 60 * 60 * 1000;
-            setStoredToken({ accessToken: token, expiresAt });
-            setApiToken(token);
+            // OAuth resume cannot know which pN this token is for — force re-mint on unlock.
+            clearStoredToken();
+            setApiToken(null);
           }
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);

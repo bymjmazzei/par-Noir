@@ -191,7 +191,11 @@ export async function gateOwnerRoute(
   if (targetPn !== undefined) {
     const normalized = normalizePnIdentifier(targetPn);
     if (auth.pnIdentifier !== normalized) {
-      res.status(403).json({ error: 'forbidden' });
+      console.warn('[gateOwnerRoute] Bearer pN does not match route pN', {
+        routePn: normalized,
+        bearerPnSuffix: auth.pnIdentifier.slice(-8),
+      });
+      res.status(403).json({ error: 'forbidden', reason: 'pn_mismatch' });
       return null;
     }
   }
@@ -201,6 +205,43 @@ export async function gateOwnerRoute(
     return null;
   }
   return gate.ctx;
+}
+
+/**
+ * Gate storage credential save: bearer must match route pN. Skip device capability when
+ * Drive layout is not provisioned yet (bootstrap after disconnect / first connect).
+ */
+export async function gateStorageCredentialsPut(
+  req: Request,
+  res: Response,
+  targetPn: string
+): Promise<DeviceAuthContext | null> {
+  const auth = bearerPn(req);
+  if (!auth) {
+    res.status(401).json({ error: 'unauthorized' });
+    return null;
+  }
+  const normalized = normalizePnIdentifier(targetPn);
+  if (auth.pnIdentifier !== normalized) {
+    console.warn('[gateStorageCredentialsPut] Bearer pN does not match route pN', {
+      routePn: normalized,
+      bearerPnSuffix: auth.pnIdentifier.slice(-8),
+    });
+    res.status(403).json({ error: 'forbidden', reason: 'pn_mismatch' });
+    return null;
+  }
+
+  const { loadPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
+  const index = await loadPnDriveIndex(normalized);
+  if (!isPnDriveIndexComplete(index)) {
+    return {
+      pnIdentifier: normalized,
+      policy: defaultDevicePolicy(),
+      isKeyed: false,
+    };
+  }
+
+  return gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, targetPn);
 }
 
 /**

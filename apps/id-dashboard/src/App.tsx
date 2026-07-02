@@ -484,13 +484,37 @@ function App() {
   );
   const apiTokenAttemptedForUserRef = React.useRef<string | null>(null);
 
+  const ensureOwnerApiTokenForActiveUser = React.useCallback(async (): Promise<string | null> => {
+    if (!authenticatedUser?.id) return null;
+    const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+    if (!credentials) return null;
+
+    const identityKey = authenticatedUser.publicKey || authenticatedUser.id;
+    let encryptedIdentity = await getEncryptedIdentityForApiToken(identityKey);
+    if (!encryptedIdentity && authenticatedUser.publicKey && authenticatedUser.publicKey !== authenticatedUser.id) {
+      encryptedIdentity = await getEncryptedIdentityForApiToken(authenticatedUser.id);
+    }
+    if (!encryptedIdentity) return null;
+
+    return ensureApiTokenAfterUnlock({
+      encryptedIdentity,
+      publicKey: authenticatedUser.publicKey || identityKey,
+      did: authenticatedUser.id,
+      pnName: credentials.pnName,
+      passcode: credentials.passcode,
+    });
+  }, [authenticatedUser, ensureApiTokenAfterUnlock, getEncryptedIdentityForApiToken]);
+
   // Push notifications (native only): register when authenticated
   usePushNotifications({
     getAccessToken: useCallback(async () => authenticatedUser?.accessToken ?? null, [authenticatedUser?.accessToken]),
   });
 
   React.useEffect(() => {
-    if (!authenticatedUser?.id) return;
+    if (!authenticatedUser?.id) {
+      apiTokenAttemptedForUserRef.current = null;
+      return;
+    }
     // Re-acquire per active identity: a stale apiToken may belong to a previously unlocked pN.
     // ensureApiTokenAfterUnlock validates the token's pN and re-mints if it differs.
     if (apiTokenAttemptedForUserRef.current === authenticatedUser.id) return;
@@ -7428,6 +7452,7 @@ This invitation expires in 24 hours.`;
                       <FileStorageAggregator
                         authenticatedUser={authenticatedUser}
                         apiToken={apiToken}
+                        ensureOwnerApiToken={ensureOwnerApiTokenForActiveUser}
                         deviceGate={{
                           canDriveRead,
                           canDriveUpload,

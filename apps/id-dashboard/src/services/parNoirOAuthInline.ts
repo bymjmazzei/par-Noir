@@ -64,6 +64,15 @@ export function getStoredToken(): StoredToken | null {
   }
 }
 
+/** Returns stored token only when it was issued for this pN (prevents cross-pN 403s). */
+export function getStoredTokenForPn(wantedPn: string): StoredToken | null {
+  const token = getStoredToken();
+  if (!token?.accessToken || !token.pnIdentifier) return null;
+  const normalized = wantedPn.startsWith('pn-') ? wantedPn : `pn-${wantedPn}`;
+  if (token.pnIdentifier !== normalized) return null;
+  return token;
+}
+
 export function setStoredToken(token: StoredToken | null): void {
   if (token) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(token));
   else sessionStorage.removeItem(STORAGE_KEY);

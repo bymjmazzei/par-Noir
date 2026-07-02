@@ -50,6 +50,7 @@ import { getBearerTokenPayload } from './server/middleware/authMiddleware';
 import {
   gateOwnerRoute,
   gateOwnerSelfRoute,
+  gateStorageCredentialsPut,
   DEVICE_CAPABILITIES,
 } from './server/modules/deviceCapabilityService';
 
@@ -5417,7 +5418,7 @@ class ProductionServer {
         // Normalize to pnIdentifier format
         const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
 
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
+        if (!(await gateStorageCredentialsPut(req, res, pnIdentifier))) return;
 
         if (!credentials) {
           return res.status(400).json({ error: 'Missing credentials in request body' });

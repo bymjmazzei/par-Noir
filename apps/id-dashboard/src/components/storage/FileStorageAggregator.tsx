@@ -21,7 +21,7 @@ import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../../constants/feedCategor
 import { ReportContentModal } from './ReportContentModal';
 import { API_ENDPOINT } from '../../config/api';
 import { ownerFetch, ownerGet } from '../../services/ownerApiService';
-import { getStoredToken } from '../../services/parNoirOAuthInline';
+import { getStoredToken, getStoredTokenForPn } from '../../services/parNoirOAuthInline';
 import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 import { driveAccountTokens, normalizeVisibility } from './storageHelpers';
 import { MultiCloudStoragePanel } from './MultiCloudStoragePanel';
@@ -66,6 +66,8 @@ type StoredDriveCredential = {
 interface FileStorageAggregatorProps {
   authenticatedUser?: AuthSession | CryptoAuthSession | any | null;
   apiToken?: string | null;
+  /** Mint or refresh par Noir OAuth token for the active unlocked pN before owner API calls. */
+  ensureOwnerApiToken?: () => Promise<string | null>;
   hideSecureFolderSection?: boolean;
   deviceGate?: {
     canDriveRead: boolean;
@@ -78,6 +80,7 @@ interface FileStorageAggregatorProps {
 export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   authenticatedUser,
   apiToken = null,
+  ensureOwnerApiToken,
   hideSecureFolderSection = false,
   deviceGate,
 }) => {
@@ -87,21 +90,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   }, [apiToken]);
 
   /** par Noir OAuth JWT for owner API routes — not the local unlock session token. */
-  const resolveOwnerApiToken = React.useCallback((): string | null => {
+  const resolveOwnerApiToken = React.useCallback((wantedPn?: string | null): string | null => {
+    if (wantedPn) {
+      return getStoredTokenForPn(wantedPn)?.accessToken ?? null;
+    }
     return apiTokenRef.current ?? getStoredToken()?.accessToken ?? null;
   }, []);
 
-  const waitForOwnerApiToken = React.useCallback(async (maxMs = 12000): Promise<string | null> => {
-    const immediate = resolveOwnerApiToken();
-    if (immediate) return immediate;
-    const start = Date.now();
-    while (Date.now() - start < maxMs) {
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      const token = resolveOwnerApiToken();
-      if (token) return token;
-    }
-    return resolveOwnerApiToken();
-  }, [resolveOwnerApiToken]);
+  const waitForOwnerApiToken = React.useCallback(
+    async (wantedPn?: string | null, maxMs = 45000): Promise<string | null> => {
+      const start = Date.now();
+      while (Date.now() - start < maxMs) {
+        const token = resolveOwnerApiToken(wantedPn);
+        if (token) return token;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      return resolveOwnerApiToken(wantedPn);
+    },
+    [resolveOwnerApiToken]
+  );
 
   // Helper function to get passcode from SecureCredentialManager
   const getPasscodeFromSecureStorage = React.useCallback((sessionId: string | null | undefined): string | null => {
@@ -1067,7 +1074,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           accountsCount: payload.googleDriveAccounts.length
         });
 
-        const accessToken = await waitForOwnerApiToken();
+        if (ensureOwnerApiToken) {
+          await ensureOwnerApiToken();
+        }
+
+        const accessToken = await waitForOwnerApiToken(pnIdentifier);
         if (!accessToken) {
           console.warn('⚠️ [StorageCredentials] No par Noir OAuth token; skipping credential persistence');
           globalPersistenceLockRef.current = false;
@@ -1127,7 +1138,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       globalPersistenceLockRef.current = false;
       persistenceInProgressRef.current = false;
     }
-  }, [buildStorageCredentialPayload, persistCredentialsToSecureMetadata, API_ENDPOINT, driveAccounts.length, waitForOwnerApiToken]);
+  }, [buildStorageCredentialPayload, persistCredentialsToSecureMetadata, API_ENDPOINT, driveAccounts.length, waitForOwnerApiToken, ensureOwnerApiToken]);
 
   // Token refresh handler - moved here after persistStorageCredentialsToAPI is declared
   // CRITICAL: Use refs for driveAccounts and userEmails to avoid re-registering event listener
