@@ -12,10 +12,21 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export function isGoogleSheetsPerMinuteQuota(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/Read requests per minute per user/i.test(msg)) return true;
+  if (/Write requests per minute per user/i.test(msg)) return true;
+  const status =
+    (err as { code?: number; response?: { status?: number } })?.code ??
+    (err as { response?: { status?: number } })?.response?.status;
+  return status === 429;
+}
+
 export function isRetryableGoogleError(err: unknown): boolean {
+  // Per-minute Sheets quota needs ~60s to recover; immediate retries amplify pressure.
+  if (isGoogleSheetsPerMinuteQuota(err)) return false;
   const msg = err instanceof Error ? err.message : String(err);
   if (/service is currently unavailable/i.test(msg)) return true;
-  if (/rate limit/i.test(msg)) return true;
   if (/layout incomplete after init/i.test(msg)) return true;
   const code = (err as { code?: string })?.code;
   if (code === 'DRIVE_LAYOUT_INCOMPLETE') return true;

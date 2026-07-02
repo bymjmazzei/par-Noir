@@ -240,24 +240,37 @@ export async function getConnections(userPnIdentifier: string): Promise<Connecti
  * Get pending connection requests (both sent and received)
  * Uses Google Drive via API
  */
+const pendingRequestsInflight = new Map<string, Promise<PendingRequests>>();
+
 export async function getPendingRequests(userPnIdentifier: string): Promise<PendingRequests> {
-  // Use Google Drive API directly
-  try {
-    const response = await fetch(`${API_ENDPOINT}/api/connections/pending?userPnIdentifier=${userPnIdentifier}`, {
-      headers: getAuthHeaders()
-    });
+  const inflight = pendingRequestsInflight.get(userPnIdentifier);
+  if (inflight) return inflight;
 
-    if (!response.ok) {
-      if (response.status === 409 || response.status === 401) {
-        return { sent: [], received: [] };
+  const work = (async (): Promise<PendingRequests> => {
+    try {
+      const response = await fetch(`${API_ENDPOINT}/api/connections/pending?userPnIdentifier=${userPnIdentifier}`, {
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        if (response.status === 409 || response.status === 401) {
+          return { sent: [], received: [] };
+        }
+        throw new Error('Failed to load pending requests');
       }
-      throw new Error('Failed to load pending requests');
-    }
 
-    return await response.json();
-  } catch (error) {
-    console.error('Failed to get pending requests:', error);
-    return { sent: [], received: [] };
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get pending requests:', error);
+      return { sent: [], received: [] };
+    }
+  })();
+
+  pendingRequestsInflight.set(userPnIdentifier, work);
+  try {
+    return await work;
+  } finally {
+    pendingRequestsInflight.delete(userPnIdentifier);
   }
 }
 

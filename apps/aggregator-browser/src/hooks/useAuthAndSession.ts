@@ -310,9 +310,7 @@ export function useAuthAndSession({
           setUnlocked(userInfo.did);
         }
 
-        if (discoverFilesRef.current) {
-          discoverFilesRef.current(undefined, true);
-        }
+        // Discovery already runs on mount; avoid forced triple metadata-index refresh on unlock.
         pushPnOAuthDebug('run_oauth_callback_success', {
           hasPnIdentifier: Boolean(userInfo.pn_identifier),
         });

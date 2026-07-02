@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  */
-import { ensureIndexSheetInFolder, isRetryableGoogleError } from './googleApiRetry';
+import { ensureIndexSheetInFolder, isGoogleSheetsPerMinuteQuota, isRetryableGoogleError } from './googleApiRetry';
 
 jest.mock('./indexSheetsService', () => ({
   IndexSheetsService: {
@@ -29,6 +29,12 @@ describe('googleApiRetry', () => {
   it('treats DRIVE_LAYOUT_INCOMPLETE as retryable', () => {
     const err = Object.assign(new Error('layout incomplete'), { code: 'DRIVE_LAYOUT_INCOMPLETE' });
     expect(isRetryableGoogleError(err)).toBe(true);
+  });
+
+  it('does not retry per-minute Sheets quota (429)', () => {
+    const err = Object.assign(new Error("Quota exceeded for quota metric 'Read requests'"), { code: 429 });
+    expect(isGoogleSheetsPerMinuteQuota(err)).toBe(true);
+    expect(isRetryableGoogleError(err)).toBe(false);
   });
 
   it('ensureIndexSheetInFolder retries create after not found', async () => {

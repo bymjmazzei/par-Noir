@@ -828,26 +828,17 @@ export class ConnectionsService {
           accountId
         ));
 
-      const sentResult = await ConnectionsSheetsService.getConnections(
+      const allResult = await ConnectionsSheetsService.getConnections(
         token,
         spreadsheetId,
         userPnIdentifier || '',
         accountId,
-        { status: 'pending_sent' }
-      );
-
-      // Get pending received
-      const receivedResult = await ConnectionsSheetsService.getConnections(
-        token,
-        spreadsheetId,
-        userPnIdentifier || '',
-        accountId,
-        { status: 'pending_received' }
+        { limit: 500, offset: 0 }
       );
 
       return {
-        sent: sentResult.connections,
-        received: receivedResult.connections
+        sent: allResult.connections.filter((c) => c.status === 'pending_sent'),
+        received: allResult.connections.filter((c) => c.status === 'pending_received'),
       };
     } catch (error) {
       if (isGoogleSheetsRateLimit(error)) {

@@ -1118,12 +1118,19 @@ export class MessageSheetsService {
         });
       }
 
-      const allRowsResponse = await sheets.spreadsheets.values.get({
-        spreadsheetId: inboxSheetId,
-        range: 'Inbox!A2:H'
-      });
+      // Re-sort using the first read (no second spreadsheets.values.get).
+      let allRows = [...rows];
+      if (rowIndex !== -1) {
+        allRows[rowIndex] = newRow;
+      } else {
+        allRows.push(newRow);
+      }
 
-      const allRows = allRowsResponse.data.values || [];
+      // Already at top and only metadata changed — skip full-sheet rewrite.
+      if (rowIndex === 0 && allRows.length <= 1) {
+        return;
+      }
+
       if (allRows.length > 1) {
         allRows.sort((a, b) => {
           const dateA = new Date(a[3] || '').getTime();
@@ -1131,21 +1138,28 @@ export class MessageSheetsService {
           return dateB - dateA;
         });
 
+        const orderUnchanged =
+          rowIndex === 0 &&
+          allRows[0]?.[0] === participantPnIdentifier &&
+          allRows.every((row, i) => row[0] === rows[i]?.[0]);
+
+        if (orderUnchanged) {
+          return;
+        }
+
         await sheets.spreadsheets.values.clear({
           spreadsheetId: inboxSheetId,
           range: 'Inbox!A2:H'
         });
 
-        if (allRows.length > 0) {
-          await sheets.spreadsheets.values.update({
-            spreadsheetId: inboxSheetId,
-            range: 'Inbox!A2:H',
-            valueInputOption: 'RAW',
-            requestBody: {
-              values: allRows
-            }
-          });
-        }
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: inboxSheetId,
+          range: 'Inbox!A2:H',
+          valueInputOption: 'RAW',
+          requestBody: {
+            values: allRows
+          }
+        });
       }
     } catch (error: any) {
       console.error('[MessageSheetsService] Error updating inbox entry:', {

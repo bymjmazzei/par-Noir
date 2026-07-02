@@ -10386,18 +10386,11 @@ class ProductionServer {
         const inboxSheetId = driveIndex.inboxSheetId;
 
         try {
-          const { withGoogleRetry } = await import('./server/modules/googleApiRetry');
-
-          const inboxConversations = await withGoogleRetry(
-            'getInboxConversations',
-            () =>
-              MessageSheetsService.getInboxConversations(
-                token,
-                inboxSheetId,
-                pnIdentifier,
-                accountId
-              ),
-            3
+          const inboxConversations = await MessageSheetsService.getInboxConversations(
+            token,
+            inboxSheetId,
+            pnIdentifier,
+            accountId
           );
 
           const { GroupSheetsService } = await import('./server/modules/groupSheetsService');
