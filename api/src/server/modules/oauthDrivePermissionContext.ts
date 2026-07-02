@@ -6,9 +6,12 @@
 import { isPnDriveIndexComplete, readPnDriveIndex, PN_DRIVE_SHEET_KEYS } from './pnDriveIndex';
 import { normalizePnIdentifier } from './integratorStoragePaths';
 import { storageCredentialsService, type StoredCredentialsRecord } from './storageCredentialsService';
-import { ThirdPartyPermissionsService } from './thirdPartyPermissionsService';
 import { ThirdPartyPermissionsSheetsService } from './thirdPartyPermissionsSheetsService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
+import {
+  getCachedBrowserAppPermissions,
+  setCachedBrowserAppPermissions,
+} from './oauthPermissionCache';
 
 export interface OAuthDrivePermissionContext {
   credentialsRecord: StoredCredentialsRecord;
@@ -110,7 +113,60 @@ export async function resolveOAuthDriveContext(params: {
   }
 }
 
-export const BROWSER_APP_PERMISSION_CHECK_TIMEOUT_MS = 15_000;
+export const BROWSER_APP_PERMISSION_CHECK_TIMEOUT_MS = 5_000;
+
+async function lookupBrowserAppPermissionsFromDrive(params: {
+  pnIdentifier?: string;
+  did?: string;
+}): Promise<{ ageShared: boolean } | null> {
+  const ctx = await resolveOAuthDriveContext(params);
+  if (!ctx) return null;
+
+  try {
+    const token = { access_token: ctx.userAccessToken };
+    const browserApp = await ThirdPartyPermissionsSheetsService.getPermission(
+      token,
+      ctx.thirdPartyPermissionsSheetId,
+      'browser-app',
+      ctx.normalizedPn,
+      ctx.accountId
+    );
+    const browserStatus = browserApp
+      ? ThirdPartyPermissionsSheetsService.normalizePermissionStatus(browserApp.status)
+      : null;
+    if (browserApp && browserStatus === 'active') {
+      safeLogger.info('[OAuth] Found active browser-app permissions on Drive', {
+        ageShared: browserApp.dataPoints.includes('age_attestation'),
+      });
+      return {
+        ageShared: browserApp.dataPoints.includes('age_attestation'),
+      };
+    }
+    return null;
+  } catch (error: unknown) {
+    safeLogger.warn('[OAuth] Could not read third-party-permissions', {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+/** Populate Redis cache after authorize (non-blocking). */
+export async function warmBrowserAppPermissionsCache(params: {
+  pnIdentifier?: string;
+  did?: string;
+}): Promise<void> {
+  const normalizedPn = params.pnIdentifier
+    ? normalizePnIdentifier(params.pnIdentifier)
+    : undefined;
+  if (!normalizedPn) return;
+  try {
+    const result = await lookupBrowserAppPermissionsFromDrive(params);
+    await setCachedBrowserAppPermissions(normalizedPn, result);
+  } catch {
+    /* best-effort warm */
+  }
+}
 
 /** Race a permission lookup; returns null on timeout so unlock is not blocked by slow Drive. */
 export async function getBrowserAppExistingPermissionsWithTimeout(
@@ -140,35 +196,17 @@ export async function getBrowserAppExistingPermissions(params: {
   pnIdentifier?: string;
   did?: string;
 }): Promise<{ ageShared: boolean } | null> {
-  const ctx = await resolveOAuthDriveContext(params);
-  if (!ctx) return null;
-
-  try {
-    const permissions = await ThirdPartyPermissionsService.getPermissions(
-      ctx.userAccessToken,
-      ctx.metadataFolderId,
-      ctx.normalizedPn,
-      ctx.accountId,
-      ctx.thirdPartyPermissionsSheetId
-    );
-
-    const browserApp = permissions['browser-app'];
-    const browserStatus = browserApp
-      ? ThirdPartyPermissionsSheetsService.normalizePermissionStatus(browserApp.status)
-      : null;
-    if (browserApp && browserStatus === 'active') {
-      safeLogger.info('[OAuth] Found active browser-app permissions on Drive', {
-        ageShared: browserApp.dataPoints.includes('age_attestation'),
-      });
-      return {
-        ageShared: browserApp.dataPoints.includes('age_attestation'),
-      };
-    }
-    return null;
-  } catch (error: unknown) {
-    safeLogger.warn('[OAuth] Could not read third-party-permissions', {
-      message: error instanceof Error ? error.message : String(error),
-    });
-    return null;
+  const normalizedPn = params.pnIdentifier
+    ? normalizePnIdentifier(params.pnIdentifier)
+    : undefined;
+  if (normalizedPn) {
+    const cached = await getCachedBrowserAppPermissions(normalizedPn);
+    if (cached !== undefined) return cached;
   }
+
+  const result = await lookupBrowserAppPermissionsFromDrive(params);
+  if (normalizedPn) {
+    await setCachedBrowserAppPermissions(normalizedPn, result);
+  }
+  return result;
 }

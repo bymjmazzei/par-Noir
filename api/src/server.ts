@@ -9626,12 +9626,11 @@ class ProductionServer {
 
         // Start Drive permission lookup in parallel with code generation so unlock is not blocked.
         const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
-        const existingPermissionsPromise =
-          pnIdentifier && client_id === 'browser-app'
-            ? import('./server/modules/oauthDrivePermissionContext').then(({ getBrowserAppExistingPermissionsWithTimeout }) =>
-                getBrowserAppExistingPermissionsWithTimeout({ pnIdentifier, did })
-              )
-            : null;
+        if (pnIdentifier && client_id === 'browser-app') {
+          void import('./server/modules/oauthDrivePermissionContext').then(({ warmBrowserAppPermissionsCache }) =>
+            warmBrowserAppPermissionsCache({ pnIdentifier, did })
+          );
+        }
 
         // SECURITY FIX: Store pnIdentifier directly instead of secrets
         let code: string;
@@ -9658,9 +9657,18 @@ class ProductionServer {
           throw oauthErr;
         }
 
-        const existingPermissions = existingPermissionsPromise
-          ? await existingPermissionsPromise
-          : null;
+        let existingPermissions: { ageShared: boolean } | null = null;
+        if (pnIdentifier && client_id === 'browser-app') {
+          const { normalizePnIdentifier } = await import('./server/modules/integratorStoragePaths');
+          const { getCachedBrowserAppPermissions } = await import('./server/modules/oauthPermissionCache');
+          const cached = await getCachedBrowserAppPermissions(normalizePnIdentifier(pnIdentifier));
+          if (cached !== undefined) {
+            existingPermissions = cached;
+          }
+          void import('./server/modules/oauthDrivePermissionContext').then(({ warmBrowserAppPermissionsCache }) =>
+            warmBrowserAppPermissionsCache({ pnIdentifier, did })
+          );
+        }
 
         return res.json({
           code,
@@ -9674,6 +9682,26 @@ class ProductionServer {
         return res.status(500).json({
           error: 'server_error',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Authentication failed'
+        });
+      }
+    });
+
+    this.app.get('/oauth/browser-app-permissions', async (req, res) => {
+      try {
+        const pnIdentifier = req.query.pnIdentifier as string | undefined;
+        const did = req.query.did as string | undefined;
+        if (!pnIdentifier) {
+          return res.status(400).json({ error: 'pnIdentifier is required' });
+        }
+        const { getBrowserAppExistingPermissions } = await import(
+          './server/modules/oauthDrivePermissionContext'
+        );
+        const existingPermissions = await getBrowserAppExistingPermissions({ pnIdentifier, did });
+        return res.json({ existingPermissions });
+      } catch (error: unknown) {
+        return res.status(500).json({
+          error: 'server_error',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Permission lookup failed',
         });
       }
     });
@@ -10387,6 +10415,7 @@ class ProductionServer {
         }
 
         const inboxSheetId = driveIndex.inboxSheetId;
+        const messagesFolderId = driveIndex.messagesFolderId;
 
         try {
           const {
@@ -10404,11 +10433,33 @@ class ProductionServer {
             return res.json(cachedInbox);
           }
 
-          const inboxConversations = await MessageSheetsService.getInboxConversations(
+          const resolveOwnerDriveContext = async (ownerPnIdentifier: string) => {
+            const ownerCreds = await storageCredentialsService.getCredentials(ownerPnIdentifier);
+            if (!ownerCreds?.credentials) return null;
+            const ownerAccounts =
+              ownerCreds.credentials.googleDriveAccounts ||
+              (ownerCreds.credentials.googleDrive ? [ownerCreds.credentials.googleDrive] : []);
+            if (ownerAccounts.length === 0) return null;
+            const ownerAccount = ownerAccounts[0];
+            const ownerAccountId = this.extractAccountId(ownerAccount);
+            return {
+              token: {
+                access_token: ownerAccount.access_token || ownerAccount.accessToken,
+                refresh_token: ownerAccount.refresh_token || ownerAccount.refreshToken,
+                expires_at: ownerAccount.expires_at,
+                expires_in: ownerAccount.expires_in,
+              },
+              accountId: ownerAccountId,
+            };
+          };
+
+          const inboxConversations = await MessageSheetsService.getInboxThreadsSortedByDrive(
             token,
+            messagesFolderId,
             inboxSheetId,
             pnIdentifier,
-            accountId
+            accountId,
+            resolveOwnerDriveContext
           );
 
           const { GroupSheetsService } = await import('./server/modules/groupSheetsService');
@@ -10659,43 +10710,57 @@ class ProductionServer {
         }
 
         const inboxSheetId = driveIndex.inboxSheetId;
+        const messagesFolderId = driveIndex.messagesFolderId;
 
-        // Get inbox sheet to read conversations with sharedSecret (optimized path)
-        const { MetadataEncryption } = await import('./server/utils/metadataEncryption');
-        
-        // Get all conversations from inbox sheet (includes sharedSecret and lastMessagePreview - no additional API calls needed!)
-        const inboxConversations = await MessageSheetsService.getInboxConversations(
+        const resolveOwnerDriveContext = async (ownerPnIdentifier: string) => {
+          const ownerCreds = await storageCredentialsService.getCredentials(ownerPnIdentifier);
+          if (!ownerCreds?.credentials) return null;
+          const ownerAccounts =
+            ownerCreds.credentials.googleDriveAccounts ||
+            (ownerCreds.credentials.googleDrive ? [ownerCreds.credentials.googleDrive] : []);
+          if (ownerAccounts.length === 0) return null;
+          const ownerAccount = ownerAccounts[0];
+          const ownerAccountId = this.extractAccountId(ownerAccount);
+          return {
+            token: {
+              access_token: ownerAccount.access_token || ownerAccount.accessToken,
+              refresh_token: ownerAccount.refresh_token || ownerAccount.refreshToken,
+              expires_at: ownerAccount.expires_at,
+              expires_in: ownerAccount.expires_in,
+            },
+            accountId: ownerAccountId,
+          };
+        };
+
+        const inboxConversations = await MessageSheetsService.getInboxThreadsSortedByDrive(
           token,
+          messagesFolderId,
           inboxSheetId,
           pnIdentifier,
-          accountId
+          accountId,
+          resolveOwnerDriveContext
         );
 
-        // Use lastMessagePreview directly from inbox sheet - no need to call getMessages for each conversation!
-        // This eliminates N Sheets API calls (where N = number of conversations)
         const allMessages = inboxConversations
           .filter(conversation => {
-            // Only include conversations with required data
             if (!conversation.participantPnIdentifier) {
               console.warn(`[Inbox] Conversation missing participantPnIdentifier, skipping`);
               return false;
             }
-            if (!conversation.lastMessagePreview && !conversation.lastMessageAt) {
-              // Skip conversations with no messages
+            if (!conversation.lastMessageAt) {
               return false;
             }
             return true;
           })
           .map(conversation => {
-            // Construct Message object from inbox sheet preview data
             return {
-              messageId: '', // Preview doesn't have messageId
-              fromPnIdentifier: '', // Preview doesn't have fromPnIdentifier
+              messageId: '',
+              fromPnIdentifier: '',
               toPnIdentifier: conversation.participantPnIdentifier,
               content: conversation.lastMessagePreview || '',
               timestamp: conversation.lastMessageAt || new Date().toISOString(),
-              read: false, // Preview doesn't track read status
-              encrypted: false // Preview is already decrypted
+              read: false,
+              encrypted: false
             };
           });
 
@@ -11096,11 +11161,8 @@ class ProductionServer {
 
         const senderMetadataFolderId = senderIndex.metadataFolderId;
         const senderMessagesFolderId = senderIndex.messagesFolderId;
-        const senderInboxSheetIdFromIndex = senderIndex.inboxSheetId;
-
         const recipientMetadataFolderId = recipientIndex.metadataFolderId;
         const recipientMessagesFolderId = recipientIndex.messagesFolderId;
-        const recipientInboxSheetIdFromIndex = recipientIndex.inboxSheetId;
         const recipientAccountIdForInbox = recipientCtx.accountId;
 
         if (!isConnectionRequest && !dmConnection) {
@@ -11174,29 +11236,6 @@ class ProductionServer {
         if (mediaFileId) {
           const { shareAttachmentWithRecipients } = await import('./server/modules/messagingMediaService');
           await shareAttachmentWithRecipients(fromPnIdentifier, mediaFileId, [toPnIdentifier], senderAccountId);
-        }
-
-        const [senderInboxSheetId, recipientInboxSheetId] = [
-          senderInboxSheetIdFromIndex,
-          recipientInboxSheetIdFromIndex,
-        ];
-
-        let recipientKemCiphertext: string | undefined;
-        try {
-          const recipientInboxEntry = await MessageSheetsService.getInboxConversationByParticipant(
-            recipientToken,
-            recipientInboxSheetId,
-            fromPnIdentifier,
-            toPnIdentifier,
-            recipientAccountIdForInbox,
-            50
-          );
-          recipientKemCiphertext = recipientInboxEntry?.kemCiphertext;
-        } catch {
-          /* optional */
-        }
-        if (!recipientKemCiphertext) {
-          recipientKemCiphertext = kemCiphertext;
         }
 
         // Record activity for sender (non-blocking - fire and forget)
@@ -11367,50 +11406,6 @@ class ProductionServer {
           })
         ]);
         messagingLog.info('[SendMessage] Messages appended to both sheets successfully');
-
-        try {
-          await Promise.all([
-            MessageSheetsService.updateInboxEntryWithRetry(
-              senderToken,
-              senderInboxSheetId,
-              toPnIdentifier,
-              senderConversationSheetId!,
-              connectionId,
-              timestamp,
-              fromPnIdentifier,
-              senderAccountId,
-              '[Encrypted message]',
-              kemCiphertext || ''
-            ),
-            recipientToken && recipientInboxSheetId
-              ? MessageSheetsService.updateInboxEntryWithRetry(
-                  recipientToken,
-                  recipientInboxSheetId,
-                  fromPnIdentifier,
-                  recipientConversationSheetId!,
-                  connectionId,
-                  timestamp,
-                  toPnIdentifier,
-                  recipientAccountIdForInbox,
-                  '[Encrypted message]',
-                  recipientKemCiphertext || kemCiphertext || ''
-                )
-              : Promise.resolve(),
-          ]);
-          messagingLog.info('[SendMessage] Updated sender and recipient inboxes');
-        } catch (inboxError: unknown) {
-          messagingLog.warn('[SendMessage] Failed to update inboxes after send:', {
-            message: inboxError instanceof Error ? inboxError.message : String(inboxError),
-          });
-          const { isGoogleSheetsRateLimit } = await import('./server/modules/googleSheetsRateLimit');
-          if (isGoogleSheetsRateLimit(inboxError)) {
-            return res.status(503).json({
-              error: 'drive_rate_limited',
-              message: 'Message sent but inbox sync is delayed. Please refresh in a moment.',
-            });
-          }
-        }
-        // Note: Inbox updates complete before response when successful
 
         // Record activity for recipient (non-blocking - fire and forget)
         (async () => {
@@ -13060,7 +13055,27 @@ class ProductionServer {
         const uniqueMemberPns = [...new Set(members.map((m) => m.memberPnIdentifier))];
         const preview = `New group: ${title}`;
 
-        const provisionOne = async (memberPn: string): Promise<string> => {
+        const ownerMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+          token,
+          metadataFolder.pnFolderId!,
+          ownerPnIdentifier,
+          accountId
+        );
+        const ownerInboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+          token,
+          ownerMessagesFolderId,
+          ownerPnIdentifier,
+          accountId
+        );
+        const ownerConvSheetId = await MessageSheetsService.getOrCreateGroupConversationSheet(
+          token,
+          ownerMessagesFolderId,
+          groupId,
+          ownerPnIdentifier,
+          accountId
+        );
+
+        const provisionMemberInbox = async (memberPn: string): Promise<void> => {
           const creds =
             memberPn === ownerPnIdentifier
               ? ownerCreds
@@ -13083,12 +13098,12 @@ class ProductionServer {
             expires_in: mAccount.expires_in
           };
           const mMeta = await this.getMetadataFolder(mToken, memberPn, mAccountId);
-          if (!mMeta?.pnFolderId) {
+          if (!mMeta?.metadataFolderId) {
             throw new Error(`Metadata folder missing for ${memberPn}`);
           }
           const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
             mToken,
-            mMeta.pnFolderId,
+            mMeta.pnFolderId!,
             memberPn,
             mAccountId
           );
@@ -13098,18 +13113,11 @@ class ProductionServer {
             memberPn,
             mAccountId
           );
-          const convSheetId = await MessageSheetsService.getOrCreateGroupConversationSheet(
-            mToken,
-            messagesFolderId,
-            groupId,
-            memberPn,
-            mAccountId
-          );
           await MessageSheetsService.updateGroupInboxEntry(
             mToken,
             inboxSheetId,
             groupId,
-            convSheetId,
+            ownerConvSheetId,
             ownerPnIdentifier,
             createdAt,
             memberPn,
@@ -13118,7 +13126,7 @@ class ProductionServer {
           );
           const memberGroupSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
             mToken,
-            mMeta.metadataFolderId!,
+            mMeta.metadataFolderId,
             memberPn,
             mAccountId
           );
@@ -13127,22 +13135,34 @@ class ProductionServer {
             memberGroupSheetId,
             groupId,
             memberPn,
-            convSheetId,
+            ownerConvSheetId,
             memberPn,
             mAccountId
           );
-          return convSheetId;
         };
+
+        await MessageSheetsService.updateGroupInboxEntry(
+          token,
+          ownerInboxSheetId,
+          groupId,
+          ownerConvSheetId,
+          ownerPnIdentifier,
+          createdAt,
+          ownerPnIdentifier,
+          accountId,
+          preview
+        );
+
+        await Promise.all(uniqueMemberPns.map((memberPn) => provisionMemberInbox(memberPn)));
 
         await Promise.all(
           uniqueMemberPns.map(async (memberPn) => {
-            const convSheetId = await provisionOne(memberPn);
             await GroupSheetsService.updateConversationSpreadsheetId(
               token,
               sheetId,
               groupId,
               memberPn,
-              convSheetId,
+              ownerConvSheetId,
               ownerPnIdentifier,
               accountId
             );
@@ -13278,7 +13298,46 @@ class ProductionServer {
           return res.status(403).json({ error: 'Not a member of this group' });
         }
 
-        let convSheetId = spreadsheetId || selfRow.conversationSpreadsheetId;
+        const ownerPn = selfRow.ownerPnIdentifier;
+        const ownerCreds = await storageCredentialsService.getCredentials(ownerPn);
+        if (!ownerCreds?.credentials) {
+          return res.status(404).json({ error: 'Group owner credentials not found' });
+        }
+        const ownerAccounts =
+          ownerCreds.credentials.googleDriveAccounts ||
+          (ownerCreds.credentials.googleDrive ? [ownerCreds.credentials.googleDrive] : []);
+        if (ownerAccounts.length === 0) {
+          return res.status(404).json({ error: 'Owner has no Google Drive connected' });
+        }
+        const ownerAccount = ownerAccounts[0];
+        const ownerAccountId = this.extractAccountId(ownerAccount);
+        const ownerToken = {
+          access_token: ownerAccount.access_token || ownerAccount.accessToken,
+          refresh_token: ownerAccount.refresh_token || ownerAccount.refreshToken,
+          expires_at: ownerAccount.expires_at,
+          expires_in: ownerAccount.expires_in
+        };
+        const ownerMeta = await this.getMetadataFolder(ownerToken, ownerPn, ownerAccountId);
+        if (!ownerMeta?.metadataFolderId) {
+          return res.json({ messages: [], total: 0 });
+        }
+        const ownerGroupsSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+          ownerToken,
+          ownerMeta.metadataFolderId,
+          ownerPn,
+          ownerAccountId
+        );
+
+        let convSheetId =
+          spreadsheetId ||
+          (await GroupSheetsService.getCanonicalGroupConversationSpreadsheetId(
+            ownerToken,
+            ownerGroupsSheetId,
+            groupId,
+            ownerPn,
+            ownerAccountId
+          )) ||
+          selfRow.conversationSpreadsheetId;
         if (!convSheetId) {
           const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./server/modules/pnDriveIndex');
           const groupIndex = readPnDriveIndex(userCreds.credentials as Record<string, unknown>);
@@ -13298,12 +13357,12 @@ class ProductionServer {
         }
 
         const result = await MessageSheetsService.getMessages(
-          token,
+          ownerToken,
           convSheetId,
           '',
           '',
-          userPnIdentifier,
-          accountId,
+          ownerPn,
+          ownerAccountId,
           { limit, offset, includeTotal: true, relayOnly: true }
         );
         return res.json({ messages: result.messages, total: result.total });
@@ -13424,7 +13483,6 @@ class ProductionServer {
 
         const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const timestamp = new Date().toISOString();
-        const preview = '[Encrypted message]';
         const messagePayload = {
           messageId,
           fromPnIdentifier: senderPn,
@@ -13443,95 +13501,44 @@ class ProductionServer {
           await shareAttachmentWithRecipients(senderPn, mediaFileId, recipientPns, senderAccountId);
         }
 
-        await Promise.all(
-          members.map(async (member) => {
-            const memberPn = member.memberPnIdentifier;
-            const memberCreds = await storageCredentialsService.getCredentials(memberPn);
-            if (!memberCreds?.credentials) return;
-            const mAccounts =
-              memberCreds.credentials.googleDriveAccounts ||
-              (memberCreds.credentials.googleDrive ? [memberCreds.credentials.googleDrive] : []);
-            if (mAccounts.length === 0) return;
-            const mAccount = mAccounts[0];
-            const mAccountId = this.extractAccountId(mAccount);
-            const mToken = {
-              access_token: mAccount.access_token || mAccount.accessToken,
-              refresh_token: mAccount.refresh_token || mAccount.refreshToken,
-              expires_at: mAccount.expires_at,
-              expires_in: mAccount.expires_in
-            };
-            const mMeta = await this.getMetadataFolder(mToken, memberPn, mAccountId);
-            if (!mMeta?.pnFolderId) return;
-
-            let convSheetId = member.conversationSpreadsheetId;
-            if (!convSheetId) {
-              const mGroupsSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
-                mToken,
-                mMeta.metadataFolderId!,
-                memberPn,
-                mAccountId
-              );
-              const row = await GroupSheetsService.getMemberRow(
-                mToken,
-                mGroupsSheetId,
-                groupId,
-                memberPn,
-                memberPn,
-                mAccountId
-              );
-              convSheetId = row?.conversationSpreadsheetId;
-            }
-            if (!convSheetId) {
-              const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-                mToken,
-                mMeta.pnFolderId,
-                memberPn,
-                mAccountId
-              );
-              convSheetId = await MessageSheetsService.getOrCreateGroupConversationSheet(
-                mToken,
-                messagesFolderId,
-                groupId,
-                memberPn,
-                mAccountId
-              );
-            }
-
-            await MessageSheetsService.appendMessage(
-              mToken,
-              convSheetId,
-              messagePayload,
-              '',
-              '',
-              memberPn,
-              mAccountId
-            );
-
-            const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-              mToken,
-              mMeta.pnFolderId,
-              memberPn,
-              mAccountId
-            );
-            const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
-              mToken,
-              messagesFolderId,
-              memberPn,
-              mAccountId
-            );
-            await MessageSheetsService.updateGroupInboxEntry(
-              mToken,
-              inboxSheetId,
-              groupId,
-              convSheetId,
-              ownerPn,
-              timestamp,
-              memberPn,
-              mAccountId,
-              preview
-            );
-          })
+        let ownerConvSheetId = await GroupSheetsService.getCanonicalGroupConversationSpreadsheetId(
+          ownerToken,
+          ownerGroupsSheetId,
+          groupId,
+          ownerPn,
+          ownerAccountId
         );
+        if (!ownerConvSheetId) {
+          const ownerMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+            ownerToken,
+            ownerMeta.pnFolderId!,
+            ownerPn,
+            ownerAccountId
+          );
+          ownerConvSheetId = await MessageSheetsService.getOrCreateGroupConversationSheet(
+            ownerToken,
+            ownerMessagesFolderId,
+            groupId,
+            ownerPn,
+            ownerAccountId
+          );
+        }
+
+        await MessageSheetsService.appendMessage(
+          ownerToken,
+          ownerConvSheetId,
+          messagePayload,
+          '',
+          '',
+          ownerPn,
+          ownerAccountId
+        );
+
+        const { invalidateGroupFileMtime, invalidateMessagingCachesForUsers } = await import(
+          './server/modules/messagingReadCache'
+        );
+        await invalidateGroupFileMtime(ownerPn, ownerConvSheetId);
+        await invalidateMessagingCachesForUsers(members.map((m) => m.memberPnIdentifier));
 
         await Promise.all(
           members
@@ -13802,6 +13809,17 @@ class ProductionServer {
 
         const preview = `Added to group: ${title}`;
         const memberPn = memberPnIdentifier;
+        const ownerConvSheetId = await GroupSheetsService.getCanonicalGroupConversationSpreadsheetId(
+          token,
+          sheetId,
+          groupId,
+          ownerPnIdentifier,
+          accountId
+        );
+        if (!ownerConvSheetId) {
+          return res.status(404).json({ error: 'Group conversation not found on owner Drive' });
+        }
+
         const creds = memberCreds;
         if (creds?.credentials && metadataFolder.pnFolderId) {
           const mAccounts =
@@ -13829,18 +13847,11 @@ class ProductionServer {
               memberPn,
               mAccountId
             );
-            const convSheetId = await MessageSheetsService.getOrCreateGroupConversationSheet(
-              mToken,
-              messagesFolderId,
-              groupId,
-              memberPn,
-              mAccountId
-            );
             await MessageSheetsService.updateGroupInboxEntry(
               mToken,
               inboxSheetId,
               groupId,
-              convSheetId,
+              ownerConvSheetId,
               ownerPnIdentifier,
               new Date().toISOString(),
               memberPn,
@@ -13858,7 +13869,7 @@ class ProductionServer {
               mGroupsSheetId,
               groupId,
               memberPn,
-              convSheetId,
+              ownerConvSheetId,
               memberPn,
               mAccountId
             );
@@ -13867,7 +13878,7 @@ class ProductionServer {
               sheetId,
               groupId,
               memberPn,
-              convSheetId,
+              ownerConvSheetId,
               ownerPnIdentifier,
               accountId
             );

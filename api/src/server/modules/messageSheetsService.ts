@@ -32,9 +32,33 @@ export interface Message {
   cryptoVersion?: number;
 }
 
+export type InboxThreadFromDrive = {
+  threadType: 'dm' | 'group';
+  participantPnIdentifier: string;
+  spreadsheetId: string;
+  connectionId: string;
+  lastMessageAt: string;
+  lastMessagePreview?: string;
+  kemCiphertext?: string;
+  wrappedMessageRootKey?: string;
+  groupId?: string;
+  ownerPnIdentifier?: string;
+};
+
+export type OwnerDriveContext = {
+  token: GoogleDriveToken;
+  accountId?: string;
+};
+
+export type ResolveOwnerDriveContext = (
+  ownerPnIdentifier: string
+) => Promise<OwnerDriveContext | null>;
+
 export class MessageSheetsService {
   private static readonly MESSAGES_FOLDER_NAME = 'par-noir-messages';
   private static readonly INBOX_SHEET_NAME = 'Inbox';
+  /** Per-process cache: conversation spreadsheet id → Messages tab gid. */
+  private static messagesTabGidBySpreadsheetId = new Map<string, number>();
   /** Per-process: inbox sheets that already have threadType column (avoids repeated Sheets reads). */
   private static inboxThreadTypeEnsured = new Set<string>();
   /** Per-process: inbox sheets that already have wrappedMessageRootKey column. */
@@ -47,6 +71,24 @@ export class MessageSheetsService {
   private static normalizeToPnIdentifier(pnIdentifier: string): string {
     // For legacy data compatibility - check if already normalized
     return pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+  }
+
+  private static cacheMessagesTabGid(spreadsheetId: string, sheetId: number): void {
+    this.messagesTabGidBySpreadsheetId.set(spreadsheetId, sheetId);
+  }
+
+  private static async resolveMessagesTabGid(
+    sheets: ReturnType<typeof google.sheets>,
+    spreadsheetId: string
+  ): Promise<number> {
+    const cached = this.messagesTabGidBySpreadsheetId.get(spreadsheetId);
+    if (cached !== undefined) return cached;
+
+    const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
+    const messagesSheet = spreadsheet.data.sheets?.find((s) => s.properties?.title === 'Messages');
+    const sheetId = messagesSheet?.properties?.sheetId ?? 0;
+    this.cacheMessagesTabGid(spreadsheetId, sheetId);
+    return sheetId;
   }
 
   /**
@@ -394,6 +436,11 @@ export class MessageSheetsService {
       throw new Error('Failed to create conversation sheet: no ID returned');
     }
 
+    const messagesTabGid = spreadsheet.data.sheets?.[0]?.properties?.sheetId;
+    if (messagesTabGid !== undefined && messagesTabGid !== null) {
+      this.cacheMessagesTabGid(spreadsheetId, messagesTabGid);
+    }
+
     // Move to messages folder
     try {
       await drive.files.update({
@@ -498,9 +545,7 @@ export class MessageSheetsService {
       // Insert message at row 2 (top of data, after header) - newest messages at top
       // This allows fast reads: just read first N rows, no counting needed
       // Get sheet ID first (needed for batchUpdate)
-      const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
-      const messagesSheet = spreadsheet.data.sheets?.find(s => s.properties?.title === 'Messages');
-      const sheetId = messagesSheet?.properties?.sheetId || 0;
+      const sheetId = await this.resolveMessagesTabGid(sheets, spreadsheetId);
 
       // Step 1: Insert a new row at row 2 (shifts existing rows down)
       await sheets.spreadsheets.batchUpdate({
@@ -1050,6 +1095,167 @@ export class MessageSheetsService {
   }
 
   /**
+   * Merge inbox directory rows with Drive modifiedTime for thread ordering.
+   * DMs: member's messages folder. Groups: owner's canonical conversation sheet mtime.
+   */
+  static async getInboxThreadsSortedByDrive(
+    token: GoogleDriveToken,
+    messagesFolderId: string,
+    inboxSheetId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined,
+    resolveOwnerContext: ResolveOwnerDriveContext
+  ): Promise<InboxThreadFromDrive[]> {
+    const entries = await this.getInboxEntries(token, inboxSheetId, userPnIdentifier, accountId);
+
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return entries
+        .map((e) => ({
+          threadType: e.threadType,
+          participantPnIdentifier: e.participantPnIdentifier,
+          spreadsheetId: e.spreadsheetId,
+          connectionId: e.connectionId,
+          lastMessageAt: e.lastMessageAt,
+          kemCiphertext: e.kemCiphertext,
+          wrappedMessageRootKey: e.wrappedMessageRootKey,
+          groupId: e.groupId,
+          ownerPnIdentifier: e.ownerPnIdentifier,
+        }))
+        .sort(
+          (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+        );
+    }
+
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const drive = google.drive({ version: 'v3', auth });
+
+    const dmInboxBySheetId = new Map<string, (typeof entries)[number]>();
+    const groupEntries: (typeof entries) = [];
+    for (const entry of entries) {
+      if (entry.threadType === 'group') {
+        groupEntries.push(entry);
+      } else if (entry.spreadsheetId) {
+        dmInboxBySheetId.set(entry.spreadsheetId, entry);
+      }
+    }
+
+    const threads: InboxThreadFromDrive[] = [];
+    const seenDmSheetIds = new Set<string>();
+
+    const searchResponse = await drive.files.list({
+      q: `'${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and name contains 'conversation-'`,
+      fields: 'files(id,name,modifiedTime)',
+      orderBy: 'modifiedTime desc',
+      pageSize: 200,
+    });
+
+    for (const file of searchResponse.data.files || []) {
+      const fileName = file.name || '';
+      if (fileName.startsWith('conversation-group-')) continue;
+      const spreadsheetId = file.id;
+      if (!spreadsheetId) continue;
+      const inboxRow = dmInboxBySheetId.get(spreadsheetId);
+      if (!inboxRow) continue;
+      seenDmSheetIds.add(spreadsheetId);
+      threads.push({
+        threadType: 'dm',
+        participantPnIdentifier: inboxRow.participantPnIdentifier,
+        spreadsheetId,
+        connectionId: inboxRow.connectionId,
+        lastMessageAt: file.modifiedTime || inboxRow.lastMessageAt,
+        kemCiphertext: inboxRow.kemCiphertext,
+        wrappedMessageRootKey: inboxRow.wrappedMessageRootKey,
+      });
+    }
+
+    for (const entry of entries) {
+      if (entry.threadType === 'group') continue;
+      if (!seenDmSheetIds.has(entry.spreadsheetId)) {
+        threads.push({
+          threadType: 'dm',
+          participantPnIdentifier: entry.participantPnIdentifier,
+          spreadsheetId: entry.spreadsheetId,
+          connectionId: entry.connectionId,
+          lastMessageAt: entry.lastMessageAt,
+          kemCiphertext: entry.kemCiphertext,
+          wrappedMessageRootKey: entry.wrappedMessageRootKey,
+        });
+      }
+    }
+
+    const {
+      getCachedGroupFileMtime,
+      setCachedGroupFileMtime,
+    } = await import('./messagingReadCache');
+
+    const ownerGroups = new Map<
+      string,
+      Array<{ spreadsheetId: string; entry: (typeof entries)[number] }>
+    >();
+    for (const entry of groupEntries) {
+      const ownerPn = entry.ownerPnIdentifier || entry.connectionId;
+      if (!ownerPn || !entry.spreadsheetId) continue;
+      if (!ownerGroups.has(ownerPn)) ownerGroups.set(ownerPn, []);
+      ownerGroups.get(ownerPn)!.push({ spreadsheetId: entry.spreadsheetId, entry });
+    }
+
+    for (const [ownerPn, items] of ownerGroups) {
+      const ownerCtx =
+        ownerPn === userPnIdentifier
+          ? { token, accountId }
+          : await resolveOwnerContext(ownerPn);
+
+      const uniqueSheetIds = [...new Set(items.map((i) => i.spreadsheetId))];
+      const mtimeBySheetId = new Map<string, string>();
+
+      if (ownerCtx) {
+        const ownerAuth = GoogleOAuth2Helper.createClient(
+          ownerCtx.token,
+          ownerPn,
+          ownerCtx.accountId
+        );
+        const ownerDrive = google.drive({ version: 'v3', auth: ownerAuth });
+
+        for (const sheetId of uniqueSheetIds) {
+          const cached = await getCachedGroupFileMtime(ownerPn, sheetId);
+          if (cached) {
+            mtimeBySheetId.set(sheetId, cached);
+            continue;
+          }
+          try {
+            const meta = await ownerDrive.files.get({
+              fileId: sheetId,
+              fields: 'modifiedTime',
+            });
+            const modifiedTime = meta.data.modifiedTime || new Date().toISOString();
+            mtimeBySheetId.set(sheetId, modifiedTime);
+            await setCachedGroupFileMtime(ownerPn, sheetId, modifiedTime);
+          } catch {
+            /* use inbox fallback below */
+          }
+        }
+      }
+
+      for (const { spreadsheetId, entry } of items) {
+        threads.push({
+          threadType: 'group',
+          participantPnIdentifier: entry.participantPnIdentifier,
+          spreadsheetId,
+          connectionId: entry.connectionId,
+          lastMessageAt: mtimeBySheetId.get(spreadsheetId) || entry.lastMessageAt,
+          groupId: entry.groupId || entry.participantPnIdentifier,
+          ownerPnIdentifier: entry.ownerPnIdentifier || entry.connectionId,
+        });
+      }
+    }
+
+    threads.sort(
+      (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+    );
+    return threads;
+  }
+
+  /**
    * Update inbox entry (upsert) - maintains conversation metadata
    * Sorts by lastMessageAt descending
    * Stores sharedSecret (encrypted) so no connection lookup needed
@@ -1126,50 +1332,6 @@ export class MessageSheetsService {
           valueInputOption: 'RAW',
           requestBody: {
             values: [newRow]
-          }
-        });
-      }
-
-      // Re-sort using the first read (no second spreadsheets.values.get).
-      let allRows = [...rows];
-      if (rowIndex !== -1) {
-        allRows[rowIndex] = newRow;
-      } else {
-        allRows.push(newRow);
-      }
-
-      // Already at top and only metadata changed — skip full-sheet rewrite.
-      if (rowIndex === 0 && allRows.length <= 1) {
-        return;
-      }
-
-      if (allRows.length > 1) {
-        allRows.sort((a, b) => {
-          const dateA = new Date(a[3] || '').getTime();
-          const dateB = new Date(b[3] || '').getTime();
-          return dateB - dateA;
-        });
-
-        const orderUnchanged =
-          rowIndex === 0 &&
-          allRows[0]?.[0] === participantPnIdentifier &&
-          allRows.every((row, i) => row[0] === rows[i]?.[0]);
-
-        if (orderUnchanged) {
-          return;
-        }
-
-        await sheets.spreadsheets.values.clear({
-          spreadsheetId: inboxSheetId,
-          range: 'Inbox!A2:H'
-        });
-
-        await sheets.spreadsheets.values.update({
-          spreadsheetId: inboxSheetId,
-          range: 'Inbox!A2:H',
-          valueInputOption: 'RAW',
-          requestBody: {
-            values: allRows
           }
         });
       }
@@ -1765,6 +1927,11 @@ export class MessageSheetsService {
     const spreadsheetId = spreadsheet.data.spreadsheetId;
     if (!spreadsheetId) throw new Error('Failed to create group conversation sheet');
 
+    const messagesTabGid = spreadsheet.data.sheets?.[0]?.properties?.sheetId;
+    if (messagesTabGid !== undefined && messagesTabGid !== null) {
+      this.cacheMessagesTabGid(spreadsheetId, messagesTabGid);
+    }
+
     await drive.files.update({
       fileId: spreadsheetId,
       addParents: messagesFolderId,
@@ -1871,22 +2038,6 @@ export class MessageSheetsService {
         range: 'Inbox!A:G',
         valueInputOption: 'RAW',
         requestBody: { values: [newRow] }
-      });
-    }
-
-    const allRowsResponse = await sheets.spreadsheets.values.get({
-      spreadsheetId: inboxSheetId,
-      range: 'Inbox!A2:G'
-    });
-    const allRows = allRowsResponse.data.values || [];
-    if (allRows.length > 1) {
-      allRows.sort((a, b) => new Date(b[3] || '').getTime() - new Date(a[3] || '').getTime());
-      await sheets.spreadsheets.values.clear({ spreadsheetId: inboxSheetId, range: 'Inbox!A2:G' });
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: inboxSheetId,
-        range: `Inbox!A2:G${allRows.length + 1}`,
-        valueInputOption: 'RAW',
-        requestBody: { values: allRows }
       });
     }
   }

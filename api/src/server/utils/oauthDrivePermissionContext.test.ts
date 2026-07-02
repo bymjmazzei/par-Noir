@@ -16,19 +16,31 @@ jest.mock('../modules/googleDriveProxy', () => ({
   },
 }));
 
-jest.mock('../modules/thirdPartyPermissionsService', () => ({
-  ThirdPartyPermissionsService: {
-    getPermissions: jest.fn(),
+jest.mock('../modules/thirdPartyPermissionsSheetsService', () => ({
+  ThirdPartyPermissionsSheetsService: {
+    getPermission: jest.fn(),
+    normalizePermissionStatus: jest.fn((status: string) => status),
   },
+}));
+
+jest.mock('../modules/oauthPermissionCache', () => ({
+  getCachedBrowserAppPermissions: jest.fn().mockResolvedValue(undefined),
+  setCachedBrowserAppPermissions: jest.fn().mockResolvedValue(undefined),
 }));
 
 import { storageCredentialsService } from '../modules/storageCredentialsService';
 import { googleDriveProxyService } from '../modules/googleDriveProxy';
-import { ThirdPartyPermissionsService } from '../modules/thirdPartyPermissionsService';
+import { ThirdPartyPermissionsSheetsService } from '../modules/thirdPartyPermissionsSheetsService';
+import {
+  getCachedBrowserAppPermissions,
+  setCachedBrowserAppPermissions,
+} from '../modules/oauthPermissionCache';
 
 const mockFindCreds = storageCredentialsService.findCredentialsByIdentityCandidates as jest.Mock;
 const mockGetToken = googleDriveProxyService.getAccessToken as jest.Mock;
-const mockGetPerms = ThirdPartyPermissionsService.getPermissions as jest.Mock;
+const mockGetPermission = ThirdPartyPermissionsSheetsService.getPermission as jest.Mock;
+const mockGetCached = getCachedBrowserAppPermissions as jest.Mock;
+const mockSetCached = setCachedBrowserAppPermissions as jest.Mock;
 
 function testPnDriveIndex() {
   const sheetIds = Object.fromEntries(
@@ -49,6 +61,19 @@ function testPnDriveIndex() {
 describe('oauthDrivePermissionContext', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetCached.mockResolvedValue(undefined);
+  });
+
+  it('returns cached permissions without Drive lookup', async () => {
+    mockGetCached.mockResolvedValue({ ageShared: true });
+
+    const result = await getBrowserAppExistingPermissions({
+      pnIdentifier: 'pn-59e4692524b7',
+    });
+
+    expect(result).toEqual({ ageShared: true });
+    expect(mockFindCreds).not.toHaveBeenCalled();
+    expect(mockGetPermission).not.toHaveBeenCalled();
   });
 
   it('returns existing permissions when credentials resolve via DID candidate', async () => {
@@ -60,12 +85,10 @@ describe('oauthDrivePermissionContext', () => {
       },
     });
     mockGetToken.mockResolvedValue('drive-access-token');
-    mockGetPerms.mockResolvedValue({
-      'browser-app': {
-        toolId: 'browser-app',
-        status: 'active',
-        dataPoints: ['age_attestation'],
-      },
+    mockGetPermission.mockResolvedValue({
+      toolId: 'browser-app',
+      status: 'active',
+      dataPoints: ['age_attestation'],
     });
 
     const result = await getBrowserAppExistingPermissions({
@@ -74,6 +97,7 @@ describe('oauthDrivePermissionContext', () => {
     });
 
     expect(result).toEqual({ ageShared: true });
+    expect(mockSetCached).toHaveBeenCalledWith('pn-59e4692524b7', { ageShared: true });
     expect(mockFindCreds).toHaveBeenCalledWith(
       expect.arrayContaining(['pn-59e4692524b7', 'did:key:abc'])
     );
@@ -99,7 +123,7 @@ describe('oauthDrivePermissionContext', () => {
       },
     });
     mockGetToken.mockResolvedValue('drive-access-token');
-    mockGetPerms.mockResolvedValue({});
+    mockGetPermission.mockResolvedValue(null);
 
     const result = await getBrowserAppExistingPermissions({
       pnIdentifier: 'pn-59e4692524b7',
@@ -117,13 +141,14 @@ describe('oauthDrivePermissionContext', () => {
       },
     });
     mockGetToken.mockResolvedValue('drive-access-token');
-    mockGetPerms.mockResolvedValue({
-      'browser-app': {
-        toolId: 'browser-app',
-        status: 'revoked',
-        dataPoints: [],
-      },
+    mockGetPermission.mockResolvedValue({
+      toolId: 'browser-app',
+      status: 'revoked',
+      dataPoints: [],
     });
+    (ThirdPartyPermissionsSheetsService.normalizePermissionStatus as jest.Mock).mockReturnValue(
+      'revoked'
+    );
 
     const result = await getBrowserAppExistingPermissions({
       pnIdentifier: 'pn-59e4692524b7',

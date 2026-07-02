@@ -3,6 +3,7 @@
  */
 import {
   invalidateConversationCache,
+  invalidateGroupFileMtime,
   invalidateInboxCache,
 } from './messagingReadCache';
 
@@ -28,5 +29,10 @@ describe('messagingReadCache', () => {
   it('invalidateConversationCache deletes participant-scoped keys', async () => {
     await invalidateConversationCache('pn-abc', 'pn-def');
     expect(deleteCachePattern).toHaveBeenCalledWith('msg:conv:pn-abc:pn-def:*');
+  });
+
+  it('invalidateGroupFileMtime deletes owner spreadsheet mtime key', async () => {
+    await invalidateGroupFileMtime('pn-owner', 'sheet-123');
+    expect(deleteCache).toHaveBeenCalledWith('msg:group-mtime:pn-owner:sheet-123');
   });
 });

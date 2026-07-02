@@ -6,6 +6,7 @@ import { deleteCache, deleteCachePattern, getCache, setCache } from '../utils/ca
 
 const INBOX_TTL_SECONDS = 20;
 const CONVERSATION_TTL_SECONDS = 15;
+const GROUP_MTIME_TTL_SECONDS = 20;
 
 function normalizePn(pnIdentifier: string): string {
   return pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
@@ -70,6 +71,32 @@ export async function invalidateConversationCache(
     return;
   }
   await deleteCachePattern(`msg:conv:${normalized}:*`);
+}
+
+function groupMtimeKey(ownerPnIdentifier: string, spreadsheetId: string): string {
+  return `msg:group-mtime:${normalizePn(ownerPnIdentifier)}:${spreadsheetId}`;
+}
+
+export async function getCachedGroupFileMtime(
+  ownerPnIdentifier: string,
+  spreadsheetId: string
+): Promise<string | null> {
+  return getCache<string>(groupMtimeKey(ownerPnIdentifier, spreadsheetId));
+}
+
+export async function setCachedGroupFileMtime(
+  ownerPnIdentifier: string,
+  spreadsheetId: string,
+  modifiedTime: string
+): Promise<void> {
+  await setCache(groupMtimeKey(ownerPnIdentifier, spreadsheetId), modifiedTime, GROUP_MTIME_TTL_SECONDS);
+}
+
+export async function invalidateGroupFileMtime(
+  ownerPnIdentifier: string,
+  spreadsheetId: string
+): Promise<void> {
+  await deleteCache(groupMtimeKey(ownerPnIdentifier, spreadsheetId));
 }
 
 export async function invalidateMessagingCachesForUsers(

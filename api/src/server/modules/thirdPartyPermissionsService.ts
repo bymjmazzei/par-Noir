@@ -11,6 +11,7 @@ import {
   portableTableScan
 } from './storage/portableTableService';
 import { THIRD_PARTY_PERMISSIONS_SCHEMA } from './storage/tableSchemas';
+import { invalidateBrowserAppPermissionsCache } from './oauthPermissionCache';
 
 export interface ThirdPartyPermission {
   toolId: string;
@@ -145,6 +146,9 @@ export class ThirdPartyPermissionsService {
         normalized,
         accountId
       );
+      if (permissions['browser-app']) {
+        await invalidateBrowserAppPermissionsCache(normalized);
+      }
     } catch (error) {
       console.error('Error storing third-party permissions:', error);
       throw error;
@@ -180,5 +184,8 @@ export class ThirdPartyPermissionsService {
       normalized,
       accountId
     );
+    if (toolId === 'browser-app') {
+      await invalidateBrowserAppPermissionsCache(normalized);
+    }
   }
 }

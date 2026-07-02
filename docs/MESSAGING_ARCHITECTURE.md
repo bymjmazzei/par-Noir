@@ -35,12 +35,13 @@ The API never sees plaintext media; it coordinates upload, ACL, and sheet metada
 
 - Owner creates a group; members must already be **connected to the owner**.
 - Random `chatKey`; each member gets `wrappedChatKey = wrap(chatKey, KDF(ownerPn, messageRootKey, groupId))`.
-- Per-member sheet: `conversation-group-{groupId}`; inbox column G `threadType=group` (A=groupId, B=sheet id, C=owner pn).
-- **Send:** `POST /api/groups/:groupId/messages` with `encryptedContent` + `cryptoVersion: 2`; API fans out the same blob to every member sheet.
-- **Read:** `GET /api/groups/:groupId/messages?userPnIdentifier=…`; browser unwraps `chatKey` via DM session to owner, then decrypts.
+- **One canonical conversation sheet** on the **owner's** Drive: `conversation-group-{groupId}`. Member inbox rows and groups sheet rows point at the owner's `spreadsheetId` (directory only).
+- **Send:** `POST /api/groups/:groupId/messages` with `encryptedContent` + `cryptoVersion: 2`; API appends once to the owner's conversation sheet.
+- **Read:** `GET /api/groups/:groupId/messages?userPnIdentifier=…`; API reads the owner's sheet with owner credentials; browser unwraps `chatKey` via DM session to owner, then decrypts.
+- Inbox thread order for groups uses the **owner's** conversation file `modifiedTime` (not per-send inbox rewrites).
 - `accessRole` (`readWrite` | `readOnly`): API returns 403 on send for read-only; UI hides composer.
 - **Member admin:** `POST …/members`, `DELETE …/members/:pn`, `PATCH /api/groups/:id` (title), `PATCH …/members/:pn` (role).
-- **Key rotation on remove:** Deleting a member fans out `rotateGroupMemberKeys` to **all remaining members’** sheets (dual-write, mirroring add-member).
+- **Key rotation on remove:** Deleting a member rotates `wrappedChatKey` on owner and remaining members' groups sheets (metadata only; no conversation sheet fan-out).
 
 ## Identity re-key migration
 

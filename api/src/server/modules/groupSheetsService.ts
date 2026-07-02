@@ -218,6 +218,29 @@ export class GroupSheetsService {
     return Array.from(byMember.values());
   }
 
+  /** Canonical group conversation spreadsheet (owner Drive, single source of truth). */
+  static async getCanonicalGroupConversationSpreadsheetId(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    groupId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<string | null> {
+    const members = await this.getGroupMembers(
+      token,
+      spreadsheetId,
+      groupId,
+      userPnIdentifier,
+      accountId
+    );
+    for (const member of members) {
+      if (member.conversationSpreadsheetId) {
+        return member.conversationSpreadsheetId;
+      }
+    }
+    return null;
+  }
+
   static async getMemberRow(
     token: GoogleDriveToken,
     spreadsheetId: string,
