@@ -117,4 +117,5 @@ After deploy:
 | `driveInitVerify.ts` | Pre-persist layout verification gate |
 | `googleApiRetry.ts` | Shared retry helpers for all init Google API calls |
 | `ownerDriveContext.ts` | Runtime token + index resolver |
+| `messagingConnectionResolver.ts` | Inbox-first DM connection resolution for send/conversation/status |
 | `pnDriveLayout.ts` | Init-only folder helpers (no cache) |

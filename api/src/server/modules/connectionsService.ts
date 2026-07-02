@@ -15,6 +15,7 @@ import {
   updateConnectionsFilePortable,
   updateConnectionStatusPortable
 } from './storage/connectionsPortableService';
+import { isGoogleSheetsRateLimit } from './googleSheetsRateLimit';
 
 export interface Connection {
   connectionId: string;
@@ -109,6 +110,8 @@ export class ConnectionsService {
    * Get connection status between two users
    * Returns status from perspective of userPnIdentifier1
    * Uses Google Sheets instead of JSON file
+   *
+   * Prefer resolveDmConnectionFromIndex / getConnectionStatusFromIndex for messaging hot paths.
    */
   static async getConnectionStatus(
     user1AccessToken: string,
@@ -190,6 +193,7 @@ export class ConnectionsService {
       };
     } catch (error) {
       console.error('Error getting connection status from sheets:', error);
+      const { isGoogleSheetsRateLimit } = await import('./googleSheetsRateLimit');
       if (isGoogleSheetsRateLimit(error)) {
         throw error;
       }
@@ -887,10 +891,5 @@ export class ConnectionsService {
     );
     return Boolean(entry?.connectionId);
   }
-}
-
-function isGoogleSheetsRateLimit(error: unknown): boolean {
-  const err = error as { code?: number; response?: { status?: number } };
-  return err?.code === 429 || err?.response?.status === 429;
 }
 

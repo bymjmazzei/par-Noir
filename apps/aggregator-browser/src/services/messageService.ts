@@ -99,57 +99,28 @@ export async function getMessages(userPnIdentifier: string): Promise<Message[]> 
  * Merged DM + group inbox threads, sorted by lastMessageAt.
  */
 export async function getInboxThreads(userPnIdentifier: string): Promise<MessageThread[]> {
-  const { listGroups, groupRecordsForUser } = await import('./groupService');
-  const [dmThreads, groups] = await Promise.all([
-    getMessageThreads(userPnIdentifier),
-    listGroups(userPnIdentifier).catch(() => [] as import('./groupService').GroupRecord[])
-  ]);
+  const dmThreads = await getMessageThreads(userPnIdentifier);
 
-  const groupById = groupRecordsForUser(groups, userPnIdentifier);
   const dmOnly = dmThreads.filter((t) => t.threadType !== 'group');
-  const groupIdsInInbox = new Set(
-    dmThreads.filter((t) => t.threadType === 'group').map((t) => t.groupId || t.participantPnIdentifier)
-  );
-
   const groupThreads: MessageThread[] = [];
 
   for (const conv of dmThreads) {
     if (conv.threadType !== 'group') continue;
     const gid = conv.groupId || conv.participantPnIdentifier;
-    const meta = groupById.get(gid);
     groupThreads.push({
       threadType: 'group',
       participantPnIdentifier: gid,
-      participantName: conv.groupTitle || meta?.title || 'Group',
+      participantName: conv.groupTitle || 'Group',
       lastMessage: conv.lastMessage,
       unreadCount: conv.unreadCount || 0,
       messages: [],
       spreadsheetId: conv.spreadsheetId,
       connectionId: conv.ownerPnIdentifier || conv.connectionId,
       groupId: gid,
-      groupTitle: conv.groupTitle || meta?.title || 'Group',
+      groupTitle: conv.groupTitle || 'Group',
       ownerPnIdentifier: conv.ownerPnIdentifier || conv.connectionId,
-      accessRole: meta?.accessRole || 'readWrite',
-      wrappedChatKey: meta?.wrappedChatKey || ''
-    });
-    groupIdsInInbox.add(gid);
-  }
-
-  for (const [gid, meta] of groupById) {
-    if (groupIdsInInbox.has(gid)) continue;
-    groupThreads.push({
-      threadType: 'group',
-      participantPnIdentifier: gid,
-      participantName: meta.title,
-      unreadCount: 0,
-      messages: [],
-      spreadsheetId: meta.conversationSpreadsheetId,
-      connectionId: meta.ownerPnIdentifier,
-      groupId: gid,
-      groupTitle: meta.title,
-      ownerPnIdentifier: meta.ownerPnIdentifier,
-      accessRole: meta.accessRole,
-      wrappedChatKey: meta.wrappedChatKey
+      accessRole: conv.accessRole || 'readWrite',
+      wrappedChatKey: conv.wrappedChatKey || '',
     });
   }
 
