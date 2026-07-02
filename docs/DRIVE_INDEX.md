@@ -42,6 +42,18 @@ Transient Google API errors (503, 429, 5xx) during init are handled at three lay
 
 `loadFiles` does **not** trigger client-side Drive folder discovery when the owner index is incomplete (409) or server init is in flight — avoiding duplicate Google API load during connect.
 
+### Init pipeline modules
+
+| Phase | Module | Behavior |
+|-------|--------|----------|
+| Layout | `pnDriveInit.ts` + `driveInitSteps.ts` | Folders, sheets, content-class indexes, profile — all steps use `withGoogleRetry` / `fetchGoogleDriveWithRetry`; init **fails fast** (no swallowed errors) |
+| Permissions | `driveInitSteps.ts` | Public read on root + content-class public indexes |
+| Verify | `driveInitVerify.ts` | Probes folders + all content-class index sheets + every `sheetIds` entry **before** persist; throws `DRIVE_LAYOUT_INCOMPLETE` if anything missing |
+| Persist | `pnDriveIndex.ts` | Single atomic `persistPnDriveIndex` only after verify passes |
+
+Metadata sheet creation uses a short inter-step delay (`INIT_SHEET_STEP_DELAY_MS`) to reduce Google 503 burst rate limits.
+
+## Runtime resolver
 
 `requireOwnerDriveContext(pn, accountId?)` in `ownerDriveContext.ts`:
 
@@ -98,6 +110,9 @@ After deploy:
 | Module | Role |
 |--------|------|
 | `pnDriveIndex.ts` | Types, read/persist/patch, completeness check |
-| `pnDriveInit.ts` | Init-only folder/sheet discovery |
+| `pnDriveInit.ts` | Init-only folder/sheet discovery orchestration |
+| `driveInitSteps.ts` | Content-class folders/indexes, profile, permissions, full init+persist runner |
+| `driveInitVerify.ts` | Pre-persist layout verification gate |
+| `googleApiRetry.ts` | Shared retry helpers for all init Google API calls |
 | `ownerDriveContext.ts` | Runtime token + index resolver |
 | `pnDriveLayout.ts` | Init-only folder helpers (no cache) |

@@ -8,21 +8,7 @@ import {
   normalizePnIdentifier,
   pnFolderDisplayName
 } from './integratorStoragePaths';
-
-async function driveFetch(
-  accessToken: string,
-  path: string,
-  init?: RequestInit
-): Promise<Response> {
-  return fetch(`https://www.googleapis.com/drive/v3${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      ...(init?.headers || {})
-    }
-  });
-}
+import { driveV3FetchWithRetry } from './googleApiRetry';
 
 function escapeDriveQueryName(name: string): string {
   return name.replace(/'/g, "\\'");
@@ -34,11 +20,12 @@ export async function findFolderByNameUnderParent(
   parentId: string
 ): Promise<string | null> {
   const q = `name='${escapeDriveQueryName(name)}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const res = await driveFetch(
+  const res = await driveV3FetchWithRetry(
     accessToken,
-    `/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1`
+    `/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1`,
+    undefined,
+    `findFolder ${name}`
   );
-  if (!res.ok) return null;
   const data = (await res.json()) as { files?: Array<{ id: string }> };
   return data.files?.[0]?.id ?? null;
 }
@@ -48,14 +35,19 @@ export async function createFolderUnderParent(
   name: string,
   parentId: string
 ): Promise<string> {
-  const res = await driveFetch(accessToken, '/files', {
-    method: 'POST',
-    body: JSON.stringify({
-      name,
-      mimeType: 'application/vnd.google-apps.folder',
-      parents: [parentId]
-    })
-  });
+  const res = await driveV3FetchWithRetry(
+    accessToken,
+    '/files',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [parentId],
+      }),
+    },
+    `createFolder ${name}`
+  );
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Failed to create folder "${name}": ${res.status} ${text.slice(0, 200)}`);
@@ -89,11 +81,12 @@ export async function findPnRootFolderId(
   const normalized = normalizePnIdentifier(pnIdentifier);
   const name = pnFolderDisplayName(normalized);
   const q = `name='${escapeDriveQueryName(name)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const res = await driveFetch(
+  const res = await driveV3FetchWithRetry(
     accessToken,
-    `/files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1`
+    `/files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1`,
+    undefined,
+    `findPnRoot ${normalized}`
   );
-  if (!res.ok) return null;
   const data = (await res.json()) as { files?: Array<{ id: string }> };
   return data.files?.[0]?.id ?? null;
 }

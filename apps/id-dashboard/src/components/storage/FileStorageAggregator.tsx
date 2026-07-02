@@ -276,6 +276,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const pendingRetryTimeoutRef = React.useRef<number | null>(null);
   /** Shared guard for POST /storage/initialize from persist, rebuild, and loadFiles. */
   const driveLayoutInitInFlightRef = React.useRef<Set<string>>(new Set());
+  /** Skip redundant rebuild for this long after a successful connect init. */
+  const driveLayoutInitJustCompletedRef = React.useRef<Map<string, number>>(new Map());
+  const DRIVE_INIT_REBUILD_COOLDOWN_MS = 30_000;
   
   // Use refs to avoid accessing state/props during initialization
   // Initialize with null to completely avoid any initialization order issues
@@ -993,6 +996,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             throw err;
           }
         }, maxAttempts, 2000);
+
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const idxRes = await ownerGet(
+            accessToken,
+            `/api/storage/owner-index/${encodeURIComponent(normalized)}`
+          );
+          if (idxRes.ok) break;
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+          }
+        }
+
+        driveLayoutInitJustCompletedRef.current.set(normalized, Date.now());
         console.log('✅ [StorageCredentials] Drive layout built on server');
         return true;
       } catch (initError) {
@@ -1928,6 +1944,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     if (!pnId.startsWith('pn-')) return false;
     if (driveLayoutInitInFlightRef.current.has(pnId)) {
       console.log('⏭️ [Storage] Skipping layout rebuild — init already in flight');
+      return false;
+    }
+    const completedAt = driveLayoutInitJustCompletedRef.current.get(pnId);
+    if (completedAt && Date.now() - completedAt < DRIVE_INIT_REBUILD_COOLDOWN_MS) {
+      console.log('⏭️ [Storage] Skipping layout rebuild — init recently completed');
       return false;
     }
     const accessToken = resolveOwnerApiToken();
@@ -3266,7 +3287,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             );
             if (idxRes.status === 409) {
               skipClientDriveDiscovery = true;
-              if (!driveLayoutInitInFlightRef.current.has(pnId)) {
+              const completedAt = driveLayoutInitJustCompletedRef.current.get(pnId);
+              const recentlyCompleted =
+                completedAt != null && Date.now() - completedAt < DRIVE_INIT_REBUILD_COOLDOWN_MS;
+              if (!driveLayoutInitInFlightRef.current.has(pnId) && !recentlyCompleted) {
                 const rebuilt = await requestDriveLayoutRebuild(pnId);
                 if (rebuilt) {
                   const retryRes = await ownerGet(

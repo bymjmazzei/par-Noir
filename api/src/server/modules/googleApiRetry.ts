@@ -2,9 +2,13 @@
  * Retry transient Google API failures (503 unavailable, 429 rate limit, 500).
  */
 
+import type { GoogleDriveToken } from './googleOAuth2Helper';
+
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
-function sleep(ms: number): Promise<void> {
+export const INIT_SHEET_STEP_DELAY_MS = 300;
+
+export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -12,6 +16,9 @@ export function isRetryableGoogleError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   if (/service is currently unavailable/i.test(msg)) return true;
   if (/rate limit/i.test(msg)) return true;
+  if (/layout incomplete after init/i.test(msg)) return true;
+  const code = (err as { code?: string })?.code;
+  if (code === 'DRIVE_LAYOUT_INCOMPLETE') return true;
   const status =
     (err as { code?: number; status?: number })?.code ??
     (err as { response?: { status?: number } })?.response?.status;
@@ -59,4 +66,90 @@ export async function fetchGoogleDriveWithRetry(
     }
     return res;
   });
+}
+
+/** Drive v3 path helper (init-only). */
+export async function driveV3FetchWithRetry(
+  accessToken: string,
+  path: string,
+  init: RequestInit | undefined,
+  label: string
+): Promise<Response> {
+  return fetchGoogleDriveWithRetry(
+    `https://www.googleapis.com/drive/v3${path}`,
+    {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        ...(init?.headers || {}),
+      },
+    },
+    label
+  );
+}
+
+export async function setPublicPermissionWithRetry(
+  accessToken: string,
+  fileId: string,
+  label: string
+): Promise<void> {
+  const res = await fetchGoogleDriveWithRetry(
+    `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+    },
+    label
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Failed to set public permission on ${fileId}: ${res.status} ${text.slice(0, 200)}`);
+  }
+}
+
+export type ContentClassName = 'media' | 'thoughts' | 'collections';
+
+/** Get-or-create index sheet in a folder with per-step retry (init-only). */
+export async function ensureIndexSheetInFolder(
+  label: string,
+  token: GoogleDriveToken,
+  folderId: string,
+  indexType: 'public' | 'owner',
+  userPnIdentifier: string,
+  accountId: string | undefined,
+  contentClass?: ContentClassName
+): Promise<string> {
+  const { IndexSheetsService } = await import('./indexSheetsService');
+  try {
+    return await withGoogleRetry(`${label}:get`, () =>
+      IndexSheetsService.getIndexSheet(
+        token,
+        folderId,
+        indexType,
+        userPnIdentifier,
+        accountId,
+        contentClass
+      )
+    );
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes('not found') || msg.toLowerCase().includes('not found')) {
+      return withGoogleRetry(`${label}:create`, () =>
+        IndexSheetsService.createIndexSheet(
+          token,
+          folderId,
+          indexType,
+          userPnIdentifier,
+          accountId,
+          contentClass
+        )
+      );
+    }
+    throw error;
+  }
 }
