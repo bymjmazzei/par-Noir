@@ -9,6 +9,13 @@ import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 import { isPortableStorageProvider } from './storage/storageProviderUtils';
 import * as MsgPortable from './storage/messagePortableService';
 import { messagingLog } from '../utils/messagingLog';
+import { isGoogleSheetsPerMinuteQuota } from './googleApiRetry';
+
+function rethrowIfSheetsQuota(err: unknown): never | void {
+  if (isGoogleSheetsPerMinuteQuota(err)) {
+    throw err;
+  }
+}
 
 export interface Message {
   messageId: string;
@@ -679,14 +686,9 @@ export class MessageSheetsService {
           total = rowsToProcess.length;
         }
       } catch (error: any) {
-        messagingLog.warn('[MessageSheetsService] Failed to read message range, reading all rows', { message: error?.message });
-        // Fallback: read all rows
-        const fullResponse = await sheets.spreadsheets.values.get({
-          spreadsheetId,
-          range: 'Messages!A2:I'
-        });
-        rowsToProcess = fullResponse.data.values || [];
-        total = rowsToProcess.length;
+        rethrowIfSheetsQuota(error);
+        messagingLog.warn('[MessageSheetsService] Failed to read message range', { message: error?.message });
+        throw error;
       }
     } else {
       // With offset, need to count first to know where to start
@@ -698,14 +700,9 @@ export class MessageSheetsService {
         });
         total = (countResponse.data.values || []).length;
       } catch (error: any) {
-        // Fallback: read all rows to count
-        messagingLog.warn('[MessageSheetsService] Failed to get row count, reading all rows', { message: error?.message });
-        const fullResponse = await sheets.spreadsheets.values.get({
-          spreadsheetId,
-          range: 'Messages!A2:I'
-        });
-        rowsToProcess = fullResponse.data.values || [];
-        total = rowsToProcess.length;
+        rethrowIfSheetsQuota(error);
+        messagingLog.warn('[MessageSheetsService] Failed to get row count', { message: error?.message });
+        throw error;
       }
 
       // Calculate which rows to read (with offset, read from startRow to endRow)
@@ -721,14 +718,9 @@ export class MessageSheetsService {
           });
           rowsToProcess = response.data.values || [];
         } catch (error: any) {
-          messagingLog.warn('[MessageSheetsService] Failed to read specific range, reading all rows', { message: error?.message });
-          // Fallback: read all rows
-          const fullResponse = await sheets.spreadsheets.values.get({
-            spreadsheetId,
-            range: 'Messages!A2:I'
-          });
-          rowsToProcess = fullResponse.data.values || [];
-          total = rowsToProcess.length;
+          rethrowIfSheetsQuota(error);
+          messagingLog.warn('[MessageSheetsService] Failed to read specific range', { message: error?.message });
+          throw error;
         }
       } else if (rowsToProcess.length > 0) {
         // Already have all rows from fallback, apply offset/limit
@@ -861,14 +853,15 @@ export class MessageSheetsService {
   }
 
   /**
-   * Mark message as read
+   * Mark message as read (bounded column-D lookup; newest messages at row 2).
    */
   static async markAsRead(
     token: GoogleDriveToken,
     spreadsheetId: string,
     messageId: string,
     userPnIdentifier: string,
-    accountId: string | undefined
+    accountId: string | undefined,
+    searchWindow = 20
   ): Promise<void> {
     if (await isPortableStorageProvider(userPnIdentifier)) {
       await MsgPortable.markAsReadPortable(userPnIdentifier, spreadsheetId, [messageId], accountId);
@@ -877,28 +870,47 @@ export class MessageSheetsService {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
 
-    // Get all messages to find the row
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: 'Messages!A2:I'
-    });
+    let rowIndex = -1;
+    let scanned = 0;
+    const maxScan = Math.max(searchWindow, 100);
 
-    const rows = response.data.values || [];
-    const rowIndex = rows.findIndex(row => row[3] === messageId);
+    while (rowIndex === -1 && scanned < maxScan) {
+      const batchSize = Math.min(20, maxScan - scanned);
+      const startRow = 2 + scanned;
+      const endRow = startRow + batchSize - 1;
+      try {
+        const response = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: `Messages!D${startRow}:D${endRow}`,
+        });
+        const ids = response.data.values || [];
+        rowIndex = ids.findIndex((row) => row[0] === messageId);
+        if (rowIndex !== -1) {
+          rowIndex += scanned;
+          break;
+        }
+        if (ids.length < batchSize) {
+          break;
+        }
+        scanned += batchSize;
+      } catch (err: unknown) {
+        rethrowIfSheetsQuota(err);
+        throw err;
+      }
+    }
 
     if (rowIndex === -1) {
       throw new Error('Message not found');
     }
 
-    // Update read status (rowIndex + 2 because of header and 0-based index)
     const readAt = new Date().toISOString();
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: `Messages!E${rowIndex + 2}:F${rowIndex + 2}`,
       valueInputOption: 'RAW',
       requestBody: {
-        values: [['true', readAt]]
-      }
+        values: [['true', readAt]],
+      },
     });
   }
 

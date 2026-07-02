@@ -41,7 +41,7 @@ export function NotificationBell({ onNotificationClick }: NotificationBellProps)
     }
   };
 
-  const socketConnected = useRealtimeSync(() => {
+  const socketConnected = useRealtimeSync(['new_notification'], () => {
     loadUnreadCount();
   });
 

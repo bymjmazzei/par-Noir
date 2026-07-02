@@ -28,7 +28,7 @@ export function RequestsList({ onRequestAccept }: RequestsListProps) {
   const [loading, setLoading] = useState(true);
   const [processingRequests, setProcessingRequests] = useState<Set<string>>(new Set());
 
-  const socketConnected = useRealtimeSync(() => {
+  const socketConnected = useRealtimeSync(['new_notification'], () => {
     setLoading(true);
     loadDataRef.current?.();
   });

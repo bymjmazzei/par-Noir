@@ -6,7 +6,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, MoreVertical, Trash2, Users } from 'lucide-react';
 import { MessageThread as MessageThreadType } from '../services/messageService';
-import { getInboxThreads, deleteConversation, MESSAGING_INBOX_REFRESH_EVENT, DriveRateLimitedError } from '../services/messageService';
+import { getInboxThreads, deleteConversation, MESSAGING_INBOX_REFRESH_EVENT, DriveRateLimitedError, MESSAGING_POLL_BACKSTOP_MS } from '../services/messageService';
+import { isMessagingRateLimited } from '../services/messagingRateLimitState';
 import type { SelectedInboxThread } from '../types/messaging';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
@@ -30,9 +31,9 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
   const loadingDisplayNamesRef = useRef<Set<string>>(new Set());
   const rateLimitRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const socketConnected = useRealtimeSync(() => {
-    if (userState.pnIdentifier) {
-      getInboxThreads(userState.pnIdentifier).then(setThreads).catch(() => {});
+  const socketConnected = useRealtimeSync(['new_message'], () => {
+    if (userState.pnIdentifier && !isMessagingRateLimited()) {
+      void loadThreadsFromApi(false);
     }
   });
 
@@ -74,6 +75,7 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
 
   const loadThreadsFromApi = async (isInitial = false, clearCacheFirst = false, retryAttempt = 0) => {
     if (!userState.pnIdentifier) return;
+    if (!isInitial && isMessagingRateLimited()) return;
     const pn = userState.pnIdentifier;
     try {
       if (clearCacheFirst || refreshKey > 0) {
@@ -187,18 +189,18 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
     };
     window.addEventListener(MESSAGING_INBOX_REFRESH_EVENT, onInboxRefresh);
 
-    // Poll for updates when tab is visible. Realtime is primary; polling is a
-    // safety net (slower with a socket, faster without) so a missed event never
-    // leaves the inbox stale until a manual refresh.
-    const pollMs = socketConnected ? 20000 : 15000;
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void loadThreadsFromApi(false);
-      }
-    }, pollMs);
+    // Realtime is primary; poll only as a backstop when the socket is disconnected.
+    const interval =
+      socketConnected
+        ? null
+        : setInterval(() => {
+            if (document.visibilityState === 'visible' && !isMessagingRateLimited()) {
+              void loadThreadsFromApi(false);
+            }
+          }, MESSAGING_POLL_BACKSTOP_MS);
     
     return () => {
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
       if (rateLimitRetryRef.current) {
         clearTimeout(rateLimitRetryRef.current);
       }

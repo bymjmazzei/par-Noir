@@ -7,6 +7,7 @@ import { initBrowserSentry } from './config/sentry';
 import App from './App';
 import './index.css';
 import { UserStateProvider } from './contexts/UserStateContext';
+import { RealtimeSyncProvider } from './contexts/RealtimeSyncContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 initBrowserSentry();
@@ -20,7 +21,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
       <UserStateProvider>
-        <App />
+        <RealtimeSyncProvider>
+          <App />
+        </RealtimeSyncProvider>
       </UserStateProvider>
     </ErrorBoundary>
   </React.StrictMode>

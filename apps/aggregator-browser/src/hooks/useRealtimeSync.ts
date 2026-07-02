@@ -1,49 +1,41 @@
 /**
- * Optional Socket.IO client for message/notification hints (falls back to polling).
+ * Subscribe to shared Socket.IO hints (falls back to polling when disconnected).
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { API_ENDPOINT } from '../config/api';
-import { PNOAuthService } from '../services/pnOAuthService';
+import {
+  subscribeRealtimeConnected,
+  subscribeRealtimeSync,
+  type RealtimeEventType,
+} from '../services/realtimeSyncService';
 
-export function useRealtimeSync(onEvent?: () => void): boolean {
+export function useRealtimeSync(
+  events: RealtimeEventType[] = ['new_message', 'new_notification'],
+  onEvent?: () => void
+): boolean {
   const callbackRef = useRef(onEvent);
   callbackRef.current = onEvent;
   const [connected, setConnected] = useState(false);
+  const eventsKey = events.join(',');
 
   useEffect(() => {
-    let socket: { disconnect: () => void; on: (ev: string, fn: () => void) => void } | null = null;
-    let cancelled = false;
+    return subscribeRealtimeConnected(setConnected);
+  }, []);
 
-    (async () => {
-      try {
-        const session = PNOAuthService.loadSession();
-        if (!session?.accessToken) return;
+  useEffect(() => {
+    if (!onEvent) return;
+    const parsed = eventsKey.split(',').filter(Boolean) as RealtimeEventType[];
+    return subscribeRealtimeSync(parsed, () => callbackRef.current?.());
+  }, [eventsKey, onEvent]);
 
-        const { io } = await import('socket.io-client');
-        if (cancelled) return;
+  return connected;
+}
 
-        const s = io(API_ENDPOINT, {
-          transports: ['websocket', 'polling'],
-          auth: { token: session.accessToken }
-        });
+export function useRealtimeConnected(): boolean {
+  const [connected, setConnected] = useState(false);
 
-        s.on('new_message', () => callbackRef.current?.());
-        // Server payload is { threadId, messageId } only — client refetches inbox/thread.
-        s.on('new_notification', () => callbackRef.current?.());
-        s.on('connect', () => setConnected(true));
-        s.on('disconnect', () => setConnected(false));
-        socket = s;
-      } catch {
-        setConnected(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      setConnected(false);
-      socket?.disconnect();
-    };
+  useEffect(() => {
+    return subscribeRealtimeConnected(setConnected);
   }, []);
 
   return connected;

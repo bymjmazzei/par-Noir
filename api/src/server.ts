@@ -10389,6 +10389,21 @@ class ProductionServer {
         const inboxSheetId = driveIndex.inboxSheetId;
 
         try {
+          const {
+            getCachedInboxConversations,
+            setCachedInboxConversations,
+          } = await import('./server/modules/messagingReadCache');
+
+          type InboxCachePayload = {
+            conversations: unknown[];
+            threads: Array<{ participantPnIdentifier: string; lastMessageAt: string }>;
+          };
+
+          const cachedInbox = await getCachedInboxConversations<InboxCachePayload>(pnIdentifier);
+          if (cachedInbox) {
+            return res.json(cachedInbox);
+          }
+
           const inboxConversations = await MessageSheetsService.getInboxConversations(
             token,
             inboxSheetId,
@@ -10454,7 +10469,9 @@ class ProductionServer {
             lastMessageAt: conv.lastMessageAt,
           }));
 
-          return res.json({ conversations: enrichedConversations, threads });
+          const payload = { conversations: enrichedConversations, threads };
+          await setCachedInboxConversations(pnIdentifier, payload);
+          return res.json(payload);
         } catch (inboxError: unknown) {
           const { isGoogleSheetsRateLimit } = await import('./server/modules/googleSheetsRateLimit');
           console.warn(
@@ -10889,20 +10906,46 @@ class ProductionServer {
         const messageOffset = offset || 0;
         const fetchStart = Date.now();
         messagingLog.debug('[GetConversation] Fetching messages from sheet', { limit: messageLimit, offset: messageOffset });
-        const result = await MessageSheetsService.getMessages(
-          token,
-          conversationSheetId,
-          finalConnectionId,
-          '',
+
+        const {
+          getCachedConversationMessages,
+          setCachedConversationMessages,
+        } = await import('./server/modules/messagingReadCache');
+
+        type ConversationCachePayload = { messages: unknown[]; total: number };
+        const cachedConversation = await getCachedConversationMessages<ConversationCachePayload>(
           pnIdentifier,
-          accountId,
-          { 
-            limit: messageLimit, 
-            offset: messageOffset,
-            includeTotal: false,
-            relayOnly: true
-          }
+          normalizedParticipantPnIdentifier,
+          messageLimit,
+          messageOffset
         );
+
+        let result: { messages: Array<{ toPnIdentifier?: string }>; total: number };
+        if (cachedConversation) {
+          result = cachedConversation as typeof result;
+        } else {
+          result = await MessageSheetsService.getMessages(
+            token,
+            conversationSheetId,
+            finalConnectionId,
+            '',
+            pnIdentifier,
+            accountId,
+            { 
+              limit: messageLimit, 
+              offset: messageOffset,
+              includeTotal: false,
+              relayOnly: true
+            }
+          );
+          await setCachedConversationMessages(
+            pnIdentifier,
+            normalizedParticipantPnIdentifier,
+            messageLimit,
+            messageOffset,
+            { messages: result.messages, total: result.total }
+          );
+        }
         messagingLog.debug(`[GetConversation] getMessages took ${Date.now() - fetchStart}ms`);
 
         // Set toPnIdentifier for all messages (use normalized)
@@ -10917,6 +10960,13 @@ class ProductionServer {
       } catch (error: any) {
         messagingLog.error('[GetConversation] ERROR', { message: error?.message, name: error?.name });
         messagingLog.error('[GetConversation] ERROR stack', { stack: error?.stack });
+        const { isGoogleSheetsRateLimit } = await import('./server/modules/googleSheetsRateLimit');
+        if (isGoogleSheetsRateLimit(error)) {
+          return res.status(503).json({
+            error: 'drive_rate_limited',
+            message: 'Google Drive is temporarily busy. Please wait a moment and try again.',
+          });
+        }
         // Check for authentication errors and return 401 instead of 500
         if (error.message?.includes('authentication failed') || 
             error?.response?.status === 401 || 
@@ -11421,6 +11471,12 @@ class ProductionServer {
           });
         }
 
+        const { invalidateMessagingCachesForUsers } = await import('./server/modules/messagingReadCache');
+        await invalidateMessagingCachesForUsers([fromPnIdentifier, toPnIdentifier], [
+          { pn: fromPnIdentifier, other: toPnIdentifier },
+          { pn: toPnIdentifier, other: fromPnIdentifier },
+        ]).catch(() => undefined);
+
         return res.json({
           success: true,
           message: {
@@ -11662,20 +11718,17 @@ class ProductionServer {
     this.app.post('/api/messages/:messageId/read', async (req, res) => {
       try {
         const { messageId } = req.params;
-        const { userPnIdentifier, participantPnIdentifier } = req.body;
+        const { userPnIdentifier, participantPnIdentifier, spreadsheetId: bodySpreadsheetId } = req.body;
         if (!messageId || !userPnIdentifier) {
           return res.status(400).json({ error: 'messageId and userPnIdentifier are required' });
         }
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, userPnIdentifier))) return;
 
         const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
-        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Normalize pn identifier
         const pnIdentifier = userPnIdentifier;
 
-        // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.status(404).json({ error: 'User credentials not found' });
@@ -11691,7 +11744,6 @@ class ProductionServer {
         const account = googleDriveAccounts[0];
         const accountId = this.extractAccountId(account);
         
-        // Get full token object (not just access token string) for automatic refresh
         const token = {
           access_token: account.access_token || account.accessToken,
           refresh_token: account.refresh_token || account.refreshToken,
@@ -11699,35 +11751,46 @@ class ProductionServer {
           expires_in: account.expires_in
         };
 
-        const metadataFolder = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!metadataFolder) {
-          return this.driveNotInitialized(res);
-        }
-
-        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-          token,
-          metadataFolder.pnFolderId,
-          pnIdentifier,
-          accountId
-        );
-
-        // Get conversation sheet (need participantPnIdentifier to find the right sheet)
         if (!participantPnIdentifier) {
           return res.status(400).json({ error: 'participantPnIdentifier is required to mark message as read' });
         }
 
-        // Use participantPnIdentifier directly (already normalized)
-        const normalizedParticipantPnIdentifier = participantPnIdentifier;
+        const normalizedParticipantPnIdentifier = participantPnIdentifier.startsWith('pn-')
+          ? participantPnIdentifier
+          : `pn-${participantPnIdentifier}`;
 
-        const conversationSheetId = await MessageSheetsService.getConversationSheet(
-          token,
-          messagesFolderId,
-          normalizedParticipantPnIdentifier,
-          pnIdentifier,
-          accountId
-        );
+        let conversationSheetId: string | undefined =
+          typeof bodySpreadsheetId === 'string' && bodySpreadsheetId.trim()
+            ? bodySpreadsheetId.trim()
+            : undefined;
 
-        // Mark message as read
+        const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./server/modules/pnDriveIndex');
+        const driveIndex = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);
+
+        if (!conversationSheetId && isPnDriveIndexComplete(driveIndex)) {
+          conversationSheetId = driveIndex.conversationSheets?.[normalizedParticipantPnIdentifier];
+        }
+
+        if (!conversationSheetId && isPnDriveIndexComplete(driveIndex)) {
+          try {
+            const inboxEntry = await MessageSheetsService.getInboxConversationByParticipant(
+              token,
+              driveIndex.inboxSheetId,
+              normalizedParticipantPnIdentifier,
+              pnIdentifier,
+              accountId,
+              50
+            );
+            conversationSheetId = inboxEntry?.spreadsheetId;
+          } catch {
+            /* fall through */
+          }
+        }
+
+        if (!conversationSheetId) {
+          return res.status(404).json({ error: 'Conversation sheet not found' });
+        }
+
         try {
           await MessageSheetsService.markAsRead(
             token,
@@ -11747,6 +11810,13 @@ class ProductionServer {
         return res.json({ success: true });
       } catch (error: any) {
         console.error('Error marking message as read:', error);
+        const { isGoogleSheetsRateLimit } = await import('./server/modules/googleSheetsRateLimit');
+        if (isGoogleSheetsRateLimit(error)) {
+          return res.status(503).json({
+            error: 'drive_rate_limited',
+            message: 'Google Drive is temporarily busy. Please wait a moment and try again.',
+          });
+        }
         // Check for authentication errors and return 401 instead of 500
         if (error.message?.includes('authentication failed') || 
             error?.response?.status === 401 || 
@@ -12102,6 +12172,15 @@ class ProductionServer {
             // Non-critical - connection removed from user's sheet, conversation deleted
           }
         }
+
+        const { invalidateMessagingCachesForUsers } = await import('./server/modules/messagingReadCache');
+        await invalidateMessagingCachesForUsers(
+          [pnIdentifier, participantPnIdentifier],
+          [
+            { pn: pnIdentifier, other: participantPnIdentifier },
+            { pn: participantPnIdentifier, other: pnIdentifier },
+          ]
+        ).catch(() => undefined);
 
         return res.json({ success: true });
       } catch (error: any) {
@@ -14901,6 +14980,15 @@ class ProductionServer {
           });
           // Don't fail the request if conversation creation fails
         }
+
+        const { invalidateMessagingCachesForUsers } = await import('./server/modules/messagingReadCache');
+        await invalidateMessagingCachesForUsers(
+          [pnIdentifier, otherUserPnIdentifier],
+          [
+            { pn: pnIdentifier, other: otherUserPnIdentifier },
+            { pn: otherUserPnIdentifier, other: pnIdentifier },
+          ]
+        ).catch(() => undefined);
 
         return res.json({ success: true });
       } catch (error: any) {

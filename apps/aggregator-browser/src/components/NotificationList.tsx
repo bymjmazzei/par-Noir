@@ -75,7 +75,7 @@ export function NotificationList({
     }
   };
 
-  const socketConnected = useRealtimeSync(() => {
+  const socketConnected = useRealtimeSync(['new_notification'], () => {
     loadNotifications(true);
   });
 

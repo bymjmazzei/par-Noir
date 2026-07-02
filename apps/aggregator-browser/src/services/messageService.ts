@@ -10,8 +10,66 @@ import { encryptOutgoingMessage, decryptIncomingMessage, type DmSessionRecovery 
 import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
 import { encryptMessageRequest, decryptMessageRequest } from '@par-noir/dm-crypto';
 import { messageAuthHeaders, messageFetch } from './messageAuthFetch';
+import { setMessagingRateLimited } from './messagingRateLimitState';
 
 export const MESSAGING_INBOX_REFRESH_EVENT = 'pn_messaging_inbox_refresh';
+export const MESSAGING_POLL_BACKSTOP_MS = 60_000;
+
+const inboxThreadsInflight = new Map<string, Promise<MessageThread[]>>();
+const conversationMessagesInflight = new Map<
+  string,
+  Promise<{ messages: Message[]; total: number }>
+>();
+
+function conversationInflightKey(
+  userPnIdentifier: string,
+  participantPnIdentifier: string,
+  limit?: number,
+  offset?: number
+): string {
+  return `${userPnIdentifier}:${participantPnIdentifier}:${limit ?? ''}:${offset ?? ''}`;
+}
+
+function resolveRecoveryFromCache(
+  userPnIdentifier: string,
+  participantPnIdentifier: string,
+  kemCiphertext?: string,
+  wrappedMessageRootKey?: string
+): DmSessionRecovery {
+  if (kemCiphertext || wrappedMessageRootKey) {
+    return { kemCiphertext, wrappedMessageRootKey };
+  }
+  const cached = inboxCacheService.get(userPnIdentifier);
+  const entry = cached?.find((e) => e.participantPnIdentifier === participantPnIdentifier);
+  return {
+    kemCiphertext: entry?.kemCiphertext,
+    wrappedMessageRootKey: entry?.wrappedMessageRootKey,
+  };
+}
+
+async function resolveRecoveryForDecrypt(
+  userPnIdentifier: string,
+  participantPnIdentifier: string,
+  kemCiphertext?: string,
+  wrappedMessageRootKey?: string
+): Promise<DmSessionRecovery> {
+  const fromArgsOrCache = resolveRecoveryFromCache(
+    userPnIdentifier,
+    participantPnIdentifier,
+    kemCiphertext,
+    wrappedMessageRootKey
+  );
+  if (fromArgsOrCache.kemCiphertext || fromArgsOrCache.wrappedMessageRootKey) {
+    return fromArgsOrCache;
+  }
+  const thread = (await getMessageThreads(userPnIdentifier)).find(
+    (t) => t.participantPnIdentifier === participantPnIdentifier
+  );
+  return {
+    kemCiphertext: thread?.kemCiphertext,
+    wrappedMessageRootKey: thread?.wrappedMessageRootKey,
+  };
+}
 
 export class DriveRateLimitedError extends Error {
   readonly code = 'drive_rate_limited';
@@ -125,38 +183,50 @@ export async function getMessages(userPnIdentifier: string): Promise<Message[]> 
  * Merged DM + group inbox threads, sorted by lastMessageAt.
  */
 export async function getInboxThreads(userPnIdentifier: string): Promise<MessageThread[]> {
-  const dmThreads = await getMessageThreads(userPnIdentifier);
+  const inflight = inboxThreadsInflight.get(userPnIdentifier);
+  if (inflight) return inflight;
 
-  const dmOnly = dmThreads.filter((t) => t.threadType !== 'group');
-  const groupThreads: MessageThread[] = [];
+  const work = (async (): Promise<MessageThread[]> => {
+    const dmThreads = await getMessageThreads(userPnIdentifier);
 
-  for (const conv of dmThreads) {
-    if (conv.threadType !== 'group') continue;
-    const gid = conv.groupId || conv.participantPnIdentifier;
-    groupThreads.push({
-      threadType: 'group',
-      participantPnIdentifier: gid,
-      participantName: conv.groupTitle || 'Group',
-      lastMessage: conv.lastMessage,
-      unreadCount: conv.unreadCount || 0,
-      messages: [],
-      spreadsheetId: conv.spreadsheetId,
-      connectionId: conv.ownerPnIdentifier || conv.connectionId,
-      groupId: gid,
-      groupTitle: conv.groupTitle || 'Group',
-      ownerPnIdentifier: conv.ownerPnIdentifier || conv.connectionId,
-      accessRole: conv.accessRole || 'readWrite',
-      wrappedChatKey: conv.wrappedChatKey || '',
+    const dmOnly = dmThreads.filter((t) => t.threadType !== 'group');
+    const groupThreads: MessageThread[] = [];
+
+    for (const conv of dmThreads) {
+      if (conv.threadType !== 'group') continue;
+      const gid = conv.groupId || conv.participantPnIdentifier;
+      groupThreads.push({
+        threadType: 'group',
+        participantPnIdentifier: gid,
+        participantName: conv.groupTitle || 'Group',
+        lastMessage: conv.lastMessage,
+        unreadCount: conv.unreadCount || 0,
+        messages: [],
+        spreadsheetId: conv.spreadsheetId,
+        connectionId: conv.ownerPnIdentifier || conv.connectionId,
+        groupId: gid,
+        groupTitle: conv.groupTitle || 'Group',
+        ownerPnIdentifier: conv.ownerPnIdentifier || conv.connectionId,
+        accessRole: conv.accessRole || 'readWrite',
+        wrappedChatKey: conv.wrappedChatKey || '',
+      });
+    }
+
+    const merged = [...dmOnly, ...groupThreads];
+    merged.sort((a, b) => {
+      const ta = a.lastMessage?.timestamp || '';
+      const tb = b.lastMessage?.timestamp || '';
+      return new Date(tb).getTime() - new Date(ta).getTime();
     });
-  }
+    return merged;
+  })();
 
-  const merged = [...dmOnly, ...groupThreads];
-  merged.sort((a, b) => {
-    const ta = a.lastMessage?.timestamp || '';
-    const tb = b.lastMessage?.timestamp || '';
-    return new Date(tb).getTime() - new Date(ta).getTime();
-  });
-  return merged;
+  inboxThreadsInflight.set(userPnIdentifier, work);
+  try {
+    return await work;
+  } finally {
+    inboxThreadsInflight.delete(userPnIdentifier);
+  }
 }
 
 export async function refreshMessagingInbox(
@@ -192,6 +262,7 @@ export async function getMessageThreads(userPnIdentifier: string): Promise<Messa
 
   const rateLimited = await parseDriveRateLimitedResponse(response);
   if (rateLimited) {
+    setMessagingRateLimited();
     throw rateLimited;
   }
 
@@ -239,70 +310,99 @@ export async function getConversationMessages(
   spreadsheetId?: string,
   wrappedMessageRootKey?: string
 ): Promise<{ messages: Message[]; total: number }> {
-  const hasCached = !!(
-    connectionId &&
-    spreadsheetId &&
-    connectionId.trim() !== '' &&
-    spreadsheetId.trim() !== ''
-  );
-
-  const body = {
+  const inflightKey = conversationInflightKey(
     userPnIdentifier,
     participantPnIdentifier,
-    ...(limit != null && { limit }),
-    ...(offset != null && { offset }),
-    ...(hasCached && { connectionId, spreadsheetId })
-  };
-
-  const response = hasCached
-    ? await messageFetch('/api/messages/conversation', {
-        method: 'POST',
-        bodyObject: body,
-      })
-    : await messageFetch(
-        `/api/messages/conversation?${new URLSearchParams({
-          userPnIdentifier,
-          participantPnIdentifier,
-          ...(limit != null && { limit: String(limit) }),
-          ...(offset != null && { offset: String(offset) })
-        }).toString()}`,
-        { method: 'GET' }
-      );
-
-  if (!response.ok) {
-    throw new Error('Failed to load conversation messages');
-  }
-
-  const result = await response.json();
-  const raw = result.messages || [];
-  const threadMeta = (await getMessageThreads(userPnIdentifier)).find(
-    (t) => t.participantPnIdentifier === participantPnIdentifier
+    limit,
+    offset
   );
-  const recovery: DmSessionRecovery = {
-    kemCiphertext: kemCiphertext || threadMeta?.kemCiphertext,
-    wrappedMessageRootKey: wrappedMessageRootKey || threadMeta?.wrappedMessageRootKey,
-  };
+  const inflight = conversationMessagesInflight.get(inflightKey);
+  if (inflight) return inflight;
 
-  const messages: Message[] = await Promise.all(
-    raw.map(async (row: Message & { encryptedContent?: string; cryptoVersion?: number }) => {
-      const enc = row.encryptedContent || row.content || '';
-      let content = '';
-      if (connectionId && enc) {
-        try {
-          content = await decryptIncomingMessage(enc, connectionId, recovery);
-        } catch {
-          content = '[Unable to decrypt message]';
+  const work = (async (): Promise<{ messages: Message[]; total: number }> => {
+    const hasCached = !!(
+      connectionId &&
+      spreadsheetId &&
+      connectionId.trim() !== '' &&
+      spreadsheetId.trim() !== ''
+    );
+
+    const body = {
+      userPnIdentifier,
+      participantPnIdentifier,
+      ...(limit != null && { limit }),
+      ...(offset != null && { offset }),
+      ...(hasCached && { connectionId, spreadsheetId })
+    };
+
+    const response = hasCached
+      ? await messageFetch('/api/messages/conversation', {
+          method: 'POST',
+          bodyObject: body,
+        })
+      : await messageFetch(
+          `/api/messages/conversation?${new URLSearchParams({
+            userPnIdentifier,
+            participantPnIdentifier,
+            ...(limit != null && { limit: String(limit) }),
+            ...(offset != null && { offset: String(offset) })
+          }).toString()}`,
+          { method: 'GET' }
+        );
+
+    const rateLimited = await parseDriveRateLimitedResponse(response);
+    if (rateLimited) {
+      setMessagingRateLimited();
+      throw rateLimited;
+    }
+
+    if (!response.ok) {
+      throw new Error('Failed to load conversation messages');
+    }
+
+    const result = await response.json();
+    const raw = result.messages || [];
+    const recovery = await resolveRecoveryForDecrypt(
+      userPnIdentifier,
+      participantPnIdentifier,
+      kemCiphertext,
+      wrappedMessageRootKey
+    );
+
+    const effectiveConnectionId =
+      connectionId ||
+      inboxCacheService
+        .get(userPnIdentifier)
+        ?.find((e) => e.participantPnIdentifier === participantPnIdentifier)?.connectionId;
+
+    const messages: Message[] = await Promise.all(
+      raw.map(async (row: Message & { encryptedContent?: string; cryptoVersion?: number }) => {
+        const enc = row.encryptedContent || row.content || '';
+        let content = '';
+        if (effectiveConnectionId && enc) {
+          try {
+            content = await decryptIncomingMessage(enc, effectiveConnectionId, recovery);
+          } catch {
+            content = '[Unable to decrypt message]';
+          }
         }
-      }
-      return {
-        ...row,
-        content,
-        encrypted: true
-      };
-    })
-  );
+        return {
+          ...row,
+          content,
+          encrypted: true
+        };
+      })
+    );
 
-  return { messages, total: result.total || 0 };
+    return { messages, total: result.total || 0 };
+  })();
+
+  conversationMessagesInflight.set(inflightKey, work);
+  try {
+    return await work;
+  } finally {
+    conversationMessagesInflight.delete(inflightKey);
+  }
 }
 
 /**
@@ -313,7 +413,8 @@ export async function getThreadMessages(
   userPnIdentifier: string,
   participantPnIdentifier: string
 ): Promise<Message[]> {
-  return getConversationMessages(userPnIdentifier, participantPnIdentifier);
+  const result = await getConversationMessages(userPnIdentifier, participantPnIdentifier);
+  return result.messages;
 }
 
 /**
@@ -529,14 +630,19 @@ export async function respondToRequest(
 /**
  * Mark message as read
  */
-export async function markAsRead(messageId: string, userPnIdentifier: string, participantPnIdentifier?: string): Promise<void> {
+export async function markAsRead(
+  messageId: string,
+  userPnIdentifier: string,
+  participantPnIdentifier?: string,
+  spreadsheetId?: string
+): Promise<void> {
   if (!messageId || messageId.startsWith('temp-')) {
     return;
   }
   try {
     const response = await messageFetch(`/api/messages/${messageId}/read`, {
       method: 'POST',
-      bodyObject: { userPnIdentifier, participantPnIdentifier },
+      bodyObject: { userPnIdentifier, participantPnIdentifier, spreadsheetId },
     });
 
     if (response.status === 404) {

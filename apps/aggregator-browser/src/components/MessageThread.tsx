@@ -7,7 +7,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, Send, Paperclip, MoreVertical, Trash2, Check, Settings } from 'lucide-react';
 import { Message } from '../services/messageService';
 import { useUserState } from '../contexts/UserStateContext';
-import { getConversationMessages, sendMessage, markAsRead, deleteConversation } from '../services/messageService';
+import { getConversationMessages, sendMessage, markAsRead, deleteConversation, DriveRateLimitedError, MESSAGING_POLL_BACKSTOP_MS } from '../services/messageService';
+import { isMessagingRateLimited } from '../services/messagingRateLimitState';
 import {
   getGroupMessages,
   sendGroupMessage,
@@ -84,7 +85,7 @@ export function MessageThread({
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [senderNames, setSenderNames] = useState<Record<string, string>>({});
   const [realtimeRefresh, setRealtimeRefresh] = useState(0);
-  const socketConnected = useRealtimeSync(() => setRealtimeRefresh((n) => n + 1));
+  const socketConnected = useRealtimeSync(['new_message'], () => setRealtimeRefresh((n) => n + 1));
 
   const { selectedId: driveAccountId } = useDriveAccounts({
     authenticatedUserId: userState.pnIdentifier,
@@ -171,6 +172,9 @@ export function MessageThread({
     if (isGroup && !groupRecord) return;
 
     const loadMessages = async (isInitial = false, loadMore = false) => {
+      if (!isInitial && !loadMore && isMessagingRateLimited()) {
+        return;
+      }
       // Prevent duplicate requests
       if (isPollingRef.current && !isInitial && !loadMore) {
         return; // Already polling, skip this request
@@ -235,7 +239,12 @@ export function MessageThread({
           );
           for (const message of unreadMessages) {
             try {
-              await markAsRead(message.messageId, userState.pnIdentifier!, participantPnIdentifier);
+              await markAsRead(
+                message.messageId,
+                userState.pnIdentifier!,
+                participantPnIdentifier,
+                spreadsheetId
+              );
             } catch (error) {
               console.error('Failed to mark as read:', error);
             }
@@ -273,6 +282,10 @@ export function MessageThread({
       } catch (error) {
         // Increment error count
         errorCountRef.current += 1;
+
+        if (error instanceof DriveRateLimitedError) {
+          return;
+        }
         
         // On network errors, preserve existing messages (don't clear them)
         // Only log the error - don't update state
@@ -310,28 +323,29 @@ export function MessageThread({
       loadMessages(true, false);
     }
 
-    // Poll for new messages when tab is visible. Realtime (socket) is the primary
-    // delivery path; polling is a safety net so a missed event never requires a
-    // manual refresh. Poll faster without a socket, slower as a backstop with one.
-    const pollMs = socketConnected ? 15000 : 8000;
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible' && !isPollingRef.current) {
-        // Stop polling if too many consecutive errors
-        if (errorCountRef.current >= 3) {
-          console.warn('Too many polling errors, stopping automatic refresh');
-          return;
-        }
-        loadMessages(false, false);
-      }
-    }, pollMs);
-    
-    return () => clearInterval(interval);
+    // Realtime is primary; poll only as a backstop when the socket is disconnected.
+    const interval =
+      socketConnected
+        ? null
+        : setInterval(() => {
+            if (document.visibilityState === 'visible' && !isPollingRef.current && !isMessagingRateLimited()) {
+              if (errorCountRef.current >= 3) {
+                console.warn('Too many polling errors, stopping automatic refresh');
+                return;
+              }
+              loadMessages(false, false);
+            }
+          }, MESSAGING_POLL_BACKSTOP_MS);
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [userState.isUnlocked, userState.pnIdentifier, participantPnIdentifier, preloadedMessages, groupId, spreadsheetId, socketConnected]);
 
   useEffect(() => {
     if (realtimeRefresh === 0 || !userState.isUnlocked || !userState.pnIdentifier) return;
     if (isGroup && !groupRecord) return;
-    if (isPollingRef.current) return;
+    if (isPollingRef.current || isMessagingRateLimited()) return;
     isPollingRef.current = true;
     fetchMessages(10, 0)
       .then((result) => {
