@@ -32,7 +32,16 @@ All `sheetIds` keys in `PN_DRIVE_SHEET_KEYS` are **required** after init. Missin
 
 No partial writes mid-init.
 
-## Runtime resolver
+### Retry and resilience
+
+Transient Google API errors (503, 429, 5xx) during init are handled at three layers:
+
+1. **Per-step** — `ensureSheet` in `pnDriveInit.ts` wraps get/create in `withGoogleRetry`. Content-class folder `fetch` calls use `fetchGoogleDriveWithRetry`.
+2. **Whole-init backstop** — `POST /api/storage/initialize` wraps `runDriveInitOnce` in `withGoogleRetry` (3 attempts). Returns **503** with `retryable: true` when all attempts exhaust on a retryable error.
+3. **Dashboard** — `postDriveInitializeWithRetry` in `FileStorageAggregator` retries `POST /storage/initialize` with exponential backoff after connect. A shared `driveLayoutInitInFlightRef` dedupes concurrent init from persist vs `loadFiles` rebuild.
+
+`loadFiles` does **not** trigger client-side Drive folder discovery when the owner index is incomplete (409) or server init is in flight — avoiding duplicate Google API load during connect.
+
 
 `requireOwnerDriveContext(pn, accountId?)` in `ownerDriveContext.ts`:
 

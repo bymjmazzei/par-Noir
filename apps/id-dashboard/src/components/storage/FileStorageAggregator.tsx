@@ -21,6 +21,7 @@ import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../../constants/feedCategor
 import { ReportContentModal } from './ReportContentModal';
 import { API_ENDPOINT } from '../../config/api';
 import { ownerFetch, ownerGet } from '../../services/ownerApiService';
+import { retry } from '../../utils/helpers';
 import { getStoredToken, getStoredTokenForPn } from '../../services/parNoirOAuthInline';
 import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 import { driveAccountTokens, normalizeVisibility } from './storageHelpers';
@@ -273,6 +274,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const ownerIndexRetryCountsRef = React.useRef<Map<string, number>>(new Map());
   const rateLimitedBackendsRef = React.useRef<Set<string>>(new Set());
   const pendingRetryTimeoutRef = React.useRef<number | null>(null);
+  /** Shared guard for POST /storage/initialize from persist, rebuild, and loadFiles. */
+  const driveLayoutInitInFlightRef = React.useRef<Set<string>>(new Set());
   
   // Use refs to avoid accessing state/props during initialization
   // Initialize with null to completely avoid any initialization order issues
@@ -966,6 +969,43 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   // CRITICAL: Global lock to prevent multiple persistence calls
   const globalPersistenceLockRef = React.useRef(false);
 
+  const postDriveInitializeWithRetry = React.useCallback(
+    async (pnId: string, accessToken: string, maxAttempts = 3): Promise<boolean> => {
+      const normalized = pnId.startsWith('pn-') ? pnId : `pn-${pnId}`;
+      if (driveLayoutInitInFlightRef.current.has(normalized)) {
+        console.log('⏭️ [Storage] Drive layout init already in flight');
+        return false;
+      }
+      driveLayoutInitInFlightRef.current.add(normalized);
+      try {
+        await retry(async () => {
+          const initRes = await ownerFetch(
+            accessToken,
+            'POST',
+            `/api/storage/initialize/${encodeURIComponent(normalized)}`
+          );
+          if (!initRes.ok) {
+            const initErr = await initRes.text().catch(() => 'Unknown error');
+            const err = new Error(
+              `Drive layout init failed (${initRes.status}): ${initErr.slice(0, 200)}`
+            );
+            (err as { status?: number }).status = initRes.status;
+            throw err;
+          }
+        }, maxAttempts, 2000);
+        console.log('✅ [StorageCredentials] Drive layout built on server');
+        return true;
+      } catch (initError) {
+        console.warn('⚠️ [StorageCredentials] Drive layout build failed after retries:', initError);
+        setError('Drive setup failed. Please try disconnecting and reconnecting Google Drive.');
+        return false;
+      } finally {
+        driveLayoutInitInFlightRef.current.delete(normalized);
+      }
+    },
+    []
+  );
+
   const persistStorageCredentialsToAPI = React.useCallback(async (credentialsPayload?: any, cid?: string | null) => {
     // CRITICAL: Global lock to prevent multiple simultaneous persistence calls
     if (globalPersistenceLockRef.current) {
@@ -1113,21 +1153,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
         // Always await server-side layout build (PUT returns immediately; init can take several minutes).
         console.log('🔄 [StorageCredentials] Building Drive layout on server (may take a few minutes)...');
-        try {
-          const initRes = await ownerFetch(
-            accessToken,
-            'POST',
-            `/api/storage/initialize/${encodeURIComponent(pnIdentifier)}`
-          );
-          if (!initRes.ok) {
-            const initErr = await initRes.text().catch(() => 'Unknown error');
-            console.warn('⚠️ [StorageCredentials] Drive layout build failed:', initErr);
-          } else {
-            console.log('✅ [StorageCredentials] Drive layout built on server');
-          }
-        } catch (initError) {
-          console.warn('⚠️ [StorageCredentials] Drive layout build error:', initError);
-        }
+        await postDriveInitializeWithRetry(pnIdentifier, accessToken);
       } catch (error) {
         console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
           error: error?.message || error,
@@ -1138,7 +1164,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       globalPersistenceLockRef.current = false;
       persistenceInProgressRef.current = false;
     }
-  }, [buildStorageCredentialPayload, persistCredentialsToSecureMetadata, API_ENDPOINT, driveAccounts.length, waitForOwnerApiToken, ensureOwnerApiToken]);
+  }, [buildStorageCredentialPayload, persistCredentialsToSecureMetadata, API_ENDPOINT, driveAccounts.length, waitForOwnerApiToken, ensureOwnerApiToken, postDriveInitializeWithRetry]);
 
   // Token refresh handler - moved here after persistStorageCredentialsToAPI is declared
   // CRITICAL: Use refs for driveAccounts and userEmails to avoid re-registering event listener
@@ -1896,36 +1922,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   // CRITICAL: Track when disconnect happens to prevent immediate re-hydration and re-connection
   const disconnectTimestampRef = React.useRef<number>(0);
   const disconnectedBackendIdsRef = React.useRef<Set<string>>(new Set());
-  const driveLayoutRebuildInFlightRef = React.useRef<Set<string>>(new Set());
   const DISCONNECT_BLOCK_DURATION_MS = 10000; // Block re-adding disconnected accounts for 10 seconds (reduced from 30s to not block unlock)
 
   const requestDriveLayoutRebuild = React.useCallback(async (pnId: string): Promise<boolean> => {
     if (!pnId.startsWith('pn-')) return false;
-    if (driveLayoutRebuildInFlightRef.current.has(pnId)) return false;
+    if (driveLayoutInitInFlightRef.current.has(pnId)) {
+      console.log('⏭️ [Storage] Skipping layout rebuild — init already in flight');
+      return false;
+    }
     const accessToken = resolveOwnerApiToken();
     if (!accessToken) return false;
-    driveLayoutRebuildInFlightRef.current.add(pnId);
-    try {
-      console.log('🔄 [Storage] Rebuilding Google Drive layout via API (folders or index were stale)...');
-      const initRes = await ownerFetch(
-        accessToken,
-        'POST',
-        `/api/storage/initialize/${encodeURIComponent(pnId)}`
-      );
-      if (!initRes.ok) {
-        const errText = await initRes.text().catch(() => 'Unknown error');
-        console.warn('⚠️ [Storage] Drive layout rebuild failed:', errText);
-        return false;
-      }
-      console.log('✅ [Storage] Drive layout rebuilt via API');
-      return true;
-    } catch (err) {
-      console.warn('⚠️ [Storage] Drive layout rebuild error:', err);
-      return false;
-    } finally {
-      driveLayoutRebuildInFlightRef.current.delete(pnId);
-    }
-  }, [resolveOwnerApiToken]);
+    console.log('🔄 [Storage] Rebuilding Google Drive layout via API (folders or index were stale)...');
+    return postDriveInitializeWithRetry(pnId, accessToken);
+  }, [resolveOwnerApiToken, postDriveInitializeWithRetry]);
 
   const hydrateStorageCredentialsFromAPI = React.useCallback(async (forceRefresh?: boolean) => {
     if (hydrationInProgressRef.current) {
@@ -3240,6 +3249,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           console.debug('⏳ [loadFiles] Waiting for refreshed token', { backendId });
         }
         let ownerIndex: any = null;
+        let skipClientDriveDiscovery = false;
 
         const ownerApiToken = resolveOwnerApiToken();
         if (!ownerIndex && currentPnIdentifier && ownerApiToken) {
@@ -3247,25 +3257,31 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             const pnId = currentPnIdentifier.startsWith('pn-')
               ? currentPnIdentifier
               : `pn-${currentPnIdentifier}`;
+            if (driveLayoutInitInFlightRef.current.has(pnId)) {
+              skipClientDriveDiscovery = true;
+            }
             const idxRes = await ownerGet(
               ownerApiToken,
               `/api/storage/owner-index/${encodeURIComponent(pnId)}`
             );
             if (idxRes.status === 409) {
-              const rebuilt = await requestDriveLayoutRebuild(pnId);
-              if (rebuilt) {
-                const retryRes = await ownerGet(
-                  ownerApiToken,
-                  `/api/storage/owner-index/${encodeURIComponent(pnId)}`
-                );
-                if (retryRes.ok) {
-                  const idxData = await retryRes.json();
-                  const provider = backendId.includes('::') ? backendId.split('::')[0] : backendId;
-                  const filteredFiles = (idxData.files || []).filter(
-                    (entry: any) => (entry.backend || 'google_drive') === provider
+              skipClientDriveDiscovery = true;
+              if (!driveLayoutInitInFlightRef.current.has(pnId)) {
+                const rebuilt = await requestDriveLayoutRebuild(pnId);
+                if (rebuilt) {
+                  const retryRes = await ownerGet(
+                    ownerApiToken,
+                    `/api/storage/owner-index/${encodeURIComponent(pnId)}`
                   );
-                  if (filteredFiles.length > 0) {
-                    ownerIndex = { ...idxData, files: filteredFiles };
+                  if (retryRes.ok) {
+                    const idxData = await retryRes.json();
+                    const provider = backendId.includes('::') ? backendId.split('::')[0] : backendId;
+                    const filteredFiles = (idxData.files || []).filter(
+                      (entry: any) => (entry.backend || 'google_drive') === provider
+                    );
+                    if (filteredFiles.length > 0) {
+                      ownerIndex = { ...idxData, files: filteredFiles };
+                    }
                   }
                 }
               }
@@ -3284,7 +3300,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           }
         }
 
-        if (accessToken && currentPnIdentifier && !ownerIndex) {
+        if (accessToken && currentPnIdentifier && !ownerIndex && !skipClientDriveDiscovery) {
           try {
             const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
             const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(accessToken, currentPnIdentifier);

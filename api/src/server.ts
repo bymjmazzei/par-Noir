@@ -454,59 +454,58 @@ class ProductionServer {
     pnIdentifier: string,
     accountId?: string
   ): Promise<void> {
-    const accessToken = token.access_token; // Keep for backward compatibility in fetch calls
+    const accessToken = token.access_token;
+    const { fetchGoogleDriveWithRetry } = await import('./server/modules/googleApiRetry');
     const contentClassFolders = ['media', 'thoughts', 'collections'];
-    
+
     for (const folderName of contentClassFolders) {
-      try {
-        // Check if folder already exists
-        const folderQuery = `name='${folderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
-        const searchResponse = await fetch(searchUrl, {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        });
+      const folderQuery = `name='${folderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+      const searchResponse = await fetchGoogleDriveWithRetry(
+        searchUrl,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+        `contentClassFolder search ${folderName}`
+      );
 
-        let folderId: string | null = null;
-        if (searchResponse.ok) {
-          const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-          if (searchData.files && searchData.files.length > 0) {
-            folderId = searchData.files[0].id;
-            console.log(`[initializeContentClassFolders] Folder '${folderName}' already exists`);
-            // Still initialize index files even if folder exists (they might not exist yet)
-            await this.initializeContentClassIndexFiles(token, folderId, folderName, pnIdentifier, accountId);
-            continue;
-          }
+      let folderId: string | null = null;
+      if (searchResponse.ok) {
+        const searchData = (await searchResponse.json()) as { files?: Array<{ id: string }> };
+        if (searchData.files && searchData.files.length > 0) {
+          folderId = searchData.files[0].id;
+          console.log(`[initializeContentClassFolders] Folder '${folderName}' already exists`);
+          await this.initializeContentClassIndexFiles(token, folderId, folderName, pnIdentifier, accountId);
+          continue;
         }
+      }
 
-        // Create folder if it doesn't exist
-        const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+      const createResponse = await fetchGoogleDriveWithRetry(
+        'https://www.googleapis.com/drive/v3/files',
+        {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             name: folderName,
             mimeType: 'application/vnd.google-apps.folder',
-            parents: [metadataFolderId]
-          })
-        });
+            parents: [metadataFolderId],
+          }),
+        },
+        `contentClassFolder create ${folderName}`
+      );
 
-        if (createResponse.ok) {
-          const folderData = await createResponse.json() as { id: string };
-          folderId = folderData.id;
-          console.log(`[initializeContentClassFolders] Created folder '${folderName}' (ID: ${folderId})`);
-          
-          // Create content class-specific index files in this folder
-          await this.initializeContentClassIndexFiles(token, folderId, folderName, pnIdentifier, accountId);
-        } else {
-          const errorText = await createResponse.text();
-          console.warn(`[initializeContentClassFolders] Failed to create folder '${folderName}': ${createResponse.status} ${errorText}`);
-        }
-      } catch (error: any) {
-        console.error(`[initializeContentClassFolders] Error creating folder '${folderName}':`, error);
-        // Don't throw - continue with other folders
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text().catch(() => '');
+        throw new Error(
+          `[initializeContentClassFolders] Failed to create folder '${folderName}': ${createResponse.status} ${errorText.slice(0, 200)}`
+        );
       }
+
+      const folderData = (await createResponse.json()) as { id: string };
+      folderId = folderData.id;
+      console.log(`[initializeContentClassFolders] Created folder '${folderName}' (ID: ${folderId})`);
+      await this.initializeContentClassIndexFiles(token, folderId, folderName, pnIdentifier, accountId);
     }
   }
 
@@ -5644,15 +5643,21 @@ class ProductionServer {
         
         try {
           const { runDriveInitOnce } = await import('./server/modules/driveInitCoordinator');
-          const { metadataFolderId, pnFolderId } = await runDriveInitOnce(pnIdentifier, () =>
-            this.initializeGoogleDriveStorage(
-              token,
-              pnIdentifier,
-              accountId,
-              credentials.credentials as Record<string, unknown>,
-              sanitizedIdentityId,
-              `[StorageInitialize POST]`
-            )
+          const { withGoogleRetry } = await import('./server/modules/googleApiRetry');
+          const { metadataFolderId, pnFolderId } = await withGoogleRetry(
+            'driveInitFull',
+            () =>
+              runDriveInitOnce(pnIdentifier, () =>
+                this.initializeGoogleDriveStorage(
+                  token,
+                  pnIdentifier,
+                  accountId,
+                  credentials.credentials as Record<string, unknown>,
+                  sanitizedIdentityId,
+                  `[StorageInitialize POST]`
+                )
+              ),
+            3
           );
 
           return res.json({
@@ -5664,9 +5669,12 @@ class ProductionServer {
           });
         } catch (initError: any) {
           console.error(`[StorageInitialize POST] Failed to initialize:`, initError);
-          return res.status(500).json({
+          const { isRetryableGoogleError } = await import('./server/modules/googleApiRetry');
+          const retryable = isRetryableGoogleError(initError);
+          return res.status(retryable ? 503 : 500).json({
             error: 'Failed to initialize Google Drive folder structure',
             message: initError.message || String(initError),
+            retryable,
             details: 'Check Railway logs for more details'
           });
         }

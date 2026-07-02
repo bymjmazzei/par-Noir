@@ -72,15 +72,16 @@ async function ensurePnAndMetadataFolders(
 }
 
 async function ensureSheet(
+  label: string,
   getFn: () => Promise<string>,
   createFn: () => Promise<string>
 ): Promise<string> {
   try {
-    return await getFn();
+    return await withGoogleRetry(`${label}:get`, getFn);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     if (msg.includes('not found') || msg.toLowerCase().includes('not found')) {
-      return createFn();
+      return withGoogleRetry(`${label}:create`, createFn);
     }
     throw error;
   }
@@ -94,10 +95,12 @@ async function ensureIndexSheets(
 ): Promise<{ publicFileIndex: string; ownerFileIndex: string }> {
   const { IndexSheetsService } = await import('./indexSheetsService');
   const publicFileIndex = await ensureSheet(
+    'rootPublicFileIndex',
     () => IndexSheetsService.getIndexSheet(token, metadataFolderId, 'public', pnIdentifier, accountId),
     () => IndexSheetsService.createIndexSheet(token, metadataFolderId, 'public', pnIdentifier, accountId)
   );
   const ownerFileIndex = await ensureSheet(
+    'rootOwnerFileIndex',
     () => IndexSheetsService.getIndexSheet(token, metadataFolderId, 'owner', pnIdentifier, accountId),
     () => IndexSheetsService.createIndexSheet(token, metadataFolderId, 'owner', pnIdentifier, accountId)
   );
@@ -144,20 +147,24 @@ export async function initializeGoogleDriveIndex(
   console.log(`[pnDriveInit] Metadata sheets (connections → prism) for ${normalized}`);
   const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
   const connections = await ensureSheet(
+    'connections',
     () => ConnectionsSheetsService.getConnectionsSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => ConnectionsSheetsService.createConnectionsSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
   const followers = await ensureSheet(
+    'followers',
     () => ConnectionsSheetsService.getFollowersSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => ConnectionsSheetsService.createFollowersSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
   const following = await ensureSheet(
+    'following',
     () => ConnectionsSheetsService.getFollowingSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => ConnectionsSheetsService.createFollowingSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
 
   const { ThirdPartyPermissionsSheetsService } = await import('./thirdPartyPermissionsSheetsService');
   const thirdPartyPermissions = await ensureSheet(
+    'thirdPartyPermissions',
     () =>
       ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(
         token,
@@ -186,12 +193,14 @@ export async function initializeGoogleDriveIndex(
 
   const { NotificationsSheetsService } = await import('./notificationsSheetsService');
   const notifications = await ensureSheet(
+    'notifications',
     () => NotificationsSheetsService.getNotificationsSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => NotificationsSheetsService.createNotificationsSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
 
   const { ActivityLedgerSheetsService } = await import('./activityLedgerSheetsService');
   const activityLedger = await ensureSheet(
+    'activityLedger',
     () =>
       ActivityLedgerSheetsService.getActivityLedgerSheet(token, metadataFolderId, pnIdentifier, accountId),
     () =>
@@ -200,6 +209,7 @@ export async function initializeGoogleDriveIndex(
 
   const { MessagingLedgerSheetsService } = await import('./messagingLedgerSheetsService');
   const messagingLedger = await ensureSheet(
+    'messagingLedger',
     () =>
       MessagingLedgerSheetsService.getMessagingLedgerSheet(token, metadataFolderId, pnIdentifier, accountId),
     () =>
@@ -218,24 +228,28 @@ export async function initializeGoogleDriveIndex(
 
   const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
   const zkpDataPoints = await ensureSheet(
+    'zkpDataPoints',
     () => ZKPDataPointsSheetsService.getZKPDataPointsSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => ZKPDataPointsSheetsService.createZKPDataPointsSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
 
   const { PreferencesSheetsService } = await import('./preferencesSheetsService');
   const preferences = await ensureSheet(
+    'preferences',
     () => PreferencesSheetsService.getPreferencesSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => PreferencesSheetsService.createPreferencesSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
 
   const { EngagementSheetsService } = await import('./engagementSheetsService');
   const engagement = await ensureSheet(
+    'engagement',
     () => EngagementSheetsService.getEngagementSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => EngagementSheetsService.createEngagementSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
 
   const { PrismLedgerSheetsService } = await import('./prismLedgerSheetsService');
   const prismLedger = await ensureSheet(
+    'prismLedger',
     () => PrismLedgerSheetsService.getPrismLedgerSheet(token, metadataFolderId, pnIdentifier, accountId),
     () => PrismLedgerSheetsService.createPrismLedgerSheet(token, metadataFolderId, pnIdentifier, accountId)
   );
