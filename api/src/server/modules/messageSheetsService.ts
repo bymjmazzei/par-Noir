@@ -1158,6 +1158,42 @@ export class MessageSheetsService {
     }
   }
 
+  /** Retry transient Google Sheets failures when upserting inbox rows. */
+  static async updateInboxEntryWithRetry(
+    token: GoogleDriveToken,
+    inboxSheetId: string,
+    participantPnIdentifier: string,
+    spreadsheetId: string,
+    connectionId: string,
+    lastMessageAt: string,
+    userPnIdentifier: string,
+    accountId: string | undefined,
+    lastMessagePreview?: string,
+    kemCiphertext?: string,
+    wrappedMessageRootKey?: string,
+    maxAttempts = 3
+  ): Promise<void> {
+    const { withGoogleRetry } = await import('./googleApiRetry');
+    await withGoogleRetry(
+      'updateInboxEntry',
+      () =>
+        this.updateInboxEntry(
+          token,
+          inboxSheetId,
+          participantPnIdentifier,
+          spreadsheetId,
+          connectionId,
+          lastMessageAt,
+          userPnIdentifier,
+          accountId,
+          lastMessagePreview,
+          kemCiphertext,
+          wrappedMessageRootKey
+        ),
+      maxAttempts
+    );
+  }
+
   /**
    * Remove inbox entry for a conversation
    */

@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, MoreVertical, Trash2, Users } from 'lucide-react';
 import { MessageThread as MessageThreadType } from '../services/messageService';
-import { getInboxThreads, deleteConversation, MESSAGING_INBOX_REFRESH_EVENT } from '../services/messageService';
+import { getInboxThreads, deleteConversation, MESSAGING_INBOX_REFRESH_EVENT, DriveRateLimitedError } from '../services/messageService';
 import type { SelectedInboxThread } from '../types/messaging';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
@@ -28,6 +28,7 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ participantPnIdentifier: string; participantName?: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const loadingDisplayNamesRef = useRef<Set<string>>(new Set());
+  const rateLimitRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const socketConnected = useRealtimeSync(() => {
     if (userState.pnIdentifier) {
@@ -71,13 +72,14 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
     }
   };
 
-  const loadThreadsFromApi = async (isInitial = false) => {
+  const loadThreadsFromApi = async (isInitial = false, clearCacheFirst = false, retryAttempt = 0) => {
     if (!userState.pnIdentifier) return;
+    const pn = userState.pnIdentifier;
     try {
-      if (refreshKey > 0) {
-        inboxCacheService.clear(userState.pnIdentifier);
+      if (clearCacheFirst || refreshKey > 0) {
+        inboxCacheService.clear(pn);
       }
-      const threadsData = await getInboxThreads(userState.pnIdentifier);
+      const threadsData = await getInboxThreads(pn);
       
       const threadsWithoutPreview = threadsData.map(thread => ({
         ...thread,
@@ -113,8 +115,20 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
           ownerPnIdentifier: thread.ownerPnIdentifier
         }))
         .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
-      inboxCacheService.set(userState.pnIdentifier, inboxEntries);
+      inboxCacheService.set(pn, inboxEntries);
     } catch (error) {
+      if (error instanceof DriveRateLimitedError) {
+        if (retryAttempt < 2 && typeof window !== 'undefined') {
+          if (rateLimitRetryRef.current) {
+            clearTimeout(rateLimitRetryRef.current);
+          }
+          const delayMs = retryAttempt === 0 ? 2000 : 5000;
+          rateLimitRetryRef.current = setTimeout(() => {
+            void loadThreadsFromApi(isInitial, false, retryAttempt + 1);
+          }, delayMs);
+        }
+        return;
+      }
       console.error('Failed to load messages:', error);
     } finally {
       if (isInitial) {
@@ -168,8 +182,7 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
 
     const onInboxRefresh = () => {
       if (userState.pnIdentifier) {
-        inboxCacheService.clear(userState.pnIdentifier);
-        void loadThreadsFromApi(false);
+        void loadThreadsFromApi(false, false);
       }
     };
     window.addEventListener(MESSAGING_INBOX_REFRESH_EVENT, onInboxRefresh);
@@ -183,6 +196,9 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
     
     return () => {
       clearInterval(interval);
+      if (rateLimitRetryRef.current) {
+        clearTimeout(rateLimitRetryRef.current);
+      }
       window.removeEventListener(MESSAGING_INBOX_REFRESH_EVENT, onInboxRefresh);
     };
   }, [userState.isUnlocked, userState.pnIdentifier, socketConnected, refreshKey]);

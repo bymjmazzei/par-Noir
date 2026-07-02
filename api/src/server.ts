@@ -10386,11 +10386,18 @@ class ProductionServer {
         const inboxSheetId = driveIndex.inboxSheetId;
 
         try {
-          const inboxConversations = await MessageSheetsService.getInboxConversations(
-            token,
-            inboxSheetId,
-            pnIdentifier,
-            accountId
+          const { withGoogleRetry } = await import('./server/modules/googleApiRetry');
+
+          const inboxConversations = await withGoogleRetry(
+            'getInboxConversations',
+            () =>
+              MessageSheetsService.getInboxConversations(
+                token,
+                inboxSheetId,
+                pnIdentifier,
+                accountId
+              ),
+            3
           );
 
           const { GroupSheetsService } = await import('./server/modules/groupSheetsService');
@@ -10412,8 +10419,7 @@ class ProductionServer {
             /* optional enrichment */
           }
 
-          const enrichedConversations = await Promise.all(
-            inboxConversations.map(async (conv) => {
+          const enrichedConversations = inboxConversations.map((conv) => {
               const lastMessage = conv.lastMessagePreview
                 ? {
                     messageId: '',
@@ -10425,17 +10431,6 @@ class ProductionServer {
                     encrypted: false,
                   }
                 : undefined;
-
-              let unreadCount = 0;
-              if (conv.spreadsheetId) {
-                unreadCount = await MessageSheetsService.countUnreadMessages(
-                  token,
-                  conv.spreadsheetId,
-                  pnIdentifier,
-                  pnIdentifier,
-                  accountId
-                );
-              }
 
               const isGroup = conv.threadType === 'group';
               return {
@@ -10449,15 +10444,14 @@ class ProductionServer {
                 lastMessageAt: conv.lastMessageAt,
                 lastMessagePreview: conv.lastMessagePreview,
                 lastMessage,
-                unreadCount,
+                unreadCount: 0,
                 ...(isGroup && {
                   groupId: conv.groupId || conv.participantPnIdentifier,
                   ownerPnIdentifier: conv.ownerPnIdentifier || conv.connectionId,
                   groupTitle: groupTitleById.get(conv.groupId || conv.participantPnIdentifier) || 'Group',
                 }),
               };
-            })
-          );
+            });
 
           const threads = enrichedConversations.map((conv) => ({
             participantPnIdentifier: conv.participantPnIdentifier,
@@ -10466,11 +10460,22 @@ class ProductionServer {
 
           return res.json({ conversations: enrichedConversations, threads });
         } catch (inboxError: unknown) {
+          const { isGoogleSheetsRateLimit } = await import('./server/modules/googleSheetsRateLimit');
           console.warn(
             '[GetConversations] Inbox read failed:',
             inboxError instanceof Error ? inboxError.message : inboxError
           );
-          return res.json({ conversations: [], threads: [] });
+          if (isGoogleSheetsRateLimit(inboxError)) {
+            return res.status(503).json({
+              error: 'drive_rate_limited',
+              message: 'Google Drive is temporarily busy. Please wait a moment and try again.',
+            });
+          }
+          return res.status(500).json({
+            error: 'Failed to get message conversations',
+            error_description:
+              inboxError instanceof Error ? inboxError.message : 'Failed to read inbox',
+          });
         }
       } catch (error: any) {
         console.error('Error getting message conversations:', error);
@@ -11148,51 +11153,6 @@ class ProductionServer {
           recipientKemCiphertext = kemCiphertext;
         }
 
-        Promise.all([
-          (async () => {
-            try {
-              await MessageSheetsService.updateInboxEntry(
-                senderToken,
-                senderInboxSheetId,
-                toPnIdentifier,
-                senderConversationSheetId!,
-                connectionId,
-                timestamp,
-                fromPnIdentifier,
-                senderAccountId,
-                '[Encrypted message]',
-                kemCiphertext || ''
-              );
-              messagingLog.info('[SendMessage] Updated sender inbox');
-            } catch (inboxError: any) {
-              // Log but don't fail - inbox update is non-critical
-              messagingLog.warn('[SendMessage] Failed to update sender inbox:', { message: inboxError?.message });
-            }
-          })(),
-          recipientToken && recipientInboxSheetId ? (async () => {
-            try {
-              await MessageSheetsService.updateInboxEntry(
-                recipientToken,
-                recipientInboxSheetId,
-                fromPnIdentifier,
-                recipientConversationSheetId!,
-                connectionId,
-                timestamp,
-                toPnIdentifier,
-                recipientAccountIdForInbox,
-                '[Encrypted message]',
-                recipientKemCiphertext || kemCiphertext || ''
-              );
-              messagingLog.info('[SendMessage] Updated recipient inbox');
-            } catch (inboxError: any) {
-              // Log but don't fail - inbox update is non-critical
-              messagingLog.warn('[SendMessage] Failed to update recipient inbox:', { message: inboxError?.message });
-            }
-          })() : Promise.resolve()
-        ]).catch(err => {
-          messagingLog.warn('[SendMessage] Error updating inboxes:', { message: err?.message });
-        });
-
         // Record activity for sender (non-blocking - fire and forget)
         (async () => {
           try {
@@ -11361,7 +11321,50 @@ class ProductionServer {
           })
         ]);
         messagingLog.info('[SendMessage] Messages appended to both sheets successfully');
-        // Note: Inbox updates are already handled above in parallel
+
+        try {
+          await Promise.all([
+            MessageSheetsService.updateInboxEntryWithRetry(
+              senderToken,
+              senderInboxSheetId,
+              toPnIdentifier,
+              senderConversationSheetId!,
+              connectionId,
+              timestamp,
+              fromPnIdentifier,
+              senderAccountId,
+              '[Encrypted message]',
+              kemCiphertext || ''
+            ),
+            recipientToken && recipientInboxSheetId
+              ? MessageSheetsService.updateInboxEntryWithRetry(
+                  recipientToken,
+                  recipientInboxSheetId,
+                  fromPnIdentifier,
+                  recipientConversationSheetId!,
+                  connectionId,
+                  timestamp,
+                  toPnIdentifier,
+                  recipientAccountIdForInbox,
+                  '[Encrypted message]',
+                  recipientKemCiphertext || kemCiphertext || ''
+                )
+              : Promise.resolve(),
+          ]);
+          messagingLog.info('[SendMessage] Updated sender and recipient inboxes');
+        } catch (inboxError: unknown) {
+          messagingLog.warn('[SendMessage] Failed to update inboxes after send:', {
+            message: inboxError instanceof Error ? inboxError.message : String(inboxError),
+          });
+          const { isGoogleSheetsRateLimit } = await import('./server/modules/googleSheetsRateLimit');
+          if (isGoogleSheetsRateLimit(inboxError)) {
+            return res.status(503).json({
+              error: 'drive_rate_limited',
+              message: 'Message sent but inbox sync is delayed. Please refresh in a moment.',
+            });
+          }
+        }
+        // Note: Inbox updates complete before response when successful
 
         // Record activity for recipient (non-blocking - fire and forget)
         (async () => {
@@ -14770,7 +14773,7 @@ class ProductionServer {
               // Update inbox for acceptor
               try {
                 const acceptorInboxSheetId = acceptorIndexForSync.inboxSheetId;
-                await MessageSheetsService.updateInboxEntry(
+                await MessageSheetsService.updateInboxEntryWithRetry(
                   token,
                   acceptorInboxSheetId,
                   otherUserPnIdentifier,
@@ -14874,7 +14877,7 @@ class ProductionServer {
                         otherUserPnIdentifier,
                         otherAccountId
                       );
-                  await MessageSheetsService.updateInboxEntry(
+                  await MessageSheetsService.updateInboxEntryWithRetry(
                     otherToken,
                     requesterInboxSheetId,
                     pnIdentifier,
@@ -15011,75 +15014,42 @@ class ProductionServer {
         }
 
         const { ConnectionsService } = await import('./server/modules/connectionsService');
-        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+        const { requireOwnerDriveContext, DriveIndexError } = await import('./server/modules/ownerDriveContext');
+        const { PN_DRIVE_SHEET_KEYS } = await import('./server/modules/pnDriveIndex');
 
-        // Use pn identifier directly (already normalized)
         const pnIdentifier = typeof userPnIdentifier === 'string' ? userPnIdentifier : String(userPnIdentifier || '');
         if (!pnIdentifier) {
           return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
         console.log(`[GetConnections] User: ${pnIdentifier}`);
 
-        // Get user's credentials
-        let userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-        if (!userCredentials?.credentials) {
-          console.log(`[GetConnections] No credentials found for user: ${pnIdentifier}`);
-          return res.json({ connections: [] });
-        }
-        console.log(`[GetConnections] Found credentials under: ${userCredentials.identityId}`);
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          console.log(`[GetConnections] User has no Google Drive connected`);
-          return res.json({ connections: [] });
-        }
-
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
-        
-        // Get full token object (not just access token string) for automatic refresh
-        const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
-        };
-        const userAccessToken = token.access_token; // Keep for backward compatibility
-        
-        // Get metadata folder - use pnIdentifier
-        let metadataFolderId: string;
+        let driveCtx;
         try {
-          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-          if (!_g) {
-            // Folders actually missing - this is the only case for DRIVE_NOT_INITIALIZED
+          driveCtx = await requireOwnerDriveContext(pnIdentifier);
+        } catch (err) {
+          if (err instanceof DriveIndexError && err.code === 'DRIVE_NOT_INITIALIZED') {
             return this.driveNotInitialized(res);
           }
-          metadataFolderId = _g.metadataFolderId;
-        } catch (error: any) {
-          // Drive API error (token, permissions, etc.) - return appropriate error
-          if (error.message?.includes('authentication failed')) {
+          if (err instanceof Error && err.message?.includes('authentication failed')) {
             return res.status(401).json({
               error: 'Google Drive authentication failed',
               code: 'DRIVE_AUTH_FAILED',
-              message: safeClientErrorMessage(error, NODE_ENV === 'production')
+              message: safeClientErrorMessage(err, NODE_ENV === 'production'),
             });
           }
-          // Other Drive API errors
-          console.error('[GetConnections] Drive API error:', error);
-          return res.status(500).json({
-            error: 'Failed to access Google Drive',
-            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Drive API error'
-          });
+          throw err;
         }
 
-        const connections = await ConnectionsService.getConnections(userAccessToken, metadataFolderId, pnIdentifier, accountId);
+        const connectionsSheetId = driveCtx.sheetId(PN_DRIVE_SHEET_KEYS.CONNECTIONS);
+        const connections = await ConnectionsService.getConnections(
+          driveCtx.token.access_token!,
+          '',
+          pnIdentifier,
+          driveCtx.accountId,
+          connectionsSheetId
+        );
         console.log(`[GetConnections] Found ${connections.length} accepted connections for user ${pnIdentifier}`);
 
-        // Normalize userPnIdentifier in returned connections (handles legacy data)
-        // Filter out invalid connections first, then normalize
         const normalizedConnections = connections
           .filter(c => {
             if (!c.userPnIdentifier) {
@@ -15094,7 +15064,14 @@ class ProductionServer {
           }));
 
         return res.json({ connections: normalizedConnections });
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const { isGoogleSheetsRateLimit } = await import('./server/modules/googleSheetsRateLimit');
+        if (isGoogleSheetsRateLimit(error)) {
+          return res.status(503).json({
+            error: 'drive_rate_limited',
+            message: 'Google Drive is temporarily busy. Please wait a moment and try again.',
+          });
+        }
         console.error('Error getting connections:', error);
         return res.status(500).json({
           error: 'Failed to get connections',
@@ -15683,71 +15660,41 @@ class ProductionServer {
         }
 
         const { ConnectionsService } = await import('./server/modules/connectionsService');
-        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+        const { requireOwnerDriveContext, DriveIndexError } = await import('./server/modules/ownerDriveContext');
+        const { PN_DRIVE_SHEET_KEYS } = await import('./server/modules/pnDriveIndex');
 
-        // Use pn identifier directly (already normalized)
         const pnIdentifier = typeof userPnIdentifier === 'string' ? userPnIdentifier : String(userPnIdentifier || '');
         if (!pnIdentifier) {
           return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
         console.log(`[PendingRequests] User: ${pnIdentifier}`);
-        
-        // Get user's credentials
-        let userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-        if (!userCredentials?.credentials) {
-          console.error(`[PendingRequests] No credentials found: ${userPnIdentifier}`);
-          return res.json({ sent: [], received: [] });
-        }
-        console.log(`[PendingRequests] Found credentials under: ${userCredentials.identityId}`);
 
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          return res.json({ sent: [], received: [] });
-        }
-
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
-        
-        // Get full token object (not just access token string) for automatic refresh
-        const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
-        };
-
-        // Get metadata folder
-        let metadataFolderId: string;
+        let driveCtx;
         try {
-          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-          if (!_g) {
-            // Folders actually missing - this is the only case for DRIVE_NOT_INITIALIZED
+          driveCtx = await requireOwnerDriveContext(pnIdentifier);
+        } catch (err) {
+          if (err instanceof DriveIndexError && err.code === 'DRIVE_NOT_INITIALIZED') {
             return this.driveNotInitialized(res);
           }
-          metadataFolderId = _g.metadataFolderId;
-        } catch (error: any) {
-          // Drive API error (token, permissions, etc.) - return appropriate error
-          if (error.message?.includes('authentication failed')) {
+          if (err instanceof Error && err.message?.includes('authentication failed')) {
             return res.status(401).json({
               error: 'Google Drive authentication failed',
               code: 'DRIVE_AUTH_FAILED',
-              message: safeClientErrorMessage(error, NODE_ENV === 'production')
+              message: safeClientErrorMessage(err, NODE_ENV === 'production'),
             });
           }
-          console.error('Error getting metadata folder:', error);
-          return res.status(500).json({
-            error: 'Failed to access Google Drive',
-            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Drive API error'
-          });
+          throw err;
         }
 
-        const pending = await ConnectionsService.getPendingRequests(token.access_token, metadataFolderId, pnIdentifier, accountId);
+        const connectionsSheetId = driveCtx.sheetId(PN_DRIVE_SHEET_KEYS.CONNECTIONS);
+        const pending = await ConnectionsService.getPendingRequests(
+          driveCtx.token.access_token!,
+          '',
+          pnIdentifier,
+          driveCtx.accountId,
+          connectionsSheetId
+        );
 
-        // Normalize userPnIdentifier in returned connections (handles legacy data)
-        // Filter out invalid connections first, then normalize
         const normalizedPending = {
           sent: pending.sent
             .filter(c => {
@@ -15776,21 +15723,33 @@ class ProductionServer {
         };
 
         return res.json(normalizedPending);
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const { isGoogleSheetsRateLimit } = await import('./server/modules/googleSheetsRateLimit');
+        if (isGoogleSheetsRateLimit(error)) {
+          return res.status(503).json({
+            error: 'drive_rate_limited',
+            message: 'Google Drive is temporarily busy. Please wait a moment and try again.',
+          });
+        }
         console.error('Error getting pending requests:', error);
-        // Check for authentication errors and return 401 instead of 500
-        if (error.message?.includes('authentication failed') || 
-            error?.response?.status === 401 || 
-            error?.code === 401) {
+        if (
+          error instanceof Error &&
+          (error.message?.includes('authentication failed') ||
+            (error as { response?: { status?: number }; code?: number }).response?.status === 401 ||
+            (error as { code?: number }).code === 401)
+        ) {
           return res.status(401).json({
             error: 'Google Drive authentication failed',
             code: 'DRIVE_AUTH_FAILED',
-            message: 'Please reconnect your Google Drive account in the dashboard.'
+            message: 'Please reconnect your Google Drive account in the dashboard.',
           });
         }
         return res.status(500).json({
           error: 'Failed to get pending requests',
-          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get pending requests'
+          error_description:
+            error instanceof Error
+              ? safeClientErrorMessage(error, NODE_ENV === 'production')
+              : 'Failed to get pending requests',
         });
       }
     });

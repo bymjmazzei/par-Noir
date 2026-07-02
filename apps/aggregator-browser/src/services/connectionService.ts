@@ -8,7 +8,7 @@ import { PNOAuthService } from './pnOAuthService';
 import { getUserProfile } from './profileService';
 import { createKemSession, wrapAcceptorMessageRootKey } from './dmCryptoClient';
 import { getMessagingMlKemPublicKey, isDmIdentityReady } from './dmIdentitySession';
-import { notifyMessagingInboxRefresh } from './messageService';
+import { notifyMessagingInboxRefresh, refreshMessagingInbox } from './messageService';
 import { API_ENDPOINT } from '../config/api';
 
 // Helper function to get auth headers
@@ -161,7 +161,11 @@ export async function acceptConnectionRequest(
       }
       throw new Error(errorMessage);
     }
-    notifyMessagingInboxRefresh();
+    try {
+      await refreshMessagingInbox(userPnIdentifier);
+    } catch {
+      notifyMessagingInboxRefresh();
+    }
   } catch (error) {
     console.error('Failed to accept connection request:', error);
     throw error;

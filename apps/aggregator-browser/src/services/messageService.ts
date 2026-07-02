@@ -13,6 +13,32 @@ import { messageAuthHeaders, messageFetch } from './messageAuthFetch';
 
 export const MESSAGING_INBOX_REFRESH_EVENT = 'pn_messaging_inbox_refresh';
 
+export class DriveRateLimitedError extends Error {
+  readonly code = 'drive_rate_limited';
+
+  constructor(message = 'Google Drive is temporarily busy. Please wait a moment and try again.') {
+    super(message);
+    this.name = 'DriveRateLimitedError';
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function parseDriveRateLimitedResponse(response: Response): Promise<DriveRateLimitedError | null> {
+  if (response.status !== 503) return null;
+  try {
+    const body = await response.json();
+    if (body?.error === 'drive_rate_limited') {
+      return new DriveRateLimitedError(body.message);
+    }
+  } catch {
+    /* non-JSON */
+  }
+  return null;
+}
+
 /** Tell MessageList (and other listeners) to reload inbox after connection accept, etc. */
 export function notifyMessagingInboxRefresh(): void {
   if (typeof window !== 'undefined') {
@@ -133,51 +159,66 @@ export async function getInboxThreads(userPnIdentifier: string): Promise<Message
   return merged;
 }
 
-export async function refreshMessagingInbox(userPnIdentifier: string): Promise<MessageThread[]> {
+export async function refreshMessagingInbox(
+  userPnIdentifier: string,
+  maxAttempts = 3
+): Promise<MessageThread[]> {
   inboxCacheService.clear(userPnIdentifier);
-  const threads = await getInboxThreads(userPnIdentifier);
-  notifyMessagingInboxRefresh();
-  return threads;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const threads = await getInboxThreads(userPnIdentifier);
+      notifyMessagingInboxRefresh();
+      return threads;
+    } catch (error) {
+      lastError = error;
+      if (error instanceof DriveRateLimitedError && attempt < maxAttempts) {
+        await sleep(1000 * attempt);
+        continue;
+      }
+      notifyMessagingInboxRefresh();
+      throw error;
+    }
+  }
+  throw lastError;
 }
 
 /**
  * Get message threads (conversations)
  */
 export async function getMessageThreads(userPnIdentifier: string): Promise<MessageThread[]> {
-  try {
-    const path = `/api/messages/conversations?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`;
-    const response = await messageFetch(path, { method: 'GET' });
+  const path = `/api/messages/conversations?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`;
+  const response = await messageFetch(path, { method: 'GET' });
 
-    if (!response.ok) {
-      throw new Error('Failed to load message threads');
-    }
-
-    const result = await response.json();
-    // Handle both conversations and threads response format
-    const conversations = result.conversations || result.threads || [];
-    
-    // Convert to MessageThread format
-    return conversations.map((conv: any) => ({
-      threadType: conv.threadType === 'group' ? 'group' : 'dm',
-      participantPnIdentifier: conv.participantPnIdentifier || conv.otherUserPnIdentifier,
-      participantName: conv.participantName,
-      lastMessage: conv.lastMessage,
-      unreadCount: conv.unreadCount || 0,
-      messages: [],
-      spreadsheetId: conv.spreadsheetId,
-      connectionId: conv.connectionId,
-      kemCiphertext: conv.kemCiphertext,
-      wrappedMessageRootKey: conv.wrappedMessageRootKey,
-      groupId: conv.groupId,
-      groupTitle: conv.groupTitle,
-      ownerPnIdentifier: conv.ownerPnIdentifier,
-      accessRole: conv.accessRole,
-      wrappedChatKey: conv.wrappedChatKey
-    }));
-  } catch (error) {
-    console.error('Failed to get message threads:', error);
-    return [];
+  const rateLimited = await parseDriveRateLimitedResponse(response);
+  if (rateLimited) {
+    throw rateLimited;
   }
+
+  if (!response.ok) {
+    throw new Error('Failed to load message threads');
+  }
+
+  const result = await response.json();
+  const conversations = result.conversations || result.threads || [];
+
+  return conversations.map((conv: any) => ({
+    threadType: conv.threadType === 'group' ? 'group' : 'dm',
+    participantPnIdentifier: conv.participantPnIdentifier || conv.otherUserPnIdentifier,
+    participantName: conv.participantName,
+    lastMessage: conv.lastMessage,
+    unreadCount: conv.unreadCount || 0,
+    messages: [],
+    spreadsheetId: conv.spreadsheetId,
+    connectionId: conv.connectionId,
+    kemCiphertext: conv.kemCiphertext,
+    wrappedMessageRootKey: conv.wrappedMessageRootKey,
+    groupId: conv.groupId,
+    groupTitle: conv.groupTitle,
+    ownerPnIdentifier: conv.ownerPnIdentifier,
+    accessRole: conv.accessRole,
+    wrappedChatKey: conv.wrappedChatKey
+  }));
 }
 
 /**

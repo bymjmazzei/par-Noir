@@ -21,14 +21,36 @@ import {
   readPolicy,
   updateLastSeen
 } from './storage/deviceStorageService';
+import type { DeviceStorageBundle } from './storage/deviceStorageService';
 
 export { DEVICE_CAPABILITIES };
+
+const DEVICE_CONTEXT_CACHE_TTL_MS = 30_000;
+
+type DeviceContextLoad = {
+  bundle: DeviceStorageBundle;
+  policy: DevicePolicy;
+  devices: DeviceRow[];
+};
+
+const deviceContextCache = new Map<string, { expiresAt: number; value: DeviceContextLoad }>();
+
+/** Clear cached device context (tests). */
+export function clearDeviceContextCache(pn?: string): void {
+  if (pn) {
+    deviceContextCache.delete(normalizePnIdentifier(pn));
+  } else {
+    deviceContextCache.clear();
+  }
+}
 
 export interface DeviceAuthContext {
   pnIdentifier: string;
   policy: DevicePolicy;
   isKeyed: boolean;
   deviceRow?: DeviceRow;
+  /** Populated when Drive device registry is loaded; reused for updateLastSeen. */
+  deviceBundle?: DeviceStorageBundle;
 }
 
 export function normalizePnIdentifier(pn: string): string {
@@ -49,11 +71,7 @@ function bearerPn(req: Request): { pnIdentifier: string } | null {
   return { pnIdentifier: pn };
 }
 
-async function loadDeviceContext(pn: string): Promise<{
-  bundle: Awaited<ReturnType<typeof loadDeviceBundle>>;
-  policy: DevicePolicy;
-  devices: DeviceRow[];
-} | null> {
+async function loadDeviceContextUncached(pn: string): Promise<DeviceContextLoad | null> {
   const bundle = await loadDeviceBundle(pn);
   if (!bundle) return null;
   try {
@@ -72,6 +90,24 @@ async function loadDeviceContext(pn: string): Promise<{
     }
     return { bundle, policy, devices: [] };
   }
+}
+
+async function loadDeviceContext(pn: string): Promise<DeviceContextLoad | null> {
+  const normalized = normalizePnIdentifier(pn);
+  const now = Date.now();
+  const cached = deviceContextCache.get(normalized);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  const loaded = await loadDeviceContextUncached(normalized);
+  if (loaded) {
+    deviceContextCache.set(normalized, {
+      expiresAt: now + DEVICE_CONTEXT_CACHE_TTL_MS,
+      value: loaded,
+    });
+  }
+  return loaded;
 }
 
 export async function verifyDeviceProofFromRequest(
@@ -130,6 +166,7 @@ export async function resolveDeviceAuthContext(req: Request): Promise<DeviceAuth
     policy: bundle.policy,
     isKeyed: proof.ok,
     deviceRow: proof.deviceRow,
+    deviceBundle: bundle.bundle,
   };
 }
 
@@ -157,11 +194,8 @@ export async function assertDeviceCapability(
     };
   }
 
-  if (ctx.isKeyed && ctx.deviceRow) {
-    const loaded = await loadDeviceContext(ctx.pnIdentifier);
-    if (loaded?.bundle) {
-      await updateLastSeen(loaded.bundle, ctx.deviceRow.deviceId);
-    }
+  if (ctx.isKeyed && ctx.deviceRow && ctx.deviceBundle) {
+    await updateLastSeen(ctx.deviceBundle, ctx.deviceRow.deviceId);
   }
 
   return { ok: true, ctx };

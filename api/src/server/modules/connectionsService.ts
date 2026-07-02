@@ -749,7 +749,8 @@ export class ConnectionsService {
     accessToken: string,
     metadataFolderId: string,
     userPnIdentifier?: string,
-    accountId?: string
+    accountId?: string,
+    connectionsSheetId?: string
   ): Promise<Connection[]> {
     // Build token object from accessToken string (backward compatibility)
     const normalized = userPnIdentifier ? this.normalizeToPnIdentifier(userPnIdentifier) : '';
@@ -759,12 +760,14 @@ export class ConnectionsService {
 
     const token: GoogleDriveToken = { access_token: accessToken };
     try {
-      const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-        token,
-        metadataFolderId,
-        userPnIdentifier || '',
-        accountId
-      );
+      const spreadsheetId =
+        connectionsSheetId ||
+        (await ConnectionsSheetsService.getConnectionsSheet(
+          token,
+          metadataFolderId,
+          userPnIdentifier || '',
+          accountId
+        ));
 
       const result = await ConnectionsSheetsService.getConnections(
         token,
@@ -776,6 +779,9 @@ export class ConnectionsService {
 
       return result.connections;
     } catch (error) {
+      if (isGoogleSheetsRateLimit(error)) {
+        throw error;
+      }
       console.error('Error getting connections from sheets, falling back to JSON:', error);
       if (!userPnIdentifier) {
         return [];
@@ -797,7 +803,8 @@ export class ConnectionsService {
     accessToken: string,
     metadataFolderId: string,
     userPnIdentifier?: string,
-    accountId?: string
+    accountId?: string,
+    connectionsSheetId?: string
   ): Promise<{ sent: Connection[]; received: Connection[] }> {
     // Build token object from accessToken string (backward compatibility)
     const normalized = userPnIdentifier ? this.normalizeToPnIdentifier(userPnIdentifier) : '';
@@ -812,12 +819,14 @@ export class ConnectionsService {
 
     const token: GoogleDriveToken = { access_token: accessToken };
     try {
-      const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-        token,
-        metadataFolderId,
-        userPnIdentifier || '',
-        accountId
-      );
+      const spreadsheetId =
+        connectionsSheetId ||
+        (await ConnectionsSheetsService.getConnectionsSheet(
+          token,
+          metadataFolderId,
+          userPnIdentifier || '',
+          accountId
+        ));
 
       const sentResult = await ConnectionsSheetsService.getConnections(
         token,
@@ -841,6 +850,9 @@ export class ConnectionsService {
         received: receivedResult.connections
       };
     } catch (error) {
+      if (isGoogleSheetsRateLimit(error)) {
+        throw error;
+      }
       console.error('Error getting pending requests from sheets, falling back to JSON:', error);
       if (!userPnIdentifier) {
         return { sent: [], received: [] };

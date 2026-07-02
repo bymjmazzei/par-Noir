@@ -8,9 +8,24 @@ import { getRecoveryDriveContext } from './recoveryDriveContext';
 import { DeviceSheetsService } from './deviceSheetsService';
 import {
   assertDeviceCapability,
+  clearDeviceContextCache,
   gateOwnerRoute,
   gateOwnerSelfRoute,
 } from './deviceCapabilityService';
+
+jest.mock('./storage/deviceStorageService', () => ({
+  loadDeviceBundle: jest.fn(),
+  listDevices: jest.fn(),
+  readPolicy: jest.fn(),
+  updateLastSeen: jest.fn(),
+}));
+
+const deviceStorage = jest.requireMock('./storage/deviceStorageService') as {
+  loadDeviceBundle: jest.Mock;
+  listDevices: jest.Mock;
+  readPolicy: jest.Mock;
+  updateLastSeen: jest.Mock;
+};
 
 jest.mock('./pnOAuthService', () => ({
   PNOAuthService: {
@@ -73,16 +88,16 @@ function mockRes(): Response & { statusCode?: number; body?: unknown } {
 }
 
 function setupDriveContext(policy: ReturnType<typeof defaultDevicePolicy>, isKeyed: boolean) {
+  clearDeviceContextCache(PN);
   mockValidate.mockReturnValue({ pnIdentifier: PN } as ReturnType<typeof PNOAuthService.validateAccessToken>);
-  mockDriveContext.mockResolvedValue({
-    token: 'drive-token',
-    metadataFolderId: 'folder',
+  deviceStorage.loadDeviceBundle.mockResolvedValue({
     pnIdentifier: PN,
-    accountId: 'acct',
-  } as Awaited<ReturnType<typeof getRecoveryDriveContext>>);
-  mockGetSpreadsheet.mockResolvedValue('sheet-id');
-  mockReadPolicy.mockResolvedValue(policy);
-  mockListDevices.mockResolvedValue(
+    isPortable: false,
+    spreadsheetId: 'sheet-id',
+    token: { access_token: 'tok' },
+  });
+  deviceStorage.readPolicy.mockResolvedValue(policy);
+  deviceStorage.listDevices.mockResolvedValue(
     isKeyed
       ? [
           {
@@ -100,6 +115,7 @@ function setupDriveContext(policy: ReturnType<typeof defaultDevicePolicy>, isKey
 describe('gateOwnerRoute', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    clearDeviceContextCache();
   });
 
   it('returns 401 when bearer token is missing', async () => {
@@ -124,7 +140,7 @@ describe('gateOwnerRoute', () => {
 
     expect(ctx).toBeNull();
     expect(res.statusCode).toBe(403);
-    expect(res.body).toEqual({ error: 'forbidden' });
+    expect(res.body).toEqual({ error: 'forbidden', reason: 'pn_mismatch' });
   });
 
   it('returns 403 device_key_required for immutable deny on unkeyed session', async () => {
@@ -151,19 +167,19 @@ describe('gateOwnerRoute', () => {
     expect(res.body).toEqual({ error: 'capability_not_allowed', reason: 'capability_not_allowed' });
   });
 
-  it('allows profileWrite before Drive layout exists (storage bootstrap)', async () => {
+  it('allows unkeyed session when Drive device bundle is missing', async () => {
     mockValidate.mockReturnValue({ pnIdentifier: PN } as ReturnType<
       typeof PNOAuthService.validateAccessToken
     >);
+    deviceStorage.loadDeviceBundle.mockResolvedValue(null);
     const req = bearerReq({ path: `/api/storage/credentials/${PN}`, method: 'PUT' });
     const res = mockRes();
 
-    const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, PN);
+    const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileRead, PN);
 
     expect(ctx).not.toBeNull();
     expect(ctx?.isKeyed).toBe(false);
     expect(res.statusCode).toBeUndefined();
-    expect(mockDriveContext).not.toHaveBeenCalled();
   });
 
   it('allows unkeyed session when capability is toggled in unkeyedAllows', async () => {
@@ -217,6 +233,7 @@ describe('gateOwnerRoute', () => {
 describe('gateOwnerSelfRoute', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    clearDeviceContextCache();
   });
 
   it('skips gate when unauthenticated (public profile read)', async () => {
@@ -251,22 +268,54 @@ describe('gateOwnerSelfRoute', () => {
   });
 });
 
+describe('device context cache', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearDeviceContextCache();
+    mockValidate.mockReturnValue({ pnIdentifier: PN } as ReturnType<
+      typeof PNOAuthService.validateAccessToken
+    >);
+    deviceStorage.loadDeviceBundle.mockResolvedValue({
+      pnIdentifier: PN,
+      isPortable: false,
+      spreadsheetId: 'devices-sheet',
+      token: { access_token: 'tok' },
+    });
+    deviceStorage.readPolicy.mockResolvedValue({
+      ...defaultDevicePolicy(),
+      firstDeviceKeyedAt: KEYED_AT,
+      unkeyedAllows: [...defaultDevicePolicy().unkeyedAllows, DEVICE_CAPABILITIES.profileWrite],
+    });
+    deviceStorage.listDevices.mockResolvedValue([]);
+  });
+
+  it('loads device sheet once per pN within TTL for repeated gate calls', async () => {
+    const req = bearerReq();
+    const res = mockRes();
+
+    await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, PN);
+    await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, PN);
+
+    expect(deviceStorage.loadDeviceBundle).toHaveBeenCalledTimes(1);
+    expect(deviceStorage.listDevices).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('assertDeviceCapability', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('returns 401 when drive registry context is unavailable', async () => {
+  it('allows unkeyed bootstrap when device bundle is unavailable', async () => {
     mockValidate.mockReturnValue({ pnIdentifier: PN } as ReturnType<typeof PNOAuthService.validateAccessToken>);
-    mockDriveContext.mockResolvedValue(null);
+    deviceStorage.loadDeviceBundle.mockResolvedValue(null);
     const req = bearerReq();
 
-    const result = await assertDeviceCapability(req, DEVICE_CAPABILITIES.driveRead);
+    const result = await assertDeviceCapability(req, DEVICE_CAPABILITIES.profileRead);
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.status).toBe(401);
-      expect(result.error).toBe('unauthorized');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.ctx.isKeyed).toBe(false);
     }
   });
 });
