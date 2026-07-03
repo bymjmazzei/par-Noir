@@ -117,6 +117,48 @@ export interface Message {
   encrypted: boolean;
 }
 
+/** Optimistic client-only ids before the server assigns a real messageId. */
+export function isPendingMessageId(messageId: string): boolean {
+  return messageId.startsWith('temp-') || messageId.startsWith('sent-');
+}
+
+function pendingMessageMatchesConfirmed(pending: Message, confirmed: Message): boolean {
+  if (pending.fromPnIdentifier !== confirmed.fromPnIdentifier) return false;
+  if ((pending.content || '').trim() !== (confirmed.content || '').trim()) return false;
+  const deltaMs = Math.abs(
+    new Date(pending.timestamp).getTime() - new Date(confirmed.timestamp).getTime()
+  );
+  return deltaMs < 60_000;
+}
+
+/** Merge server-fetched messages (oldest-first) with in-flight optimistic sends. */
+export function mergeChatMessages(
+  fetchedOldestFirst: Message[],
+  currentMessages: Message[]
+): Message[] {
+  const byId = new Map<string, Message>();
+  for (const message of fetchedOldestFirst) {
+    byId.set(message.messageId, message);
+  }
+  for (const message of currentMessages) {
+    if (!isPendingMessageId(message.messageId)) {
+      if (!byId.has(message.messageId)) {
+        byId.set(message.messageId, message);
+      }
+      continue;
+    }
+    const hasConfirmed = fetchedOldestFirst.some((confirmed) =>
+      pendingMessageMatchesConfirmed(message, confirmed)
+    );
+    if (!hasConfirmed) {
+      byId.set(message.messageId, message);
+    }
+  }
+  return [...byId.values()].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
+}
+
 export interface MessageRequest {
   requestId: string;
   fromPnIdentifier: string;

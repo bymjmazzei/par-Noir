@@ -5,9 +5,19 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, Send, Paperclip, MoreVertical, Trash2, Check, Settings } from 'lucide-react';
-import { Message } from '../services/messageService';
+import {
+  Message,
+  mergeChatMessages,
+  isPendingMessageId,
+  getConversationMessages,
+  sendMessage,
+  markAsRead,
+  deleteConversation,
+  DriveRateLimitedError,
+  MESSAGING_POLL_BACKSTOP_MS,
+  notifyMessagingInboxRefresh,
+} from '../services/messageService';
 import { useUserState } from '../contexts/UserStateContext';
-import { getConversationMessages, sendMessage, markAsRead, deleteConversation, DriveRateLimitedError, MESSAGING_POLL_BACKSTOP_MS, notifyMessagingInboxRefresh } from '../services/messageService';
 import { isMessagingRateLimited } from '../services/messagingRateLimitState';
 import {
   getGroupMessages,
@@ -29,6 +39,7 @@ import {
 import { useDriveAccounts } from '../hooks/useDriveAccounts';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { isMessagingKeysError, requestMessagingReconnect } from '../services/messagingReconnect';
+import { BOTTOM_NAV_PADDING } from '../constants/layout';
 
 interface MessageThreadProps {
   participantPnIdentifier?: string;
@@ -85,7 +96,17 @@ export function MessageThread({
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [senderNames, setSenderNames] = useState<Record<string, string>>({});
   const [realtimeRefresh, setRealtimeRefresh] = useState(0);
+  const sendingRef = useRef(false);
+  const pendingInitialScrollRef = useRef(true);
   const socketConnected = useRealtimeSync(['new_message'], () => setRealtimeRefresh((n) => n + 1));
+
+  useEffect(() => {
+    sendingRef.current = sending;
+  }, [sending]);
+
+  useEffect(() => {
+    pendingInitialScrollRef.current = true;
+  }, [participantPnIdentifier, groupId]);
 
   const { selectedId: driveAccountId } = useDriveAccounts({
     authenticatedUserId: userState.pnIdentifier,
@@ -218,17 +239,7 @@ export function MessageThread({
           currentOffsetRef.current += reversedMessages.length;
           setHasMore(currentOffsetRef.current < result.total);
         } else {
-          // Replace messages (initial load or refresh)
-          const tempMessages = messages.filter(msg => msg.messageId.startsWith('temp-'));
-          const existingMessageIds = new Set(reversedMessages.map(m => m.messageId));
-          const preservedTempMessages = tempMessages.filter(msg => !existingMessageIds.has(msg.messageId));
-          
-          // Combine fetched messages with preserved temporary messages
-          const allMessages = [...reversedMessages, ...preservedTempMessages];
-          // Sort by timestamp to maintain order
-          allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-          
-          setMessages(allMessages);
+          setMessages((prev) => mergeChatMessages(reversedMessages, prev));
           currentOffsetRef.current = reversedMessages.length;
           setHasMore(reversedMessages.length < result.total);
         }
@@ -345,19 +356,14 @@ export function MessageThread({
   useEffect(() => {
     if (realtimeRefresh === 0 || !userState.isUnlocked || !userState.pnIdentifier) return;
     if (isGroup && !groupRecord) return;
-    if (isPollingRef.current || isMessagingRateLimited()) return;
+    if (isPollingRef.current || isMessagingRateLimited() || sendingRef.current) return;
     isPollingRef.current = true;
     fetchMessages(10, 0)
       .then((result) => {
         errorCountRef.current = 0;
         setTotalMessages(result.total);
         const reversedMessages = [...result.messages].reverse();
-        const tempMessages = messages.filter((msg) => msg.messageId.startsWith('temp-'));
-        const existingMessageIds = new Set(reversedMessages.map((m) => m.messageId));
-        const preservedTempMessages = tempMessages.filter((msg) => !existingMessageIds.has(msg.messageId));
-        const allMessages = [...reversedMessages, ...preservedTempMessages];
-        allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-        setMessages(allMessages);
+        setMessages((prev) => mergeChatMessages(reversedMessages, prev));
         currentOffsetRef.current = reversedMessages.length;
         setHasMore(reversedMessages.length < result.total);
         notifyMessagingInboxRefresh();
@@ -368,17 +374,27 @@ export function MessageThread({
       });
   }, [realtimeRefresh]);
 
-  // Auto-scroll to bottom when messages change (but not when loading more)
+  // Auto-scroll to bottom on first load; follow new messages when already near bottom.
   useEffect(() => {
-    if (!loadingMore && messagesContainerRef.current) {
-      const container = messagesContainerRef.current;
-      // Only auto-scroll if we're near the bottom (within 100px)
-      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-      if (isNearBottom) {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }
+    if (loading || loadingMore) return;
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    if (pendingInitialScrollRef.current) {
+      pendingInitialScrollRef.current = false;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight;
+        });
+      });
+      return;
     }
-  }, [messages, loadingMore]);
+
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    if (isNearBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, loading, loadingMore]);
 
   // Scroll detection for loading older messages
   useEffect(() => {
@@ -481,6 +497,7 @@ export function MessageThread({
               : msg
           )
         );
+        notifyMessagingInboxRefresh();
       } else {
         const sentMessage = await sendMessage(
           userState.pnIdentifier!,
@@ -496,6 +513,7 @@ export function MessageThread({
           prev.map((msg) => (msg.messageId === tempMessageId ? sentMessage : msg))
         );
       }
+      notifyMessagingInboxRefresh();
     } catch (error: any) {
       console.error('Failed to send message:', error);
       
@@ -544,17 +562,10 @@ export function MessageThread({
 
     try {
       await sendMessageWithMedia(threadContext, pick, caption, driveAccountId || undefined);
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.messageId === tempMessageId
-            ? { ...msg, messageId: `sent-${Date.now()}` }
-            : msg
-        )
-      );
-      await fetchMessages(10, 0).then((result) => {
-        const reversed = [...result.messages].reverse();
-        setMessages(reversed);
-      });
+      const result = await fetchMessages(10, 0);
+      const reversed = [...result.messages].reverse();
+      setMessages((prev) => mergeChatMessages(reversed, prev));
+      notifyMessagingInboxRefresh();
     } catch (error: unknown) {
       setMessages((prev) => prev.filter((msg) => msg.messageId !== tempMessageId));
       const errorMessage = error instanceof Error ? error.message : 'Failed to send media';
@@ -602,7 +613,7 @@ export function MessageThread({
   const canSend = !isGroup || accessRole !== 'readOnly';
 
   return (
-    <div className="h-full flex flex-col bg-neutral-900">
+    <div className="h-full flex flex-col bg-neutral-900" style={{ paddingBottom: BOTTOM_NAV_PADDING }}>
       <ToastContainer toasts={toasts} onClose={removeToast} />
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-neutral-700">
@@ -713,7 +724,7 @@ export function MessageThread({
             )}
             {messages.map((message) => {
             const isOwn = message.fromPnIdentifier === userState.pnIdentifier;
-            const isTemporary = message.messageId.startsWith('temp-');
+            const isTemporary = isPendingMessageId(message.messageId);
             
             return (
               <div
@@ -777,7 +788,7 @@ export function MessageThread({
       </div>
 
       {canSend ? (
-      <div className="p-4 border-t border-neutral-700" style={{ paddingBottom: '64px' }}>
+      <div className="p-4 border-t border-neutral-700">
         <div className="flex items-end space-x-2">
           <button
             type="button"
@@ -815,7 +826,7 @@ export function MessageThread({
         </div>
       </div>
       ) : (
-        <div className="p-4 border-t border-neutral-700 text-center text-neutral-500 text-sm" style={{ paddingBottom: '64px' }}>
+        <div className="p-4 border-t border-neutral-700 text-center text-neutral-500 text-sm">
           You have read-only access in this group.
         </div>
       )}

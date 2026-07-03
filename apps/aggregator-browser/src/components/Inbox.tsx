@@ -18,6 +18,7 @@ import { CreateGroupModal } from './CreateGroupModal';
 import type { SelectedInboxThread } from '../types/messaging';
 import { listGroups } from '../services/groupService';
 import { inboxCacheService } from '../services/inboxCacheService';
+import { BOTTOM_NAV_PADDING } from '../constants/layout';
 
 interface InboxProps {
   onNotificationClick?: (notification: Notification) => void;
@@ -90,7 +91,7 @@ export function Inbox({ onNotificationClick, initialThread = null, onCreatorClic
   }
 
   return (
-    <div className="h-full flex flex-col bg-neutral-900" style={{ paddingBottom: '64px' }}>
+    <div className="h-full flex flex-col bg-neutral-900" style={{ paddingBottom: BOTTOM_NAV_PADDING }}>
       {/* Header with Icon Navigation */}
       <div className="flex items-center justify-start p-4 border-b border-neutral-700">
         {/* Icons on the left */}
