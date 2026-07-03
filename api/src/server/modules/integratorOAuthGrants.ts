@@ -93,6 +93,13 @@ export async function persistIntegratorGrantAfterTokenExchange(params: {
     accountId
   );
 
+  if (clientId === 'browser-app') {
+    const { setCachedBrowserAppPermissions } = await import('./oauthPermissionCache');
+    await setCachedBrowserAppPermissions(normalizedPn, {
+      ageShared: permission.dataPoints.includes('age_attestation'),
+    });
+  }
+
   safeLogger.info('[OAuth] Persisted integrator grant to Drive third-party-permissions', {
     clientId,
     pnIdHash: hashIdentifier(normalizedPn),

@@ -978,6 +978,27 @@
       return `pn-${hexHash.substring(0, 12)}`;
     }
 
+    async function pollBrowserAppPermissions(pnId, didValue, attempts = 4) {
+      if (!isBrowserApp || !pnId) return null;
+      for (let i = 0; i < attempts; i++) {
+        if (i > 0) {
+          await new Promise(function (resolve) { setTimeout(resolve, 500); });
+        }
+        try {
+          var q = 'pnIdentifier=' + encodeURIComponent(pnId) + (didValue ? '&did=' + encodeURIComponent(didValue) : '');
+          var permRes = await fetch(apiEndpoint + '/oauth/browser-app-permissions?' + q);
+          if (!permRes.ok) continue;
+          var permData = await permRes.json();
+          if (permData && permData.existingPermissions) {
+            return permData.existingPermissions;
+          }
+        } catch (pollErr) {
+          console.warn('[OAuth] Permission poll failed:', pollErr);
+        }
+      }
+      return null;
+    }
+
     async function completeOAuthUnlock(encryptedIdentity, publicKey, did, decryptedIdentity, pnName, passcode) {
       identityData = null;
       sendMessagingIdentityToOpener(encryptedIdentity, decryptedIdentity);
@@ -1014,7 +1035,10 @@
       const authResult = await authResponse.json();
       authorizationCode = authResult.code;
       
-      const existingPermissions = authResult.existingPermissions;
+      let existingPermissions = authResult.existingPermissions;
+      if (!existingPermissions && isBrowserApp) {
+        existingPermissions = await pollBrowserAppPermissions(pnIdentifier, did);
+      }
       console.log('[OAuth] Auth result:', {
         hasCode: !!authorizationCode,
         hasExistingPermissions: !!existingPermissions,
@@ -1023,12 +1047,6 @@
       });
       
       if (existingPermissions && clientId === 'browser-app') {
-        if (!lastMessagingSession) {
-          document.getElementById('pnIdentifierDisplay').textContent = pnIdentifier;
-          document.getElementById('unlockStep').style.display = 'none';
-          document.getElementById('consentStep').style.display = 'block';
-          return;
-        }
         redirectWithAuthCodeFixed(authorizationCode, !!existingPermissions.ageShared);
         return;
       }

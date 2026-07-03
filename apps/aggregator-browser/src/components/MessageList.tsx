@@ -33,6 +33,7 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
 
   const socketConnected = useRealtimeSync(['new_message'], () => {
     if (userState.pnIdentifier && !isMessagingRateLimited()) {
+      inboxCacheService.clear(userState.pnIdentifier);
       void loadThreadsFromApi(false);
     }
   });

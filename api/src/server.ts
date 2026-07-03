@@ -9624,13 +9624,8 @@ class ProductionServer {
           console.log('[OAuth Auth] Using pN identifier from client:', redactPnIdentifier(pnIdentifier));
         }
 
-        // Start Drive permission lookup in parallel with code generation so unlock is not blocked.
+        // Resolve browser-app consent skip hint (cache first, then Drive with short timeout).
         const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
-        if (pnIdentifier && client_id === 'browser-app') {
-          void import('./server/modules/oauthDrivePermissionContext').then(({ warmBrowserAppPermissionsCache }) =>
-            warmBrowserAppPermissionsCache({ pnIdentifier, did })
-          );
-        }
 
         // SECURITY FIX: Store pnIdentifier directly instead of secrets
         let code: string;
@@ -9659,14 +9654,12 @@ class ProductionServer {
 
         let existingPermissions: { ageShared: boolean } | null = null;
         if (pnIdentifier && client_id === 'browser-app') {
-          const { normalizePnIdentifier } = await import('./server/modules/integratorStoragePaths');
-          const { getCachedBrowserAppPermissions } = await import('./server/modules/oauthPermissionCache');
-          const cached = await getCachedBrowserAppPermissions(normalizePnIdentifier(pnIdentifier));
-          if (cached !== undefined) {
-            existingPermissions = cached;
-          }
-          void import('./server/modules/oauthDrivePermissionContext').then(({ warmBrowserAppPermissionsCache }) =>
-            warmBrowserAppPermissionsCache({ pnIdentifier, did })
+          const { getBrowserAppExistingPermissionsWithTimeout } = await import(
+            './server/modules/oauthDrivePermissionContext'
+          );
+          existingPermissions = await getBrowserAppExistingPermissionsWithTimeout(
+            { pnIdentifier, did },
+            3_000
           );
         }
 
@@ -11448,6 +11441,13 @@ class ProductionServer {
           }
         })();
 
+        // Invalidate read caches before realtime hints so refetches see fresh data.
+        const { invalidateMessagingCachesForUsers } = await import('./server/modules/messagingReadCache');
+        await invalidateMessagingCachesForUsers([fromPnIdentifier, toPnIdentifier], [
+          { pn: fromPnIdentifier, other: toPnIdentifier },
+          { pn: toPnIdentifier, other: fromPnIdentifier },
+        ]).catch(() => undefined);
+
         // Send notification to recipient (check preferences) - non-blocking
         if (recipientMetadataFolderId) {
           NotificationService.notifyNewMessage(
@@ -11460,17 +11460,16 @@ class ProductionServer {
           ).catch((notificationError: any) => {
             messagingLog.warn('[SendMessage] Failed to send notification', { message: notificationError?.message });
           });
-          this.emitRealtime(toPnIdentifier, 'new_message', {
-            threadId,
-            messageId,
-          });
         }
 
-        const { invalidateMessagingCachesForUsers } = await import('./server/modules/messagingReadCache');
-        await invalidateMessagingCachesForUsers([fromPnIdentifier, toPnIdentifier], [
-          { pn: fromPnIdentifier, other: toPnIdentifier },
-          { pn: toPnIdentifier, other: fromPnIdentifier },
-        ]).catch(() => undefined);
+        this.emitRealtime(fromPnIdentifier, 'new_message', {
+          threadId,
+          messageId,
+        });
+        this.emitRealtime(toPnIdentifier, 'new_message', {
+          threadId,
+          messageId,
+        });
 
         return res.json({
           success: true,
@@ -13540,6 +13539,13 @@ class ProductionServer {
         await invalidateGroupFileMtime(ownerPn, ownerConvSheetId);
         await invalidateMessagingCachesForUsers(members.map((m) => m.memberPnIdentifier));
 
+        for (const member of members) {
+          this.emitRealtime(member.memberPnIdentifier, 'new_message', {
+            threadId: groupId,
+            messageId,
+          });
+        }
+
         await Promise.all(
           members
             .filter((m) => m.memberPnIdentifier !== senderPn)
@@ -13570,10 +13576,6 @@ class ProductionServer {
                   member.memberPnIdentifier,
                   groupId
                 );
-                this.emitRealtime(member.memberPnIdentifier, 'new_message', {
-                  threadId: groupId,
-                  messageId,
-                });
               } catch (notifyErr: unknown) {
                 console.warn('[GroupMessage] push notify failed:', (notifyErr as Error)?.message);
               }

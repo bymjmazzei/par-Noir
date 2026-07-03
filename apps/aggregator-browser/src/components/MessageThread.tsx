@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, Send, Paperclip, MoreVertical, Trash2, Check, Settings } from 'lucide-react';
 import { Message } from '../services/messageService';
 import { useUserState } from '../contexts/UserStateContext';
-import { getConversationMessages, sendMessage, markAsRead, deleteConversation, DriveRateLimitedError, MESSAGING_POLL_BACKSTOP_MS } from '../services/messageService';
+import { getConversationMessages, sendMessage, markAsRead, deleteConversation, DriveRateLimitedError, MESSAGING_POLL_BACKSTOP_MS, notifyMessagingInboxRefresh } from '../services/messageService';
 import { isMessagingRateLimited } from '../services/messagingRateLimitState';
 import {
   getGroupMessages,
@@ -360,6 +360,7 @@ export function MessageThread({
         setMessages(allMessages);
         currentOffsetRef.current = reversedMessages.length;
         setHasMore(reversedMessages.length < result.total);
+        notifyMessagingInboxRefresh();
       })
       .catch(() => undefined)
       .finally(() => {
