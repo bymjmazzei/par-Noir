@@ -1,8 +1,8 @@
 # Railway / Nixpacks: build the API from the monorepo root.
 # Set Railway "Root Directory" to the repository root (empty or "."), NOT `api/`.
-# Reason: `api` depends on `file:../../packages/zk-protocol-v1`, which requires `packages/`
-# in the build context. Install must use `api/package-lock.json` via `cd api && npm ci`.
-# `npm run build` runs `build:deps` first (pqc-crypto + zk-protocol-v1 `tsc`) so `dist/` exists for TS resolve.
+# Reason: `api` depends on `file:../packages/*`, which requires `packages/` in the build context.
+# Install must use `api/package-lock.json` via `cd api && npm ci`.
+# `npm run build` runs `build:deps` (tsc only — no per-package npm install; that hangs on workspaces).
 [phases.setup]
 nixPkgs = ["nodejs_20", "npm-9_x", "ffmpeg"]
 
