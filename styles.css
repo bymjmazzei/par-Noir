@@ -18,8 +18,8 @@
   --gradient-glow: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
   --gradient-card: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
   --gradient-text: linear-gradient(135deg, #ffffff 0%, #cccccc 50%, #ffffff 100%);
-  --font-display: 'Arial Narrow', 'Helvetica Narrow', Arial, Helvetica, sans-serif;
-  --font-body: 'Arial Narrow', 'Helvetica Narrow', Arial, Helvetica, sans-serif;
+  --font-display: 'Montserrat', Helvetica, Arial, sans-serif;
+  --font-body: 'Montserrat', Helvetica, Arial, sans-serif;
 }
 
 /* Base Styles */
@@ -33,8 +33,9 @@ body {
   font-family: var(--font-body);
   background: var(--bg-primary);
   color: var(--text-primary);
-  line-height: 1.6;
-  letter-spacing: 0.01em;
+  line-height: 1.65;
+  font-weight: 400;
+  letter-spacing: 0.02em;
   overflow-x: hidden;
 }
 
@@ -5304,11 +5305,19 @@ section:nth-child(odd) {
   color: var(--text-primary);
 }
 
+.hero-brand-logo {
+  display: block;
+  width: min(320px, 70vw);
+  height: auto;
+  margin: 0 auto 1.75rem;
+}
+
 .hero-consumer .hero-title {
   font-family: var(--font-display);
-  font-weight: 600;
-  font-size: clamp(2.75rem, 7vw, 4.75rem);
-  letter-spacing: -0.03em;
+  font-weight: 200;
+  font-size: clamp(2.5rem, 6.5vw, 4.25rem);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   margin-bottom: 1.25rem;
 }
 
@@ -5320,7 +5329,9 @@ section:nth-child(odd) {
 .hero-consumer .hero-subtitle {
   max-width: 34rem;
   margin: 0 auto 2.25rem;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
+  font-weight: 300;
+  letter-spacing: 0.03em;
   color: var(--text-secondary);
 }
 
@@ -5330,8 +5341,9 @@ section:nth-child(odd) {
 
 .section-title {
   font-family: var(--font-display);
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .steps-grid {
@@ -5372,14 +5384,15 @@ section:nth-child(odd) {
   border: 1px solid var(--border-glow);
   font-family: var(--font-display);
   font-size: 1.1rem;
-  font-weight: 600;
+  font-weight: 300;
+  letter-spacing: 0.04em;
 }
 
 .step-card h3 {
   font-family: var(--font-display);
-  font-size: 1.45rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-size: 1.35rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
 }
 
 .step-card p {
@@ -5395,11 +5408,11 @@ section:nth-child(odd) {
 
 .steps-payoff {
   font-family: var(--font-display);
-  font-size: clamp(1.35rem, 3vw, 1.85rem);
-  font-weight: 600;
+  font-size: clamp(1.25rem, 3vw, 1.75rem);
+  font-weight: 300;
   margin: 0 auto 3rem;
   max-width: 36rem;
-  letter-spacing: -0.02em;
+  letter-spacing: 0.06em;
 }
 
 .story-video {
@@ -5461,7 +5474,9 @@ section:nth-child(odd) {
 
 .eco-piece h3 {
   font-family: var(--font-display);
-  font-size: 1.35rem;
+  font-size: 1.25rem;
+  font-weight: 400;
+  letter-spacing: 0.05em;
   margin-bottom: 0.75rem;
 }
 
@@ -5525,7 +5540,9 @@ section:nth-child(odd) {
 
 .offload-card h3 {
   font-family: var(--font-display);
-  font-size: 1.4rem;
+  font-size: 1.3rem;
+  font-weight: 400;
+  letter-spacing: 0.05em;
   margin-bottom: 0.75rem;
 }
 
@@ -5569,7 +5586,9 @@ section:nth-child(odd) {
 
 .encrypt-card h3 {
   font-family: var(--font-display);
-  font-size: 1.25rem;
+  font-size: 1.2rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
   margin-bottom: 0.6rem;
 }
 
@@ -5585,8 +5604,10 @@ section:nth-child(odd) {
 
 .final-cta-consumer .cta-header h2 {
   font-family: var(--font-display);
-  font-weight: 600;
-  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-weight: 200;
+  font-size: clamp(1.85rem, 4vw, 2.5rem);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   margin-bottom: 0.75rem;
 }
 
