@@ -25,7 +25,7 @@ export class CompanionMetadataService {
     fileId: string,
     metadata: CompanionMetadata
   ): Promise<string> {
-    const ctx = await getOwnerStorageContext(ownerPn);
+    const ctx = await getOwnerStorageContext(normalizePn(ownerPn));
     if (!ctx) throw new Error('Storage not connected');
     if (ctx.kind === 'portable') {
       return portable.createCompanionPortable(ctx.pnIdentifier, fileId, metadata, ctx.accountId);
@@ -41,7 +41,7 @@ export class CompanionMetadataService {
   }
 
   static async exists(ownerPn: string, fileId: string): Promise<boolean> {
-    const ctx = await getOwnerStorageContext(ownerPn);
+    const ctx = await getOwnerStorageContext(normalizePn(ownerPn));
     if (!ctx) return false;
     if (ctx.kind === 'portable') {
       return portable.existsCompanionPortable(ctx.pnIdentifier, fileId, ctx.accountId);
@@ -57,7 +57,7 @@ export class CompanionMetadataService {
   }
 
   static async read(ownerPn: string, fileId: string): Promise<CompanionMetadata | null> {
-    const ctx = await getOwnerStorageContext(ownerPn);
+    const ctx = await getOwnerStorageContext(normalizePn(ownerPn));
     if (!ctx) return null;
     if (ctx.kind === 'portable') {
       return portable.readCompanionPortable(ctx.pnIdentifier, fileId, ctx.accountId);
@@ -83,7 +83,7 @@ export class CompanionMetadataService {
     fileId: string,
     patch: Partial<CompanionMetadata>
   ): Promise<void> {
-    const ctx = await getOwnerStorageContext(ownerPn);
+    const ctx = await getOwnerStorageContext(normalizePn(ownerPn));
     if (!ctx) throw new Error('Storage not connected');
     if (ctx.kind === 'portable') {
       await portable.updateCompanionPortable(ctx.pnIdentifier, fileId, patch, ctx.accountId);
