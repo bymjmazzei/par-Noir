@@ -67,6 +67,30 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "📦 Building packages/aggregator-domain..."
+cd ../aggregator-domain
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ aggregator-domain build failed"
+    exit 1
+fi
+
+echo "📦 Building packages/zk-protocol-v2..."
+cd ../zk-protocol-v2
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ zk-protocol-v2 build failed"
+    exit 1
+fi
+
+echo "📦 Building packages/identity-migration..."
+cd ../identity-migration
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ identity-migration build failed"
+    exit 1
+fi
+
 # Build id-dashboard
 echo "📦 Building id-dashboard..."
 cd ../../apps/id-dashboard
