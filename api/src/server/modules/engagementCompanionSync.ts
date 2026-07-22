@@ -1,91 +1,103 @@
 /**
- * Best-effort mirror of engagement events to the content owner's companion metadata spreadsheet.
+ * Best-effort mirror of engagement events to the content owner's companion metadata.
+ * Works for Google Sheets and portable JSON social cloud.
  */
 
-import { CompanionMetadataSheets } from './companionMetadataSheets';
-import { GoogleDriveToken } from './googleOAuth2Helper';
-import { loadPnDriveFolders } from './pnDriveIndex';
-import { storageCredentialsService } from './storageCredentialsService';
-
-function extractAccountId(account: Record<string, unknown>): string | undefined {
-  const id = account.accountId ?? account.id ?? account.email;
-  return id != null ? String(id) : undefined;
-}
+import { CompanionMetadataService } from './companionMetadataService';
+import type {
+  CommentRecord,
+  LikeRecord,
+  SaveRecord,
+  ShareRecord,
+  ViewRecord
+} from './companionMetadataSheets';
+import { hasOwnerStorage } from './storage/ownerStorageContext';
 
 function normalizePn(pn: string): string {
   return pn.startsWith('pn-') ? pn : `pn-${pn}`;
 }
 
-export type CompanionAppendFn = (
-  token: GoogleDriveToken,
-  spreadsheetId: string,
-  ownerPnIdentifier: string,
-  accountId: string | undefined
-) => Promise<void>;
+export type CompanionEngagementKind = 'like' | 'unlike' | 'comment' | 'share' | 'save' | 'unsave' | 'view';
 
-/**
- * Resolve owner Drive context and append a row to their per-file companion metadata sheet.
- * Non-fatal: logs warnings and returns on failure.
- */
 export async function appendOwnerCompanionEngagement(
   fileId: string,
   ownerPn: string,
-  appendFn: CompanionAppendFn
+  kind: CompanionEngagementKind,
+  payload: LikeRecord | CommentRecord | ShareRecord | SaveRecord | ViewRecord | { pnIdentifier: string }
 ): Promise<void> {
   const ownerPnIdentifier = normalizePn(ownerPn);
 
   try {
-    const credentialsRecord = await storageCredentialsService.getCredentials(ownerPnIdentifier);
-    const credentials = credentialsRecord?.credentials;
-    const googleDriveAccounts =
-      credentials?.googleDriveAccounts ||
-      (credentials?.googleDrive ? [credentials.googleDrive] : []);
-
-    if (googleDriveAccounts.length === 0) {
+    if (!(await hasOwnerStorage(ownerPnIdentifier))) {
       console.warn(
-        `[CompanionEngagement] No Google Drive credentials for owner fileId=${fileId}`
+        `[CompanionEngagement] No storage credentials for owner fileId=${fileId}`
       );
       return;
     }
 
-    const account = googleDriveAccounts[0];
-    const accountId = extractAccountId(account);
-    const token: GoogleDriveToken = {
-      access_token: (account.access_token || account.accessToken) as string,
-      refresh_token: account.refresh_token || account.refreshToken,
-      expires_at: account.expires_at,
-      expires_in: account.expires_in
-    };
-
-    const folders = await loadPnDriveFolders(ownerPnIdentifier);
-    if (!folders) {
-      console.warn(
-        `[CompanionEngagement] Metadata folder not found for owner fileId=${fileId}`
-      );
-      return;
+    switch (kind) {
+      case 'like':
+        await CompanionMetadataService.appendLike(
+          ownerPnIdentifier,
+          fileId,
+          payload as LikeRecord
+        );
+        break;
+      case 'unlike':
+        await CompanionMetadataService.removeLike(
+          ownerPnIdentifier,
+          fileId,
+          (payload as { pnIdentifier: string }).pnIdentifier
+        );
+        break;
+      case 'comment':
+        await CompanionMetadataService.appendComment(
+          ownerPnIdentifier,
+          fileId,
+          payload as CommentRecord
+        );
+        break;
+      case 'share':
+        await CompanionMetadataService.appendShare(
+          ownerPnIdentifier,
+          fileId,
+          payload as ShareRecord
+        );
+        break;
+      case 'save':
+        await CompanionMetadataService.appendSave(
+          ownerPnIdentifier,
+          fileId,
+          payload as SaveRecord
+        );
+        break;
+      case 'unsave':
+        await CompanionMetadataService.removeSave(
+          ownerPnIdentifier,
+          fileId,
+          (payload as { pnIdentifier: string }).pnIdentifier
+        );
+        break;
+      case 'view':
+        await CompanionMetadataService.appendView(
+          ownerPnIdentifier,
+          fileId,
+          payload as ViewRecord
+        );
+        break;
+      default:
+        break;
     }
-
-    const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
-      token,
-      folders.metadataFolderId,
-      fileId,
-      ownerPnIdentifier,
-      accountId
-    );
-
-    if (!spreadsheetId) {
-      console.warn(
-        `[CompanionEngagement] Companion spreadsheet not found for fileId=${fileId}`
-      );
-      return;
-    }
-
-    await appendFn(token, spreadsheetId, ownerPnIdentifier, accountId);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(
-      `[CompanionEngagement] Failed to update companion sheet fileId=${fileId}:`,
+      `[CompanionEngagement] Failed to update companion metadata fileId=${fileId}:`,
       message
     );
   }
 }
+
+/** @deprecated Use appendOwnerCompanionEngagement(fileId, ownerPn, kind, payload) */
+export type CompanionAppendFn = (
+  ...args: unknown[]
+) => Promise<void>;

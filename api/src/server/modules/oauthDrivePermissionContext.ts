@@ -6,7 +6,8 @@
 import { isPnDriveIndexComplete, readPnDriveIndex, PN_DRIVE_SHEET_KEYS } from './pnDriveIndex';
 import { normalizePnIdentifier } from './integratorStoragePaths';
 import { storageCredentialsService, type StoredCredentialsRecord } from './storageCredentialsService';
-import { ThirdPartyPermissionsSheetsService } from './thirdPartyPermissionsSheetsService';
+import { ThirdPartyPermissionsService } from './thirdPartyPermissionsService';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 import {
   getCachedBrowserAppPermissions,
@@ -115,34 +116,53 @@ export async function resolveOAuthDriveContext(params: {
 
 export const BROWSER_APP_PERMISSION_CHECK_TIMEOUT_MS = 5_000;
 
+function activeBrowserAppConsent(
+  browserApp: { status: string; dataPoints: string[] } | undefined
+): { ageShared: boolean } | null {
+  if (!browserApp || browserApp.status !== 'active') return null;
+  safeLogger.info('[OAuth] Found active browser-app permissions', {
+    ageShared: browserApp.dataPoints.includes('age_attestation'),
+  });
+  return {
+    ageShared: browserApp.dataPoints.includes('age_attestation'),
+  };
+}
+
 async function lookupBrowserAppPermissionsFromDrive(params: {
   pnIdentifier?: string;
   did?: string;
 }): Promise<{ ageShared: boolean } | null> {
-  const ctx = await resolveOAuthDriveContext(params);
-  if (!ctx) return null;
+  const candidates = buildOAuthIdentityCandidates(params);
+  if (candidates.length === 0) return null;
+
+  const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(candidates);
+  if (!credentialsRecord?.credentials) return null;
+
+  const normalizedPn = params.pnIdentifier
+    ? normalizePnIdentifier(params.pnIdentifier)
+    : normalizePnIdentifier(credentialsRecord.identityId);
 
   try {
-    const token = { access_token: ctx.userAccessToken };
-    const browserApp = await ThirdPartyPermissionsSheetsService.getPermission(
-      token,
-      ctx.thirdPartyPermissionsSheetId,
-      'browser-app',
-      ctx.normalizedPn,
-      ctx.accountId
-    );
-    const browserStatus = browserApp
-      ? ThirdPartyPermissionsSheetsService.normalizePermissionStatus(browserApp.status)
-      : null;
-    if (browserApp && browserStatus === 'active') {
-      safeLogger.info('[OAuth] Found active browser-app permissions on Drive', {
-        ageShared: browserApp.dataPoints.includes('age_attestation'),
-      });
-      return {
-        ageShared: browserApp.dataPoints.includes('age_attestation'),
-      };
+    if (await isPortableStorageProvider(normalizedPn)) {
+      const permissions = await ThirdPartyPermissionsService.getPermissions(
+        '',
+        '',
+        normalizedPn
+      );
+      return activeBrowserAppConsent(permissions['browser-app']);
     }
-    return null;
+
+    const ctx = await resolveOAuthDriveContext(params);
+    if (!ctx) return null;
+
+    const permissions = await ThirdPartyPermissionsService.getPermissions(
+      ctx.userAccessToken,
+      ctx.metadataFolderId,
+      ctx.normalizedPn,
+      ctx.accountId,
+      ctx.thirdPartyPermissionsSheetId
+    );
+    return activeBrowserAppConsent(permissions['browser-app']);
   } catch (error: unknown) {
     safeLogger.warn('[OAuth] Could not read third-party-permissions', {
       message: error instanceof Error ? error.message : String(error),

@@ -4,15 +4,11 @@
 
 import type { Application, Response, NextFunction } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddleware';
-import {
-  getDeveloperPortalClientId,
-  requireDeveloperPortalClient
-} from './developerSelfServiceRoutes';
+import { requireDeveloperPortalClient } from './developerSelfServiceRoutes';
 import { isPlatformOperator, isPlatformRegistryConfigured } from './platformOperatorService';
-import { PlatformRegistryNotConfiguredError, requirePlatformRegistryDriveContext } from './platformRegistryContext';
-import { PlatformRegistrySheetsService } from './platformRegistrySheetsService';
+import { PlatformRegistryNotConfiguredError } from './platformRegistryContext';
+import { PlatformRegistryStorage } from './platformRegistryStorage';
 import {
-  PlatformCommercialLicenseService,
   PlatformRegistrySyncService,
   getLastPlatformRegistrySyncResult
 } from './platformRegistrySyncService';
@@ -39,10 +35,6 @@ function requirePlatformOperator(req: AuthenticatedRequest, res: Response, next:
   next();
 }
 
-function driveToken(accessToken: string) {
-  return { access_token: accessToken };
-}
-
 export function registerPlatformRegistryRoutes(app: Application): void {
   const devChain = [requireAuth, requireDeveloperPortalClient];
   const opChain = [...devChain, requirePlatformOperator];
@@ -64,20 +56,9 @@ export function registerPlatformRegistryRoutes(app: Application): void {
       if (!isPlatformRegistryConfigured()) {
         return res.json({ applications: [] });
       }
-      const ctx = await requirePlatformRegistryDriveContext();
-      const spreadsheetId = await PlatformRegistrySheetsService.getSpreadsheetId(
-        driveToken(ctx.accessToken),
-        ctx.metadataFolderId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
-      const applications = await PlatformRegistrySheetsService.listApplications(
-        driveToken(ctx.accessToken),
-        spreadsheetId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId,
-        { ownerPnId: ownerPn.startsWith('pn-') ? ownerPn : `pn-${ownerPn}` }
-      );
+      const applications = await PlatformRegistryStorage.listApplications({
+        ownerPnId: ownerPn.startsWith('pn-') ? ownerPn : `pn-${ownerPn}`
+      });
       return res.json({ applications });
     } catch (error: unknown) {
       if (error instanceof PlatformRegistryNotConfiguredError) {
@@ -93,24 +74,9 @@ export function registerPlatformRegistryRoutes(app: Application): void {
 
   app.post('/api/developer/platform/registry/initialize', ...opChain, async (_req: AuthenticatedRequest, res: Response) => {
     try {
-      const ctx = await requirePlatformRegistryDriveContext();
-      try {
-        await PlatformRegistrySheetsService.getSpreadsheetId(
-          driveToken(ctx.accessToken),
-          ctx.metadataFolderId,
-          ctx.normalizedPnIdentifier,
-          ctx.accountId
-        );
-        return res.json({ initialized: true, message: 'Platform registry already exists.' });
-      } catch {
-        await PlatformRegistrySheetsService.createPlatformRegistrySheet(
-          driveToken(ctx.accessToken),
-          ctx.metadataFolderId,
-          ctx.normalizedPnIdentifier,
-          ctx.accountId
-        );
-        return res.status(201).json({ initialized: true, message: 'Platform registry sheet created on operator Drive.' });
-      }
+      // Touch registry (creates empty portable doc or ensures Google sheet via first list)
+      await PlatformRegistryStorage.listApplications();
+      return res.json({ initialized: true, message: 'Platform registry ready on operator social cloud.' });
     } catch (error: unknown) {
       console.error('[platform] registry initialize:', error);
       return res.status(500).json({
@@ -122,23 +88,9 @@ export function registerPlatformRegistryRoutes(app: Application): void {
 
   app.get('/api/developer/platform/overview', ...opChain, async (_req: AuthenticatedRequest, res: Response) => {
     try {
-      const ctx = await requirePlatformRegistryDriveContext();
-      const spreadsheetId = await PlatformRegistrySheetsService.getSpreadsheetId(
-        driveToken(ctx.accessToken),
-        ctx.metadataFolderId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
-      const token = driveToken(ctx.accessToken);
-      const applications = await PlatformRegistrySheetsService.listApplications(
-        token, spreadsheetId, ctx.normalizedPnIdentifier, ctx.accountId
-      );
-      const clients = await PlatformRegistrySheetsService.listOAuthClients(
-        token, spreadsheetId, ctx.normalizedPnIdentifier, ctx.accountId
-      );
-      const licenses = await PlatformRegistrySheetsService.listCommercialLicenses(
-        token, spreadsheetId, ctx.normalizedPnIdentifier, ctx.accountId
-      );
+      const applications = await PlatformRegistryStorage.listApplications();
+      const clients = await PlatformRegistryStorage.listOAuthClients();
+      const licenses = await PlatformRegistryStorage.listCommercialLicenses();
       const pool = getDatabasePool();
       const syncMeta = await pool.query(`SELECT * FROM platform_registry_sync_meta WHERE id = 1`);
       const lastSync = getLastPlatformRegistrySyncResult();
@@ -166,20 +118,10 @@ export function registerPlatformRegistryRoutes(app: Application): void {
   app.get('/api/developer/platform/applications', ...opChain, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const status = req.query.status as string | undefined;
-      const ctx = await requirePlatformRegistryDriveContext();
-      const spreadsheetId = await PlatformRegistrySheetsService.getSpreadsheetId(
-        driveToken(ctx.accessToken),
-        ctx.metadataFolderId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
-      const applications = await PlatformRegistrySheetsService.listApplications(
-        driveToken(ctx.accessToken),
-        spreadsheetId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId,
-        status === 'pending' || status === 'approved' || status === 'rejected' ? { status } : undefined
-      );
+      let applications = await PlatformRegistryStorage.listApplications();
+      if (status === 'pending' || status === 'approved' || status === 'rejected') {
+        applications = applications.filter((a) => a.status === status);
+      }
       return res.json({ applications });
     } catch (error: unknown) {
       console.error('[platform] applications list:', error);
@@ -197,14 +139,7 @@ export function registerPlatformRegistryRoutes(app: Application): void {
         return res.status(400).json({ error: 'invalid_request', error_description: 'No operator pN on session.' });
       }
       const { verified, commercialLicenseId, notes } = req.body || {};
-      const ctx = await requirePlatformRegistryDriveContext();
-      const token = driveToken(ctx.accessToken);
-      const spreadsheetId = await PlatformRegistrySheetsService.getSpreadsheetId(
-        token, ctx.metadataFolderId, ctx.normalizedPnIdentifier, ctx.accountId
-      );
-      const app = await PlatformRegistrySheetsService.getApplicationById(
-        token, spreadsheetId, req.params.id, ctx.normalizedPnIdentifier, ctx.accountId
-      );
+      const app = await PlatformRegistryStorage.getApplicationById(req.params.id);
       if (!app) {
         return res.status(404).json({ error: 'not_found', error_description: 'Application not found.' });
       }
@@ -220,9 +155,7 @@ export function registerPlatformRegistryRoutes(app: Application): void {
         reviewedByPn: operatorPn.startsWith('pn-') ? operatorPn : `pn-${operatorPn}`,
         notes: typeof notes === 'string' ? notes.trim() : app.notes
       };
-      await PlatformRegistrySheetsService.updateApplication(
-        token, spreadsheetId, reviewedApp, ctx.normalizedPnIdentifier, ctx.accountId
-      );
+      await PlatformRegistryStorage.updateApplication(app.applicationId, reviewedApp);
 
       const clientRow: PlatformOAuthClientRow = {
         clientId: app.clientId,
@@ -237,9 +170,7 @@ export function registerPlatformRegistryRoutes(app: Application): void {
         approvedAt: now,
         updatedAt: now
       };
-      await PlatformRegistrySheetsService.upsertOAuthClient(
-        token, spreadsheetId, clientRow, ctx.normalizedPnIdentifier, ctx.accountId
-      );
+      await PlatformRegistryStorage.upsertOAuthClient(clientRow);
 
       const syncResult = await PlatformRegistrySyncService.syncFromDrive();
 
@@ -264,14 +195,7 @@ export function registerPlatformRegistryRoutes(app: Application): void {
     try {
       const operatorPn = req.user?.pnIdentifier?.trim();
       const { notes } = req.body || {};
-      const ctx = await requirePlatformRegistryDriveContext();
-      const token = driveToken(ctx.accessToken);
-      const spreadsheetId = await PlatformRegistrySheetsService.getSpreadsheetId(
-        token, ctx.metadataFolderId, ctx.normalizedPnIdentifier, ctx.accountId
-      );
-      const app = await PlatformRegistrySheetsService.getApplicationById(
-        token, spreadsheetId, req.params.id, ctx.normalizedPnIdentifier, ctx.accountId
-      );
+      const app = await PlatformRegistryStorage.getApplicationById(req.params.id);
       if (!app) {
         return res.status(404).json({ error: 'not_found' });
       }
@@ -283,9 +207,7 @@ export function registerPlatformRegistryRoutes(app: Application): void {
         reviewedByPn: operatorPn?.startsWith('pn-') ? operatorPn : operatorPn ? `pn-${operatorPn}` : undefined,
         notes: typeof notes === 'string' ? notes.trim() : app.notes
       };
-      await PlatformRegistrySheetsService.updateApplication(
-        token, spreadsheetId, rejected, ctx.normalizedPnIdentifier, ctx.accountId
-      );
+      await PlatformRegistryStorage.updateApplication(app.applicationId, rejected);
       await appendAuditEvent({
         eventType: 'oauth_client.application_rejected',
         actorHint: 'platform_operator',
@@ -301,19 +223,7 @@ export function registerPlatformRegistryRoutes(app: Application): void {
 
   app.get('/api/developer/platform/oauth-clients', ...opChain, async (_req: AuthenticatedRequest, res: Response) => {
     try {
-      const ctx = await requirePlatformRegistryDriveContext();
-      const spreadsheetId = await PlatformRegistrySheetsService.getSpreadsheetId(
-        driveToken(ctx.accessToken),
-        ctx.metadataFolderId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
-      const clients = await PlatformRegistrySheetsService.listOAuthClients(
-        driveToken(ctx.accessToken),
-        spreadsheetId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
+      const clients = await PlatformRegistryStorage.listOAuthClients();
       return res.json({ clients });
     } catch (error: unknown) {
       console.error('[platform] oauth-clients:', error);
@@ -324,14 +234,7 @@ export function registerPlatformRegistryRoutes(app: Application): void {
   app.patch('/api/developer/platform/oauth-clients/:clientId', ...opChain, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { status, verified, notes } = req.body || {};
-      const ctx = await requirePlatformRegistryDriveContext();
-      const token = driveToken(ctx.accessToken);
-      const spreadsheetId = await PlatformRegistrySheetsService.getSpreadsheetId(
-        token, ctx.metadataFolderId, ctx.normalizedPnIdentifier, ctx.accountId
-      );
-      const clients = await PlatformRegistrySheetsService.listOAuthClients(
-        token, spreadsheetId, ctx.normalizedPnIdentifier, ctx.accountId
-      );
+      const clients = await PlatformRegistryStorage.listOAuthClients();
       const existing = clients.find((c) => c.clientId === req.params.clientId);
       if (!existing) {
         return res.status(404).json({ error: 'not_found' });
@@ -343,9 +246,7 @@ export function registerPlatformRegistryRoutes(app: Application): void {
         notes: typeof notes === 'string' ? notes.trim() : existing.notes,
         updatedAt: new Date().toISOString()
       };
-      await PlatformRegistrySheetsService.upsertOAuthClient(
-        token, spreadsheetId, updated, ctx.normalizedPnIdentifier, ctx.accountId
-      );
+      await PlatformRegistryStorage.upsertOAuthClient(updated);
       const syncResult = await PlatformRegistrySyncService.syncFromDrive();
       return res.json({ client: updated, sync: syncResult });
     } catch (error: unknown) {
@@ -356,19 +257,7 @@ export function registerPlatformRegistryRoutes(app: Application): void {
 
   app.get('/api/developer/platform/licenses', ...opChain, async (_req: AuthenticatedRequest, res: Response) => {
     try {
-      const ctx = await requirePlatformRegistryDriveContext();
-      const spreadsheetId = await PlatformRegistrySheetsService.getSpreadsheetId(
-        driveToken(ctx.accessToken),
-        ctx.metadataFolderId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
-      const licenses = await PlatformRegistrySheetsService.listCommercialLicenses(
-        driveToken(ctx.accessToken),
-        spreadsheetId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
+      const licenses = await PlatformRegistryStorage.listCommercialLicenses();
       return res.json({ licenses });
     } catch (error: unknown) {
       console.error('[platform] licenses list:', error);
@@ -405,20 +294,7 @@ export function registerPlatformRegistryRoutes(app: Application): void {
         notes: typeof body.notes === 'string' ? body.notes.trim() : undefined,
         updatedAt: now
       };
-      const ctx = await requirePlatformRegistryDriveContext();
-      const spreadsheetId = await PlatformRegistrySheetsService.getSpreadsheetId(
-        driveToken(ctx.accessToken),
-        ctx.metadataFolderId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
-      await PlatformRegistrySheetsService.upsertCommercialLicense(
-        driveToken(ctx.accessToken),
-        spreadsheetId,
-        license,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
-      );
+      await PlatformRegistryStorage.upsertCommercialLicense(license);
       const syncResult = await PlatformRegistrySyncService.syncFromDrive();
       await appendAuditEvent({
         eventType: 'platform_license.issued',
@@ -435,14 +311,7 @@ export function registerPlatformRegistryRoutes(app: Application): void {
 
   app.patch('/api/developer/platform/licenses/:licenseId', ...opChain, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const ctx = await requirePlatformRegistryDriveContext();
-      const token = driveToken(ctx.accessToken);
-      const spreadsheetId = await PlatformRegistrySheetsService.getSpreadsheetId(
-        token, ctx.metadataFolderId, ctx.normalizedPnIdentifier, ctx.accountId
-      );
-      const licenses = await PlatformRegistrySheetsService.listCommercialLicenses(
-        token, spreadsheetId, ctx.normalizedPnIdentifier, ctx.accountId
-      );
+      const licenses = await PlatformRegistryStorage.listCommercialLicenses();
       const existing = licenses.find((l) => l.licenseId === req.params.licenseId);
       if (!existing) {
         return res.status(404).json({ error: 'not_found' });
@@ -458,9 +327,7 @@ export function registerPlatformRegistryRoutes(app: Application): void {
         notes: typeof body.notes === 'string' ? body.notes.trim() : existing.notes,
         updatedAt: new Date().toISOString()
       };
-      await PlatformRegistrySheetsService.upsertCommercialLicense(
-        token, spreadsheetId, updated, ctx.normalizedPnIdentifier, ctx.accountId
-      );
+      await PlatformRegistryStorage.upsertCommercialLicense(updated);
       const syncResult = await PlatformRegistrySyncService.syncFromDrive();
       return res.json({ license: updated, sync: syncResult });
     } catch (error: unknown) {

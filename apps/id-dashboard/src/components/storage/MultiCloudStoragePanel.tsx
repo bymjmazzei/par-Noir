@@ -7,7 +7,7 @@ import { ownerFetch, ownerGet } from '../../services/ownerApiService';
 import { API_ENDPOINT } from '../../config/api';
 import { SocialCloudMigrationWizard } from './SocialCloudMigrationWizard';
 
-type ProviderId = 'dropbox' | 'aws_s3' | 'azure_blob' | 'onedrive' | 'ftp';
+type ProviderId = 'google_drive' | 'dropbox' | 'aws_s3' | 'azure_blob' | 'onedrive' | 'ftp';
 
 interface StorageAccount {
   provider: string;
@@ -21,6 +21,10 @@ interface MultiCloudStoragePanelProps {
   pnIdentifier: string | null;
   authToken?: string;
   onConnected?: () => void;
+  onConnectGoogleDrive?: () => void;
+  googleDriveConnectedCount?: number;
+  driveConnectDisabled?: boolean;
+  connectedStorageCount?: number;
 }
 
 function buildAccountId(provider: string, pnIdentifier: string, slug: string): string {
@@ -31,7 +35,7 @@ function buildAccountId(provider: string, pnIdentifier: string, slug: string): s
   return `${prefix}::${pn}::${safeSlug}`;
 }
 
-const DOC_LINKS: Record<ProviderId, string> = {
+const DOC_LINKS: Record<Exclude<ProviderId, 'google_drive'>, string> = {
   dropbox: '/docs/developer/MULTI_CLOUD_STORAGE.md',
   aws_s3: '/docs/developer/STORAGE_AWS_S3_SETUP.md',
   azure_blob: '/docs/developer/STORAGE_AZURE_BLOB_SETUP.md',
@@ -42,9 +46,13 @@ const DOC_LINKS: Record<ProviderId, string> = {
 export function MultiCloudStoragePanel({
   pnIdentifier,
   authToken,
-  onConnected
+  onConnected,
+  onConnectGoogleDrive,
+  googleDriveConnectedCount = 0,
+  driveConnectDisabled = false,
+  connectedStorageCount = 0
 }: MultiCloudStoragePanelProps) {
-  const [selected, setSelected] = useState<ProviderId>('dropbox');
+  const [selected, setSelected] = useState<ProviderId>('google_drive');
   const [accounts, setAccounts] = useState<StorageAccount[]>([]);
   const [socialCloudProvider, setSocialCloudProvider] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -288,10 +296,16 @@ export function MultiCloudStoragePanel({
       <div className="flex items-start gap-3 mb-4">
         <Cloud className="h-5 w-5 text-violet-400 shrink-0 mt-0.5" />
         <div>
-          <h3 className="text-lg font-semibold text-white">Additional Cloud Providers</h3>
+          <h3 className="text-lg font-semibold text-white">Secure Cloud</h3>
           <p className="text-text-secondary text-sm">
-            Connect multiple cloud accounts. Designate one as your social cloud (tables and indexes). Files can live on any connected account.
+            Connect encrypted cloud storage. Choose Google Drive, Dropbox, S3, Azure, OneDrive, or FTP — one provider becomes your social cloud (tables and indexes); files can live on any connected account.
           </p>
+          {connectedStorageCount > 0 && (
+            <p className="text-green-400 text-sm mt-2">
+              {connectedStorageCount} storage provider{connectedStorageCount !== 1 ? 's' : ''} connected
+              {googleDriveConnectedCount > 0 ? ` (${googleDriveConnectedCount} Google Drive)` : ''}
+            </p>
+          )}
           {socialCloudProvider && (
             <p className="text-green-400 text-sm mt-2">Social cloud: {socialCloudProvider.replace('_', ' ')}</p>
           )}
@@ -299,7 +313,7 @@ export function MultiCloudStoragePanel({
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
-        {(['dropbox', 'aws_s3', 'azure_blob', 'onedrive', 'ftp'] as ProviderId[]).map((p) => (
+        {(['google_drive', 'dropbox', 'aws_s3', 'azure_blob', 'onedrive', 'ftp'] as ProviderId[]).map((p) => (
           <button
             key={p}
             type="button"
@@ -310,11 +324,28 @@ export function MultiCloudStoragePanel({
                 : 'border-neutral-600 text-text-secondary hover:border-neutral-500'
             }`}
           >
-            {p.replace('_', ' ')}
+            {p === 'google_drive' ? 'Google Drive' : p.replace('_', ' ')}
           </button>
         ))}
       </div>
 
+      {selected === 'google_drive' && onConnectGoogleDrive && (
+        <div className="mb-4">
+          <button
+            type="button"
+            disabled={driveConnectDisabled || !pnIdentifier}
+            onClick={onConnectGoogleDrive}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm disabled:opacity-50"
+          >
+            {googleDriveConnectedCount > 0
+              ? `Google Drive connected (${googleDriveConnectedCount}) — add or re-authenticate`
+              : 'Connect Google Drive'}
+          </button>
+        </div>
+      )}
+
+      {selected !== 'google_drive' && (
+        <>
       <a
         href={DOC_LINKS[selected]}
         target="_blank"
@@ -381,6 +412,8 @@ export function MultiCloudStoragePanel({
           Test connection
         </button>
       </div>
+        </>
+      )}
 
       {accounts.length > 0 && (
         <ul className="mt-4 text-sm text-text-secondary space-y-2">

@@ -31,9 +31,9 @@ When changing social cloud provider (including Google Drive ↔ portable), a com
 | portable | Google Drive | Semantic import: SQLite/JSON → Sheets |
 | portable A | portable B | Byte-copy `_metadata/` blobs (unchanged) |
 
-**Artifact matrix:** bridge tables (notifications, indexes, inbox, …), JSON blobs (profile, preferences, device-policy, index meta), transformers (connections, recovery, preferences, engagement, messaging conversations).
+**Artifact matrix:** bridge tables (notifications, indexes, inbox, …), JSON blobs (profile, preferences, device-policy, index meta), transformers (connections, recovery, preferences, engagement, messaging conversations, companion metadata, feed subscribers, integrators).
 
-**Not migrated with social cloud:** encrypted file blobs on file backends (use file migration). Companion metadata sheets and feed subscribers may be skipped in v1.
+**Not migrated with social cloud:** encrypted file blobs on file backends (use file migration). Companion metadata and feed subscribers **are** migrated via transformers when present (soft-skipped only if the user has none).
 
 **409 semantics:** `PUT .../social-cloud` without a completed `migrationJobId` returns `migration_required` for any provider change.
 

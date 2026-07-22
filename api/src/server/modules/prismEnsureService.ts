@@ -7,6 +7,9 @@
 import { getDatabasePool } from '../utils/database';
 import { googleDriveProxyService } from './googleDriveProxy';
 import { PrismLedgerSheetsService } from './prismLedgerSheetsService';
+import { isPortableSocialCloud } from './storage/storageProviderUtils';
+import { resolveSocialCloudContext, openTable } from './storage/storageFacade';
+import { PRISM_LEDGER_SCHEMA } from './storage/tableSchemas';
 
 /** Result for a single identity */
 export interface EnsureResult {
@@ -75,6 +78,17 @@ export async function ensurePrismLedgerForIdentity(rawIdentityId: string): Promi
   const additionalCandidates = rawIdentityId !== pnId ? [rawIdentityId] : undefined;
 
   try {
+    if (await isPortableSocialCloud(pnId)) {
+      const ctx = await resolveSocialCloudContext(pnId);
+      const table = await openTable(ctx, PRISM_LEDGER_SCHEMA);
+      // Ensure today's segment / empty table exists by no-op replace if scan empty
+      const rows = await table.scan({ limit: 1 });
+      if (rows.length === 0) {
+        await table.replaceAll([]);
+      }
+      return { identityId: rawIdentityId, created: true, skipped: false };
+    }
+
     const accessToken = await googleDriveProxyService.getAccessToken(
       pnId,
       undefined,

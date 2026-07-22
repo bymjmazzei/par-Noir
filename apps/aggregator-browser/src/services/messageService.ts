@@ -110,6 +110,7 @@ export interface Message {
   toPnIdentifier: string;
   content: string;
   mediaFileId?: string;
+  mediaBackend?: string;
   mediaMimeType?: string;
   timestamp: string;
   read: boolean;
@@ -471,7 +472,8 @@ export async function sendMessage(
   kemCiphertext?: string,
   mediaMimeType?: string,
   wrappedMessageRootKey?: string,
-  mediaEnvelopesByPn?: Record<string, string>
+  mediaEnvelopesByPn?: Record<string, string>,
+  mediaBackend?: string
 ): Promise<Message> {
   if (!isDmIdentityReady()) {
     throw new Error('Messaging keys unavailable. Lock and unlock your pN again to send messages.');
@@ -507,6 +509,7 @@ export async function sendMessage(
           ? {
               mediaFileId,
               ...(mediaMimeType ? { mediaMimeType } : {}),
+              ...(mediaBackend ? { mediaBackend } : {}),
               ...(mediaEnvelopesByPn ? { mediaEnvelopesByPn } : {})
             }
           : {})

@@ -11,6 +11,8 @@ import { NotificationsSheetsService, Notification as SheetsNotification } from '
 import { GoogleDriveToken } from './googleOAuth2Helper';
 import { isPortableStorageProvider } from './storage/storageProviderUtils';
 import { portableTableAppend, portableTableScan, portableTableReplaceAll } from './storage/portableTableService';
+import { readPortableJsonBlob, writePortableJsonBlob } from './storage/portableJsonBlob';
+import { METADATA_DIR } from '@par-noir/user-owned-storage';
 import { NOTIFICATIONS_SCHEMA } from './storage/tableSchemas';
 
 export interface Notification {
@@ -80,11 +82,17 @@ export class NotificationService {
           NOTIFICATIONS_SCHEMA,
           accountId
         );
-        if (notifications.length === 0) return null;
+        const preferences = await readPortableJsonBlob<NotificationPreferences>(
+          normalizedUserPnIdentifier,
+          `${METADATA_DIR}/notification-preferences.json`,
+          accountId
+        );
+        if (notifications.length === 0 && !preferences) return null;
         return {
           identifier: normalizedUserPnIdentifier,
           updatedAt: notifications[0]?.created_at ?? new Date().toISOString(),
-          notifications
+          notifications,
+          ...(preferences && { preferences })
         };
       }
 
@@ -144,6 +152,14 @@ export class NotificationService {
         accountId,
         { updatedAt: notificationsData.updatedAt }
       );
+      if (notificationsData.preferences) {
+        await writePortableJsonBlob(
+          normalizedUserPnIdentifier,
+          `${METADATA_DIR}/notification-preferences.json`,
+          notificationsData.preferences,
+          accountId
+        );
+      }
       return;
     }
 

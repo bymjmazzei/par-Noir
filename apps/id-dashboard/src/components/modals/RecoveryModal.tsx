@@ -126,7 +126,7 @@ export function RecoveryModal({
               </div>
               <p className="text-xs text-text-secondary">
                 Custodians will approve with Shamir shares. After threshold is met, set a new passcode on this device.
-                Reconnect Google Drive afterward; messaging keys stay the same.
+                Reconnect your storage provider (e.g. Google Drive or your social cloud) afterward; messaging keys stay the same.
               </p>
               <button type="submit" disabled={recoveryBlocked} className="w-full px-4 py-2 modal-button rounded-md font-medium disabled:opacity-50">
                 Start recovery

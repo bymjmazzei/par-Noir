@@ -8,11 +8,13 @@ import {
   type TableSchema,
   type UserOwnedTableStore
 } from '@par-noir/user-owned-storage';
-import { SqliteBlobTableAdapter } from '@par-noir/user-owned-storage/sqlite';
+import { SegmentedSqliteTableAdapter } from '@par-noir/user-owned-storage/sqlite';
 import { pnRootFolderName } from '@par-noir/user-owned-storage';
 import { storageCredentialsService } from '../storageCredentialsService';
 import { createBlobStoreForProvider } from './blobAdapters';
 import { createGoogleSheetsTableHooks, type DriveTableContext } from './sheetsTableBridge';
+
+const SEGMENTED_LEDGER_IDS = new Set(['activity-ledger', 'messaging-ledger', 'prism-ledger']);
 
 export interface StorageContext {
   pnIdentifier: string;
@@ -94,7 +96,7 @@ async function buildContextForProvider(
   }
 
   const blobStore = await createBlobStoreForProvider(normalized, credentials, provider, accountId);
-  const tableStore = new SqliteBlobTableAdapter(blobStore, rootPrefix);
+  const tableStore = new SegmentedSqliteTableAdapter(blobStore, rootPrefix, SEGMENTED_LEDGER_IDS);
 
   return {
     pnIdentifier: normalized,

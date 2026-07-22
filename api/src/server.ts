@@ -413,13 +413,13 @@ class ProductionServer {
     if (googleDriveAccounts.length === 0) {
       return null;
     }
-    const account = googleDriveAccounts[0];
-    const accountId = this.extractAccountId(account);
+    const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+    const accountId = account ? this.extractAccountId(account) : undefined;
     const token = {
-      access_token: account.access_token || account.accessToken,
-      refresh_token: account.refresh_token || account.refreshToken,
-      expires_at: account.expires_at,
-      expires_in: account.expires_in
+      access_token: account?.access_token || account?.accessToken || '',
+      refresh_token: account?.refresh_token || account?.refreshToken,
+      expires_at: account?.expires_at,
+      expires_in: account?.expires_in
     };
     const folders = await this.getMetadataFolder(token, pnIdentifier, accountId);
     if (!folders) {
@@ -2313,13 +2313,13 @@ class ProductionServer {
               const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
                 (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
               if (googleDriveAccounts.length > 0) {
-                const account = googleDriveAccounts[0];
-                const accountId = this.extractAccountId(account);
+                const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+                const accountId = account ? this.extractAccountId(account) : undefined;
                 const token = {
-                  access_token: account.access_token || account.accessToken,
-                  refresh_token: account.refresh_token || account.refreshToken,
-                  expires_at: account.expires_at,
-                  expires_in: account.expires_in
+                  access_token: account?.access_token || account?.accessToken || '',
+                  refresh_token: account?.refresh_token || account?.refreshToken,
+                  expires_at: account?.expires_at,
+                  expires_in: account?.expires_in
                 };
                 const out = await this.getMetadataFolder(token, pnIdentifier, accountId);
                 if (!out) {
@@ -2633,13 +2633,13 @@ class ProductionServer {
               const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
                 (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
               if (googleDriveAccounts.length > 0) {
-                const account = googleDriveAccounts[0];
+                const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
                 const accountIdForToken = this.extractAccountId(account);
                 const token = {
-                  access_token: account.access_token || account.accessToken,
-                  refresh_token: account.refresh_token || account.refreshToken,
-                  expires_at: account.expires_at,
-                  expires_in: account.expires_in
+                  access_token: account?.access_token || account?.accessToken || '',
+                  refresh_token: account?.refresh_token || account?.refreshToken,
+                  expires_at: account?.expires_at,
+                  expires_in: account?.expires_in
                 };
                 const accessToken = token.access_token;
                 
@@ -2974,13 +2974,13 @@ class ProductionServer {
           const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
             (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
           if (googleDriveAccounts.length > 0) {
-            const account = googleDriveAccounts[0];
+            const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
             const accountIdForToken = this.extractAccountId(account);
             const token = {
-              access_token: account.access_token || account.accessToken,
-              refresh_token: account.refresh_token || account.refreshToken,
-              expires_at: account.expires_at,
-              expires_in: account.expires_in
+              access_token: account?.access_token || account?.accessToken || '',
+              refresh_token: account?.refresh_token || account?.refreshToken,
+              expires_at: account?.expires_at,
+              expires_in: account?.expires_in
             };
             const accessToken = token.access_token;
             const backendFileId = dbMetadata.metadata.backendFileId || fileId;
@@ -3923,15 +3923,15 @@ class ProductionServer {
               const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
                 (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
               if (googleDriveAccounts.length > 0) {
-                const account = googleDriveAccounts[0];
+                const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
                 const accountIdForToken = accountIdParam || this.extractAccountId(account);
                 const token = storageCtx
                   ? getDriveTokenFromContext(storageCtx)
                   : {
-                      access_token: account.access_token || account.accessToken,
-                      refresh_token: account.refresh_token || account.refreshToken,
-                      expires_at: account.expires_at,
-                      expires_in: account.expires_in
+                      access_token: account?.access_token || account?.accessToken || '',
+                      refresh_token: account?.refresh_token || account?.refreshToken,
+                      expires_at: account?.expires_at,
+                      expires_in: account?.expires_in
                     };
                 const accessToken = token.access_token;
                 const backendFileId = current.metadata.backendFileId || fileId;
@@ -4060,24 +4060,82 @@ class ProductionServer {
                   storageCtx?.credentialsRecord ??
                   (await storageCredentialsService.getCredentials(userIdentifier));
                 if (!credentialsRecord?.credentials) {
-                  throw new Error('Google Drive not connected');
+                  throw new Error('Storage not connected');
                 }
+                const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+                const { CompanionMetadataService } = await import('./server/modules/companionMetadataService');
+                const portableSocial = await isPortableStorageProvider(pnIdentifier);
                 const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
                   (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
-                if (googleDriveAccounts.length === 0) {
-                  throw new Error('Google Drive not connected');
+                if (!portableSocial && googleDriveAccounts.length === 0) {
+                  throw new Error('Storage not connected');
                 }
-                const account = googleDriveAccounts[0];
-                const actualAccountId = accountId || this.extractAccountId(account);
+
+                const determinedFileTypeEarly = determineFileType({
+                  fileType: fileType,
+                  collection: collection,
+                  textPost: textPost,
+                  thought: thought,
+                  mimeType: (req.body && req.body.mimeType) || 'application/octet-stream',
+                  isThoughtThumbnail: isThoughtThumbnail,
+                  isPartOfCollection: isPartOfCollection
+                });
+                const determinedContentClassEarly = determineContentClass({
+                  fileType: determinedFileTypeEarly,
+                  collection: collection,
+                  textPost: textPost,
+                  thought: thought,
+                  isThoughtThumbnail: isThoughtThumbnail,
+                  isPartOfCollection: isPartOfCollection
+                });
+
+                if (portableSocial) {
+                  const exists = await CompanionMetadataService.exists(pnIdentifier, fileId);
+                  if (!exists) {
+                    await CompanionMetadataService.create(pnIdentifier, fileId, {
+                      fileId,
+                      googleDriveFileId: fileId,
+                      fileName: name || fileId,
+                      originalName: (name || fileId).replace(/\.encrypted$/i, ''),
+                      mimeType: (req.body && req.body.mimeType) || 'application/octet-stream',
+                      fileType: determinedFileTypeEarly,
+                      contentClass: determinedContentClassEarly,
+                      size: typeof req.body?.size === 'number' ? req.body.size : parseInt(String(req.body?.size || '0'), 10),
+                      visibility: finalVisibility,
+                      uploadedAt: new Date().toISOString(),
+                      owner: { did: tokenPayload.did, identifier: pnIdentifier },
+                      tags: [],
+                      ...(thumbnailFileId && { thumbnailFileId }),
+                      mainFileId: mainFileId,
+                      engagement: {
+                        views: 0, likes: 0, comments: 0, shares: 0, saves: 0,
+                        lastUpdated: new Date().toISOString(),
+                        engagementHistory: []
+                      }
+                    } as any);
+                    companionCreatedThisRequest = true;
+                    console.log(`[MetadataIndex PUT] Created portable companion metadata for ${fileId}`);
+                  } else {
+                    await CompanionMetadataService.update(pnIdentifier, fileId, {
+                      visibility: finalVisibility,
+                      ...(thumbnailFileId && { thumbnailFileId }),
+                      ...(mainFileId && { mainFileId })
+                    });
+                  }
+                  return;
+                }
+
+                const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+                const actualAccountId = accountId || (account ? this.extractAccountId(account) : undefined);
                 const token = storageCtx
                   ? getDriveTokenFromContext(storageCtx)
                   : {
-                      access_token: account.access_token || account.accessToken,
-                      refresh_token: account.refresh_token || account.refreshToken,
-                      expires_at: account.expires_at,
-                      expires_in: account.expires_in
+                      access_token: account?.access_token || account?.accessToken || '',
+                      refresh_token: account?.refresh_token || account?.refreshToken,
+                      expires_at: account?.expires_at,
+                      expires_in: account?.expires_in
                     };
-                const accessToken = token.access_token; // Keep for fetch calls
+                const accessToken = token.access_token;
                 
                 let driveFile = cachedDriveFileInfo;
                 if (!driveFile) {
@@ -4105,7 +4163,6 @@ class ProductionServer {
                 
                 const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
                       
-                      // Check if companion metadata already exists
                       const existingSpreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
                         token,
                         metadataFolderId,
@@ -4359,15 +4416,15 @@ class ProductionServer {
                     const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
                       (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
                     if (googleDriveAccounts.length > 0) {
-                      const account = googleDriveAccounts[0];
+                      const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
                       const accountIdForToken = accountId || this.extractAccountId(account);
                       const token = storageCtx
                         ? getDriveTokenFromContext(storageCtx)
                         : {
-                            access_token: account.access_token || account.accessToken,
-                            refresh_token: account.refresh_token || account.refreshToken,
-                            expires_at: account.expires_at,
-                            expires_in: account.expires_in
+                            access_token: account?.access_token || account?.accessToken || '',
+                            refresh_token: account?.refresh_token || account?.refreshToken,
+                            expires_at: account?.expires_at,
+                            expires_in: account?.expires_in
                           };
                       const accessToken = token.access_token;
                       
@@ -4501,15 +4558,15 @@ class ProductionServer {
                 const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
                   (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
                 if (googleDriveAccounts.length > 0) {
-                  const account = googleDriveAccounts[0];
+                  const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
                   const accountId = accountIdParam || this.extractAccountId(account);
                   const token = storageCtx
                     ? getDriveTokenFromContext(storageCtx)
                     : {
-                        access_token: account.access_token || account.accessToken,
-                        refresh_token: account.refresh_token || account.refreshToken,
-                        expires_at: account.expires_at,
-                        expires_in: account.expires_in
+                        access_token: account?.access_token || account?.accessToken || '',
+                        refresh_token: account?.refresh_token || account?.refreshToken,
+                        expires_at: account?.expires_at,
+                        expires_in: account?.expires_in
                       };
                   const out = await this.getMetadataFolder(token, pnIdentifier, accountId);
                   if (!out) {
@@ -4669,15 +4726,15 @@ class ProductionServer {
                   const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
                     (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
                   if (googleDriveAccounts.length > 0) {
-                    const account = googleDriveAccounts[0];
+                    const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
                     const accountIdForToken = accountId || this.extractAccountId(account);
                     const token = storageCtx
                       ? getDriveTokenFromContext(storageCtx)
                       : {
-                          access_token: account.access_token || account.accessToken,
-                          refresh_token: account.refresh_token || account.refreshToken,
-                          expires_at: account.expires_at,
-                          expires_in: account.expires_in
+                          access_token: account?.access_token || account?.accessToken || '',
+                          refresh_token: account?.refresh_token || account?.refreshToken,
+                          expires_at: account?.expires_at,
+                          expires_in: account?.expires_in
                         };
                     const accessToken = token.access_token;
                     
@@ -5388,8 +5445,8 @@ class ProductionServer {
           return res.status(404).json({ error: 'No Google Drive accounts connected' });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
 
         // Use a fresh (auto-refreshed) access token from the proxy. Init can take several minutes;
         // a token minted at OAuth time may expire mid-build and silently stall folder/sheet creation.
@@ -5409,9 +5466,9 @@ class ProductionServer {
 
         const token = {
           access_token: freshAccessToken || account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const accessToken = token.access_token;
 
@@ -5534,21 +5591,28 @@ class ProductionServer {
         }
         const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'Google Drive not connected for this identity' });
+        const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+        const _portableSocial = await isPortableStorageProvider(pnIdentifier || '');
+        if (!_portableSocial && googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'Storage not connected' });
         }
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
-        const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
-        };
-        const accessToken = token.access_token; // Keep for backward compatibility in fetch calls
-
-        const out = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!out) {
+        let accountId: string | undefined;
+        let token: any = { access_token: '' };
+        let accessToken = '';
+        let out: any = null;
+        if (!_portableSocial) {
+          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+          accountId = this.extractAccountId(account);
+          token = {
+            access_token: account?.access_token || account?.accessToken || '',
+            refresh_token: account?.refresh_token || account?.refreshToken,
+            expires_at: account?.expires_at,
+            expires_in: account?.expires_in
+          };
+          accessToken = token.access_token;
+          out = await this.getMetadataFolder(token, pnIdentifier, accountId);
+        }
+        if (!_portableSocial && !out) {
           return res.status(409).json({
             error: 'drive_not_initialized',
             code: 'DRIVE_INDEX_INCOMPLETE',
@@ -5655,15 +5719,20 @@ class ProductionServer {
         const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'Google Drive not connected for this identity' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
 
         const out = await this.getMetadataFolder(token, pnIdentifier, accountId);
@@ -5706,15 +5775,20 @@ class ProductionServer {
         const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'Google Drive not connected for this identity' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const accessToken = token.access_token;
 
@@ -5791,15 +5865,20 @@ class ProductionServer {
         const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'Google Drive not connected for this identity' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
 
         const out = await this.getMetadataFolder(token, pnIdentifier, accountId);
@@ -5889,30 +5968,35 @@ class ProductionServer {
           return res.status(404).json({ error: 'User credentials not found' });
         }
 
+        const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+        const portable = await isPortableStorageProvider(pnIdentifier);
         const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
-        if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        if (!portable && googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'Storage not connected' });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
-        
-        // Get full token object (not just access token string) for automatic refresh
-        const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
-        };
-        const userAccessToken = token.access_token; // Keep for backward compatibility
-        
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let token: any = { access_token: '' };
+        let userAccessToken = '';
+        let metadataFolderId = '';
+        let accountId: string | undefined;
+        if (!portable) {
+          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+          accountId = this.extractAccountId(account);
+          token = {
+            access_token: account?.access_token || account?.accessToken || '',
+            refresh_token: account?.refresh_token || account?.refreshToken,
+            expires_at: account?.expires_at,
+            expires_in: account?.expires_in
+          };
+          userAccessToken = token.access_token;
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
-        // 1. Update user's Google Drive engagement.xlsx (Sheets)
+        // 1. Update user's engagement on social cloud (Sheets or portable)
         const driveResult = await EngagementDriveService.toggleLike(
           pnIdentifier,
           fileId,
@@ -5981,15 +6065,15 @@ class ProductionServer {
                 (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
               
               if (googleDriveAccounts.length > 0) {
-                const account = googleDriveAccounts[0];
-                const accountId = this.extractAccountId(account);
+                const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+                const accountId = account ? this.extractAccountId(account) : undefined;
                 
                 // Get full token object (not just access token string) for automatic refresh
                 const token = {
-                  access_token: account.access_token || account.accessToken,
-                  refresh_token: account.refresh_token || account.refreshToken,
-                  expires_at: account.expires_at,
-                  expires_in: account.expires_in
+                  access_token: account?.access_token || account?.accessToken || '',
+                  refresh_token: account?.refresh_token || account?.refreshToken,
+                  expires_at: account?.expires_at,
+                  expires_in: account?.expires_in
                 };
                 const userAccessToken = token.access_token; // Keep for backward compatibility
                 const _gUser = await this.getMetadataFolder(token, pnIdentifier, accountId);
@@ -6080,24 +6164,17 @@ class ProductionServer {
             fileMetadata.metadata.author?.did;
           if (ownerDid) {
             const { appendOwnerCompanionEngagement } = await import('./server/modules/engagementCompanionSync');
-            await appendOwnerCompanionEngagement(fileId, ownerDid, async (token, spreadsheetId, ownerPnIdentifier, accountId) => {
-              if (result.liked) {
-                await CompanionMetadataSheets.appendLike(token, spreadsheetId, {
-                  fileId,
-                  pnIdentifier: userPnIdentifier,
-                  timestamp: new Date().toISOString()
-                }, ownerPnIdentifier, accountId);
-              } else {
-                await CompanionMetadataSheets.removeLike(
-                  token,
-                  spreadsheetId,
-                  fileId,
-                  ownerPnIdentifier,
-                  userPnIdentifier,
-                  accountId
-                );
-              }
-            });
+            if (result.liked) {
+              await appendOwnerCompanionEngagement(fileId, ownerDid, 'like', {
+                fileId,
+                pnIdentifier: userPnIdentifier,
+                timestamp: new Date().toISOString()
+              });
+            } else {
+              await appendOwnerCompanionEngagement(fileId, ownerDid, 'unlike', {
+                pnIdentifier: userPnIdentifier
+              });
+            }
           }
         }
 
@@ -6141,21 +6218,24 @@ class ProductionServer {
           return res.json({ liked: false });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Get full token object (not just access token string) for automatic refresh
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         // Read from user's Google Drive engagement.xlsx (Sheets)
         const liked = await EngagementDriveService.isLiked(fileId, userAccessToken, metadataFolderId, pnIdentifier, accountId);
@@ -6196,25 +6276,30 @@ class ProductionServer {
         const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
-        if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+        const _portableSocial = await isPortableStorageProvider(pnIdentifier || userPnIdentifier || '');
+        if (!_portableSocial && googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'Storage not connected' });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
-        
-        // Get full token object (not just access token string) for automatic refresh
-        const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
-        };
-        const userAccessToken = token.access_token; // Keep for backward compatibility
-        
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let accountId: string | undefined;
+        let token: any = { access_token: '' };
+        let userAccessToken = '';
+        let metadataFolderId = '';
+        if (!_portableSocial) {
+          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+          accountId = this.extractAccountId(account);
+          token = {
+            access_token: account?.access_token || account?.accessToken || '',
+            refresh_token: account?.refresh_token || account?.refreshToken,
+            expires_at: account?.expires_at,
+            expires_in: account?.expires_in
+          };
+          userAccessToken = token.access_token;
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         // 1. Update user's Google Drive engagement.xlsx (Sheets)
         const driveResult = await EngagementDriveService.toggleDislike(
@@ -6288,15 +6373,15 @@ class ProductionServer {
                 (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
               
               if (googleDriveAccounts.length > 0) {
-                const account = googleDriveAccounts[0];
-                const accountId = this.extractAccountId(account);
+                const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+                const accountId = account ? this.extractAccountId(account) : undefined;
                 
                 // Get full token object (not just access token string) for automatic refresh
                 const token = {
-                  access_token: account.access_token || account.accessToken,
-                  refresh_token: account.refresh_token || account.refreshToken,
-                  expires_at: account.expires_at,
-                  expires_in: account.expires_in
+                  access_token: account?.access_token || account?.accessToken || '',
+                  refresh_token: account?.refresh_token || account?.refreshToken,
+                  expires_at: account?.expires_at,
+                  expires_in: account?.expires_in
                 };
                 const userAccessToken = token.access_token; // Keep for backward compatibility
                 const _gUser = await this.getMetadataFolder(token, pnIdentifier, accountId);
@@ -6387,25 +6472,30 @@ class ProductionServer {
         const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
-        if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+        const _portableSocial = await isPortableStorageProvider(pnIdentifier || userPnIdentifier || '');
+        if (!_portableSocial && googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'Storage not connected' });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
-        
-        // Get full token object (not just access token string) for automatic refresh
-        const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
-        };
-        const userAccessToken = token.access_token; // Keep for backward compatibility
-        
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let accountId: string | undefined;
+        let token: any = { access_token: '' };
+        let userAccessToken = '';
+        let metadataFolderId = '';
+        if (!_portableSocial) {
+          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+          accountId = this.extractAccountId(account);
+          token = {
+            access_token: account?.access_token || account?.accessToken || '',
+            refresh_token: account?.refresh_token || account?.refreshToken,
+            expires_at: account?.expires_at,
+            expires_in: account?.expires_in
+          };
+          userAccessToken = token.access_token;
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         // Get file owner if not provided
         const aggregator = AggregatorMetadataServiceDB.getInstance();
@@ -6459,15 +6549,15 @@ class ProductionServer {
                 (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
               
               if (googleDriveAccounts.length > 0) {
-                const account = googleDriveAccounts[0];
-                const accountId = this.extractAccountId(account);
+                const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+                const accountId = account ? this.extractAccountId(account) : undefined;
                 
                 // Get full token object (not just access token string) for automatic refresh
                 const token = {
-                  access_token: account.access_token || account.accessToken,
-                  refresh_token: account.refresh_token || account.refreshToken,
-                  expires_at: account.expires_at,
-                  expires_in: account.expires_in
+                  access_token: account?.access_token || account?.accessToken || '',
+                  refresh_token: account?.refresh_token || account?.refreshToken,
+                  expires_at: account?.expires_at,
+                  expires_in: account?.expires_in
                 };
                 const userAccessToken = token.access_token; // Keep for backward compatibility
                 const _gUser = await this.getMetadataFolder(token, pnIdentifier, accountId);
@@ -6560,16 +6650,14 @@ class ProductionServer {
             fileMetadata.metadata.author?.did;
           if (ownerDid) {
             const { appendOwnerCompanionEngagement } = await import('./server/modules/engagementCompanionSync');
-            await appendOwnerCompanionEngagement(fileId, ownerDid, async (token, spreadsheetId, ownerPnIdentifier, accountId) => {
-              await CompanionMetadataSheets.appendComment(token, spreadsheetId, {
+            await appendOwnerCompanionEngagement(fileId, ownerDid, 'comment', {
                 fileId,
                 commentId: comment.id,
                 pnIdentifier: userPnIdentifier,
                 authorName: comment.authorName || userPnIdentifier.substring(0, 8),
                 content: comment.content,
                 timestamp: comment.timestamp
-              }, ownerPnIdentifier, accountId);
-            });
+              });
           }
         }
 
@@ -6798,15 +6886,15 @@ class ProductionServer {
                 (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
               
               if (googleDriveAccounts.length > 0) {
-                const account = googleDriveAccounts[0];
-                const accountId = this.extractAccountId(account);
+                const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+                const accountId = account ? this.extractAccountId(account) : undefined;
                 
                 // Get full token object (not just access token string) for automatic refresh
                 const token = {
-                  access_token: account.access_token || account.accessToken,
-                  refresh_token: account.refresh_token || account.refreshToken,
-                  expires_at: account.expires_at,
-                  expires_in: account.expires_in
+                  access_token: account?.access_token || account?.accessToken || '',
+                  refresh_token: account?.refresh_token || account?.refreshToken,
+                  expires_at: account?.expires_at,
+                  expires_in: account?.expires_in
                 };
                 const userAccessToken = token.access_token; // Keep for backward compatibility
                 const _gUser = await this.getMetadataFolder(token, pnIdentifier, accountId);
@@ -6898,13 +6986,11 @@ class ProductionServer {
             fileMetadata.metadata.author?.did;
           if (ownerDid) {
             const { appendOwnerCompanionEngagement } = await import('./server/modules/engagementCompanionSync');
-            await appendOwnerCompanionEngagement(fileId, ownerDid, async (token, spreadsheetId, ownerPnIdentifier, accountId) => {
-              await CompanionMetadataSheets.appendShare(token, spreadsheetId, {
+            await appendOwnerCompanionEngagement(fileId, ownerDid, 'share', {
                 fileId,
                 pnIdentifier: userPnIdentifier,
                 timestamp: new Date().toISOString()
-              }, ownerPnIdentifier, accountId);
-            });
+              });
           }
         }
 
@@ -6947,24 +7033,17 @@ class ProductionServer {
             fileMetadata.metadata.author?.did;
           if (ownerDid) {
             const { appendOwnerCompanionEngagement } = await import('./server/modules/engagementCompanionSync');
-            await appendOwnerCompanionEngagement(fileId, ownerDid, async (token, spreadsheetId, ownerPnIdentifier, accountId) => {
-              if (result.saved) {
-                await CompanionMetadataSheets.appendSave(token, spreadsheetId, {
+            if (result.saved) {
+              await appendOwnerCompanionEngagement(fileId, ownerDid, 'save', {
                   fileId,
                   pnIdentifier: userPnIdentifier,
                   timestamp: new Date().toISOString()
-                }, ownerPnIdentifier, accountId);
-              } else {
-                await CompanionMetadataSheets.removeSave(
-                  token,
-                  spreadsheetId,
-                  fileId,
-                  ownerPnIdentifier,
-                  userPnIdentifier,
-                  accountId
-                );
-              }
-            });
+                });
+            } else {
+              await appendOwnerCompanionEngagement(fileId, ownerDid, 'unsave', {
+                  pnIdentifier: userPnIdentifier
+                });
+            }
           }
         }
 
@@ -7118,13 +7197,11 @@ class ProductionServer {
                 (fileMetadata.metadata as any).creator?.['@id'] ||
                 (fileMetadata.metadata as any).author?.did;
               if (ownerDid) {
-                await appendOwnerCompanionEngagement(fileId, ownerDid, async (token, spreadsheetId, ownerPnIdentifier, accountId) => {
-                  await CompanionMetadataSheets.appendView(token, spreadsheetId, {
+                await appendOwnerCompanionEngagement(fileId, ownerDid, 'view', {
                     fileId,
                     viewerPnIdentifier: userPnIdentifier,
                     timestamp: new Date().toISOString()
-                  }, ownerPnIdentifier, accountId);
-                });
+                  });
               }
             }
           } catch (sheetError: any) {
@@ -9147,13 +9224,13 @@ class ProductionServer {
                 (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
               
               if (googleDriveAccounts.length > 0) {
-                const account = googleDriveAccounts[0];
+                const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
                 const accountIdForToken = this.extractAccountId(account);
                 const token = {
-                  access_token: account.access_token || account.accessToken,
-                  refresh_token: account.refresh_token || account.refreshToken,
-                  expires_at: account.expires_at,
-                  expires_in: account.expires_in
+                  access_token: account?.access_token || account?.accessToken || '',
+                  refresh_token: account?.refresh_token || account?.refreshToken,
+                  expires_at: account?.expires_at,
+                  expires_in: account?.expires_in
                 };
                 const accessToken = token.access_token; // Keep for backward compatibility in fetch calls
                 
@@ -9871,12 +9948,17 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-          const account = googleDriveAccounts[0];
-          const accountId = this.extractAccountId(account);
-          const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+          const accountId = account ? this.extractAccountId(account) : undefined;
+          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
 
         // Find pN folder and _metadata folder
         const pnFolderName = `par Noir - ${pnIdentifier}`;
@@ -10390,15 +10472,15 @@ class ProductionServer {
           return res.json({ conversations: [] });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Get full token object (not just access token string) for automatic refresh
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
 
         const { readPnDriveIndex, isPnDriveIndexComplete, PN_DRIVE_SHEET_KEYS } = await import('./server/modules/pnDriveIndex');
@@ -10583,13 +10665,13 @@ class ProductionServer {
           return res.json({ requests: [] });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
 
         const { readPnDriveIndex, isPnDriveIndexComplete, PN_DRIVE_SHEET_KEYS } = await import('./server/modules/pnDriveIndex');
@@ -10646,8 +10728,13 @@ class ProductionServer {
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, tokenPayload.pnIdentifier))) return;
         const accountId = req.query.accountId as string | undefined;
         const { ensureMessagesAttachmentsFolder } = await import('./server/modules/messagingMediaService');
-        const folderId = await ensureMessagesAttachmentsFolder(tokenPayload.pnIdentifier, accountId);
-        return res.json({ folderId });
+        const location = await ensureMessagesAttachmentsFolder(tokenPayload.pnIdentifier, accountId);
+        return res.json({
+          folderId: location.folderId ?? location.backendFileId,
+          backend: location.backend,
+          backendFileId: location.backendFileId,
+          ...(location.accountId ? { accountId: location.accountId } : {})
+        });
       } catch (error: any) {
         console.error('[AttachmentsFolder] Error:', error?.message || error);
         return res.status(500).json({
@@ -10685,15 +10772,15 @@ class ProductionServer {
           return res.json({ messages: [] });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Get full token object (not just access token string) for automatic refresh
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
 
         const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./server/modules/pnDriveIndex');
@@ -10835,15 +10922,15 @@ class ProductionServer {
           return res.json({ messages: [] });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Get full token object (not just access token string) for automatic refresh
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
 
         // Normalize participantPnIdentifier to ensure consistent format
@@ -11061,6 +11148,7 @@ class ProductionServer {
           cryptoVersion,
           mediaFileId,
           mediaMimeType,
+          mediaBackend,
           isConnectionRequest,
           mediaEnvelopesByPn
         } = req.body;
@@ -11228,22 +11316,29 @@ class ProductionServer {
           return res.status(500).json({ error: 'Conversation sheet not found' });
         }
 
-        let mediaFileIdByPn: Record<string, string> | undefined;
+        let mediaRefByPn: Record<string, import('./server/modules/messagingMediaService').MediaAttachmentRef> | undefined;
         if (mediaFileId) {
           const { dualWriteAttachmentToRecipients } = await import('./server/modules/messagingMediaService');
           const envelopes =
             mediaEnvelopesByPn && typeof mediaEnvelopesByPn === 'object'
               ? (mediaEnvelopesByPn as Record<string, string>)
               : undefined;
-          mediaFileIdByPn = await dualWriteAttachmentToRecipients(
+          mediaRefByPn = await dualWriteAttachmentToRecipients(
             fromPnIdentifier,
             mediaFileId,
             [toPnIdentifier],
             senderAccountId,
-            { envelopeByPn: envelopes, jitterMs: 1500 }
+            {
+              envelopeByPn: envelopes,
+              jitterMs: 1500,
+              ...(mediaBackend
+                ? { senderMediaBackend: mediaBackend as import('@par-noir/user-owned-storage').StorageProviderId }
+                : {})
+            }
           );
         }
 
+        const senderMediaRef = mediaRefByPn?.[fromPnIdentifier];
         const message: any = {
           messageId,
           fromPnIdentifier,
@@ -11253,7 +11348,10 @@ class ProductionServer {
           cryptoVersion: 2,
           timestamp,
           read: false,
-          mediaFileId: mediaFileIdByPn?.[fromPnIdentifier] ?? mediaFileId,
+          mediaFileId: senderMediaRef?.backendFileId ?? mediaFileId,
+          ...(senderMediaRef?.backend || mediaBackend
+            ? { mediaBackend: senderMediaRef?.backend ?? mediaBackend }
+            : {}),
           mediaMimeType
         };
 
@@ -11402,7 +11500,12 @@ class ProductionServer {
             senderAccountId,
             {
               ...message,
-              mediaFileId: mediaFileIdByPn?.[fromPnIdentifier] ?? message.mediaFileId
+              mediaFileId: mediaRefByPn?.[fromPnIdentifier]?.backendFileId ?? message.mediaFileId,
+              ...(mediaRefByPn?.[fromPnIdentifier]?.backend
+                ? { mediaBackend: mediaRefByPn[fromPnIdentifier].backend }
+                : message.mediaBackend
+                  ? { mediaBackend: message.mediaBackend }
+                  : {})
             },
             connectionId,
             '',
@@ -11420,7 +11523,12 @@ class ProductionServer {
             recipientAccountIdForSend,
             {
               ...message,
-              mediaFileId: mediaFileIdByPn?.[toPnIdentifier] ?? message.mediaFileId,
+              mediaFileId: mediaRefByPn?.[toPnIdentifier]?.backendFileId ?? message.mediaFileId,
+              ...(mediaRefByPn?.[toPnIdentifier]?.backend
+                ? { mediaBackend: mediaRefByPn[toPnIdentifier].backend }
+                : message.mediaBackend
+                  ? { mediaBackend: message.mediaBackend }
+                  : {}),
               read: false
             },
             connectionId,
@@ -11679,16 +11787,21 @@ class ProductionServer {
         const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts ||
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
 
         const metadataFolder = await this.getMetadataFolder(token, pnIdentifier, accountId);
@@ -11765,17 +11878,22 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
 
         if (!participantPnIdentifier) {
@@ -11882,16 +12000,21 @@ class ProductionServer {
         const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts ||
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
 
         const pnFolderName = `par Noir - ${pnIdentifier}`;
@@ -12007,18 +12130,23 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Get full token object (not just access token string) for automatic refresh
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
 
         const { readPnDriveIndex, isPnDriveIndexComplete, loadPnDriveIndex, persistPnDriveIndex } =
@@ -12030,7 +12158,6 @@ class ProductionServer {
         const messagesFolderId = driveIndex.messagesFolderId;
         const inboxSheetId = driveIndex.inboxSheetId;
         const metadataFolderId = driveIndex.metadataFolderId;
-        const connectionsSpreadsheetId = driveIndex.sheetIds['connections'];
 
         const normalizedParticipantPnIdentifier = participantPnIdentifier.startsWith('pn-')
           ? participantPnIdentifier
@@ -12094,15 +12221,14 @@ class ProductionServer {
             
             if (connection) {
               connectionId = connection.connectionId;
-              const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-              await ConnectionsSheetsService.removeConnection(
-                token,
-                connectionsSpreadsheetId,
-                connection.connectionId,
+              await ConnectionsService.removeConnection(
+                token.access_token,
+                metadataFolderId,
                 pnIdentifier,
+                connection.connectionId,
                 accountId
               );
-              console.log(`[DeleteConversation] Removed connection ${connection.connectionId} from user's connections sheet`);
+              console.log(`[DeleteConversation] Removed connection ${connection.connectionId} from user's connections`);
             } else {
               console.warn(`[DeleteConversation] Connection not found for ${participantPnIdentifier}, conversation sheet deleted anyway`);
             }
@@ -12142,15 +12268,13 @@ class ProductionServer {
                 
                 try {
                   const { requireOwnerDriveContext, DriveIndexError } = await import('./server/modules/ownerDriveContext');
-                  const { PN_DRIVE_SHEET_KEYS } = await import('./server/modules/pnDriveIndex');
-                  const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-                  let participantSpreadsheetId: string | undefined;
+                  let participantMetadataFolderId: string | undefined;
                   try {
                     const participantCtx = await requireOwnerDriveContext(
                       normalizedParticipantPnIdentifier,
                       participantAccountId
                     );
-                    participantSpreadsheetId = participantCtx.sheetId(PN_DRIVE_SHEET_KEYS.CONNECTIONS);
+                    participantMetadataFolderId = participantCtx.index.metadataFolderId;
                   } catch (ctxError: unknown) {
                     if (ctxError instanceof DriveIndexError) {
                       console.warn(`[DeleteConversation] Other user drive index incomplete, skipping connection removal`);
@@ -12158,15 +12282,15 @@ class ProductionServer {
                       throw ctxError;
                     }
                   }
-                  if (participantSpreadsheetId) {
-                    await ConnectionsSheetsService.removeConnection(
-                      participantToken,
-                      participantSpreadsheetId,
-                      connectionId,
+                  if (participantMetadataFolderId) {
+                    await ConnectionsService.removeConnection(
+                      participantToken.access_token,
+                      participantMetadataFolderId,
                       normalizedParticipantPnIdentifier,
+                      connectionId,
                       participantAccountId
                     );
-                    console.log(`[DeleteConversation] Removed connection ${connectionId} from other user's connections sheet`);
+                    console.log(`[DeleteConversation] Removed connection ${connectionId} from other user's connections`);
                   }
                 } catch (otherUserError: any) {
                   console.warn(`[DeleteConversation] Failed to remove connection from other user's connections sheet:`, {
@@ -12251,13 +12375,18 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         // Use normalized pn identifier for access token retrieval
-        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
+        const userAccessToken = account ? await googleDriveProxyService.getAccessToken(pnIdentifier, accountId) : '';
 
         // Find metadata folder
         const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -12322,13 +12451,18 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         // Use normalized pn identifier for access token retrieval
-        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
+        const userAccessToken = account ? await googleDriveProxyService.getAccessToken(pnIdentifier, accountId) : '';
 
         // Find metadata folder - try both '_metadata' and 'Metadata'
         let metadataFolderId: string | null = null;
@@ -12723,15 +12857,15 @@ class ProductionServer {
                 userCredentials.credentials.googleDriveAccounts ||
                 (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
               if (googleDriveAccounts.length === 0) return null;
-              const account = googleDriveAccounts[0];
-              const accountId = this.extractAccountId(account);
-              const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
+              const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+              const accountId = account ? this.extractAccountId(account) : undefined;
+              const userAccessToken = account ? await googleDriveProxyService.getAccessToken(pnIdentifier, accountId) : '';
               const metadataFolder = await this.getMetadataFolder(
                 {
-                  access_token: account.access_token || account.accessToken,
-                  refresh_token: account.refresh_token || account.refreshToken,
-                  expires_at: account.expires_at,
-                  expires_in: account.expires_in
+                  access_token: account?.access_token || account?.accessToken || '',
+                  refresh_token: account?.refresh_token || account?.refreshToken,
+                  expires_at: account?.expires_at,
+                  expires_in: account?.expires_in
                 },
                 pnIdentifier,
                 accountId
@@ -12764,10 +12898,10 @@ class ProductionServer {
           return res.json({ displayName: null, profileImageFileId: null });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         // Use normalized pn identifier for access token retrieval
-        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
+        const userAccessToken = account ? await googleDriveProxyService.getAccessToken(pnIdentifier, accountId) : '';
 
         // Find metadata folder - try both '_metadata' and 'Metadata'
         let metadataFolderId: string | null = null;
@@ -12854,15 +12988,15 @@ class ProductionServer {
         if (googleDriveAccounts.length === 0) {
           return res.status(404).json({ error: 'No Google Drive connected' });
         }
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
-        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
+        const userAccessToken = account ? await googleDriveProxyService.getAccessToken(pnIdentifier, accountId) : '';
         const metadataFolder = await this.getMetadataFolder(
           {
-            access_token: account.access_token || account.accessToken,
-            refresh_token: account.refresh_token || account.refreshToken,
-            expires_at: account.expires_at,
-            expires_in: account.expires_in
+            access_token: account?.access_token || account?.accessToken || '',
+            refresh_token: account?.refresh_token || account?.refreshToken,
+            expires_at: account?.expires_at,
+            expires_in: account?.expires_in
           },
           pnIdentifier,
           accountId
@@ -12979,12 +13113,12 @@ class ProductionServer {
           return res.status(404).json({ error: 'Owner has no Google Drive connected' });
         }
         const account = accounts[0];
-        const accountId = this.extractAccountId(account);
+        const accountId = account ? this.extractAccountId(account) : undefined;
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const metadataFolder = await this.getMetadataFolder(token, ownerPnIdentifier, accountId);
         if (!metadataFolder?.metadataFolderId) {
@@ -13225,12 +13359,12 @@ class ProductionServer {
           return res.status(404).json({ error: 'No Google Drive connected' });
         }
         const account = accounts[0];
-        const accountId = this.extractAccountId(account);
+        const accountId = account ? this.extractAccountId(account) : undefined;
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const metadataFolder = await this.getMetadataFolder(token, ownerPnIdentifier, accountId);
         if (!metadataFolder?.metadataFolderId) {
@@ -13292,12 +13426,12 @@ class ProductionServer {
           return res.json({ messages: [], total: 0 });
         }
         const account = accounts[0];
-        const accountId = this.extractAccountId(account);
+        const accountId = account ? this.extractAccountId(account) : undefined;
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const metadataFolder = await this.getMetadataFolder(token, userPnIdentifier, accountId);
         if (!metadataFolder?.metadataFolderId) {
@@ -13402,13 +13536,14 @@ class ProductionServer {
     this.app.post('/api/groups/:groupId/messages', async (req, res) => {
       try {
         const { groupId } = req.params;
-        const { fromPnIdentifier, encryptedContent, cryptoVersion, userPnIdentifier, mediaFileId, mediaMimeType, mediaEnvelopesByPn } = req.body as {
+        const { fromPnIdentifier, encryptedContent, cryptoVersion, userPnIdentifier, mediaFileId, mediaMimeType, mediaBackend, mediaEnvelopesByPn } = req.body as {
           fromPnIdentifier?: string;
           encryptedContent?: string;
           cryptoVersion?: number;
           userPnIdentifier?: string;
           mediaFileId?: string;
           mediaMimeType?: string;
+          mediaBackend?: string;
           mediaEnvelopesByPn?: Record<string, string>;
         };
         const senderPn = fromPnIdentifier || userPnIdentifier;
@@ -13508,13 +13643,13 @@ class ProductionServer {
         const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const timestamp = new Date().toISOString();
 
-        let ownerMediaFileId = mediaFileId;
+        let ownerMediaRef: import('./server/modules/messagingMediaService').MediaAttachmentRef | undefined;
         if (mediaFileId) {
           const { dualWriteAttachmentToRecipients } = await import('./server/modules/messagingMediaService');
           const recipientPns = members.map((m) => m.memberPnIdentifier).filter((pn) => pn !== senderPn);
           // Also ensure owner silo has a copy when sender is not owner
           const copyTargets = [...new Set([...recipientPns, ownerPn].filter((pn) => pn !== senderPn))];
-          const mediaFileIdByPn = await dualWriteAttachmentToRecipients(
+          const mediaRefByPn = await dualWriteAttachmentToRecipients(
             senderPn,
             mediaFileId,
             copyTargets,
@@ -13524,10 +13659,17 @@ class ProductionServer {
                 mediaEnvelopesByPn && typeof mediaEnvelopesByPn === 'object'
                   ? mediaEnvelopesByPn
                   : undefined,
-              jitterMs: 1500
+              jitterMs: 1500,
+              ...(mediaBackend
+                ? { senderMediaBackend: mediaBackend as import('@par-noir/user-owned-storage').StorageProviderId }
+                : {})
             }
           );
-          ownerMediaFileId = mediaFileIdByPn[ownerPn] ?? mediaFileId;
+          ownerMediaRef = mediaRefByPn[ownerPn] ?? {
+            backend: (mediaBackend as import('@par-noir/user-owned-storage').StorageProviderId) || 'google_drive',
+            backendFileId: mediaFileId,
+            accountId: senderAccountId
+          };
         }
 
         const messagePayload = {
@@ -13539,7 +13681,13 @@ class ProductionServer {
           read: false,
           encryptedContent,
           cryptoVersion: 2 as const,
-          ...(ownerMediaFileId ? { mediaFileId: ownerMediaFileId, ...(mediaMimeType ? { mediaMimeType } : {}) } : {})
+          ...(ownerMediaRef
+            ? {
+                mediaFileId: ownerMediaRef.backendFileId,
+                mediaBackend: ownerMediaRef.backend,
+                ...(mediaMimeType ? { mediaMimeType } : {})
+              }
+            : {})
         };
 
         let ownerConvSheetId = await GroupSheetsService.getCanonicalGroupConversationSpreadsheetId(
@@ -13654,12 +13802,12 @@ class ProductionServer {
           return res.status(404).json({ error: 'No Google Drive connected' });
         }
         const account = accounts[0];
-        const accountId = this.extractAccountId(account);
+        const accountId = account ? this.extractAccountId(account) : undefined;
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const metadataFolder = await this.getMetadataFolder(token, ownerPnIdentifier, accountId);
         if (!metadataFolder?.metadataFolderId) {
@@ -13760,12 +13908,12 @@ class ProductionServer {
           return res.status(404).json({ error: 'Owner has no Google Drive connected' });
         }
         const account = accounts[0];
-        const accountId = this.extractAccountId(account);
+        const accountId = account ? this.extractAccountId(account) : undefined;
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const metadataFolder = await this.getMetadataFolder(token, ownerPnIdentifier, accountId);
         if (!metadataFolder?.metadataFolderId) {
@@ -13974,12 +14122,12 @@ class ProductionServer {
           return res.status(404).json({ error: 'No Google Drive connected' });
         }
         const account = accounts[0];
-        const accountId = this.extractAccountId(account);
+        const accountId = account ? this.extractAccountId(account) : undefined;
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const metadataFolder = await this.getMetadataFolder(token, ownerPnIdentifier, accountId);
         if (!metadataFolder?.metadataFolderId) {
@@ -14451,18 +14599,23 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-                const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+                const accountId = account ? this.extractAccountId(account) : undefined;
         // Use normalized pn identifier for access token retrieval
         // Get full token object (not just access token string) for automatic refresh
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
 
@@ -14550,24 +14703,13 @@ class ProductionServer {
         // Check status - allow accepting if it's pending_received, pending_sent (mutual request), or already accepted (idempotent)
         if (connection.status === 'accepted') {
           if (!connection.kemCiphertext && kemCiphertext) {
-            const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-            const { readPnDriveIndex, isPnDriveIndexComplete, PN_DRIVE_SHEET_KEYS } =
-              await import('./server/modules/pnDriveIndex');
-            const acceptorIndex = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);
-            if (!isPnDriveIndexComplete(acceptorIndex)) {
-              return this.driveNotInitialized(res);
-            }
-            const spreadsheetId = acceptorIndex.sheetIds[PN_DRIVE_SHEET_KEYS.CONNECTIONS];
-            await ConnectionsSheetsService.updateConnectionStatus(
-              token,
-              spreadsheetId,
-              connectionId,
-              'accepted',
+            await ConnectionsService.acceptConnectionRequest(
+              token.access_token,
+              metadataFolderId,
               pnIdentifier,
-              accountId,
-              connection.acceptedAt,
-              undefined,
-              kemCiphertext
+              connectionId,
+              kemCiphertext,
+              accountId
             );
           }
           return res.json({ success: true, message: 'Connection already accepted' });
@@ -14618,24 +14760,18 @@ class ProductionServer {
           accountId
         );
 
-        // Get connection details from acceptor's sheet for syncing to other user
-        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-        const { readPnDriveIndex, isPnDriveIndexComplete, PN_DRIVE_SHEET_KEYS } =
-          await import('./server/modules/pnDriveIndex');
-        const acceptorIndexForSync = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);
-        if (!isPnDriveIndexComplete(acceptorIndexForSync)) {
-          return this.driveNotInitialized(res);
-        }
-        const acceptorSpreadsheetId = acceptorIndexForSync.sheetIds[PN_DRIVE_SHEET_KEYS.CONNECTIONS];
-        const acceptorConnection = await ConnectionsSheetsService.getConnectionById(
-          token,
-          acceptorSpreadsheetId,
-          connectionId,
+        const refreshedConnectionsFile = await ConnectionsService.getConnectionsFile(
+          userAccessToken,
+          metadataFolderId,
           pnIdentifier,
           accountId
         );
-        const acceptedAt = acceptorConnection?.acceptedAt || new Date().toISOString();
-        const createdAt = acceptorConnection?.createdAt || new Date().toISOString();
+        const acceptorConnection = refreshedConnectionsFile?.connections.find(
+          (c) => c.connectionId === connectionId
+        );
+        if (!acceptorConnection) {
+          messagingLog.warn('[AcceptConnection] Accepted connection not found after update', { connectionId });
+        }
 
         // Get other user's credentials (requester) - required for syncing shared secret
         // Use normalized pn-identifier only (no fallback to original DID)
@@ -14680,53 +14816,16 @@ class ProductionServer {
         const otherMetadataFolderId = otherMetadataFolder.metadataFolderId;
 
         // Sync shared secret to other user's connection record - this MUST succeed
-        const otherIndex = readPnDriveIndex(otherUserCredentials.credentials as Record<string, unknown>);
-        if (!isPnDriveIndexComplete(otherIndex)) {
-          return res.status(500).json({
-            error: 'Failed to access other user\'s drive index',
-            error_description: 'Other user must re-initialize Google Drive storage',
-          });
-        }
-        const otherSpreadsheetId = otherIndex.sheetIds[PN_DRIVE_SHEET_KEYS.CONNECTIONS];
-        
-        // Get other user's connection to check current status (more efficient than loading all connections)
-        const otherConnection = await ConnectionsSheetsService.getConnectionById(
-          otherToken,
-          otherSpreadsheetId,
-          connectionId,
+        await ConnectionsService.updateOtherUserConnectionStatus(
+          otherAccessToken,
+          otherMetadataFolderId,
           otherUserPnIdentifier,
+          connectionId,
+          'accepted',
+          pnIdentifier,
+          kemCiphertext,
           otherAccountId
         );
-        
-        if (otherConnection) {
-          // Update other user's connection to accepted with shared secret
-          await ConnectionsSheetsService.updateConnectionStatus(
-            otherToken,
-            otherSpreadsheetId,
-            connectionId,
-            'accepted',
-            otherUserPnIdentifier,
-            otherAccountId,
-            acceptedAt,
-            undefined,
-            kemCiphertext
-          );
-        } else {
-          await ConnectionsSheetsService.addConnection(
-            otherToken,
-            otherSpreadsheetId,
-            {
-              connectionId,
-              userPnIdentifier: pnIdentifier,
-              status: 'accepted',
-              createdAt,
-              acceptedAt,
-              kemCiphertext
-            },
-            otherUserPnIdentifier, // Sheet owner's identifier
-            otherAccountId
-          );
-        }
 
         // Send notification and record activity for requester
         if (otherAccessToken && otherMetadataFolderId && otherUserCredentials?.credentials) {
@@ -14902,7 +15001,12 @@ class ProductionServer {
 
               // Update inbox for acceptor
               try {
-                const acceptorInboxSheetId = acceptorIndexForSync.inboxSheetId;
+                const acceptorInboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+                  token,
+                  acceptorMessagesFolderId,
+                  pnIdentifier,
+                  accountId
+                );
                 await MessageSheetsService.updateInboxEntryWithRetry(
                   token,
                   acceptorInboxSheetId,
@@ -15084,18 +15188,23 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-                const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+                const accountId = account ? this.extractAccountId(account) : undefined;
         // Use normalized pn identifier for access token retrieval
         // Get full token object (not just access token string) for automatic refresh
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
 
@@ -15250,24 +15359,32 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Build token object from account
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         // Normalize targetId if it's a user (not a feed)
         const normalizedTargetId = targetTypeStr === 'user' && targetId
@@ -15415,24 +15532,32 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Build token object from account
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         // Get following sheet
         const followingSheetId = await ConnectionsSheetsService.getFollowingSheet(
@@ -15541,21 +15666,24 @@ class ProductionServer {
           return res.json({ followers: [] });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Build token object from account
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         // Check if followers sheet exists (only for paid feeds)
         try {
@@ -15614,21 +15742,24 @@ class ProductionServer {
           return res.json({ following: [] });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Build token object from account
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         // Get following sheet
         const followingSheetId = await ConnectionsSheetsService.getFollowingSheet(
@@ -15683,21 +15814,24 @@ class ProductionServer {
           return res.json({ feeds: [] });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Build token object from account
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         const followingSheetId = await ConnectionsSheetsService.getFollowingSheet(
           token,
@@ -15749,21 +15883,24 @@ class ProductionServer {
           return res.json({ users: [] });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Build token object from account
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         const followingSheetId = await ConnectionsSheetsService.getFollowingSheet(
           token,
@@ -15954,9 +16091,7 @@ class ProductionServer {
           return res.status(400).json({ error: 'connectionId and userPnIdentifier are required' });
         }
 
-        const { ConnectionsSheetsService } = await import('./server/modules/connectionsSheetsService');
-        const { requireOwnerDriveContext, DriveIndexError } = await import('./server/modules/ownerDriveContext');
-        const { PN_DRIVE_SHEET_KEYS } = await import('./server/modules/pnDriveIndex');
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
@@ -15973,18 +16108,23 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Get full token object (not just access token string) for automatic refresh
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
 
@@ -16000,73 +16140,53 @@ class ProductionServer {
         }
 
         // Get connection to find the other user's pn identifier before removing
-        let userSpreadsheetId: string | undefined;
         let otherUserPnIdentifier: string | undefined;
-        
+
         try {
-          const userCtx = await requireOwnerDriveContext(pnIdentifier, accountId);
-          userSpreadsheetId = userCtx.sheetId(PN_DRIVE_SHEET_KEYS.CONNECTIONS);
-        } catch (error: unknown) {
-          if (error instanceof DriveIndexError) {
-            return this.driveNotInitialized(res);
-          }
-          console.error(`[RemoveConnection] Failed to load drive index:`, (error as Error).message);
-          return res.status(500).json({
-            error: 'Failed to access connections sheet',
-            error_description: 'Drive index incomplete. Re-initialize Google Drive in the dashboard.',
-          });
-        }
-        
-        try {
-          // Get connection directly by connectionId (more efficient than loading all connections)
-          const connection = await ConnectionsSheetsService.getConnectionById(
-            token,
-            userSpreadsheetId,
-            connectionId,
+          const connectionsFile = await ConnectionsService.getConnectionsFile(
+            userAccessToken,
+            metadataFolderId,
             pnIdentifier,
             accountId
           );
+          const connection = connectionsFile?.connections.find((c) => c.connectionId === connectionId);
           if (connection) {
-            // Validate and normalize to pn identifier format (handles legacy data)
             if (!connection.userPnIdentifier) {
               console.error(`[RemoveConnection] Connection ${connectionId} missing userPnIdentifier:`, connection);
               return res.status(500).json({ error: 'Connection missing userPnIdentifier' });
             }
-            otherUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-') ? connection.userPnIdentifier : `pn-${connection.userPnIdentifier}`;
-            console.log(`[RemoveConnection] Found connection ${connectionId} with other user: ${connection.userPnIdentifier} (normalized: ${otherUserPnIdentifier})`);
+            otherUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-')
+              ? connection.userPnIdentifier
+              : `pn-${connection.userPnIdentifier}`;
+            console.log(
+              `[RemoveConnection] Found connection ${connectionId} with other user: ${connection.userPnIdentifier} (normalized: ${otherUserPnIdentifier})`
+            );
           } else {
-            console.error(`[RemoveConnection] Connection ${connectionId} not found in user's connections sheet`);
+            console.error(`[RemoveConnection] Connection ${connectionId} not found in user's connections`);
           }
         } catch (error: any) {
           console.error(`[RemoveConnection] Failed to get connection details:`, error.message, error.stack);
-          // Still try to remove from user's sheet even if we can't find the other user
         }
 
-        // Remove connection from user's sheet (using Sheets directly, not JSON)
-        let removedFromUser = false;
-        if (userSpreadsheetId) {
-          try {
-            await ConnectionsSheetsService.removeConnection(
-              token,
-              userSpreadsheetId,
-              connectionId,
-              pnIdentifier,
-              accountId
-            );
-            removedFromUser = true;
-            console.log(`[RemoveConnection] Removed connection ${connectionId} from user's connections sheet`);
-          } catch (error: any) {
-            if (error.message === 'Connection not found' || error.message?.includes('not found')) {
-              console.warn(`[RemoveConnection] Connection ${connectionId} not found in user's sheet (may have been already removed)`);
-              // Continue - connection might have been already removed or doesn't exist
-            } else {
-              console.error(`[RemoveConnection] Failed to remove connection from user's sheet:`, error.message, error.stack);
-              throw error; // Fail the request for other errors
-            }
+        try {
+          await ConnectionsService.removeConnection(
+            userAccessToken,
+            metadataFolderId,
+            pnIdentifier,
+            connectionId,
+            accountId
+          );
+          console.log(`[RemoveConnection] Removed connection ${connectionId} from user's connections`);
+        } catch (error: any) {
+          if (error.message === 'Connection not found' || error.message?.includes('not found')) {
+            console.warn(`[RemoveConnection] Connection ${connectionId} not found for user (may have been already removed)`);
+          } else {
+            console.error(`[RemoveConnection] Failed to remove connection from user:`, error.message, error.stack);
+            throw error;
           }
         }
 
-        // Also remove connection from other user's connections sheet
+        // Also remove connection from other user's connections
         if (!otherUserPnIdentifier) {
           console.error(`[RemoveConnection] Could not determine other user's pn identifier from connection ${connectionId}`);
           return res.json({ success: true, warning: 'Connection removed from your list, but could not determine other user to remove from their list' });
@@ -16124,43 +16244,26 @@ class ProductionServer {
           return res.json({ success: true, warning: 'Connection removed from your list, but other user\'s metadata folder not found' });
         }
 
-        // Get other user's connections spreadsheet - early return if error
-        let otherUserSpreadsheetId: string;
+        // Remove from other user's connections
         try {
-          const otherCtx = await requireOwnerDriveContext(otherUserPnIdentifier!, otherUserAccountId);
-          otherUserSpreadsheetId = otherCtx.sheetId(PN_DRIVE_SHEET_KEYS.CONNECTIONS);
-        } catch (error: unknown) {
-          if (error instanceof DriveIndexError) {
-            return res.json({ success: true, warning: 'Connection removed from your list, but other user must re-initialize Drive storage' });
-          }
-          console.error(`[RemoveConnection] Failed to load other user drive index:`, (error as Error).message);
-          return res.json({ success: true, warning: 'Connection removed from your list, but could not access other user\'s connections sheet' });
-        }
-
-        // Now attempt the actual removal - this is the critical step
-        try {
-          await ConnectionsSheetsService.removeConnection(
-            otherUserToken,
-            otherUserSpreadsheetId,
-            connectionId,
+          await ConnectionsService.removeConnection(
+            otherUserAccessToken,
+            otherUserMetadataFolder.metadataFolderId,
             otherUserPnIdentifier!,
+            connectionId,
             otherUserAccountId
           );
-          
-          console.log(`[RemoveConnection] Successfully removed connection ${connectionId} from both users' connections sheets`);
+
+          console.log(`[RemoveConnection] Successfully removed connection ${connectionId} from both users' connections`);
           return res.json({ success: true });
         } catch (removeError: any) {
           if (removeError.message === 'Connection not found' || removeError.message?.includes('not found')) {
-            console.warn(`[RemoveConnection] Connection ${connectionId} not found in other user's sheet (may have been already removed)`);
+            console.warn(`[RemoveConnection] Connection ${connectionId} not found for other user (may have been already removed)`);
             return res.json({ success: true, warning: 'Connection removed from your list, but connection not found in other user\'s list (may have been already removed)' });
-          } else {
-            // Re-throw unexpected errors to be caught by outer catch
-            console.error(`[RemoveConnection] Unexpected error removing from other user's sheet:`, removeError.message, removeError.stack);
-            throw removeError;
           }
+          console.error(`[RemoveConnection] Unexpected error removing from other user:`, removeError.message, removeError.stack);
+          throw removeError;
         }
-
-        return res.json({ success: true });
       } catch (error: any) {
         console.error('Error removing connection:', error);
         return res.status(500).json({
@@ -16197,12 +16300,17 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-          const account = googleDriveAccounts[0];
-          const accountId = this.extractAccountId(account);
-          const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+          const accountId = account ? this.extractAccountId(account) : undefined;
+          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
 
         // Find pN folder and _metadata folder (same pattern as other endpoints)
         const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
@@ -16294,18 +16402,23 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Get full token object (not just access token string) for automatic refresh
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
 
@@ -16368,12 +16481,17 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-          const account = googleDriveAccounts[0];
-          const accountId = this.extractAccountId(account);
-          const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+          const accountId = account ? this.extractAccountId(account) : undefined;
+          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
 
         const { findPnRootFolderId } = await import('./server/modules/pnDriveLayout');
         const pnFolderId = await findPnRootFolderId(userAccessToken, normalizedPnIdentifier);
@@ -16454,12 +16572,17 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-          const account = googleDriveAccounts[0];
-          const accountId = this.extractAccountId(account);
-          const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+          const accountId = account ? this.extractAccountId(account) : undefined;
+          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
 
         // Find pN folder and _metadata folder (same pattern as ZKP endpoints)
         const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
@@ -16554,18 +16677,23 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-          const account = googleDriveAccounts[0];
-          const accountId = this.extractAccountId(account);
+          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+          const accountId = account ? this.extractAccountId(account) : undefined;
           
           // Get full token object (not just access token string) for automatic refresh
           const token = {
-            access_token: account.access_token || account.accessToken,
-            refresh_token: account.refresh_token || account.refreshToken,
-            expires_at: account.expires_at,
-            expires_in: account.expires_in
+            access_token: account?.access_token || account?.accessToken || '',
+            refresh_token: account?.refresh_token || account?.refreshToken,
+            expires_at: account?.expires_at,
+            expires_in: account?.expires_in
           };
           const userAccessToken = token.access_token; // Keep for backward compatibility
 
@@ -16649,12 +16777,17 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-          const account = googleDriveAccounts[0];
-          const accountId = this.extractAccountId(account);
-          const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+          const accountId = account ? this.extractAccountId(account) : undefined;
+          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
 
         // Find pN folder and _metadata folder (same pattern as other endpoints)
         const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
@@ -16756,18 +16889,23 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-          const account = googleDriveAccounts[0];
-          const accountId = this.extractAccountId(account);
+          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+          const accountId = account ? this.extractAccountId(account) : undefined;
           
           // Get full token object (not just access token string) for automatic refresh
           const token = {
-            access_token: account.access_token || account.accessToken,
-            refresh_token: account.refresh_token || account.refreshToken,
-            expires_at: account.expires_at,
-            expires_in: account.expires_in
+            access_token: account?.access_token || account?.accessToken || '',
+            refresh_token: account?.refresh_token || account?.refreshToken,
+            expires_at: account?.expires_at,
+            expires_in: account?.expires_in
           };
           const userAccessToken = token.access_token; // Keep for backward compatibility
 
@@ -16823,12 +16961,17 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-          const account = googleDriveAccounts[0];
-          const accountId = this.extractAccountId(account);
-          const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+          const accountId = account ? this.extractAccountId(account) : undefined;
+          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
 
         // Find pN folder and _metadata folder (same pattern as other endpoints)
         const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
@@ -16928,12 +17071,17 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-          const account = googleDriveAccounts[0];
-          const accountId = this.extractAccountId(account);
-          const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+          const accountId = account ? this.extractAccountId(account) : undefined;
+          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
 
         // Find _metadata folder
         const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
@@ -17030,9 +17178,9 @@ class ProductionServer {
           return res.json({ preferences: [] });
         }
 
-          const account = googleDriveAccounts[0];
-          const accountId = this.extractAccountId(account);
-          const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+          const accountId = account ? this.extractAccountId(account) : undefined;
+          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
 
         // Find _metadata folder
         const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
@@ -17118,12 +17266,17 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-          const account = googleDriveAccounts[0];
-          const accountId = this.extractAccountId(account);
-          const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+          const accountId = account ? this.extractAccountId(account) : undefined;
+          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
 
         // Find _metadata folder
         const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
@@ -17216,21 +17369,24 @@ class ProductionServer {
           return res.json({ activities: [], total: 0 });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Build token object from account
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         // Get query parameters
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
@@ -17291,24 +17447,32 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Build token object from account
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         const MAX_NOTIFICATIONS_PAGE_SIZE = 500;
         const limit = Math.min(parseInt(req.query.limit as string) || 50, MAX_NOTIFICATIONS_PAGE_SIZE);
@@ -17370,21 +17534,24 @@ class ProductionServer {
           return res.json({ count: 0 });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Build token object from account
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         const count = await NotificationService.getUnreadCount(userAccessToken, metadataFolderId, pnIdentifier, accountId);
 
@@ -17428,24 +17595,32 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Build token object from account
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         const success = await NotificationService.markAsRead(userAccessToken, metadataFolderId, pnIdentifier, notificationId);
 
@@ -17495,24 +17670,32 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Build token object from account
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         const count = await NotificationService.markAllAsRead(userAccessToken, metadataFolderId, pnIdentifier);
 
@@ -17556,24 +17739,32 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Build token object from account
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         const success = await NotificationService.deleteNotification(userAccessToken, metadataFolderId, pnIdentifier, notificationId);
 
@@ -17650,21 +17841,24 @@ class ProductionServer {
           });
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Build token object from account
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         const preferences = await NotificationService.getPreferences(userAccessToken, metadataFolderId, pnIdentifier);
 
@@ -17707,24 +17901,32 @@ class ProductionServer {
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
         if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'User has no Google Drive connected' });
+          const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
+          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
+          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+            return res.status(404).json({ error: 'Storage not connected' });
+          }
+          // portable social cloud — continue without Drive accounts
         }
 
-        const account = googleDriveAccounts[0];
-        const accountId = this.extractAccountId(account);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        const accountId = account ? this.extractAccountId(account) : undefined;
         
         // Build token object from account
         const token = {
-          access_token: account.access_token || account.accessToken,
-          refresh_token: account.refresh_token || account.refreshToken,
-          expires_at: account.expires_at,
-          expires_in: account.expires_in
+          access_token: account?.access_token || account?.accessToken || '',
+          refresh_token: account?.refresh_token || account?.refreshToken,
+          expires_at: account?.expires_at,
+          expires_in: account?.expires_in
         };
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
-        const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-        if (!_g) return this.driveNotInitialized(res);
-        const metadataFolderId = _g.metadataFolderId;
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return this.driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
 
         const { user_did, ...preferencesUpdate } = req.body;
         const preferences = await NotificationService.updatePreferences(

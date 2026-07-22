@@ -58,6 +58,7 @@ export interface MediaPickItem {
 
 export interface MessagingMediaAttachment {
   mediaFileId: string;
+  mediaBackend?: string;
   mimeType?: string;
   displayName?: string;
 }

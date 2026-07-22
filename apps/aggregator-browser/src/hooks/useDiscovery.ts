@@ -314,21 +314,6 @@ export function useDiscovery({
     prevDiscoveryEnabledRef.current = discoveryEnabled;
   }, [discoveryEnabled, activeFeedId]);
 
-  useEffect(() => {
-    const storageHandler = (e: StorageEvent) => {
-      if (
-        e.key === 'google_drive_token' &&
-        e.newValue &&
-        discoveryEnabledRef.current &&
-        discoverFilesRef.current
-      ) {
-        discoverFilesRef.current(undefined, false, 0, false);
-      }
-    };
-    window.addEventListener('storage', storageHandler);
-    return () => window.removeEventListener('storage', storageHandler);
-  }, []);
-
   const handleSearch = useCallback(() => {
     if (!discoveryEnabledRef.current) return;
     setCurrentPage(0);

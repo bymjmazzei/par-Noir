@@ -35,6 +35,8 @@ export interface Message {
   read: boolean;
   readAt?: string;
   mediaFileId?: string;
+  /** Storage provider for mediaFileId (defaults to google_drive when omitted). */
+  mediaBackend?: string;
   mediaMimeType?: string;
   /** Client E2E ciphertext (cryptoVersion 2). */
   encryptedContent?: string;
@@ -480,7 +482,7 @@ export class MessageSheetsService {
     try {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: 'Messages!A1:I1',
+        range: 'Messages!A1:J1',
         valueInputOption: 'RAW',
         requestBody: {
           values: [[
@@ -492,7 +494,8 @@ export class MessageSheetsService {
             'Read At',
             'Crypto Version',
             'Media File ID',
-            'Media MIME Type'
+            'Media MIME Type',
+            'Media Backend'
           ]]
         }
       });
@@ -593,7 +596,7 @@ export class MessageSheetsService {
       // Step 2: Set the values in the newly inserted row 2
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: 'Messages!A2:I2',
+        range: 'Messages!A2:J2',
         valueInputOption: 'RAW',
         requestBody: {
           values: [[
@@ -605,7 +608,8 @@ export class MessageSheetsService {
             message.readAt || '',
             cryptoVersion ? String(cryptoVersion) : '',
             message.mediaFileId || '',
-            message.mediaMimeType || ''
+            message.mediaMimeType || '',
+            message.mediaBackend || ''
           ]]
         }
       });
@@ -832,6 +836,7 @@ export class MessageSheetsService {
         const cryptoVersion = row[6] ? parseInt(String(row[6]), 10) : 2;
         const mediaFileId = row[7]?.trim() || undefined;
         const mediaMimeType = row[8]?.trim() || undefined;
+        const mediaBackend = row[9]?.trim() || undefined;
         return {
           messageId: row[3] || `msg-${actualIndex}`,
           fromPnIdentifier,
@@ -843,6 +848,7 @@ export class MessageSheetsService {
           read: row[4] === 'true',
           readAt: row[5] || undefined,
           ...(mediaFileId ? { mediaFileId } : {}),
+          ...(mediaBackend ? { mediaBackend } : {}),
           ...(mediaMimeType ? { mediaMimeType } : {})
         };
       });
@@ -919,6 +925,7 @@ export class MessageSheetsService {
         
         const mediaFileId = row[7]?.trim() || undefined;
         const mediaMimeType = row[8]?.trim() || undefined;
+        const mediaBackend = row[9]?.trim() || undefined;
         return {
           messageId: row[3] || `msg-${actualIndex}`,
           fromPnIdentifier: normalizedFromPnIdentifier,
@@ -928,6 +935,7 @@ export class MessageSheetsService {
           read: row[4] === 'true',
           readAt: row[5] || undefined,
           ...(mediaFileId ? { mediaFileId } : {}),
+          ...(mediaBackend ? { mediaBackend } : {}),
           ...(mediaMimeType ? { mediaMimeType } : {})
         };
       })
@@ -2004,7 +2012,7 @@ export class MessageSheetsService {
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'Messages!A1:H1',
+      range: 'Messages!A1:J1',
       valueInputOption: 'RAW',
       requestBody: {
         values: [[
@@ -2015,7 +2023,9 @@ export class MessageSheetsService {
           'Read Status',
           'Read At',
           'cryptoVersion',
-          'mediaFileId'
+          'mediaFileId',
+          'mediaMimeType',
+          'mediaBackend'
         ]]
       }
     });
@@ -2199,7 +2209,7 @@ export class MessageSheetsService {
     }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
-    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Messages!A2:I' });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Messages!A2:J' });
     if (messages.length === 0) return;
     const values = messages.map((message) => {
       const encryptedContent =
@@ -2218,12 +2228,13 @@ export class MessageSheetsService {
         message.readAt || '',
         cryptoVersion ? String(cryptoVersion) : '',
         message.mediaFileId || '',
-        message.mediaMimeType || ''
+        message.mediaMimeType || '',
+        message.mediaBackend || ''
       ];
     });
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `Messages!A2:I${messages.length + 1}`,
+      range: `Messages!A2:J${messages.length + 1}`,
       valueInputOption: 'RAW',
       requestBody: { values }
     });

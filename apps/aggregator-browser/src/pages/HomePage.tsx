@@ -4,6 +4,7 @@
  */
 
 import React, { useContext } from 'react';
+import { useStorageConnected } from '../hooks/useStorageConnected';
 import { Search, Filter, User, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 import { calculateMediaScaling } from '../utils/mediaScaling';
@@ -27,6 +28,7 @@ function getTextPostData(file: IndexedFile) {
 
 export function HomePage() {
   const ctx = useContext(HomePageContext);
+  const storageConnected = useStorageConnected(ctx?.userState.pnIdentifier);
   if (!ctx) return null;
 
   const {
@@ -232,7 +234,7 @@ export function HomePage() {
         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 mb-4">
           <p className="text-yellow-400 text-sm">{error}</p>
           <p className="text-yellow-400/80 text-xs mt-2">
-            Note: Connect Google Drive at{' '}
+            Note: Connect cloud storage at{' '}
             <button
               type="button"
               onClick={async () => {
@@ -253,7 +255,7 @@ export function HomePage() {
       ) : indexedFiles.length === 0 ? (
         <EmptyState
           type="no-content"
-          message={typeof window !== 'undefined' && localStorage.getItem('google_drive_token') ? 'No files have been marked as public yet. Mark files as public in the dashboard to see them here.' : 'Connect Google Drive in the dashboard to scan for public files'}
+          message={storageConnected === false ? 'Connect cloud storage in the dashboard to scan for public files' : 'No files have been marked as public yet. Mark files as public in the dashboard to see them here.'}
         />
       ) : viewMode === 'feed' && activeFeedId === 'discovery' ? (
         <div

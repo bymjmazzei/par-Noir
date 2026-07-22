@@ -95,11 +95,21 @@ export class MessagingLedgerService {
     userPnIdentifier: string,
     accountId?: string
   ): Promise<void> {
-    // Convert accessToken string to token object
     const token: GoogleDriveToken = { access_token: accessToken };
     const normalizedUserPnIdentifier = this.normalizeToPnIdentifier(userPnIdentifier);
 
-    // Get or create Sheets file
+    if (await isPortableStorageProvider(normalizedUserPnIdentifier)) {
+      const { portableTableReplaceAll } = await import('./storage/portableTableService');
+      await portableTableReplaceAll(
+        normalizedUserPnIdentifier,
+        MESSAGING_LEDGER_SCHEMA,
+        (ledgerData.activities || []) as unknown as Record<string, unknown>[],
+        accountId,
+        { updatedAt: ledgerData.updatedAt }
+      );
+      return;
+    }
+
     const spreadsheetId = await MessagingLedgerSheetsService.getMessagingLedgerSheet(
       token,
       metadataFolderId,
@@ -107,11 +117,14 @@ export class MessagingLedgerService {
       accountId
     );
 
-    // Append new activities (if any)
-    // Note: This doesn't handle full replacement - activities are append-only in Sheets
-    // If full replacement is needed, we'd need to clear and re-add, but that's not typical usage
     for (const activity of ledgerData.activities || []) {
-      await MessagingLedgerSheetsService.appendActivity(token, spreadsheetId, activity, normalizedUserPnIdentifier, accountId);
+      await MessagingLedgerSheetsService.appendActivity(
+        token,
+        spreadsheetId,
+        activity,
+        normalizedUserPnIdentifier,
+        accountId
+      );
     }
   }
 

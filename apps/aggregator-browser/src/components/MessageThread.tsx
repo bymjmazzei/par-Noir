@@ -748,6 +748,7 @@ export function MessageThread({
                   {message.mediaFileId && threadContext && (
                     <MessageMediaAttachment
                       mediaFileId={message.mediaFileId}
+                      mediaBackend={message.mediaBackend}
                       threadContext={threadContext}
                       accountId={driveAccountId || undefined}
                       mimeTypeHint={message.mediaMimeType}

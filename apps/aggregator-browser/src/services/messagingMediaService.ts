@@ -17,6 +17,11 @@ import { getGroupChatKey, sendGroupMessage, type GroupRecord } from './groupServ
 import { sendMessage } from './messageService';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { decryptWithToken, type ShareToken } from '../utils/tokenDecryption';
+import {
+  uploadStorageFile,
+  downloadStorageBlob,
+  type StorageProviderId
+} from './storageApiClient';
 
 export type DmThreadContext = {
   threadType: 'dm';
@@ -45,18 +50,6 @@ interface EncryptedFilePackage {
     originalMimeType?: string;
     originalSize?: number;
   };
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      resolve(result.includes(',') ? result.split(',')[1] : result);
-    };
-    reader.onerror = () => reject(new Error('Failed to read file'));
-    reader.readAsDataURL(blob);
-  });
 }
 
 async function getAuthToken(): Promise<string> {
@@ -101,26 +94,23 @@ async function resolveSessionIdentity(): Promise<{ did: string; publicKey: strin
   return { did: session.did, publicKey };
 }
 
-async function downloadDriveBlob(
+async function fetchPickStorageBlob(
   fileId: string,
   accountId?: string,
-  ownerPnIdentifier?: string
+  ownerPnIdentifier?: string,
+  backend: StorageProviderId | string = 'google_drive'
 ): Promise<{ blob: Blob; mimeType: string }> {
   const token = await getAuthToken();
-  const params = new URLSearchParams({ download: 'true' });
-  if (accountId) {
-    params.set('accountId', accountId);
+  const session = PNOAuthService.loadSession();
+  const pnIdentifier = session?.pnIdentifier;
+  if (!pnIdentifier) {
+    throw new Error('Unlock your pN to download media');
   }
-  if (ownerPnIdentifier) {
-    params.set('ownerPnIdentifier', ownerPnIdentifier);
-  }
-  const res = await fetch(`${API_ENDPOINT}/api/drive/files/${fileId}?${params}`, {
-    headers: { Authorization: `Bearer ${token}` }
+
+  const blob = await downloadStorageBlob(token, pnIdentifier, backend, fileId, {
+    accountId,
+    ownerPnIdentifier
   });
-  if (!res.ok) {
-    throw new Error('Failed to download file from Drive');
-  }
-  const blob = await res.blob();
   return { blob, mimeType: blob.type || 'application/octet-stream' };
 }
 
@@ -221,7 +211,7 @@ export async function downloadSourceBlob(pick: MediaPickItem): Promise<{
     throw new Error('No file selected');
   }
 
-  const { blob, mimeType } = await downloadDriveBlob(
+  const { blob, mimeType } = await fetchPickStorageBlob(
     driveId,
     pick.accountId,
     pick.ownerPnIdentifier
@@ -235,6 +225,7 @@ export async function prepareMessageAttachment(
   accountId?: string
 ): Promise<{
   mediaFileId: string;
+  mediaBackend?: StorageProviderId;
   mimeType: string;
   displayName?: string;
   /** Per-recipient envelopes (UTF-8 ciphertext) for dual-write without bit-identical blobs. */
@@ -257,6 +248,12 @@ export async function prepareMessageAttachment(
   }
 
   const token = await getAuthToken();
+  const session = PNOAuthService.loadSession();
+  const pnIdentifier = session?.pnIdentifier;
+  if (!pnIdentifier) {
+    throw new Error('Unlock your pN to upload attachments');
+  }
+
   const folderRes = await fetch(
     `${API_ENDPOINT}/api/messages/attachments-folder${accountId ? `?accountId=${encodeURIComponent(accountId)}` : ''}`,
     { headers: { Authorization: `Bearer ${token}` } }
@@ -264,37 +261,46 @@ export async function prepareMessageAttachment(
   if (!folderRes.ok) {
     throw new Error('Failed to resolve messaging attachments folder');
   }
-  const { folderId } = (await folderRes.json()) as { folderId: string };
+  const location = (await folderRes.json()) as {
+    folderId?: string;
+    backend?: StorageProviderId;
+    backendFileId?: string;
+    accountId?: string;
+  };
+  const backend = location.backend || 'google_drive';
+  const attachmentsPrefix = location.backendFileId || location.folderId;
+  if (!attachmentsPrefix) {
+    throw new Error('Failed to resolve messaging attachments location');
+  }
 
   const envelopeBytes = new TextEncoder().encode(senderEnvelope);
-  const envelopeBlob = new Blob([envelopeBytes], { type: 'application/octet-stream' });
-  const fileData = await blobToBase64(envelopeBlob);
   const fileName = genericAttachmentFileName();
 
-  const uploadRes = await fetch(`${API_ENDPOINT}/api/drive/files`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      fileData,
+  const { id: mediaFileId, backend: uploadedBackend } = await uploadStorageFile(
+    token,
+    pnIdentifier,
+    backend,
+    {
+      fileData: envelopeBytes,
       fileName,
       mimeType: 'application/octet-stream',
-      parents: [folderId],
-      accountId,
+      accountId: accountId || location.accountId,
+      parents: backend === 'google_drive' ? [attachmentsPrefix] : undefined,
+      key:
+        backend === 'google_drive'
+          ? undefined
+          : `${attachmentsPrefix.replace(/\/$/, '')}/${fileName}`,
       encrypt: false
-    })
-  });
-  if (!uploadRes.ok) {
-    throw new Error('Failed to upload messaging attachment');
-  }
-  const uploadData = await uploadRes.json();
-  const mediaFileId = uploadData.file?.id;
-  if (!mediaFileId) {
-    throw new Error('Upload succeeded but no file id returned');
-  }
-  return { mediaFileId, mimeType, displayName, mediaEnvelopesByPn };
+    }
+  );
+
+  return {
+    mediaFileId,
+    mediaBackend: uploadedBackend,
+    mimeType,
+    displayName,
+    mediaEnvelopesByPn
+  };
 }
 
 export async function sendMessageWithMedia(
@@ -303,7 +309,7 @@ export async function sendMessageWithMedia(
   caption: string,
   accountId?: string
 ): Promise<void> {
-  const { mediaFileId, mimeType, mediaEnvelopesByPn } = await prepareMessageAttachment(
+  const { mediaFileId, mediaBackend, mimeType, mediaEnvelopesByPn } = await prepareMessageAttachment(
     pick,
     ctx,
     accountId
@@ -318,7 +324,8 @@ export async function sendMessageWithMedia(
       text,
       mediaFileId,
       mimeType,
-      mediaEnvelopesByPn
+      mediaEnvelopesByPn,
+      mediaBackend
     );
     return;
   }
@@ -332,7 +339,8 @@ export async function sendMessageWithMedia(
     ctx.kemCiphertext,
     mimeType,
     ctx.wrappedMessageRootKey,
-    mediaEnvelopesByPn
+    mediaEnvelopesByPn,
+    mediaBackend
   );
 }
 
@@ -349,20 +357,21 @@ export async function fetchAndDecryptAttachment(
   mediaFileId: string,
   ctx: MessagingThreadContext,
   accountId?: string,
-  mimeTypeHint?: string
+  mimeTypeHint?: string,
+  mediaBackend?: StorageProviderId | string
 ): Promise<{ blob: Blob; mimeType: string }> {
   const token = await getAuthToken();
-  const params = new URLSearchParams({ download: 'true' });
-  if (accountId) {
-    params.set('accountId', accountId);
+  const backend = mediaBackend || 'google_drive';
+  const session = PNOAuthService.loadSession();
+  const pnIdentifier = session?.pnIdentifier;
+  if (!pnIdentifier) {
+    throw new Error('Unlock your pN to download attachments');
   }
-  const res = await fetch(`${API_ENDPOINT}/api/drive/files/${mediaFileId}?${params}`, {
-    headers: { Authorization: `Bearer ${token}` }
+
+  const rawBlob = await downloadStorageBlob(token, pnIdentifier, backend, mediaFileId, {
+    accountId
   });
-  if (!res.ok) {
-    throw new Error('Failed to download attachment');
-  }
-  const rawBlob = await res.blob();
+
   const envelope = await rawBlob.text();
   const { bytes } = await decryptAttachmentBlob(envelope, ctx);
   return {

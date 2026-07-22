@@ -76,6 +76,17 @@ export async function getUserPrismEntries(
     return portableTableScan<PrismLedgerEntry>(normalized, PRISM_LEDGER_SCHEMA, driveCtx?.accountId);
   }
   if (!driveCtx) return [];
-  void driveCtx;
-  return [];
+  const sheetId = await PrismLedgerSheetsService.getPrismLedgerSheet(
+    driveCtx.token,
+    driveCtx.metadataFolderId,
+    normalized,
+    driveCtx.accountId
+  );
+  const result = await PrismLedgerSheetsService.getActivities(
+    driveCtx.token,
+    sheetId,
+    normalized,
+    driveCtx.accountId
+  );
+  return result.entries ?? [];
 }

@@ -9,6 +9,7 @@ import { PNOAuthService } from './pnOAuthService';
 import { getEncryptionService } from './encryptionService';
 import { renderTextPostToBlob } from './textPostService';
 import { API_ENDPOINT } from '../config/api';
+import { uploadStorageFile } from './storageApiClient';
 
 interface EncryptedFilePackage {
   encrypted: string;
@@ -807,39 +808,25 @@ async function uploadFile(
   fileName: string,
   accessToken: string,
   accountId: string,
-  options?: { encrypt?: boolean; mimeType?: string }
+  options?: { encrypt?: boolean; mimeType?: string; provider?: string }
 ): Promise<{ id: string }> {
   const encrypt = options?.encrypt !== false;
   const mimeType = options?.mimeType ?? 'application/json';
+  const session = PNOAuthService.loadSession();
+  const pnIdentifier = session?.pnIdentifier;
+  if (!pnIdentifier) {
+    throw new Error('Unlock your pN to upload files');
+  }
 
-  const response = await fetch(`${API_ENDPOINT}/api/drive/files`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`
-    },
-    body: JSON.stringify({
-      fileData: base64Data,
-      fileName,
-      mimeType,
-      accountId,
-      encrypt
-    })
+  const { id } = await uploadStorageFile(accessToken, pnIdentifier, options?.provider || 'google_drive', {
+    fileData: base64Data,
+    fileName,
+    mimeType,
+    accountId,
+    encrypt
   });
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => 'Unknown error');
-    throw new Error(`Upload failed: ${errorText}`);
-  }
-
-  const result = await response.json();
-  const uploadedFile = result.file;
-
-  if (!uploadedFile || !uploadedFile.id) {
-    throw new Error('Upload succeeded but no file ID returned');
-  }
-
-  return { id: uploadedFile.id };
+  return { id };
 }
 
 /**

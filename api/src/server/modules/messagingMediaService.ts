@@ -1,17 +1,69 @@
 /**
  * Messaging media — attachments dual-written into each user's own silo (no peer Drive ACLs).
+ * Supports Google Drive and portable social-cloud blob backends.
  */
 
 import { genericAttachmentFileName } from '@par-noir/dm-crypto';
+import {
+  ATTACHMENTS_DIR,
+  messagesPath,
+  type StorageProviderId
+} from '@par-noir/user-owned-storage';
 import { googleDriveProxyService } from './googleDriveProxy';
 import { storageCredentialsService } from './storageCredentialsService';
 import { MessageSheetsService } from './messageSheetsService';
 import { GoogleDriveToken } from './googleOAuth2Helper';
+import { isPortableSocialCloud } from './storage/storageProviderUtils';
+import { resolveSocialCloudContext } from './storage/storageFacade';
 
-const ATTACHMENTS_FOLDER_NAME = 'attachments';
+const ATTACHMENTS_FOLDER_NAME = ATTACHMENTS_DIR;
+
+/** Relative blob key prefix or Google Drive folder id, plus provider. */
+export interface MediaAttachmentRef {
+  backend: StorageProviderId;
+  backendFileId: string;
+  accountId?: string;
+}
+
+export type MediaAttachmentLocation = MediaAttachmentRef & {
+  /** @deprecated use backendFileId — present for Drive clients expecting folderId */
+  folderId?: string;
+};
+
+export type MediaCopyInput = {
+  /** Recipient pN → pre-encrypted envelope (UTF-8). When set, skip byte-copy from sender. */
+  envelopeByPn?: Record<string, string>;
+};
 
 function normalizePn(pn: string): string {
   return pn.startsWith('pn-') ? pn : `pn-${pn}`;
+}
+
+function attachmentsPrefix(): string {
+  return messagesPath(ATTACHMENTS_DIR);
+}
+
+function attachmentRelativeKey(fileName: string): string {
+  return messagesPath(ATTACHMENTS_DIR, fileName);
+}
+
+function resolveBlobKey(rootPrefix: string, backendFileId: string): string {
+  return backendFileId.startsWith(rootPrefix)
+    ? backendFileId
+    : `${rootPrefix}${backendFileId}`;
+}
+
+export function normalizeMediaRef(
+  mediaFileId?: string,
+  mediaBackend?: string,
+  accountId?: string
+): MediaAttachmentRef | undefined {
+  if (!mediaFileId) return undefined;
+  return {
+    backend: (mediaBackend as StorageProviderId) || 'google_drive',
+    backendFileId: mediaFileId,
+    accountId
+  };
 }
 
 async function sleep(ms: number): Promise<void> {
@@ -87,14 +139,77 @@ async function getOwnerDriveContext(ownerPn: string, accountId?: string): Promis
   return { pnIdentifier, accessToken, token, accountId: resolvedAccountId, pnFolderId };
 }
 
-/**
- * Ensure par-noir-messages/attachments/ exists under the owner's pN folder.
- */
-export async function ensureMessagesAttachmentsFolder(
+async function downloadAttachmentBytes(ownerPn: string, ref: MediaAttachmentRef): Promise<Buffer> {
+  if (ref.backend === 'google_drive') {
+    const blob = await googleDriveProxyService.downloadFile(
+      normalizePn(ownerPn),
+      ref.backendFileId,
+      ref.accountId
+    );
+    return Buffer.from(await blob.arrayBuffer());
+  }
+
+  const ctx = await resolveSocialCloudContext(normalizePn(ownerPn), ref.accountId);
+  if (!ctx.blobStore) {
+    throw new Error('Blob store unavailable for attachment download');
+  }
+  const fullKey = resolveBlobKey(ctx.rootPrefix, ref.backendFileId);
+  const data = await ctx.blobStore.get(fullKey);
+  if (!data) {
+    throw new Error('Attachment blob not found');
+  }
+  return Buffer.from(data);
+}
+
+async function uploadAttachmentBytes(
   ownerPn: string,
-  accountId?: string
-): Promise<string> {
-  const ctx = await getOwnerDriveContext(ownerPn, accountId);
+  body: Buffer,
+  fileName: string,
+  refAccountId?: string
+): Promise<MediaAttachmentRef> {
+  const pnIdentifier = normalizePn(ownerPn);
+
+  if (await isPortableSocialCloud(pnIdentifier)) {
+    const ctx = await resolveSocialCloudContext(pnIdentifier, refAccountId);
+    if (!ctx.blobStore) {
+      throw new Error('Blob store unavailable for attachment upload');
+    }
+    const relativeKey = attachmentRelativeKey(fileName);
+    const fullKey = resolveBlobKey(ctx.rootPrefix, relativeKey);
+    await ctx.blobStore.put(fullKey, body, { contentType: 'application/octet-stream' });
+    return {
+      backend: ctx.provider,
+      backendFileId: relativeKey,
+      accountId: ctx.accountId
+    };
+  }
+
+  const ctx = await getOwnerDriveContext(pnIdentifier, refAccountId);
+  const folderId = await ensureMessagesAttachmentsFolderDrive(ctx);
+  const uploaded = await googleDriveProxyService.uploadFile(
+    pnIdentifier,
+    body,
+    fileName,
+    'application/octet-stream',
+    [folderId]
+  );
+  if (!uploaded?.id) {
+    throw new Error(`Failed to upload attachment for ${pnIdentifier}`);
+  }
+  return {
+    backend: 'google_drive',
+    backendFileId: uploaded.id,
+    accountId: ctx.accountId
+  };
+}
+
+async function ensureMessagesAttachmentsFolderDrive(ctx: {
+  token: GoogleDriveToken;
+  pnFolderId: string;
+  pnIdentifier: string;
+  accountId: string;
+  accessToken: string;
+}): Promise<string> {
   const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
     ctx.token,
     ctx.pnFolderId,
@@ -137,25 +252,62 @@ export async function ensureMessagesAttachmentsFolder(
   return created.id;
 }
 
-export type MediaCopyInput = {
-  /** Recipient pN → pre-encrypted envelope (UTF-8). When set, skip byte-copy from sender. */
-  envelopeByPn?: Record<string, string>;
-};
+/**
+ * Resolve where messaging attachments live for the owner (Drive folder id or blob prefix).
+ */
+export async function ensureMessagesAttachmentsFolder(
+  ownerPn: string,
+  accountId?: string
+): Promise<MediaAttachmentLocation> {
+  const pnIdentifier = normalizePn(ownerPn);
+
+  if (await isPortableSocialCloud(pnIdentifier)) {
+    const ctx = await resolveSocialCloudContext(pnIdentifier, accountId);
+    const prefix = attachmentsPrefix();
+    return {
+      backend: ctx.provider,
+      backendFileId: prefix,
+      folderId: prefix,
+      accountId: ctx.accountId
+    };
+  }
+
+  const ctx = await getOwnerDriveContext(pnIdentifier, accountId);
+  const folderId = await ensureMessagesAttachmentsFolderDrive(ctx);
+  return {
+    backend: 'google_drive',
+    backendFileId: folderId,
+    folderId,
+    accountId: ctx.accountId
+  };
+}
 
 /**
  * Dual-write attachment into each recipient's own attachments folder.
- * Returns map of pnIdentifier → mediaFileId for that silo (includes sender unchanged).
+ * Returns map of pnIdentifier → ref for that silo (includes sender unchanged).
  * No peer Drive ACLs.
  */
 export async function dualWriteAttachmentToRecipients(
   senderPn: string,
-  senderMediaFileId: string,
+  senderRef: MediaAttachmentRef | string,
   recipientPnIdentifiers: string[],
   senderAccountId?: string,
-  opts?: MediaCopyInput & { jitterMs?: number }
-): Promise<Record<string, string>> {
+  opts?: MediaCopyInput & { jitterMs?: number; senderMediaBackend?: StorageProviderId }
+): Promise<Record<string, MediaAttachmentRef>> {
   const senderNorm = normalizePn(senderPn);
-  const result: Record<string, string> = { [senderNorm]: senderMediaFileId };
+  const resolvedSenderRef: MediaAttachmentRef =
+    typeof senderRef === 'string'
+      ? {
+          backend: opts?.senderMediaBackend || 'google_drive',
+          backendFileId: senderRef,
+          accountId: senderAccountId
+        }
+      : senderRef;
+
+  const result: Record<string, MediaAttachmentRef> = {
+    [senderNorm]: resolvedSenderRef
+  };
+
   const uniqueRecipients = [
     ...new Set(recipientPnIdentifiers.map(normalizePn).filter((pn) => pn !== senderNorm))
   ];
@@ -166,13 +318,7 @@ export async function dualWriteAttachmentToRecipients(
   let senderBytes: Buffer | undefined;
   const needCopy = uniqueRecipients.some((pn) => !opts?.envelopeByPn?.[pn]);
   if (needCopy) {
-    const blob = await googleDriveProxyService.downloadFile(
-      senderNorm,
-      senderMediaFileId,
-      senderAccountId
-    );
-    const ab = await blob.arrayBuffer();
-    senderBytes = Buffer.from(ab);
+    senderBytes = await downloadAttachmentBytes(senderNorm, resolvedSenderRef);
   }
 
   for (let i = 0; i < uniqueRecipients.length; i++) {
@@ -182,21 +328,11 @@ export async function dualWriteAttachmentToRecipients(
       await sleep(jitter);
     }
 
-    const folderId = await ensureMessagesAttachmentsFolder(recipientPn);
     const fileName = genericAttachmentFileName();
     const envelope = opts?.envelopeByPn?.[recipientPn];
     const body = envelope ? Buffer.from(envelope, 'utf8') : senderBytes!;
-    const uploaded = await googleDriveProxyService.uploadFile(
-      recipientPn,
-      body,
-      fileName,
-      'application/octet-stream',
-      [folderId]
-    );
-    if (!uploaded?.id) {
-      throw new Error(`Failed to dual-write attachment for ${recipientPn}`);
-    }
-    result[recipientPn] = uploaded.id;
+    const uploaded = await uploadAttachmentBytes(recipientPn, body, fileName);
+    result[recipientPn] = uploaded;
   }
 
   return result;
@@ -204,7 +340,6 @@ export async function dualWriteAttachmentToRecipients(
 
 /**
  * @deprecated Peer ACLs removed — use dualWriteAttachmentToRecipients.
- * Kept as no-op so stale imports fail soft if any remain.
  */
 export async function shareAttachmentWithRecipients(
   _senderPn: string,

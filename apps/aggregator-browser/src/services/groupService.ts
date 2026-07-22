@@ -327,7 +327,8 @@ export async function sendGroupMessage(
   plaintext: string,
   mediaFileId?: string,
   mediaMimeType?: string,
-  mediaEnvelopesByPn?: Record<string, string>
+  mediaEnvelopesByPn?: Record<string, string>,
+  mediaBackend?: string
 ): Promise<void> {
   if (!isDmIdentityReady()) {
     throw new Error('Messaging keys unavailable. Lock and unlock your pN again to send messages.');
@@ -349,6 +350,7 @@ export async function sendGroupMessage(
         ? {
             mediaFileId,
             ...(mediaMimeType ? { mediaMimeType } : {}),
+            ...(mediaBackend ? { mediaBackend } : {}),
             ...(mediaEnvelopesByPn ? { mediaEnvelopesByPn } : {})
           }
         : {})

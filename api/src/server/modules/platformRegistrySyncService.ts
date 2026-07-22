@@ -1,10 +1,9 @@
 /**
- * Sync platform-registry.xlsx (operator Drive SoT) → Postgres enforcement cache.
+ * Sync platform registry (operator social cloud SoT) → Postgres enforcement cache.
  */
 
 import { getDatabasePool } from '../utils/database';
-import { PlatformRegistrySheetsService } from './platformRegistrySheetsService';
-import { requirePlatformRegistryDriveContext } from './platformRegistryContext';
+import { PlatformRegistryStorage } from './platformRegistryStorage';
 import { isPlatformRegistryConfigured } from './platformOperatorService';
 import { isFirstPartyClient } from './integratorStoragePaths';
 import type { PlatformRegistrySyncResult } from './platformRegistryTypes';
@@ -35,27 +34,8 @@ export class PlatformRegistrySyncService {
       return null;
     }
 
-    const ctx = await requirePlatformRegistryDriveContext();
-    const token = { access_token: ctx.accessToken };
-    const spreadsheetId = await PlatformRegistrySheetsService.getSpreadsheetId(
-      token,
-      ctx.metadataFolderId,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
-    );
-
-    const oauthRows = await PlatformRegistrySheetsService.listOAuthClients(
-      token,
-      spreadsheetId,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
-    );
-    const licenseRows = await PlatformRegistrySheetsService.listCommercialLicenses(
-      token,
-      spreadsheetId,
-      ctx.normalizedPnIdentifier,
-      ctx.accountId
-    );
+    const oauthRows = await PlatformRegistryStorage.listOAuthClients();
+    const licenseRows = await PlatformRegistryStorage.listCommercialLicenses();
 
     const pool = getDatabasePool();
     let oauthClientsUpserted = 0;

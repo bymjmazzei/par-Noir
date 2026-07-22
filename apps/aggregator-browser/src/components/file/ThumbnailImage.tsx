@@ -8,6 +8,7 @@ import { Lock } from 'lucide-react';
 import { PNOAuthService } from '../../services/pnOAuthService';
 import { EncryptionManager } from '../../utils/encryptionManager';
 import { API_ENDPOINT } from '../../config/api';
+import { fetchStorageFile } from '../../services/storageApiClient';
 
 interface EncryptedFilePackage {
   encrypted: string;
@@ -72,6 +73,7 @@ export interface ThumbnailImageProps {
   mainFileId?: string;
   isThumbnail?: boolean;
   isEncrypted?: boolean; // When true, main file is encrypted; prefer over fileName.endsWith('.encrypted')
+  backend?: string;
 }
 
 export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
@@ -83,6 +85,7 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
   mainFileId,
   isThumbnail,
   isEncrypted: isEncryptedProp,
+  backend = 'google_drive',
 }) => {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
@@ -99,6 +102,12 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
         }
         const accessToken = await PNOAuthService.getValidAccessToken();
         if (!accessToken) {
+          setError(true);
+          return;
+        }
+        const session = PNOAuthService.loadSession();
+        const pnIdentifier = session?.pnIdentifier;
+        if (!pnIdentifier) {
           setError(true);
           return;
         }
@@ -126,15 +135,14 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
             return;
           }
           try {
-            let response = await fetch(
-              `${API_ENDPOINT}/api/drive/files/${fileId}?thumbnail=true&accountId=${accountId}`,
-              { headers: { Authorization: `Bearer ${accessToken}` } }
-            );
+            let response = await fetchStorageFile(accessToken, pnIdentifier, backend, fileId, {
+              accountId,
+              thumbnail: true
+            });
             if (!response.ok) {
-              response = await fetch(
-                `${API_ENDPOINT}/api/drive/files/${fileId}?accountId=${accountId}&download=true`,
-                { headers: { Authorization: `Bearer ${accessToken}` } }
-              );
+              response = await fetchStorageFile(accessToken, pnIdentifier, backend, fileId, {
+                accountId
+              });
             }
             if (!response.ok) {
               setError(true);
@@ -178,9 +186,12 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
               const metadata = await metadataResponse.json();
               const thumbnailFileId = metadata.metadata?.thumbnailFileId || metadata.thumbnailFileId;
               if (thumbnailFileId) {
-                const thumbResponse = await fetch(
-                  `${API_ENDPOINT}/api/drive/files/${thumbnailFileId}?thumbnail=true&accountId=${accountId}`,
-                  { headers: { Authorization: `Bearer ${accessToken}` } }
+                const thumbResponse = await fetchStorageFile(
+                  accessToken,
+                  pnIdentifier,
+                  backend,
+                  thumbnailFileId,
+                  { accountId, thumbnail: true }
                 );
                 if (thumbResponse.ok) {
                   const contentType = thumbResponse.headers.get('content-type') || '';
@@ -237,10 +248,9 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
             setError(true);
             return;
           }
-          const response = await fetch(
-            `${API_ENDPOINT}/api/drive/files/${fileId}?accountId=${accountId}&download=true`,
-            { headers: { Authorization: `Bearer ${accessToken}` } }
-          );
+          const response = await fetchStorageFile(accessToken, pnIdentifier, backend, fileId, {
+            accountId
+          });
           if (!response.ok) throw new Error(`Failed to download file: ${response.status}`);
           const encryptedText = await response.text();
           let encryptedPackage: EncryptedFilePackage;
@@ -283,20 +293,19 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
             }
           }
         } else {
-          let response = await fetch(
-            `${API_ENDPOINT}/api/drive/files/${fileId}?thumbnail=true&accountId=${accountId}`,
-            { headers: { Authorization: `Bearer ${accessToken}` } }
-          );
+          let response = await fetchStorageFile(accessToken, pnIdentifier, backend, fileId, {
+            accountId,
+            thumbnail: true
+          });
           if (response.ok) {
             const blob = await response.blob();
             blobUrl = URL.createObjectURL(blob);
             setThumbnailUrl(blobUrl);
             setError(false);
           } else {
-            response = await fetch(
-              `${API_ENDPOINT}/api/drive/files/${fileId}?accountId=${accountId}&download=true`,
-              { headers: { Authorization: `Bearer ${accessToken}` } }
-            );
+            response = await fetchStorageFile(accessToken, pnIdentifier, backend, fileId, {
+              accountId
+            });
             if (response.ok) {
               const fileBlob = await response.blob();
               const mt = fileBlob.type || '';

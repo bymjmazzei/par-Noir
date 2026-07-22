@@ -3,7 +3,7 @@
  * Dashboard aggregator that collects files from all connected storage backends
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, File, RefreshCw, AlertCircle, Lock, Globe, Info, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Trash2, Minus, Flag, CheckCircle } from 'lucide-react';
+import { Download, File, RefreshCw, AlertCircle, Lock, Globe, Info, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Trash2, Minus, Flag } from 'lucide-react';
 import { DesktopSecureFolderPanel } from './DesktopSecureFolderPanel';
 import { getFileAggregatorService } from '../../services/aggregator/FileAggregatorService';
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
@@ -53,7 +53,7 @@ function DriveLayoutSetupProgress({ progress }: { progress: DriveSetupProgress }
 
   return (
     <div className="text-center py-12 px-4">
-      <p className="text-text-primary font-medium mb-1">Setting up your Google Drive</p>
+      <p className="text-text-primary font-medium mb-1">Setting up your storage</p>
       <p className="text-text-secondary text-sm mb-4">{progress.stepLabel}</p>
       <div className="w-full max-w-md mx-auto h-2.5 bg-neutral-800 rounded-full overflow-hidden relative overflow-hidden">
         <div
@@ -68,7 +68,7 @@ function DriveLayoutSetupProgress({ progress }: { progress: DriveSetupProgress }
       <p className="text-text-secondary text-xs mt-2">{progress.percent}%</p>
       <p className="text-text-secondary text-xs mt-4 max-w-sm mx-auto">
         {showSlowHint
-          ? 'Google Drive is responding slowly — setup is still running. This can take a few minutes.'
+          ? 'Your cloud provider is responding slowly — setup is still running. This can take a few minutes.'
           : 'This usually takes a few minutes. Your files will appear when setup finishes.'}
       </p>
     </div>
@@ -512,6 +512,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   React.useEffect(() => {
     void registerPortableCloudBackends();
   }, [registerPortableCloudBackends]);
+
+  React.useEffect(() => {
+    if (portableCloudAccounts.length === 0 || !loadFilesRef.current) return;
+    void loadFilesRef.current();
+  }, [portableCloudAccounts.length]);
   
   const scheduleTokenRetry = React.useCallback((backendIds: string[], options?: { delayMs?: number; resetAttempts?: boolean }) => {
     if (!backendIds.length) {
@@ -540,7 +545,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return acc;
         }, {} as Record<string, number>),
       });
-      setError('Google Drive session expired. Please reconnect from the storage tab.');
+      setError('Storage session expired. Please reconnect from the storage tab.');
       return;
     }
 
@@ -3298,6 +3303,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         setFiles([]);
         return;
       }
+
+      await registerPortableCloudBackends();
       
       try {
         await aggregatorService.ensureInitialized();
@@ -3895,7 +3902,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       setIsLoading(false);
       isLoadingFilesRef.current = false;
     }
-  }, [aggregatorService, authenticatedUser, resolvedAuth, driveAccounts, loadFileMetadata, scheduleTokenRetry, driveReadBlocked, deviceGate]);
+  }, [aggregatorService, authenticatedUser, resolvedAuth, driveAccounts, loadFileMetadata, scheduleTokenRetry, driveReadBlocked, deviceGate, registerPortableCloudBackends]);
 
   const handleTogglePublic = async (file: AggregatedFile) => {
     try {
@@ -5633,9 +5640,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         throw new Error('Storage service not available');
       }
 
-      const targetBackendId = overrideBackendId || activeBackendId || driveAccounts[0]?.backendId;
+      const portableBackendId = portableCloudAccounts[0]
+        ? `${portableCloudAccounts[0].provider}::${portableCloudAccounts[0].accountId}`
+        : null;
+      const targetBackendId =
+        overrideBackendId || activeBackendId || driveAccounts[0]?.backendId || portableBackendId;
       if (!targetBackendId) {
-        throw new Error('No Google Drive account connected');
+        throw new Error('No storage account connected');
       }
 
       const backend = aggregatorService.getBackend(targetBackendId);
@@ -6792,7 +6803,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
 
   const totalFiles = files.length;
-  const hasConnectedBackends = driveAccounts.length > 0;
+  const hasConnectedBackends =
+    driveAccounts.length > 0 || portableCloudAccounts.length > 0;
+  const connectedStorageCount = driveAccounts.length + portableCloudAccounts.length;
 
   const filesByBackend = React.useMemo(() => {
     const map = new Map<string, AggregatedFile[]>();
@@ -7032,49 +7045,29 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         )
       )}
 
-      {/* Secure Cloud Providers — backend IDs are google_drive::… not literal 'google_drive' */}
-      <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-4 sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start space-x-3 min-w-0">
-            <Cloud className="h-5 w-5 text-blue-400 shrink-0 mt-0.5" />
-              <div className="min-w-0">
-              <h3 className="text-lg font-semibold text-white">Secure Cloud</h3>
-              <p className="text-text-secondary text-sm">Connect encrypted cloud storage providers.</p>
-              {hasConnectedBackends && (
-                <p className="text-green-400 text-sm mt-2 flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 shrink-0" aria-hidden />
-                  <span>Google Drive connected ({driveAccounts.length})</span>
-                </p>
-              )}
-              </div>
-            </div>
-          <div className="flex items-center gap-3 shrink-0 self-start sm:self-center">
-              <button
-                onClick={handleConnectGoogleDrive}
-              className={`p-2 rounded-lg border border-blue-500/40 bg-blue-600/10 hover:bg-blue-600/20 transition-colors ${isLoading || showDriveSetupProgress ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                disabled={isLoading || showDriveSetupProgress}
-              title={hasConnectedBackends ? 'Google Drive connected — tap to add or re-authenticate' : 'Connect Google Drive'}
-            >
-              <img
-                src={GOOGLE_DRIVE_ICON_URL}
-                alt="Google Drive"
-                className="h-6 w-6"
-                loading="lazy"
-              />
-              </button>
-          </div>
-        </div>
-      </div>
-
       <MultiCloudStoragePanel
         pnIdentifier={cloudPnIdentifier}
         authToken={apiToken}
+        onConnectGoogleDrive={handleConnectGoogleDrive}
+        googleDriveConnectedCount={driveAccounts.length}
+        driveConnectDisabled={isLoading || showDriveSetupProgress}
+        connectedStorageCount={connectedStorageCount}
         onConnected={async () => {
           void hydrateStorageCredentialsFromAPI();
           await registerPortableCloudBackends();
           void loadFiles();
         }}
       />
+
+      {!hasConnectedBackends && (
+        <div className="bg-neutral-900/40 border border-neutral-700/60 border-dashed rounded-xl p-6 text-center">
+          <Cloud className="h-10 w-10 text-text-secondary mx-auto mb-3" />
+          <p className="text-text-primary font-medium mb-1">No storage connected yet</p>
+          <p className="text-text-secondary text-sm max-w-md mx-auto">
+            Choose Google Drive, Dropbox, S3, Azure, OneDrive, or FTP above. One provider becomes your social cloud for tables and indexes; files can live on any connected account.
+          </p>
+        </div>
+      )}
 
       {/* Success Message */}
       {successMessage && (

@@ -11,6 +11,7 @@ import {
 
 interface MessageMediaAttachmentProps {
   mediaFileId: string;
+  mediaBackend?: string;
   threadContext: MessagingThreadContext;
   accountId?: string;
   mimeTypeHint?: string;
@@ -18,6 +19,7 @@ interface MessageMediaAttachmentProps {
 
 export function MessageMediaAttachment({
   mediaFileId,
+  mediaBackend,
   threadContext,
   accountId,
   mimeTypeHint
@@ -39,7 +41,8 @@ export function MessageMediaAttachment({
           mediaFileId,
           threadContext,
           accountId,
-          mimeTypeHint
+          mimeTypeHint,
+          mediaBackend
         );
         if (cancelled) {
           return;
@@ -65,7 +68,7 @@ export function MessageMediaAttachment({
         URL.revokeObjectURL(revoked);
       }
     };
-  }, [mediaFileId, threadContext, accountId, mimeTypeHint]);
+  }, [mediaFileId, mediaBackend, threadContext, accountId, mimeTypeHint]);
 
   if (loading) {
     return (

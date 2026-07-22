@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from '../services/pnOAuthService';
 import {
   DM_IDENTITY_CHANGE_EVENT,
   isDmIdentityReady,
 } from '../services/dmIdentitySession';
 import { restoreMessagingAfterOAuth } from '../services/messagingOAuthHandoff';
+import { fetchStorageAccounts } from '../services/storageApiClient';
 
 export const ConnectionHealthBanner: React.FC = () => {
-  const [driveOk, setDriveOk] = useState<boolean | null>(null);
+  const [storageOk, setStorageOk] = useState<boolean | null>(null);
   const [messagingOk, setMessagingOk] = useState(() => isDmIdentityReady());
   const session = PNOAuthService.loadSession();
   const oauthOk = !!(session?.accessToken && PNOAuthService.isSessionValid(session));
@@ -34,34 +34,33 @@ export const ConnectionHealthBanner: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!session?.accessToken) {
-        setDriveOk(false);
+      const pnIdentifier = session?.pnIdentifier;
+      if (!session?.accessToken || !pnIdentifier) {
+        setStorageOk(false);
         return;
       }
       try {
-        const res = await fetch(`${API_ENDPOINT}/api/storage/accounts/me`, {
-          headers: { Authorization: `Bearer ${session.accessToken}` }
-        });
-        if (!cancelled) setDriveOk(res.ok);
+        const { connected } = await fetchStorageAccounts(session.accessToken, pnIdentifier);
+        if (!cancelled) setStorageOk(connected);
       } catch {
-        if (!cancelled) setDriveOk(false);
+        if (!cancelled) setStorageOk(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [session?.accessToken]);
+  }, [session?.accessToken, session?.pnIdentifier]);
 
-  if (oauthOk && driveOk && messagingOk) return null;
+  if (oauthOk && storageOk && messagingOk) return null;
 
   return (
     <div className="mx-3 mb-3 p-3 rounded-lg bg-amber-950/50 border border-amber-800/60 text-amber-100 text-xs space-y-2">
       <p className="font-medium">Connection status</p>
       <ul className="list-disc pl-4 space-y-0.5">
         {!oauthOk && <li>Not connected — use the lock icon to unlock with pN OAuth</li>}
-        {oauthOk && driveOk === false && (
+        {oauthOk && storageOk === false && (
           <li>
-            Google Drive not connected — connect at{' '}
+            Cloud storage not connected — connect at{' '}
             <a href="https://pn.parnoir.com" className="underline" target="_blank" rel="noreferrer">
               pn.parnoir.com
             </a>
