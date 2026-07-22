@@ -20,9 +20,10 @@ This document defines what the par Noir **API operator** may see, store, and log
 | Data class | Seen by API (in transit)? | Stored where (canonical) | Operator retention | Logging rule |
 |------------|---------------------------|--------------------------|--------------------|--------------|
 | `encryptedContent` (DM/group body) | Yes (opaque blob) | User Drive sheets | Request-scoped memory only; blob on user Drive | Never log blob; hash participants only |
-| `fromPnIdentifier` / `toPnIdentifier` | Yes | User Drive inbox + conversation sheets | Request-scoped memory only | Log as `hashIdentifier()` only |
+| `fromPnIdentifier` / `toPnIdentifier` | Yes (request path) | Conversation sheets use `self`/`peer` markers; opaque conversation filenames | Request-scoped memory only | Log as `hashIdentifier()` only |
 | Timestamps | Yes | User Drive sheets | Request-scoped memory only | Safe to log (no PII) |
 | Approximate sizes | Yes | — | Request-scoped memory only | Safe to log |
+| Attachment ciphertext | Yes (opaque) | Dual-written into **each** user’s `attachments/` (no peer ACLs) | Request-scoped memory only | Never log blob |
 | `kemCiphertext` | Yes (opaque) | User Drive connections / inbox (col F) | Request-scoped memory only | Never log full blob |
 | `wrappedMessageRootKey` | Yes (opaque) | User Drive inbox (col H, acceptor) | Request-scoped memory only | Never log full blob |
 | `messageRootKey` / `chatKey` | **No** | Client memory only (derived from blobs + unlock) | — | Never |
@@ -52,7 +53,7 @@ There is **no** `messages`, `conversations`, or `connections` table in Postgres 
 
 | Party | What they may see |
 |-------|------------------|
-| **Google Drive** (or other user-chosen provider) | File names, sheet structure, sharing ACLs, API access patterns |
+| **Google Drive** (or other user-chosen provider) | File activity, timing, sheet structure; **no** messaging peer reader ACLs; opaque `conversation-o-*` names and `self`/`peer` from-cells on new writes; residual plaintext peer DIDs may still appear on connections / inbox until further migration |
 | **par Noir API** | Routing metadata in transit + coordination writes to user storage |
 | **End-user clients** | Decrypted content after unlock |
 

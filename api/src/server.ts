@@ -10993,7 +10993,8 @@ class ProductionServer {
               limit: messageLimit, 
               offset: messageOffset,
               includeTotal: false,
-              relayOnly: true
+              relayOnly: true,
+              peerPnIdentifier: normalizedParticipantPnIdentifier,
             }
           );
           await setCachedConversationMessages(
@@ -11052,7 +11053,17 @@ class ProductionServer {
         contentLength: req.body?.content?.length
       });
       try {
-        const { fromPnIdentifier, toPnIdentifier, content, encryptedContent, cryptoVersion, mediaFileId, mediaMimeType, isConnectionRequest } = req.body;
+        const {
+          fromPnIdentifier,
+          toPnIdentifier,
+          content,
+          encryptedContent,
+          cryptoVersion,
+          mediaFileId,
+          mediaMimeType,
+          isConnectionRequest,
+          mediaEnvelopesByPn
+        } = req.body;
         const isE2E = cryptoVersion === 2 && !!encryptedContent;
         if (!fromPnIdentifier || !toPnIdentifier) {
           return res.status(400).json({ error: 'fromPnIdentifier and toPnIdentifier are required' });
@@ -11149,6 +11160,7 @@ class ProductionServer {
         const threadId = [fromPnIdentifier, toPnIdentifier].sort().join('_');
 
         const { patchPnDriveIndex } = await import('./server/modules/pnDriveIndex');
+        const { opaquePeerKey } = await import('@par-noir/dm-crypto');
         const senderIndex = senderCtx.index;
         const recipientIndex = recipientCtx.index;
 
@@ -11179,8 +11191,11 @@ class ProductionServer {
         }
 
         let senderConversationSheetId: string | undefined =
-          senderIndex.conversationSheets[toPnIdentifier] ?? dmConnection?.conversationSpreadsheetId;
+          senderIndex.conversationSheets[opaquePeerKey(fromPnIdentifier, toPnIdentifier)] ??
+          senderIndex.conversationSheets[toPnIdentifier] ??
+          dmConnection?.conversationSpreadsheetId;
         let recipientConversationSheetId: string | undefined =
+          recipientIndex.conversationSheets[opaquePeerKey(toPnIdentifier, fromPnIdentifier)] ??
           recipientIndex.conversationSheets[fromPnIdentifier];
 
         if (!senderConversationSheetId) {
@@ -11192,7 +11207,7 @@ class ProductionServer {
             senderAccountId
           );
           patchPnDriveIndex(fromPnIdentifier, {
-            conversationSheets: { [toPnIdentifier]: senderConversationSheetId },
+            conversationSheets: { [opaquePeerKey(fromPnIdentifier, toPnIdentifier)]: senderConversationSheetId },
           }).catch(() => undefined);
         }
 
@@ -11205,12 +11220,28 @@ class ProductionServer {
             recipientAccountIdForInbox
           );
           patchPnDriveIndex(toPnIdentifier, {
-            conversationSheets: { [fromPnIdentifier]: recipientConversationSheetId },
+            conversationSheets: { [opaquePeerKey(toPnIdentifier, fromPnIdentifier)]: recipientConversationSheetId },
           }).catch(() => undefined);
         }
 
         if (!senderConversationSheetId || !recipientConversationSheetId) {
           return res.status(500).json({ error: 'Conversation sheet not found' });
+        }
+
+        let mediaFileIdByPn: Record<string, string> | undefined;
+        if (mediaFileId) {
+          const { dualWriteAttachmentToRecipients } = await import('./server/modules/messagingMediaService');
+          const envelopes =
+            mediaEnvelopesByPn && typeof mediaEnvelopesByPn === 'object'
+              ? (mediaEnvelopesByPn as Record<string, string>)
+              : undefined;
+          mediaFileIdByPn = await dualWriteAttachmentToRecipients(
+            fromPnIdentifier,
+            mediaFileId,
+            [toPnIdentifier],
+            senderAccountId,
+            { envelopeByPn: envelopes, jitterMs: 1500 }
+          );
         }
 
         const message: any = {
@@ -11222,14 +11253,9 @@ class ProductionServer {
           cryptoVersion: 2,
           timestamp,
           read: false,
-          mediaFileId,
+          mediaFileId: mediaFileIdByPn?.[fromPnIdentifier] ?? mediaFileId,
           mediaMimeType
         };
-
-        if (mediaFileId) {
-          const { shareAttachmentWithRecipients } = await import('./server/modules/messagingMediaService');
-          await shareAttachmentWithRecipients(fromPnIdentifier, mediaFileId, [toPnIdentifier], senderAccountId);
-        }
 
         // Record activity for sender (non-blocking - fire and forget)
         (async () => {
@@ -11374,10 +11400,13 @@ class ProductionServer {
             toPnIdentifier,
             fromPnIdentifier,
             senderAccountId,
-            message,
+            {
+              ...message,
+              mediaFileId: mediaFileIdByPn?.[fromPnIdentifier] ?? message.mediaFileId
+            },
             connectionId,
             '',
-            toPnIdentifier,
+            opaquePeerKey(fromPnIdentifier, toPnIdentifier),
             senderCredentials.credentials as Record<string, unknown>
           ).then(newSheetId => {
             senderConversationSheetId = newSheetId;
@@ -11389,10 +11418,14 @@ class ProductionServer {
             fromPnIdentifier,
             toPnIdentifier,
             recipientAccountIdForSend,
-            message,
+            {
+              ...message,
+              mediaFileId: mediaFileIdByPn?.[toPnIdentifier] ?? message.mediaFileId,
+              read: false
+            },
             connectionId,
             '',
-            fromPnIdentifier,
+            opaquePeerKey(toPnIdentifier, fromPnIdentifier),
             recipientCtx.credentials
           ).then(newSheetId => {
             recipientConversationSheetId = newSheetId;
@@ -11894,7 +11927,6 @@ class ProductionServer {
 
         let deleted = false;
         let deletedMediaFileId: string | undefined;
-        let otherParticipantPn: string | undefined;
         for (const conv of conversations) {
           try {
             const result = await MessageSheetsService.deleteMessageFromConversation(
@@ -11906,7 +11938,6 @@ class ProductionServer {
             );
             deleted = true;
             deletedMediaFileId = result.mediaFileId;
-            otherParticipantPn = conv.otherUserPnIdentifier;
             break;
           } catch (e: any) {
             if (e?.message !== 'Message not found') {
@@ -11919,19 +11950,12 @@ class ProductionServer {
           return res.status(404).json({ error: 'Message not found' });
         }
 
-        if (deletedMediaFileId && otherParticipantPn) {
+        if (deletedMediaFileId) {
           try {
             const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-            const readerEmail = await googleDriveProxyService.getGoogleEmailForPn(otherParticipantPn);
-            if (readerEmail && token.access_token) {
-              await googleDriveProxyService.revokeReaderPermission(
-                token.access_token,
-                deletedMediaFileId,
-                readerEmail
-              );
-            }
-          } catch (revokeErr) {
-            console.warn('[delete message] ACL revoke skipped:', revokeErr);
+            await googleDriveProxyService.deleteFile(pnIdentifier, deletedMediaFileId, accountId);
+          } catch (delErr) {
+            console.warn('[delete message] attachment delete skipped:', delErr);
           }
         }
 
@@ -13378,13 +13402,14 @@ class ProductionServer {
     this.app.post('/api/groups/:groupId/messages', async (req, res) => {
       try {
         const { groupId } = req.params;
-        const { fromPnIdentifier, encryptedContent, cryptoVersion, userPnIdentifier, mediaFileId, mediaMimeType } = req.body as {
+        const { fromPnIdentifier, encryptedContent, cryptoVersion, userPnIdentifier, mediaFileId, mediaMimeType, mediaEnvelopesByPn } = req.body as {
           fromPnIdentifier?: string;
           encryptedContent?: string;
           cryptoVersion?: number;
           userPnIdentifier?: string;
           mediaFileId?: string;
           mediaMimeType?: string;
+          mediaEnvelopesByPn?: Record<string, string>;
         };
         const senderPn = fromPnIdentifier || userPnIdentifier;
         if (!senderPn || !groupId) {
@@ -13482,6 +13507,29 @@ class ProductionServer {
 
         const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const timestamp = new Date().toISOString();
+
+        let ownerMediaFileId = mediaFileId;
+        if (mediaFileId) {
+          const { dualWriteAttachmentToRecipients } = await import('./server/modules/messagingMediaService');
+          const recipientPns = members.map((m) => m.memberPnIdentifier).filter((pn) => pn !== senderPn);
+          // Also ensure owner silo has a copy when sender is not owner
+          const copyTargets = [...new Set([...recipientPns, ownerPn].filter((pn) => pn !== senderPn))];
+          const mediaFileIdByPn = await dualWriteAttachmentToRecipients(
+            senderPn,
+            mediaFileId,
+            copyTargets,
+            senderAccountId,
+            {
+              envelopeByPn:
+                mediaEnvelopesByPn && typeof mediaEnvelopesByPn === 'object'
+                  ? mediaEnvelopesByPn
+                  : undefined,
+              jitterMs: 1500
+            }
+          );
+          ownerMediaFileId = mediaFileIdByPn[ownerPn] ?? mediaFileId;
+        }
+
         const messagePayload = {
           messageId,
           fromPnIdentifier: senderPn,
@@ -13491,14 +13539,8 @@ class ProductionServer {
           read: false,
           encryptedContent,
           cryptoVersion: 2 as const,
-          ...(mediaFileId ? { mediaFileId, ...(mediaMimeType ? { mediaMimeType } : {}) } : {})
+          ...(ownerMediaFileId ? { mediaFileId: ownerMediaFileId, ...(mediaMimeType ? { mediaMimeType } : {}) } : {})
         };
-
-        if (mediaFileId) {
-          const { shareAttachmentWithRecipients } = await import('./server/modules/messagingMediaService');
-          const recipientPns = members.map((m) => m.memberPnIdentifier).filter((pn) => pn !== senderPn);
-          await shareAttachmentWithRecipients(senderPn, mediaFileId, recipientPns, senderAccountId);
-        }
 
         let ownerConvSheetId = await GroupSheetsService.getCanonicalGroupConversationSpreadsheetId(
           ownerToken,

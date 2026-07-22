@@ -470,7 +470,8 @@ export async function sendMessage(
   connectionId?: string,
   kemCiphertext?: string,
   mediaMimeType?: string,
-  wrappedMessageRootKey?: string
+  wrappedMessageRootKey?: string,
+  mediaEnvelopesByPn?: Record<string, string>
 ): Promise<Message> {
   if (!isDmIdentityReady()) {
     throw new Error('Messaging keys unavailable. Lock and unlock your pN again to send messages.');
@@ -502,7 +503,13 @@ export async function sendMessage(
         toPnIdentifier,
         encryptedContent,
         cryptoVersion: 2,
-        ...(mediaFileId ? { mediaFileId, ...(mediaMimeType ? { mediaMimeType } : {}) } : {})
+        ...(mediaFileId
+          ? {
+              mediaFileId,
+              ...(mediaMimeType ? { mediaMimeType } : {}),
+              ...(mediaEnvelopesByPn ? { mediaEnvelopesByPn } : {})
+            }
+          : {})
       };
     const response = await messageFetch('/api/messages/send', {
       method: 'POST',

@@ -22,14 +22,21 @@ Inbox sheets cache opaque recovery blobs on user Drive—column F (`kemCiphertex
 ## Media attachments (E2E)
 
 1. **Pick:** Attach modal tabs — **My pN** (owner index), **Shared with me** (Drive `sharedWithMe`), **Saved** (curated feed), **Device** (file picker / native camera).
-2. **Prepare (client):** Download source blob, decrypt with pN identity or public share token as needed, re-encrypt with the conversation key (`deriveMessageKey` for DMs, group `chatKey` for groups) via `@par-noir/dm-crypto` `encryptMediaBytes`.
-3. **Upload:** `POST /api/drive/files` into `par-noir-messages/attachments/` (`GET /api/messages/attachments-folder` resolves folder id). Ciphertext uploaded with `encrypt: false`.
-4. **Send:** `POST /api/messages/send` or `POST /api/groups/:groupId/messages` with optional `mediaFileId` and `mediaMimeType`. Message sheet columns **H** (file id) and **I** (mime hint) store attachment metadata.
-5. **Share:** API grants Google Drive **reader** to each recipient’s stored Google email before dual-write append.
-6. **Receive:** Browser downloads ciphertext, decrypts with the same conversation key, uses column **I** for inline preview when present.
-7. **Delete:** Removing a message revokes Drive reader ACL for the conversation partner when the deleter owns the media file.
+2. **Prepare (client):** Download source blob, decrypt with pN identity or public share token as needed, re-encrypt with the conversation key (`deriveMessageKey` for DMs, group `chatKey` for groups) via `@par-noir/dm-crypto` `encryptMediaBytes`. Client produces a **distinct AES-GCM envelope per recipient** (new IV) so dual-written blobs are not bit-identical.
+3. **Upload:** `POST /api/drive/files` into the **sender’s** `par-noir-messages/attachments/` as `blob-{uuid}.msgenc` (`GET /api/messages/attachments-folder` resolves folder id). Ciphertext uploaded with `encrypt: false`.
+4. **Send:** `POST /api/messages/send` or `POST /api/groups/:groupId/messages` with `mediaFileId`, optional `mediaMimeType`, and optional `mediaEnvelopesByPn` (per-recipient envelopes).
+5. **Dual-write (no peer ACLs):** API copies/uploads ciphertext into **each recipient’s own** attachments folder using **their** credentials. Each conversation row stores that silo’s `mediaFileId`. **No** Google Drive reader grants between users.
+6. **Receive:** Browser downloads ciphertext via **own** storage proxy (own token), decrypts with the conversation key.
+7. **Delete:** Removing a message deletes the attachment from the **deleter’s** silo only (no ACL revoke).
 
-The API never sees plaintext media; it coordinates upload, ACL, and sheet metadata only.
+The API never sees plaintext media; it coordinates dual-write of opaque blobs only.
+
+## Anti-tracing metadata (cloud at-rest)
+
+- Conversation **from** cells use relative markers `self` / `peer` (not raw `pn-*`).
+- New DM conversation files are named `conversation-o-{hash}` (deterministic opaque peer ref); legacy `conversation-{pn}` still readable.
+- `pnDriveIndex.conversationSheets` keys use the same opaque peer keys for new entries.
+- API still sees `from`/`to` **in transit** for dual-write (not blind routing).
 
 ## Groups
 
@@ -59,7 +66,7 @@ The API is a **coordinator**, not a **conversation participant**.
 
 | Role | Description |
 |------|-------------|
-| **Coordinator** | Sees routing metadata **in transit** to dual-write ciphertext, accept connections, grant attachment ACLs, and push realtime hints. |
+| **Coordinator** | Sees routing metadata **in transit** to dual-write ciphertext (bodies + attachments into each user’s silo), accept connections, and push realtime hints. |
 | **Not a participant** | Must not decrypt bodies, derive `messageRootKey` / `chatKey`, or retain passcode for messaging. |
 
 | API may learn (in transit) | API must not learn |
@@ -71,9 +78,11 @@ The API is a **coordinator**, not a **conversation participant**.
 
 **Persistence:** Canonical message and connection data lives on **user-owned storage** (Drive / portable providers), not par Noir Postgres. The operator does not maintain a central social-graph database for DMs.
 
-**Third parties:** The storage host (e.g. Google Drive) has its own metadata layer (files, sharing, timing).
+**Third parties:** The storage host may see file activity and timing. Messaging **does not** create peer Drive ACLs. Conversation filenames and from-cells are opaque / relative where possible; connections sheet peer DIDs remain a residual graph surface.
 
 **Operator policy:** See [security/MESSAGING_COORDINATOR_POLICY.md](./security/MESSAGING_COORDINATOR_POLICY.md) for retention, logging rules, and commitments.
+
+**Blind routing:** Not in scope — see [architecture/ADR_MESSAGING_BLIND_ROUTING.md](./architecture/ADR_MESSAGING_BLIND_ROUTING.md) (no-go). Opaque metadata + dual-write attachments are **not** blind routing.
 
 ## OAuth passcode debt
 

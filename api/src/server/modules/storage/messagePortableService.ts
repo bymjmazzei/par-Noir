@@ -1,4 +1,8 @@
 import { conversationLogPath, messagesPath } from '@par-noir/user-owned-storage';
+import {
+  portableConversationBlobId,
+  isOpaquePeerKey,
+} from '@par-noir/dm-crypto';
 import type { Message } from '../messageSheetsService';
 import { resolveStorageContext } from './storageFacade';
 import {
@@ -12,9 +16,11 @@ import { INBOX_SCHEMA } from './tableSchemas';
 export const PORTABLE_MESSAGES_FOLDER = 'pn-portable-messages';
 export const PORTABLE_INBOX_SHEET = 'pn-portable-inbox';
 
-export function portableConversationSheetId(otherPn: string): string {
-  const id = otherPn.startsWith('pn-') ? otherPn : `pn-${otherPn}`;
-  return `pn-portable-conv:${id}`;
+export function portableConversationSheetId(ownerPn: string, otherPn: string): string {
+  if (isOpaquePeerKey(otherPn)) {
+    return `pn-portable-conv:${otherPn}`;
+  }
+  return portableConversationBlobId(ownerPn, otherPn);
 }
 
 export function portableGroupConversationSheetId(groupId: string): string {
@@ -46,7 +52,9 @@ async function conversationBlobKey(
   if (parsed.kind === 'group') {
     return `${ctx.rootPrefix}${messagesPath(`group-${parsed.groupId}.jsonl`)}`;
   }
-  return `${ctx.rootPrefix}${conversationLogPath(parsed.otherPn)}`;
+  // otherPn may be opaque key (o_…) or legacy pn-*
+  const id = parsed.otherPn;
+  return `${ctx.rootPrefix}${conversationLogPath(id)}`;
 }
 
 async function readConversationLines(
@@ -90,12 +98,12 @@ export async function getInboxSheetPortable(): Promise<string> {
   return PORTABLE_INBOX_SHEET;
 }
 
-export async function getConversationSheetPortable(otherPn: string): Promise<string> {
-  return portableConversationSheetId(otherPn);
+export async function getConversationSheetPortable(ownerPn: string, otherPn: string): Promise<string> {
+  return portableConversationSheetId(ownerPn, otherPn);
 }
 
-export async function createConversationSheetPortable(otherPn: string): Promise<string> {
-  return portableConversationSheetId(otherPn);
+export async function createConversationSheetPortable(ownerPn: string, otherPn: string): Promise<string> {
+  return portableConversationSheetId(ownerPn, otherPn);
 }
 
 export async function appendMessagePortable(

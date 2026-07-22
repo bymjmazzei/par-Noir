@@ -40,3 +40,24 @@ export {
   type DecryptedIdentitySecrets
 } from './identity';
 export { DM_CRYPTO_VERSION, isDmEnvelope } from './aes';
+export {
+  FROM_SELF,
+  FROM_PEER,
+  opaquePeerRef,
+  opaquePeerKey,
+  isOpaquePeerKey,
+  conversationFileName,
+  conversationFileNameFromPeerToken,
+  legacyConversationFileName,
+  isOpaqueConversationFileName,
+  isLegacyConversationFileName,
+  peerTokenFromConversationFileName,
+  relativeFromMarker,
+  resolveRelativeFrom,
+  isRelativeFromMarker,
+  resolveOpaquePeerKey,
+  portableConversationBlobId,
+  legacyPortableConversationBlobId,
+  genericAttachmentFileName,
+  type RelativeFromMarker
+} from './opaquePeer';

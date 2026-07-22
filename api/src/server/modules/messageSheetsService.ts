@@ -5,6 +5,15 @@
  */
 
 import { google } from 'googleapis';
+import {
+  conversationFileName,
+  conversationFileNameFromPeerToken,
+  legacyConversationFileName,
+  isOpaquePeerKey,
+  peerTokenFromConversationFileName,
+  relativeFromMarker,
+  resolveRelativeFrom,
+} from '@par-noir/dm-crypto';
 import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 import { isPortableStorageProvider } from './storage/storageProviderUtils';
 import * as MsgPortable from './storage/messagePortableService';
@@ -358,23 +367,30 @@ export class MessageSheetsService {
     accountId: string | undefined
   ): Promise<string> {
     if (await isPortableStorageProvider(userPnIdentifier)) {
-      return MsgPortable.getConversationSheetPortable(otherUserPnIdentifier);
+      return MsgPortable.getConversationSheetPortable(userPnIdentifier, otherUserPnIdentifier);
     }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
 
-    const sheetFileName = `conversation-${otherUserPnIdentifier}`;
-    const fileQuery = `name='${sheetFileName}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-    
-    const searchResponse = await drive.files.list({
-      q: fileQuery,
-      fields: 'files(id,name)',
-      pageSize: 1
-    });
+    const candidates = [
+      conversationFileNameFromPeerToken(userPnIdentifier, otherUserPnIdentifier),
+      ...(isOpaquePeerKey(otherUserPnIdentifier)
+        ? []
+        : [legacyConversationFileName(otherUserPnIdentifier)]),
+    ];
 
-    if (searchResponse.data.files && searchResponse.data.files.length > 0) {
-      messagingLog.debug(`[MessageSheetsService] Found existing conversation sheet for ${otherUserPnIdentifier}: ${searchResponse.data.files[0].id}`);
-      return searchResponse.data.files[0].id!;
+    for (const sheetFileName of candidates) {
+      const fileQuery = `name='${sheetFileName}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+      const searchResponse = await drive.files.list({
+        q: fileQuery,
+        fields: 'files(id,name)',
+        pageSize: 1
+      });
+
+      if (searchResponse.data.files && searchResponse.data.files.length > 0) {
+        messagingLog.debug(`[MessageSheetsService] Found existing conversation sheet for ${otherUserPnIdentifier}: ${searchResponse.data.files[0].id}`);
+        return searchResponse.data.files[0].id!;
+      }
     }
 
     throw new Error('Sheet not found. Your Google Drive may be corrupted. Please re-initialize Google Drive in the dashboard (Storage settings).');
@@ -391,13 +407,13 @@ export class MessageSheetsService {
     accountId: string | undefined
   ): Promise<string> {
     if (await isPortableStorageProvider(userPnIdentifier)) {
-      return MsgPortable.createConversationSheetPortable(otherUserPnIdentifier);
+      return MsgPortable.createConversationSheetPortable(userPnIdentifier, otherUserPnIdentifier);
     }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
-    const sheetFileName = `conversation-${otherUserPnIdentifier}`;
+    const sheetFileName = conversationFileNameFromPeerToken(userPnIdentifier, otherUserPnIdentifier);
 
     // Create new conversation sheet
     messagingLog.debug(`[MessageSheetsService] Creating new conversation sheet for ${otherUserPnIdentifier}`);
@@ -508,7 +524,11 @@ export class MessageSheetsService {
     accountId: string | undefined
   ): Promise<void> {
     if (await isPortableStorageProvider(userPnIdentifier)) {
-      await MsgPortable.appendMessagePortable(userPnIdentifier, spreadsheetId, message, accountId);
+      const portableMessage = {
+        ...message,
+        fromPnIdentifier: relativeFromMarker(message.fromPnIdentifier, userPnIdentifier),
+      };
+      await MsgPortable.appendMessagePortable(userPnIdentifier, spreadsheetId, portableMessage as Message, accountId);
       return;
     }
     try {
@@ -538,6 +558,11 @@ export class MessageSheetsService {
           'Legacy server-side message encryption is disabled. Send encryptedContent with cryptoVersion 2.'
         );
       }
+
+      const fromCell =
+        message.fromPnIdentifier === 'system'
+          ? 'system'
+          : relativeFromMarker(message.fromPnIdentifier, userPnIdentifier);
 
       const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const sheets = google.sheets({ version: 'v4', auth });
@@ -572,7 +597,7 @@ export class MessageSheetsService {
         valueInputOption: 'RAW',
         requestBody: {
           values: [[
-            message.fromPnIdentifier,
+            fromCell,
             encryptedContent,
             message.timestamp,
             message.messageId,
@@ -679,10 +704,28 @@ export class MessageSheetsService {
       includeTotal?: boolean; // Only count if needed (for pagination UI)
       /** API blind relay — return ciphertext only (no server decrypt). */
       relayOnly?: boolean;
+      /** Peer pN for resolving self/peer from-markers on this sheet. */
+      peerPnIdentifier?: string;
     }
   ): Promise<{ messages: Message[]; total: number }> {
     if (await isPortableStorageProvider(userPnIdentifier)) {
-      return MsgPortable.getMessagesPortable(userPnIdentifier, spreadsheetId, accountId, options);
+      const portable = await MsgPortable.getMessagesPortable(
+        userPnIdentifier,
+        spreadsheetId,
+        accountId,
+        options
+      );
+      const peer = options?.peerPnIdentifier || '';
+      return {
+        total: portable.total,
+        messages: portable.messages.map((m) => ({
+          ...m,
+          fromPnIdentifier:
+            m.fromPnIdentifier === 'system'
+              ? 'system'
+              : resolveRelativeFrom(m.fromPnIdentifier, userPnIdentifier, peer || m.fromPnIdentifier),
+        })),
+      };
     }
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
@@ -774,18 +817,24 @@ export class MessageSheetsService {
     }
 
     if (options?.relayOnly) {
+      const peer = options.peerPnIdentifier || '';
       const messages: Message[] = rowsToProcess.map((row, relativeIndex) => {
         const actualIndex = offset + relativeIndex;
-        const fromPnIdentifier = row[0] || '';
-        const normalizedFromPnIdentifier = fromPnIdentifier.startsWith('pn-')
-          ? fromPnIdentifier
-          : this.normalizeToPnIdentifier(fromPnIdentifier);
+        const rawFrom = row[0] || '';
+        const fromPnIdentifier =
+          rawFrom === 'system'
+            ? 'system'
+            : peer
+              ? resolveRelativeFrom(rawFrom, userPnIdentifier, peer)
+              : rawFrom.startsWith('pn-')
+                ? rawFrom
+                : this.normalizeToPnIdentifier(rawFrom);
         const cryptoVersion = row[6] ? parseInt(String(row[6]), 10) : 2;
         const mediaFileId = row[7]?.trim() || undefined;
         const mediaMimeType = row[8]?.trim() || undefined;
         return {
           messageId: row[3] || `msg-${actualIndex}`,
-          fromPnIdentifier: normalizedFromPnIdentifier,
+          fromPnIdentifier,
           toPnIdentifier: '',
           content: '',
           encryptedContent: row[1] || '',
@@ -1060,31 +1109,35 @@ export class MessageSheetsService {
     if (searchResponse.data.files) {
       for (const file of searchResponse.data.files) {
         const fileName = file.name || '';
-        const extractedOtherUserPnIdentifier = fileName.replace('conversation-', '');
-        
-        // Skip if filename doesn't contain a valid identifier
-        if (!extractedOtherUserPnIdentifier || extractedOtherUserPnIdentifier === fileName) {
+        if (fileName.startsWith('conversation-group-')) continue;
+
+        const token = peerTokenFromConversationFileName(fileName);
+        if (!token) {
           messagingLog.warn('[MessageSheetsService] Skipping conversation file with invalid name', { fileName });
           continue;
         }
-        
-        // Normalize otherUserPnIdentifier when extracting from filename (handles legacy data)
-        const normalizedOtherUserPnIdentifier = this.normalizeToPnIdentifier(extractedOtherUserPnIdentifier);
-        
-        // Ensure normalized identifier is valid (not just 'pn-')
-        if (normalizedOtherUserPnIdentifier === 'pn-' || normalizedOtherUserPnIdentifier.length <= 3) {
-          messagingLog.warn('[MessageSheetsService] Skipping conversation with invalid otherUserPnIdentifier:', { fileName, extractedOtherUserPnIdentifier, normalizedOtherUserPnIdentifier });
+
+        // Opaque keys returned as-is; callers resolve via connections. Legacy pn normalized.
+        const otherUserPnIdentifier = isOpaquePeerKey(token)
+          ? token
+          : this.normalizeToPnIdentifier(token);
+
+        if (
+          !isOpaquePeerKey(otherUserPnIdentifier) &&
+          (otherUserPnIdentifier === 'pn-' || otherUserPnIdentifier.length <= 3)
+        ) {
+          messagingLog.warn('[MessageSheetsService] Skipping conversation with invalid otherUserPnIdentifier:', {
+            fileName,
+            otherUserPnIdentifier
+          });
           continue;
         }
-        
-        const spreadsheetId = file.id!;
 
-        // Use modifiedTime from Drive API as lastMessageAt (much faster than reading Sheets)
-        // modifiedTime is updated whenever the sheet is modified (new message added)
+        const spreadsheetId = file.id!;
         const lastMessageAt = file.modifiedTime || new Date().toISOString();
 
         conversations.push({
-          otherUserPnIdentifier: normalizedOtherUserPnIdentifier,
+          otherUserPnIdentifier,
           spreadsheetId,
           lastMessageAt
         });
@@ -1637,7 +1690,7 @@ export class MessageSheetsService {
       if (await isPortableStorageProvider(userPnIdentifier)) {
         await MsgPortable.deleteConversationPortable(
           userPnIdentifier,
-          MsgPortable.portableConversationSheetId(otherUserPnIdentifier),
+          MsgPortable.portableConversationSheetId(userPnIdentifier, otherUserPnIdentifier),
           accountId
         );
         await MsgPortable.removeInboxEntryPortable(userPnIdentifier, otherUserPnIdentifier, accountId);
@@ -1646,26 +1699,29 @@ export class MessageSheetsService {
       const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const drive = google.drive({ version: 'v3', auth });
 
-      const sheetFileName = `conversation-${otherUserPnIdentifier}`;
-      
-      // Find the conversation sheet
-      const fileQuery = `name='${sheetFileName}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-      const searchResponse = await drive.files.list({
-        q: fileQuery,
-        fields: 'files(id,name)',
-        pageSize: 1
-      });
+      const candidates = [
+        conversationFileNameFromPeerToken(userPnIdentifier, otherUserPnIdentifier),
+        ...(isOpaquePeerKey(otherUserPnIdentifier)
+          ? []
+          : [legacyConversationFileName(otherUserPnIdentifier)]),
+      ];
 
-      if (searchResponse.data.files && searchResponse.data.files.length > 0) {
-        const fileId = searchResponse.data.files[0].id!;
-        // Delete the file (move to trash)
-        await drive.files.delete({
-          fileId: fileId
+      for (const sheetFileName of candidates) {
+        const fileQuery = `name='${sheetFileName}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+        const searchResponse = await drive.files.list({
+          q: fileQuery,
+          fields: 'files(id,name)',
+          pageSize: 1
         });
-        messagingLog.debug(`[MessageSheetsService] Deleted conversation sheet ${fileId} for ${otherUserPnIdentifier}`);
-      } else {
-        messagingLog.warn(`[MessageSheetsService] Conversation sheet not found for ${otherUserPnIdentifier}`);
+
+        if (searchResponse.data.files && searchResponse.data.files.length > 0) {
+          const fileId = searchResponse.data.files[0].id!;
+          await drive.files.delete({ fileId });
+          messagingLog.debug(`[MessageSheetsService] Deleted conversation sheet ${fileId} for ${otherUserPnIdentifier}`);
+          return;
+        }
       }
+      messagingLog.warn(`[MessageSheetsService] Conversation sheet not found for ${otherUserPnIdentifier}`);
     } catch (error: any) {
       console.error('[MessageSheetsService] Error deleting conversation sheet:', {
         otherUserPnIdentifier,
@@ -1697,25 +1753,33 @@ export class MessageSheetsService {
     // Use pn identifier directly (already normalized)
     try {
       if (await isPortableStorageProvider(userPnIdentifier)) {
-        return MsgPortable.createConversationSheetPortable(otherUserPnIdentifier);
+        return MsgPortable.createConversationSheetPortable(userPnIdentifier, otherUserPnIdentifier);
       }
       const auth = GoogleOAuth2Helper.createClient(userToken, userPnIdentifier, userAccountId);
       const sheets = google.sheets({ version: 'v4', auth });
       const drive = google.drive({ version: 'v3', auth });
 
-      // Check if other user's conversation file exists
-      const otherUserSheetFileName = `conversation-${otherUserPnIdentifier}`;
-      const otherUserFileQuery = `name='${otherUserSheetFileName}' and '${otherUserMessagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-      
+      // Check if other user's conversation file exists (opaque or legacy)
+      const otherCandidates = [
+        conversationFileName(otherUserPnIdentifierForAuth, userPnIdentifier),
+        legacyConversationFileName(userPnIdentifier),
+      ];
       const otherAuth = GoogleOAuth2Helper.createClient(otherUserToken, otherUserPnIdentifierForAuth, otherUserAccountId);
       const otherDrive = google.drive({ version: 'v3', auth: otherAuth });
       const otherSheets = google.sheets({ version: 'v4', auth: otherAuth });
 
-      const otherUserFileResponse = await otherDrive.files.list({
-        q: otherUserFileQuery,
-        fields: 'files(id,name)',
-        pageSize: 1
-      });
+      let otherUserFileResponse: { data: { files?: Array<{ id?: string | null; name?: string | null }> } } = {
+        data: { files: [] },
+      };
+      for (const otherUserSheetFileName of otherCandidates) {
+        const otherUserFileQuery = `name='${otherUserSheetFileName}' and '${otherUserMessagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+        otherUserFileResponse = await otherDrive.files.list({
+          q: otherUserFileQuery,
+          fields: 'files(id,name)',
+          pageSize: 1
+        });
+        if (otherUserFileResponse.data.files?.length) break;
+      }
 
       if (!otherUserFileResponse.data.files || otherUserFileResponse.data.files.length === 0) {
         // Other user's file doesn't exist, create empty conversation sheet

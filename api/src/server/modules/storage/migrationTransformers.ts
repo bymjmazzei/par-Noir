@@ -427,7 +427,7 @@ export async function migrateMessagingGoogleToPortable(
       const internal = await import('./messagePortableService');
       const key = entry.threadType === 'group'
         ? internal.portableGroupConversationSheetId(entry.participantPnIdentifier)
-        : internal.portableConversationSheetId(entry.participantPnIdentifier);
+        : internal.portableConversationSheetId(pnIdentifier, entry.participantPnIdentifier);
       await internal.writeConversationLines(pnIdentifier, key, messages, accountId);
       count += messages.length;
     }
@@ -485,8 +485,10 @@ export async function migrateMessagingPortableToGoogle(
           ctx.accountId
         );
       } else if (baseName.startsWith('conversation-')) {
-        const otherPn = baseName.slice('conversation-'.length);
-        portableSheetId = internal.portableConversationSheetId(otherPn);
+        const otherPn = baseName.startsWith('conversation-o-')
+          ? `o_${baseName.slice('conversation-o-'.length)}`
+          : baseName.slice('conversation-'.length);
+        portableSheetId = internal.portableConversationSheetId(pnIdentifier, otherPn);
         sheetId = await MessageSheetsService.createConversationSheet(
           ctx.token,
           messagesFolderId,

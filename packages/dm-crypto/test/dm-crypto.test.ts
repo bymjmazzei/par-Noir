@@ -114,4 +114,18 @@ describe('@par-noir/dm-crypto', () => {
       resolveMessageRootKey(connectionId, otherSk, { wrappedMessageRootKey: wrapped })
     ).rejects.toThrow();
   });
+
+  it('opaque peer refs are deterministic and relative from markers resolve', async () => {
+    const { opaquePeerKey, conversationFileName, relativeFromMarker, resolveRelativeFrom, FROM_SELF, FROM_PEER } =
+      await import('../src/opaquePeer');
+    const a = 'pn-alice';
+    const b = 'pn-bob';
+    expect(opaquePeerKey(a, b)).toBe(opaquePeerKey(a, b));
+    expect(opaquePeerKey(a, b)).not.toBe(opaquePeerKey(b, a));
+    expect(conversationFileName(a, b).startsWith('conversation-o-')).toBe(true);
+    expect(relativeFromMarker(a, a)).toBe(FROM_SELF);
+    expect(relativeFromMarker(b, a)).toBe(FROM_PEER);
+    expect(resolveRelativeFrom(FROM_SELF, a, b)).toBe(a);
+    expect(resolveRelativeFrom(FROM_PEER, a, b)).toBe(b);
+  });
 });

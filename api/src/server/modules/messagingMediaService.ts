@@ -1,7 +1,8 @@
 /**
- * Messaging media — Drive folder helpers and recipient sharing for attachments.
+ * Messaging media — attachments dual-written into each user's own silo (no peer Drive ACLs).
  */
 
+import { genericAttachmentFileName } from '@par-noir/dm-crypto';
 import { googleDriveProxyService } from './googleDriveProxy';
 import { storageCredentialsService } from './storageCredentialsService';
 import { MessageSheetsService } from './messageSheetsService';
@@ -13,24 +14,28 @@ function normalizePn(pn: string): string {
   return pn.startsWith('pn-') ? pn : `pn-${pn}`;
 }
 
-async function getSenderDriveContext(senderPn: string, accountId?: string): Promise<{
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getOwnerDriveContext(ownerPn: string, accountId?: string): Promise<{
   pnIdentifier: string;
   accessToken: string;
   token: GoogleDriveToken;
   accountId: string;
   pnFolderId: string;
 }> {
-  const pnIdentifier = normalizePn(senderPn);
+  const pnIdentifier = normalizePn(ownerPn);
   const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
   const credentials = credentialsRecord?.credentials;
   if (!credentials) {
-    throw new Error('Sender Google Drive credentials not found');
+    throw new Error('Google Drive credentials not found');
   }
   const accounts =
     credentials.googleDriveAccounts ||
     (credentials.googleDrive ? [credentials.googleDrive] : []);
   if (accounts.length === 0) {
-    throw new Error('Sender has no Google Drive account connected');
+    throw new Error('No Google Drive account connected');
   }
 
   let account = accounts[0] as {
@@ -75,7 +80,7 @@ async function getSenderDriveContext(senderPn: string, accountId?: string): Prom
   const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
   const index = readPnDriveIndex(credentials as Record<string, unknown>);
   if (!isPnDriveIndexComplete(index)) {
-    throw new Error('Sender Google Drive index not initialized');
+    throw new Error('Google Drive index not initialized');
   }
   const pnFolderId = index.pnFolderId;
 
@@ -83,13 +88,13 @@ async function getSenderDriveContext(senderPn: string, accountId?: string): Prom
 }
 
 /**
- * Ensure par-noir-messages/attachments/ exists under the sender's pN folder.
+ * Ensure par-noir-messages/attachments/ exists under the owner's pN folder.
  */
 export async function ensureMessagesAttachmentsFolder(
-  senderPn: string,
+  ownerPn: string,
   accountId?: string
 ): Promise<string> {
-  const ctx = await getSenderDriveContext(senderPn, accountId);
+  const ctx = await getOwnerDriveContext(ownerPn, accountId);
   const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
     ctx.token,
     ctx.pnFolderId,
@@ -132,27 +137,84 @@ export async function ensureMessagesAttachmentsFolder(
   return created.id;
 }
 
+export type MediaCopyInput = {
+  /** Recipient pN → pre-encrypted envelope (UTF-8). When set, skip byte-copy from sender. */
+  envelopeByPn?: Record<string, string>;
+};
+
 /**
- * Grant Drive reader on sender-owned attachment to each recipient's Google email.
+ * Dual-write attachment into each recipient's own attachments folder.
+ * Returns map of pnIdentifier → mediaFileId for that silo (includes sender unchanged).
+ * No peer Drive ACLs.
+ */
+export async function dualWriteAttachmentToRecipients(
+  senderPn: string,
+  senderMediaFileId: string,
+  recipientPnIdentifiers: string[],
+  senderAccountId?: string,
+  opts?: MediaCopyInput & { jitterMs?: number }
+): Promise<Record<string, string>> {
+  const senderNorm = normalizePn(senderPn);
+  const result: Record<string, string> = { [senderNorm]: senderMediaFileId };
+  const uniqueRecipients = [
+    ...new Set(recipientPnIdentifiers.map(normalizePn).filter((pn) => pn !== senderNorm))
+  ];
+  if (uniqueRecipients.length === 0) {
+    return result;
+  }
+
+  let senderBytes: Buffer | undefined;
+  const needCopy = uniqueRecipients.some((pn) => !opts?.envelopeByPn?.[pn]);
+  if (needCopy) {
+    const blob = await googleDriveProxyService.downloadFile(
+      senderNorm,
+      senderMediaFileId,
+      senderAccountId
+    );
+    const ab = await blob.arrayBuffer();
+    senderBytes = Buffer.from(ab);
+  }
+
+  for (let i = 0; i < uniqueRecipients.length; i++) {
+    const recipientPn = uniqueRecipients[i];
+    if (opts?.jitterMs && opts.jitterMs > 0 && i > 0) {
+      const jitter = Math.floor(Math.random() * opts.jitterMs);
+      await sleep(jitter);
+    }
+
+    const folderId = await ensureMessagesAttachmentsFolder(recipientPn);
+    const fileName = genericAttachmentFileName();
+    const envelope = opts?.envelopeByPn?.[recipientPn];
+    const body = envelope ? Buffer.from(envelope, 'utf8') : senderBytes!;
+    const uploaded = await googleDriveProxyService.uploadFile(
+      recipientPn,
+      body,
+      fileName,
+      'application/octet-stream',
+      [folderId]
+    );
+    if (!uploaded?.id) {
+      throw new Error(`Failed to dual-write attachment for ${recipientPn}`);
+    }
+    result[recipientPn] = uploaded.id;
+  }
+
+  return result;
+}
+
+/**
+ * @deprecated Peer ACLs removed — use dualWriteAttachmentToRecipients.
+ * Kept as no-op so stale imports fail soft if any remain.
  */
 export async function shareAttachmentWithRecipients(
-  senderPn: string,
-  driveFileId: string,
-  recipientPnIdentifiers: string[],
-  senderAccountId?: string
+  _senderPn: string,
+  _driveFileId: string,
+  _recipientPnIdentifiers: string[],
+  _senderAccountId?: string
 ): Promise<void> {
-  const ctx = await getSenderDriveContext(senderPn, senderAccountId);
-  const uniqueRecipients = [...new Set(recipientPnIdentifiers.map(normalizePn))];
-
-  for (const recipientPn of uniqueRecipients) {
-    const email = await googleDriveProxyService.getGoogleEmailForPn(recipientPn);
-    if (!email) {
-      throw new Error(
-        `Cannot share attachment: recipient has no Google Drive email on file (${recipientPn})`
-      );
-    }
-    await googleDriveProxyService.grantReaderPermission(ctx.accessToken, driveFileId, email);
-  }
+  throw new Error(
+    'shareAttachmentWithRecipients is removed; use dualWriteAttachmentToRecipients (no peer Drive ACLs)'
+  );
 }
 
 /** Exclude Drive system / messaging artifacts from shared-with-me listings. */

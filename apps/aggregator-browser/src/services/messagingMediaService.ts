@@ -6,7 +6,8 @@ import {
   deriveMessageKey,
   encryptMediaBytes,
   decryptMediaBytes,
-  bytesToBase64
+  bytesToBase64,
+  genericAttachmentFileName
 } from '@par-noir/dm-crypto';
 import type { MediaPickItem } from '@par-noir/messaging-ui';
 import { PNOAuthService } from './pnOAuthService';
@@ -232,10 +233,28 @@ export async function prepareMessageAttachment(
   pick: MediaPickItem,
   ctx: MessagingThreadContext,
   accountId?: string
-): Promise<{ mediaFileId: string; mimeType: string; displayName?: string }> {
+): Promise<{
+  mediaFileId: string;
+  mimeType: string;
+  displayName?: string;
+  /** Per-recipient envelopes (UTF-8 ciphertext) for dual-write without bit-identical blobs. */
+  mediaEnvelopesByPn: Record<string, string>;
+}> {
   const { bytes, mimeType, displayName } = await downloadSourceBlob(pick);
   const keyB64 = await resolveAttachmentKeyB64(ctx);
-  const encryptedEnvelope = await encryptMediaBytes(bytes, keyB64);
+
+  // Distinct AES-GCM envelopes (new IV each call) so dual-written blobs are not bit-identical.
+  const senderEnvelope = await encryptMediaBytes(bytes, keyB64);
+
+  const mediaEnvelopesByPn: Record<string, string> = {};
+  if (ctx.threadType === 'dm') {
+    mediaEnvelopesByPn[ctx.toPnIdentifier] = await encryptMediaBytes(bytes, keyB64);
+  } else {
+    const ownerPn = ctx.groupRecord.ownerPnIdentifier;
+    if (ownerPn && ownerPn !== ctx.fromPnIdentifier) {
+      mediaEnvelopesByPn[ownerPn] = await encryptMediaBytes(bytes, keyB64);
+    }
+  }
 
   const token = await getAuthToken();
   const folderRes = await fetch(
@@ -247,11 +266,10 @@ export async function prepareMessageAttachment(
   }
   const { folderId } = (await folderRes.json()) as { folderId: string };
 
-  const envelopeBytes = new TextEncoder().encode(encryptedEnvelope);
+  const envelopeBytes = new TextEncoder().encode(senderEnvelope);
   const envelopeBlob = new Blob([envelopeBytes], { type: 'application/octet-stream' });
   const fileData = await blobToBase64(envelopeBlob);
-  const ext = mimeType.split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'bin';
-  const fileName = `msg-att-${Date.now()}.${ext}.msgenc`;
+  const fileName = genericAttachmentFileName();
 
   const uploadRes = await fetch(`${API_ENDPOINT}/api/drive/files`, {
     method: 'POST',
@@ -276,7 +294,7 @@ export async function prepareMessageAttachment(
   if (!mediaFileId) {
     throw new Error('Upload succeeded but no file id returned');
   }
-  return { mediaFileId, mimeType, displayName };
+  return { mediaFileId, mimeType, displayName, mediaEnvelopesByPn };
 }
 
 export async function sendMessageWithMedia(
@@ -285,11 +303,23 @@ export async function sendMessageWithMedia(
   caption: string,
   accountId?: string
 ): Promise<void> {
-  const { mediaFileId, mimeType } = await prepareMessageAttachment(pick, ctx, accountId);
+  const { mediaFileId, mimeType, mediaEnvelopesByPn } = await prepareMessageAttachment(
+    pick,
+    ctx,
+    accountId
+  );
   const text = caption.trim() || '📎 Media';
 
   if (ctx.threadType === 'group') {
-    await sendGroupMessage(ctx.fromPnIdentifier, ctx.groupId, ctx.groupRecord, text, mediaFileId, mimeType);
+    await sendGroupMessage(
+      ctx.fromPnIdentifier,
+      ctx.groupId,
+      ctx.groupRecord,
+      text,
+      mediaFileId,
+      mimeType,
+      mediaEnvelopesByPn
+    );
     return;
   }
 
@@ -301,7 +331,8 @@ export async function sendMessageWithMedia(
     ctx.connectionId,
     ctx.kemCiphertext,
     mimeType,
-    ctx.wrappedMessageRootKey
+    ctx.wrappedMessageRootKey,
+    mediaEnvelopesByPn
   );
 }
 

@@ -73,4 +73,4 @@ Any **go** decision must include a phased plan for these surfaces.
 | **Decision** | _Pending — default **no-go**_ |
 | **Date** | _TBD_ |
 | **Approvers** | _TBD_ |
-| **Notes** | Phase 2 (logging, realtime trim, policy) ships without blind routing. |
+| **Notes** | Phase 2 (logging, realtime trim, policy) ships without blind routing. Anti-tracing work (no peer attachment ACLs, opaque conversation metadata, per-recipient media envelopes) does **not** implement blind routing and does not reopen this ADR. |
