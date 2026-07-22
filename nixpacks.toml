@@ -1,13 +1,13 @@
 # Railway / Nixpacks: build the API from the monorepo root.
 # Set Railway "Root Directory" to the repository root (empty or "."), NOT `api/`.
 # Reason: `api` depends on `file:../packages/*`, which requires `packages/` in the build context.
-# Install must use `api/package-lock.json` via `cd api && npm ci`.
-# `npm run build` runs `build:deps` (tsc only — no per-package npm install; that hangs on workspaces).
+# Install uses --ignore-scripts so linked packages' prepare hooks (e.g. tsc) don't run before typescript is linked.
+# `npm run build` runs `build:deps` (package tsc) then api tsc.
 [phases.setup]
 nixPkgs = ["nodejs_20", "npm-9_x", "ffmpeg"]
 
 [phases.install]
-cmds = ["cd api && npm ci --production=false"]
+cmds = ["cd api && npm ci --production=false --ignore-scripts"]
 
 [phases.build]
 cmds = ["cd api && NODE_OPTIONS=--max-old-space-size=8192 npm run build"]

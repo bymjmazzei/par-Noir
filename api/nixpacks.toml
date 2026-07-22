@@ -7,7 +7,7 @@
 nixPkgs = ["nodejs_20", "npm-9_x", "ffmpeg"]
 
 [phases.install]
-cmds = ["npm ci --production=false"]
+cmds = ["npm ci --production=false --ignore-scripts"]
 
 [phases.build]
 cmds = ["NODE_OPTIONS=--max-old-space-size=8192 npm run build"]

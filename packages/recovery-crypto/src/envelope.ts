@@ -24,7 +24,7 @@ export interface RecoveryEnvelope {
 }
 
 async function deriveEnvelopeKey(master: Uint8Array): Promise<CryptoKey> {
-  const hash = await crypto.subtle.digest('SHA-256', master);
+  const hash = await crypto.subtle.digest('SHA-256', master as BufferSource);
   return crypto.subtle.importKey('raw', hash, 'AES-GCM', false, ['encrypt', 'decrypt']);
 }
 
@@ -35,7 +35,11 @@ export async function encryptRecoveryEnvelope(
   const key = await deriveEnvelopeKey(master);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const plaintext = new TextEncoder().encode(JSON.stringify(payload));
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv as BufferSource },
+    key,
+    plaintext
+  );
   return {
     version: 1,
     iv: bytesToB64(iv),
@@ -51,7 +55,11 @@ export async function decryptRecoveryEnvelope(
   const key = await deriveEnvelopeKey(master);
   const iv = b64ToBytes(envelope.iv);
   const ciphertext = b64ToBytes(envelope.ciphertext);
-  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: iv as BufferSource },
+    key,
+    ciphertext as BufferSource
+  );
   return JSON.parse(new TextDecoder().decode(decrypted)) as RecoveryPayload;
 }
 

@@ -18,7 +18,7 @@ async function deriveKey(passcode: string, salt: Uint8Array, identityPublicKey: 
   const material = enc.encode(`${passcode}:${identityPublicKey}`);
   const baseKey = await crypto.subtle.importKey('raw', material, 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 100_000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations: 100_000, hash: 'SHA-256' },
     baseKey,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -35,7 +35,7 @@ export async function encryptCustodianShare(
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(custodianPasscode, salt, identityPublicKey);
   const plaintext = new TextEncoder().encode(JSON.stringify({ index: share.index, share: share.share }));
-  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
+  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv as BufferSource }, key, plaintext);
   return {
     v: 1,
     index: share.index,
@@ -54,7 +54,11 @@ export async function decryptCustodianShare(
   const iv = Uint8Array.from(atob(encrypted.iv), (c) => c.charCodeAt(0));
   const ciphertext = Uint8Array.from(atob(encrypted.ciphertext), (c) => c.charCodeAt(0));
   const key = await deriveKey(custodianPasscode, salt, identityPublicKey);
-  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: iv as BufferSource },
+    key,
+    ciphertext as BufferSource
+  );
   const parsed = JSON.parse(new TextDecoder().decode(decrypted)) as { index: number; share: string };
   return { index: parsed.index, share: parsed.share };
 }

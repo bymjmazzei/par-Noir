@@ -31,7 +31,7 @@ async function deriveKey(pnName: string, passcode: string, saltB64: string): Pro
   const salt = base64ToArrayBuffer(saltB64);
   const baseKey = await crypto.subtle.importKey('raw', material, 'PBKDF2', false, ['deriveBits', 'deriveKey']);
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 1_000_000, hash: 'SHA-512' },
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations: 1_000_000, hash: 'SHA-512' },
     baseKey,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -49,7 +49,7 @@ export async function sealRecoveryShares(
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(pnName, passcode, salt);
   const plaintext = new TextEncoder().encode(JSON.stringify(shares));
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv as BufferSource }, key, plaintext);
   return {
     v: 1,
     encrypted: arrayBufferToBase64(ciphertext),
@@ -69,7 +69,11 @@ export async function unsealRecoveryShares(
   const ciphertext = base64ToArrayBuffer(sealed.encrypted);
   let decrypted: ArrayBuffer;
   try {
-    decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(iv) }, key, ciphertext);
+    decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: new Uint8Array(iv) as BufferSource },
+      key,
+      ciphertext as BufferSource
+    );
   } catch {
     throw new Error('Failed to unseal recovery shares — check pN name and passcode');
   }

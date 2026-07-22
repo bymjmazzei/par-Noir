@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# Build monorepo packages the API imports — build only, no per-package npm install.
-# Per-package `npm install` walks into root workspaces and reinstalls apps/* (hangs on Railway).
+# Build monorepo packages the API imports (Railway-safe).
+# Avoids workspace-wide npm install (hangs by pulling apps/*).
+# Each package gets an isolated install + pinned tsc/@types/node for cold builds.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 API="$ROOT/api"
 
-if [[ ! -f "$API/node_modules/typescript/bin/tsc" ]]; then
-  echo "❌ Missing api typescript — run npm ci in api/ first"
+# Pin below TS 5.7 Uint8Array/BufferSource DOM breakage for WebCrypto call sites.
+TSC_PIN="typescript@5.4.5"
+TYPES_NODE_PIN="@types/node@20.17.10"
+
+if [[ ! -d "$API/node_modules" ]]; then
+  echo "❌ Missing api/node_modules — run npm ci in api/ first"
   exit 1
 fi
 
-export PATH="$API/node_modules/.bin:$PATH"
-
-# Order: leaf packages before dependents
 PACKAGES=(
   pqc-crypto
   recovery-crypto
@@ -35,7 +37,13 @@ for pkg in "${PACKAGES[@]}"; do
     echo "❌ Missing $dir/package.json"
     exit 1
   fi
-  (cd "$dir" && npm run build)
+  (
+    cd "$dir"
+    npm install --ignore-scripts --workspaces=false
+    npm install --ignore-scripts --workspaces=false --no-save "$TSC_PIN" "$TYPES_NODE_PIN"
+    export PATH="$dir/node_modules/.bin:$PATH"
+    npm run build
+  )
 done
 
 echo "✅ Workspace deps built"
