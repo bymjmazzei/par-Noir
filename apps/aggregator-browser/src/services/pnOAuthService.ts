@@ -20,7 +20,7 @@ function getClientId(): string {
 }
 const REDIRECT_URI = typeof window !== 'undefined'
   ? `${window.location.origin}/oauth-callback.html`
-  : 'http://localhost:3000/oauth-callback.html';
+  : '';
 
 export interface OAuthTokenResponse {
   access_token: string;

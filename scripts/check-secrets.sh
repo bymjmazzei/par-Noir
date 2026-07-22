@@ -10,20 +10,21 @@ if git diff --cached -U0 | grep '^+' | grep -v '^+++' | grep -qE 'AIzaSy[A-Za-z0
   exit 1
 fi
 
-# Optional strict mode for CI full-repo scanning.
+# Optional strict mode for CI full-repo scanning (paths relative to repo root).
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 if [ "${PN_STRICT_GUARDRAILS:-0}" = "1" ]; then
-  if rg -n -g'!**/node_modules/**' -g'!**/dist/**' -e 'http://127\.0\.0\.1:|http://localhost:' /Users/gamit/pages/par-Noir/apps/aggregator-browser/src >/dev/null; then
+  if rg -n -g'!**/node_modules/**' -g'!**/dist/**' -e 'http://127\.0\.0\.1:|http://localhost:' "$ROOT/apps/aggregator-browser/src" >/dev/null; then
     echo "BLOCKED: localhost/127.0.0.1 runtime endpoint found in aggregator-browser source."
     exit 1
   fi
 
-  if rg -n -g'!**/node_modules/**' -g'!**/dist/**' -e 'drive\.google\.com|googleapis\.com|oauth2\.googleapis\.com' /Users/gamit/pages/par-Noir/apps/aggregator-browser/src >/dev/null; then
+  if rg -n -g'!**/node_modules/**' -g'!**/dist/**' -e 'drive\.google\.com|googleapis\.com|oauth2\.googleapis\.com' "$ROOT/apps/aggregator-browser/src" >/dev/null; then
     echo "BLOCKED: direct Google endpoint found in aggregator-browser source."
     echo "Use par Noir API endpoints instead."
     exit 1
   fi
 
-  if rg -n -g'!**/node_modules/**' -g'!**/dist/**' -e 'localStorage\.(setItem|getItem)\(\s*["'\'']pn_oauth_(session|callback)' /Users/gamit/pages/par-Noir/apps >/dev/null; then
+  if rg -n -g'!**/node_modules/**' -g'!**/dist/**' -e 'localStorage\.(setItem|getItem)\(\s*["'\'']pn_oauth_(session|callback)' "$ROOT/apps" >/dev/null; then
     echo "BLOCKED: OAuth session/callback artifacts in localStorage are forbidden."
     exit 1
   fi
