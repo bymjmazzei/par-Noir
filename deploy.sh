@@ -50,18 +50,9 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Build id-dashboard
-echo "📦 Building id-dashboard..."
-cd ../../apps/id-dashboard
-npm run build
-if [ $? -ne 0 ]; then
-    echo "❌ id-dashboard build failed"
-    exit 1
-fi
-
-# Shared package used by aggregator-browser (package exports dist/)
+# Shared UI + messaging crypto (dashboard + aggregator import dist/)
 echo "📦 Building packages/oauth-ui..."
-cd ../../packages/oauth-ui
+cd ../oauth-ui
 npm run build
 if [ $? -ne 0 ]; then
     echo "❌ oauth-ui build failed"
@@ -76,10 +67,19 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Build id-dashboard
+echo "📦 Building id-dashboard..."
+cd ../../apps/id-dashboard
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ id-dashboard build failed"
+    exit 1
+fi
+
 # Build aggregator-browser (browse target)
 # Do not `export` VITE_PN_CLIENT_ID: a single export would leak browser-app into prism / developer-portal builds.
 echo "📦 Building aggregator-browser..."
-cd ../../apps/aggregator-browser
+cd ../aggregator-browser
 VITE_PN_CLIENT_ID="${VITE_PN_CLIENT_ID:-browser-app}" npm run build
 if [ $? -ne 0 ]; then
     echo "❌ aggregator-browser build failed"
