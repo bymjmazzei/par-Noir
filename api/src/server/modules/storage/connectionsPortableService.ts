@@ -104,7 +104,8 @@ export async function updateConnectionStatusPortable(
   status: Connection['status'],
   accountId?: string,
   acceptedAt?: string,
-  kemCiphertext?: string
+  kemCiphertext?: string,
+  peerMailboxRouteKey?: string
 ): Promise<void> {
   const normalized = normalizePn(userPnIdentifier);
   const rows = await portableTableScan<Connection>(normalized, CONNECTIONS_SCHEMA, accountId);
@@ -119,7 +120,8 @@ export async function updateConnectionStatusPortable(
       ...existing,
       status,
       ...(acceptedAt ? { acceptedAt } : {}),
-      ...(kemCiphertext ? { kemCiphertext } : {})
+      ...(kemCiphertext ? { kemCiphertext } : {}),
+      ...(peerMailboxRouteKey ? { peerMailboxRouteKey } : {})
     } as unknown as Record<string, unknown>,
     accountId
   );

@@ -16,7 +16,8 @@ export class OneDriveBlobAdapter implements BlobStore {
   private itemPath(key: string): string {
     const k = key.startsWith('/') ? key.slice(1) : key;
     const full = `${this.rootPrefix}${k}`;
-    return `/me/drive/root:/${full}`;
+    // App folder only — Files.ReadWrite.AppFolder
+    return `/me/drive/special/approot:/${full}`;
   }
 
   private async graph<T>(path: string, init?: RequestInit): Promise<T> {
@@ -105,7 +106,7 @@ export class OneDriveBlobAdapter implements BlobStore {
           lastModifiedDateTime?: string;
           file?: unknown;
         }>;
-      }>(`/me/drive/root:/${full}:/children`);
+      }>(`/me/drive/special/approot:/${full}:/children`);
       return (result.value ?? [])
         .filter((v) => v.file)
         .map((v) => ({
@@ -126,7 +127,7 @@ export class OneDriveBlobAdapter implements BlobStore {
       try {
         await this.graph(`${this.itemPath(current)}`, { method: 'GET' });
       } catch {
-        await this.graph(`/me/drive/root:/${this.rootPrefix}${current}:`, {
+        await this.graph(`/me/drive/special/approot:/${this.rootPrefix}${current}:`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

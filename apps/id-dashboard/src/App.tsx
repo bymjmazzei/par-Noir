@@ -2127,13 +2127,35 @@ function App() {
         try {
           const encryptedIdentity = await getEncryptedIdentityForApiToken(session.publicKey);
           if (encryptedIdentity) {
-            await ensureApiTokenAfterUnlock({
+            const token = await ensureApiTokenAfterUnlock({
               encryptedIdentity,
               publicKey: session.publicKey,
               did: session.id,
               pnName: credentials.pnName,
               passcode: credentials.passcode
             });
+            if (token) {
+              try {
+                const { migrateAndFlushOnUnlock } = await import('./services/deviceCloudCredentials');
+                const { derivePnIdentifierForToken } = await import('./services/parNoirOAuthInline');
+                const pnIdentifier = await derivePnIdentifierForToken(
+                  credentials.pnName,
+                  credentials.passcode,
+                  session.publicKey
+                );
+                await migrateAndFlushOnUnlock({
+                  identityId: pnIdentifier,
+                  authToken: token,
+                  session: {
+                    sessionId: session.id,
+                    pnName: credentials.pnName,
+                    passcode: credentials.passcode
+                  }
+                });
+              } catch (deviceCloudErr) {
+                logDebug('[DeviceCloud] migrate/flush skipped or failed:', deviceCloudErr);
+              }
+            }
           }
         } catch {
           // Keep unlock success path intact; Sub-pN flows can surface token errors.
@@ -2234,6 +2256,19 @@ function App() {
         await IntegrationCredentialManager.clearAll();
       } catch (error) {
         logError('Failed to clear integration credentials:', error);
+      }
+
+      try {
+        const { stopDeviceCloudWorkers, wipeDeviceCloudCredentials } = await import(
+          './services/deviceCloudCredentials'
+        );
+        stopDeviceCloudWorkers();
+        const authUser = authenticatedUser;
+        if (authUser?.id) {
+          await wipeDeviceCloudCredentials(authUser.id).catch(() => undefined);
+        }
+      } catch {
+        /* optional */
       }
       
       // Clear the current session from storage

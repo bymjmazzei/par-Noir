@@ -33,13 +33,25 @@ const SENSITIVE_KEY_PATTERN =
 const PN_IDENTIFIER_KEY_PATTERN =
   /pnidentifier|pn_identifier|participantpn|targetpn|actorpn|otheruserpn|frompn|topn|userpn|memberpn|ownerpn|creatorpn/i;
 
+/** Opaque mailbox route / high-entropy hex keys — never log in full. */
+const ROUTE_KEY_PATTERN = /routekey|mailboxroutekey|peermailboxroutekey/i;
+
 function looksLikePnIdentifier(value: string): boolean {
   return /^pn-[a-f0-9]{8,}$/i.test(value) || value.startsWith('did:key:');
 }
 
+function looksLikeRouteMaterial(value: string): boolean {
+  return /^[a-f0-9]{64}$/i.test(value.trim());
+}
+
 function hashPnFieldValue(key: string, value: string): string {
   const normalizedKey = key.replace(/_/g, '').toLowerCase();
-  if (PN_IDENTIFIER_KEY_PATTERN.test(normalizedKey) || looksLikePnIdentifier(value)) {
+  if (
+    ROUTE_KEY_PATTERN.test(normalizedKey) ||
+    looksLikeRouteMaterial(value) ||
+    PN_IDENTIFIER_KEY_PATTERN.test(normalizedKey) ||
+    looksLikePnIdentifier(value)
+  ) {
     return hashIdentifier(value) ?? '[REDACTED]';
   }
   return value;

@@ -35,4 +35,16 @@ describe('sanitizeForLogs', () => {
     const pn = 'pn-83c1db813607';
     expect(sanitizeForLogs(pn)).toBe(hashIdentifier(pn));
   });
+
+  it('hashes mailbox route keys', () => {
+    const routeKey = 'a'.repeat(64);
+    const out = sanitizeForLogs({
+      routeKey,
+      peerMailboxRouteKey: routeKey,
+      messageId: 'msg-1'
+    }) as Record<string, unknown>;
+    expect(out.routeKey).toBe(hashIdentifier(routeKey));
+    expect(out.peerMailboxRouteKey).toBe(hashIdentifier(routeKey));
+    expect(out.messageId).toBe('msg-1');
+  });
 });

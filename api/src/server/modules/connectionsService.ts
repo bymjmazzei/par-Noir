@@ -26,6 +26,8 @@ export interface Connection {
   sharedSecret?: string; // Deprecated
   peerMlKemPublicKey?: string;
   kemCiphertext?: string;
+  /** Peer's opaque mailbox route key (cross-cloud throughway addressing). */
+  peerMailboxRouteKey?: string;
 }
 
 export interface ConnectionsFile {
@@ -237,7 +239,8 @@ export class ConnectionsService {
     recipientPnIdentifier: string,
     requesterMlKemPublicKey: string,
     requesterAccountId?: string,
-    recipientAccountId?: string
+    recipientAccountId?: string,
+    requesterMailboxRouteKey?: string
   ): Promise<Connection> {
     // Use pn identifiers directly (already normalized)
     // Build token objects from accessToken strings (backward compatibility)
@@ -326,6 +329,9 @@ export class ConnectionsService {
             status: 'pending_received',
             createdAt: now,
             peerMlKemPublicKey: requesterMlKemPublicKey,
+            ...(requesterMailboxRouteKey
+              ? { peerMailboxRouteKey: requesterMailboxRouteKey }
+              : {})
           },
           recipientAccountId
         );
@@ -370,6 +376,9 @@ export class ConnectionsService {
             status: 'pending_received',
             createdAt: now,
             peerMlKemPublicKey: requesterMlKemPublicKey,
+            ...(requesterMailboxRouteKey
+              ? { peerMailboxRouteKey: requesterMailboxRouteKey }
+              : {})
           },
           recipientPnIdentifier,
           recipientAccountId
@@ -384,19 +393,19 @@ export class ConnectionsService {
       };
     }
 
-      const requesterSheetId = await ConnectionsSheetsService.getConnectionsSheet(
-        requesterToken,
-        requesterMetadataFolder,
-        requesterPnIdentifier,
-        requesterAccountId
-      );
-
-      const recipientSheetId = await ConnectionsSheetsService.getConnectionsSheet(
-        recipientToken,
-        recipientMetadataFolder,
-        recipientPnIdentifier,
-        recipientAccountId
-      );
+    // Both on Google Drive sheets
+    const requesterSheetId = await ConnectionsSheetsService.getConnectionsSheet(
+      requesterToken,
+      requesterMetadataFolder,
+      requesterPnIdentifier,
+      requesterAccountId
+    );
+    const recipientSheetId = await ConnectionsSheetsService.getConnectionsSheet(
+      recipientToken,
+      recipientMetadataFolder,
+      recipientPnIdentifier,
+      recipientAccountId
+    );
 
       // Remove existing connections if any (by checking if connection exists)
       try {
@@ -471,6 +480,9 @@ export class ConnectionsService {
           status: 'pending_received',
           createdAt: now,
           peerMlKemPublicKey: requesterMlKemPublicKey,
+          ...(requesterMailboxRouteKey
+            ? { peerMailboxRouteKey: requesterMailboxRouteKey }
+            : {})
         },
         recipientPnIdentifier,
         recipientAccountId
@@ -495,7 +507,8 @@ export class ConnectionsService {
     acceptorPnIdentifier: string,
     connectionId: string,
     kemCiphertext: string,
-    accountId?: string
+    accountId?: string,
+    _acceptorMailboxRouteKey?: string
   ): Promise<void> {
     // Build token object from accessToken string (backward compatibility)
     if (await isPortableStorageProvider(acceptorPnIdentifier)) {
@@ -538,7 +551,8 @@ export class ConnectionsService {
         'accepted',
         accountId,
         new Date().toISOString(),
-        kemCiphertext
+        kemCiphertext,
+        undefined
       );
       return;
     }
@@ -624,7 +638,8 @@ export class ConnectionsService {
     newStatus: 'accepted' | 'blocked',
     acceptorPnIdentifier?: string, // The pn identifier of the user who accepted (to create connection if missing)
     kemCiphertext?: string,
-    accountId?: string
+    accountId?: string,
+    peerMailboxRouteKey?: string
   ): Promise<void> {
     // Use pn identifiers directly (already normalized)
     const normalizedAcceptorPnIdentifier = acceptorPnIdentifier;
@@ -642,7 +657,8 @@ export class ConnectionsService {
               status: 'accepted',
               createdAt: new Date().toISOString(),
               acceptedAt: new Date().toISOString(),
-              kemCiphertext
+              kemCiphertext,
+              ...(peerMailboxRouteKey ? { peerMailboxRouteKey } : {})
             },
             accountId
           );
@@ -656,7 +672,8 @@ export class ConnectionsService {
         newStatus,
         accountId,
         newStatus === 'accepted' ? new Date().toISOString() : undefined,
-        kemCiphertext
+        kemCiphertext,
+        peerMailboxRouteKey
       );
       return;
     }
@@ -692,7 +709,8 @@ export class ConnectionsService {
             status: 'accepted',
             createdAt: new Date().toISOString(),
             acceptedAt: new Date().toISOString(),
-            kemCiphertext: kemCiphertext
+            kemCiphertext: kemCiphertext,
+            ...(peerMailboxRouteKey ? { peerMailboxRouteKey } : {})
           },
           otherUserPnIdentifier,
           accountId
@@ -712,7 +730,8 @@ export class ConnectionsService {
         accountId,
         newStatus === 'accepted' ? now : undefined,
         undefined,
-        kemCiphertext
+        kemCiphertext,
+        peerMailboxRouteKey
       );
   }
 

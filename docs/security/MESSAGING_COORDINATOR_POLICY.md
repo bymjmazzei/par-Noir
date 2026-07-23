@@ -2,7 +2,7 @@
 
 This document defines what the par Noir **API operator** may see, store, and log for messaging. It complements the technical threat model in [MESSAGING_ARCHITECTURE.md](../MESSAGING_ARCHITECTURE.md).
 
-**Plain-language summary:** par Noir **cannot read your message bodies** (E2E encrypted). The API **does** see **routing metadata** (who is messaging whom, when) **in transit** while coordinating delivery to user-owned storage. That metadata is **not** kept in a central par Noir message database; canonical copies live on **each user's storage** (Google Drive or portable providers).
+**Plain-language summary:** par Noir **cannot read your message bodies** (E2E encrypted). The API **may** observe **authenticated send/claim** in transit, but durable `social_mailbox` rows are keyed by opaque **`route_key`** (not clear recipient pn) and payloads omit clear from/to. With **device cloud custody**, long-lived cloud OAuth secrets are **not** stored on the operator; the **sender’s outbox** is the durable commit; undelivered ciphertext sits in that opaque throughway until the recipient’s device flushes it into **their** storage. Canonical conversation copies live on **each user's storage** after flush / promote. Peer-inbox is not the universal DM bus.
 
 ---
 
@@ -33,19 +33,22 @@ This document defines what the par Noir **API operator** may see, store, and log
 | Messaging ledger rows | Yes (during append) | User Drive `messaging_ledger` | User-owned; user may delete sheet | Hash pn identifiers |
 | Realtime `new_message` | Yes (WebSocket fan-out) | Not persisted by API | Ephemeral event | Payload: `threadId` + `messageId` only |
 | OAuth `oauth_refresh_tokens` | Yes (session mgmt) | Postgres | Until token expiry/revoke; see `AUDIT_RETENTION_DAYS` | Hash pn identifier |
-| `storage_credentials` | Yes (encrypted blobs) | Postgres | While account connected | Never log decrypted tokens |
+| `storage_credentials` (legacy / layout-only) | Layout metadata may remain; **provider secrets must not** under device custody | Postgres | While account connected | Never log tokens; purge refresh/access secrets after migration |
+| `social_mailbox` jobs | Yes (opaque payload + `route_key`) | Postgres until device ack | Until ack or `expires_at` | Never log ciphertext or full route key; hash route/ids |
+| Public like/comment counts | Yes | Aggregator DB | Product retention | Hash actor when logged; no mailbox copy |
 
 ---
 
 ## What par Noir Postgres does **not** contain
 
-Messaging routing is **not** stored as a central graph in PostgreSQL. Verified tables relevant to messaging:
+Messaging **conversation sheets** are **not** a central graph in PostgreSQL. Verified tables relevant to messaging:
 
 - **`oauth_refresh_tokens`** — OAuth session (includes `pn_identifier` for auth; not a message graph).
-- **`storage_credentials`** — encrypted Drive tokens so the API can coordinate writes on behalf of the user.
+- **`storage_credentials`** — under device custody: non-secret layout / provider enum only (no refresh tokens). Legacy rows may still hold encrypted tokens until migration purge.
+- **`social_mailbox`** — opaque store-and-forward jobs (`route_key` + ciphertext-centric payload; no clear `pn-*` recipient column on new rows) until the recipient device flushes to user cloud and acks. Not a substitute for canonical Drive/portable conversation sheets; not a clear private social-graph table.
 - **`audit_events`** — optional security audit (not message content); retention `AUDIT_RETENTION_DAYS` (default 365).
 
-There is **no** `messages`, `conversations`, or `connections` table in Postgres for DM/group ciphertext or peer lists.
+There is **no** long-lived `messages`, `conversations`, or `connections` table in Postgres for DM/group ciphertext or peer lists as the system of record.
 
 ---
 
@@ -54,7 +57,7 @@ There is **no** `messages`, `conversations`, or `connections` table in Postgres 
 | Party | What they may see |
 |-------|------------------|
 | **Google Drive** (or other user-chosen provider) | File activity, timing, sheet structure; **no** messaging peer reader ACLs; opaque `conversation-o-*` names and `self`/`peer` from-cells on new writes; residual plaintext peer DIDs may still appear on connections / inbox until further migration |
-| **par Noir API** | Routing metadata in transit + coordination writes to user storage |
+| **par Noir API** | Routing metadata in transit; opaque mailbox until device flush; **no** standing cloud refresh tokens under device custody |
 | **End-user clients** | Decrypted content after unlock |
 
 ---
@@ -70,8 +73,9 @@ There is **no** `messages`, `conversations`, or `connections` table in Postgres 
 ## Messaging privacy (integrators / FAQ)
 
 - **Can par Noir read my messages?** No. Bodies are E2E encrypted; the server stores and moves ciphertext only.
-- **Does par Noir know who I message?** During send/delivery the API sees sender and recipient identifiers to dual-write to both users' storage. par Noir does not maintain a separate central message database for this graph.
-- **Where do messages live?** On your connected storage (e.g. Google Drive under your pN folder layout).
+- **Does par Noir know who I message?** During send the API sees sender and recipient identifiers to enqueue mailbox jobs (and, on the legacy path, dual-write). That is not blind routing. Canonical copies after flush live on user storage.
+- **Where do messages live?** Ultimately on your connected storage. Until your device flushes, undelivered ciphertext may sit briefly in `social_mailbox` on the API.
+- **If Railway is compromised?** Under device custody the attacker does **not** get standing cloud OAuth refresh tokens. They can still disrupt mailbox/cache, see routing metadata in pending jobs, and abuse other env secrets until rotated — see [ADR_DEVICE_CLOUD_CUSTODY.md](../architecture/ADR_DEVICE_CLOUD_CUSTODY.md).
 - **OAuth passcode:** Legacy OAuth unlock may still send passcode to the server for authentication; E2E messaging keys are derived client-side and are not required to be retained server-side for messaging.
 
 ---
@@ -80,5 +84,6 @@ There is **no** `messages`, `conversations`, or `connections` table in Postgres 
 
 - [MESSAGING_ARCHITECTURE.md](../MESSAGING_ARCHITECTURE.md) — crypto and data flow
 - [MESSAGING_UI_SURFACES.md](../MESSAGING_UI_SURFACES.md) — client surfaces
-- [MESSAGING_CLIENT_COORDINATION_RFC.md](../architecture/MESSAGING_CLIENT_COORDINATION_RFC.md) — future client-coordinated paths
+- [ADR_DEVICE_CLOUD_CUSTODY.md](../architecture/ADR_DEVICE_CLOUD_CUSTODY.md) — device-held cloud credentials + mailbox
+- [MESSAGING_CLIENT_COORDINATION_RFC.md](../architecture/MESSAGING_CLIENT_COORDINATION_RFC.md) — client-coordinated paths
 - [ADR_MESSAGING_BLIND_ROUTING.md](../architecture/ADR_MESSAGING_BLIND_ROUTING.md) — blind routing decision gate

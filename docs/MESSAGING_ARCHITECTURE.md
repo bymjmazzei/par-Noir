@@ -2,20 +2,24 @@
 
 ## Principle
 
-The par Noir API is a **storage coordinator**, not a **conversation participant**. It moves ciphertext and membership metadata on users’ Google Drive. It must not decrypt message bodies, derive `messageRootKey` / `chatKey`, or log plaintext.
+The par Noir API is a **storage coordinator / opaque mailbox**, not a **conversation participant**. It moves ciphertext and membership metadata toward users’ storage. It must not decrypt message bodies, derive `messageRootKey` / `chatKey`, or log plaintext.
+
+Under **device cloud custody** ([ADR_DEVICE_CLOUD_CUSTODY.md](./architecture/ADR_DEVICE_CLOUD_CUSTODY.md)), the API does **not** hold long-lived cloud OAuth secrets. The **sender outbox** (local sealed + user cloud `_outbox/`) is the durable commit; Railway `social_mailbox` is an **opaque throughway** keyed by `route_key` (not clear recipient pn), with ciphertext-centric payloads (no durable clear from/to). Devices rebuild throughway jobs from that outbox if wiped. Recipient devices claim by route and flush ciphertext into **their** Drive/portable silo. Peer-inbox is **not** the universal DM transport ([ADR_MESSAGING_BLIND_ROUTING.md](./architecture/ADR_MESSAGING_BLIND_ROUTING.md)).
 
 ## Direct messages (1:1)
 
 1. Each user may publish `mlKemPublicKey` on their Drive `profile.json` (and via `POST /api/profile/ml-kem-public-key`) for **discovery** and cold-DM flows.
-2. On **connection send**, the requester attaches `requesterMlKemPublicKey` to the recipient’s `pending_received` row (`peerMlKemPublicKey` in column F of the connections sheet).
-3. On **connection accept**, the acceptor reads `peerMlKemPublicKey` from that pending row (profile publish is a legacy fallback for requests sent before this change). The acceptor runs ML-KEM-768 encapsulation client-side and sends `kemCiphertext` and `wrappedMessageRootKey` to `POST /api/connections/:id/accept`. The API stores both blobs only (no server-side derivation).
+2. On **connection send**, the requester attaches `requesterMlKemPublicKey` and opaque `requesterMailboxRouteKey` to the recipient’s `pending_received` row (`peerMlKemPublicKey` in column F; `peerMailboxRouteKey` in column H of the connections sheet).
+3. On **connection accept**, the acceptor reads `peerMlKemPublicKey` from that pending row (profile publish is a legacy fallback for requests sent before this change). The acceptor runs ML-KEM-768 encapsulation client-side and sends `kemCiphertext`, `wrappedMessageRootKey`, and `acceptorMailboxRouteKey` to `POST /api/connections/:id/accept`. The API stores KEM blobs and writes the acceptor’s route key onto the requester’s connection row (no server-side derivation).
 4. On **every open** (after identity unlock), each party re-derives `messageRootKey` from their own Drive inbox:
    - **Requester:** `openDmSession(kemCiphertext, mlKemSecretKey)` — inbox column **F** (`kemCiphertext`).
    - **Acceptor:** `unwrapMessageRootKey(wrappedMessageRootKey, mlKemSecretKey, connectionId)` — inbox column **H** (`wrappedMessageRootKey`).
    Both paths require an unlocked identity session (`mlKemSecretKey` from OAuth handoff). `@par-noir/dm-crypto` `resolveMessageRootKey` tries wrapped, then kem, then optional legacy root (identity migration only).
 5. Per-message keys via HKDF (`par-noir-dm-v1` + `connectionId`).
-6. **Send:** `POST /api/messages/send` with `encryptedContent` and `cryptoVersion: 2` only.
-7. **Read:** `GET|POST /api/messages/conversation` returns `encryptedContent`; the browser decrypts.
+6. **Send:** `POST /api/messages/send` with `encryptedContent`, `cryptoVersion: 2`, `connectionId`, and peer `routeKey` when known.
+   - **Device custody (default on):** Client commits sender outbox first; API fans out recipient-only **opaque** throughway jobs (`delivery: throughway`). Devices flush with locally held cloud keys and materialize silos before ack.
+7. **Read:** `GET|POST /api/messages/conversation` returns `encryptedContent` from user storage after flush; clients claim pending via `GET /api/mailbox/pending?routeKey=…` (device auth) before materialization.
+8. **Public likes/comments:** aggregator public counts only (`delivery: public`) — not mailbox jobs.
 
 Inbox sheets cache opaque recovery blobs on user Drive—column F (`kemCiphertext`) for the requester, column H (`wrappedMessageRootKey`) for the acceptor—not a server-held secret and never plaintext `messageRootKey`.
 
@@ -66,17 +70,18 @@ The API is a **coordinator**, not a **conversation participant**.
 
 | Role | Description |
 |------|-------------|
-| **Coordinator** | Sees routing metadata **in transit** to dual-write ciphertext (bodies + attachments into each user’s silo), accept connections, and push realtime hints. |
+| **Coordinator / mailbox** | Sees routing metadata **in transit** to enqueue opaque jobs (or, on the legacy path, dual-write ciphertext). Push/realtime hints may fire without cloud tokens. |
 | **Not a participant** | Must not decrypt bodies, derive `messageRootKey` / `chatKey`, or retain passcode for messaging. |
+| **Not a cloud custodian (device custody)** | Must not store long-lived provider refresh tokens; devices hold those secrets. |
 
 | API may learn (in transit) | API must not learn |
 |----------------------------|-------------------|
-| Who messages whom (connection graph while coordinating) | Plaintext content |
+| Who messages whom (connection graph while coordinating / mailbox) | Plaintext content |
 | Timestamps, approximate sizes | `messageRootKey`, `chatKey`, passcode, pn name |
-| `kemCiphertext` blobs (opaque) | `wrappedMessageRootKey` blobs (opaque) |
-| ML-KEM secret keys | Plaintext `messageRootKey` |
+| `kemCiphertext` blobs (opaque) | ML-KEM secret keys |
+| Opaque mailbox payloads until ack | Standing cloud refresh tokens (device custody) |
 
-**Persistence:** Canonical message and connection data lives on **user-owned storage** (Drive / portable providers), not par Noir Postgres. The operator does not maintain a central social-graph database for DMs.
+**Persistence:** Canonical message and connection data lives on **user-owned storage** after device flush. Pending jobs may live briefly in Postgres `social_mailbox`. The operator does not maintain a central social-graph database as the system of record for DMs.
 
 **Third parties:** The storage host may see file activity and timing. Messaging **does not** create peer Drive ACLs. Conversation filenames and from-cells are opaque / relative where possible; connections sheet peer DIDs remain a residual graph surface.
 

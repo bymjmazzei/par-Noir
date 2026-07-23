@@ -52,16 +52,20 @@ export interface AwsS3Account {
   region: string;
   accessKeyId: string;
   secretAccessKey: string;
-  prefix?: string;
+  /** Required — least-privilege key prefix, typically `par-noir-{pn}` */
+  prefix: string;
 }
 
 export interface AzureBlobAccount {
   accountId: string;
   accountName: string;
   container: string;
-  sasToken?: string;
+  /** Required for new connects — connection strings are rejected on write */
+  sasToken: string;
+  /** Rejected on provider upsert — do not use */
   connectionString?: string;
-  prefix?: string;
+  /** Required — least-privilege blob prefix */
+  prefix: string;
 }
 
 export interface OnedriveAccount {

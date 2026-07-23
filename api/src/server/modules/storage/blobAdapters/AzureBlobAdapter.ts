@@ -14,17 +14,19 @@ export class AzureBlobAdapter implements BlobStore {
     connectionString?: string;
     prefix?: string;
   }) {
-    let service: BlobServiceClient;
     if (params.connectionString) {
-      service = BlobServiceClient.fromConnectionString(params.connectionString);
-    } else if (params.sasToken) {
-      const url = `https://${params.accountName}.blob.core.windows.net?${params.sasToken.replace(/^\?/, '')}`;
-      service = new BlobServiceClient(url);
-    } else {
-      throw new Error('Azure Blob requires sasToken or connectionString');
+      throw new Error('Azure connection strings are not accepted — use container SAS + prefix');
     }
+    if (!params.sasToken) {
+      throw new Error('Azure Blob requires sasToken');
+    }
+    if (!params.prefix) {
+      throw new Error('Azure Blob requires prefix (par-noir-{pn})');
+    }
+    const url = `https://${params.accountName}.blob.core.windows.net?${params.sasToken.replace(/^\?/, '')}`;
+    const service = new BlobServiceClient(url);
     this.containerClient = service.getContainerClient(params.container);
-    this.keyPrefix = params.prefix ? (params.prefix.endsWith('/') ? params.prefix : `${params.prefix}/`) : '';
+    this.keyPrefix = params.prefix.endsWith('/') ? params.prefix : `${params.prefix}/`;
   }
 
   private fullKey(key: string): string {

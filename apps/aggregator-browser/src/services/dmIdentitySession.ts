@@ -200,6 +200,19 @@ export async function unlockDmIdentity(pnName: string, passcode: string): Promis
 
   void (async () => {
     try {
+      const session = PNOAuthService.loadSession();
+      const pn = session?.pnIdentifier;
+      if (pn) {
+        const { reconcileSenderOutboxFanout } = await import('./messageService');
+        await reconcileSenderOutboxFanout(pn);
+      }
+    } catch {
+      /* non-blocking */
+    }
+  })();
+
+  void (async () => {
+    try {
       const handoffRaw = sessionStorage.getItem('pn_identity_migration_kem_handoff');
       if (!handoffRaw) return;
       const handoff = JSON.parse(handoffRaw) as {

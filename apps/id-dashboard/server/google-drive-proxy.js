@@ -45,7 +45,7 @@ app.get('/api/google-drive/auth-url', (req, res) => {
   try {
     const authUrl = oauth2Client.generateAuthUrl({
       access_type: 'offline',
-      scope: ['https://www.googleapis.com/auth/drive'],
+      scope: ['https://www.googleapis.com/auth/drive.file'],
       prompt: 'consent'
     });
     

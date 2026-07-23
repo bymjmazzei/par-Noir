@@ -109,6 +109,17 @@ export async function reconcilePublicAggregator(): Promise<ReconcilePublicAggreg
     usersChecked++;
 
     try {
+      const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
+      if (isDeviceCloudCustodyEnabled()) {
+        // Device custody: do not crawl private clouds with stored tokens.
+        // Rely on publish-time client push of public index into aggregator DB.
+        usersSkipped++;
+        safeLogger.info('[Reconcile] Skipping credential crawl (device cloud custody)', {
+          pnHash: hashIdentifier(pnIdentifier),
+        });
+        continue;
+      }
+
       const credentials = await storageCredentialsService.getCredentials(pnIdentifier);
       if (!credentials?.credentials) {
         const removed = await metadataService.removeAllMetadataForUser(pnIdentifier);

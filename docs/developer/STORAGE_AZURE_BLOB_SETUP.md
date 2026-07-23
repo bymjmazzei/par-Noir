@@ -5,15 +5,13 @@
 - Storage account with HTTPS-only enabled
 - Private container (no anonymous public read)
 
-## 2. SAS token scope
+## 2. SAS token (required)
 
-Create a container-level SAS with:
+Container-level SAS only — **connection strings are rejected**.
 
-- Read, Write, List, Create, Delete
-- HTTPS only
-- Expiration aligned with your rotation policy
+Permissions: Read, Write, List, Create, Delete; HTTPS only.
 
-Scope to the `par-noir-*` prefix when possible.
+Prefer scoping to the `par-noir-{pn}/` prefix when your tooling supports directory SAS.
 
 ## 3. Connect in dashboard
 
@@ -21,8 +19,9 @@ Scope to the `par-noir-*` prefix when possible.
 
 - Storage account name
 - Container name
-- SAS token (or connection string via API `azureBlob.connectionString`)
+- SAS token (required)
+- Blob prefix (required; defaults to `par-noir-{pn}`)
 
 ## 4. Rotation
 
-Rotate SAS before expiry. Update credentials in dashboard (re-connect).
+Rotate SAS before expiry. Re-connect in dashboard.

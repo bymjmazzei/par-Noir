@@ -37,8 +37,9 @@ Replace `YOUR_BUCKET` with your bucket name:
 - Region (e.g. `us-east-1`)
 - Access key ID
 - Secret access key
+- **Key prefix** (required; defaults to `par-noir-{pn}`)
 
-Credentials are encrypted server-side via `storage_credentials`.
+With device cloud custody, secrets are sealed on the device; the API stores layout/prefix metadata only.
 
 ## 4. Layout created on init
 
@@ -46,6 +47,7 @@ Credentials are encrypted server-side via `storage_credentials`.
 par-noir-{pn}/_metadata/
 par-noir-{pn}/integrators/
 par-noir-{pn}/par-noir-messages/
+par-noir-{pn}/par-noir-messages/_outbox/
 ```
 
 Tables are stored as `_metadata/{table}.db` (SQLite files).

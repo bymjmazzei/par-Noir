@@ -6,6 +6,8 @@
 export const METADATA_DIR = '_metadata';
 export const INTEGRATORS_DIR = 'integrators';
 export const MESSAGES_DIR = 'par-noir-messages';
+/** Sender-owned durable commit queue (source of truth; Railway mailbox is throughway only). */
+export const OUTBOX_DIR = 'par-noir-messages/_outbox';
 export const ATTACHMENTS_DIR = 'attachments';
 
 export const CONTENT_CLASSES = ['media', 'thoughts', 'collections'] as const;
@@ -49,6 +51,12 @@ export function portableSnapshotPath(logicalPath: string): string {
 export function conversationLogPath(otherPn: string): string {
   const id = otherPn.startsWith('pn-') ? otherPn : `pn-${otherPn}`;
   return messagesPath(`conversation-${id}.jsonl`);
+}
+
+/** Sender outbox record path (SoT for undelivered / rebuildable throughway jobs) */
+export function outboxRecordPath(outboxId: string): string {
+  const safe = outboxId.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return `${OUTBOX_DIR}/${safe}.json`;
 }
 
 /** Known metadata table logical paths */

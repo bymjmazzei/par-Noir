@@ -9,6 +9,10 @@ export class DropboxBlobAdapter implements BlobStore {
   private accessToken: string;
   private rootPrefix: string;
 
+  /**
+   * Dropbox App folder grant only. Paths are relative to the app sandbox root
+   * (API `/foo` ≡ `/Apps/<AppName>/foo`).
+   */
   constructor(accessToken: string, rootPrefix = '') {
     this.accessToken = accessToken;
     this.rootPrefix = rootPrefix.endsWith('/') ? rootPrefix : rootPrefix ? `${rootPrefix}/` : '';

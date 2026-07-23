@@ -20,6 +20,8 @@ interface StorageAccount {
 interface MultiCloudStoragePanelProps {
   pnIdentifier: string | null;
   authToken?: string;
+  /** Unlocked session id — used to seal cloud secrets on device */
+  sessionId?: string | null;
   onConnected?: () => void;
   onConnectGoogleDrive?: () => void;
   googleDriveConnectedCount?: number;
@@ -46,6 +48,7 @@ const DOC_LINKS: Record<Exclude<ProviderId, 'google_drive'>, string> = {
 export function MultiCloudStoragePanel({
   pnIdentifier,
   authToken,
+  sessionId,
   onConnected,
   onConnectGoogleDrive,
   googleDriveConnectedCount = 0,
@@ -63,8 +66,19 @@ export function MultiCloudStoragePanel({
     accountId: string;
   } | null>(null);
 
-  const [s3Form, setS3Form] = useState({ bucket: '', region: 'us-east-1', accessKeyId: '', secretAccessKey: '' });
-  const [azureForm, setAzureForm] = useState({ accountName: '', container: '', sasToken: '' });
+  const [s3Form, setS3Form] = useState({
+    bucket: '',
+    region: 'us-east-1',
+    accessKeyId: '',
+    secretAccessKey: '',
+    prefix: ''
+  });
+  const [azureForm, setAzureForm] = useState({
+    accountName: '',
+    container: '',
+    sasToken: '',
+    prefix: ''
+  });
   const [ftpForm, setFtpForm] = useState({
     host: '',
     port: 21,
@@ -189,7 +203,7 @@ export function MultiCloudStoragePanel({
         authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${encodeURIComponent(config.dropboxAppKey)}&redirect_uri=${encodeURIComponent(`${window.location.origin}/oauth-callback.html`)}&response_type=code&token_access_type=offline&state=pn_popup`;
       } else {
         if (!config.microsoftClientId) throw new Error('Microsoft OAuth is not configured on this server.');
-        authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${encodeURIComponent(config.microsoftClientId)}&redirect_uri=${encodeURIComponent(`${window.location.origin}/oauth-callback.html`)}&response_type=code&scope=${encodeURIComponent('Files.ReadWrite offline_access')}&state=pn_popup`;
+        authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${encodeURIComponent(config.microsoftClientId)}&redirect_uri=${encodeURIComponent(`${window.location.origin}/oauth-callback.html`)}&response_type=code&scope=${encodeURIComponent('Files.ReadWrite.AppFolder offline_access')}&state=pn_popup`;
       }
 
       const popup = window.open(authUrl, 'pn-storage-oauth', 'width=500,height=700');
@@ -258,18 +272,62 @@ export function MultiCloudStoragePanel({
     setError(null);
     try {
       let body: Record<string, unknown> = { provider: selected };
+      let localEnvelope: Record<string, unknown> | null = null;
       if (selected === 'aws_s3') {
         const accountId = buildAccountId('aws_s3', pnIdentifier, s3Form.bucket);
-        body = { provider: 'aws_s3', awsS3: { ...s3Form, accountId } };
+        const prefix =
+          s3Form.prefix.trim() ||
+          `par-noir-${pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`}`;
+        const awsS3 = { ...s3Form, prefix, accountId };
+        body = { provider: 'aws_s3', awsS3 };
+        localEnvelope = {
+          socialCloudProvider: 'aws_s3',
+          awsS3Accounts: [awsS3]
+        };
       } else if (selected === 'azure_blob') {
+        if (!azureForm.sasToken.trim()) {
+          throw new Error('Azure requires a container SAS token (connection strings are not accepted).');
+        }
         const accountId = buildAccountId('azure_blob', pnIdentifier, azureForm.container);
-        body = { provider: 'azure_blob', azureBlob: { ...azureForm, accountId } };
+        const prefix =
+          azureForm.prefix.trim() ||
+          `par-noir-${pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`}`;
+        const azureBlob = { ...azureForm, prefix, accountId };
+        body = { provider: 'azure_blob', azureBlob };
+        localEnvelope = {
+          socialCloudProvider: 'azure_blob',
+          azureBlobAccounts: [azureBlob]
+        };
       } else if (selected === 'ftp') {
         const slug = ftpForm.host.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 32);
         const accountId = buildAccountId('ftp', pnIdentifier, slug);
         body = { provider: 'ftp', ftp: { ...ftpForm, accountId } };
+        localEnvelope = {
+          socialCloudProvider: 'ftp',
+          ftpAccounts: [{ ...ftpForm, accountId }]
+        };
       } else {
         throw new Error('Use OAuth for this provider');
+      }
+      try {
+        if (sessionId && localEnvelope) {
+          const { SecureCredentialManager } = await import('../../utils/secureCredentialManager');
+          const { sealAndStoreCloudCredentials } = await import('../../services/deviceCloudCredentials');
+          const creds = SecureCredentialManager.getCredentials(sessionId);
+          if (creds) {
+            await sealAndStoreCloudCredentials({
+              identityId: pnIdentifier,
+              credentials: localEnvelope as import('@par-noir/user-owned-storage').StorageCredentialsEnvelope,
+              session: {
+                sessionId,
+                pnName: creds.pnName,
+                passcode: creds.passcode
+              }
+            });
+          }
+        }
+      } catch {
+        /* device seal best-effort */
       }
       const res = await ownerFetch(
         authToken,
@@ -298,7 +356,9 @@ export function MultiCloudStoragePanel({
         <div>
           <h3 className="text-lg font-semibold text-white">Secure Cloud</h3>
           <p className="text-text-secondary text-sm">
-            Connect encrypted cloud storage. Choose Google Drive, Dropbox, S3, Azure, OneDrive, or FTP — one provider becomes your social cloud (tables and indexes); files can live on any connected account.
+            Connect encrypted cloud storage. Dropbox uses App folder; OneDrive uses AppFolder;
+            S3/Azure require a {'par-noir-{pn}/'} prefix; Azure is SAS-only. Device custody seals
+            provider secrets on this device; the API keeps layout metadata only.
           </p>
           {connectedStorageCount > 0 && (
             <p className="text-green-400 text-sm mt-2">
@@ -372,6 +432,7 @@ export function MultiCloudStoragePanel({
           <input className="input-dark" placeholder="Region" value={s3Form.region} onChange={(e) => setS3Form({ ...s3Form, region: e.target.value })} />
           <input className="input-dark" placeholder="Access key ID" value={s3Form.accessKeyId} onChange={(e) => setS3Form({ ...s3Form, accessKeyId: e.target.value })} />
           <input className="input-dark" type="password" placeholder="Secret access key" value={s3Form.secretAccessKey} onChange={(e) => setS3Form({ ...s3Form, secretAccessKey: e.target.value })} />
+          <input className="input-dark" placeholder="Key prefix (default par-noir-{pn}/)" value={s3Form.prefix} onChange={(e) => setS3Form({ ...s3Form, prefix: e.target.value })} />
           <button type="button" disabled={loading} onClick={connectFormProvider} className="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm sm:col-span-2">Connect S3</button>
         </div>
       )}
@@ -380,7 +441,8 @@ export function MultiCloudStoragePanel({
         <div className="grid gap-2">
           <input className="input-dark" placeholder="Storage account name" value={azureForm.accountName} onChange={(e) => setAzureForm({ ...azureForm, accountName: e.target.value })} />
           <input className="input-dark" placeholder="Container" value={azureForm.container} onChange={(e) => setAzureForm({ ...azureForm, container: e.target.value })} />
-          <input className="input-dark" type="password" placeholder="SAS token" value={azureForm.sasToken} onChange={(e) => setAzureForm({ ...azureForm, sasToken: e.target.value })} />
+          <input className="input-dark" type="password" placeholder="Container SAS token (required)" value={azureForm.sasToken} onChange={(e) => setAzureForm({ ...azureForm, sasToken: e.target.value })} />
+          <input className="input-dark" placeholder="Blob prefix (default par-noir-{pn}/)" value={azureForm.prefix} onChange={(e) => setAzureForm({ ...azureForm, prefix: e.target.value })} />
           <button type="button" disabled={loading} onClick={connectFormProvider} className="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm">Connect Azure Blob</button>
         </div>
       )}

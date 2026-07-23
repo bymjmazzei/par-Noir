@@ -7,9 +7,10 @@
 import { PNOAuthService } from './pnOAuthService';
 import { getUserProfile } from './profileService';
 import { createKemSession, wrapAcceptorMessageRootKey } from './dmCryptoClient';
-import { getMessagingMlKemPublicKey, isDmIdentityReady } from './dmIdentitySession';
+import { getMessagingMlKemPublicKey, getDmIdentity, isDmIdentityReady } from './dmIdentitySession';
 import { notifyMessagingInboxRefresh, refreshMessagingInbox } from './messageService';
 import { API_ENDPOINT } from '../config/api';
+import { ensureMailboxRouteKey } from '@par-noir/device-cloud-credentials';
 
 // Helper function to get auth headers
 function getAuthHeaders(): HeadersInit {
@@ -32,6 +33,8 @@ export interface Connection {
   createdAt: string;
   acceptedAt?: string;
   peerMlKemPublicKey?: string;
+  /** Peer's opaque mailbox inbox route (for cross-cloud DM throughway). */
+  peerMailboxRouteKey?: string;
 }
 
 export interface ConnectionStatus {
@@ -65,6 +68,13 @@ export async function sendConnectionRequest(
     throw new Error('Messaging public key missing. Lock and unlock your pN again.');
   }
 
+  const identity = getDmIdentity();
+  const mailboxRouteKey = await ensureMailboxRouteKey(requesterPnIdentifier, {
+    sessionId: requesterPnIdentifier,
+    pnName: identity.pnName || 'browser-mailbox',
+    passcode: identity.mlKemSecretKey
+  });
+
   // Use Google Drive API directly (no IPFS)
   try {
     const response = await fetch(`${API_ENDPOINT}/api/connections/request`, {
@@ -74,6 +84,7 @@ export async function sendConnectionRequest(
         requesterPnIdentifier,
         recipientPnIdentifier,
         requesterMlKemPublicKey: mlKemPublicKey,
+        requesterMailboxRouteKey: mailboxRouteKey
       })
     });
 
@@ -133,6 +144,13 @@ export async function acceptConnectionRequest(
   const { kemCiphertext, messageRootKey } = createKemSession(kemPk);
   const wrappedMessageRootKey = await wrapAcceptorMessageRootKey(messageRootKey, connectionId);
 
+  const identity = getDmIdentity();
+  const mailboxRouteKey = await ensureMailboxRouteKey(userPnIdentifier, {
+    sessionId: userPnIdentifier,
+    pnName: identity.pnName || 'browser-mailbox',
+    passcode: identity.mlKemSecretKey
+  });
+
   try {
     const response = await fetch(`${API_ENDPOINT}/api/connections/${connectionId}/accept`, {
       method: 'POST',
@@ -141,7 +159,8 @@ export async function acceptConnectionRequest(
         userPnIdentifier,
         kemCiphertext,
         wrappedMessageRootKey,
-        kemAlgId: 'ML-KEM-768'
+        kemAlgId: 'ML-KEM-768',
+        acceptorMailboxRouteKey: mailboxRouteKey
       })
     });
 

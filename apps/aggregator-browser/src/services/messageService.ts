@@ -9,9 +9,18 @@ import { inboxCacheService } from './inboxCacheService';
 import { encryptOutgoingMessage, decryptIncomingMessage, type DmSessionRecovery } from './dmCryptoClient';
 import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
 import { encryptMessageRequest, decryptMessageRequest } from '@par-noir/dm-crypto';
-import { messageAuthHeaders, messageFetch } from './messageAuthFetch';
+import { messageFetch } from './messageAuthFetch';
 import { setMessagingRateLimited } from './messagingRateLimitState';
-
+import {
+  createOutboxRecord,
+  enqueueMailboxThroughway,
+  lookupMailboxThroughway,
+  messageSendFanout,
+  sealCredentials,
+  stashOutboxBridge,
+  upsertLocalOutboxRecord,
+  type OutboxRecord
+} from '@par-noir/device-cloud-credentials';
 export const MESSAGING_INBOX_REFRESH_EVENT = 'pn_messaging_inbox_refresh';
 export const MESSAGING_POLL_BACKSTOP_MS = 60_000;
 
@@ -109,6 +118,8 @@ export interface Message {
   fromPnIdentifier: string;
   toPnIdentifier: string;
   content: string;
+  encryptedContent?: string;
+  cryptoVersion?: number;
   mediaFileId?: string;
   mediaBackend?: string;
   mediaMimeType?: string;
@@ -215,11 +226,59 @@ export async function getMessages(userPnIdentifier: string): Promise<Message[]> 
     }
 
     const result = await response.json();
-    return result.messages || [];
+    const fromDrive: Message[] = result.messages || [];
+    const fromMailbox = await loadMailboxMessageHints(userPnIdentifier);
+    return mergeMessagesById(fromDrive, fromMailbox);
   } catch (error) {
     console.error('Failed to get messages:', error);
     return [];
   }
+}
+
+/** Opaque mailbox ciphertext visible before Drive flush (device cloud custody). */
+async function loadMailboxMessageHints(userPnIdentifier: string): Promise<Message[]> {
+  try {
+    const { fetchMailboxPending } = await import('@par-noir/device-cloud-credentials');
+    const session = (await import('./pnOAuthService')).PNOAuthService.loadSession();
+    if (!session?.accessToken) return [];
+    const jobs = await fetchMailboxPending(API_ENDPOINT, session.accessToken, userPnIdentifier, 100);
+    const out: Message[] = [];
+    for (const job of jobs) {
+      if (job.jobType !== 'message_append') continue;
+      const p = job.payload || {};
+      const messageId = typeof p.messageId === 'string' ? p.messageId : '';
+      if (!messageId) continue;
+      out.push({
+        messageId,
+        fromPnIdentifier: String(p.fromPnIdentifier || ''),
+        toPnIdentifier: String(p.toPnIdentifier || ''),
+        content: '',
+        encryptedContent: typeof p.encryptedContent === 'string' ? p.encryptedContent : undefined,
+        cryptoVersion: 2,
+        timestamp: typeof p.timestamp === 'string' ? p.timestamp : job.createdAt,
+        read: !!p.read,
+        encrypted: true,
+        mediaFileId: typeof p.mediaFileId === 'string' ? p.mediaFileId : undefined,
+        mediaMimeType: typeof p.mediaMimeType === 'string' ? p.mediaMimeType : undefined
+      } as Message);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function mergeMessagesById(primary: Message[], extra: Message[]): Message[] {
+  const map = new Map<string, Message>();
+  for (const m of primary) {
+    if (m.messageId) map.set(m.messageId, m);
+  }
+  for (const m of extra) {
+    if (m.messageId && !map.has(m.messageId)) map.set(m.messageId, m);
+  }
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime()
+  );
 }
 
 /**
@@ -405,6 +464,13 @@ export async function getConversationMessages(
 
     const result = await response.json();
     const raw = result.messages || [];
+    const mailboxHints = await loadMailboxMessageHints(userPnIdentifier);
+    const mailboxForPeer = mailboxHints.filter(
+      (m) =>
+        (m.fromPnIdentifier === participantPnIdentifier && m.toPnIdentifier === userPnIdentifier) ||
+        (m.fromPnIdentifier === userPnIdentifier && m.toPnIdentifier === participantPnIdentifier)
+    );
+    const mergedRaw = mergeMessagesById(raw, mailboxForPeer);
     const recovery = await resolveRecoveryForDecrypt(
       userPnIdentifier,
       participantPnIdentifier,
@@ -419,7 +485,7 @@ export async function getConversationMessages(
         ?.find((e) => e.participantPnIdentifier === participantPnIdentifier)?.connectionId;
 
     const messages: Message[] = await Promise.all(
-      raw.map(async (row: Message & { encryptedContent?: string; cryptoVersion?: number }) => {
+      mergedRaw.map(async (row: Message & { encryptedContent?: string; cryptoVersion?: number }) => {
         const enc = row.encryptedContent || row.content || '';
         let content = '';
         if (effectiveConnectionId && enc) {
@@ -498,84 +564,188 @@ export async function sendMessage(
   }
 
   const encryptedContent = await encryptOutgoingMessage(content, connId, recovery);
+  const identity = getDmIdentity();
+  const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  const timestamp = new Date().toISOString();
+  const threadId = [fromPnIdentifier, toPnIdentifier].sort().join('_');
+  const messagePayload = {
+    messageId,
+    fromPnIdentifier,
+    toPnIdentifier,
+    encryptedContent,
+    cryptoVersion: 2 as const,
+    timestamp,
+    read: true,
+    connectionId: connId,
+    threadId,
+    ...(mediaFileId
+      ? {
+          mediaFileId,
+          ...(mediaMimeType ? { mediaMimeType } : {}),
+          ...(mediaBackend ? { mediaBackend } : {}),
+          ...(mediaEnvelopesByPn ? { mediaEnvelopesByPn } : {})
+        }
+      : {})
+  };
+
+  let peerRouteKey: string | undefined;
+  try {
+    const { getConnections } = await import('./connectionService');
+    const connections = await getConnections(fromPnIdentifier);
+    const row = connections.find((c) => c.connectionId === connId || c.userPnIdentifier === toPnIdentifier);
+    if (row?.peerMailboxRouteKey && /^[a-f0-9]{64}$/i.test(row.peerMailboxRouteKey)) {
+      peerRouteKey = row.peerMailboxRouteKey.trim();
+    }
+  } catch {
+    /* legacy fallback on server */
+  }
+
+  // Commit first (local sealed outbox = durable SoT). API fan-out is throughway only.
+  const sealSession = {
+    sessionId: fromPnIdentifier,
+    pnName: identity.pnName || 'browser-outbox',
+    passcode: identity.mlKemSecretKey
+  };
+  const outbox: OutboxRecord = createOutboxRecord({
+    outboxId: messageId,
+    kind: 'message_append',
+    payload: messagePayload,
+    fanout: messageSendFanout(peerRouteKey || toPnIdentifier, !!mediaFileId, toPnIdentifier),
+    status: 'pending'
+  });
+  await upsertLocalOutboxRecord(fromPnIdentifier, sealSession, outbox);
+  try {
+    const bag = { records: [outbox] };
+    const envelope = await sealCredentials(bag, sealSession, null);
+    stashOutboxBridge(fromPnIdentifier, envelope);
+  } catch {
+    /* bridge best-effort */
+  }
 
   try {
     const sendPayload = {
-        fromPnIdentifier,
-        toPnIdentifier,
-        encryptedContent,
-        cryptoVersion: 2,
-        ...(mediaFileId
-          ? {
-              mediaFileId,
-              ...(mediaMimeType ? { mediaMimeType } : {}),
-              ...(mediaBackend ? { mediaBackend } : {}),
-              ...(mediaEnvelopesByPn ? { mediaEnvelopesByPn } : {})
-            }
-          : {})
-      };
+      ...messagePayload,
+      cryptoVersion: 2,
+      connectionId: connId,
+      ...(peerRouteKey ? { routeKey: peerRouteKey } : {})
+    };
     const response = await messageFetch('/api/messages/send', {
       method: 'POST',
-      bodyObject: sendPayload,
+      bodyObject: sendPayload
     });
 
     if (!response.ok) {
       let errorMessage = 'Failed to send message';
       try {
         const error = await response.json();
-        // Extract error message, but sanitize technical errors that don't help users
         const rawError = error.error_description || error.error || errorMessage;
-        
-        // Don't expose internal server errors (like "crypto is not defined") to users
         if (response.status === 500 && (rawError.includes('crypto') || rawError.includes('undefined'))) {
           errorMessage = 'Server error occurred while sending message. Please try again.';
         } else {
           errorMessage = rawError;
-          if (error.details) {
-            errorMessage += ` - ${error.details}`;
-          }
+          if (error.details) errorMessage += ` - ${error.details}`;
         }
-      } catch (e) {
-        // If response is not JSON, use status text
+      } catch {
         const statusText = response.statusText || `HTTP ${response.status}`;
-        if (response.status === 500) {
-          errorMessage = 'Server error occurred while sending message. Please try again.';
-        } else {
-          errorMessage = `Failed to send message: ${statusText}`;
-        }
+        errorMessage =
+          response.status === 500
+            ? 'Server error occurred while sending message. Please try again.'
+            : `Failed to send message: ${statusText}`;
       }
+      // Keep outbox pending — caller can retry; commit already happened.
       throw new Error(errorMessage);
     }
 
     const result = await response.json();
+    await upsertLocalOutboxRecord(fromPnIdentifier, sealSession, {
+      ...outbox,
+      status: 'enqueued',
+      updatedAt: new Date().toISOString()
+    });
+
     const message = {
-      ...result.message,
+      ...(result.message || messagePayload),
+      messageId,
       content,
       encrypted: true
     };
-    
-    // Refresh inbox cache after successful send (non-blocking)
-    // This updates the lastMessageAt timestamp for the conversation
+
     getMessageThreads(fromPnIdentifier)
-      .then(threads => {
+      .then((threads) => {
         const inboxEntries = threads
-          .filter(thread => thread.participantPnIdentifier)
-          .map(thread => ({
+          .filter((thread) => thread.participantPnIdentifier)
+          .map((thread) => ({
             participantPnIdentifier: thread.participantPnIdentifier,
             lastMessageAt: thread.lastMessage?.timestamp || new Date().toISOString()
           }))
           .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
         inboxCacheService.set(fromPnIdentifier, inboxEntries);
       })
-      .catch(error => {
-        // Silently fail - cache refresh is non-critical
-        console.warn('[messageService] Failed to refresh inbox cache after send:', error);
-      });
-    
+      .catch(() => undefined);
+
     return message;
   } catch (error) {
     console.error('Failed to send message:', error);
     throw error;
+  }
+}
+
+/** Rebuild throughway jobs from local outbox if Railway wiped them. */
+export async function reconcileSenderOutboxFanout(userPnIdentifier: string): Promise<void> {
+  if (!isDmIdentityReady()) return;
+  const identity = getDmIdentity();
+  const session = PNOAuthService.loadSession();
+  if (!session?.accessToken) return;
+  const sealSession = {
+    sessionId: userPnIdentifier,
+    pnName: identity.pnName || 'browser-outbox',
+    passcode: identity.mlKemSecretKey
+  };
+  const { loadLocalOutbox } = await import('@par-noir/device-cloud-credentials');
+  const records = await loadLocalOutbox(userPnIdentifier, sealSession);
+  for (const record of records) {
+    if (record.status === 'materialized') continue;
+    for (const target of record.fanout) {
+      const messageId =
+        typeof record.payload.messageId === 'string' ? record.payload.messageId : undefined;
+      const routeKey = target.routeKey || target.recipientIdentityId;
+      if (!routeKey) continue;
+      const lookup = await lookupMailboxThroughway({
+        apiBaseUrl: API_ENDPOINT,
+        authToken: session.accessToken,
+        identityId: userPnIdentifier,
+        routeKey,
+        recipientIdentityId: target.recipientIdentityId,
+        jobType: target.jobType,
+        messageId
+      }).catch(() => ({ found: false, pending: false }));
+      if (lookup.pending) continue;
+      const payload =
+        target.jobType === 'message_append'
+          ? {
+              ...record.payload,
+              role: 'recipient',
+              read: false,
+              // Strip clear graph before throughway persist (server also sanitizes).
+              fromPnIdentifier: undefined,
+              toPnIdentifier: undefined
+            }
+          : { ...record.payload, fromPnIdentifier: undefined, toPnIdentifier: undefined };
+      await enqueueMailboxThroughway({
+        apiBaseUrl: API_ENDPOINT,
+        authToken: session.accessToken,
+        identityId: userPnIdentifier,
+        routeKey,
+        recipientIdentityId: target.recipientIdentityId,
+        jobType: target.jobType,
+        payload
+      }).catch(() => undefined);
+    }
+    await upsertLocalOutboxRecord(userPnIdentifier, sealSession, {
+      ...record,
+      status: 'enqueued',
+      updatedAt: new Date().toISOString()
+    });
   }
 }
 

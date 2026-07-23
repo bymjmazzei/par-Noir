@@ -42,6 +42,7 @@ import { registerMusicTrackRegistryRoutes } from './server/modules/musicTrackReg
 import { registerStripeMonetizationRoutes } from './server/modules/stripeMonetizationRoutes';
 import { registerIntegratorRoutes } from './server/modules/integratorRoutes';
 import { registerStorageRoutes } from './server/modules/storage/storageRoutes';
+import { registerMailboxRoutes } from './server/modules/mailboxRoutes';
 import { registerCreatorFundPeriodRoutes } from './server/modules/creatorFundPeriodRoutes';
 import { registerCoreRoutes } from './server/modules/coreRoutes';
 import { hashIdentifier, isDevVerbose, safeLogger } from './utils/logger';
@@ -5272,7 +5273,22 @@ class ProductionServer {
         }
 
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-        const record = await storageCredentialsService.upsertCredentials(pnIdentifier, credentials, cid);
+        const { isDeviceCloudCustodyEnabled } = await import('./server/modules/socialMailboxService');
+        let credentialsToStore = credentials;
+        if (isDeviceCloudCustodyEnabled()) {
+          // Prefer layout-only persistence; clients seal secrets on device.
+          credentialsToStore = storageCredentialsService.stripCloudSecrets(
+            credentials as Record<string, unknown>
+          );
+          console.log(
+            `[StorageCredentials PUT] DEVICE_CLOUD_CUSTODY=1 — stripped cloud secrets for identity`
+          );
+        }
+        const record = await storageCredentialsService.upsertCredentials(
+          pnIdentifier,
+          credentialsToStore,
+          cid
+        );
         
         // SECURITY: Use sanitized identityId in logs
         console.log(`[StorageCredentials PUT] Successfully saved credentials for identityId: ${sanitizedIdentityId}`);
@@ -5962,227 +5978,39 @@ class ProductionServer {
         // Use pn identifier directly (already normalized)
         const pnIdentifier = userPnIdentifier;
 
-        // Get user's credentials and metadata folder for Google Drive operations
-        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.status(404).json({ error: 'User credentials not found' });
-        }
-
-        const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
-        const portable = await isPortableStorageProvider(pnIdentifier);
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (!portable && googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'Storage not connected' });
-        }
-
-        let token: any = { access_token: '' };
-        let userAccessToken = '';
-        let metadataFolderId = '';
-        let accountId: string | undefined;
-        if (!portable) {
-          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-          accountId = this.extractAccountId(account);
-          token = {
-            access_token: account?.access_token || account?.accessToken || '',
-            refresh_token: account?.refresh_token || account?.refreshToken,
-            expires_at: account?.expires_at,
-            expires_in: account?.expires_in
-          };
-          userAccessToken = token.access_token;
-          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-          if (!_g) return this.driveNotInitialized(res);
-          metadataFolderId = _g.metadataFolderId;
-        }
-
-        // 1. Update user's engagement on social cloud (Sheets or portable)
-        const driveResult = await EngagementDriveService.toggleLike(
-          pnIdentifier,
-          fileId,
-          userAccessToken,
-          metadataFolderId
+        const { isDeviceCloudCustodyEnabled } = await import(
+          './server/modules/socialMailboxService'
         );
-
-        // 2. Update database public count (event-driven)
-        await EngagementService.toggleLikePublicCount(fileId, pnIdentifier, driveResult.liked);
-
-        // Get file metadata for tag extraction, activity logging, and other operations
-        const aggregator = AggregatorMetadataServiceDB.getInstance();
-        const fileMetadata = await aggregator.getFileMetadata(fileId);
-        const fileOwnerDid = fileMetadata?.pnIdentifier;
-
-        // 3. Extract tags and save as preferences (only when liking, not unliking)
-        if (driveResult.liked && fileMetadata?.metadata) {
-          try {
-            const tags = extractTagsFromMetadata(fileMetadata.metadata, {
-              fileId
-            });
-
-            for (const tag of tags) {
-              await PreferencesService.addTagPreference(
-                userAccessToken,
-                metadataFolderId,
-                pnIdentifier,
-                tag.id,
-                'like',
-                'swipe_like',
-                {
-                  sourceFileId: fileId,
-                  confidence: 0.7,
-                  metadata: {
-                    fileType: fileMetadata.metadata.fileType,
-                    category: fileMetadata.metadata.feedCategories?.[0],
-                    subject: tag.displayName
-                  }
-                }
-              );
-            }
-          } catch (tagError) {
-            console.warn('Failed to extract and save tags:', tagError);
-            // Don't fail the like operation if tag extraction fails
-          }
-        }
-
-        // Get public count for response
-        const publicStats = await EngagementService.getEngagementStats(fileId);
-        const result = {
-          liked: driveResult.liked,
-          count: publicStats.likes
-        };
-
-        // Record activity and send notification (only when liking, not unliking)
-        if (result.liked && fileOwnerDid && fileOwnerDid !== userPnIdentifier) {
-          try {
-            const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
-            const { NotificationService } = await import('./server/modules/notificationService');
-            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-
-            // Get user's credentials and metadata folder
-            const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-            if (userCredentials?.credentials) {
-              const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-                (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-              
-              if (googleDriveAccounts.length > 0) {
-                const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-                const accountId = account ? this.extractAccountId(account) : undefined;
-                
-                // Get full token object (not just access token string) for automatic refresh
-                const token = {
-                  access_token: account?.access_token || account?.accessToken || '',
-                  refresh_token: account?.refresh_token || account?.refreshToken,
-                  expires_at: account?.expires_at,
-                  expires_in: account?.expires_in
-                };
-                const userAccessToken = token.access_token; // Keep for backward compatibility
-                const _gUser = await this.getMetadataFolder(token, pnIdentifier, accountId);
-                if (!_gUser) {
-                  console.warn('[Engagement] Skipping liker activity: metadata folder not found');
-                } else {
-                const userMetadataFolderId = _gUser.metadataFolderId;
-
-                // Record activity for liker
-                await ActivityLedgerService.recordActivity(
-                  userAccessToken,
-                  userMetadataFolderId,
-                  pnIdentifier,
-                  'like',
-                  {
-                    targetType: 'file',
-                    targetPnIdentifier: fileId, // For files, this is the file ID, not a pn-identifier
-                    metadata: { fileOwnerDid }
-                  }
-                );
-                }
-              }
-            }
-
-            // Get file owner's credentials and metadata folder
-            const ownerPnIdentifier = fileOwnerDid.startsWith('pn-') ? fileOwnerDid : `pn-${fileOwnerDid}`;
-            const ownerCredentials = await storageCredentialsService.getCredentials(ownerPnIdentifier);
-            if (ownerCredentials?.credentials) {
-              const ownerGoogleDriveAccounts = ownerCredentials.credentials.googleDriveAccounts || 
-                (ownerCredentials.credentials.googleDrive ? [ownerCredentials.credentials.googleDrive] : []);
-              
-              if (ownerGoogleDriveAccounts.length > 0) {
-                const ownerAccount = ownerGoogleDriveAccounts[0];
-                const ownerAccountId = this.extractAccountId(ownerAccount);
-                
-                // Get full token object for owner (not just access token string) for automatic refresh
-                const ownerToken = {
-                  access_token: ownerAccount.access_token || ownerAccount.accessToken,
-                  refresh_token: ownerAccount.refresh_token || ownerAccount.refreshToken,
-                  expires_at: ownerAccount.expires_at,
-                  expires_in: ownerAccount.expires_in
-                };
-                const ownerAccessToken = ownerToken.access_token; // Keep for backward compatibility
-                const _gOwner = await this.getMetadataFolder(ownerToken, ownerPnIdentifier, ownerAccountId);
-                if (!_gOwner) {
-                  console.warn('[Engagement] Skipping owner activity/notification: metadata folder not found');
-                } else {
-                const ownerMetadataFolderId = _gOwner.metadataFolderId;
-
-                // Record activity for file owner
-                await ActivityLedgerService.recordActivity(
-                  ownerAccessToken,
-                  ownerMetadataFolderId,
-                  ownerPnIdentifier,
-                  'like',
-                  {
-                    targetType: 'file',
-                    targetPnIdentifier: fileId, // For files, this is the file ID, not a pn-identifier
-                    actorPnIdentifier: userPnIdentifier,
-                    metadata: { fileId }
-                  }
-                );
-
-                // Send notification to file owner
-                await NotificationService.notifyFileLike(
-                  ownerAccessToken,
-                  ownerMetadataFolderId,
-                  fileId,
-                  userPnIdentifier,
-                  ownerCredentials.identityId
-                );
-                }
-              }
-            }
-          } catch (error) {
-            console.warn('Failed to record like activity/notification:', error);
-            // Don't fail the operation if activity logging fails
-          }
-        }
-
-        // Update engagement counts in database metadata (for aggregator metadata sync)
-        if (fileMetadata) {
-          await aggregator.syncEngagementStats(fileId);
-
-          const ownerDid =
-            fileMetadata.pnIdentifier ||
-            fileMetadata.metadata.creator?.['@id'] ||
-            fileMetadata.metadata.author?.did;
-          if (ownerDid) {
-            const { appendOwnerCompanionEngagement } = await import('./server/modules/engagementCompanionSync');
-            if (result.liked) {
-              await appendOwnerCompanionEngagement(fileId, ownerDid, 'like', {
-                fileId,
-                pnIdentifier: userPnIdentifier,
-                timestamp: new Date().toISOString()
-              });
-            } else {
-              await appendOwnerCompanionEngagement(fileId, ownerDid, 'unlike', {
-                pnIdentifier: userPnIdentifier
-              });
+        if (isDeviceCloudCustodyEnabled()) {
+          // Public aggregator only — no mailbox jobs for likes.
+          const aggregator = AggregatorMetadataServiceDB.getInstance();
+          const fileMetadata = await aggregator.getFileMetadata(fileId);
+          const fileOwnerDid = fileMetadata?.pnIdentifier;
+          const currentlyLiked = await EngagementService.isLiked(fileId, pnIdentifier);
+          const liked = !currentlyLiked;
+          await EngagementService.toggleLikePublicCount(fileId, pnIdentifier, liked);
+          if (liked && fileOwnerDid && fileOwnerDid !== pnIdentifier) {
+            try {
+              const { PushService } = await import('./server/modules/pushService');
+              PushService.send(fileOwnerDid, {
+                title: 'New like',
+                body: 'Someone liked your post',
+                data: { file_id: fileId }
+              }).catch(() => undefined);
+            } catch {
+              /* optional */
             }
           }
+          const publicStats = await EngagementService.getEngagementStats(fileId);
+          return res.json({ liked, count: publicStats.likes, delivery: 'public' });
         }
 
-        return res.json({
-          success: true,
-          liked: result.liked,
-          count: result.count
+        return res.status(503).json({
+          error: 'device_cloud_custody_required',
+          message: 'Engagement requires device cloud custody. Set DEVICE_CLOUD_CUSTODY=1.'
         });
+
+
       } catch (error: any) {
         console.error('Error toggling like:', error);
         return res.status(500).json({ error: 'Failed to toggle like', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
@@ -6463,208 +6291,47 @@ class ProductionServer {
         // Use pn identifier directly (already normalized)
         const pnIdentifier = userPnIdentifier;
 
-        // Get user's credentials and metadata folder for Google Drive operations
-        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.status(404).json({ error: 'User credentials not found' });
-        }
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        const { isPortableStorageProvider } = await import('./server/modules/storage/storageProviderUtils');
-        const _portableSocial = await isPortableStorageProvider(pnIdentifier || userPnIdentifier || '');
-        if (!_portableSocial && googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'Storage not connected' });
-        }
-
-        let accountId: string | undefined;
-        let token: any = { access_token: '' };
-        let userAccessToken = '';
-        let metadataFolderId = '';
-        if (!_portableSocial) {
-          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-          accountId = this.extractAccountId(account);
-          token = {
-            access_token: account?.access_token || account?.accessToken || '',
-            refresh_token: account?.refresh_token || account?.refreshToken,
-            expires_at: account?.expires_at,
-            expires_in: account?.expires_in
-          };
-          userAccessToken = token.access_token;
-          const _g = await this.getMetadataFolder(token, pnIdentifier, accountId);
-          if (!_g) return this.driveNotInitialized(res);
-          metadataFolderId = _g.metadataFolderId;
-        }
-
-        // Get file owner if not provided
-        const aggregator = AggregatorMetadataServiceDB.getInstance();
-        const fileMetadataForOwner = await aggregator.getFileMetadata(fileId);
-        const ownerDid = fileMetadataForOwner?.pnIdentifier || fileOwnerDid;
-
-        // 1. Store comment in database first (gets ID from database)
-        const dbComment = await EngagementService.addComment(
-          fileId, 
-          pnIdentifier, 
-          content, 
-          authorName,
-          ownerDid,
-          parentCommentId,
-          postReply
+        const { isDeviceCloudCustodyEnabled } = await import(
+          './server/modules/socialMailboxService'
         );
-
-        // 2. Store comment in user's Google Drive engagement.xlsx (Sheets) (with same ID from database)
-        await EngagementDriveService.addComment(
-          pnIdentifier,
-          fileId,
-          {
-            commentId: dbComment.id,
-            content: dbComment.content,
-            authorName: dbComment.authorName,
-            timestamp: dbComment.timestamp,
-            parentCommentId: dbComment.parentCommentId,
-            likes: dbComment.likes || [],
-            postReply: dbComment.postReply
-          },
-          userAccessToken,
-          metadataFolderId
-        );
-
-        // Note: Public comment count is updated automatically by EngagementService.addComment
-        // which inserts a record in the engagement table. COUNT(*) queries will reflect the correct count.
-
-        // Use database comment for response
-        const comment = dbComment;
-
-        // Record activity and send notification (only for top-level comments, not replies)
-        // pnIdentifier, userCredentials, userAccessToken, and metadataFolderId already defined above
-        if (ownerDid && ownerDid !== pnIdentifier && !parentCommentId) {
-          try {
-            const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
-            const { NotificationService } = await import('./server/modules/notificationService');
-
-            // Use already-fetched userCredentials
-            if (userCredentials?.credentials) {
-              const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-                (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-              
-              if (googleDriveAccounts.length > 0) {
-                const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-                const accountId = account ? this.extractAccountId(account) : undefined;
-                
-                // Get full token object (not just access token string) for automatic refresh
-                const token = {
-                  access_token: account?.access_token || account?.accessToken || '',
-                  refresh_token: account?.refresh_token || account?.refreshToken,
-                  expires_at: account?.expires_at,
-                  expires_in: account?.expires_in
-                };
-                const userAccessToken = token.access_token; // Keep for backward compatibility
-                const _gUser = await this.getMetadataFolder(token, pnIdentifier, accountId);
-                if (!_gUser) {
-                  console.warn('[Engagement] Skipping activity: metadata folder not found');
-                } else {
-                const userMetadataFolderId = _gUser.metadataFolderId;
-
-                // Record activity for commenter
-                await ActivityLedgerService.recordActivity(
-                  userAccessToken,
-                  userMetadataFolderId,
-                  pnIdentifier,
-                  'comment',
-                  {
-                    targetType: 'file',
-                    targetPnIdentifier: fileId, // For files, this is the file ID, not a pn-identifier
-                    metadata: { commentId: comment.id, fileOwnerDid: ownerDid }
-                  }
-                );
-                }
-              }
+        if (isDeviceCloudCustodyEnabled()) {
+          // Public aggregator only — no mailbox jobs for comments.
+          const comment = await EngagementService.addComment(
+            fileId,
+            pnIdentifier,
+            content,
+            authorName,
+            fileOwnerDid,
+            parentCommentId,
+            postReply
+          );
+          const ownerPn =
+            fileOwnerDid ||
+            (await AggregatorMetadataServiceDB.getInstance().getFileMetadata(fileId))?.pnIdentifier;
+          if (ownerPn && ownerPn !== pnIdentifier) {
+            try {
+              const { PushService } = await import('./server/modules/pushService');
+              PushService.send(ownerPn, {
+                title: 'New comment',
+                body: 'Someone commented on your post',
+                data: { file_id: fileId, comment_id: comment.id }
+              }).catch(() => undefined);
+            } catch {
+              /* optional */
             }
-
-            // Get file owner's credentials and metadata folder
-            const ownerPnIdentifier = ownerDid.startsWith('pn-') ? ownerDid : `pn-${ownerDid}`;
-            const ownerCredentials = await storageCredentialsService.getCredentials(ownerPnIdentifier);
-            if (ownerCredentials?.credentials) {
-              const ownerGoogleDriveAccounts = ownerCredentials.credentials.googleDriveAccounts || 
-                (ownerCredentials.credentials.googleDrive ? [ownerCredentials.credentials.googleDrive] : []);
-              
-              if (ownerGoogleDriveAccounts.length > 0) {
-                const ownerAccount = ownerGoogleDriveAccounts[0];
-                const ownerAccountId = this.extractAccountId(ownerAccount);
-                
-                // Get full token object for owner (not just access token string) for automatic refresh
-                const ownerToken = {
-                  access_token: ownerAccount.access_token || ownerAccount.accessToken,
-                  refresh_token: ownerAccount.refresh_token || ownerAccount.refreshToken,
-                  expires_at: ownerAccount.expires_at,
-                  expires_in: ownerAccount.expires_in
-                };
-                const ownerAccessToken = ownerToken.access_token; // Keep for backward compatibility
-                const _gOwner = await this.getMetadataFolder(ownerToken, ownerPnIdentifier, ownerAccountId);
-                if (!_gOwner) {
-                  console.warn('[Engagement] Skipping owner activity/notification: metadata folder not found');
-                } else {
-                const ownerMetadataFolderId = _gOwner.metadataFolderId;
-
-                // Record activity for file owner
-                await ActivityLedgerService.recordActivity(
-                  ownerAccessToken,
-                  ownerMetadataFolderId,
-                  ownerPnIdentifier,
-                  'comment',
-                  {
-                    targetType: 'file',
-                    targetPnIdentifier: fileId, // For files, this is the file ID, not a pn-identifier
-                    actorPnIdentifier: userPnIdentifier,
-                    metadata: { commentId: comment.id, fileId }
-                  }
-                );
-
-                // Send notification to file owner
-                await NotificationService.notifyFileComment(
-                  ownerAccessToken,
-                  ownerMetadataFolderId,
-                  fileId,
-                  comment.id,
-                  userPnIdentifier,
-                  ownerCredentials.identityId
-                );
-                }
-              }
-            }
-          } catch (error) {
-            console.warn('Failed to record comment activity/notification:', error);
-            // Don't fail the operation if activity logging fails
           }
+          return res.json({
+            success: true,
+            delivery: 'public',
+            comment
+          });
         }
 
-        // Update engagement counts in database metadata
-        const fileMetadata = await aggregator.getFileMetadata(fileId);
-        if (fileMetadata) {
-          await aggregator.syncEngagementStats(fileId);
-
-          const ownerDid =
-            fileMetadata.pnIdentifier ||
-            fileMetadata.metadata.creator?.['@id'] ||
-            fileMetadata.metadata.author?.did;
-          if (ownerDid) {
-            const { appendOwnerCompanionEngagement } = await import('./server/modules/engagementCompanionSync');
-            await appendOwnerCompanionEngagement(fileId, ownerDid, 'comment', {
-                fileId,
-                commentId: comment.id,
-                pnIdentifier: userPnIdentifier,
-                authorName: comment.authorName || userPnIdentifier.substring(0, 8),
-                content: comment.content,
-                timestamp: comment.timestamp
-              });
-          }
-        }
-
-        return res.status(201).json({
-          ...comment,
-          note: 'File owner owns content; commentor references it'
+        return res.status(503).json({
+          error: 'device_cloud_custody_required',
+          message: 'Engagement requires device cloud custody. Set DEVICE_CLOUD_CUSTODY=1.'
         });
+
       } catch (error: any) {
         console.error('Error adding comment:', error);
         return res.status(500).json({ error: 'Failed to add comment', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
@@ -10435,6 +10102,7 @@ class ProductionServer {
     registerCreatorFundPeriodRoutes(this.app);
     registerIntegratorRoutes(this.app);
     registerStorageRoutes(this.app, NODE_ENV);
+    registerMailboxRoutes(this.app, NODE_ENV);
   }
 
   /**
@@ -11133,11 +10801,10 @@ class ProductionServer {
     this.app.post('/api/messages/conversation', conversationHandler);
 
     this.app.post('/api/messages/send', async (req, res) => {
-        messagingLog.info('[SendMessage] Endpoint called', { 
-        fromPnIdentifier: req.body?.fromPnIdentifier, 
-        toPnIdentifier: req.body?.toPnIdentifier,
-        hasContent: !!req.body?.content,
-        contentLength: req.body?.content?.length
+        messagingLog.info('[SendMessage] Endpoint called', {
+        hasEncryptedContent: !!req.body?.encryptedContent,
+        hasConnectionId: !!req.body?.connectionId,
+        hasRouteKey: !!(req.body?.routeKey || req.body?.mailboxRouteKey)
       });
       try {
         const {
@@ -11150,7 +10817,9 @@ class ProductionServer {
           mediaMimeType,
           mediaBackend,
           isConnectionRequest,
-          mediaEnvelopesByPn
+          mediaEnvelopesByPn,
+          routeKey: bodyRouteKey,
+          mailboxRouteKey
         } = req.body;
         const isE2E = cryptoVersion === 2 && !!encryptedContent;
         if (!fromPnIdentifier || !toPnIdentifier) {
@@ -11162,476 +10831,154 @@ class ProductionServer {
             error: 'encryptedContent with cryptoVersion 2 is required (client-side E2E only)'
           });
         }
-        
-        // Normalize pn-identifiers (handles legacy data)
-        // Use pn identifiers directly (already normalized)
-        messagingLog.info('[SendMessage] Request validated, starting message processing', { fromPnIdentifier, toPnIdentifier, messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` });
 
-        // Import services at the top
-        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-        const { requireOwnerDriveContext, DriveIndexError } = await import('./server/modules/ownerDriveContext');
-        const { resolveDmConnectionFromIndex } = await import('./server/modules/messagingConnectionResolver');
-        const { isGoogleSheetsRateLimit } = await import('./server/modules/googleSheetsRateLimit');
+        const {
+          isDeviceCloudCustodyEnabled,
+          enqueueSocialMailboxJob,
+          isMailboxRouteKey,
+          legacyRouteKeyForIdentity,
+          sanitizeMailboxPayload
+        } = await import('./server/modules/socialMailboxService');
 
-        // Get sender's and recipient's credentials in parallel (reused throughout)
-        const [senderCredentials, fetchedRecipientCredentials] = await Promise.all([
-          storageCredentialsService.getCredentials(fromPnIdentifier),
-          storageCredentialsService.getCredentials(toPnIdentifier)
-        ]);
-        
-        const recipientCredentials = fetchedRecipientCredentials;
-
-        if (!senderCredentials?.credentials) {
-          return res.status(404).json({ error: 'Sender credentials not found' });
-        }
-        if (!recipientCredentials?.credentials) {
-          return res.status(404).json({ error: 'Recipient credentials not found' });
-        }
-
-        let senderCtx;
-        let recipientCtx;
-        try {
-          senderCtx = await requireOwnerDriveContext(fromPnIdentifier);
-          recipientCtx = await requireOwnerDriveContext(toPnIdentifier);
-        } catch (driveCtxError: unknown) {
-          if (driveCtxError instanceof DriveIndexError) {
-            return this.driveNotInitialized(res);
-          }
-          throw driveCtxError;
-        }
-
-        const senderAccountId = senderCtx.accountId;
-        const senderToken = senderCtx.token;
-        const recipientToken = recipientCtx.token;
-        const recipientAccessToken = recipientToken.access_token;
-        let dmConnection: Awaited<ReturnType<typeof resolveDmConnectionFromIndex>> | undefined;
-
-        // Check if users are connected (unless this is a connection request)
-        if (!isConnectionRequest) {
-          try {
-            dmConnection = await resolveDmConnectionFromIndex(senderCtx, toPnIdentifier);
-            if (!dmConnection?.connectionId || dmConnection.status !== 'connected') {
-              if (dmConnection?.status === 'blocked') {
-                return res.status(403).json({
-                  error: 'User is blocked',
-                  requiresConnection: true,
-                });
-              }
-              return res.status(403).json({
-                error: 'Only connections can message each other',
-                requiresConnection: true,
-              });
-            }
-          } catch (connectionCheckError: unknown) {
-            if (isGoogleSheetsRateLimit(connectionCheckError)) {
-              return res.status(503).json({
-                error: 'drive_rate_limited',
-                message: 'Google Drive is temporarily busy. Please wait a moment and try again.',
-              });
-            }
-            console.error('Connection check failed:', (connectionCheckError as Error)?.message || connectionCheckError);
-            return res.status(503).json({
-              error: 'connection_check_failed',
-              message: 'Unable to verify connection. Message not sent.',
+        // Throughway fan-out only. Sender outbox (client/cloud) is the durable commit.
+        if (isDeviceCloudCustodyEnabled()) {
+          const connectionIdFromBody =
+            typeof req.body?.connectionId === 'string' ? req.body.connectionId.trim() : '';
+          if (!isConnectionRequest && !connectionIdFromBody) {
+            return res.status(400).json({
+              error: 'connectionId required',
+              message: 'Clients must supply connectionId for throughway delivery.'
             });
           }
-        }
+          const explicitRoute =
+            (isMailboxRouteKey(bodyRouteKey) && String(bodyRouteKey).trim()) ||
+            (isMailboxRouteKey(mailboxRouteKey) && String(mailboxRouteKey).trim()) ||
+            '';
+          const routeKey = explicitRoute || legacyRouteKeyForIdentity(toPnIdentifier);
 
-        // Record activity FIRST (source of truth)
-        const { ActivityLedgerService } = await import('./server/modules/activityLedgerService');
-        const { MessageSheetsService } = await import('./server/modules/messageSheetsService');
-        const { MessagingLedgerService } = await import('./server/modules/messagingLedgerService');
-        const { NotificationService } = await import('./server/modules/notificationService');
-        
-        const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        const timestamp = new Date().toISOString();
-        const threadId = [fromPnIdentifier, toPnIdentifier].sort().join('_');
+          const clientMessageId =
+            typeof req.body?.messageId === 'string' ? req.body.messageId.trim() : '';
+          const messageId =
+            clientMessageId ||
+            `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const timestamp =
+            (typeof req.body?.timestamp === 'string' && req.body.timestamp) ||
+            new Date().toISOString();
+          const threadId = [fromPnIdentifier, toPnIdentifier].sort().join('_');
+          const connectionId = connectionIdFromBody || `conn_pending_${messageId}`;
 
-        const { patchPnDriveIndex } = await import('./server/modules/pnDriveIndex');
-        const { opaquePeerKey } = await import('@par-noir/dm-crypto');
-        const senderIndex = senderCtx.index;
-        const recipientIndex = recipientCtx.index;
-
-        const senderMetadataFolderId = senderIndex.metadataFolderId;
-        const senderMessagesFolderId = senderIndex.messagesFolderId;
-        const recipientMetadataFolderId = recipientIndex.metadataFolderId;
-        const recipientMessagesFolderId = recipientIndex.messagesFolderId;
-        const recipientAccountIdForInbox = recipientCtx.accountId;
-
-        if (!isConnectionRequest && !dmConnection) {
-          dmConnection = await resolveDmConnectionFromIndex(senderCtx, toPnIdentifier);
-        }
-        if (!isConnectionRequest && (!dmConnection?.connectionId || dmConnection.status !== 'connected')) {
-          return res.status(403).json({
-            error: 'Connection not found. Users must be connected to send messages.',
-            requiresConnection: true,
-          });
-        }
-
-        const connectionId = dmConnection?.connectionId;
-        const kemCiphertext = dmConnection?.kemCiphertext;
-
-        if (!connectionId) {
-          return res.status(500).json({
-            error: 'Failed to get connection data',
-            error_description: 'Failed to get connection data',
-          });
-        }
-
-        let senderConversationSheetId: string | undefined =
-          senderIndex.conversationSheets[opaquePeerKey(fromPnIdentifier, toPnIdentifier)] ??
-          senderIndex.conversationSheets[toPnIdentifier] ??
-          dmConnection?.conversationSpreadsheetId;
-        let recipientConversationSheetId: string | undefined =
-          recipientIndex.conversationSheets[opaquePeerKey(toPnIdentifier, fromPnIdentifier)] ??
-          recipientIndex.conversationSheets[fromPnIdentifier];
-
-        if (!senderConversationSheetId) {
-          senderConversationSheetId = await MessageSheetsService.getConversationSheet(
-            senderToken,
-            senderMessagesFolderId,
-            toPnIdentifier,
-            fromPnIdentifier,
-            senderAccountId
-          );
-          patchPnDriveIndex(fromPnIdentifier, {
-            conversationSheets: { [opaquePeerKey(fromPnIdentifier, toPnIdentifier)]: senderConversationSheetId },
-          }).catch(() => undefined);
-        }
-
-        if (!recipientConversationSheetId) {
-          recipientConversationSheetId = await MessageSheetsService.getConversationSheet(
-            recipientToken,
-            recipientMessagesFolderId,
-            fromPnIdentifier,
-            toPnIdentifier,
-            recipientAccountIdForInbox
-          );
-          patchPnDriveIndex(toPnIdentifier, {
-            conversationSheets: { [opaquePeerKey(toPnIdentifier, fromPnIdentifier)]: recipientConversationSheetId },
-          }).catch(() => undefined);
-        }
-
-        if (!senderConversationSheetId || !recipientConversationSheetId) {
-          return res.status(500).json({ error: 'Conversation sheet not found' });
-        }
-
-        let mediaRefByPn: Record<string, import('./server/modules/messagingMediaService').MediaAttachmentRef> | undefined;
-        if (mediaFileId) {
-          const { dualWriteAttachmentToRecipients } = await import('./server/modules/messagingMediaService');
-          const envelopes =
-            mediaEnvelopesByPn && typeof mediaEnvelopesByPn === 'object'
-              ? (mediaEnvelopesByPn as Record<string, string>)
-              : undefined;
-          mediaRefByPn = await dualWriteAttachmentToRecipients(
-            fromPnIdentifier,
-            mediaFileId,
-            [toPnIdentifier],
-            senderAccountId,
-            {
-              envelopeByPn: envelopes,
-              jitterMs: 1500,
-              ...(mediaBackend
-                ? { senderMediaBackend: mediaBackend as import('@par-noir/user-owned-storage').StorageProviderId }
-                : {})
-            }
-          );
-        }
-
-        const senderMediaRef = mediaRefByPn?.[fromPnIdentifier];
-        const message: any = {
-          messageId,
-          fromPnIdentifier,
-          toPnIdentifier,
-          content: '',
-          encryptedContent,
-          cryptoVersion: 2,
-          timestamp,
-          read: false,
-          mediaFileId: senderMediaRef?.backendFileId ?? mediaFileId,
-          ...(senderMediaRef?.backend || mediaBackend
-            ? { mediaBackend: senderMediaRef?.backend ?? mediaBackend }
-            : {}),
-          mediaMimeType
-        };
-
-        // Record activity for sender (non-blocking - fire and forget)
-        (async () => {
-          try {
-            await ActivityLedgerService.recordActivity(
-              senderToken.access_token,
-              senderMetadataFolderId!,
-              fromPnIdentifier,
-              'message_sent',
-              {
-                targetType: 'message',
-                targetPnIdentifier: messageId,
-                actorPnIdentifier: fromPnIdentifier,
-                metadata: { toPnIdentifier, threadId, encrypted: true }
-              }
-            );
-          } catch (error: any) {
-            messagingLog.warn('[SendMessage] Failed to record sender activity:', { message: error?.message });
-          }
-        })();
-
-        // Record messaging activity for sender (non-blocking - fire and forget)
-        (async () => {
-          try {
-            await MessagingLedgerService.recordMessagingActivity(
-              senderToken.access_token,
-              senderMetadataFolderId!,
-              fromPnIdentifier,
-              'message_sent',
-              {
-                fromPnIdentifier,
-                toPnIdentifier,
-                messageId,
-                threadId,
-                metadata: { encrypted: true, mediaFileId }
-              }
-            );
-          } catch (error: any) {
-            messagingLog.warn('[SendMessage] Failed to record sender messaging activity:', { message: error?.message });
-          }
-        })();
-
-        // Append messages to both sheets in parallel (opaque ciphertext; no server crypto)
-        messagingLog.info('[SendMessage] Appending messages to both sheets in parallel', { 
-          senderSheetId: senderConversationSheetId, 
-          recipientSheetId: recipientConversationSheetId, 
-          messageId, 
-          connectionId 
-        });
-        
-        const recipientAccountIdForSend = recipientCtx.accountId;
-        
-        // Helper function to append message with retry (recreates sheet if deleted)
-        const appendMessageWithRetry = async (
-          token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
-          spreadsheetId: string | undefined,
-          messagesFolderId: string,
-          otherUserPnIdentifier: string,
-          userPnIdentifier: string,
-          accountId: string | undefined,
-          message: any,
-          connectionId: string,
-          sharedSecret: string,
-          cachedSheetIdKey: string,
-          credentials: Record<string, unknown>
-        ): Promise<string> => {
-          let currentSheetId = spreadsheetId;
-          
-          try {
-            if (!currentSheetId) {
-              throw new Error('No spreadsheet ID provided');
-            }
-            await MessageSheetsService.appendMessage(
-              token,
-              currentSheetId,
-              message,
-              connectionId,
-              sharedSecret,
-              userPnIdentifier,
-              accountId
-            );
-            return currentSheetId;
-          } catch (appendError: any) {
-            // If spreadsheet not found, it was deleted - recreate it
-            if (appendError?.message?.includes('Spreadsheet not found') || appendError?.response?.status === 404) {
-              messagingLog.warn(`[SendMessage] Spreadsheet ${currentSheetId} not found (deleted), recreating conversation sheet for ${otherUserPnIdentifier}`);
-              
-              const { loadPnDriveIndex, persistPnDriveIndex, patchPnDriveIndex } =
-                await import('./server/modules/pnDriveIndex');
-              const idx = await loadPnDriveIndex(userPnIdentifier);
-              if (idx?.conversationSheets[cachedSheetIdKey]) {
-                const next = {
-                  ...idx,
-                  conversationSheets: { ...idx.conversationSheets },
-                };
-                delete next.conversationSheets[cachedSheetIdKey];
-                await persistPnDriveIndex(
-                  userPnIdentifier,
-                  credentials as Record<string, unknown>,
-                  next
-                ).catch(() => undefined);
-              }
-              
-              // Create new conversation sheet
-              currentSheetId = await MessageSheetsService.createConversationSheet(
-                token,
-                messagesFolderId,
-                otherUserPnIdentifier,
-                userPnIdentifier,
-                accountId
-              );
-              
-              patchPnDriveIndex(userPnIdentifier, {
-                conversationSheets: { [cachedSheetIdKey]: currentSheetId },
-              }).catch(() => undefined);
-              
-              // Retry append with new sheet
-              await MessageSheetsService.appendMessage(
-                token,
-                currentSheetId,
-                message,
-                connectionId,
-                sharedSecret,
-                userPnIdentifier,
-                accountId
-              );
-              
-              messagingLog.debug(`[SendMessage] Recreated and appended to conversation sheet ${currentSheetId} for ${otherUserPnIdentifier}`);
-              return currentSheetId;
-            } else {
-              // Re-throw other errors
-              throw appendError;
-            }
-          }
-        };
-        
-        await Promise.all([
-          appendMessageWithRetry(
-            senderToken,
-            senderConversationSheetId,
-            senderMessagesFolderId!,
-            toPnIdentifier,
-            fromPnIdentifier,
-            senderAccountId,
-            {
-              ...message,
-              mediaFileId: mediaRefByPn?.[fromPnIdentifier]?.backendFileId ?? message.mediaFileId,
-              ...(mediaRefByPn?.[fromPnIdentifier]?.backend
-                ? { mediaBackend: mediaRefByPn[fromPnIdentifier].backend }
-                : message.mediaBackend
-                  ? { mediaBackend: message.mediaBackend }
-                  : {})
-            },
-            connectionId,
-            '',
-            opaquePeerKey(fromPnIdentifier, toPnIdentifier),
-            senderCredentials.credentials as Record<string, unknown>
-          ).then(newSheetId => {
-            senderConversationSheetId = newSheetId;
-          }),
-          appendMessageWithRetry(
-            recipientToken,
-            recipientConversationSheetId,
-            recipientMessagesFolderId!,
-            fromPnIdentifier,
-            toPnIdentifier,
-            recipientAccountIdForSend,
-            {
-              ...message,
-              mediaFileId: mediaRefByPn?.[toPnIdentifier]?.backendFileId ?? message.mediaFileId,
-              ...(mediaRefByPn?.[toPnIdentifier]?.backend
-                ? { mediaBackend: mediaRefByPn[toPnIdentifier].backend }
-                : message.mediaBackend
-                  ? { mediaBackend: message.mediaBackend }
-                  : {}),
-              read: false
-            },
-            connectionId,
-            '',
-            opaquePeerKey(toPnIdentifier, fromPnIdentifier),
-            recipientCtx.credentials
-          ).then(newSheetId => {
-            recipientConversationSheetId = newSheetId;
-          })
-        ]);
-        messagingLog.info('[SendMessage] Messages appended to both sheets successfully');
-
-        // Record activity for recipient (non-blocking - fire and forget)
-        (async () => {
-          try {
-            await ActivityLedgerService.recordActivity(
-              recipientAccessToken,
-              recipientMetadataFolderId!,
-              toPnIdentifier,
-              'message_received',
-              {
-                targetType: 'message',
-                targetPnIdentifier: messageId,
-                actorPnIdentifier: fromPnIdentifier,
-                metadata: { fromPnIdentifier, threadId, encrypted: true }
-              }
-            );
-          } catch (error: any) {
-            messagingLog.warn('[SendMessage] Failed to record recipient activity:', { message: error?.message });
-          }
-        })();
-
-        // Record messaging activity for recipient (non-blocking - fire and forget)
-        (async () => {
-          try {
-            await MessagingLedgerService.recordMessagingActivity(
-              recipientAccessToken,
-              recipientMetadataFolderId!,
-              toPnIdentifier,
-              'message_received',
-              {
-                fromPnIdentifier,
-                toPnIdentifier,
-                messageId,
-                threadId,
-                metadata: { encrypted: true, mediaFileId }
-              }
-            );
-          } catch (error: any) {
-            messagingLog.warn('[SendMessage] Failed to record recipient messaging activity:', { message: error?.message });
-          }
-        })();
-
-        // Invalidate read caches before realtime hints so refetches see fresh data.
-        const { invalidateMessagingCachesForUsers } = await import('./server/modules/messagingReadCache');
-        await invalidateMessagingCachesForUsers([fromPnIdentifier, toPnIdentifier], [
-          { pn: fromPnIdentifier, other: toPnIdentifier },
-          { pn: toPnIdentifier, other: fromPnIdentifier },
-        ]).catch(() => undefined);
-
-        // Send notification to recipient (check preferences) - non-blocking
-        if (recipientMetadataFolderId) {
-          NotificationService.notifyNewMessage(
-            recipientAccessToken,
-            recipientMetadataFolderId,
+          // Durable throughway payload: ciphertext + envelope ids only (no clear from/to graph).
+          const messagePayload = sanitizeMailboxPayload({
             messageId,
-            fromPnIdentifier,
-            toPnIdentifier,
-            threadId
-          ).catch((notificationError: any) => {
-            messagingLog.warn('[SendMessage] Failed to send notification', { message: notificationError?.message });
-          });
-        }
-
-        this.emitRealtime(fromPnIdentifier, 'new_message', {
-          threadId,
-          messageId,
-        });
-        this.emitRealtime(toPnIdentifier, 'new_message', {
-          threadId,
-          messageId,
-        });
-
-        return res.json({
-          success: true,
-          message: {
-            messageId,
-            fromPnIdentifier,
-            toPnIdentifier,
             encryptedContent,
-            cryptoVersion: 2 as const,
-            mediaFileId,
-            mediaMimeType,
+            cryptoVersion: 2,
             timestamp,
             read: false,
-            encrypted: true
+            mediaFileId: mediaFileId || undefined,
+            mediaMimeType: mediaMimeType || undefined,
+            mediaBackend: mediaBackend || undefined,
+            mediaEnvelopesByPn:
+              mediaEnvelopesByPn && typeof mediaEnvelopesByPn === 'object'
+                ? mediaEnvelopesByPn
+                : undefined,
+            connectionId,
+            threadId,
+            isConnectionRequest: !!isConnectionRequest,
+            role: 'recipient'
+          });
+
+          await enqueueSocialMailboxJob({
+            routeKey,
+            jobType: 'message_append',
+            payload: messagePayload
+          });
+          if (mediaFileId) {
+            await enqueueSocialMailboxJob({
+              routeKey,
+              jobType: 'message_attachment',
+              payload: sanitizeMailboxPayload({
+                messageId,
+                mediaFileId,
+                mediaMimeType,
+                mediaBackend,
+                mediaEnvelopesByPn,
+                connectionId
+              })
+            });
           }
+          await enqueueSocialMailboxJob({
+            routeKey,
+            jobType: 'notification_row',
+            payload: sanitizeMailboxPayload({
+              type: 'new_message',
+              messageId,
+              threadId,
+              connectionId
+            })
+          });
+
+          try {
+            const { PushService } = await import('./server/modules/pushService');
+            PushService.send(toPnIdentifier, {
+              title: 'New message',
+              body: 'You have a new message',
+              data: {
+                message_id: messageId,
+                mailbox: '1'
+              }
+            }).catch(() => undefined);
+          } catch {
+            /* optional */
+          }
+
+          this.emitRealtime(fromPnIdentifier, 'new_message', {
+            threadId,
+            messageId,
+            throughway: true
+          });
+          this.emitRealtime(toPnIdentifier, 'new_message', {
+            threadId,
+            messageId,
+            throughway: true
+          });
+          this.emitRealtime(toPnIdentifier, 'mailbox_pending', {
+            jobType: 'message_append',
+            messageId
+          });
+
+          messagingLog.info('[SendMessage] Throughway fan-out (sender outbox is SoT)', {
+            messageId,
+            routeKey: hashIdentifier(routeKey)
+          });
+
+          return res.json({
+            success: true,
+            delivery: 'throughway',
+            message: {
+              messageId,
+              fromPnIdentifier,
+              toPnIdentifier,
+              encryptedContent,
+              cryptoVersion: 2 as const,
+              mediaFileId,
+              mediaMimeType,
+              timestamp,
+              read: false,
+              encrypted: true
+            }
+          });
+        }
+
+        return res.status(503).json({
+          error: 'device_cloud_custody_required',
+          message:
+            'Messaging requires device cloud custody (sender outbox SoT). Set DEVICE_CLOUD_CUSTODY=1.'
         });
+
+
       } catch (error: any) {
         const { fromPnIdentifier: reqFromPnIdentifier, toPnIdentifier: reqToPnIdentifier } = req.body || {};
         messagingLog.error('[SendMessage] Error sending message', {
-          fromPnIdentifier: reqFromPnIdentifier,
-          toPnIdentifier: reqToPnIdentifier,
           message: safeClientErrorMessage(error, NODE_ENV === 'production'),
           name: error?.name,
           code: error?.code
@@ -14246,7 +13593,7 @@ class ProductionServer {
     // POST /api/connections/request - Send connection request
     this.app.post('/api/connections/request', async (req, res) => {
       try {
-        const { requesterPnIdentifier, recipientPnIdentifier, requesterMlKemPublicKey } = req.body;
+        const { requesterPnIdentifier, recipientPnIdentifier, requesterMlKemPublicKey, requesterMailboxRouteKey, mailboxRouteKey } = req.body;
         if (!requesterPnIdentifier || !recipientPnIdentifier) {
           return res.status(400).json({ error: 'requesterPnIdentifier and recipientPnIdentifier are required' });
         }
@@ -14271,7 +13618,7 @@ class ProductionServer {
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
         // Use pn identifier directly (already normalized)
-        console.log(`[ConnectionRequest] Requester: ${requesterPnIdentifier}, Recipient: ${recipientPnIdentifier}`);
+        safeLogger.info('[ConnectionRequest] start', { category: 'connections' });
         
         // Get requester's credentials
         let requesterCredentials = await storageCredentialsService.getCredentials(requesterPnIdentifier);
@@ -14445,6 +13792,10 @@ class ProductionServer {
         // Send connection request (pass normalized pn-identifiers)
         let connection;
         try {
+          const routeKeyForRequest =
+            (typeof requesterMailboxRouteKey === 'string' && requesterMailboxRouteKey.trim()) ||
+            (typeof mailboxRouteKey === 'string' && mailboxRouteKey.trim()) ||
+            undefined;
           connection = await ConnectionsService.sendConnectionRequest(
             requesterAccessToken,
             requesterMetadataFolderId,
@@ -14454,7 +13805,8 @@ class ProductionServer {
             recipientPnIdentifier,
             requesterMlKemPublicKey,
             requesterAccountId,
-            recipientAccountId
+            recipientAccountId,
+            routeKeyForRequest
           );
         } catch (connectionError: any) {
           console.error('[ConnectionRequest] Error in ConnectionsService.sendConnectionRequest:', connectionError);
@@ -14572,7 +13924,7 @@ class ProductionServer {
     this.app.post('/api/connections/:connectionId/accept', async (req, res) => {
       try {
         const { connectionId } = req.params;
-        const { userPnIdentifier, kemCiphertext, wrappedMessageRootKey, kemAlgId } = req.body;
+        const { userPnIdentifier, kemCiphertext, wrappedMessageRootKey, kemAlgId, acceptorMailboxRouteKey, mailboxRouteKey } = req.body;
         if (!connectionId || !userPnIdentifier) {
           return res.status(400).json({ error: 'connectionId and userPnIdentifier are required' });
         }
@@ -14816,6 +14168,10 @@ class ProductionServer {
         const otherMetadataFolderId = otherMetadataFolder.metadataFolderId;
 
         // Sync shared secret to other user's connection record - this MUST succeed
+        const acceptorRouteKey =
+          (typeof acceptorMailboxRouteKey === 'string' && acceptorMailboxRouteKey.trim()) ||
+          (typeof mailboxRouteKey === 'string' && mailboxRouteKey.trim()) ||
+          undefined;
         await ConnectionsService.updateOtherUserConnectionStatus(
           otherAccessToken,
           otherMetadataFolderId,
@@ -14824,7 +14180,8 @@ class ProductionServer {
           'accepted',
           pnIdentifier,
           kemCiphertext,
-          otherAccountId
+          otherAccountId,
+          acceptorRouteKey
         );
 
         // Send notification and record activity for requester

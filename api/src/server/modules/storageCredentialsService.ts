@@ -424,6 +424,84 @@ export class StorageCredentialsService {
   }
 
   /**
+   * Strip long-lived cloud secrets; keep layout / provider enum metadata only.
+   * Used after device migration when DEVICE_CLOUD_CUSTODY is enabled.
+   */
+  stripCloudSecrets(credentials: Record<string, unknown>): Record<string, unknown> {
+    const stripAccount = (acct: Record<string, unknown> | undefined): Record<string, unknown> | undefined => {
+      if (!acct || typeof acct !== 'object') return acct;
+      const next = { ...acct };
+      for (const k of [
+        'accessToken',
+        'access_token',
+        'refreshToken',
+        'refresh_token',
+        'apiKey',
+        'apiSecret',
+        'clientSecret',
+        'secretAccessKey',
+        'password',
+        'sasToken',
+        'connectionString'
+      ]) {
+        delete next[k];
+      }
+      return next;
+    };
+    const out: Record<string, unknown> = { ...credentials };
+    delete out.googleDrive;
+    if (Array.isArray(out.googleDriveAccounts)) {
+      out.googleDriveAccounts = (out.googleDriveAccounts as Record<string, unknown>[])
+        .map((a) => stripAccount(a))
+        .filter(Boolean);
+    }
+    for (const key of [
+      'dropboxAccounts',
+      'awsS3Accounts',
+      'azureBlobAccounts',
+      'onedriveAccounts',
+      'ftpAccounts'
+    ] as const) {
+      if (Array.isArray(out[key])) {
+        out[key] = (out[key] as Record<string, unknown>[]).map((a) => stripAccount(a)).filter(Boolean);
+      }
+    }
+    return out;
+  }
+
+  async upsertLayoutOnly(
+    identityId: string,
+    layout: {
+      socialCloudProvider?: string;
+      socialCloudAccountId?: string;
+      cachedLayout?: unknown;
+      driveFolderId?: string;
+      publicKey?: string;
+    }
+  ): Promise<StoredCredentialsRecord> {
+    const existing = await this.getCredentials(identityId);
+    const base = existing?.credentials
+      ? this.stripCloudSecrets(existing.credentials as Record<string, unknown>)
+      : {};
+    const merged = {
+      ...base,
+      ...(layout.socialCloudProvider ? { socialCloudProvider: layout.socialCloudProvider } : {}),
+      ...(layout.socialCloudAccountId ? { socialCloudAccountId: layout.socialCloudAccountId } : {}),
+      ...(layout.cachedLayout ? { cachedLayout: layout.cachedLayout } : {}),
+      ...(layout.driveFolderId ? { driveFolderId: layout.driveFolderId } : {}),
+      ...(layout.publicKey ? { publicKey: layout.publicKey } : {})
+    };
+    return this.upsertCredentials(identityId, merged, existing?.cid ?? undefined);
+  }
+
+  async purgeCloudSecrets(identityId: string): Promise<StoredCredentialsRecord | null> {
+    const existing = await this.getCredentials(identityId);
+    if (!existing?.credentials) return null;
+    const stripped = this.stripCloudSecrets(existing.credentials as Record<string, unknown>);
+    return this.upsertCredentials(identityId, stripped, existing.cid ?? undefined);
+  }
+
+  /**
    * Move storage_credentials from legacy passcode-based pn id to canonical publicKey-based id.
    */
   /** Pinned Drive folder id (par Noir root) if stored in credentials blob. */

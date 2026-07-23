@@ -1475,6 +1475,49 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           } catch (error) {
             console.warn('[FileStorageAggregator] Failed to store encrypted credentials:', error);
           }
+          try {
+            const sessionCreds = SecureCredentialManager.getCredentials(authenticatedUser.id);
+            const pnId = pnIdentifierRef.current;
+            if (sessionCreds && pnId && nextAccessToken) {
+              const { sealAndStoreCloudCredentials, publishStorageLayout } = await import(
+                '../../services/deviceCloudCredentials'
+              );
+              await sealAndStoreCloudCredentials({
+                identityId: pnId,
+                credentials: {
+                  socialCloudProvider: 'google_drive',
+                  googleDriveAccounts: [
+                    {
+                      accountId: backendId,
+                      accessToken: nextAccessToken,
+                      refreshToken: nextRefreshToken || undefined,
+                      email: resolvedEmail || undefined,
+                      connectedAt,
+                      updatedAt: nowIso
+                    }
+                  ]
+                },
+                session: {
+                  sessionId: authenticatedUser.id,
+                  pnName: sessionCreds.pnName,
+                  passcode: sessionCreds.passcode
+                }
+              });
+              const token = resolveOwnerApiToken(pnId);
+              if (token) {
+                await publishStorageLayout({
+                  identityId: pnId,
+                  authToken: token,
+                  layout: {
+                    socialCloudProvider: 'google_drive',
+                    socialCloudAccountId: backendId
+                  }
+                }).catch(() => undefined);
+              }
+            }
+          } catch (deviceSealErr) {
+            console.warn('[FileStorageAggregator] Device cloud seal skipped:', deviceSealErr);
+          }
         }
 
         purgeDuplicateBackendsForEmail(backendId, resolvedEmail ?? existingCredential?.email ?? null);
@@ -7048,6 +7091,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       <MultiCloudStoragePanel
         pnIdentifier={cloudPnIdentifier}
         authToken={apiToken}
+        sessionId={authenticatedUser?.id ?? null}
         onConnectGoogleDrive={handleConnectGoogleDrive}
         googleDriveConnectedCount={driveAccounts.length}
         driveConnectDisabled={isLoading || showDriveSetupProgress}

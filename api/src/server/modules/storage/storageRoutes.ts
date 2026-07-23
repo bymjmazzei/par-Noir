@@ -302,7 +302,7 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
           redirect_uri: redirectUri,
           client_id: clientId,
           client_secret: clientSecret,
-          scope: 'Files.ReadWrite offline_access'
+          scope: 'Files.ReadWrite.AppFolder offline_access'
         })
       });
       if (!tokenRes.ok) {
@@ -366,12 +366,47 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
       let newAccountId: string | undefined;
 
       if (body.provider === 'aws_s3' && body.awsS3) {
-        credentials = upsertS3Account(credentials, pnIdentifier, body.awsS3);
+        const defaultPrefix = `par-noir-${pnIdentifier}`;
+        const prefix = (body.awsS3.prefix || defaultPrefix).replace(/\/$/, '');
+        if (!prefix.startsWith('par-noir-')) {
+          return res.status(400).json({
+            error: 'S3 prefix required',
+            message: 'prefix must be set (default par-noir-{pn})'
+          });
+        }
+        credentials = upsertS3Account(credentials, pnIdentifier, {
+          ...body.awsS3,
+          prefix
+        });
         newAccountId =
           body.awsS3.accountId || buildAccountId('aws_s3', pnIdentifier, body.awsS3.bucket);
         newProvider = 'aws_s3';
       } else if (body.provider === 'azure_blob' && body.azureBlob) {
-        credentials = upsertAzureAccount(credentials, pnIdentifier, body.azureBlob);
+        if (body.azureBlob.connectionString) {
+          return res.status(400).json({
+            error: 'connection_string_not_allowed',
+            message: 'Azure Blob accepts container SAS only — reconnect with a SAS token.'
+          });
+        }
+        if (!body.azureBlob.sasToken) {
+          return res.status(400).json({
+            error: 'sas_token_required',
+            message: 'Azure Blob requires a container SAS token.'
+          });
+        }
+        const defaultPrefix = `par-noir-${pnIdentifier}`;
+        const prefix = (body.azureBlob.prefix || defaultPrefix).replace(/\/$/, '');
+        if (!prefix.startsWith('par-noir-')) {
+          return res.status(400).json({
+            error: 'Azure prefix required',
+            message: 'prefix must be set (default par-noir-{pn})'
+          });
+        }
+        credentials = upsertAzureAccount(credentials, pnIdentifier, {
+          ...body.azureBlob,
+          prefix,
+          connectionString: undefined
+        });
         newAccountId =
           body.azureBlob.accountId ||
           buildAccountId('azure_blob', pnIdentifier, body.azureBlob.container);
@@ -387,6 +422,12 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
 
       credentials = assignSocialCloudIfUnset(credentials, newProvider!, newAccountId);
       credentials = ensureSocialCloudOnCredentials(credentials);
+      const { isDeviceCloudCustodyEnabled } = await import('../socialMailboxService');
+      if (isDeviceCloudCustodyEnabled()) {
+        credentials = storageCredentialsService.stripCloudSecrets(
+          credentials as Record<string, unknown>
+        ) as StorageCredentialsEnvelope;
+      }
       await storageCredentialsService.upsertCredentials(pnIdentifier, credentials);
 
       let initResult: { pathPrefix: string } | undefined;
@@ -626,6 +667,71 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
     } catch (error: unknown) {
       return res.status(500).json({
         error: 'Failed to set social cloud',
+        message: safeClientErrorMessage(error, nodeEnv === 'production')
+      });
+    }
+  });
+
+  /** Non-secret layout hints only (folder ids / provider enum). Used with device cloud custody. */
+  app.post('/api/storage/layout/:identityId', async (req: Request, res: Response) => {
+    try {
+      const pnIdentifier = req.params.identityId.startsWith('pn-')
+        ? req.params.identityId
+        : `pn-${req.params.identityId}`;
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
+
+      const { socialCloudProvider, socialCloudAccountId, cachedLayout, driveFolderId, publicKey } =
+        req.body || {};
+      const record = await storageCredentialsService.upsertLayoutOnly(pnIdentifier, {
+        socialCloudProvider,
+        socialCloudAccountId,
+        cachedLayout,
+        driveFolderId,
+        publicKey
+      });
+      return res.json({
+        success: true,
+        identityId: record.identityId,
+        layout: {
+          socialCloudProvider: record.credentials?.socialCloudProvider ?? null,
+          socialCloudAccountId: record.credentials?.socialCloudAccountId ?? null,
+          cachedLayout: record.credentials?.cachedLayout ?? null,
+          driveFolderId: record.credentials?.driveFolderId ?? null
+        }
+      });
+    } catch (error: unknown) {
+      return res.status(500).json({
+        error: 'Failed to save storage layout',
+        message: safeClientErrorMessage(error, nodeEnv === 'production')
+      });
+    }
+  });
+
+  /** Purge OAuth/provider secrets from server after client has sealed them on device. */
+  app.post('/api/storage/credentials/:identityId/purge-secrets', async (req: Request, res: Response) => {
+    try {
+      const pnIdentifier = req.params.identityId.startsWith('pn-')
+        ? req.params.identityId
+        : `pn-${req.params.identityId}`;
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pnIdentifier))) return;
+
+      const { isDeviceCloudCustodyEnabled } = await import('../socialMailboxService');
+      if (!isDeviceCloudCustodyEnabled()) {
+        return res.status(409).json({
+          error: 'device_cloud_custody_disabled',
+          message: 'Set DEVICE_CLOUD_CUSTODY=1 before purging server-held cloud secrets.'
+        });
+      }
+
+      const record = await storageCredentialsService.purgeCloudSecrets(pnIdentifier);
+      return res.json({
+        success: true,
+        purged: !!record,
+        identityId: pnIdentifier
+      });
+    } catch (error: unknown) {
+      return res.status(500).json({
+        error: 'Failed to purge cloud secrets',
         message: safeClientErrorMessage(error, nodeEnv === 'production')
       });
     }

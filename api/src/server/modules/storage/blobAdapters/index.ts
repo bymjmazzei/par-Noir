@@ -38,22 +38,27 @@ export async function createBlobStoreForProvider(
     }
     case 'aws_s3': {
       const account = resolveAccount<AwsS3Account>(credentials, 'aws_s3', accountId);
+      if (!account.prefix) {
+        throw new Error('S3 requires prefix (par-noir-{pn})');
+      }
       return new S3BlobAdapter({
         region: account.region,
         bucket: account.bucket,
         accessKeyId: account.accessKeyId,
         secretAccessKey: account.secretAccessKey,
-        prefix: account.prefix ?? root.replace(/\/$/, '')
+        prefix: account.prefix
       });
     }
     case 'azure_blob': {
       const account = resolveAccount<AzureBlobAccount>(credentials, 'azure_blob', accountId);
+      if (!account.sasToken || !account.prefix) {
+        throw new Error('Azure requires sasToken and prefix');
+      }
       return new AzureBlobAdapter({
         accountName: account.accountName,
         container: account.container,
         sasToken: account.sasToken,
-        connectionString: account.connectionString,
-        prefix: account.prefix ?? root.replace(/\/$/, '')
+        prefix: account.prefix
       });
     }
     case 'onedrive': {

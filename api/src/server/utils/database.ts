@@ -1125,6 +1125,34 @@ export async function initializeDatabase(): Promise<void> {
       );
     }
 
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const mailboxPath = path.join(__dirname, '../../migrations/add_social_mailbox.sql');
+      const mailboxSql = fs.readFileSync(mailboxPath, 'utf-8');
+      await db.query(mailboxSql);
+      console.log('✅ social_mailbox migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ social_mailbox migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const routePath = path.join(__dirname, '../../migrations/add_social_mailbox_route_key.sql');
+      const routeSql = fs.readFileSync(routePath, 'utf-8');
+      await db.query(routeSql);
+      console.log('✅ social_mailbox route_key migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ social_mailbox route_key migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);

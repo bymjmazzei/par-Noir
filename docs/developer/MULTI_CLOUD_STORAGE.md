@@ -4,14 +4,14 @@ par Noir stores user data in a **logical layout** (`par-noir-{pn}/_metadata/`, `
 
 ## Providers
 
-| Provider | Connect method | Tables (non-Google) |
-|----------|----------------|---------------------|
-| Google Drive | OAuth (existing) | Google Sheets (`.xlsx`) |
-| Dropbox | OAuth | SQLite-on-blob (`.db`) |
-| AWS S3 | Dashboard form | SQLite-on-blob |
-| Azure Blob | Dashboard form (SAS) | SQLite-on-blob |
-| OneDrive | Microsoft OAuth | SQLite-on-blob |
-| FTP/FTPS | Dashboard form | SQLite-on-blob |
+| Provider | Connect method | Tables (non-Google) | Grant |
+|----------|----------------|---------------------|-------|
+| Google Drive | OAuth (existing) | Google Sheets (`.xlsx`) | `drive.file` |
+| Dropbox | OAuth | SQLite-on-blob (`.db`) | **App folder** only |
+| AWS S3 | Dashboard form | SQLite-on-blob | Forced `par-noir-{pn}/` prefix |
+| Azure Blob | Dashboard form (SAS only) | SQLite-on-blob | Forced prefix; no connection strings |
+| OneDrive | Microsoft OAuth | SQLite-on-blob | **`Files.ReadWrite.AppFolder`** |
+| FTP/FTPS | Dashboard form | SQLite-on-blob | `basePath` |
 
 ## Architecture
 

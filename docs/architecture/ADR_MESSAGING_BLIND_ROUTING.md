@@ -1,68 +1,36 @@
-# ADR: Blind routing for messaging
+# ADR: Blind routing / opaque throughway for messaging
 
-**Status:** **No-go gate** — no blind-routing engineering until this ADR records an explicit **go** decision.
+**Status:** **Partial go** — opaque cross-cloud throughway is **in**; universal peer-inbox transport is **no-go**.
 
-**Context:** The par Noir API currently acts as a **coordinator**: it sees `fromPnIdentifier` / `toPnIdentifier` in transit to dual-write ciphertext to user-owned storage. Phase 2 minimizes logging, realtime payloads, and operator retention; it does not hide the social graph from the operator during send.
+**Context:** The API historically coordinated DMs with clear `fromPn` / `toPn` on durable mailbox rows. Device cloud custody removed long-lived cloud secrets from Railway, but `social_mailbox` keyed by `recipient_identity_id` still left a clear private who→whom table in Postgres. Peer-inbox (sender writes into the recipient’s provider) was considered and rejected as a universal bus: cross-cloud (Dropbox ↔ Drive ↔ portable) requires the **recipient** device to materialize with **recipient** credentials.
 
-**Related:** [MESSAGING_COORDINATOR_POLICY.md](../security/MESSAGING_COORDINATOR_POLICY.md), [MESSAGING_CLIENT_COORDINATION_RFC.md](./MESSAGING_CLIENT_COORDINATION_RFC.md).
-
----
-
-## Decision gate
-
-Before any blind-routing spike or implementation, leadership must answer:
-
-1. **Is hiding the graph from par Noir required** if **Google Drive** (or the user’s storage provider) still sees file names, sheet structure, and sharing ACLs?
-2. **What UX cost is acceptable?** (discovery, groups, attachments, connection accept, realtime notifications.)
-3. **What is the legal/privacy promise to users?** (marketing copy must match engineering reality.)
-
-### Outcomes
-
-| Decision | Action |
-|----------|--------|
-| **NO** | Close this ADR as **no-go**; remain on coordinator model + Phase 2 minimization + optional RFC B/C prototype. |
-| **YES** | Record **go** below; fund spike; update threat model; no code merge without updated policy. |
-
-**Current recommendation:** **NO** — coordinator + minimized logging is proportionate unless product commits to “operator must not know the social graph.”
+**Related:** [MESSAGING_COORDINATOR_POLICY.md](../security/MESSAGING_COORDINATOR_POLICY.md), [ADR_DEVICE_CLOUD_CUSTODY.md](./ADR_DEVICE_CLOUD_CUSTODY.md), [MESSAGING_ARCHITECTURE.md](../MESSAGING_ARCHITECTURE.md).
 
 ---
 
-## What “blind routing” would mean
+## Decision
 
-The API would route or deliver messages **without learning** (or without retaining) who messages whom. Example directions (spike only — not implementation commitments):
+| Path | Verdict |
+|------|---------|
+| **Opaque Railway throughway** (`route_key`, ciphertext-centric payload, no clear from/to in durable columns) | **Go** |
+| **Peer `_inbox/` ACL transport as sole/universal DM bus** | **No-go** (breaks one-social-cloud + cross-provider) |
+| Full mix-network / sealed-sender with zero in-transit observation | **Out of scope** (operator may still see authenticated send/claim requests) |
 
-| Direction | Idea | par Noir graph | Provider graph |
-|-----------|------|----------------|----------------|
-| Sealed sender | Recipient id encrypted to server pubkey; server routes opaquely | Reduced if not logged | Unchanged |
-| Drive-only relay | Users poll own Drive; no central send with to/from | Reduced on API | Unchanged |
-| Mix network | Third-party relays | Out of scope for par Noir core | Varies |
+### Opaque throughway (shipped)
 
----
+1. Each identity mints a high-entropy **`mailbox_route_key`** (device-sealed).
+2. On connection request/accept, peers store **`peerMailboxRouteKey`** on the user-owned connections row.
+3. Sender enqueue supplies `route_key` (or legacy HMAC fallback of pepper + recipient pn when not yet exchanged).
+4. Recipient claims pending by proving ownership of that route (device auth + route key); durable rows are not queryable by clear `pn-*`.
+5. Payload sanitization strips clear identity fields before Postgres insert.
+6. Public likes/comments stay on the **aggregator**; they are **not** mailbox jobs.
 
-## Dependencies that would break or require rework
+### Honesty
 
-Blind routing conflicts with or complicates:
-
-| Area | Location | Why |
-|------|----------|-----|
-| Group fan-out | `apps/aggregator-browser/src/services/groupService.ts`, API group routes | Fan-out needs member list |
-| Attachment ACL | `messagingMediaService.ts` | Grants reference recipient identity |
-| Connection accept | `connectionsService.ts`, accept routes | Stores `kemCiphertext`, peer ids |
-| Realtime notifications | `realtimeEvents.ts`, Socket.IO | Today targets `pn:` rooms by identifier |
-| Device policy / proofs | device-auth, proof signing | May bind actions to identity |
-| Inbox / connection discovery | inbox sheets, connection sheets | Structural metadata on user Drive |
-
-Any **go** decision must include a phased plan for these surfaces.
-
----
-
-## Acceptance criteria (if **go**)
-
-1. ADR signed with named approvers and date.
-2. Updated [MESSAGING_ARCHITECTURE.md](../MESSAGING_ARCHITECTURE.md) threat model.
-3. Updated [MESSAGING_COORDINATOR_POLICY.md](../security/MESSAGING_COORDINATOR_POLICY.md) data-class table.
-4. Spike doc with chosen approach, UX impact, and provider-metadata honesty.
-5. **No** blind-routing production code merged without all of the above.
+- Operator may still observe **in-transit** authenticated send/claim.
+- Compromised DB yields opaque blobs + route keys, not a readable identity social graph table.
+- Storage providers still see each user’s own silo after flush.
+- Sender outbox remains SoT; throughway wipe + unlock reconcile still redelivers.
 
 ---
 
@@ -70,7 +38,6 @@ Any **go** decision must include a phased plan for these surfaces.
 
 | Field | Value |
 |-------|-------|
-| **Decision** | _Pending — default **no-go**_ |
-| **Date** | _TBD_ |
-| **Approvers** | _TBD_ |
-| **Notes** | Phase 2 (logging, realtime trim, policy) ships without blind routing. Anti-tracing work (no peer attachment ACLs, opaque conversation metadata, per-recipient media envelopes) does **not** implement blind routing and does not reopen this ADR. |
+| **Decision** | Opaque throughway **go**; peer-inbox as universal transport **no-go** |
+| **Date** | 2026-07-23 |
+| **Notes** | Supersedes default no-go for “hide durable graph”; does not claim zero network-level observation. |

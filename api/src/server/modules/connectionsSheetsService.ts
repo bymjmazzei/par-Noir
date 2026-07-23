@@ -20,6 +20,8 @@ export interface Connection {
   /** Requester's ML-KEM public key (column F on pending_received rows). */
   peerMlKemPublicKey?: string;
   kemCiphertext?: string; // ML-KEM-768 encapsulation (E2E)
+  /** Peer's opaque mailbox route key (column H). */
+  peerMailboxRouteKey?: string;
 }
 
 /** ML-KEM-768 raw public key is 1184 bytes; base64 is ~1580 chars. */
@@ -41,6 +43,10 @@ function connectionFromSheetRow(row: string[]): Connection {
     ? userPnIdentifier
     : `pn-${userPnIdentifier}`;
   const peerMlKemPublicKey = parsePeerMlKemPublicKey(row[5]);
+  const peerMailboxRouteKey =
+    typeof row[7] === 'string' && /^[a-f0-9]{64}$/i.test(row[7].trim())
+      ? row[7].trim()
+      : undefined;
   return {
     connectionId,
     userPnIdentifier: normalizedUserPnIdentifier,
@@ -50,6 +56,7 @@ function connectionFromSheetRow(row: string[]): Connection {
     peerMlKemPublicKey,
     sharedSecret: peerMlKemPublicKey ? undefined : row[5] || undefined,
     kemCiphertext: row[6] || undefined,
+    peerMailboxRouteKey,
   };
 }
 
@@ -265,7 +272,7 @@ export class ConnectionsSheetsService {
   ): Promise<void> {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
-    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Connections!A2:G' });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Connections!A2:H' });
     if (connections.length) {
       // Normalize userPnIdentifier in all connections before writing (handles legacy data)
       const rows = connections.map(c => {
@@ -278,11 +285,12 @@ export class ConnectionsSheetsService {
           c.acceptedAt || '',
           c.peerMlKemPublicKey || '',
           c.kemCiphertext || '',
+          c.peerMailboxRouteKey || '',
         ];
       });
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: 'Connections!A2:G',
+        range: 'Connections!A2:H',
         valueInputOption: 'RAW',
         requestBody: { values: rows }
       });
@@ -508,7 +516,7 @@ export class ConnectionsSheetsService {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: 'Connections!A:G',
+      range: 'Connections!A:H',
       valueInputOption: 'RAW',
       requestBody: {
         values: [[
@@ -519,6 +527,7 @@ export class ConnectionsSheetsService {
           connection.acceptedAt || '',
           connection.peerMlKemPublicKey || '',
           connection.kemCiphertext || '',
+          connection.peerMailboxRouteKey || '',
         ]]
       }
     });
@@ -544,7 +553,7 @@ export class ConnectionsSheetsService {
     // Get all connections (skip header row)
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Connections!A2:G'
+      range: 'Connections!A2:H'
     });
 
     const rows = response.data.values || [];
@@ -624,7 +633,7 @@ export class ConnectionsSheetsService {
     // Get all connections (skip header row)
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Connections!A2:G'
+      range: 'Connections!A2:H'
     });
 
     const rows = response.data.values || [];
@@ -659,7 +668,8 @@ export class ConnectionsSheetsService {
     accountId: string | undefined,
     acceptedAt?: string,
     sharedSecret?: string,
-    kemCiphertext?: string
+    kemCiphertext?: string,
+    peerMailboxRouteKey?: string
   ): Promise<void> {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
@@ -667,7 +677,7 @@ export class ConnectionsSheetsService {
     // Get all connections to find the row
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Connections!A2:G'
+      range: 'Connections!A2:H'
     });
 
     const rows = response.data.values || [];
@@ -721,6 +731,15 @@ export class ConnectionsSheetsService {
         requestBody: { values: [[kemCiphertext]] }
       });
     }
+
+    if (peerMailboxRouteKey !== undefined) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `Connections!H${actualRow}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [[peerMailboxRouteKey]] }
+      });
+    }
   }
 
   /**
@@ -739,7 +758,7 @@ export class ConnectionsSheetsService {
     // Get all connections to find the row
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Connections!A2:G'
+      range: 'Connections!A2:H'
     });
 
     const rows = response.data.values || [];

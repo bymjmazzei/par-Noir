@@ -15,6 +15,7 @@ import {
   type DeviceRow,
 } from '@par-noir/device-auth';
 import { PNOAuthService } from './pnOAuthService';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 import {
   loadDeviceBundle,
   listDevices,
@@ -81,7 +82,9 @@ async function loadDeviceContextUncached(pn: string): Promise<DeviceContextLoad 
     ]);
     return { bundle, policy, devices };
   } catch (error) {
-    console.warn('[deviceCapability] device sheet read failed; using unkeyed fallback:', (error as Error)?.message);
+    safeLogger.warn('[deviceCapability] device sheet read failed; using unkeyed fallback', {
+      err: (error as Error)?.message
+    });
     let policy = defaultDevicePolicy();
     try {
       policy = await readPolicy(bundle);
@@ -225,9 +228,9 @@ export async function gateOwnerRoute(
   if (targetPn !== undefined) {
     const normalized = normalizePnIdentifier(targetPn);
     if (auth.pnIdentifier !== normalized) {
-      console.warn('[gateOwnerRoute] Bearer pN does not match route pN', {
-        routePn: normalized,
-        bearerPnSuffix: auth.pnIdentifier.slice(-8),
+      safeLogger.warn('[gateOwnerRoute] Bearer pN does not match route pN', {
+        routePn: hashIdentifier(normalized),
+        bearerPn: hashIdentifier(auth.pnIdentifier),
       });
       res.status(403).json({ error: 'forbidden', reason: 'pn_mismatch' });
       return null;
@@ -257,9 +260,9 @@ export async function gateStorageCredentialsPut(
   }
   const normalized = normalizePnIdentifier(targetPn);
   if (auth.pnIdentifier !== normalized) {
-    console.warn('[gateStorageCredentialsPut] Bearer pN does not match route pN', {
-      routePn: normalized,
-      bearerPnSuffix: auth.pnIdentifier.slice(-8),
+    safeLogger.warn('[gateStorageCredentialsPut] Bearer pN does not match route pN', {
+      routePn: hashIdentifier(normalized),
+      bearerPn: hashIdentifier(auth.pnIdentifier),
     });
     res.status(403).json({ error: 'forbidden', reason: 'pn_mismatch' });
     return null;

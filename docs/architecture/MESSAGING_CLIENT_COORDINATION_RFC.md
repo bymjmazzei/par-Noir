@@ -1,8 +1,8 @@
 # RFC: Messaging client coordination (dashboard / native)
 
-**Status:** Draft — **no implementation** until this RFC is reviewed and approved.
+**Status:** Superseded in part by [ADR_DEVICE_CLOUD_CUSTODY.md](./ADR_DEVICE_CLOUD_CUSTODY.md) for **offline delivery without operator-held cloud tokens** (mailbox + device flush ≈ option **B2**). Blind-routing / graph-hiding remains gated by [ADR_MESSAGING_BLIND_ROUTING.md](./ADR_MESSAGING_BLIND_ROUTING.md).
 
-**Goal:** Explore paths that reduce **time on wire** of routing metadata through the par Noir API without breaking the **browser API-only** rule ([SHARED_CODE_RULES.md](../../SHARED_CODE_RULES.md) § aggregator-browser).
+**Goal:** Reduce operator **cloud credential custody** and explore paths that reduce **time on wire** of routing metadata through the par Noir API without breaking the **browser API-only** rule ([SHARED_CODE_RULES.md](../../SHARED_CODE_RULES.md) § aggregator-browser).
 
 **Related:** [MESSAGING_COORDINATOR_POLICY.md](../security/MESSAGING_COORDINATOR_POLICY.md), [MESSAGING_ARCHITECTURE.md](../MESSAGING_ARCHITECTURE.md).
 

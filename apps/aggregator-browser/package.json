@@ -26,6 +26,7 @@
     "@capacitor/status-bar": "^6.0.0",
     "@par-noir/device-client": "file:../../packages/device-client",
     "@par-noir/aggregator-domain": "file:../../packages/aggregator-domain",
+    "@par-noir/device-cloud-credentials": "file:../../packages/device-cloud-credentials",
     "@par-noir/dm-crypto": "file:../../packages/dm-crypto",
     "@par-noir/identity-migration": "file:../../packages/identity-migration",
     "@par-noir/messaging-ui": "file:../../packages/messaging-ui",
