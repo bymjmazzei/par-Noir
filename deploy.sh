@@ -91,6 +91,22 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "📦 Building packages/user-owned-storage..."
+cd ../user-owned-storage
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ user-owned-storage build failed"
+    exit 1
+fi
+
+echo "📦 Building packages/device-cloud-credentials..."
+cd ../device-cloud-credentials
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ device-cloud-credentials build failed"
+    exit 1
+fi
+
 # Build id-dashboard
 echo "📦 Building id-dashboard..."
 cd ../../apps/id-dashboard
