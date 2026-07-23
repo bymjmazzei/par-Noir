@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Grid, List as ListIcon, Users, Star } from 'lucide-react';
 import { FeedService, Feed } from '../services/feeds/FeedService';
 import type { FeedCategory } from '../types/aggregator';
-import { FEED_CATEGORIES } from '../constants/feedCategories';
+import { FEED_CATEGORY_LIST } from '../constants/feedCategories';
 
 export const FeedDiscovery: React.FC = () => {
   const [feeds, setFeeds] = useState<Feed[]>([]);
@@ -96,18 +96,18 @@ export const FeedDiscovery: React.FC = () => {
             >
               All
             </button>
-            {FEED_CATEGORIES.map((cat) => (
+            {FEED_CATEGORY_LIST.map((cat) => (
               <button
                 type="button"
-                key={cat.value}
-                onClick={() => setSelectedCategory(cat.value as FeedCategory)}
+                key={cat.id}
+                onClick={() => setSelectedCategory(cat.id)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                  selectedCategory === cat.value
+                  selectedCategory === cat.id
                     ? 'bg-blue-600 text-white'
                     : 'bg-neutral-800 text-neutral-400 hover:text-neutral-300'
                 }`}
               >
-                {cat.label}
+                {cat.name}
               </button>
             ))}
           </div>
@@ -152,7 +152,7 @@ export const FeedDiscovery: React.FC = () => {
                       <h3 className="font-semibold text-white mb-1">{feed.feedName}</h3>
                       {feed.feedCategory && (
                         <span className="text-xs text-blue-400">
-                          {FEED_CATEGORIES.find((c) => c.value === feed.feedCategory)?.label}
+                          {FEED_CATEGORY_LIST.find((c) => c.id === feed.feedCategory)?.name}
                         </span>
                       )}
                     </div>
@@ -212,7 +212,7 @@ export const FeedDiscovery: React.FC = () => {
                     )}
                     <div className="flex items-center space-x-4 text-sm text-neutral-400">
                       {feed.feedCategory && (
-                        <span>{FEED_CATEGORIES.find((c) => c.value === feed.feedCategory)?.label}</span>
+                        <span>{FEED_CATEGORY_LIST.find((c) => c.id === feed.feedCategory)?.name}</span>
                       )}
                       {feed.subscriberCount !== undefined && (
                         <span>{feed.subscriberCount} subscribers</span>

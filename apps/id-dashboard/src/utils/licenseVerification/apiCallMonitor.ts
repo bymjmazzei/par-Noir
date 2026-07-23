@@ -1,5 +1,5 @@
 // API Call Monitor - Handles API call monitoring and frequency tracking
-import { APICallRecord } from '../types/licenseVerification';
+import { APICallRecord } from '../../types/licenseVerification';
 
 export class APICallMonitor {
   // Detection mechanism storage

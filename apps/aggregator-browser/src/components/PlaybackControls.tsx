@@ -3,7 +3,7 @@
  * Controls for video playback: pause, volume, speed, captions
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Pause, Play, Volume2, VolumeX, Gauge, Subtitles } from 'lucide-react';
 
 interface PlaybackControlsProps {

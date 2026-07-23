@@ -68,14 +68,10 @@ export function MePageTabsRail({ activeTab, onTabSelect, availableTabs }: MePage
       return { min: 0, max: 0 };
     }
     
-    const firstElement = allTabElements[0];
     const lastElement = allTabElements[allTabElements.length - 1];
     const screenCenter = window.innerWidth / 2;
     const containerRect = container.getBoundingClientRect();
     
-    const firstElementRect = firstElement.getBoundingClientRect();
-    const firstElementCenter = firstElementRect.left - containerRect.left + (firstElementRect.width / 2);
-    const minScroll = Math.max(0, container.scrollLeft + (firstElementCenter - screenCenter));
     
     const lastElementRect = lastElement.getBoundingClientRect();
     const lastElementCenter = lastElementRect.left - containerRect.left + (lastElementRect.width / 2);

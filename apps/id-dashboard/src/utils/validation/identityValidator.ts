@@ -1,5 +1,5 @@
 // Identity Validator - Handles identity-related validation
-import { ValidationResult } from '../types/validation';
+import { ValidationResult } from '../../types/validation';
 import { ValidationPatterns } from './validationPatterns';
 import { SecurityValidator } from './securityValidator';
 

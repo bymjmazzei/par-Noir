@@ -3,7 +3,6 @@
  * Shows animated placeholders while content loads
  */
 
-import React from 'react';
 
 interface LoadingSkeletonProps {
   type?: 'feed' | 'grid' | 'card';

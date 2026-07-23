@@ -3,12 +3,11 @@
  * Allows creators to add existing files to their feeds
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Check, Plus, Loader2 } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
 import { Feed } from '../types/aggregator';
-import { FeedService } from '../services/feedService';
 import { IndexedFile } from '../types/aggregator';
 import { uploadQueueService } from '../services/uploadQueueService';
 

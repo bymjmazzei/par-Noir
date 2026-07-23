@@ -3,7 +3,7 @@
  * Full-screen media viewer for images and videos
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Download, ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2 } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { EngagementActions } from './EngagementActions';
@@ -16,8 +16,8 @@ interface MediaViewerProps {
   onClose: () => void;
 }
 
-export function MediaViewer({ file, blob, url, onClose }: MediaViewerProps) {
-  const { getLikeCount, isLiked, getComments, getShareCount } = useEngagement();
+export function MediaViewer({ file, url, onClose }: MediaViewerProps) {
+  const { getLikeCount, getComments, getShareCount } = useEngagement();
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -200,9 +200,12 @@ export function MediaViewer({ file, blob, url, onClose }: MediaViewerProps) {
                 ...file.metadata,
                 engagement: {
                   ...file.metadata.engagement,
+                  views: file.metadata.engagement?.views || 0,
                   likes: getLikeCount(file.metadata.fileId, file.metadata.engagement?.likes || 0),
                   comments: getComments(file.metadata.fileId).length + (file.metadata.engagement?.comments || 0),
-                  shares: getShareCount(file.metadata.fileId, file.metadata.engagement?.shares || 0)
+                  shares: getShareCount(file.metadata.fileId, file.metadata.engagement?.shares || 0),
+                  saves: file.metadata.engagement?.saves || 0,
+                  lastUpdated: file.metadata.engagement?.lastUpdated || new Date().toISOString()
                 }
               }
             }}

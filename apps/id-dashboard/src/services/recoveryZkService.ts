@@ -47,7 +47,7 @@ export async function issueCustodianshipCredential(params: {
     mlDsaSecretKey,
     mlDsaPublicKey,
     context: RECOVERY_CUSTODIAN_CONTEXT,
-    public_inputs: public_inputs as Record<string, unknown>,
+    public_inputs: { ...public_inputs },
     expiresAtMs,
   });
 }

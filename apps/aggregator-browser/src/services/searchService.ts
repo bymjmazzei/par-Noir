@@ -114,7 +114,7 @@ export async function searchFiles(
 /**
  * Fallback client-side search when API is unavailable
  */
-function fallbackSearch(options: SearchOptions): SearchResult {
+function fallbackSearch(_options: SearchOptions): SearchResult {
   // This would search through already-loaded files
   // For now, return empty result
   return {

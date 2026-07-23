@@ -1,6 +1,6 @@
 // Error Logger - Handles logging to different channels
-import { ErrorEvent } from '../types/errorHandler';
-import { ErrorHandlerConfig } from '../types/errorHandler';
+import { ErrorEvent } from '../../types/errorHandler';
+import { ErrorHandlerConfig } from '../../types/errorHandler';
 
 export class ErrorLogger {
   private config: ErrorHandlerConfig;

@@ -3,7 +3,6 @@
  * Conditional navigation based on user auth state and tier
  */
 
-import React from 'react';
 import { Search, Home, Plus, MessageSquare, User } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 
@@ -29,8 +28,7 @@ export function BottomNav({
   onInboxClick,
   onHomeClick
 }: BottomNavProps) {
-  const { userState } = useUserState();
-  const isUnlocked = userState.isUnlocked;
+  useUserState();
 
   const handleTabClick = (tab: 'home' | 'search' | 'upload' | 'index' | 'messages') => {
     if (tab === 'search' && onSearchClick) {

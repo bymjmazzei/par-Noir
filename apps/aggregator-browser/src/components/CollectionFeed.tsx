@@ -657,8 +657,6 @@ export function CollectionFeed({
         // #region agent log
         if (el && import.meta.env.DEV) {
           const computedHeight = window.getComputedStyle(el).height;
-          const computedBottom = window.getComputedStyle(el).bottom;
-          const computedPosition = window.getComputedStyle(el).position;
           const actualHeight = el.offsetHeight;
           const parent = el.parentElement;
           const parentHeight = parent ? window.getComputedStyle(parent).height : 'none';

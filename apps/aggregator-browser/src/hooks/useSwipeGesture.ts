@@ -28,7 +28,9 @@ export function useSwipeGesture({
   useEffect(() => {
     if (!enabled) return;
 
-    const handleTouchStart = (e: TouchEvent) => {
+    const handleTouchStart: EventListener = (event) => {
+      if (!(event instanceof TouchEvent)) return;
+      const e = event;
       const touch = e.touches[0];
       touchStartRef.current = {
         x: touch.clientX,
@@ -37,7 +39,9 @@ export function useSwipeGesture({
       };
     };
 
-    const handleTouchEnd = (e: TouchEvent) => {
+    const handleTouchEnd: EventListener = (event) => {
+      if (!(event instanceof TouchEvent)) return;
+      const e = event;
       if (!touchStartRef.current) return;
 
       const touch = e.changedTouches[0];

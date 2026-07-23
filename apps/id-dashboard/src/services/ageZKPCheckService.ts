@@ -4,7 +4,6 @@
  */
 
 import { SecureMetadataStorage } from '../utils/secureMetadataStorage';
-import { AttestedDataPoint } from '../utils/secureMetadata';
 import { API_ENDPOINT } from '../config/api';
 
 export class AgeZKPCheckService {
@@ -19,18 +18,11 @@ export class AgeZKPCheckService {
     passcode: string
   ): Promise<boolean> {
     try {
-      const storage = new SecureMetadataStorage();
-      await storage.init();
-      
       // Load metadata for the identity
-      const metadata = await storage.getMetadata(identityId);
+      const metadata = await SecureMetadataStorage.getMetadata(identityId);
       if (!metadata) {
         return false;
       }
-      
-      // Decrypt metadata to access data points
-      // Note: This requires the passcode, which should be available in the dashboard context
-      const { SecureMetadataCrypto } = await import('../utils/secureMetadata');
       
       // Get the username/pnName from identity (we need to pass it)
       // For now, we'll try to decrypt with just the passcode

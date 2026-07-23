@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '../cryptoWorkerManager';
 // Crypto Utility Functions
 export class CryptoUtils {
   /**

@@ -6,7 +6,6 @@
 import { IndexedFile } from '../types/aggregator';
 import { PreferenceQuestion, PreferenceType } from '../components/PreferenceTile';
 import { TagNormalizationService } from './tagNormalizationService';
-import { FEED_CATEGORIES } from '../constants/feedCategories';
 
 export interface PreferenceState {
   askedQuestions: Set<string>; // Track which questions have been asked
@@ -157,7 +156,7 @@ export class PreferenceQuestionService {
                        file.metadata.author?.did ||
                        file.metadata.creator?.["@id"];
       const creatorName = file.metadata.creator?.name || 
-                         file.metadata.author?.name ||
+                         file.metadata.author?.username ||
                          'this creator';
       
       if (creatorId) {

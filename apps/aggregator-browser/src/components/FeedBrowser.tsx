@@ -4,12 +4,11 @@
  * Like a store with different sections
  */
 
-import React, { useState, useEffect } from 'react';
-import { Search, Plus, Check, Globe, Sparkles, TrendingUp, Clock, Star, Grid } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Search, Plus, Check, Globe, TrendingUp, Clock, Star, Grid } from 'lucide-react';
 import { Feed, FeedCategory } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
-import { FEED_CATEGORIES, getAllFeedCategories } from '../constants/feedCategories';
-import { FeedRailItem } from './FeedRail';
+import { FEED_CATEGORIES } from '../constants/feedCategories';
 import { FeedService } from '../services/feedService';
 import { useToast } from '../hooks/useToast';
 import { LoadingSkeleton } from './LoadingSkeleton';

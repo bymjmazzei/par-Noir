@@ -1,5 +1,5 @@
 // Storage Stats - Handles storage statistics and monitoring
-import { StorageStats, StorageConfig } from '../types/hybridStorage';
+import { StorageStats, StorageConfig } from '../../types/hybridStorage';
 import { LocalStorageManager } from './localStorageManager';
 import { IndexedDBManager } from './indexedDBManager';
 

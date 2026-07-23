@@ -1,5 +1,5 @@
 // License Verification Module Index - Re-exports all license verification functionality
-export * from '../types/licenseVerification';
+export * from '../../types/licenseVerification';
 export { LicenseVerification } from './licenseVerification';
 export { DETECTION_THRESHOLDS } from './detectionConstants';
 export { APICallMonitor } from './apiCallMonitor';

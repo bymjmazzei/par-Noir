@@ -3,7 +3,7 @@
  * Displays and manages connections, followers, and following
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Users, UserPlus, UserMinus } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { getUserProfile } from '../services/profileService';
@@ -11,7 +11,6 @@ import { PNOAuthService } from '../services/pnOAuthService';
 import {
   getConnections,
   getPendingRequests,
-  sendConnectionRequest,
   acceptConnectionRequest,
   rejectConnectionRequest,
   removeConnection,
@@ -56,7 +55,7 @@ function getAuthHeaders(): HeadersInit {
 }
 
 export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: ConnectionsPanelProps) {
-  const { userState } = useUserState();
+  useUserState();
   const [activeTab, setActiveTab] = useState<'connections' | 'followers' | 'following'>('connections');
   const [connections, setConnections] = useState<Connection[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PendingRequests>({ sent: [], received: [] });
@@ -157,15 +156,6 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
     return displayNames.get(userPnIdentifier) || userPnIdentifier;
   };
 
-  const handleConnect = async (targetUserPnIdentifier: string) => {
-    try {
-      await sendConnectionRequest(userPnIdentifier, targetUserPnIdentifier);
-      await loadData();
-    } catch (error) {
-      console.error('Failed to connect:', error);
-      setError('Failed to send connection request');
-    }
-  };
 
   const handleDisconnect = async (connectionId: string) => {
     try {
@@ -273,25 +263,6 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
     }
   };
 
-  const handleFollow = async (targetType: 'user' | 'feed', targetPnIdentifier: string) => {
-    try {
-      const response = await fetch(`${API_ENDPOINT}/api/connections/follow`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-          body: JSON.stringify({
-            userPnIdentifier,
-            targetType,
-            targetId: targetPnIdentifier // API still expects targetId in request body
-          })
-      });
-
-      if (response.ok) {
-        loadData(); // Reload data
-      }
-    } catch (error) {
-      console.error('Failed to follow:', error);
-    }
-  };
 
   const handleUnfollow = async (targetType: 'user' | 'feed', targetPnIdentifier: string) => {
     try {

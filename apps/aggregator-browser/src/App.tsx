@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { MetadataFilters, IndexedFile, Feed } from './types/aggregator';
+import { Feed, IndexedFile } from './types/aggregator';
 import { useUserState } from './contexts/UserStateContext';
 import { buildFeedRailItems } from './components/FeedRail';
 import { FeedBrowser } from './components/FeedBrowser';
@@ -32,7 +32,6 @@ import { useModals } from './hooks/useModals';
 import { useFeedState } from './hooks/useFeedState';
 import { useDiscoverFiles } from './hooks/useDiscoverFiles';
 import { useDiscovery } from './hooks/useDiscovery';
-import { API_ENDPOINT } from './config/api';
 import './services/uploadProcessor'; // Initialize upload processor event listeners
 import './services/backgroundTaskProcessor'; // Initialize background task processor event listeners
 import { SearchPage } from './pages/SearchPage';
@@ -43,7 +42,6 @@ import { MePage, type MePageTab } from './pages/MePage';
 import { HomePage } from './pages/HomePage';
 import { HomePageContext, type HomePageContextValue } from './contexts/HomePageContext';
 import { uploadQueueService } from './services/uploadQueueService';
-import type { MediaDimensions } from './utils/mediaScaling';
 import { getCreatorIdentifier } from './utils/contentClass';
 import { contentClassToContentType } from './utils/feedContentTypes';
 import { useFeedFiltering } from './hooks/useFeedFiltering';
@@ -59,15 +57,12 @@ import { SplashScreen } from '@capacitor/splash-screen';
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
 
-// Stable empty array reference to prevent unnecessary re-renders
-const EMPTY_ARRAY: IndexedFile[] = [];
-
 function App() {
   useEffect(() => {
     SplashScreen.hide().catch(() => {});
   }, []);
 
-  const { userState, setLocked, setUnlocked, updateDisplayName, getDisplayName } = useUserState();
+  const { userState, getDisplayName } = useUserState();
   const discover = useDiscoverFiles();
   const {
     mediaFiles,
@@ -79,7 +74,6 @@ function App() {
     indexedFiles,
     isLoading,
     error,
-    setError,
     currentPage,
     setCurrentPage,
     hasMore,
@@ -389,9 +383,9 @@ function App() {
     if (isProfileOpening) {
       if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
         setCurrentFeedIndex(0);
-        mePageData.mePageData.setMePageTab('all');
+        mePageData.setMePageTab('all');
       } else if (viewingCreatorId && viewingCreatorId !== userState.pnIdentifier) {
-        mePageData.mePageData.setMePageTab('all');
+        mePageData.setMePageTab('all');
         setCurrentFeedIndex(0);
       }
     }
@@ -435,7 +429,7 @@ function App() {
     );
   }, [feeds, userState.isUnlocked, userState.preferences.subscribedFeedIds, activeFeedId, hasNewThirdPartyContent]);
 
-  const { filteredFilesByFeed, isThought, isCollection, isMedia } = useFeedFiltering({
+  const { filteredFilesByFeed, isThought } = useFeedFiltering({
     mediaFiles,
     thoughtsFiles,
     collectionsFiles,
@@ -1048,7 +1042,7 @@ function App() {
             const creatorIdRaw = getCreatorIdentifier(file);
             if (!creatorIdRaw) { console.error('No creator ID found for file:', file.metadata.fileId); return; }
             const creatorId = creatorIdRaw.trim();
-            isNavigatingToFileRef.current = true;
+            mePageData.isNavigatingToFileRef.current = true;
             setVisibleFileId(file.metadata.fileId);
             setViewingCreatorId(creatorId);
             setViewMode('feed');

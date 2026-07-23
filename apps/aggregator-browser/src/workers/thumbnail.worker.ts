@@ -3,6 +3,8 @@
  * Uses OffscreenCanvas for canvas operations in worker context
  */
 
+export {};
+
 // Inline types (workers can't import from src)
 interface TextPostStyle {
   fontFamily: string;
@@ -218,7 +220,7 @@ async function createImageThumbnail(imageData: ArrayBuffer, maxWidth: number, ma
   return await jpegBlob.arrayBuffer();
 }
 
-async function createVideoThumbnail(videoData: ArrayBuffer, maxWidth: number, maxHeight: number): Promise<ArrayBuffer> {
+async function createVideoThumbnail(_videoData: ArrayBuffer, _maxWidth: number, _maxHeight: number): Promise<ArrayBuffer> {
   // Note: Video processing in workers is complex - we'll need to decode video first
   // For now, we'll create a placeholder that the main thread can handle
   // This is a limitation - video decoding in workers requires more setup
@@ -242,9 +244,9 @@ self.addEventListener('message', async (event: MessageEvent<WorkerRequest>) => {
       result = await createImageThumbnail(request.imageData, request.maxWidth, request.maxHeight);
     } else if (request.type === 'createVideoThumbnail') {
       // Video thumbnails will be handled on main thread for now
-      throw new Error('Video thumbnail generation not supported in worker yet');
+      result = await createVideoThumbnail(request.videoData, request.maxWidth, request.maxHeight);
     } else {
-      throw new Error(`Unknown request type: ${(request as any).type}`);
+      throw new Error('Unknown worker request type');
     }
     
     const response: WorkerResponse = {
@@ -254,12 +256,12 @@ self.addEventListener('message', async (event: MessageEvent<WorkerRequest>) => {
     };
     
     // Transfer ArrayBuffer for efficiency
-    self.postMessage(response, [result]);
-  } catch (error: any) {
+    self.postMessage(response, { transfer: [result] });
+  } catch (error: unknown) {
     const response: WorkerResponse = {
       id: request.id,
       success: false,
-      error: error?.message || 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error'
     };
     
     self.postMessage(response);

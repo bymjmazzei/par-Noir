@@ -3,8 +3,7 @@
  * Manages visitor vs unlocked state, rating preferences, and subscribed feeds
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Feed } from '../types/aggregator';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { accountsCacheService } from '../services/accountsCacheService';
 import { inboxCacheService } from '../services/inboxCacheService';
 import { TagNormalizationService } from '../services/tagNormalizationService';
@@ -705,7 +704,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     const normalizedTag = TagNormalizationService.normalizeTagWithProvenance(
       subject,
       'user',
-      'preference_tile_yes',
+      'preference_tile',
       userState.pnIdentifier
     );
     const normalizedSubject = normalizedTag.id;
@@ -784,7 +783,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     const normalizedTag = TagNormalizationService.normalizeTagWithProvenance(
       subject,
       'user',
-      'preference_tile_no',
+      'preference_tile',
       userState.pnIdentifier
     );
     const normalizedSubject = normalizedTag.id;

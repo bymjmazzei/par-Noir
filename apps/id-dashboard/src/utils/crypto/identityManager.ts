@@ -1,10 +1,9 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '../cryptoWorkerManager';
 import { IdentityData, EncryptedIdentity, AuthenticationResult } from '../../types/crypto';
 import { DIDManager } from './didManager';
 import { RecoveryKeyManager } from './recoveryKeyManager';
 import { EncryptionManager } from './encryptionManager';
 import { TokenManager } from './tokenManager';
-import { v4 as uuidv4 } from 'uuid';
 import { getAssetUrl } from '../assetPaths';
 
 export class IdentityManager {
@@ -93,7 +92,7 @@ export class IdentityManager {
                 pnName: identity.pnName,
                 nickname: identity.nickname || identity.pnName,
                 accessToken: token,
-                expiresIn: TokenManager.getTokenExpiry(),
+                expiresIn: await TokenManager.getTokenExpiry(),
                 authenticatedAt: new Date().toISOString(),
                 publicKey: encryptedIdentity.publicKey
             };

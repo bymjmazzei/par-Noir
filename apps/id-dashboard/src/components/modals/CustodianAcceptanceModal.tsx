@@ -11,13 +11,18 @@ interface CustodianAcceptanceModalProps {
     custodianType: string;
     contactValue: string;
     contactType: 'email' | 'phone';
-  };
-  setPendingCustodianInvitationData: (data: any) => void;
+  } | null;
+  setPendingCustodianInvitationData: (data: null) => void;
   custodianAcceptanceData: {
+    contactType: 'email' | 'phone';
     contactValue: string;
     passcode: string;
   };
-  setCustodianAcceptanceData: (data: { contactValue: string; passcode: string }) => void;
+  setCustodianAcceptanceData: React.Dispatch<React.SetStateAction<{
+    contactType: 'email' | 'phone';
+    contactValue: string;
+    passcode: string;
+  }>>;
   onCustodianAcceptance: () => void;
 }
 
@@ -34,7 +39,7 @@ export function CustodianAcceptanceModal({
 
   const handleClose = () => {
     setPendingCustodianInvitationData(null);
-    setCustodianAcceptanceData({ contactValue: '', passcode: '' });
+    setCustodianAcceptanceData({ contactType: 'email', contactValue: '', passcode: '' });
     onClose();
   };
 

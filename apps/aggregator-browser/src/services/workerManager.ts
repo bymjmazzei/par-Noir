@@ -93,7 +93,7 @@ class WorkerManager {
     worker.addEventListener('error', (error) => {
       console.error('Worker error:', error);
       // Reject all pending requests for this worker
-      this.pendingRequests.forEach((pending, id) => {
+      this.pendingRequests.forEach((pending) => {
         pending.reject(new Error('Worker error occurred'));
       });
       this.pendingRequests.clear();
@@ -103,7 +103,7 @@ class WorkerManager {
   /**
    * Send request to worker and wait for response
    */
-  private async sendToWorker(workerType: WorkerType, request: WorkerRequest): Promise<any> {
+  private async sendToWorker(workerType: WorkerType, request: Omit<WorkerRequest, 'id'>): Promise<any> {
     const worker = workerType === 'encryption' 
       ? await this.getEncryptionWorker()
       : await this.getThumbnailWorker();

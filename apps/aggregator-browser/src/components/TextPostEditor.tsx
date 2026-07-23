@@ -5,8 +5,8 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Layers, Minus, Plus as PlusIcon, Send, Bold, ChevronLeft, ChevronRight } from 'lucide-react';
-import { TextPostData, TextPostStyle } from '../types/aggregator';
+import { X, Check, Image as ImageIcon, AlignLeft, AlignCenter, AlignRight, AlignJustify, Minus, Plus as PlusIcon, Send, ChevronLeft, ChevronRight } from 'lucide-react';
+import { TextPostData } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { EditMetadataModal, MetadataFormData } from './EditMetadataModal';
@@ -229,8 +229,8 @@ const FONT_OPTIONS = [
   { value: 'Playfair Display', label: 'Playfair Display' },
 ];
 
-export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
-  const { userState } = useUserState();
+export function TextPostEditor({ onSave }: TextPostEditorProps) {
+  useUserState();
   
   // Multi-page state
   const [pages, setPages] = useState<Array<{
@@ -263,7 +263,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
     padding: 40,
   }]);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const previewContainerRef = useRef<HTMLDivElement>(null);
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
   
   // Get current page data
   const currentPage = pages[currentPageIndex];
@@ -317,7 +317,6 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const dropShadowColorPickerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const textColorInputRef = useRef<HTMLInputElement>(null);
   const fontSelectorRef = useRef<HTMLDivElement>(null);
   const activeFontButtonRef = useRef<HTMLButtonElement | null>(null);
   const measurementRef = useRef<HTMLDivElement>(null);
@@ -736,7 +735,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
     ctx.restore();
   };
 
-  const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number, justify: boolean = false): string[] => {
+  const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number, _justify: boolean = false): string[] => {
     const words = text.split(' ');
     const lines: string[] = [];
     let currentLine = words[0] || '';
@@ -856,8 +855,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         isMultiPage: true,
         pages: textPosts.map(post => ({
           content: post.content,
-          style: post.style,
-          metadata: post.metadata
+          style: post.style
         }))
       };
       onSave(firstPost);
@@ -1280,9 +1278,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         <div 
           ref={(el) => {
             previewContainerRef.current = el;
-            if (swipeRef.current !== el && el) {
-              (swipeRef as any).current = el;
-            }
+            swipeRef.current = el;
           }}
           className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide"
           style={{
@@ -1576,7 +1572,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
-                  setContent(prev => prev + emoji);
+                  setContent(content + emoji);
                 }}
                 className="text-xl hover:scale-110 transition-transform p-1 flex-shrink-0"
               >

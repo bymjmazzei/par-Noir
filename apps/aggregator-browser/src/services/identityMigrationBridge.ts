@@ -60,7 +60,8 @@ export async function migrateConnectionsOnUnlock(params: {
   const userPn = session?.pnIdentifier;
   if (!userPn) return;
 
-  const { migrationId, plan, progress } = state;
+  const { plan, progress } = state;
+  const { migrationId } = progress;
   if (progress.completedStepIds.includes('dm_rekey')) return;
 
   const threads = await getMessageThreads(userPn);

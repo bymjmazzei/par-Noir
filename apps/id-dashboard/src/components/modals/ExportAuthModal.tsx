@@ -4,7 +4,7 @@ interface ExportAuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   exportAuthData: { pnName: string; passcode: string };
-  setExportAuthData: (data: { pnName: string; passcode: string }) => void;
+  setExportAuthData: React.Dispatch<React.SetStateAction<{ pnName: string; passcode: string }>>;
   showExportPnName: boolean;
   setShowExportPnName: (show: boolean) => void;
   showExportPasscode: boolean;

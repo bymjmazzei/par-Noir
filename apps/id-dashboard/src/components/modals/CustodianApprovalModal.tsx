@@ -10,17 +10,17 @@ interface CustodianApprovalModalProps {
     timestamp: number | string;
     claimantContactType?: 'email' | 'phone';
     claimantContactValue?: string;
-    status: 'pending' | 'approved' | 'denied';
+    status: 'pending' | 'approved' | 'denied' | 'expired';
     signatures: unknown[];
     proofs?: unknown[];
     approvals: unknown[];
-  };
+  } | null;
   selectedCustodianship: {
     id: string;
     identityName: string;
     identityUsername: string;
     identityId: string;
-  };
+  } | null;
   recoveryThreshold: number;
   onApproveRecovery: (recoveryRequestId: string, custodianshipId: string) => void;
   onSuccess: (message: string) => void;

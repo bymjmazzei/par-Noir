@@ -3,7 +3,7 @@
  * Manages URL query parameters for deep linking
  */
 
-import { useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 
 export function useURLParams() {
   const getParam = useCallback((key: string): string | null => {

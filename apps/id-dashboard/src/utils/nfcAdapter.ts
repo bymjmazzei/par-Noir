@@ -4,6 +4,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { NFC } from '@exxili/capacitor-nfc';
+import type { NFCError } from '@exxili/capacitor-nfc';
 
 const PARNOIR_MIME_TYPE = 'application/x-parnoir-identity';
 
@@ -71,10 +72,10 @@ export async function readTagForUid(timeoutMs = 60000): Promise<string> {
         else reject(new Error('Could not read tag UID'));
       });
 
-      const offErr = NFC.onError((err: { message?: string }) => {
+      const offErr = NFC.onError((err: NFCError) => {
         clearTimeout(timer);
         cleanup();
-        reject(new Error(err?.message ?? 'NFC read failed'));
+        reject(new Error(err.error || 'NFC read failed'));
       });
 
       if (Capacitor.getPlatform() === 'ios') {
@@ -98,7 +99,7 @@ export async function readTagForUid(timeoutMs = 60000): Promise<string> {
       ac.abort();
       reject(new Error('Timeout: tap your NFC card'));
     }, timeoutMs);
-    const onRead = (evt: { serialNumber: string }) => {
+    const onRead = (evt: NDEFReadingEvent) => {
       clearTimeout(t);
       ndef.removeEventListener('reading', onRead);
       ndef.removeEventListener('error', onErr);
@@ -178,10 +179,10 @@ export async function readTagForUnlock(timeoutMs = 60000): Promise<NfcReadResult
         }
       });
 
-      const offErr = NFC.onError((err: { message?: string }) => {
+      const offErr = NFC.onError((err: NFCError) => {
         clearTimeout(timer);
         cleanup();
-        reject(new Error(err?.message ?? 'NFC read failed'));
+        reject(new Error(err.error || 'NFC read failed'));
       });
 
       if (Capacitor.getPlatform() === 'ios') {
@@ -205,7 +206,7 @@ export async function readTagForUnlock(timeoutMs = 60000): Promise<NfcReadResult
       ac.abort();
       reject(new Error('Timeout: tap your NFC card'));
     }, timeoutMs);
-    const onRead = async (evt: { serialNumber: string; message?: { records?: { recordType?: string; mediaType?: string; data?: DataView }[] } }) => {
+    const onRead = async (evt: NDEFReadingEvent) => {
       clearTimeout(t);
       ndef.removeEventListener('reading', onRead);
       ndef.removeEventListener('error', onErr);
@@ -232,9 +233,22 @@ export async function readTagForUnlock(timeoutMs = 60000): Promise<NfcReadResult
   });
 }
 
+interface NDEFReadingEvent {
+  serialNumber: string;
+  message?: {
+    records?: Array<{
+      recordType?: string;
+      mediaType?: string;
+      data?: DataView;
+    }>;
+  };
+}
+
 interface NDEFReaderInstance {
-  addEventListener: (type: string, handler: (evt: unknown) => void) => void;
-  removeEventListener: (type: string, handler: (evt: unknown) => void) => void;
+  addEventListener(type: 'reading', handler: (evt: NDEFReadingEvent) => void): void;
+  addEventListener(type: 'error', handler: (evt: Event) => void): void;
+  removeEventListener(type: 'reading', handler: (evt: NDEFReadingEvent) => void): void;
+  removeEventListener(type: 'error', handler: (evt: Event) => void): void;
   scan: (opts?: { signal?: AbortSignal }) => Promise<void>;
   write: (msg: { records: { recordType?: string; mediaType?: string; data?: Uint8Array }[] }) => Promise<void>;
 }

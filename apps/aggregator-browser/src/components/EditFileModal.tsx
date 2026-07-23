@@ -3,7 +3,7 @@
  * Allows owners to edit file visibility and metadata through dashboard APIs
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Globe, Lock, Users, Star } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
@@ -35,7 +35,7 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
   const [name, setName] = useState(file.metadata.name || file.metadata.title || '');
   const [description, setDescription] = useState(file.metadata.description || '');
   const [tags, setTags] = useState((file.metadata.keywords || file.metadata.tags || []).join(', '));
-  const [isNSFW, setIsNSFW] = useState(file.metadata?.isNSFW === true || file.metadata?.isNSFW === 'true');
+  const [isNSFW, setIsNSFW] = useState(file.metadata?.isNSFW === true);
   const [isTopPost, setIsTopPost] = useState(file.metadata.isTopPost || false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

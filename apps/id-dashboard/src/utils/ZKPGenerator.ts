@@ -145,9 +145,6 @@ export class ZKPGenerator {
         }
       }
 
-      if (dataPoint.validation.custom && !dataPoint.validation.custom(userData)) {
-        throw new Error('Data failed custom validation');
-      }
     }
   }
 

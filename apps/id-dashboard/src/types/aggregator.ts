@@ -13,13 +13,63 @@ export interface AggregatedFile {
   [key: string]: any;
 }
 
+export interface StorageFile {
+  id: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  modifiedTime: string;
+  encrypted?: boolean;
+  originalName?: string;
+  backend?: string;
+  backendFileId?: string;
+}
+
+export interface StorageQuota {
+  limit: number;
+  usage: number;
+  usageInDrive?: number;
+  usageInDriveTrash?: number;
+}
+
+export interface StorageUserInfo {
+  email?: string;
+  name?: string;
+  displayName?: string;
+  picture?: string;
+}
+
+export interface StorageBackendConfig {
+  id: string;
+  name: string;
+  type: 'google_drive' | 'dropbox' | 's3' | 'local';
+  apiEndpoint?: string;
+}
+
+export interface StorageBackend {
+  readonly id: string;
+  readonly name: string;
+  readonly type: string;
+  connect(credentials: unknown): Promise<void>;
+  disconnect(): Promise<void>;
+  isConnected(): boolean;
+  listFiles(folderId?: string, pnIdentifier?: string): Promise<StorageFile[]>;
+  uploadFile(file: File, folderId?: string, metadata?: unknown): Promise<StorageFile>;
+  downloadFile(fileId: string): Promise<Blob>;
+  deleteFile(fileId: string): Promise<void>;
+  getOrCreateFolder(name: string, pnIdentifier?: string): Promise<string>;
+  getStorageQuota?(): Promise<StorageQuota>;
+  getQuota?(): Promise<StorageQuota | null>;
+  getAccessToken?(): string | null;
+  getUserInfo(): Promise<StorageUserInfo | null>;
+}
+
 export interface AuthSession {
   id: string;
-  pnName: string;
-  nickname: string;
-  accessToken: string;
-  expiresIn: number;
-  authenticatedAt: string;
+  nickname?: string;
+  accessToken?: string;
+  expiresIn?: number;
+  authenticatedAt?: string;
   publicKey: string;
   passcode?: string;
   authToken?: string;

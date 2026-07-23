@@ -1,5 +1,5 @@
 // Error Initializer - Handles error handler initialization and setup
-import { ErrorHandlerConfig } from '../types/errorHandler';
+import { ErrorHandlerConfig } from '../../types/errorHandler';
 
 export class ErrorInitializer {
   private config: ErrorHandlerConfig;

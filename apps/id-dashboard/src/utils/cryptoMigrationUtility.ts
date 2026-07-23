@@ -303,7 +303,7 @@ export class CryptoMigrationUtility {
    * Cleanup crypto worker
    */
   static cleanup() {
-    cryptoWorkerManager.troy();
+    cryptoWorkerManager.destroy();
   }
 }
 

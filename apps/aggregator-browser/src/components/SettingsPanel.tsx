@@ -3,8 +3,7 @@
  * User preferences and settings management
  */
 
-import React from 'react';
-import { X, Shield, User, Bell, Globe } from 'lucide-react';
+import { X, User, Globe } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 // RatingPreferences removed - will be replaced with NSFW toggle in Phase 7
 import { PNConnect } from './PNConnect';

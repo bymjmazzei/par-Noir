@@ -28,6 +28,8 @@ global.Worker = jest.fn().mockImplementation(() => ({
 
 // Mock localStorage
 const localStorageMock = {
+  length: 0,
+  key: jest.fn(),
   getItem: jest.fn(),
   setItem: jest.fn(),
   removeItem: jest.fn(),
@@ -37,6 +39,8 @@ global.localStorage = localStorageMock;
 
 // Mock IndexedDB
 global.indexedDB = {
+  cmp: jest.fn(),
+  databases: jest.fn(),
   open: jest.fn(),
   deleteDatabase: jest.fn()
 };

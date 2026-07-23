@@ -1,5 +1,5 @@
 // Data Validator - Handles data validation (file uploads, JSON data, identity creation)
-import { ValidationResult } from '../types/validation';
+import { ValidationResult } from '../../types/validation';
 import { ValidationPatterns } from './validationPatterns';
 import { SecurityValidator } from './securityValidator';
 import { IdentityValidator } from './identityValidator';

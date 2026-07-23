@@ -5,9 +5,9 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type React from 'react';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { API_ENDPOINT } from '../config/api';
+import type { ShareToken } from '../utils/tokenDecryption';
 
 interface HorizontalThumbnailFeedProps {
   thumbnailIds: string[]; // Array of thumbnail file IDs
@@ -21,8 +21,7 @@ export function HorizontalThumbnailFeed({
   thumbnailIds, 
   thumbnailTokens,
   fileName, 
-  accountId,
-  onThumbnailClick 
+  accountId
 }: HorizontalThumbnailFeedProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [thumbnailUrls, setThumbnailUrls] = useState<Map<number, string>>(new Map());
@@ -31,45 +30,6 @@ export function HorizontalThumbnailFeed({
   const failedThumbnailsRef = useRef<Set<number>>(new Set());
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const thumbnailRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-
-  // Fetch accountId helper (non-blocking)
-  const fetchAccountIdOnce = useCallback(async (): Promise<string | null> => {
-    if (accountId && accountId.includes('::')) {
-      return accountId;
-    }
-    
-    const cachedAccountId = sessionStorage.getItem('thumbnail_feed_accountId');
-    if (cachedAccountId && cachedAccountId.includes('::')) {
-      return cachedAccountId;
-    }
-
-    try {
-      const { PNOAuthService } = await import('../services/pnOAuthService');
-      const accessToken = await PNOAuthService.getValidAccessToken();
-      if (!accessToken) return null;
-      
-      const session = PNOAuthService.loadSession();
-      if (session?.did || session?.pnIdentifier) {
-        const userId = session.pnIdentifier || session.did;
-        const accountsResponse = await fetch(`${API_ENDPOINT}/api/storage/accounts/${userId}`, {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        });
-        
-        if (accountsResponse.ok) {
-          const accountsData = await accountsResponse.json();
-          const accounts = accountsData.accounts || [];
-          if (accounts.length > 0) {
-            const accountId = accounts[0].accountId;
-            sessionStorage.setItem('thumbnail_feed_accountId', accountId);
-            return accountId;
-          }
-        }
-      }
-    } catch (err) {
-      // Silently fail
-    }
-    return null;
-  }, [accountId]);
 
   // Load individual thumbnail - EXACT pattern from FullScreenFeed
   const loadThumbnail = useCallback(async (
@@ -174,7 +134,7 @@ export function HorizontalThumbnailFeed({
             if (thumbnailToken) {
               try {
                 const { decryptWithToken } = await import('../utils/tokenDecryption');
-                let token: ShareToken;
+                let token: ShareToken | null = null;
                 try {
                   token = typeof thumbnailToken === 'string' ? JSON.parse(thumbnailToken) : thumbnailToken;
                 } catch (e) {
@@ -183,6 +143,9 @@ export function HorizontalThumbnailFeed({
                 }
                 
                 // Decrypt using token (NO AUTH REQUIRED!)
+                if (!token) {
+                  throw new Error('Invalid thumbnail share token');
+                }
                 const decryptedBlob = await decryptWithToken(token);
                 imageUrl = URL.createObjectURL(decryptedBlob);
                 
@@ -400,8 +363,6 @@ export function HorizontalThumbnailFeed({
             const thumbnailUrl = thumbnailUrls.get(index);
             const isLoading = loadingThumbnailsRef.current.has(index);
             const hasFailed = failedThumbnailsRef.current.has(index);
-            const isCurrent = index === currentIndex;
-
             return (
               <div
                 key={`${thumbnailId}-${index}`}

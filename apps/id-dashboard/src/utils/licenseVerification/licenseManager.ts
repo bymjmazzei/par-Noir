@@ -1,21 +1,50 @@
-import { SecureMetadataStorage } from '../secureMetadataStorage';
-
-export interface LicenseInfo {
-  licenseKey: string;
-  type: 'free' | 'perpetual' | 'annual';
-  status: 'active' | 'expired' | 'suspended' | 'transferred';
-  issuedAt: string;
-  expiresAt: string;
-  identityHash: string;
-  isCommercial: boolean;
-  originalIssueDate?: string;
-  transferredFrom?: string;
-  transferDate?: string;
-}
+import type { LicenseInfo, LicenseReceipt } from '../../types/licenseVerification';
+export type { LicenseInfo } from '../../types/licenseVerification';
 
 export class LicenseManager {
-  private static secureStorage = new SecureMetadataStorage();
   private static readonly LICENSE_PREFIX = 'license_';
+  private static readonly DB_NAME = 'par-noir-license-storage';
+  private static readonly STORE_NAME = 'licenses';
+
+  private static openDatabase(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(this.STORE_NAME)) {
+          request.result.createObjectStore(this.STORE_NAME);
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  private static async getItem(key: string): Promise<string | null> {
+    const db = await this.openDatabase();
+    return new Promise((resolve, reject) => {
+      const request = db.transaction(this.STORE_NAME, 'readonly').objectStore(this.STORE_NAME).get(key);
+      request.onsuccess = () => resolve(typeof request.result === 'string' ? request.result : null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  private static async setItem(key: string, value: string): Promise<void> {
+    const db = await this.openDatabase();
+    return new Promise((resolve, reject) => {
+      const request = db.transaction(this.STORE_NAME, 'readwrite').objectStore(this.STORE_NAME).put(value, key);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  private static async getAllKeys(): Promise<string[]> {
+    const db = await this.openDatabase();
+    return new Promise((resolve, reject) => {
+      const request = db.transaction(this.STORE_NAME, 'readonly').objectStore(this.STORE_NAME).getAllKeys();
+      request.onsuccess = () => resolve(request.result.filter((key): key is string => typeof key === 'string'));
+      request.onerror = () => reject(request.error);
+    });
+  }
 
   // Check if license is valid (not expired, etc.)
   static isLicenseValid(licenseInfo: LicenseInfo): boolean {
@@ -31,7 +60,7 @@ export class LicenseManager {
   }
 
   // Generate receipt for accounting purposes
-  static generateReceipt(licenseInfo: LicenseInfo, paymentDetails: any): LicenseInfo {
+  static generateReceipt(licenseInfo: LicenseInfo, paymentDetails: any): LicenseReceipt {
     return {
       receiptId: `RCP_${Date.now()}_${licenseInfo.identityHash.substring(0, 8)}`,
       licenseType: licenseInfo.type,
@@ -95,7 +124,7 @@ export class LicenseManager {
   // Find license by identity hash
   static async findLicenseByIdentityHash(identityHash: string): Promise<LicenseInfo | null> {
     try {
-      const licenseData = await this.secureStorage.getItem(`${this.LICENSE_PREFIX}${identityHash}`);
+      const licenseData = await this.getItem(`${this.LICENSE_PREFIX}${identityHash}`);
       if (!licenseData) return null;
       
       const license: LicenseInfo = JSON.parse(licenseData);
@@ -108,7 +137,7 @@ export class LicenseManager {
   // Store license
   static async storeLicense(licenseInfo: LicenseInfo): Promise<void> {
     // Store in secure storage instead of localStorage
-    await this.secureStorage.setItem(
+    await this.setItem(
       `${this.LICENSE_PREFIX}${licenseInfo.identityHash}`, 
       JSON.stringify(licenseInfo)
     );
@@ -141,16 +170,16 @@ export class LicenseManager {
     // For now, we'll search through secure storage
     try {
       // Get all license keys from secure storage
-      const allKeys = await this.secureStorage.getAllKeys();
+      const allKeys = await this.getAllKeys();
       const licenseKeys = allKeys.filter(key => key.startsWith(this.LICENSE_PREFIX));
       
       for (const key of licenseKeys) {
-        const licenseData = await this.secureStorage.getItem(key);
+        const licenseData = await this.getItem(key);
         if (licenseData) {
           const license = JSON.parse(licenseData);
           if (license.licenseKey === licenseKey) {
             license.status = 'expired';
-            await this.secureStorage.setItem(key, JSON.stringify(license));
+            await this.setItem(key, JSON.stringify(license));
             break;
           }
         }

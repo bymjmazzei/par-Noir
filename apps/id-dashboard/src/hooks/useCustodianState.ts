@@ -94,7 +94,7 @@ export function useCustodianState() {
 
   // Recovery key form state
   const [recoveryKeyForm, setRecoveryKeyForm] = useState({
-    purpose: 'personal' as 'personal' | 'business' | 'emergency',
+    purpose: 'personal' as 'personal' | 'legal' | 'insurance' | 'will',
     description: ''
   });
 

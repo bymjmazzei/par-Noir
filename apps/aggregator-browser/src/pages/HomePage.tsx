@@ -8,7 +8,6 @@ import { useStorageConnected } from '../hooks/useStorageConnected';
 import { Search, Filter, User, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 import { calculateMediaScaling } from '../utils/mediaScaling';
-import { isNSFWContent } from '../constants/contentRatings';
 import { saveToFeed } from '../services/savedFeedService';
 import { FeedRail } from '../components/FeedRail';
 import { FullScreenFeed } from '../components/FullScreenFeed';
@@ -87,7 +86,6 @@ export function HomePage() {
     handleCreatorClick,
     handleNextFeed,
     handlePreviousFeed,
-    handleFeedCreated,
     setViewingCreatorId,
     setViewingBrandedFeed,
     setMePageTab,
@@ -95,9 +93,7 @@ export function HomePage() {
     setShowUploadModal,
     setShowSettings,
     setAddingToFeedFile,
-    setShowFeedBrowser,
     setCommentingFile,
-    setEditingFile,
     setInitialThread,
     setShowInbox,
     setActiveBottomTab,

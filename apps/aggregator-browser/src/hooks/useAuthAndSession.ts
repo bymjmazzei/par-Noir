@@ -25,9 +25,9 @@ import {
   hasStoredEncryptedIdentity,
 } from '../services/dmIdentitySession';
 import { registerMessagingReconnect } from '../services/messagingReconnect';
+import type { Feed, MetadataFilters } from '../types/aggregator';
 import {
   applyAllMessagingHandoffSources,
-  applyMessagingHandoffFromUnknown,
   applyMessagingOAuthHandoff,
   MESSAGING_HANDOFF_INCOMPLETE,
   messagingHandoffIncompleteMessage,
@@ -137,13 +137,13 @@ async function recoverAfterPopupClosed(
 
 export interface UseAuthAndSessionParams {
   setViewingCreatorId: (id: string | null) => void;
-  setActiveBottomTab: (tab: string) => void;
+  setActiveBottomTab: (tab: 'home' | 'search' | 'upload' | 'index' | 'messages') => void;
   setShowInbox: (v: boolean) => void;
   setShowSearch: (v: boolean) => void;
   setShowUploadModal: (v: boolean) => void;
-  setViewingBrandedFeed: (f: unknown) => void;
+  setViewingBrandedFeed: (feed: Feed | null) => void;
   showErrorToast: (msg: string) => void;
-  discoverFilesRef: React.MutableRefObject<((a?: unknown, b?: boolean, c?: number, d?: boolean) => Promise<void>) | null>;
+  discoverFilesRef: React.MutableRefObject<((filters?: MetadataFilters, reset?: boolean, page?: number, append?: boolean) => Promise<void>) | null>;
 }
 
 export function useAuthAndSession({
@@ -252,15 +252,28 @@ export function useAuthAndSession({
             throw new Error(MESSAGING_HANDOFF_INCOMPLETE);
           }
 
-        let feedTokens: unknown[] = [];
+        let feedTokens: import('../services/pnOAuthService').FeedToken[] = [];
         try {
           if (userInfo.pn_identifier) {
             const feedTokensResponse = await fetch(`${API_ENDPOINT}/api/feeds/tokens`, {
-              headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+              headers: {
+                Authorization: `Bearer ${tokenResponse.access_token}`,
+                Accept: 'application/json'
+              }
             });
             if (feedTokensResponse.ok) {
               const feedTokensData = await feedTokensResponse.json();
-              feedTokens = feedTokensData.feedTokens || [];
+              const raw = feedTokensData.feedTokens;
+              if (Array.isArray(raw)) {
+                feedTokens = raw.filter(
+                  (t: unknown): t is import('../services/pnOAuthService').FeedToken =>
+                    !!t &&
+                    typeof t === 'object' &&
+                    typeof (t as { feedId?: unknown }).feedId === 'string' &&
+                    typeof (t as { feedName?: unknown }).feedName === 'string' &&
+                    typeof (t as { subPnIdentifier?: unknown }).subPnIdentifier === 'string'
+                );
+              }
             }
           }
         } catch {
@@ -272,7 +285,7 @@ export function useAuthAndSession({
           refreshToken: tokenResponse.refresh_token,
           expiresAt: Date.now() + tokenResponse.expires_in * 1000,
           did: userInfo.did,
-          pnName: userInfo.nickname,
+          nickname: userInfo.nickname,
           pnIdentifier: userInfo.pn_identifier || undefined,
           publicKey: userInfo.public_key,
           feedTokens,

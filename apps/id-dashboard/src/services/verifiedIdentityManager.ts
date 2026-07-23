@@ -8,7 +8,7 @@ import {
   VerifiedZKPProof,
 } from '../types/verifiedIdentity';
 import { identityVerificationService } from './identityVerificationService';
-import { verificationPaymentHandler } from './verificationPaymentHandler';
+import { VerificationPaymentHandler } from './verificationPaymentHandler';
 
 // Verified Identity Manager
 // Manages verified identity data, ZKP generation, and storage
@@ -48,7 +48,7 @@ export class VerifiedIdentityManager {
 
     try {
       // Check if payment has been confirmed
-      const paymentStatus = await verificationPaymentHandler.getPaymentStatus(request.identityId);
+      const paymentStatus = await VerificationPaymentHandler.getPaymentStatus(request.identityId);
       
       if (!paymentStatus.hasPayment || !paymentStatus.isConfirmed) {
         return {
@@ -308,6 +308,7 @@ export class VerifiedIdentityManager {
     const verifiedZKP: VerifiedZKPProof = {
       ...standardZKP,
       proofType: this.mapDataPointToProofType(dataPointId),
+      verificationLevel: 'verified',
       metadata: {
         ...standardZKP.metadata,
         verificationId,

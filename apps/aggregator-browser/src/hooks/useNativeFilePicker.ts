@@ -3,7 +3,7 @@
  */
 
 import { Capacitor } from '@capacitor/core';
-import { Camera } from '@capacitor/camera';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 
 export type PickSource = 'camera' | 'photos';
 
@@ -17,10 +17,10 @@ export async function pickImageFromNative(source: PickSource): Promise<File | nu
   }
   try {
     const result = await Camera.getPhoto({
-      source: source === 'camera' ? 'CAMERA' : 'PHOTOS',
+      source: source === 'camera' ? CameraSource.Camera : CameraSource.Photos,
       quality: 90,
       allowEditing: false,
-      resultType: 'DataUrl'
+      resultType: CameraResultType.DataUrl
     });
     const dataUrl = result.dataUrl;
     if (!dataUrl) return null;

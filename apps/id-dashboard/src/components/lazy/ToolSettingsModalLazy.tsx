@@ -2,10 +2,14 @@ import React, { Suspense } from 'react';
 import { lazy } from 'react';
 
 // Lazy load the component
-const ToolSettingsModal = lazy(() => import('../components/ToolSettingsModal.tsx'));
+const ToolSettingsModal = lazy(() =>
+  import('../ToolSettingsModal.tsx').then(module => ({
+    default: module.ToolSettingsModal,
+  }))
+);
 
 // Lazy wrapper with loading state
-export const ToolSettingsModalLazy = (props) => (
+export const ToolSettingsModalLazy = (props: React.ComponentProps<typeof ToolSettingsModal>) => (
   <Suspense fallback={
     <div className="flex items-center justify-center p-8">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

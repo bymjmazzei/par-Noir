@@ -1,5 +1,5 @@
 // Hybrid Storage Module Index - Re-exports all hybrid storage functionality
-export * from '../types/hybridStorage';
+export * from '../../types/hybridStorage';
 export { HybridStorage } from './hybridStorage';
 export { EnvironmentDetector } from './environmentDetector';
 export { StorageInitializer } from './storageInitializer';

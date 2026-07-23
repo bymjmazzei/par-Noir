@@ -3,7 +3,6 @@
  * Shows helpful messages when there's no content
  */
 
-import React from 'react';
 import { Globe, Search, Filter, Sparkles } from 'lucide-react';
 
 interface EmptyStateProps {

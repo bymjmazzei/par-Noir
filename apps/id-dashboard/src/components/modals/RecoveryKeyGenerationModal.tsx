@@ -7,10 +7,10 @@ interface RecoveryKeyGenerationModalProps {
     purpose: 'personal' | 'legal' | 'insurance' | 'will';
     description: string;
   };
-  setRecoveryKeyForm: (form: {
+  setRecoveryKeyForm: React.Dispatch<React.SetStateAction<{
     purpose: 'personal' | 'legal' | 'insurance' | 'will';
     description: string;
-  }) => void;
+  }>>;
   onGenerateRecoveryKey: (purpose: 'personal' | 'legal' | 'insurance' | 'will', description: string) => void;
 }
 

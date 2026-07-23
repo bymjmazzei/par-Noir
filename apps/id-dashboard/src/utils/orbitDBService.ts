@@ -21,6 +21,9 @@ export interface OrbitDBConfig {
 
 export interface PNMetadata {
   pnId: string;
+  identityId?: string;
+  encryptedMetadata?: import('./secureMetadata').SecureMetadata;
+  timestamp?: string;
   nickname?: string;
   profilePicture?: string;
   preferences?: Record<string, any>;

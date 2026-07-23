@@ -40,6 +40,7 @@ export type SelectedInboxThread =
       preloadedMessages?: Message[];
       connectionId?: string;
       kemCiphertext?: string;
+      wrappedMessageRootKey?: string;
       spreadsheetId?: string;
     }
   | {

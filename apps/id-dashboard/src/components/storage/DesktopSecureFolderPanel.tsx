@@ -5,7 +5,7 @@ import type {
   SecureVolumeIdentity,
   SecureVolumeMountState,
   SecureVolumeUnlockPayload
-} from '../../desktop-dashboard/src/shared/ipcChannels';
+} from '../../../../desktop-dashboard/src/shared/ipcChannels';
 
 interface DesktopAuthEventPayload extends SecureVolumeIdentity {
   authToken: string;
@@ -21,7 +21,13 @@ const hasWindow = typeof window !== 'undefined';
 const resolveSecureVolumeApi = () => (hasWindow ? window.parNoirDesktop?.secureVolume : undefined);
 const resolveNativeApi = () => (hasWindow ? window.parNoirDesktop?.native : undefined);
 
-const bootstrapPlatform = hasWindow ? window.parNoirDesktop?.platform ?? 'unknown' : 'unknown';
+const browserPlatform: NodeJS.Platform =
+  typeof navigator !== 'undefined' && navigator.userAgent.includes('Windows')
+    ? 'win32'
+    : typeof navigator !== 'undefined' && navigator.userAgent.includes('Linux')
+      ? 'linux'
+      : 'darwin';
+const bootstrapPlatform = hasWindow ? window.parNoirDesktop?.platform ?? browserPlatform : browserPlatform;
 
 const initialState: SecureVolumeMountState = {
   mounted: false,

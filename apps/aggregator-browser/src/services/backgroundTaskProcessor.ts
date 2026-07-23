@@ -60,25 +60,25 @@ export async function processBackgroundTask(task: UploadTask): Promise<void> {
     // Route to specific processor
     switch (task.type) {
       case 'updateShareSettings':
-        await processShareSettingsUpdate(task, session, publicKey, accessToken);
+        await processShareSettingsUpdate(task, session, accessToken);
         break;
       case 'updateMetadata':
-        await processMetadataUpdate(task, session, publicKey, accessToken);
+        await processMetadataUpdate(task, accessToken);
         break;
       case 'createCollection':
-        await processCollectionCreation(task, session, publicKey, accessToken);
+        await processCollectionCreation(task);
         break;
       case 'deleteFile':
-        await processFileDeletion(task, session, publicKey, accessToken);
+        await processFileDeletion(task, accessToken);
         break;
       case 'bulkDelete':
-        await processBulkDeletion(task, session, publicKey, accessToken);
+        await processBulkDeletion(task, accessToken);
         break;
       case 'addToFeed':
-        await processAddToFeed(task, session, publicKey, accessToken);
+        await processAddToFeed(task);
         break;
       case 'saveToFeed':
-        await processSaveToFeed(task, session, publicKey, accessToken);
+        await processSaveToFeed(task, accessToken);
         break;
       default:
         throw new Error(`Unknown background task type: ${task.type}`);
@@ -108,8 +108,6 @@ async function resolveToThumbnailFileId(fileId: string, accessToken: string): Pr
     });
     
     if (response.ok) {
-      const data = await response.json();
-      const metadata = data.metadata || data;
       // If metadata exists, fileId is a thumbnail (or has metadata) - return it
       return fileId;
     }
@@ -130,7 +128,6 @@ async function resolveToThumbnailFileId(fileId: string, accessToken: string): Pr
 async function processShareSettingsUpdate(
   task: UploadTask,
   session: any,
-  publicKey: string,
   accessToken: string
 ): Promise<void> {
   const { fileId, accountId, shareVisibility, shareNSFW, indexerToggles, thirdPartyIndexers, nextPermissions: providedNextPermissions, existingMetadata } = task.metadata || {};
@@ -325,8 +322,6 @@ async function processShareSettingsUpdate(
  */
 async function processMetadataUpdate(
   task: UploadTask,
-  session: any,
-  publicKey: string | undefined,
   accessToken: string
 ): Promise<void> {
   const { fileId, accountId, metadata: formData } = task.metadata || {};
@@ -340,8 +335,8 @@ async function processMetadataUpdate(
   uploadQueueService.updateTaskProgress(task.id, 10);
 
   // Parse tags and genre
-  const tags = (formData.tags || '').split(',').map(t => t.trim()).filter(t => t.length > 0);
-  const genre = (formData.genre || '').split(',').map(g => g.trim()).filter(g => g.length > 0);
+  const tags = String(formData.tags || '').split(',').map((tag: string) => tag.trim()).filter((tag: string) => tag.length > 0);
+  const genre = String(formData.genre || '').split(',').map((item: string) => item.trim()).filter((item: string) => item.length > 0);
 
   uploadQueueService.updateTaskProgress(task.id, 15);
 
@@ -435,10 +430,7 @@ async function processMetadataUpdate(
  * Process collection creation
  */
 async function processCollectionCreation(
-  task: UploadTask,
-  session: any,
-  publicKey: string,
-  accessToken: string
+  task: UploadTask
 ): Promise<void> {
   const { collectionData, accountId, metadata: formData } = task.metadata || {};
   
@@ -449,35 +441,9 @@ async function processCollectionCreation(
   uploadQueueService.updateTaskProgress(task.id, 10);
 
   // Parse tags and genre
-  const tags = (formData?.tags || '').split(',').map(t => t.trim()).filter(Boolean);
-  const genre = (formData?.genre || '').split(',').map(g => g.trim()).filter(Boolean);
+  const tags = String(formData?.tags || '').split(',').map((tag: string) => tag.trim()).filter(Boolean);
 
   uploadQueueService.updateTaskProgress(task.id, 15);
-
-  // Build location object if provided
-  let locationCreated = undefined;
-  if (formData?.locationName || formData?.locationAddress) {
-    locationCreated = {
-      '@type': 'Place',
-      ...(formData.locationName && { name: formData.locationName }),
-      ...(formData.locationAddress && {
-        address: {
-          '@type': 'PostalAddress',
-          addressLocality: formData.locationAddress.split(',')[0]?.trim() || '',
-          addressRegion: formData.locationAddress.split(',')[1]?.trim() || '',
-          addressCountry: formData.locationAddress.split(',')[2]?.trim() || ''
-        }
-      })
-    };
-  }
-
-  // Extract subjects
-  const { extractSubjects } = await import('../utils/subjectExtractor');
-  const subjects = extractSubjects(
-    formData?.description || '',
-    tags,
-    tags
-  );
 
   uploadQueueService.updateTaskProgress(task.id, 30);
 
@@ -489,17 +455,10 @@ async function processCollectionCreation(
     },
     accountId,
     {
-      name: formData?.name,
       title: formData?.name,
       description: formData?.description,
       keywords: tags,
       tags: tags,
-      genre: genre.length > 0 ? genre : undefined,
-      feedCategories: formData?.categories && formData.categories.length > 0 ? formData.categories : undefined,
-      category: formData?.categories && formData.categories.length > 0 ? formData.categories[0] : undefined,
-      locationCreated: locationCreated,
-      license: formData?.license || undefined,
-      subjects: subjects.length > 0 ? subjects : undefined,
       isPublic: true, // Collections default to public
       isNSFW: false
     }
@@ -525,8 +484,6 @@ async function processCollectionCreation(
  */
 async function processFileDeletion(
   task: UploadTask,
-  session: any,
-  publicKey: string | undefined,
   accessToken: string
 ): Promise<void> {
   let { fileId, accountId, isCollection, collectionFileIds, isThoughtCollection } = task.metadata || {};
@@ -658,8 +615,6 @@ async function processFileDeletion(
  */
 async function processBulkDeletion(
   task: UploadTask,
-  session: any,
-  publicKey: string | undefined,
   accessToken: string
 ): Promise<void> {
   const { fileIds, accountId } = task.metadata || {};
@@ -707,10 +662,7 @@ async function processBulkDeletion(
  * Process add to feed
  */
 async function processAddToFeed(
-  task: UploadTask,
-  session: any,
-  publicKey: string | undefined,
-  accessToken: string
+  task: UploadTask
 ): Promise<void> {
   const { fileId, feedsToAdd, feedsToRemove, addedBy } = task.metadata || {};
   
@@ -789,8 +741,6 @@ async function processAddToFeed(
  */
 async function processSaveToFeed(
   task: UploadTask,
-  session: any,
-  publicKey: string | undefined,
   accessToken: string
 ): Promise<void> {
   const { fileId, userPnIdentifier, isSaved } = task.metadata || {};

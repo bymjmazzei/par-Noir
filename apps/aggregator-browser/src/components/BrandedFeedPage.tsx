@@ -3,7 +3,7 @@
  * Feed page for paid-tier creators with branding and community controls
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowLeft, Settings, Users, Calendar, Tag, Sparkles } from 'lucide-react';
 import { Feed, IndexedFile } from '../types/aggregator';
 import { ContentRatingBadge } from './ContentRatingBadge'; // Still used for isNSFW badge
@@ -21,7 +21,7 @@ interface BrandedFeedPageProps {
 }
 
 export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFeedPageProps) {
-  const { getLikeCount, isLiked, getComments, getShareCount } = useEngagement();
+  const { getLikeCount, getComments, getShareCount } = useEngagement();
   const { userState } = useUserState();
   const [showSettings, setShowSettings] = useState(false);
   const [editTitle, setEditTitle] = useState(feed.feedName);
@@ -230,9 +230,12 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
                             ...indexedFile.metadata,
                             engagement: {
                               ...indexedFile.metadata.engagement,
+                              views: indexedFile.metadata.engagement?.views || 0,
                               likes: getLikeCount(file.fileId, indexedFile.metadata.engagement?.likes || 0),
                               comments: getComments(file.fileId).length + (indexedFile.metadata.engagement?.comments || 0),
-                              shares: getShareCount(file.fileId, indexedFile.metadata.engagement?.shares || 0)
+                              shares: getShareCount(file.fileId, indexedFile.metadata.engagement?.shares || 0),
+                              saves: indexedFile.metadata.engagement?.saves || 0,
+                              lastUpdated: indexedFile.metadata.engagement?.lastUpdated || new Date().toISOString()
                             }
                           }
                         }}

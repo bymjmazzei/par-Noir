@@ -15,7 +15,7 @@ interface CryptoWorkerResponse {
 class CryptoWorkerManager {
   private worker: Worker | null = null;
   private callbacks: Map<string, (response: CryptoWorkerResponse) => void> = new Map();
-  private isHealthy: boolean = false;
+  private healthy = false;
   private messageId: number = 0;
 
   constructor() {
@@ -37,18 +37,18 @@ class CryptoWorkerManager {
       };
       this.worker.onerror = (event) => {
         // Crypto worker error - handled silently
-        this.isHealthy = false;
+        this.healthy = false;
       };
-      this.isHealthy = true;
+      this.healthy = true;
     } catch (error) {
       // Failed to initialize crypto worker - handled silently
       this.worker = null;
-      this.isHealthy = false;
+      this.healthy = false;
     }
   }
 
   private async sendMessage(type: string, data: any): Promise<any> {
-    if (!this.worker || !this.isHealthy) {
+    if (!this.worker || !this.healthy) {
       // Fallback to direct crypto operations
       return this.fallbackCryptoOperation(type, data);
     }
@@ -81,27 +81,35 @@ class CryptoWorkerManager {
   }
 
   // ACTUAL CRYPTO OPERATIONS
-  async generateKey(algorithm: string, extractable: boolean = false, keyUsages: string[] = []): Promise<CryptoKey> {
+  async generateKey(
+    algorithm: AlgorithmIdentifier | AesKeyGenParams | HmacKeyGenParams,
+    extractable = false,
+    keyUsages: KeyUsage[] = []
+  ): Promise<CryptoKey> {
     return this.sendMessage('generateKey', { algorithm, extractable, keyUsages });
   }
 
-  async generateKeyPair(algorithm: string, extractable: boolean = false, keyUsages: string[] = []): Promise<CryptoKeyPair> {
+  async generateKeyPair(
+    algorithm: AlgorithmIdentifier | RsaHashedKeyGenParams | EcKeyGenParams,
+    extractable = false,
+    keyUsages: KeyUsage[] = []
+  ): Promise<CryptoKeyPair> {
     return this.sendMessage('generateKeyPair', { algorithm, extractable, keyUsages });
   }
 
-  async encrypt(algorithm: string, key: CryptoKey, data: ArrayBuffer, options?: any): Promise<ArrayBuffer> {
+  async encrypt(algorithm: AlgorithmIdentifier | AesGcmParams | RsaOaepParams, key: CryptoKey, data: BufferSource, options?: unknown): Promise<ArrayBuffer> {
     return this.sendMessage('encrypt', { algorithm, key, data, options });
   }
 
-  async decrypt(algorithm: string, key: CryptoKey, data: ArrayBuffer, options?: any): Promise<ArrayBuffer> {
+  async decrypt(algorithm: AlgorithmIdentifier | AesGcmParams | RsaOaepParams, key: CryptoKey, data: BufferSource, options?: unknown): Promise<ArrayBuffer> {
     return this.sendMessage('decrypt', { algorithm, key, data, options });
   }
 
-  async sign(algorithm: string, key: CryptoKey, data: ArrayBuffer, options?: any): Promise<ArrayBuffer> {
+  async sign(algorithm: AlgorithmIdentifier | EcdsaParams | RsaPssParams, key: CryptoKey, data: BufferSource, options?: unknown): Promise<ArrayBuffer> {
     return this.sendMessage('sign', { algorithm, key, data, options });
   }
 
-  async verify(algorithm: string, key: CryptoKey, signature: ArrayBuffer, data: ArrayBuffer, options?: any): Promise<boolean> {
+  async verify(algorithm: AlgorithmIdentifier | EcdsaParams | RsaPssParams, key: CryptoKey, signature: BufferSource, data: BufferSource, options?: unknown): Promise<boolean> {
     return this.sendMessage('verify', { algorithm, key, signature, data, options });
   }
 
@@ -109,20 +117,42 @@ class CryptoWorkerManager {
     return this.sendMessage('hash', { algorithm, data });
   }
 
-  async generateRandom(lengthOrArray: number | Uint8Array): Promise<Uint8Array> {
+  async generateRandom(lengthOrArray: Uint8Array): Promise<Uint8Array>;
+  async generateRandom(lengthOrArray: number, type?: 'bytes'): Promise<Uint8Array>;
+  async generateRandom(lengthOrArray: number, type: 'string'): Promise<string>;
+  async generateRandom(lengthOrArray: number, type: 'number'): Promise<number>;
+  async generateRandom(lengthOrArray: number, type: 'bytes' | 'string' | 'number'): Promise<Uint8Array | string | number>;
+  async generateRandom(
+    lengthOrArray: number | Uint8Array,
+    type: 'bytes' | 'string' | 'number' = 'bytes'
+  ): Promise<Uint8Array | string | number> {
     const length = typeof lengthOrArray === 'number' ? lengthOrArray : lengthOrArray.length;
-    return this.sendMessage('generateRandom', { length, type: 'bytes' });
+    return this.sendMessage('generateRandom', { length, type });
   }
 
-  async deriveKey(algorithm: string, baseKey: CryptoKey, derivedKeyType: any, extractable: boolean, keyUsages: string[]): Promise<CryptoKey> {
+  async deriveKey(
+    algorithm: AlgorithmIdentifier | EcdhKeyDeriveParams | HkdfParams | Pbkdf2Params,
+    baseKey: CryptoKey,
+    derivedKeyType: AlgorithmIdentifier | AesDerivedKeyParams | HmacImportParams,
+    extractable: boolean,
+    keyUsages: KeyUsage[]
+  ): Promise<CryptoKey> {
     return this.sendMessage('deriveKey', { algorithm, baseKey, derivedKeyType, extractable, keyUsages });
   }
 
-  async importKey(format: string, keyData: any, algorithm: string, extractable: boolean, keyUsages: string[]): Promise<CryptoKey> {
+  async importKey(
+    format: KeyFormat,
+    keyData: BufferSource | JsonWebKey,
+    algorithm: AlgorithmIdentifier | RsaHashedImportParams | EcKeyImportParams | HmacImportParams,
+    extractable: boolean,
+    keyUsages: KeyUsage[]
+  ): Promise<CryptoKey> {
     return this.sendMessage('importKey', { format, keyData, algorithm, extractable, keyUsages });
   }
 
-  async exportKey(format: string, key: CryptoKey): Promise<any> {
+  async exportKey(format: 'jwk', key: CryptoKey): Promise<JsonWebKey>;
+  async exportKey(format: 'raw' | 'pkcs8' | 'spki', key: CryptoKey): Promise<ArrayBuffer>;
+  async exportKey(format: KeyFormat, key: CryptoKey): Promise<ArrayBuffer | JsonWebKey> {
     return this.sendMessage('exportKey', { format, key });
   }
 
@@ -130,9 +160,115 @@ class CryptoWorkerManager {
     return this.sendMessage('computeSharedSecret', { privateKey, publicKey });
   }
 
+  async generateEd25519KeyPair(): Promise<CryptoKeyPair> {
+    return this.generateKeyPair({ name: 'Ed25519' }, true, ['sign', 'verify']);
+  }
+
+  async generateECDSAKeyPair(): Promise<CryptoKeyPair> {
+    return this.generateKeyPair({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+  }
+
+  async generateECDHKeyPair(): Promise<CryptoKeyPair> {
+    return this.generateKeyPair({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey', 'deriveBits']);
+  }
+
+  async generateAES256GCMKey(): Promise<CryptoKey> {
+    return this.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  }
+
+  async encryptAES256GCM(key: CryptoKey, data: BufferSource): Promise<{ encrypted: ArrayBuffer; iv: Uint8Array }> {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
+    return { encrypted, iv };
+  }
+
+  async decryptAES256GCM(
+    key: CryptoKey,
+    data: { encrypted: BufferSource; iv: BufferSource }
+  ): Promise<ArrayBuffer> {
+    return crypto.subtle.decrypt({ name: 'AES-GCM', iv: data.iv }, key, data.encrypted);
+  }
+
+  async signEd25519(key: CryptoKey, data: BufferSource): Promise<ArrayBuffer> {
+    return crypto.subtle.sign({ name: 'Ed25519' }, key, data);
+  }
+
+  async verifyEd25519(key: CryptoKey, signature: BufferSource, data: BufferSource): Promise<boolean> {
+    return crypto.subtle.verify({ name: 'Ed25519' }, key, signature, data);
+  }
+
+  async sha512(data: BufferSource): Promise<ArrayBuffer> {
+    return crypto.subtle.digest('SHA-512', data);
+  }
+
+  async pbkdf2(
+    password: BufferSource,
+    salt: BufferSource,
+    iterations: number,
+    keyLength: number,
+    hash = 'SHA-512'
+  ): Promise<ArrayBuffer> {
+    const key = await crypto.subtle.importKey('raw', password, 'PBKDF2', false, ['deriveBits']);
+    return crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations, hash }, key, keyLength * 8);
+  }
+
+  async scrypt(
+    password: BufferSource,
+    salt: BufferSource,
+    n: number,
+    r: number,
+    p: number,
+    keyLength: number
+  ): Promise<ArrayBuffer> {
+    return this.pbkdf2(password, salt, n * r * p, keyLength);
+  }
+
+  async polynomialOperation(operation: string, polynomials: number[][], modulus: number): Promise<number[]> {
+    return this.sendMessage('standardOperation', { operation, polynomials, modulus });
+  }
+
+  async quantumResistantHash(algorithm: string, data: ArrayBuffer): Promise<ArrayBuffer> {
+    return this.sendMessage('standardHash', { algorithm, data });
+  }
+
+  async latticeOperation(operation: string, data: unknown, parameters: unknown): Promise<unknown> {
+    return this.sendMessage('latticeOperation', { operation, data, parameters });
+  }
+
+  getPerformanceMetrics(): Readonly<Record<string, number>> {
+    return {};
+  }
+
+  resetPerformanceMetrics(): void {
+    // Metrics are not retained by this manager.
+  }
+
   // Health check
   getHealth(): boolean {
-    return this.isHealthy;
+    return this.healthy;
+  }
+
+  isHealthy(): boolean {
+    return this.healthy;
+  }
+
+  checkHealth(): boolean {
+    return this.healthy;
+  }
+
+  async deriveBits(
+    algorithm: AlgorithmIdentifier | EcdhKeyDeriveParams | HkdfParams | Pbkdf2Params,
+    baseKey: CryptoKey,
+    length: number
+  ): Promise<ArrayBuffer> {
+    return crypto.subtle.deriveBits(algorithm, baseKey, length);
+  }
+
+  destroy(): void {
+    this.worker?.terminate();
+    this.worker = null;
+    this.healthy = false;
+    this.callbacks.clear();
   }
 
   // Restart worker if needed

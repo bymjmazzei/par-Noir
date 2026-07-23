@@ -119,7 +119,7 @@ export async function processPDFPagesParallel(params: ProcessPDFPagesParallelPar
       throw new Error(`Failed to get canvas context for page ${pageNum}`);
     }
 
-    await page.render({ canvasContext: ctx, viewport: scaledViewport } as unknown as import('pdfjs-dist').RenderTask).promise;
+    await page.render({ canvas, canvasContext: ctx, viewport: scaledViewport }).promise;
 
     const thumbnailBlob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Failed to create blob'))), 'image/jpeg', 0.85);

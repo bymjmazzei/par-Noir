@@ -67,7 +67,7 @@ self.addEventListener('message', async (event: MessageEvent<CryptoWorkerMessage>
         break;
         
       case 'exportKey':
-        result = await exportKey(format, data.key);
+        result = await exportKey(data.format, data.key);
         break;
         
       case 'computeSharedSecret':
@@ -115,7 +115,7 @@ self.addEventListener('message', async (event: MessageEvent<CryptoWorkerMessage>
 });
 
 // Enhanced key generation
-async function generateKey(algorithm: string, extractable: boolean, keyUsages: string[]) {
+async function generateKey(algorithm: string, extractable: boolean, keyUsages: KeyUsage[]) {
   switch (algorithm) {
     case 'Ed25519':
       return await crypto.subtle.generateKey(
@@ -145,13 +145,6 @@ async function generateKey(algorithm: string, extractable: boolean, keyUsages: s
         keyUsages
       );
       
-    case 'AES-CCM':
-      return await crypto.subtle.generateKey(
-        { name: 'AES-CCM', length: 256 },
-        extractable,
-        keyUsages
-      );
-      
     case 'HMAC':
       return await crypto.subtle.generateKey(
         { name: 'HMAC', hash: 'SHA-512' },
@@ -165,7 +158,7 @@ async function generateKey(algorithm: string, extractable: boolean, keyUsages: s
 }
 
 // Key pair generation
-async function generateKeyPair(algorithm: string, extractable: boolean, keyUsages: string[]) {
+async function generateKeyPair(algorithm: string, extractable: boolean, keyUsages: KeyUsage[]) {
   switch (algorithm) {
     case 'Ed25519':
       return await crypto.subtle.generateKey(
@@ -212,18 +205,9 @@ async function encrypt(algorithm: string, key: CryptoKey, data: ArrayBuffer, opt
       );
       return { encrypted, iv };
       
-    case 'AES-CCM':
-      const ccmIv = options.iv || crypto.getRandomValues(new Uint8Array(12));
-      const ccmEncrypted = await crypto.subtle.encrypt(
-        { name: 'AES-CCM', iv: ccmIv, tagLength: 128 },
-        key,
-        data
-      );
-      return { encrypted: ccmEncrypted, iv: ccmIv };
-      
     case 'RSA-OAEP':
       return await crypto.subtle.encrypt(
-        { name: 'RSA-OAEP', hash: 'SHA-512' },
+        { name: 'RSA-OAEP' },
         key,
         data
       );
@@ -243,16 +227,9 @@ async function decrypt(algorithm: string, key: CryptoKey, data: any, options: an
         data.encrypted
       );
       
-    case 'AES-CCM':
-      return await crypto.subtle.decrypt(
-        { name: 'AES-CCM', iv: data.iv, tagLength: 128 },
-        key,
-        data.encrypted
-      );
-      
     case 'RSA-OAEP':
       return await crypto.subtle.decrypt(
-        { name: 'RSA-OAEP', hash: 'SHA-512' },
+        { name: 'RSA-OAEP' },
         key,
         data
       );
@@ -359,38 +336,41 @@ async function hash(algorithm: string, data: ArrayBuffer) {
 }
 
 // Key derivation
-async function deriveKey(algorithm: string, baseKey: CryptoKey, derivedKeyAlgorithm: any, extractable: boolean, keyUsages: string[]) {
-  switch (algorithm) {
-    case 'ECDH':
-      return await crypto.subtle.deriveKey(
-        { name: 'ECDH', public: baseKey },
-        baseKey,
-        derivedKeyAlgorithm,
-        extractable,
-        keyUsages
-      );
-      
-    case 'PBKDF2':
-      return await crypto.subtle.deriveKey(
-        { name: 'PBKDF2', salt: baseKey, iterations: 100000, hash: 'SHA-512' },
-        baseKey,
-        derivedKeyAlgorithm,
-        extractable,
-        keyUsages
-      );
-      
-    default:
-      throw new Error(`Unsupported key derivation algorithm: ${algorithm}`);
-  }
+async function deriveKey(
+  algorithm: AlgorithmIdentifier | EcdhKeyDeriveParams | HkdfParams | Pbkdf2Params,
+  baseKey: CryptoKey,
+  derivedKeyAlgorithm: AesDerivedKeyParams | HmacImportParams | Pbkdf2Params,
+  extractable: boolean,
+  keyUsages: KeyUsage[]
+) {
+  return crypto.subtle.deriveKey(
+    algorithm,
+    baseKey,
+    derivedKeyAlgorithm,
+    extractable,
+    keyUsages
+  );
 }
 
 // Key import
-async function importKey(format: string, keyData: any, algorithm: any, extractable: boolean, keyUsages: string[]) {
-  return await crypto.subtle.importKey(format, keyData, algorithm, extractable, keyUsages);
+async function importKey(
+  format: KeyFormat,
+  keyData: BufferSource | JsonWebKey,
+  algorithm: AlgorithmIdentifier | RsaHashedImportParams | EcKeyImportParams | HmacImportParams,
+  extractable: boolean,
+  keyUsages: KeyUsage[]
+) {
+  if (format === 'jwk') {
+    return crypto.subtle.importKey('jwk', keyData as JsonWebKey, algorithm, extractable, keyUsages);
+  }
+  return crypto.subtle.importKey(format, keyData as BufferSource, algorithm, extractable, keyUsages);
 }
 
 // Key export
-async function exportKey(format: string, key: CryptoKey) {
+async function exportKey(format: KeyFormat, key: CryptoKey) {
+  if (format === 'jwk') {
+    return crypto.subtle.exportKey('jwk', key);
+  }
   return await crypto.subtle.exportKey(format, key);
 }
 
@@ -532,7 +512,7 @@ function sampleLattice(dimension: number, modulus: number): number[] {
   return result;
 }
 
-function decomposeLattice(vector: number[], base: number): number[] {
+function decomposeLattice(vector: number[], base: number): number[][] {
   return vector.map(coefficient => {
     const decomposed = [];
     let value = Math.abs(coefficient);

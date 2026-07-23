@@ -29,9 +29,7 @@ interface FeedRailProps {
 export function FeedRail({ 
   feeds, 
   activeFeedId, 
-  onFeedSelect, 
-  onBrowseFeeds
-}: FeedRailProps) {
+  onFeedSelect}: FeedRailProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const innerContainerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -76,15 +74,11 @@ export function FeedRail({
       return { min: 0, max: 0 };
     }
     
-    const firstElement = allFeedElements[0];
     const lastElement = allFeedElements[allFeedElements.length - 1];
     const screenCenter = window.innerWidth / 2;
     const containerRect = container.getBoundingClientRect();
     
     // Calculate min scroll (when first element is centered)
-    const firstElementRect = firstElement.getBoundingClientRect();
-    const firstElementCenter = firstElementRect.left - containerRect.left + (firstElementRect.width / 2);
-    const minScroll = Math.max(0, container.scrollLeft + (firstElementCenter - screenCenter));
     
     // Calculate max scroll (when last element is centered)
     const lastElementRect = lastElement.getBoundingClientRect();

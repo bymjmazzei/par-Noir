@@ -2,7 +2,7 @@
  * Messages page - Inbox (messages and notifications).
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Inbox } from '../components/Inbox';
 import { Notification } from '../services/notificationService';
 import { KeyDeviceBanner } from '../components/KeyDeviceBanner';

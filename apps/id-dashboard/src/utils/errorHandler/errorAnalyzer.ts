@@ -1,6 +1,6 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '../crypto/cryptoWorkerManager';
 // Error Analyzer - Handles error analysis, severity determination, and sanitization
-import { ErrorContext, ErrorHandlerConfig } from '../types/errorHandler';
+import { ErrorContext, ErrorHandlerConfig } from '../../types/errorHandler';
 
 export class ErrorAnalyzer {
   private config: ErrorHandlerConfig;

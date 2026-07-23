@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '../cryptoWorkerManager';
 // Password/Passcode Management
 export class PasswordManager {
   /**

@@ -3,9 +3,9 @@
  * Settings panel for notification preferences
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Settings } from 'lucide-react';
-import { NotificationService, NotificationPreferences } from '../services/notificationService';
+import { NotificationService, type NotificationPreferences as NotificationPreferencesData } from '../services/notificationService';
 import { useUserState } from '../contexts/UserStateContext';
 
 interface NotificationPreferencesProps {
@@ -15,9 +15,9 @@ interface NotificationPreferencesProps {
 
 export function NotificationPreferences({ isOpen, onClose }: NotificationPreferencesProps) {
   const { userState } = useUserState();
-  const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [preferences, setPreferences] = useState<NotificationPreferencesData | null>(null);
+  const [, setLoading] = useState(false);
+  const [, setSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen && userState.isUnlocked && userState.pnIdentifier) {
@@ -53,7 +53,7 @@ export function NotificationPreferences({ isOpen, onClose }: NotificationPrefere
     }
   };
 
-  const updatePreference = async (key: keyof Omit<NotificationPreferences, 'user_did'>, value: boolean) => {
+  const updatePreference = async (key: keyof Omit<NotificationPreferencesData, 'user_did'>, value: boolean) => {
     if (!preferences || !userState.pnIdentifier) return;
 
     const updated = { ...preferences, [key]: value };

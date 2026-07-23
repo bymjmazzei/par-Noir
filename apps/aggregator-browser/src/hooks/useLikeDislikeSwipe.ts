@@ -58,7 +58,9 @@ export function useLikeDislikeSwipe({
       return;
     }
 
-    const handleTouchStart = (e: TouchEvent) => {
+    const handleTouchStart: EventListener = (event) => {
+      if (!(event instanceof TouchEvent)) return;
+      const e = event;
       const target = e.target as HTMLElement;
       const element = elementRef.current;
       
@@ -95,7 +97,9 @@ export function useLikeDislikeSwipe({
       }
     };
 
-    const handleTouchMove = (e: TouchEvent) => {
+    const handleTouchMove: EventListener = (event) => {
+      if (!(event instanceof TouchEvent)) return;
+      const e = event;
       if (!touchStartRef.current || isSwipingRef.current) return;
       
       const target = e.target as HTMLElement;
@@ -136,7 +140,9 @@ export function useLikeDislikeSwipe({
       }
     };
 
-    const handleTouchEnd = (e: TouchEvent) => {
+    const handleTouchEnd: EventListener = (event) => {
+      if (!(event instanceof TouchEvent)) return;
+      const e = event;
       // Clear hold timer
       if (holdTimerRef.current) {
         clearTimeout(holdTimerRef.current);
@@ -213,9 +219,9 @@ export function useLikeDislikeSwipe({
       if (holdTimerRef.current) {
         clearTimeout(holdTimerRef.current);
       }
-      element.removeEventListener('touchstart', handleTouchStart, { capture: useCapture } as any);
-      element.removeEventListener('touchmove', handleTouchMove, { capture: useCapture } as any);
-      element.removeEventListener('touchend', handleTouchEnd, { capture: useCapture } as any);
+      element.removeEventListener('touchstart', handleTouchStart, useCapture);
+      element.removeEventListener('touchmove', handleTouchMove, useCapture);
+      element.removeEventListener('touchend', handleTouchEnd, useCapture);
     };
   }, [enabled, threshold, snapThreshold, holdDuration, isCollection, onSwipeLeft, onSwipeRight, handleSwipe]);
 

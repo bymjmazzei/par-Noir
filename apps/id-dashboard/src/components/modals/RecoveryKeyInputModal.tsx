@@ -10,11 +10,11 @@ interface RecoveryKeyInputModalProps {
     contactType: 'email' | 'phone';
     contactValue: string;
   };
-  setRecoveryKeyContactInfo: (info: {
+  setRecoveryKeyContactInfo: React.Dispatch<React.SetStateAction<{
     claimantName: string;
     contactType: 'email' | 'phone';
     contactValue: string;
-  }) => void;
+  }>>;
   onInitiateRecoveryWithKey: (recoveryKey: string, contactInfo: {
     contactType: 'email' | 'phone';
     contactValue: string;

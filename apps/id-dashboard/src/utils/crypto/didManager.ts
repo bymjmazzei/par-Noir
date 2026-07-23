@@ -1,5 +1,5 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
-import { KeyPair, DIDResult } from '../types/crypto';
+import { cryptoWorkerManager } from '../cryptoWorkerManager';
+import { KeyPair, DIDResult } from '../../types/crypto';
 
 export class DIDManager {
     private static readonly DID_PREFIX = 'did:key:';
@@ -26,7 +26,7 @@ export class DIDManager {
      */
     static async generateKeyPair(): Promise<KeyPair> {
         try {
-            const keyPair = await cryptoWorkerManager.generateKey({
+            const keyPair = await cryptoWorkerManager.generateKeyPair({
                 name: 'RSA-OAEP',
                 modulusLength: 2048,
                 publicExponent: new Uint8Array([1, 0, 1]),

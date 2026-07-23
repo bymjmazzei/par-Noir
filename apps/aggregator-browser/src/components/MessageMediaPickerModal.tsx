@@ -348,7 +348,13 @@ export function MessageMediaPickerModal({
                     className="aspect-square rounded-lg bg-neutral-800 border border-neutral-700 hover:border-blue-500 overflow-hidden flex flex-col items-center justify-center p-1"
                   >
                     {file.metadata.thumbnail ? (
-                      <img src={file.metadata.thumbnail} alt="" className="w-full h-full object-cover" />
+                      <img
+                        src={typeof file.metadata.thumbnail === 'string'
+                          ? file.metadata.thumbnail
+                          : file.metadata.thumbnail['@id']}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
                     ) : (
                       <ImageIcon className="h-8 w-8 text-neutral-500 mb-1" />
                     )}

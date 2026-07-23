@@ -3,7 +3,6 @@
  * Shows NSFW badge if content is NSFW
  */
 
-import React from 'react';
 import { Shield } from 'lucide-react';
 
 interface ContentRatingBadgeProps {

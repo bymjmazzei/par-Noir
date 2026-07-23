@@ -3,7 +3,7 @@
  * Handles horizontal swipe gestures for feed switching
  */
 
-import { useRef, useEffect, RefObject, useCallback } from 'react';
+import { useRef, useEffect, useCallback, type MutableRefObject } from 'react';
 
 export interface HorizontalSwipeHandlers {
   onSwipeLeft?: () => void; // Next feed
@@ -19,7 +19,7 @@ export function useHorizontalSwipe({
   threshold = 50,
   enabled = true,
   snapThreshold = 0.2
-}: HorizontalSwipeHandlers): RefObject<HTMLDivElement> {
+}: HorizontalSwipeHandlers): MutableRefObject<HTMLDivElement | null> {
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const elementRef = useRef<HTMLDivElement | null>(null);
   const isSwipingRef = useRef(false);
@@ -46,7 +46,9 @@ export function useHorizontalSwipe({
       return;
     }
 
-    const handleTouchStart = (e: TouchEvent) => {
+    const handleTouchStart: EventListener = (event) => {
+      if (!(event instanceof TouchEvent)) return;
+      const e = event;
       // Only handle if touching the actual element (not a child that might have its own handlers)
       const target = e.target as HTMLElement;
       const element = elementRef.current;
@@ -77,7 +79,9 @@ export function useHorizontalSwipe({
       };
     };
 
-    const handleTouchMove = (e: TouchEvent) => {
+    const handleTouchMove: EventListener = (event) => {
+      if (!(event instanceof TouchEvent)) return;
+      const e = event;
       if (!touchStartRef.current || isSwipingRef.current) return;
       
       const target = e.target as HTMLElement;
@@ -115,7 +119,9 @@ export function useHorizontalSwipe({
       }
     };
 
-    const handleTouchEnd = (e: TouchEvent) => {
+    const handleTouchEnd: EventListener = (event) => {
+      if (!(event instanceof TouchEvent)) return;
+      const e = event;
       if (!touchStartRef.current || isSwipingRef.current) {
         touchStartRef.current = null;
         return;
@@ -202,9 +208,9 @@ export function useHorizontalSwipe({
     element.addEventListener('touchend', handleTouchEnd, { passive: true, capture: useCapture });
 
     return () => {
-      element.removeEventListener('touchstart', handleTouchStart, { capture: useCapture } as any);
-      element.removeEventListener('touchmove', handleTouchMove, { capture: useCapture } as any);
-      element.removeEventListener('touchend', handleTouchEnd, { capture: useCapture } as any);
+      element.removeEventListener('touchstart', handleTouchStart, useCapture);
+      element.removeEventListener('touchmove', handleTouchMove, useCapture);
+      element.removeEventListener('touchend', handleTouchEnd, useCapture);
     };
   }, [enabled, threshold, snapThreshold, onSwipeLeft, onSwipeRight, handleSwipe]);
 

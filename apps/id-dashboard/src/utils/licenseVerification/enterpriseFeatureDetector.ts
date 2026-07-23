@@ -1,5 +1,5 @@
 // Enterprise Feature Detector - Handles enterprise feature access detection
-import { EnterpriseFeatureAccess } from '../types/licenseVerification';
+import { EnterpriseFeatureAccess } from '../../types/licenseVerification';
 
 export class EnterpriseFeatureDetector {
   // Detection mechanism storage

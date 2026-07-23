@@ -66,6 +66,14 @@ export interface FeedPost {
   updatedAt: string;
 }
 
+export interface FeedDelegate {
+  delegationId: string;
+  delegateDid: string;
+  delegateName?: string;
+  permissions: Array<'read' | 'write' | 'manage'>;
+  createdAt: string;
+}
+
 export class FeedService {
   /**
    * Create a new feed
@@ -329,6 +337,69 @@ export class FeedService {
       console.error('Failed to get delegated feeds:', error);
       return [];
     }
+  }
+
+  static async getDelegates(feedId: string): Promise<{ delegates: FeedDelegate[] }> {
+    const authenticatedUser = FeedService.getAuthenticatedUser();
+    const response = await ownerGet(
+      authenticatedUser.accessToken,
+      `/api/feeds/${feedId}/delegates`
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch feed delegates');
+    }
+
+    return response.json();
+  }
+
+  static async delegateFeed(
+    feedId: string,
+    delegateDid: string,
+    permissions: FeedDelegate['permissions']
+  ): Promise<void> {
+    const authenticatedUser = FeedService.getAuthenticatedUser();
+    const response = await ownerFetch(
+      authenticatedUser.accessToken,
+      'POST',
+      `/api/feeds/${feedId}/delegates`,
+      { delegateDid, permissions }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to delegate feed');
+    }
+  }
+
+  static async removeDelegate(feedId: string, delegationId: string): Promise<void> {
+    const authenticatedUser = FeedService.getAuthenticatedUser();
+    const response = await ownerFetch(
+      authenticatedUser.accessToken,
+      'DELETE',
+      `/api/feeds/${feedId}/delegates/${delegationId}`
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to remove feed delegate');
+    }
+  }
+
+  private static getAuthenticatedUser(): { accessToken: string } {
+    const authenticatedUserStr = localStorage.getItem('authenticated_user');
+    if (!authenticatedUserStr) {
+      throw new Error('User not authenticated');
+    }
+
+    const authenticatedUser = JSON.parse(authenticatedUserStr) as {
+      accessToken?: string;
+      token?: string;
+    };
+    const accessToken = authenticatedUser.accessToken || authenticatedUser.token;
+    if (!accessToken) {
+      throw new Error('User not authenticated');
+    }
+
+    return { accessToken };
   }
 }
 

@@ -1,10 +1,11 @@
 import React, { useState, useCallback } from 'react';
 import { X, Shield, CheckCircle, AlertCircle, DollarSign } from 'lucide-react';
 import { CoinbaseProxy, CoinbaseCheckout, CheckoutRequest } from '../utils/coinbaseProxy';
-import { verificationPaymentHandler } from '../services/verificationPaymentHandler';
+import { VerificationPaymentHandler } from '../services/verificationPaymentHandler';
 import { API_ENDPOINT } from '../config/api';
 import { VERIFF_ENABLED, COINBASE_COMMERCE_ENABLED } from '../config/verification';
 import type { EncryptedIdentity } from '../types/crypto';
+import type { VerifiedIdentityData } from '../types/verifiedIdentity';
 
 interface IdentityVerificationModalProps {
   isOpen: boolean;
@@ -13,26 +14,6 @@ interface IdentityVerificationModalProps {
   identityId?: string;
   /** Required to mint ZK v1 proofs (ML-DSA). */
   encryptedIdentity?: EncryptedIdentity;
-}
-
-interface VerifiedIdentityData {
-  id: string;
-  verificationId: string;
-  verificationLevel: 'basic' | 'enhanced' | 'verified';
-  verifiedAt: string;
-  dataPoints: {
-    [key: string]: {
-      value: any;
-      zkpProof: string;
-      verified: boolean;
-    };
-  };
-  fraudPrevention: {
-    livenessCheck: boolean;
-    documentAuthenticity: boolean;
-    biometricMatch: boolean;
-    riskScore: number;
-  };
 }
 
 interface VerificationStep {
@@ -131,7 +112,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
   const handlePaymentComplete = useCallback(async () => {
     try {
       // Check if payment is actually confirmed
-      const paymentStatus = await verificationPaymentHandler.getPaymentStatus(identityId || '');
+      const paymentStatus = await VerificationPaymentHandler.getPaymentStatus(identityId || '');
       
       if (paymentStatus.isConfirmed) {
         setPaymentData(prev => ({

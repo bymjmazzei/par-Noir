@@ -39,7 +39,8 @@ export class RateLimiter {
     if (!limit) {
       this.limits.set(identifier, {
         requests: 1,
-        resetTime: now + this.config.windowMs
+        resetTime: now + this.config.windowMs,
+        blocked: false
       });
       return true;
     }

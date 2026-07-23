@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, User, Rss, X } from 'lucide-react';
+import { ChevronDown, User, Rss } from 'lucide-react';
 import { AppContext } from '../hooks/useAppContext';
 
 interface ContextSwitcherProps {

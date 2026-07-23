@@ -4,7 +4,6 @@
  * Uses shared OAuth runtime from @par-noir/oauth-ui only.
  */
 
-import React from 'react';
 import { Lock, Heart, MessageCircle, Share2 } from 'lucide-react';
 import { UnlockButton, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
 import { useUserState } from '../contexts/UserStateContext';

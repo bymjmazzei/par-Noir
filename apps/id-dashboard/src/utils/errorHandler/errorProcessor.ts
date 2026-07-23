@@ -1,5 +1,5 @@
 // Error Processing - Handles errors, warnings, and info messages
-import { ErrorEvent, ErrorContext } from '../types/errorHandler';
+import { ErrorEvent, ErrorContext } from '../../types/errorHandler';
 import { ErrorLogger } from './errorLogger';
 import { ErrorStorage } from './errorStorage';
 import { ErrorTracker } from './errorTracker';

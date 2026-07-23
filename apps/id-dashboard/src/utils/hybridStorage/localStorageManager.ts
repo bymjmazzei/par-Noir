@@ -1,5 +1,5 @@
 // LocalStorage Manager - Handles localStorage operations
-import { StorageConfig } from '../types/hybridStorage';
+import { StorageConfig } from '../../types/hybridStorage';
 
 export class LocalStorageManager {
   private config: StorageConfig;

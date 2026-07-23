@@ -2,7 +2,6 @@
  * Me / profile page - creator view with MePageTabsRail and FullScreenFeed or empty state.
  */
 
-import React from 'react';
 import { MePageTabsRail } from '../components/MePageTabsRail';
 import { FullScreenFeed } from '../components/FullScreenFeed';
 import { FeedEngagementSidebar } from '../components/FeedEngagementSidebar';

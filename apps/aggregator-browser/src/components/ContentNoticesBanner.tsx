@@ -3,7 +3,7 @@
  * Shows when user has pending review or taken-down notices. Taken down = removed from index only.
  */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { getContentNotices, type ContentNotice } from '../services/contentNoticesService';
 

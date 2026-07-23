@@ -1,33 +1,7 @@
 import { useState, useEffect } from 'react';
+import type { RecoveryCustodian, RecoveryRequest, RecoveryKey } from '../types/app';
 
-export interface RecoveryCustodian {
-  id: string;
-  name: string;
-  contactType: 'email' | 'phone';
-  contactValue: string;
-  type: 'person' | 'service' | 'self';
-  status: 'active' | 'pending' | 'revoked';
-  createdAt: number;
-}
-
-export interface RecoveryRequest {
-  id: string;
-  requestingUser: string;
-  timestamp: number;
-  status: 'pending' | 'approved' | 'denied';
-  claimantContactType?: 'email' | 'phone';
-  claimantContactValue?: string;
-  signatures: any[];
-  approvals: any[];
-}
-
-export interface RecoveryKey {
-  id: string;
-  purpose: string;
-  description: string;
-  createdAt: number;
-  isActive: boolean;
-}
+export type { RecoveryCustodian, RecoveryRequest, RecoveryKey };
 
 export function useIdentityState() {
   // Authentication state

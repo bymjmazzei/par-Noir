@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { useUserState, CuratedFeedPreferences } from '../contexts/UserStateContext';
+import { useUserState } from '../contexts/UserStateContext';
 
 interface CuratedFeedDropdownProps {
   onClose?: () => void;

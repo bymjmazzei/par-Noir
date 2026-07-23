@@ -144,16 +144,21 @@ export async function runFullDriveMigration(params: DriveMigrationParams): Promi
       if (f.name === 'profile.json') {
         parsed = patchProfileJson(parsed as Record<string, unknown>, successor.pnIdentifier, successor.mlKemPublicKey);
       } else if (f.name.endsWith('.metadata.json') && (parsed as { owner?: unknown }).owner) {
+        type CompanionMetadata = {
+          owner: { did?: string; identifier: string };
+          publicToken?: NonNullable<Parameters<typeof patchPublicTokenShareEncrypted>[0]>;
+          [key: string]: unknown;
+        };
         let companion = patchCompanionMetadata(
-          parsed as { owner: { did?: string; identifier: string } },
+          parsed as CompanionMetadata,
           predecessor,
           successor
         );
-        if ((companion as { publicToken?: unknown }).publicToken) {
+        if (companion.publicToken) {
           companion = {
             ...companion,
             publicToken: await patchPublicTokenShareEncrypted(
-              (companion as { publicToken: NonNullable<Parameters<typeof patchPublicTokenShareEncrypted>[0]> }).publicToken,
+              companion.publicToken,
               predecessor,
               successor
             ),

@@ -1,5 +1,6 @@
 // Encryption and Decryption Operations
-import { EncryptedData, DecryptionParameters } from '../types/crypto';
+import { EncryptedData, DecryptionParameters } from '../../types/crypto';
+import { cryptoWorkerManager } from '../cryptoWorkerManager';
 // Note: We use direct crypto.subtle instead of cryptoWorkerManager for file operations
 // to avoid serialization issues and timeouts with large files
 
@@ -40,7 +41,7 @@ export class EncryptionManager {
             
             return {
                 encrypted: this.arrayBufferToBase64(encryptedBuffer),
-                iv: this.arrayBufferToBase64(iv),
+                iv: this.arrayBufferToBase64(iv.buffer),
                 salt
             };
         } catch (error: any) {
@@ -140,7 +141,7 @@ export class EncryptionManager {
             const encryptedBuffer = await cryptoWorkerManager.encrypt({ name: 'AES-GCM', iv }, key, dataBuffer);
             return {
                 encrypted: this.arrayBufferToBase64(encryptedBuffer),
-                iv: this.arrayBufferToBase64(iv),
+                iv: this.arrayBufferToBase64(iv.buffer),
                 salt
             };
         } catch (error) {
@@ -343,16 +344,16 @@ export class EncryptionManager {
     /**
      * Generate salt for encryption (static method for legacy)
      */
-    private static async generateSalt(): Promise<string> {
-        const salt = await cryptoWorkerManager.generateRandom(new Uint8Array(16));
-        return this.arrayBufferToBase64(salt);
+    private static generateSalt(): string {
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        return this.arrayBufferToBase64(salt.buffer);
     }
 
     /**
      * Generate IV for encryption (static method for legacy)
      */
-    private static async generateIV(): Promise<Uint8Array> {
-        return await cryptoWorkerManager.generateRandom(new Uint8Array(12));
+    private static generateIV(): Uint8Array {
+        return crypto.getRandomValues(new Uint8Array(12));
     }
 
     /**

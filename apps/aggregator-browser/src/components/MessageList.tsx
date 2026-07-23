@@ -3,7 +3,7 @@
  * List of message threads and requests
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { MessageCircle, MoreVertical, Trash2, Users } from 'lucide-react';
 import { MessageThread as MessageThreadType } from '../services/messageService';
 import { getInboxThreads, deleteConversation, MESSAGING_INBOX_REFRESH_EVENT, DriveRateLimitedError, MESSAGING_POLL_BACKSTOP_MS } from '../services/messageService';

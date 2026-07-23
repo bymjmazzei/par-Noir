@@ -7,6 +7,8 @@ import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from './pnOAuthService';
 import { fetchContentNotices, type ContentNotice } from '@par-noir/aggregator-domain';
 
+export type { ContentNotice } from '@par-noir/aggregator-domain';
+
 export async function getContentNotices(): Promise<ContentNotice[]> {
   const accessToken = await PNOAuthService.getValidAccessToken();
   if (!accessToken) return [];

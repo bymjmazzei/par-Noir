@@ -306,18 +306,6 @@ export class SecureStorage {
   async storeSession(session: AuthSession): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    // SECURITY: Store credentials in memory only, never in IndexedDB
-    // pnName + passcode = 2FA credentials - must remain secret
-    if (session.pnName && session.passcode) {
-      const expiresIn = session.expiresIn * 1000; // Convert to milliseconds
-      SecureCredentialManager.setCredentials(
-        session.id,
-        session.pnName,
-        session.passcode,
-        expiresIn
-      );
-    }
-
     // SECURITY: Explicitly create a clean session object, removing ALL credentials
     // Even if the AuthSession object contains pnName/passcode/authToken, we don't store them
     const storedSession: StoredSession = {

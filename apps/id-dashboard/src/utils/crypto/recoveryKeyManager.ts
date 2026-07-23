@@ -1,5 +1,5 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
-import { RecoveryKeyData } from '../types/crypto';
+import { cryptoWorkerManager } from '../cryptoWorkerManager';
+import { RecoveryKeyData } from '../../types/crypto';
 
 export class RecoveryKeyManager {
     /**

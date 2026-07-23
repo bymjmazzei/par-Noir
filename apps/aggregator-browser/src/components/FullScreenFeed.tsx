@@ -43,6 +43,12 @@ interface FullScreenFeedProps {
   userState: {
     isUnlocked: boolean;
     pnIdentifier?: string;
+    preferences?: {
+      subscribedSubjects?: string[];
+      blockedSubjects?: string[];
+      subscribedCategories?: string[];
+      blockedCategories?: string[];
+    };
   };
   onCreatorClick?: (creatorId: string) => void;
   onMessage?: (creatorId: string) => void;
@@ -66,7 +72,6 @@ export function FullScreenFeed({
   onSave,
   onEdit,
   isLiked,
-  isDisliked,
   getLikeCount,
   getComments,
   loadComments,

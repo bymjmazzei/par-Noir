@@ -1,4 +1,3 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
 export interface GlobalPrivacySettings {
   // Global overri (always take precedence)
   allowAnalytics: boolean;

@@ -1,4 +1,3 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
 export interface KeyPair {
     publicKey: string;
     privateKey: string;

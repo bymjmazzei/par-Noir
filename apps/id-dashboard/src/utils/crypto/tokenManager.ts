@@ -1,6 +1,6 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '../cryptoWorkerManager';
 // Authentication Token Management
-import { TokenHeader, TokenPayload } from '../types/crypto';
+import { TokenHeader, TokenPayload } from '../../types/crypto';
 
 export class TokenManager {
     private static readonly TOKEN_EXPIRY = 3600; // 1 hour

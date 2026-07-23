@@ -1,38 +1,8 @@
 import { useState } from 'react';
+import type { WebIdentityData } from '../utils/migration';
+import type { DIDInfo, SyncedDevice, RecoveryRequest } from '../types/app';
 
-export interface WebIdentityData {
-  id: string;
-  name: string;
-  username: string;
-  created: number;
-}
-
-export interface SyncedDevice {
-  id: string;
-  name: string;
-  type: string;
-  lastSync: number;
-}
-
-export interface RecoveryRequest {
-  id: string;
-  requestingUser: string;
-  timestamp: number;
-  status: 'pending' | 'approved' | 'denied';
-  claimantContactType?: 'email' | 'phone';
-  claimantContactValue?: string;
-  signatures: any[];
-  approvals: any[];
-}
-
-export interface DIDInfo {
-  id: string;
-  name: string;
-  username: string;
-  created: number;
-  lastUsed: number;
-  isActive: boolean;
-}
+export type { WebIdentityData, DIDInfo, SyncedDevice, RecoveryRequest };
 
 export function useMigrationState() {
   // Migration states

@@ -4,13 +4,13 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus, Edit, Send, Flag } from 'lucide-react';
+import { Heart, MessageCircle, Bookmark, MoreVertical, Flag } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { Lock } from 'lucide-react';
 import { ProfileActionMenu } from './ProfileActionMenu';
 import { useToast } from '../hooks/useToast';
-import { isFileSaved, saveToFeed, removeFromSavedFeed } from '../services/savedFeedService';
+import { isFileSaved } from '../services/savedFeedService';
 import { uploadQueueService } from '../services/uploadQueueService';
 import { API_ENDPOINT } from '../config/api';
 import { shareContent } from '../utils/nativeShare';
@@ -50,8 +50,6 @@ export function FeedEngagementSidebar({
   onShare,
   onBookmark,
   onMore,
-  onAddToFeed,
-  onEdit,
   isLiked = false,
   isOwner = false,
   onCreatorClick,
@@ -145,8 +143,8 @@ export function FeedEngagementSidebar({
           setIsSaved(result.isSaved);
         }
       },
-      onError: (error) => {
-        console.error('❌ [SaveToFeed] Failed to save/unsave file:', error);
+      onError: (saveError) => {
+        console.error('❌ [SaveToFeed] Failed to save/unsave file:', saveError);
         error('Failed to save. Please try again.');
         // Rollback optimistic update
         setIsSaved(isSaved);

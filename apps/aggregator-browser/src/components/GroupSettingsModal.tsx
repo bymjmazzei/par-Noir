@@ -2,7 +2,7 @@
  * Group settings — owner can edit title, roles, add/remove members.
  */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { getConnections, type Connection } from '../services/connectionService';
 import {

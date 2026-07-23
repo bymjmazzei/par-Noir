@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from '../crypto/cryptoWorkerManager';
+import { cryptoWorkerManager } from '../cryptoWorkerManager';
 
 export interface ThreatPattern {
   id: string;
@@ -126,7 +126,9 @@ export class AdvancedThreatDetector {
         this.analyzeResponse(response);
         return response;
       } catch (error) {
-        this.recordSecurityEvent('network-error', 'medium', 'Network request failed', { error: error.message });
+        this.recordSecurityEvent('network-error', 'medium', 'Network request failed', {
+          error: error instanceof Error ? error.message : 'Unknown network error'
+        });
         throw error;
       }
     };

@@ -1,5 +1,5 @@
 // Main ErrorHandler Class - Maintains backward compatibility while using modular components
-import { ErrorHandlerConfig, ErrorEvent } from '../types/errorHandler';
+import { ErrorHandlerConfig, ErrorEvent, ErrorContext } from '../../types/errorHandler';
 import { ErrorInitializer } from './errorInitializer';
 import { ErrorProcessor } from './errorProcessor';
 import { ErrorLogger } from './errorLogger';

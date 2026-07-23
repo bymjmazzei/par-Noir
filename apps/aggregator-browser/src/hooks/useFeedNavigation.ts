@@ -97,7 +97,7 @@ export function useFeedNavigation(
       }
 
       // 6. Individual Subscribed Feeds (feeds without categories or additional feeds)
-      subscribedFeedIds.forEach((feedId, idx) => {
+      subscribedFeedIds.forEach((feedId) => {
         const feed = feeds.find(f => f.feedId === feedId);
         // Only add if feed doesn't have a category (or category already shown above)
         if (feed && !feed.feedCategory) {

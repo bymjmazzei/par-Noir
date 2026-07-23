@@ -3,7 +3,7 @@
  * Helper functions for feed management and tracking
  */
 
-import { Feed, IndexedFile } from '../types/aggregator';
+import { IndexedFile } from '../types/aggregator';
 
 /**
  * Check if a feed has new content since last view

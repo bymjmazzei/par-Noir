@@ -21,6 +21,7 @@ export interface VerificationPaymentEvent {
       licenseType: string;
       identityHash: string;
       licensePrice: string;
+      creatorDid?: string;
     };
     timeline: Array<{
       time: string;

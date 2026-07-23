@@ -3,7 +3,7 @@
  * Sliding top menu bar that shows current feed title and allows navigation
  */
 
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { FeedNavigationItem } from '../hooks/useFeedNavigation';
 
 interface FeedNavBarProps {

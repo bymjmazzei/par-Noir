@@ -2,7 +2,7 @@
  * Inline E2E messaging media attachment (decrypt + display).
  */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Loader2, Image as ImageIcon, AlertCircle } from 'lucide-react';
 import {
   fetchAndDecryptAttachment,

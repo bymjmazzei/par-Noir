@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, CheckCircle, XCircle, Loader2, Clock, Upload as UploadIcon, Settings, Edit, FolderPlus, Trash2, Share2, Bookmark } from 'lucide-react';
+import { X, CheckCircle, XCircle, Loader2, Upload as UploadIcon, Settings, Edit, FolderPlus, Trash2, Share2, Bookmark } from 'lucide-react';
 import { uploadQueueService, UploadTask, QueueProgress } from '../services/uploadQueueService';
 
 interface UploadQueueOverlayProps {
@@ -61,23 +61,6 @@ export const UploadQueueOverlay: React.FC<UploadQueueOverlayProps> = ({ isOpen, 
 
   if (!isOpen) return null;
 
-  const getStatusIcon = (status: UploadTask['status']) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle className="w-5 h-5 text-green-500" />;
-      case 'failed':
-        return <XCircle className="w-5 h-5 text-red-500" />;
-      case 'processing':
-      case 'uploading':
-        return <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />;
-      case 'pending':
-        return <Clock className="w-5 h-5 text-gray-400" />;
-      case 'cancelled':
-        return <XCircle className="w-5 h-5 text-gray-500" />;
-      default:
-        return <UploadIcon className="w-5 h-5 text-gray-400" />;
-    }
-  };
 
   const getStatusColor = (status: UploadTask['status']) => {
     switch (status) {

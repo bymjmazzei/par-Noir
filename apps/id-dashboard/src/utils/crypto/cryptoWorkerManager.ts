@@ -1,5 +1,3 @@
-import { cryptoWorkerManager } from '../../types/cryptoWorkerManager';
-
 // Enhanced Crypto Worker Manager for Phase 2
 export class CryptoWorkerManager {
   private worker: Worker | null = null;

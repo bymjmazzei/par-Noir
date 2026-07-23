@@ -122,6 +122,7 @@ import { App as CapApp } from '@capacitor/app';
 
 // Custom hooks for state management
 import { useAppState } from './hooks/useAppState';
+import type { DIDInfo } from './types/app';
 import { useIdentityState } from './hooks/useIdentityState';
 import { usePrivacyState } from './hooks/usePrivacyState';
 import { useExportState } from './hooks/useExportState';
@@ -140,28 +141,6 @@ const MigrationModal = lazy(() => import('./components/MigrationModal').then(mod
 const ProfilePictureEditor = lazy(() => import('./components/ProfilePictureEditor').then(module => ({ default: module.ProfilePictureEditor })));
 const BiometricSetup = lazy(() => import('./components/BiometricSetup').then(module => ({ default: module.BiometricSetup })));
 const PWALockScreen = lazy(() => import('./components/PWALockScreen').then(module => ({ default: module.default })));
-
-interface DIDInfo {
-  id: string;
-  pnName: string;
-  createdAt: string;
-  status: string;
-  displayName?: string;
-  email?: string;
-  nickname?: string;
-  phone?: string;
-  recoveryEmail?: string;
-  recoveryPhone?: string;
-  custodiansRequired: boolean;
-  custodiansSetup: boolean;
-  profilePicture?: string; // URL or base64 data URI
-  isEncrypted?: boolean; // Flag to indicate if this identity is encrypted
-  fileContent?: string; // Store file content for encrypted identities
-  publicKey?: string; // Public key for encrypted identities
-  filePath?: string; // File path for PWA identity references
-  fileName?: string; // File name for PWA identity references
-  idFile?: any; // Complete ID file for PWA stored identities
-}
 
 interface RecoveryCustodian {
   id: string;
@@ -336,6 +315,8 @@ function App() {
     setShowCreateForm,
     showImportForm,
     setShowImportForm,
+    importForm,
+    setImportForm,
     selectedDID,
     setSelectedDID,
     isDemoMode,
@@ -353,7 +334,8 @@ function App() {
     pwaState,
     pwaHandlers,
     isPWALocked,
-    setIsPWALocked
+    setIsPWALocked,
+    successTimeoutRef
   } = appState;
 
   // Destructure identity state from custom hook
@@ -1913,6 +1895,7 @@ function App() {
         confirmPNName: '',
         passcode: '',
         confirmPasscode: '',
+        nickname: '',
         email: '',
         phone: '',
         recoveryEmail: '',
@@ -1994,7 +1977,7 @@ function App() {
           importForm.passcode,
           importForm.pnName
         );
-        importedIdentity = identityToImport;
+        importedIdentity = { ...identityToImport };
       }
 
       // Store the session
@@ -2328,8 +2311,6 @@ function App() {
   const handleIdentitySelect = (identity: SimpleIdentity | null) => {
     setSelectedStoredIdentity(identity);
     if (identity) {
-      // Auto-fill pnName when identity is selected
-      setMainForm(prev => ({ ...prev, pnName: identity.pnName }));
       // Clear any uploaded file when selecting a stored identity
       setMainForm(prev => ({ ...prev, uploadFile: null }));
     }
@@ -2938,7 +2919,6 @@ function App() {
       const simpleIdentity: SimpleIdentity = {
         id: publicKey,
         nickname,
-        pnName,
         publicKey,
         encryptedData: identityToUnlock,
         createdAt: new Date().toISOString(),
@@ -3129,7 +3109,6 @@ function App() {
             const simpleIdentity: SimpleIdentity = {
               id: identityToUnlock.publicKey,
               nickname: finalNickname,
-              pnName: identityToUnlock.pnName,
               publicKey: identityToUnlock.publicKey,
               encryptedData: identityToUnlock, // This is the decrypted data - we need to store the original encrypted data
               createdAt: new Date().toISOString(),
@@ -3665,7 +3644,7 @@ This invitation expires in 24 hours.`;
 
       setShowCustodianAcceptanceModal(false);
       setPendingCustodianInvitationData(null);
-      setCustodianAcceptanceData({ contactValue: '', passcode: '' });
+      setCustodianAcceptanceData({ contactType: 'email', contactValue: '', passcode: '' });
 
       setSuccessWithTimeout('Custodianship accepted. You hold an authorization credential only — no secret shares.');
       setTimeout(() => setSuccessWithTimeout(null), 5000);
@@ -4987,6 +4966,9 @@ This invitation expires in 24 hours.`;
 
       // AUTOMATIC LICENSE TRANSFER - Transfer all licenses from old identity to new identity
       try {
+        if (!recoveredDID) {
+          throw new Error('Recovered identity details are unavailable');
+        }
         // Find the old identity hash (from the recovery request)
         const recoveryRequest = recoveryRequests.find(req => req.requestingDid === recoveredDID.id);
         if (recoveryRequest) {
@@ -6006,6 +5988,7 @@ This invitation expires in 24 hours.`;
                       confirmPNName: '',
                       passcode: '',
                       confirmPasscode: '',
+                      nickname: '',
                       email: '',
                       phone: '',
                       recoveryEmail: '',
@@ -6983,7 +6966,7 @@ This invitation expires in 24 hours.`;
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Recovery & Devices</h3>
                         <DeviceManagementPanel
-                          authToken={apiToken}
+                          authToken={apiToken ?? undefined}
                           pnIdentifier={recoveryVaultPnId ?? undefined}
                           deviceAuth={deviceAuth}
                         />
@@ -6992,7 +6975,7 @@ This invitation expires in 24 hours.`;
                             predecessorPnIdentifier={authenticatedUser.id.startsWith('pn-') ? authenticatedUser.id : `pn-${authenticatedUser.id}`}
                           />
                         )}
-                        {authenticatedUser && canRotateIdentity && (
+                        {authenticatedUser && canRotateIdentity && apiToken && (
                           <Suspense fallback={<div className="text-sm text-text-secondary mt-4">Loading identity rotation…</div>}>
                             <IdentityRotationWizard
                               authToken={apiToken}
@@ -7675,7 +7658,7 @@ This invitation expires in 24 hours.`;
         <RecoveryCompletionModal
           isOpen={showRecoveryCompleteModal}
           onClose={() => setShowRecoveryCompleteModal(false)}
-          recoveredDID={recoveredDID}
+          recoveredDID={recoveredDID ? { nickname: recoveredDID.nickname ?? 'Recovered identity' } : null}
           onRecoveryComplete={handleRecoveryComplete}
           onDownloadPn={handleDownloadRecoveredPn}
           hasRecoveredPn={Boolean(recoveredIdentityExport)}
@@ -7754,7 +7737,7 @@ This invitation expires in 24 hours.`;
         <DeviceInfoModal
           isOpen={showDeviceInfoModal}
           onClose={() => setShowDeviceInfoModal(false)}
-          currentDevice={currentDevice}
+          currentDevice={currentDevice ?? undefined}
         />
 
 
@@ -8093,7 +8076,7 @@ This invitation expires in 24 hours.`;
                     zkpProof: dataPoint.zkpProof,
                     signature: dataPoint.zkpProof, // Use proof as signature if no separate signature
                     verifiedAt: dataPoint.verifiedAt || verifiedData.verifiedAt,
-                    expiresAt: dataPoint.expiresAt || dataPoint.expirationDate,
+                    expiresAt: dataPoint.expiresAt,
                     verificationLevel: dataPoint.verificationLevel || verifiedData.verificationLevel,
                     metadata: {
                       provider: verifiedData.provider || 'veriff',

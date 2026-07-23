@@ -215,7 +215,7 @@ export class MetadataIndexService {
         // CRITICAL: Include textPost/thought content so thoughts render in feeds
         textPost: publicMetadata.textPost,
         thought: publicMetadata.thought,
-        thumbnailFileId: publicMetadata.thumbnailFileId ?? null,
+        thumbnailFileId: publicMetadata.thumbnailFileId ?? undefined,
         subjects: publicMetadata.subjects,
         feedCategories: publicMetadata.feedCategories
       });

@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '../cryptoWorkerManager';
 export class PasscodeManager {
     /**
      * Hash passcode for verification

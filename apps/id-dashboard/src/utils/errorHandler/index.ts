@@ -1,5 +1,5 @@
 // Error Handler Module Index - Re-exports all error handler functionality
-export * from '../types/errorHandler';
+export * from '../../types/errorHandler';
 export { ErrorHandler } from './errorHandler';
 export { ErrorInitializer } from './errorInitializer';
 export { ErrorProcessor } from './errorProcessor';

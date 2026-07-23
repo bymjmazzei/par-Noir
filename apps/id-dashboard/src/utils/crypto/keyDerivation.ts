@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '../cryptoWorkerManager';
 // Key Derivation and Signature Generation
 import { CryptoUtils } from './cryptoUtils';
 

@@ -3,10 +3,10 @@
  * Simple preferences UI for blocking content categories (negative filter)
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, Settings, Plus } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
-import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../constants/feedCategories';
+import { FEED_CATEGORY_LIST } from '../constants/feedCategories';
 import { FeedCategory } from '../types/aggregator';
 import { PNOAuthService } from '../services/pnOAuthService';
 

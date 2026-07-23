@@ -1,5 +1,5 @@
 // Error Tracker - Handles error tracking and analytics
-import { ErrorEvent, ErrorHandlerConfig } from '../types/errorHandler';
+import { ErrorEvent, ErrorHandlerConfig } from '../../types/errorHandler';
 
 export class ErrorTracker {
   private config: ErrorHandlerConfig;

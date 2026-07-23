@@ -18,7 +18,6 @@ export interface MetadataIndexResult {
 
 export class MetadataIndexService {
   private isInitialized = false;
-  private metadataStore: Map<string, PublicMetadata> = new Map();
 
   /**
    * Initialize the metadata index service
@@ -257,7 +256,8 @@ export class MetadataIndexService {
     try {
       await this.ensureInitialized();
       // Scan Google Drive for the file
-      const files = await this.discoverFiles();
+      const result = await this.discoverFiles();
+      const files = Array.isArray(result) ? result : result.files;
       const found = files.find(f => f.metadata.fileId === fileId);
       return found ? found.metadata : null;
     } catch (error) {
@@ -276,19 +276,6 @@ export class MetadataIndexService {
     }
   }
 
-  /**
-   * Helper to determine file type from MIME type
-   * Matches backend logic for consistency
-   */
-  private getFileTypeFromMime(mimeType: string): string {
-    if (!mimeType) return 'other';
-    if (mimeType.startsWith('image/')) return 'image';
-    if (mimeType.startsWith('video/')) return 'video';
-    if (mimeType.startsWith('audio/')) return 'audio';
-    if (mimeType.includes('pdf') || mimeType.includes('document')) return 'document';
-    if (mimeType.includes('text')) return 'text'; // Text MIME types map to 'text' fileType
-    return 'other';
-  }
 }
 
 // Singleton instance

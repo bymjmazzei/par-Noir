@@ -1,6 +1,6 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '../crypto/cryptoWorkerManager';
 // Main LicenseVerification Class - Maintains backward compatibility while using modular components
-import { LicenseInfo, LicenseProof } from '../types/licenseVerification';
+import { LicenseInfo, LicenseProof } from '../../types/licenseVerification';
 import { APICallMonitor } from './apiCallMonitor';
 import { EnterpriseFeatureDetector } from './enterpriseFeatureDetector';
 import { ScaleIndicatorAnalyzer } from './scaleIndicatorAnalyzer';

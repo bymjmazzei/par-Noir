@@ -55,10 +55,13 @@ export class PortableBlobBackend extends AbstractStorageBackend {
   async uploadFile(
     file: File,
     _folderId?: string,
-    metadata?: { pnIdentifier?: string; fileName?: string; contentClass?: ContentClass }
+    metadata?: unknown
   ): Promise<StorageFile> {
     const fileId = crypto.randomUUID();
-    const contentClass = metadata?.contentClass ?? 'media';
+    const contentClass =
+      typeof metadata === 'object' && metadata !== null && 'contentClass' in metadata
+        ? metadata.contentClass as ContentClass
+        : 'media';
     const key = encryptedMediaPath(contentClass, fileId);
     const buf = await file.arrayBuffer();
     const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));

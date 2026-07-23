@@ -5,7 +5,6 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 
 import { API_ENDPOINT } from '../config/api';
@@ -434,7 +433,6 @@ export function useEngagement() {
         });
 
         if (response.ok) {
-          const result = await response.json();
           setEngagement(prev => {
             const newComments = new Map(prev.comments);
             const fileComments = newComments.get(fileId) || [];

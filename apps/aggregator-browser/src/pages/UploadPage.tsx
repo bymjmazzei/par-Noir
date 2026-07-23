@@ -2,7 +2,6 @@
  * Upload page - UploadModal in a full-screen layout.
  */
 
-import React from 'react';
 import { UploadModal } from '../components/UploadModal';
 import { Feed } from '../types/aggregator';
 

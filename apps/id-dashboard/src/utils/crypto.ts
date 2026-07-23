@@ -472,7 +472,12 @@ export class IdentityCrypto {
       throw new Error('Authentication failed: username mismatch');
     }
 
-    const resolvedPnName = identity.pnName || identity.username || identity.nickname || pnName || identity.id;
+    const resolvedPnName =
+      (typeof identity.pnName === 'string' ? identity.pnName : undefined) ||
+      identity.username ||
+      identity.nickname ||
+      pnName ||
+      identity.id;
     SecureCredentialManager.setCredentials(identity.id, resolvedPnName, passcode, 15 * 60 * 1000);
 
     const token = await this.generateAuthToken(identity.id, identity.username);

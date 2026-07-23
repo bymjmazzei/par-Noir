@@ -1,5 +1,5 @@
 import React from 'react';
-import { LicenseInfo } from '../utils/licenseVerification';
+import { LicenseInfo } from '../../utils/licenseVerification';
 
 interface LicenseInfoDisplayProps {
   licenseInfo: LicenseInfo;

@@ -75,11 +75,11 @@ export class SecureRandom {
    * @param array - Array to select from
    * @returns Random element from array
    */
-  static selectFromArray<T>(array: T[]): T {
+  static async selectFromArray<T>(array: T[]): Promise<T> {
     if (array.length === 0) {
       throw new Error('Cannot select from empty array');
     }
-    const index = this.generateNumber(0, array.length - 1);
+    const index = await this.generateNumber(0, array.length - 1);
     return array[index];
   }
 
@@ -122,7 +122,7 @@ export class SecureRandom {
    * @returns Secure random token
    */
   static async generateToken(prefix: string = ''): Promise<string> {
-    const token = this.generateHex(32);
+    const token = await this.generateHex(32);
     return prefix ? `${prefix}_${token}` : token;
   }
 
@@ -131,7 +131,7 @@ export class SecureRandom {
    * @returns Secure random message ID
    */
   static async generateMessageId(): Promise<string> {
-    return `msg_${Date.now()}_${this.generateId(9)}`;
+    return `msg_${Date.now()}_${await this.generateId(9)}`;
   }
 
   /**
@@ -139,7 +139,7 @@ export class SecureRandom {
    * @returns Secure random event ID
    */
   static async generateEventId(): Promise<string> {
-    return `event_${Date.now()}_${this.generateId(9)}`;
+    return `event_${Date.now()}_${await this.generateId(9)}`;
   }
 
   /**
@@ -147,7 +147,7 @@ export class SecureRandom {
    * @returns Secure random session ID
    */
   static async generateSessionId(): Promise<string> {
-    return `session_${Date.now()}_${this.generateId(15)}`;
+    return `session_${Date.now()}_${await this.generateId(15)}`;
   }
 
   /**
@@ -155,7 +155,7 @@ export class SecureRandom {
    * @returns Secure random device ID
    */
   static async generateDeviceId(): Promise<string> {
-    return `device_${Date.now()}_${this.generateId(10)}`;
+    return `device_${Date.now()}_${await this.generateId(10)}`;
   }
 
   /**
@@ -163,7 +163,7 @@ export class SecureRandom {
    * @returns Secure random recovery code
    */
   static async generateRecoveryCode(): Promise<string> {
-    return `recovery_${this.generateId(10)}`;
+    return `recovery_${await this.generateId(10)}`;
   }
 
   /**
@@ -171,7 +171,7 @@ export class SecureRandom {
    * @returns Secure random invitation code
    */
   static async generateInvitationCode(): Promise<string> {
-    return `code_${this.generateId()}`;
+    return `code_${await this.generateId()}`;
   }
 
   /**
@@ -179,7 +179,7 @@ export class SecureRandom {
    * @returns Secure random transfer ID
    */
   static async generateTransferId(): Promise<string> {
-    return this.generateId(8).toUpperCase();
+    return (await this.generateId(8)).toUpperCase();
   }
 
   /**
@@ -187,7 +187,7 @@ export class SecureRandom {
    * @returns Secure random proof ID
    */
   static async generateProofId(): Promise<string> {
-    return `zkp_${Date.now()}_${this.generateId(9)}`;
+    return `zkp_${Date.now()}_${await this.generateId(9)}`;
   }
 
   /**
@@ -195,7 +195,7 @@ export class SecureRandom {
    * @returns Secure random proposal ID
    */
   static async generateProposalId(): Promise<string> {
-    return `proposal_${Date.now()}_${this.generateId(9)}`;
+    return `proposal_${Date.now()}_${await this.generateId(9)}`;
   }
 
   /**
@@ -203,7 +203,7 @@ export class SecureRandom {
    * @returns Secure random notification ID
    */
   static async generateNotificationId(): Promise<string> {
-    return `notification_${Date.now()}_${this.generateId(9)}`;
+    return `notification_${Date.now()}_${await this.generateId(9)}`;
   }
 
   /**
@@ -211,7 +211,7 @@ export class SecureRandom {
    * @returns Secure random span ID
    */
   static async generateSpanId(): Promise<string> {
-    return `span_${Date.now()}_${this.generateId(9)}`;
+    return `span_${Date.now()}_${await this.generateId(9)}`;
   }
 
   /**
@@ -219,7 +219,7 @@ export class SecureRandom {
    * @returns Secure random error ID
    */
   static async generateErrorId(): Promise<string> {
-    return `error_${Date.now()}_${this.generateId(9)}`;
+    return `error_${Date.now()}_${await this.generateId(9)}`;
   }
 
   /**
@@ -227,7 +227,7 @@ export class SecureRandom {
    * @returns Secure random alert ID
    */
   static async generateAlertId(): Promise<string> {
-    return `alert_${Date.now()}_${this.generateId(9)}`;
+    return `alert_${Date.now()}_${await this.generateId(9)}`;
   }
 
   /**
@@ -235,7 +235,7 @@ export class SecureRandom {
    * @returns Secure random transaction ID
    */
   static async generateTransactionId(): Promise<string> {
-    return `tx_${Date.now()}_${this.generateId(9)}`;
+    return `tx_${Date.now()}_${await this.generateId(9)}`;
   }
 
   /**
@@ -267,7 +267,7 @@ export class SecureRandom {
    * @returns Secure random CID
    */
   static async generateCID(): Promise<string> {
-    return `Qm${this.generateId(15)}`;
+    return `Qm${await this.generateId(15)}`;
   }
 
   /**
@@ -275,7 +275,7 @@ export class SecureRandom {
    * @returns Secure random identity ID
    */
   static async generateIdentityId(): Promise<string> {
-    return `did:identity:${this.generateId(15)}`;
+    return `did:identity:${await this.generateId(15)}`;
   }
 
   /**
@@ -283,7 +283,7 @@ export class SecureRandom {
    * @returns Secure random metadata ID
    */
   static async generateMetadataId(): Promise<string> {
-    return `id_${Date.now()}_${this.generateId(9)}`;
+    return `id_${Date.now()}_${await this.generateId(9)}`;
   }
 
   /**
@@ -291,7 +291,7 @@ export class SecureRandom {
    * @returns Secure random biometric token
    */
   static async generateBiometricToken(): Promise<string> {
-    return `biometric_${Date.now()}_${this.generateId(9)}`;
+    return `biometric_${Date.now()}_${await this.generateId(9)}`;
   }
 
   /**

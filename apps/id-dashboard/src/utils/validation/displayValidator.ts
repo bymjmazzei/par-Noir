@@ -1,5 +1,5 @@
 // Display Validator - Handles display-related validation
-import { ValidationResult } from '../types/validation';
+import { ValidationResult } from '../../types/validation';
 import { SecurityValidator } from './securityValidator';
 
 export class DisplayValidator {

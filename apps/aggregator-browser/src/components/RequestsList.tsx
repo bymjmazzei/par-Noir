@@ -3,7 +3,7 @@
  * Displays message and connection requests
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { UserPlus, Check, X } from 'lucide-react';
 import { MessageRequest } from '../services/messageService';
 import { getMessageRequests, respondToRequest } from '../services/messageService';

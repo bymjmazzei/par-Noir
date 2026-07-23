@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '../cryptoWorkerManager';
 // Main IdentityCrypto Class - Maintains backward compatibility while using modular components
 import { DIDResult, EncryptedIdentity, AuthenticationResult, EncryptedData } from '../../types/crypto';
 import { DIDManager } from './didManager';

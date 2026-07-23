@@ -1,5 +1,9 @@
 import { cryptoWorkerManager } from '../utils/cryptoWorkerManager';
-import { getVerificationConfig, validateVerificationConfig } from '../config/verificationConfig';
+import {
+  getVerificationConfig,
+  validateVerificationConfig,
+  type VerificationConfig
+} from '../config/verificationConfig';
 
 // Identity Verification Service
 // Integrates with Veriff and other identity verification providers
@@ -43,15 +47,7 @@ export interface FraudPreventionResult {
   riskScore: number; // 0-1, lower is better
   fraudIndicators: string[];
   confidence: number; // 0-1, higher is better
-}
-
-export interface VerificationConfig {
-  provider: 'veriff' | 'jumio' | 'onfido' | 'mock';
-  apiKey?: string;
-  apiSecret?: string;
-  baseUrl?: string;
-  fraudThreshold: number; // Maximum acceptable risk score
-  confidenceThreshold: number; // Minimum acceptable confidence
+  timestamp: string;
 }
 
 export class IdentityVerificationService {
@@ -157,7 +153,8 @@ export class IdentityVerificationService {
           biometricMatch: false,
           riskScore: 1.0,
           fraudIndicators: ['Verification process failed'],
-          confidence: 0
+          confidence: 0,
+          timestamp: new Date().toISOString()
         },
         error: error instanceof Error ? error.message : 'Verification failed'
       };
@@ -267,7 +264,8 @@ export class IdentityVerificationService {
       biometricMatch,
       riskScore: Math.min(1, riskScore),
       fraudIndicators,
-      confidence
+      confidence,
+      timestamp: new Date().toISOString()
     };
   }
 

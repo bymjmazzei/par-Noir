@@ -8,24 +8,17 @@ import { createPortal } from 'react-dom';
 import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Star, Type, Upload, Minus, Trash2, Layers, Camera, Image } from 'lucide-react';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
-import { getEncryptionService } from '../services/encryptionService';
-import { createCollection } from '../services/collectionService';
 import { uploadQueueService } from '../services/uploadQueueService';
-import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../constants/feedCategories';
-import { LICENSE_TYPES } from '../constants/licenses';
 import { FeedCategory } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { cleanTitle } from '../utils/cleanTitle';
 import { EditMetadataModal, MetadataFormData } from './EditMetadataModal';
-import { accountsCacheService } from '../services/accountsCacheService';
 import { ThumbnailImage } from './file/ThumbnailImage';
-import { createVideoThumbnail } from './file/createVideoThumbnail';
 import { useDriveAccounts } from '../hooks/useDriveAccounts';
-import type { DriveAccount, DriveFile } from './storage/storageTypes';
+import type { DriveFile } from './storage/storageTypes';
 import { API_ENDPOINT } from '../config/api';
 import {
   listStorageFiles,
-  uploadStorageFile,
   downloadStorageBlob,
   fetchStorageFile,
 } from '../services/storageApiClient';
@@ -44,85 +37,6 @@ interface EncryptedFilePackage {
   };
 }
 
-/**
- * Upload encrypted thumbnail file
- */
-async function uploadThumbnail(
-  thumbnailBlob: Blob,
-  originalFileName: string,
-  encryptionManager: EncryptionManager,
-  session: any,
-  publicKey: string,
-  accessToken: string,
-  accountId: string,
-  provider: string,
-  pnIdentifier: string
-): Promise<string | undefined> {
-  try {
-    if (import.meta.env.DEV) console.log('🖼️ [Upload] Generating thumbnail...');
-    
-    // Encrypt thumbnail
-    const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
-    const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
-    const encryptedThumbnail = await encryptionManager.encrypt(
-      thumbnailData,
-      session.did,
-      publicKey
-    );
-    
-    // Create encrypted thumbnail package
-    const thumbnailPackage: EncryptedFilePackage = {
-      encrypted: encryptedThumbnail.encrypted,
-      iv: encryptedThumbnail.iv,
-      salt: encryptedThumbnail.salt,
-      metadata: {
-        originalName: `thumb_${originalFileName}`,
-        originalSize: thumbnailBlob.size,
-        originalMimeType: 'image/jpeg', // Thumbnails are always JPEG
-      },
-    };
-    
-    // Convert to base64
-    const thumbnailBlobJson = new Blob([JSON.stringify(thumbnailPackage)], {
-      type: 'application/json',
-    });
-    
-    const thumbnailBase64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        resolve(result.includes(',') ? result.split(',')[1] : result);
-      };
-      reader.onerror = () => reject(new Error('Failed to read thumbnail'));
-      reader.readAsDataURL(thumbnailBlobJson);
-    });
-    
-    // Upload encrypted thumbnail
-    const thumbnailFileName = `thumb_${originalFileName}.encrypted`;
-    const { id: thumbnailFileId } = await uploadStorageFile(
-      accessToken,
-      pnIdentifier,
-      provider,
-      {
-        fileData: thumbnailBase64,
-        fileName: thumbnailFileName,
-        mimeType: 'application/json',
-        accountId
-      }
-    );
-
-    if (thumbnailFileId) {
-      if (import.meta.env.DEV) console.log('✅ [Upload] Thumbnail uploaded:', thumbnailFileId);
-      return thumbnailFileId;
-    }
-    
-    if (import.meta.env.DEV) console.warn('⚠️ [Upload] Thumbnail upload failed, continuing without thumbnail');
-    return undefined;
-  } catch (error: any) {
-    if (import.meta.env.DEV) console.error('❌ [Upload] Thumbnail generation/upload failed:', error);
-    return undefined;
-  }
-}
 
 // File viewer modal wrapper that handles thought title display
 const FileViewerModal: React.FC<{ file: DriveFile; fileMetadataMap: Map<string, any>; onClose: () => void; onDownload: () => void }> = ({ file, fileMetadataMap, onClose, onDownload }) => {
@@ -481,14 +395,13 @@ interface FileStorageAggregatorProps {
 
 export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ 
   authenticatedUser, 
-  hideSecureFolderSection = false,
   onOpenTextEditor
 }) => {
   const { userState } = useUserState();
   const [isLoading, setIsLoading] = useState(false);
   const [filesByAccount, setFilesByAccount] = useState<Map<string, DriveFile[]>>(new Map());
   const [error, setError] = useState<string | null>(null);
-  const { accounts: driveAccounts, selectedId: selectedAccountId, setSelectedId: setSelectedAccountId, setAccounts: setDriveAccounts } = useDriveAccounts({
+  const { accounts: driveAccounts, setSelectedId: setSelectedAccountId, setAccounts: setDriveAccounts } = useDriveAccounts({
     authenticatedUserId: authenticatedUser?.id,
     userState: { isUnlocked: userState.isUnlocked, pnIdentifier: userState.pnIdentifier },
   });
@@ -987,11 +900,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         });
         
         if (import.meta.env.DEV) console.log(`[FileStorageAggregator] After filtering: ${filteredThoughtThumbnailEntries.length} thought thumbnails will be displayed`);
-        const collectionFileIds = new Set(collectionFiles.map((f: any) => f.id));
-        const mediaFiles = thumbnailEntries.concat(filteredThoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
-          allFiles.filter((file: DriveFile) => {
+        const collectionFileIds = new Set(collectionFiles.map((f: { id: string }) => f.id));
+        const mediaFiles: Array<{
+          id: string;
+          name: string;
+          mimeType: string;
+          size: string;
+          displayName?: string;
+          isThumbnail?: boolean;
+          mainFileId?: string;
+          thumbnailLink?: string;
+          webViewLink?: string;
+          accountId?: string;
+          provider?: string;
+          [key: string]: unknown;
+        }> = [
+          ...thumbnailEntries,
+          ...filteredThoughtThumbnailEntries.filter((e): e is NonNullable<typeof e> => e != null),
+          ...collectionFilesWithMetadata,
+          ...allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
-          const mimeType = file.mimeType || '';
           
           // Exclude collections - they're already added via collectionFilesWithMetadata
           if (collectionFileIds.has(file.id)) {
@@ -1031,7 +959,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           // Exclude everything else (main files already have thumbnails, collections already included)
           return false;
         })
-        );
+        ];
 
       setFilesByAccount(prev => {
         const next = new Map(prev);
@@ -1180,7 +1108,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [sharingAccountId, setSharingAccountId] = useState<string | null>(null);
   const [shareVisibility, setShareVisibility] = useState<'public' | 'private'>('private');
   const [shareNSFW, setShareNSFW] = useState<boolean>(false);
-  const [isSavingShare, setIsSavingShare] = useState(false);
+  const [isSavingShare] = useState(false);
   const [thirdPartyIndexers, setThirdPartyIndexers] = useState<any[]>([]);
   const [indexerToggles, setIndexerToggles] = useState<Record<string, boolean>>({});
   const [indexingPermissionsState, setIndexingPermissionsState] = useState<any>(null);
@@ -1296,7 +1224,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   };
 
   // Handle edit metadata
-  const handleEditMetadata = async (file: DriveFile, accountId: string) => {
+  const handleEditMetadata = async (file: DriveFile) => {
     
     // Load existing metadata
     const metadata = await loadFileMetadata(file.id);
@@ -1480,9 +1408,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     const metadata = await loadFileMetadata(file.id);
     const isPublic = metadata?.isPublic || false;
     const isNSFW = metadata?.isNSFW === true;
-    const hasPublicToken = metadata?.publicToken && 
-                          typeof metadata.publicToken === 'string' && 
-                          metadata.publicToken.trim().length > 0;
     
     
     setShareVisibility(isPublic ? 'public' : 'private');
@@ -1731,7 +1656,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     setError(null);
 
     const fileIdsToDelete = filesToDelete.map(f => f.id);
-    const filesSnapshot = [...filesToDelete];
 
     // Optimistically remove from UI immediately
     setFilesByAccount(prev => {
@@ -1902,9 +1826,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   };
 
   // Deselect all files
-  const deselectAllFiles = () => {
-    setSelectedFiles(new Set());
-  };
 
   // Handle set/unset top post
   const handleSetTopPost = async (file: DriveFile, accountId: string) => {
@@ -2033,304 +1954,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const hasConnectedBackends = driveAccounts.length > 0;
 
   // Thumbnail generation helpers (defined inside component to ensure scope)
-  const createThumbnailFromBlobLocal = async (blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(blob);
-      
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        
-        // Calculate dimensions maintaining aspect ratio
-        if (width > height) {
-          if (width > maxWidth) {
-            height = (height * maxWidth) / width;
-            width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
-            width = (width * maxHeight) / height;
-            height = maxHeight;
-          }
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Failed to get canvas context'));
-          return;
-        }
-        
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        canvas.toBlob((thumbnailBlob) => {
-          if (thumbnailBlob) {
-            resolve(thumbnailBlob);
-          } else {
-            reject(new Error('Failed to create thumbnail blob'));
-          }
-        }, 'image/jpeg', 0.8);
-      };
-      
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error('Failed to load image for thumbnail'));
-      };
-      
-      img.src = url;
-    });
-  };
 
-  const createVideoThumbnailLocal = async (videoFile: File, maxWidth: number, maxHeight: number): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      const video = document.createElement('video');
-      const url = URL.createObjectURL(videoFile);
-      
-      video.onloadedmetadata = () => {
-        // Seek to 1 second or first frame
-        video.currentTime = Math.min(1, video.duration / 2);
-      };
-      
-      video.onseeked = () => {
-        const canvas = document.createElement('canvas');
-        let width = video.videoWidth;
-        let height = video.videoHeight;
-        
-        // Calculate dimensions maintaining aspect ratio
-        if (width > height) {
-          if (width > maxWidth) {
-            height = (height * maxWidth) / width;
-            width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
-            width = (width * maxHeight) / height;
-            height = maxHeight;
-          }
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          URL.revokeObjectURL(url);
-          reject(new Error('Failed to get canvas context'));
-          return;
-        }
-        
-        ctx.drawImage(video, 0, 0, width, height);
-        
-        canvas.toBlob((thumbnailBlob) => {
-          URL.revokeObjectURL(url);
-          if (thumbnailBlob) {
-            resolve(thumbnailBlob);
-          } else {
-            reject(new Error('Failed to create video thumbnail blob'));
-          }
-        }, 'image/jpeg', 0.8);
-      };
-      
-      video.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error('Failed to load video for thumbnail'));
-      };
-      
-      video.preload = 'metadata';
-      video.muted = true;
-      video.playsInline = true;
-      video.src = url;
-    });
-  };
 
-  const uploadThumbnailLocal = async (
-    thumbnailBlob: Blob,
-    originalFileName: string,
-    encryptionManager: EncryptionManager,
-    session: any,
-    publicKey: string,
-    accessToken: string,
-    accountId: string,
-    provider: string
-  ): Promise<string | undefined> => {
-    try {
-      const pnIdentifier = userState.pnIdentifier;
-      if (!pnIdentifier) {
-        return undefined;
-      }
-      // Encrypt thumbnail
-      const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
-      const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
-      const encryptedThumbnail = await encryptionManager.encrypt(
-        thumbnailData,
-        session.did,
-        publicKey
-      );
-      
-      // Create encrypted thumbnail package
-      const thumbnailPackage: EncryptedFilePackage = {
-        encrypted: encryptedThumbnail.encrypted,
-        iv: encryptedThumbnail.iv,
-        salt: encryptedThumbnail.salt,
-        metadata: {
-          originalName: `thumb_${originalFileName}`,
-          originalSize: thumbnailBlob.size,
-          originalMimeType: 'image/jpeg', // Thumbnails are always JPEG
-        },
-      };
-      
-      // Convert to base64
-      const thumbnailBlobJson = new Blob([JSON.stringify(thumbnailPackage)], {
-        type: 'application/json',
-      });
-      
-      const thumbnailBase64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.includes(',') ? result.split(',')[1] : result);
-        };
-        reader.onerror = () => reject(new Error('Failed to read thumbnail'));
-        reader.readAsDataURL(thumbnailBlobJson);
-      });
-      
-      // Upload encrypted thumbnail
-      const thumbnailFileName = `thumb_${originalFileName}.encrypted`;
-      const { id: thumbnailFileId } = await uploadStorageFile(
-        accessToken,
-        pnIdentifier,
-        provider,
-        {
-          fileData: thumbnailBase64,
-          fileName: thumbnailFileName,
-          mimeType: 'application/json',
-          accountId
-        }
-      );
-
-      if (thumbnailFileId) {
-        return thumbnailFileId;
-      }
-      
-      return undefined;
-    } catch (error: any) {
-      if (import.meta.env.DEV) console.error('[Upload] Thumbnail generation/upload failed:', error);
-      return undefined;
-    }
-  };
 
   // Convert PDF pages to thumbnails and upload them
-  const processPDFPages = async (
-    pdfFile: File,
-    accountId: string,
-    session: any,
-    publicKey: string,
-    encryptionManager: EncryptionManager,
-    accessToken: string
-  ): Promise<{ thumbnailFileIds: string[]; thumbnailTokens: Record<string, string> }> => {
-    const pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-    
-    const arrayBuffer = await pdfFile.arrayBuffer();
-    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
-    const pdf = await loadingTask.promise;
-    const numPages = pdf.numPages;
-    
-    const thumbnailFileIds: string[] = [];
-    const thumbnailTokens: Record<string, string> = {};
-    const baseFileName = pdfFile.name.replace(/\.pdf$/i, '');
-    
-    if (import.meta.env.DEV) console.log(`[PDF Upload] Processing ${numPages} pages...`);
-    
-    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 1.0 });
-      const scale = Math.min(800 / viewport.width, 800 / viewport.height, 1.0);
-      const scaledViewport = page.getViewport({ scale });
-      
-      const canvas = document.createElement('canvas');
-      canvas.width = scaledViewport.width;
-      canvas.height = scaledViewport.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) continue;
-      
-      await page.render({ canvasContext: ctx, viewport: scaledViewport } as any).promise;
-      
-      const thumbnailBlob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Failed to create blob')), 'image/jpeg', 0.85);
-      });
-      
-      const thumbnailFileName = `${baseFileName}-page-${pageNum}.png`;
-      const provider = driveAccounts.find((a) => a.accountId === accountId)?.provider || 'google_drive';
-      const thumbnailFileId = await uploadThumbnailLocal(
-        thumbnailBlob,
-        thumbnailFileName,
-        encryptionManager,
-        session,
-        publicKey,
-        accessToken,
-        accountId,
-        provider
-      );
-      
-      if (thumbnailFileId) {
-        // Generate publicToken for thumbnail
-        try {
-          const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
-          const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
-          const encryptedThumbnail = await encryptionManager.encrypt(thumbnailData, session.did, publicKey);
-          const thumbnailPackage: EncryptedFilePackage = {
-            encrypted: encryptedThumbnail.encrypted,
-            iv: encryptedThumbnail.iv,
-            salt: encryptedThumbnail.salt,
-            metadata: {
-              originalName: `thumb_${thumbnailFileName}`,
-              originalSize: thumbnailBlob.size,
-              originalMimeType: 'image/jpeg',
-            },
-          };
-          
-          const encryptionService = getEncryptionService();
-          const thumbnailShareToken = await encryptionService.generateShareToken(thumbnailPackage, {
-            id: session.did,
-            publicKey: publicKey
-          });
-          
-          // Store token for later use in collection
-          thumbnailTokens[thumbnailFileId] = JSON.stringify(thumbnailShareToken);
-          if (import.meta.env.DEV) console.log(`[PDF Upload] Stored token for thumbnail ${thumbnailFileId} (page ${pageNum}/${numPages})`);
-          
-          // Create metadata for thumbnail
-          await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${thumbnailFileId}?accountId=${accountId}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${accessToken}`
-            },
-            body: JSON.stringify({
-              name: `thumb_${thumbnailFileName}`,
-              fileType: 'image',
-              isPublic: false,
-              publicToken: JSON.stringify(thumbnailShareToken)
-            })
-          });
-        } catch (err) {
-          if (import.meta.env.DEV) console.warn(`[PDF Upload] Failed to process thumbnail for page ${pageNum}:`, err);
-        }
-        
-        thumbnailFileIds.push(thumbnailFileId);
-        if (import.meta.env.DEV) console.log(`[PDF Upload] Processed page ${pageNum}/${numPages}`);
-      }
-    }
-    
-    return { thumbnailFileIds, thumbnailTokens };
-  };
 
   const addUploadTask = (file: File, accountId: string, encrypt: boolean) => {
     const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
@@ -3470,7 +3097,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 e.stopPropagation();
                 setOpenMenuFor(null);
                 setMenuPosition(null);
-                handleEditMetadata(menuFile!, menuAccountId!);
+                handleEditMetadata(menuFile!);
               }}
               className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
               disabled={isLoading}

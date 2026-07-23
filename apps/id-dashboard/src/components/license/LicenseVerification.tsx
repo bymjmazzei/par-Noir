@@ -1,5 +1,5 @@
 import React from 'react';
-import { LicenseProof, LicenseReceipt } from '../utils/licenseVerification';
+import { LicenseProof, LicenseReceipt } from '../../utils/licenseVerification';
 
 interface LicenseVerificationProps {
   licenseProof: LicenseProof | null;

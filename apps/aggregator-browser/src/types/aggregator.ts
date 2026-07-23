@@ -248,6 +248,7 @@ export interface PublicMetadata {
   creator?: {
     "@type": "Person";
     "@id": string;
+    name?: string;
     identifier?: {
       "@type": "PropertyValue";
       name: "DID";
@@ -362,7 +363,6 @@ export interface PublicMetadata {
   publicToken?: string;
   isPublic: boolean;
   sameAs?: string[];
-  about?: string[];
   
   // Content Rating System (Simplified)
   isNSFW?: boolean; // false = Public (default), true = NSFW
@@ -370,9 +370,6 @@ export interface PublicMetadata {
   // Feed Membership
   feedIds?: string[]; // IDs of feeds this content belongs to
   feedCategories?: FeedCategory[]; // Niche categories
-  
-  // Subject Niches (auto-extracted from description/tags/keywords)
-  subjects?: string[]; // Subject niches (e.g., ["cowboy", "horses", "ranch"])
   
   // Creator Tier
   creatorTier?: 'free' | 'feed' | 'self-hosted';

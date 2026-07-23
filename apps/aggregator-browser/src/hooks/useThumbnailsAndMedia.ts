@@ -8,7 +8,6 @@ import type { IndexedFile } from '../types/aggregator';
 import type { MediaDimensions } from '../utils/mediaScaling';
 import { decryptWithToken, type ShareToken } from '../utils/tokenDecryption';
 import { createThumbnailFromBlob, createVideoThumbnailFromBlob } from '../utils/thumbnailUtils';
-import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from '../services/pnOAuthService';
 
 export interface UseThumbnailsAndMediaParams {

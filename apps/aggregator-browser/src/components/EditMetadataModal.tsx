@@ -4,7 +4,7 @@
  * Used for thoughts, collections, and file editing
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { X, ChevronDown, ChevronUp } from 'lucide-react';
 import { FEED_CATEGORY_LIST } from '../constants/feedCategories';
 import { LICENSE_TYPES } from '../constants/licenses';
@@ -16,6 +16,7 @@ export interface MetadataFormData {
   tags: string;
   genre: string;
   categories: FeedCategory[]; // Changed to array for multiple selection
+  category?: FeedCategory;
   isNSFW: boolean;
   locationName: string;
   locationAddress: string;
@@ -52,7 +53,7 @@ export function EditMetadataModal({
     tags: initialData?.tags || '',
     genre: initialData?.genre || '',
     categories: initialCategories,
-    isNSFW: initialData?.isNSFW === true || initialData?.isNSFW === 'true',
+    isNSFW: initialData?.isNSFW === true,
     locationName: initialData?.locationName || '',
     locationAddress: initialData?.locationAddress || '',
     license: initialData?.license || 'all-rights-reserved'

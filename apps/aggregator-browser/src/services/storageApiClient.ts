@@ -84,7 +84,7 @@ export function resolveFileUrl(
 ): string {
   const provider = normalizeBackend(backend);
   const endpoint = API_ENDPOINT;
-  const resolvedAccountId = accountId ?? opts?.accountId;
+  const resolvedAccountId = accountId;
 
   if (provider === 'google_drive') {
     const q = new URLSearchParams();

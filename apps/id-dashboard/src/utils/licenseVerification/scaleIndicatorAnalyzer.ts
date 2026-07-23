@@ -1,5 +1,5 @@
 // Scale Indicator Analyzer - Handles scale indicators analysis for commercial usage detection
-import { ScaleIndicators } from '../types/licenseVerification';
+import { ScaleIndicators } from '../../types/licenseVerification';
 
 export class ScaleIndicatorAnalyzer {
   // Detection mechanism storage

@@ -2,10 +2,10 @@ import React, { Suspense } from 'react';
 import { lazy } from 'react';
 
 // Lazy load the component
-const IntegrationSettingsManager = lazy(() => import('../components/IntegrationSettingsManager.tsx'));
+const IntegrationSettingsManager = lazy(() => import('../IntegrationSettingsManager.tsx'));
 
 // Lazy wrapper with loading state
-export const IntegrationSettingsManagerLazy = (props) => (
+export const IntegrationSettingsManagerLazy = (props: React.ComponentProps<typeof IntegrationSettingsManager>) => (
   <Suspense fallback={
     <div className="flex items-center justify-center p-8">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

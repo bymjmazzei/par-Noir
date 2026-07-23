@@ -32,6 +32,9 @@ export interface SecureMetadata {
   version: string;
   identityId: string; // Reference to the ID file
   updatedAt: string;
+  timestamp?: string;
+  lastSynced?: string;
+  orbitDBAddress?: string;
   notifications?: {
     unread: NotificationEvent[];
     read: NotificationEvent[];

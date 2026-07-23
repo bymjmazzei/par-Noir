@@ -25,6 +25,7 @@ export class TagNormalizationService {
       fileType?: string;
       confidence?: number; // For AI tags
       model?: string; // For Gemini
+      extractionMethod?: string;
     }
   ): NormalizedTag {
     const normalizedId = normalizeSubject(tag).toLowerCase();
@@ -271,7 +272,7 @@ export class TagNormalizationService {
     // Check aliases
     for (const existing of existingTags) {
       if (existing.aliases.some(alias => 
-        findSimilarSubject(normalized, alias) !== null
+        findSimilarSubject(normalized, [alias]) !== null
       )) {
         return existing;
       }
@@ -279,7 +280,7 @@ export class TagNormalizationService {
     
     // Check similarity
     for (const existing of existingTags) {
-      if (findSimilarSubject(normalized, existing.id) !== null) {
+      if (findSimilarSubject(normalized, [existing.id]) !== null) {
         return existing;
       }
     }

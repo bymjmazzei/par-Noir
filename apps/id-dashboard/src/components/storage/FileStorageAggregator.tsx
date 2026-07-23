@@ -1380,7 +1380,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
       } catch (error) {
         console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
-          error: error?.message || error,
+          error: error instanceof Error ? error.message : 'Unknown persistence error',
         });
       }
     } finally {
@@ -2558,7 +2558,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         lastError = error;
         // candidateId (identityId) is secret - not logged
         console.warn('⚠️ [StorageCredentials] Candidate fetch failed (non-blocking):', {
-          error: error?.message || error,
+          error: error instanceof Error ? error.message : error,
         });
       }
     }
@@ -3685,7 +3685,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               if (!isPortableBackend && blobId && !existingFileIds.has(blobId)) {
                 console.debug('🗑️ [loadFiles] Filtering out orphaned file from files list', {
                   backendId,
-                  fileId: googleDriveFileId,
+                  fileId: blobId,
                   fileName: entry.fileName || entry.originalName
                 });
                 return false;
@@ -4042,20 +4042,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
               
               if (credentials && encryptionService) {
-                // Create session object for decryption
-                const session: AuthSession = {
-                  id: authenticatedUser?.id || resolvedAuth.publicKey,
-                  publicKey: resolvedAuth.publicKey,
-                  accessToken: authenticatedUser?.accessToken,
-                  nickname: authenticatedUser?.nickname
-                };
-                
-                const decryptedData = await encryptionService.decryptFile(
+                const { decryptedBlob } = await encryptionService.decryptFileFromDownload(
                   encryptedPackage,
-                  credentials.pnName,
-                  credentials.passcode,
-                  resolvedAuth.publicKey
+                  {
+                    id: authenticatedUser?.id || resolvedAuth.publicKey,
+                    publicKey: resolvedAuth.publicKey
+                  }
                 );
+                const decryptedData = new Uint8Array(await decryptedBlob.arrayBuffer());
                 
                 const decryptedText = new TextDecoder().decode(decryptedData);
                 const thoughtData = JSON.parse(decryptedText);
@@ -4103,7 +4097,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           textPost: existingTextPost || null,
           thought: existingTextPost || null,
           
-          thumbnailFileId: existingThumbnailFileId ?? null,
+          thumbnailFileId: existingThumbnailFileId ?? undefined,
           
           // Preserve subjects and feed categories
           ...(existingSubjects.length > 0 && { subjects: existingSubjects }),
@@ -4395,9 +4389,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             
             if (backend && backend.isConnected()) {
               // Get access token from backend
-              const accessToken = typeof backend.getAccessToken === 'function' 
-                ? backend.getAccessToken() 
-                : (backend as any).token;
+              const accessToken = backend.getAccessToken?.();
               
               console.log('🔍 [Phase 3] Access token check:', {
                 hasAccessToken: !!accessToken,
@@ -4414,11 +4406,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 // file.backendFileId is the Google Drive file ID, file.id might be a composite ID
                 const companionMetadata: CompanionMetadata = {
                   fileId: file.id,
-                  googleDriveFileId: file.backendFileId || (file.backend === 'google_drive' ? file.id : undefined),
+                  googleDriveFileId: file.backendFileId || file.id,
                   fileName: file.name,
                   originalName: file.originalName || file.name.replace('.encrypted', ''),
                   mimeType: file.mimeType || 'application/octet-stream',
-                  size: parseInt(file.size || '0', 10),
+                  size: parseInt(String(file.size || 0), 10),
                   visibility: 'public',
                   uploadedAt: file.aggregatedAt || new Date().toISOString(),
                   owner: {
@@ -4879,13 +4871,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               'google_drive',
               authenticatedUser.id
             );
-            if (credentials && credentials.email) {
+            if (credentials?.email && credentials.accessToken) {
               const identifiers = resolveIdentifiersForEmail(credentials.email);
           await upsertDriveAccount({
             backendId: identifiers.backendId,
             keyPrefix: identifiers.keyPrefix,
                 token: credentials.accessToken,
-                refreshToken: credentials.refreshToken,
+                refreshToken: credentials.refreshToken ?? null,
                 email: credentials.email
           });
             }
@@ -4907,7 +4899,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 authenticatedUser.id
               );
               if (credentials) {
-                token = credentials.accessToken;
+                token = credentials.accessToken ?? null;
                 refresh = credentials.refreshToken || null;
               }
             } catch (error) {
@@ -4977,7 +4969,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           driveCredentialCacheRef.current.get(backendId)?.accessToken;
         if (hasAccount) {
           const credential = driveCredentialCacheRef.current.get(backendId)!;
-          const backend = aggregatorService?.getBackend(backendId) as { connect: (c: { token: string; refreshToken?: string; email?: string }) => Promise<void> } | null;
+          const backend = aggregatorService?.getBackend(backendId) as {
+            connect: (credentials: {
+              token: string;
+              refreshToken?: string;
+              email?: string;
+              sessionId?: string;
+            }) => Promise<void>;
+          } | null;
           if (backend && credential.accessToken) {
             const sessionId =
               authenticatedUserRef.current?.id || authenticatedUserRef.current?.publicKey || undefined;
@@ -5308,7 +5307,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       
       // Find the account to get its email for metadata removal
       const accountToRemove = driveAccounts.find(acc => acc.backendId === backendId);
-      const accountEmail = accountToRemove?.email || userEmails.get(backendId) || null;
+      const accountEmail = accountToRemove
+        ? userEmails.get(accountToRemove.backendId) || null
+        : null;
       
       const backend = aggregatorService.getBackend(backendId);
       if (backend) {
@@ -5910,6 +5911,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const token = (backend as any).token || localStorage.getItem('google_drive_token');
           
           if (token) {
+            const publicKey = resolvedAuth?.publicKey;
+            if (!publicKey) {
+              throw new Error('Public identity key is required to update metadata');
+            }
             // Generate stable pN identifier using VolumeIdGenerator for consistency
             let pnIdentifier: string | undefined;
             try {
@@ -5918,11 +5923,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
               
               // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth (public)
-              if (credentials?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
+              if (credentials?.pnName && credentials?.passcode) {
                 pnIdentifier = await VolumeIdGenerator.generateVolumeId({
                   pnName: credentials.pnName,
                   passcode: credentials.passcode,
-                  publicKey: resolvedAuth.publicKey
+                  publicKey
                 });
               }
             } catch (volumeIdError) {
@@ -5954,11 +5959,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 isPublic: false,
                 creator: {
                   '@type': 'Person',
-                  '@id': resolvedAuth.publicKey.startsWith('did:') ? resolvedAuth.publicKey : `did:key:${resolvedAuth.publicKey}`,
+                  '@id': publicKey.startsWith('did:') ? publicKey : `did:key:${publicKey}`,
                   identifier: {
                     '@type': 'PropertyValue',
                     name: 'DID',
-                    value: resolvedAuth.publicKey.startsWith('did:') ? resolvedAuth.publicKey : `did:key:${resolvedAuth.publicKey}`
+                    value: publicKey.startsWith('did:') ? publicKey : `did:key:${publicKey}`
                   }
                 }
               } as PublicMetadata;
@@ -6001,7 +6006,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               visibility: currentMetadata.isPublic ? 'public' : 'private',
               uploadedAt: currentMetadata.uploadDate || new Date().toISOString(),
               owner: {
-                did: resolvedAuth.publicKey.startsWith('did:') ? resolvedAuth.publicKey : `did:key:${resolvedAuth.publicKey}`,
+                did: publicKey.startsWith('did:') ? publicKey : `did:key:${publicKey}`,
                 identifier: pnIdentifier
               },
               tags: tags,
@@ -6094,9 +6099,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         category: '',
         locationName: '',
         locationAddress: '',
-        license: 'all-rights-reserved',
-        isNSFW: false,
-        isPublic: false
+        license: 'all-rights-reserved'
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update metadata');
@@ -6654,7 +6657,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       setIsBulkDeleteMode(false);
       setMoveDestKey('');
       await loadFiles();
-      setMessage(`Moved ${fileIds.length} file(s) to ${destProvider}.`);
+      setSuccessMessage(`Moved ${fileIds.length} file(s) to ${destProvider}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Move failed');
     } finally {
@@ -6778,7 +6781,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
 
       const account = driveAccounts.find(acc => acc.backendId === file.backend);
-      const accountId = account?.accountId || account?.backendId;
+      const accountId = account?.backendId;
       const accountIdParam = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
 
       try {
@@ -6920,7 +6923,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
       // SECURITY: Get pnName from credentials (secrets) for desktop unlock payload
       const pnNameForPayload = credentials?.pnName || null;
-      if (!pnNameForPayload || !resolvedAuth?.publicKey) {
+      if (!pnNameForPayload || !resolvedAuth?.publicKey || !resolvedAuth.authToken) {
         console.error('[DesktopUnlock] Missing credentials or publicKey');
         return;
       }
@@ -7090,7 +7093,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
       <MultiCloudStoragePanel
         pnIdentifier={cloudPnIdentifier}
-        authToken={apiToken}
+        authToken={apiToken ?? undefined}
         sessionId={authenticatedUser?.id ?? null}
         onConnectGoogleDrive={handleConnectGoogleDrive}
         googleDriveConnectedCount={driveAccounts.length}
@@ -7922,9 +7925,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         category: '',
         locationName: '',
         locationAddress: '',
-        license: 'all-rights-reserved',
-        isNSFW: false,
-        isPublic: false
+        license: 'all-rights-reserved'
       });
           }}
         >
@@ -7945,9 +7946,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         category: '',
         locationName: '',
         locationAddress: '',
-        license: 'all-rights-reserved',
-        isNSFW: false,
-        isPublic: false
+        license: 'all-rights-reserved'
       });
                 }}
                 className="text-text-secondary hover:text-text-primary transition-colors"
@@ -8011,9 +8010,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       required
                     >
                       <option value="">Select a category</option>
-                      {FEED_CATEGORY_LIST
-                        .filter(cat => cat.id !== 'adults-only' || (authenticatedUser as any)?.ageVerified)
-                        .map(category => (
+                      {FEED_CATEGORY_LIST.map(category => (
                           <option key={category.id} value={category.id}>
                             {category.name}
                           </option>
@@ -8111,9 +8108,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         category: '',
         locationName: '',
         locationAddress: '',
-        license: 'all-rights-reserved',
-        isNSFW: false,
-        isPublic: false
+        license: 'all-rights-reserved'
       });
                   }}
                   className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"

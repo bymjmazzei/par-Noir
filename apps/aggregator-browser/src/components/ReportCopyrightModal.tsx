@@ -3,7 +3,7 @@
  * Simple confirmation for reporting content as copyright violation
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 
 interface ReportCopyrightModalProps {

@@ -1,4 +1,3 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
 // License Verification Types and Interfaces
 export interface LicenseInfo {
   licenseKey: string;
@@ -6,7 +5,7 @@ export interface LicenseInfo {
   identityHash: string;
   issuedAt: string;
   expiresAt: string;
-  status: 'active' | 'expired' | 'pending';
+  status: 'active' | 'expired' | 'pending' | 'suspended' | 'transferred';
   transferredFrom?: string;
   transferDate?: string;
   originalIssueDate?: string;

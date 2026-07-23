@@ -44,7 +44,9 @@ export function useVerticalSwipe({
   useEffect(() => {
     if (!enabled) return;
 
-    const handleTouchStart = (e: TouchEvent) => {
+    const handleTouchStart: EventListener = (event) => {
+      if (!(event instanceof TouchEvent)) return;
+      const e = event;
       const touch = e.touches[0];
       touchStartRef.current = {
         y: touch.clientY,
@@ -52,7 +54,9 @@ export function useVerticalSwipe({
       };
     };
 
-    const handleTouchMove = (e: TouchEvent) => {
+    const handleTouchMove: EventListener = (event) => {
+      if (!(event instanceof TouchEvent)) return;
+      const e = event;
       // Only prevent default if we're actually doing a swipe gesture
       // Don't interfere with normal scrolling
       if (touchStartRef.current && !isScrollingRef.current) {
@@ -70,7 +74,9 @@ export function useVerticalSwipe({
       }
     };
 
-    const handleTouchEnd = (e: TouchEvent) => {
+    const handleTouchEnd: EventListener = (event) => {
+      if (!(event instanceof TouchEvent)) return;
+      const e = event;
       if (!touchStartRef.current || isScrollingRef.current) {
         touchStartRef.current = null;
         return;

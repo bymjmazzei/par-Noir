@@ -804,12 +804,18 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
             );
             
             if (pnFolders.length > 0) {
-              folderId = pnFolders[0].id;
-              console.log(`✅ [listFiles] Found folder: "${pnFolders[0].name}" (${folderId.substring(0, 12)}...)`);
+              const selectedFolderId = pnFolders[0].id;
+              if (typeof selectedFolderId === 'string') {
+                folderId = selectedFolderId;
+                console.log(`✅ [listFiles] Found folder: "${pnFolders[0].name}" (${selectedFolderId.substring(0, 12)}...)`);
+              }
             } else if (folderData.files.length > 0) {
               // Fallback: Use first "par Noir" folder
-              folderId = folderData.files[0].id;
-              console.log(`✅ [listFiles] Using fallback folder: "${folderData.files[0].name}" (${folderId.substring(0, 12)}...)`);
+              const selectedFolderId = folderData.files[0].id;
+              if (typeof selectedFolderId === 'string') {
+                folderId = selectedFolderId;
+                console.log(`✅ [listFiles] Using fallback folder: "${folderData.files[0].name}" (${selectedFolderId.substring(0, 12)}...)`);
+              }
             }
           }
         }

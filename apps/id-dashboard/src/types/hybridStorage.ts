@@ -1,4 +1,3 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
 // Hybrid Storage Types and Interfaces
 export interface StorageConfig {
   mode: 'pwa' | 'webapp' | 'auto';

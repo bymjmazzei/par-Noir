@@ -47,24 +47,9 @@ export const UnifiedAuth: React.FC<UnifiedAuthProps> = ({
             username
           );
           
-          if (decryptedIdentity.pnName === username) {
-            // Found matching identity
-            const session = await IdentityCrypto.decryptIdentity(
-              identity.publicKey, 
-              passcode
-            );
-            
-            if (session) {
-              // Update last accessed time
-              await storage.updateNickname(identity.id, identity.nickname);
-              
-              // SECURITY: Do NOT include passcode in session - it's a SECRET
-              // Credentials are already stored in SecureCredentialManager by authenticateIdentity
-              // Pass the session WITHOUT secrets
-              onAuthSuccess?.(session);
-              return;
-            }
-          }
+          await storage.updateNickname(identity.id, identity.nickname);
+          onAuthSuccess?.(decryptedIdentity);
+          return;
         } catch (error) {
           // Continue to next identity
           continue;

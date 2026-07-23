@@ -33,7 +33,6 @@ interface Comment {
   };
 }
 
-const EMOJI_OPTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '💯'];
 const debug = (...args: unknown[]) => {
   if (import.meta.env.DEV) console.debug(...args);
 };
@@ -139,11 +138,6 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
     };
 
     // Close on navigation (hashchange, popstate) - but only if actually navigating away
-    const handleNavigation = (e: PopStateEvent | HashChangeEvent) => {
-      // Don't close if it's just a hash change for the same file
-      debug('[CommentModal] Navigation event', e.type);
-      onClose();
-    };
 
     // Use capture phase to catch clicks before they bubble
     document.addEventListener('mousedown', handleClickOutside, true);
@@ -172,20 +166,6 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
     success('Comment posted!');
   };
 
-  const handleEmojiClick = async (emoji: string) => {
-    if (!userState.isUnlocked) return;
-    
-    const authorId = userState.pnIdentifier || 'anonymous';
-    const authorName = userState.pnIdentifier?.substring(0, 8) || 'Anonymous';
-    
-    await addComment(file.metadata.fileId, emoji, authorId, authorName);
-    
-    // Reload comments
-    const loadedComments = await loadComments(file.metadata.fileId);
-    setComments(loadedComments.length > 0 ? loadedComments : getComments(file.metadata.fileId));
-    
-    success('Reaction posted!');
-  };
 
   const handleReplySubmit = async (parentCommentId: string) => {
     if (!replyContent.trim() || !userState.isUnlocked) return;

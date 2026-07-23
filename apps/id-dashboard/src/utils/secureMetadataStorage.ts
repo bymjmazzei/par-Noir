@@ -48,6 +48,8 @@ export class SecureMetadataStorage {
         identityId: identityId,
         encryptedMetadata: secureMetadata,
         timestamp: new Date().toISOString(),
+        createdAt: secureMetadata.updatedAt,
+        updatedAt: new Date().toISOString(),
         version: Date.now()
       };
 

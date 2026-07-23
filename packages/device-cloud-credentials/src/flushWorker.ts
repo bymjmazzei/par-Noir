@@ -107,15 +107,15 @@ export async function fetchMailboxPending(
   apiBaseUrl: string,
   authToken: string,
   identityId: string,
-  routeKey: string,
+  routeKey?: string,
   limit = 100
 ): Promise<MailboxJob[]> {
   const base = apiBaseUrl.replace(/\/$/, '');
   const q = new URLSearchParams({
     pnIdentifier: identityId,
-    routeKey,
     limit: String(limit)
   });
+  if (routeKey) q.set('routeKey', routeKey);
   const res = await fetch(`${base}/api/mailbox/pending?${q}`, {
     headers: {
       Authorization: `Bearer ${authToken}`,

@@ -1,5 +1,5 @@
 // Error Storage - Handles error storage and persistence
-import { ErrorEvent, ErrorHandlerConfig } from '../types/errorHandler';
+import { ErrorEvent, ErrorHandlerConfig } from '../../types/errorHandler';
 
 export class ErrorStorage {
   private errors: ErrorEvent[] = [];

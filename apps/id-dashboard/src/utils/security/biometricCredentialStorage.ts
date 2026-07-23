@@ -45,7 +45,7 @@ export class BiometricCredentialStorage {
       // Note: SecureStorage doesn't have a generic store, so we'll use a workaround
       // For now, we'll store in IndexedDB using a custom object store
       // This is a temporary solution - ideally SecureStorage should support custom stores
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(existing));
+      localStorage.setItem(BiometricCredentialStorage.STORAGE_KEY, JSON.stringify(existing));
 
       // NOTE: Prefer IndexedDB for this payload once SecureStorage exposes a generic key-value or
       // object-store API; today the class uses localStorage as the portable store.
@@ -71,7 +71,7 @@ export class BiometricCredentialStorage {
    */
   async getAllCredentials(): Promise<BiometricCredential[]> {
     try {
-      const stored = localStorage.getItem(this.STORAGE_KEY);
+      const stored = localStorage.getItem(BiometricCredentialStorage.STORAGE_KEY);
       if (!stored) return [];
       return JSON.parse(stored);
     } catch (error) {
@@ -91,7 +91,7 @@ export class BiometricCredentialStorage {
       
       if (index !== -1) {
         existing[index] = credential;
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(existing));
+        localStorage.setItem(BiometricCredentialStorage.STORAGE_KEY, JSON.stringify(existing));
       }
     } catch (error) {
       throw new Error(`Failed to update biometric credential: ${error}`);
@@ -107,7 +107,7 @@ export class BiometricCredentialStorage {
     try {
       const existing = await this.getAllCredentials();
       const filtered = existing.filter(cred => cred.identityId !== identityId);
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered));
+      localStorage.setItem(BiometricCredentialStorage.STORAGE_KEY, JSON.stringify(filtered));
     } catch (error) {
       throw new Error(`Failed to remove biometric credentials: ${error}`);
     }
@@ -122,7 +122,7 @@ export class BiometricCredentialStorage {
     try {
       const existing = await this.getAllCredentials();
       const filtered = existing.filter(cred => cred.id !== credentialId);
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered));
+      localStorage.setItem(BiometricCredentialStorage.STORAGE_KEY, JSON.stringify(filtered));
     } catch (error) {
       throw new Error(`Failed to remove biometric credential: ${error}`);
     }

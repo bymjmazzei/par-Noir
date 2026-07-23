@@ -17,8 +17,9 @@ export interface CoinbaseCheckout {
   };
   metadata: {
     licenseType: string;
-    identityHash: string;
-    licensePrice: string;
+    identityHash?: string;
+    licensePrice?: string;
+    creatorDid?: string;
   };
 }
 
@@ -33,8 +34,9 @@ export interface CheckoutRequest {
   requested_info: string[];
   metadata: {
     licenseType: string;
-    identityHash: string;
-    licensePrice: string;
+    identityHash?: string;
+    licensePrice?: string;
+    creatorDid?: string;
   };
 }
 

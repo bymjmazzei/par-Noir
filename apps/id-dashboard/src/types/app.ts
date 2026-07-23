@@ -1,4 +1,3 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
 export interface DIDInfo {
   id: string;
   pnName: string;
@@ -47,6 +46,7 @@ export interface RecoveryRequest {
   approvals: string[];
   denials: string[];
   signatures: string[]; // ZK proof signatures from custodians
+  proofs?: string[];
   claimantContactType?: 'email' | 'phone';
   claimantContactValue?: string;
   expiresAt?: string;
@@ -68,7 +68,7 @@ export interface RecoveryKey {
 export interface SyncedDevice {
   id: string;
   name: string;
-  type: 'mobile' | 'ktop' | 'tablet' | 'other';
+  type: 'mobile' | 'desktop' | 'tablet' | 'other';
   lastSync: string;
   status: 'active' | 'inactive';
   location?: string;
@@ -90,7 +90,7 @@ export interface CustodianInvitationForm {
 export interface DeviceSyncData {
   deviceId: string;
   deviceName: string;
-  deviceType: 'mobile' | 'ktop' | 'tablet' | 'other';
+  deviceType: 'mobile' | 'desktop' | 'tablet' | 'other';
   syncKey: string;
   identityId: string;
   expiresAt: string;

@@ -1,6 +1,6 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '../cryptoWorkerManager';
 // ZKP Manager - Handles Zero-Knowledge Proof and cryptographic operations for license verification
-import { LicenseInfo, LicenseProof } from '../types/licenseVerification';
+import { LicenseInfo, LicenseProof } from '../../types/licenseVerification';
 import { LicenseManager } from './licenseManager';
 
 export class ZKPManager {
@@ -49,7 +49,7 @@ export class ZKPManager {
   private static async generateRealZKP(data: any): Promise<string> {
     try {
       // Generate real Schnorr signature using Web Crypto API
-      const keyPair = await cryptoWorkerManager.generateKey(
+      const keyPair = await cryptoWorkerManager.generateKeyPair(
         {
           name: 'ECDSA',
           namedCurve: 'P-384'
@@ -160,7 +160,7 @@ export class ZKPManager {
   private static async signProof(data: any): Promise<string> {
     try {
       // Generate real ECDSA key pair
-      const keyPair = await cryptoWorkerManager.generateKey(
+      const keyPair = await cryptoWorkerManager.generateKeyPair(
         {
           name: 'ECDSA',
           namedCurve: 'P-384'

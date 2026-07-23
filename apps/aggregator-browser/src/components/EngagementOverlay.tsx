@@ -3,7 +3,7 @@
  * Slide-up overlay for engagement actions (like, comment, share, save)
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Heart, MessageCircle, Share2, Bookmark, X, Copy, ExternalLink } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';

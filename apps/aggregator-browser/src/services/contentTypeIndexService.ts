@@ -7,7 +7,7 @@
 
 import { IndexedFile, MetadataFilters } from '../types/aggregator';
 import { getMetadataIndexService } from './metadata/MetadataIndexService';
-import { ContentType, ContentTypeConfig } from '../types/contentTypes';
+import { ContentType } from '../types/contentTypes';
 
 export class ContentTypeIndexService {
   private mediaIndex: IndexedFile[] = [];
@@ -51,20 +51,6 @@ export class ContentTypeIndexService {
     return { files, hasMore };
   }
   
-  /**
-   * Filter files based on contentClass
-   */
-  private filterForContentType(
-    files: IndexedFile[],
-    contentType: ContentType,
-    config: ContentTypeConfig // Kept for interface compatibility, not used
-  ): IndexedFile[] {
-    const expectedContentClass = contentType === 'thoughts' ? 'thought' : contentType === 'collections' ? 'collection' : 'media';
-    return files.filter(file => {
-      const fileContentClass = (file.metadata as any).contentClass;
-      return fileContentClass === expectedContentClass;
-    });
-  }
   
   /**
    * Get a content-type index

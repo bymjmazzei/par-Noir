@@ -1,4 +1,3 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
 // Dashboard Types and Interfaces
 
 export interface DIDInfo {

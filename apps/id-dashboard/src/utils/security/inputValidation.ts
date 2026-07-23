@@ -7,7 +7,10 @@ export class AdvancedInputValidator {
     command: /(\||&|;|`|\$\(|\$\{)/g
   };
 
-  static sanitizeInput(input: string, rules: string[] = ['html', 'script']): string {
+  static sanitizeInput(
+    input: string,
+    rules: Array<keyof typeof AdvancedInputValidator.sanitizationRules> = ['html', 'script']
+  ): string {
     let sanitized = input;
     
     rules.forEach(rule => {

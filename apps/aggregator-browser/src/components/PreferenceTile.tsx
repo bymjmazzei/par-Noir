@@ -3,7 +3,6 @@
  * Appears in feed to learn user preferences via swipe gestures
  */
 
-import React from 'react';
 import { ThumbsUp, ThumbsDown, X } from 'lucide-react';
 import { FEED_CATEGORIES } from '../constants/feedCategories';
 
@@ -36,8 +35,6 @@ interface PreferenceTileProps {
 
 export function PreferenceTile({
   question,
-  onSwipeRight,
-  onSwipeLeft,
   onDismiss
 }: PreferenceTileProps) {
   const getIcon = () => {

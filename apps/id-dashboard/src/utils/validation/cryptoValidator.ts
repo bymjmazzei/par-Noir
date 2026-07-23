@@ -1,6 +1,6 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '../crypto/cryptoWorkerManager';
 // Crypto Validator - Handles cryptographic data validation
-import { ValidationResult } from '../types/validation';
+import { ValidationResult } from '../../types/validation';
 import { ValidationPatterns } from './validationPatterns';
 
 export class CryptoValidator {

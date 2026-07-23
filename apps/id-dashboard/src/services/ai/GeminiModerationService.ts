@@ -169,7 +169,9 @@ export class GeminiModerationService {
       const responseText = result.response.text();
       const response = this.parseJSONResponse(responseText);
       
-      const tags = Array.isArray(response.tags) ? response.tags : (response.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+      const tags = Array.isArray(response.tags)
+        ? response.tags
+        : (response.tags || '').split(',').map((tag: string) => tag.trim()).filter(Boolean);
       
       return {
         tags,

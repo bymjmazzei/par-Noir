@@ -3,13 +3,13 @@
  * Allows paid-tier creators to create new feeds
  */
 
-import React, { useState, useEffect } from 'react';
-import { X, Plus, Image as ImageIcon, Sparkles, AlertCircle, Check } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Plus, Sparkles, AlertCircle } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
 import { FeedCategory } from '../types/aggregator';
 import { FeedService } from '../services/feedService';
-import { FEED_CATEGORIES, getAllFeedCategories } from '../constants/feedCategories';
+import { getAllFeedCategories } from '../constants/feedCategories';
 import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from '../services/pnOAuthService';
 

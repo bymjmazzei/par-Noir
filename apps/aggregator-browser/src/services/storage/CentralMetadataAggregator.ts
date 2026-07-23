@@ -26,7 +26,6 @@ export class CentralMetadataAggregator {
   private static readonly CENTRAL_INDEX_PATH = '/api/aggregator/metadata-index';
   private static readonly CACHE_KEY = 'pn_central_metadata_index';
   private static readonly CACHE_VERSION_KEY = 'pn_central_metadata_index_version';
-  private static readonly CACHE_VERSION = '1.0'; // Increment when cache format changes
   private static pendingRequests = new Map<string, Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }>>();
   private static ttlCache = new Map<string, { files: CentralIndexEntry[]; total: number; hasMore: boolean; ts: number }>();
 
@@ -43,24 +42,6 @@ export class CentralMetadataAggregator {
     }
   }
 
-  /**
-   * Check if cache is stale (older than 1 hour)
-   */
-  private static isCacheStale(): boolean {
-    try {
-      const cached = localStorage.getItem(this.CACHE_KEY);
-      if (!cached) return true;
-
-      const indexData: CentralIndexResponse = JSON.parse(cached);
-      if (!indexData.updatedAt) return true;
-
-      const cacheAge = Date.now() - new Date(indexData.updatedAt).getTime();
-      const oneHour = 60 * 60 * 1000;
-      return cacheAge > oneHour;
-    } catch {
-      return true;
-    }
-  }
 
   /**
    * Fetch aggregated public metadata from central service
@@ -188,50 +169,6 @@ export class CentralMetadataAggregator {
     }
   }
 
-  /**
-   * Fallback: Fetch from localStorage cache
-   * This is populated when dashboard submits metadata
-   */
-  private static fetchFromLocalStorageCache(
-    filters?: { tags?: string[]; fileType?: string; authorDid?: string }
-  ): CentralIndexEntry[] {
-    try {
-      const cached = localStorage.getItem(this.CACHE_KEY);
-      if (!cached) {
-        console.log('ℹ️ No cached metadata found');
-        return [];
-      }
-
-      const indexData: CentralIndexResponse = JSON.parse(cached);
-      let files = indexData.files || [];
-      
-      console.log(`ℹ️ Using cached metadata: ${files.length} files`);
-
-      // Apply filters
-      if (filters) {
-        if (filters.tags && filters.tags.length > 0) {
-          files = files.filter(f => {
-            const keywords = f.metadata.keywords || f.metadata.tags || [];
-            return keywords.some(tag => filters.tags!.includes(tag));
-          });
-        }
-        if (filters.authorDid) {
-          files = files.filter(f => {
-            // Support both new creator structure and legacy author structure
-            const did = f.metadata.creator?.identifier?.value || 
-                       f.metadata.creator?.["@id"] || 
-                       f.metadata.author?.did;
-            return did === filters.authorDid;
-          });
-        }
-      }
-
-      return files;
-    } catch (error) {
-      console.warn('Failed to load cached index:', error);
-      return [];
-    }
-  }
 
   /**
    * Fetch NSFW metadata index from central service
@@ -242,6 +179,7 @@ export class CentralMetadataAggregator {
     filters?: { 
       tags?: string[]; 
       fileType?: string; 
+      contentClass?: string;
       authorDid?: string;
       limit?: number;      // SCALABILITY: Pagination support
       offset?: number;     // SCALABILITY: Pagination support
@@ -278,6 +216,7 @@ export class CentralMetadataAggregator {
     filters?: { 
       tags?: string[]; 
       fileType?: string; 
+      contentClass?: string;
       authorDid?: string;
       limit?: number;
       offset?: number;

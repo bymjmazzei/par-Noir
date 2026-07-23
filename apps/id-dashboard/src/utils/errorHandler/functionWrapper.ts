@@ -1,5 +1,5 @@
 // Function Wrapper - Provi utility functions for wrapping functions with error handling
-import { ErrorContext } from '../types/errorHandler';
+import { ErrorContext } from '../../types/errorHandler';
 
 export class FunctionWrapper {
   /**

@@ -31,7 +31,6 @@ export function DiscoveryPage({
   feeds,
   thumbnails: externalThumbnails,
   onFileClick,
-  onFeedClick,
   onCreatorClick
 }: DiscoveryPageProps) {
   if (import.meta.env.DEV) {
@@ -533,7 +532,7 @@ export function DiscoveryPage({
   };
 
   // Force re-render when display names are updated
-  const [displayNamesVersion, setDisplayNamesVersion] = useState(0);
+  const [, setDisplayNamesVersion] = useState(0);
   
   // Watch for changes in userDisplayNames to trigger re-render
   useEffect(() => {
@@ -592,8 +591,6 @@ export function DiscoveryPage({
   const handleItemClick = (item: any) => {
     if (item.type === 'file') {
       onFileClick(item.item);
-    } else if (item.type === 'feed') {
-      onFeedClick(item.item);
     } else if (item.type === 'creator') {
       onCreatorClick(item.id);
     }
@@ -658,7 +655,7 @@ export function DiscoveryPage({
               setDisplayNamesVersion(prev => prev + 1);
             }
           })
-          .catch((error) => {
+          .catch(() => {
             // Silently fail - profile may not exist or API may not be available
             // The DID will be displayed until profile is loaded
           });
@@ -684,7 +681,6 @@ export function DiscoveryPage({
         const activeButton = topFeedRailRef.current?.querySelector(`[data-top-feed="${activeTopFeed}"]`) as HTMLElement;
         if (activeButton && topFeedRailRef.current) {
           const container = topFeedRailRef.current;
-          const containerWidth = container.clientWidth;
           const buttonLeft = activeButton.offsetLeft;
           const buttonWidth = activeButton.offsetWidth;
           const screenWidth = window.innerWidth;
@@ -921,11 +917,6 @@ export function DiscoveryPage({
                     {item.type === 'file' && (item.item as IndexedFile).metadata.description && (
                       <div className="mt-2 text-neutral-300 line-clamp-2">
                         {(item.item as IndexedFile).metadata.description}
-                      </div>
-                    )}
-                    {item.type === 'feed' && (item.item as Feed).feedDescription && (
-                      <div className="mt-2 text-neutral-300 line-clamp-2">
-                        {(item.item as Feed).feedDescription}
                       </div>
                     )}
                   </div>

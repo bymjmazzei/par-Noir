@@ -50,6 +50,7 @@ export class EncryptionService {
 
       // Create encrypted file package
       const packageData: EncryptedFilePackage = {
+        version: '1',
         encrypted: encrypted.encrypted,
         iv: encrypted.iv,
         salt: encrypted.salt,
@@ -57,6 +58,7 @@ export class EncryptionService {
           originalName: file.name,
           originalSize: file.size,
           originalMimeType: file.type,
+          encryptedAt: new Date().toISOString(),
         },
       };
 
@@ -87,7 +89,7 @@ export class EncryptionService {
    */
   async decryptFileFromDownload(
     encryptedPackage: EncryptedFilePackage,
-    session: AuthSession
+    session: Pick<AuthSession, 'id' | 'publicKey'>
   ): Promise<{ decryptedBlob: Blob; metadata: any }> {
     if (!session.id || !session.publicKey) {
       throw new Error('Missing required session data: id and publicKey are required');
@@ -178,11 +180,11 @@ export class EncryptionService {
         description: encryptedPackage.metadata?.description
       },
       shareKey: shareKeyBase64,
-      shareEncrypted: {
+      shareEncrypted: JSON.stringify({
         encrypted: shareEncryptedBase64,
         iv: shareIvBase64,
         salt: saltBase64
-      }
+      })
     };
   }
 }

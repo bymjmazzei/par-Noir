@@ -1,5 +1,5 @@
 import React from 'react';
-import { UsagePattern } from '../utils/licenseVerification';
+import { UsagePattern } from '../../utils/licenseVerification';
 
 interface UsagePatternDetectionProps {
   usagePattern: UsagePattern | null;

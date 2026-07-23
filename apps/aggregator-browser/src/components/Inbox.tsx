@@ -29,7 +29,7 @@ interface InboxProps {
   onCreatorClick?: (creatorId: string) => void;
 }
 
-export function Inbox({ onNotificationClick, initialThread = null, onCreatorClick }: InboxProps) {
+export function Inbox({ initialThread = null, onCreatorClick }: InboxProps) {
   const { userState } = useUserState();
   const [activeView, setActiveView] = useState<'messages' | 'notifications' | 'requests' | 'activity' | 'connections'>('messages');
   const [selectedThread, setSelectedThread] = useState<SelectedInboxThread | null>(

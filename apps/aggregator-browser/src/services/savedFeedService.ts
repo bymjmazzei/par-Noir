@@ -131,7 +131,7 @@ export async function saveToFeed(
         statusText: response.statusText,
         errorMessage,
         errorDetails,
-        requestBody
+        requestBody: { userPnIdentifier, fileId }
       });
       throw new Error(errorMessage);
     }

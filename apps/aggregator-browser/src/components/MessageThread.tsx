@@ -3,7 +3,7 @@
  * Conversation view for messaging
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, Send, Paperclip, MoreVertical, Trash2, Check, Settings } from 'lucide-react';
 import {
   Message,
@@ -79,7 +79,7 @@ export function MessageThread({
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [totalMessages, setTotalMessages] = useState(0);
+  const [, setTotalMessages] = useState(0);
   const [sending, setSending] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [showMenu, setShowMenu] = useState(false);
@@ -476,7 +476,8 @@ export function MessageThread({
       toPnIdentifier: participantPnIdentifier,
       content: content,
       timestamp: new Date().toISOString(),
-      read: false
+      read: false,
+      encrypted: true
     };
 
     // Add optimistic message to UI immediately
@@ -556,7 +557,8 @@ export function MessageThread({
       toPnIdentifier: isGroup ? groupId! : participantPnIdentifier,
       content: caption || '📎 Media',
       timestamp: new Date().toISOString(),
-      read: false
+      read: false,
+      encrypted: true
     };
     setMessages((prev) => [...prev, optimisticMessage]);
 

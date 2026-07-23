@@ -44,14 +44,19 @@ export class DataPointProposalManager {
       }
 
       // Add proposal to metadata
-      if (!currentMetadata.dataPointProposals) {
-        currentMetadata.dataPointProposals = [];
+      if (!currentMetadata.dataPoints) {
+        currentMetadata.dataPoints = {
+          access: [],
+          proposals: [],
+          attestedData: [],
+          globalSettings: {},
+        };
       }
       
-      currentMetadata.dataPointProposals.push(newProposal);
+      currentMetadata.dataPoints.proposals.push(newProposal);
 
       // Save updated metadata
-      await SecureMetadataStorage.saveMetadata(identityId, currentMetadata, pnName, passcode);
+      await SecureMetadataStorage.updateMetadata(identityId, currentMetadata);
 
       return { success: true, proposalId };
     } catch (error) {
@@ -74,12 +79,12 @@ export class DataPointProposalManager {
       // Get current metadata
       const currentMetadata = await SecureMetadataStorage.getMetadata(identityId);
       
-      if (!currentMetadata || !currentMetadata.dataPointProposals) {
+      if (!currentMetadata?.dataPoints) {
         return { success: false, error: 'No proposals found' };
       }
 
       // Find the proposal
-      const proposal = currentMetadata.dataPointProposals.find(p => p.id === proposalId);
+      const proposal = currentMetadata.dataPoints.proposals.find(p => p.id === proposalId);
       if (!proposal) {
         return { success: false, error: 'Proposal not found' };
       }
@@ -99,7 +104,7 @@ export class DataPointProposalManager {
       proposal.votes.voters.push(identityId);
 
       // Save updated metadata
-      await SecureMetadataStorage.saveMetadata(identityId, currentMetadata, pnName, passcode);
+      await SecureMetadataStorage.updateMetadata(identityId, currentMetadata);
 
       return { success: true };
     } catch (error) {
@@ -114,7 +119,7 @@ export class DataPointProposalManager {
   static async getProposals(identityId: string): Promise<DataPointProposal[]> {
     try {
       const metadata = await SecureMetadataStorage.getMetadata(identityId);
-      return metadata?.dataPointProposals || [];
+      return metadata?.dataPoints?.proposals || [];
     } catch (error) {
       // Console statement removed for production
       return [];

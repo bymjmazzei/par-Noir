@@ -1,5 +1,5 @@
 // Usage Pattern Analyzer - Handles usage pattern analysis and grace period management
-import { UsagePattern } from '../types/licenseVerification';
+import { UsagePattern } from '../../types/licenseVerification';
 import { DETECTION_THRESHOLDS } from './detectionConstants';
 import { APICallMonitor } from './apiCallMonitor';
 import { EnterpriseFeatureDetector } from './enterpriseFeatureDetector';

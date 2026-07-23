@@ -7,7 +7,6 @@ import { uploadQueueService, UploadTask } from './uploadQueueService';
 import { workerManager } from './workerManager';
 import { PNOAuthService } from './pnOAuthService';
 import { getEncryptionService } from './encryptionService';
-import { renderTextPostToBlob } from './textPostService';
 import { API_ENDPOINT } from '../config/api';
 import { uploadStorageFile } from './storageApiClient';
 
@@ -541,13 +540,7 @@ async function processMultiPageUpload(
     },
   };
 
-  let shareToken: any = undefined;
   try {
-    const encryptionService = getEncryptionService();
-    shareToken = await encryptionService.generateShareToken(packageData, {
-      id: session.did,
-      publicKey: publicKey
-    });
   } catch (tokenError) {
     if (import.meta.env.DEV) console.warn('Share token generation failed:', tokenError);
   }

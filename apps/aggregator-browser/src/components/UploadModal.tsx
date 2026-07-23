@@ -3,7 +3,7 @@
  * Uses the dashboard's FileStorageAggregator component directly
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { FileStorageAggregator } from './FileStorageAggregator';
 import { TextPostEditor } from './TextPostEditor';
 import { ContentPreferencesPanel } from './ContentPreferencesPanel';
@@ -25,19 +25,18 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
   const [showTextEditor, setShowTextEditor] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [editorAccountId, setEditorAccountId] = useState<string | null>(null);
-  const [feeds, setFeeds] = useState<Feed[]>(propsFeeds || []);
+  const [, setFeeds] = useState<Feed[]>(propsFeeds || []);
 
   const authenticatedUser = userState.isUnlocked && userState.pnIdentifier ? {
-    id: userState.pnIdentifier,
-    pnName: userState.pnName,
-    publicKey: userState.publicKey,
-    nickname: userState.nickname,
-    accessToken: userState.accessToken
+    id: userState.pnIdentifier
   } : null;
 
   const { selectedId: driveAccountId } = useDriveAccounts({
     authenticatedUserId: authenticatedUser?.id,
-    userState,
+    userState: {
+      isUnlocked: userState.isUnlocked,
+      pnIdentifier: userState.pnIdentifier,
+    },
   });
 
   const accountId = editorAccountId || driveAccountId || authenticatedUser?.id || null;

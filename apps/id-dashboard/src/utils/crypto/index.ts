@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '../cryptoWorkerManager';
 // Re-export all modular crypto functionality
 export { IdentityCrypto } from './identityCrypto';
 export { DIDManager } from './didManager';
@@ -20,4 +20,4 @@ export type {
     TokenPayload,
     TokenHeader,
     DecryptionParameters
-} from '../types/crypto';
+} from '../../types/crypto';

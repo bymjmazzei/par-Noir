@@ -2,10 +2,14 @@ import React, { Suspense } from 'react';
 import { lazy } from 'react';
 
 // Lazy load the component
-const SecurityPanel = lazy(() => import('../components/SecurityPanel.tsx'));
+const SecurityPanel = lazy(() =>
+  import('../SecurityPanel.tsx').then(module => ({
+    default: module.SecurityPanel,
+  }))
+);
 
 // Lazy wrapper with loading state
-export const SecurityPanelLazy = (props) => (
+export const SecurityPanelLazy = (props: React.ComponentProps<typeof SecurityPanel>) => (
   <Suspense fallback={
     <div className="flex items-center justify-center p-8">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

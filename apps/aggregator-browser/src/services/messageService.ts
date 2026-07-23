@@ -241,7 +241,13 @@ async function loadMailboxMessageHints(userPnIdentifier: string): Promise<Messag
     const { fetchMailboxPending } = await import('@par-noir/device-cloud-credentials');
     const session = (await import('./pnOAuthService')).PNOAuthService.loadSession();
     if (!session?.accessToken) return [];
-    const jobs = await fetchMailboxPending(API_ENDPOINT, session.accessToken, userPnIdentifier, 100);
+    const jobs = await fetchMailboxPending(
+      API_ENDPOINT,
+      session.accessToken,
+      userPnIdentifier,
+      undefined,
+      100
+    );
     const out: Message[] = [];
     for (const job of jobs) {
       if (job.jobType !== 'message_append') continue;

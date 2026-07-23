@@ -12,7 +12,6 @@ import {
   wrapMessageRootKey,
 } from '@par-noir/dm-crypto';
 import {
-  getMessageRootKey,
   setMessageRootKey,
   getLegacyMessageRootKey,
   setLegacyMessageRootKey,

@@ -3,7 +3,7 @@
  * Displays full list of notifications
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Bell, Settings, Check, CheckCheck, X } from 'lucide-react';
 import { NotificationService, Notification } from '../services/notificationService';
 import { formatTimestamp } from '../utils/formatTimestamp';

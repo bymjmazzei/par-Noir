@@ -2,7 +2,6 @@
  * Search page - wraps SearchResults.
  */
 
-import React from 'react';
 import { SearchResults } from '../components/SearchResults';
 import { IndexedFile } from '../types/aggregator';
 

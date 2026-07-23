@@ -3,6 +3,8 @@
  * Prevents blocking UI during file encryption operations
  */
 
+export {};
+
 interface EncryptRequest {
   id: string;
   type: 'encrypt';
@@ -158,7 +160,7 @@ self.addEventListener('message', async (event: MessageEvent<WorkerRequest>) => {
       // Convert Uint8Array to transferable format
       result = Array.from(result);
     } else {
-      throw new Error(`Unknown request type: ${(request as any).type}`);
+      throw new Error('Unknown worker request type');
     }
     
     const response: WorkerResponse = {
@@ -168,11 +170,11 @@ self.addEventListener('message', async (event: MessageEvent<WorkerRequest>) => {
     };
     
     self.postMessage(response);
-  } catch (error: any) {
+  } catch (error: unknown) {
     const response: WorkerResponse = {
       id: request.id,
       success: false,
-      error: error?.message || 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error'
     };
     
     self.postMessage(response);

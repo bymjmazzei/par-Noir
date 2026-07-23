@@ -3,7 +3,7 @@
  * Shows notification badge and dropdown
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Bell, Check, Trash2, X } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { NotificationService, Notification } from '../services/notificationService';

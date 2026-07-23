@@ -107,9 +107,26 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Fail deploy if app TypeScript is unclean (Vite does not typecheck).
+echo "🔎 Type-checking id-dashboard..."
+cd ../../apps/id-dashboard
+npm run type-check
+if [ $? -ne 0 ]; then
+    echo "❌ id-dashboard type-check failed"
+    exit 1
+fi
+
+echo "🔎 Type-checking aggregator-browser..."
+cd ../aggregator-browser
+npm run type-check
+if [ $? -ne 0 ]; then
+    echo "❌ aggregator-browser type-check failed"
+    exit 1
+fi
+
 # Build id-dashboard
 echo "📦 Building id-dashboard..."
-cd ../../apps/id-dashboard
+cd ../id-dashboard
 npm run build
 if [ $? -ne 0 ]; then
     echo "❌ id-dashboard build failed"
