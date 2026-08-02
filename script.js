@@ -48,6 +48,29 @@ document.addEventListener('DOMContentLoaded', function() {
             faqItem.classList.toggle('active', !isActive);
         });
     });
+
+    document.querySelectorAll('.compare-toggle').forEach(toggle => {
+        toggle.addEventListener('click', function() {
+            const item = this.closest('.compare-item');
+            const panel = item && item.querySelector('.compare-panel');
+            if (!item || !panel) return;
+
+            const willOpen = !item.classList.contains('is-open');
+
+            document.querySelectorAll('.compare-item.is-open').forEach(openItem => {
+                if (openItem === item) return;
+                openItem.classList.remove('is-open');
+                const openToggle = openItem.querySelector('.compare-toggle');
+                const openPanel = openItem.querySelector('.compare-panel');
+                if (openToggle) openToggle.setAttribute('aria-expanded', 'false');
+                if (openPanel) openPanel.hidden = true;
+            });
+
+            item.classList.toggle('is-open', willOpen);
+            this.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+            panel.hidden = !willOpen;
+        });
+    });
 });
 
 function toggleMobileMenu() {
