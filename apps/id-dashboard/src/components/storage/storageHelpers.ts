@@ -1,3 +1,20 @@
+import { DRIVE_ACCOUNTS_STORAGE_KEY, type DriveAccountState } from './FileStorageAggregatorTypes';
+
+export function persistDriveAccounts(accounts: DriveAccountState[]) {
+  try {
+    // SECURITY: Do not store email in accounts array - it's sensitive data
+    // Only store backendId and keyPrefix (non-sensitive identifiers)
+    const sanitizedAccounts = accounts.map(account => ({
+      backendId: account.backendId,
+      keyPrefix: account.keyPrefix,
+      // email removed - security risk
+    }));
+    localStorage.setItem(DRIVE_ACCOUNTS_STORAGE_KEY, JSON.stringify(sanitizedAccounts));
+  } catch (storageError) {
+    console.warn('⚠️ [DriveAccounts] Unable to persist drive accounts', storageError);
+  }
+}
+
 export function normalizeVisibility(value: unknown): 'public' | 'private' | 'friends' {
   if (value === 'public') return 'public';
   if (value === 'friends') return 'friends';
