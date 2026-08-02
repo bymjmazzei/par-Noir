@@ -5397,14 +5397,24 @@ section:nth-child(odd) {
 .hero-consumer .hero-title {
   font-family: var(--font-display);
   font-weight: 200;
-  font-size: clamp(2.35rem, 6vw, 4rem);
+  font-size: clamp(1.35rem, 4.8vw, 2.85rem);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   margin-bottom: 1.25rem;
-  max-width: 14ch;
+  max-width: none;
+  width: 100%;
   margin-left: auto;
   margin-right: auto;
-  line-height: 1.12;
+  line-height: 1.15;
+}
+
+.hero-consumer .hero-title-line,
+.hero-consumer .hero-highlight {
+  display: block;
+}
+
+.hero-consumer .hero-title-line {
+  white-space: nowrap;
 }
 
 .hero-consumer .hero-title::before {
