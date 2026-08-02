@@ -5862,10 +5862,25 @@ section:nth-child(odd) {
   transform: translateY(-2px);
 }
 
+.step-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+}
+
+.step-heading h3 {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
 .step-number {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 999px;
