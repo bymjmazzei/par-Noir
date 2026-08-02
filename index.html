@@ -128,38 +128,41 @@
 
             <div class="compare-list" role="list">
                 <article class="compare-item" role="listitem">
-                    <button type="button" class="compare-toggle" aria-expanded="false" aria-controls="compare-account">
-                        <span class="compare-topic">Account</span>
+                    <button type="button" class="compare-toggle" aria-expanded="false" aria-controls="compare-identity">
+                        <span class="compare-topic">Identity</span>
                         <span class="compare-teaser">
                             <span class="compare-teaser-trad">They issue the login</span>
                             <span class="compare-teaser-arrow" aria-hidden="true">→</span>
-                            <span class="compare-teaser-pn">You issue the key</span>
+                            <span class="compare-teaser-pn">You keep the key</span>
                         </span>
-                        <span class="compare-chevron" aria-hidden="true"></span>
+                        <span class="compare-expand">
+                            <span class="compare-expand-closed">Expand</span>
+                            <span class="compare-expand-open">Close</span>
+                        </span>
                     </button>
-                    <div class="compare-panel" id="compare-account" hidden>
+                    <div class="compare-panel" id="compare-identity" hidden>
                         <div class="compare-pair">
                             <div class="compare-block compare-block-trad">
                                 <h3>Traditional apps</h3>
-                                <p>The company creates your account. They can suspend it, delete it, or rewrite the rules overnight.</p>
+                                <p>The company creates your account and every sign-in that goes with it. They can suspend it, delete it, or make you start over in the next product.</p>
                                 <div class="compare-uses">
                                     <h4>Uses</h4>
                                     <ul>
                                         <li>Getting banned and losing years of followers, DMs, and posts with no portable copy.</li>
                                         <li>A niche app shutting down and taking every login with it.</li>
-                                        <li>Starting over as a new user every time you switch tools.</li>
+                                        <li>New usernames, passwords, and profiles every time you switch tools.</li>
                                     </ul>
                                 </div>
                             </div>
                             <div class="compare-block compare-block-pn">
                                 <h3>par Noir</h3>
-                                <p>You create your identity. Apps unlock against it. They cannot suspend or delete the identity itself.</p>
+                                <p>You create the identity. Apps use it to recognize you. They cannot revoke who you are, and the same key works across tools on phone or desktop.</p>
                                 <div class="compare-uses">
                                     <h4>Uses</h4>
                                     <ul>
                                         <li>Keeping the same identity after a ban, lockout, or product shutdown.</li>
-                                        <li>Moving across tools without reissuing who you are.</li>
-                                        <li>Holding one key that apps unlock against, instead of accounts they own.</li>
+                                        <li>Opening a new pN app without creating another account.</li>
+                                        <li>One key for dashboard, browser, messaging, and partner tools.</li>
                                     </ul>
                                 </div>
                             </div>
@@ -168,16 +171,19 @@
                 </article>
 
                 <article class="compare-item" role="listitem">
-                    <button type="button" class="compare-toggle" aria-expanded="false" aria-controls="compare-stuff">
-                        <span class="compare-topic">Your stuff</span>
+                    <button type="button" class="compare-toggle" aria-expanded="false" aria-controls="compare-files">
+                        <span class="compare-topic">Files</span>
                         <span class="compare-teaser">
                             <span class="compare-teaser-trad">Readable on their servers</span>
                             <span class="compare-teaser-arrow" aria-hidden="true">→</span>
                             <span class="compare-teaser-pn">Encrypted in your cloud</span>
                         </span>
-                        <span class="compare-chevron" aria-hidden="true"></span>
+                        <span class="compare-expand">
+                            <span class="compare-expand-closed">Expand</span>
+                            <span class="compare-expand-open">Close</span>
+                        </span>
                     </button>
-                    <div class="compare-panel" id="compare-stuff" hidden>
+                    <div class="compare-panel" id="compare-files" hidden>
                         <div class="compare-pair">
                             <div class="compare-block compare-block-trad">
                                 <h3>Traditional apps</h3>
@@ -208,56 +214,19 @@
                 </article>
 
                 <article class="compare-item" role="listitem">
-                    <button type="button" class="compare-toggle" aria-expanded="false" aria-controls="compare-signin">
-                        <span class="compare-topic">Sign-in</span>
-                        <span class="compare-teaser">
-                            <span class="compare-teaser-trad">A new login for every app</span>
-                            <span class="compare-teaser-arrow" aria-hidden="true">→</span>
-                            <span class="compare-teaser-pn">One unlock for every app</span>
-                        </span>
-                        <span class="compare-chevron" aria-hidden="true"></span>
-                    </button>
-                    <div class="compare-panel" id="compare-signin" hidden>
-                        <div class="compare-pair">
-                            <div class="compare-block compare-block-trad">
-                                <h3>Traditional apps</h3>
-                                <p>Each product means another username, password, and recovery flow. Switch apps and you start over as someone else’s user.</p>
-                                <div class="compare-uses">
-                                    <h4>Uses</h4>
-                                    <ul>
-                                        <li>Password resets and “sign in with” that still trap you in each silo.</li>
-                                        <li>Rebuilding a profile every time you try a new product.</li>
-                                        <li>Different credentials on phone and desktop for the same person.</li>
-                                    </ul>
-                                </div>
-                            </div>
-                            <div class="compare-block compare-block-pn">
-                                <h3>par Noir</h3>
-                                <p>Each product unlocks with the same identity you already hold. Switch apps and you keep the same key on phone or desktop.</p>
-                                <div class="compare-uses">
-                                    <h4>Uses</h4>
-                                    <ul>
-                                        <li>Opening a new pN app with an identity you already have.</li>
-                                        <li>Unlocking once, then using dashboard, browser, messaging, and partner tools.</li>
-                                        <li>Same key on phone and desktop without a new account each time.</li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </article>
-
-                <article class="compare-item" role="listitem">
-                    <button type="button" class="compare-toggle" aria-expanded="false" aria-controls="compare-data">
-                        <span class="compare-topic">Your data</span>
+                    <button type="button" class="compare-toggle" aria-expanded="false" aria-controls="compare-permission">
+                        <span class="compare-topic">Permission</span>
                         <span class="compare-teaser">
                             <span class="compare-teaser-trad">Collected and sold by default</span>
                             <span class="compare-teaser-arrow" aria-hidden="true">→</span>
-                            <span class="compare-teaser-pn">Shared only with permission</span>
+                            <span class="compare-teaser-pn">Shared only when you allow</span>
                         </span>
-                        <span class="compare-chevron" aria-hidden="true"></span>
+                        <span class="compare-expand">
+                            <span class="compare-expand-closed">Expand</span>
+                            <span class="compare-expand-open">Close</span>
+                        </span>
                     </button>
-                    <div class="compare-panel" id="compare-data" hidden>
+                    <div class="compare-panel" id="compare-permission" hidden>
                         <div class="compare-pair">
                             <div class="compare-block compare-block-trad">
                                 <h3>Traditional apps</h3>
