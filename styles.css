@@ -5538,9 +5538,11 @@ section:nth-child(odd) {
 
 .phone-frame {
   position: relative;
-  width: min(100%, 390px);
+  box-sizing: border-box;
+  /* Height-first 9:16: width is derived so max-height never squashes the ratio */
+  width: min(100%, calc(min(85vh, 760px) * 9 / 16));
   aspect-ratio: 9 / 16;
-  max-height: min(82vh, 780px);
+  height: auto;
   padding: 12px;
   border-radius: 42px;
   background:
@@ -6152,9 +6154,9 @@ section:nth-child(odd) {
   }
 
   .phone-frame {
-    width: min(100%, 340px);
+    width: min(100%, calc(min(80vh, 700px) * 9 / 16));
     aspect-ratio: 9 / 16;
-    max-height: min(78vh, 700px);
+    height: auto;
     border-radius: 36px;
     padding: 10px;
   }
