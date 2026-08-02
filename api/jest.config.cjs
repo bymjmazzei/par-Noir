@@ -9,6 +9,13 @@ module.exports = {
   testMatch: ['**/*.test.ts'],
   moduleFileExtensions: ['ts', 'js', 'json'],
   clearMocks: true,
+  collectCoverageFrom: [
+    'src/server/modules/**/*.ts',
+    'src/server/utils/**/*.ts',
+    'src/server/middleware/**/*.ts',
+    '!**/*.test.ts',
+  ],
+  coverageDirectory: 'coverage',
   // `@par-noir/*` workspace packages are linked via `file:` and ship ESM `dist/*.js`.
   // Their realpath is outside node_modules, so they must be transformed to CommonJS here.
   transform: {
