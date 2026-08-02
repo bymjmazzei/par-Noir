@@ -5543,6 +5543,10 @@ section:nth-child(odd) {
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.28);
   overflow: hidden;
+  transition:
+    opacity 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.3s ease;
 }
 
 .compare-toggle {
@@ -5885,169 +5889,12 @@ section:nth-child(odd) {
   .phone-stage {
     animation: none;
   }
-}
 
-/* Apple-style sticky scroll stories */
-.scroll-story {
-  padding: 0;
-}
-
-.scroll-story-pin {
-  height: 320vh;
-  position: relative;
-}
-
-.scroll-story-sticky {
-  position: sticky;
-  top: 0;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  box-sizing: border-box;
-  padding: 6.5rem 0 3rem;
-}
-
-.scroll-story .container {
-  width: 100%;
-}
-
-.scroll-story-stage {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 1.5rem 1.75rem;
-  align-items: center;
-  width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
-}
-
-.scroll-story-progress {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-  align-items: center;
-}
-
-.scroll-story-dot {
-  width: 2.5rem;
-  min-height: 2.5rem;
-  padding: 0.35rem 0.25rem;
-  border-radius: 999px;
-  border: 1px solid var(--border-glow);
-  background: rgba(0, 0, 0, 0.35);
-  color: var(--text-muted);
-  font-family: var(--font-display);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: background 0.35s ease, color 0.35s ease, border-color 0.35s ease, transform 0.35s ease;
-}
-
-.scroll-story-dot.is-active {
-  color: var(--bg-primary);
-  background: #fff;
-  border-color: #fff;
-  transform: scale(1.08);
-}
-
-.scroll-story-panels {
-  position: relative;
-  width: 100%;
-  min-height: 11rem;
-  margin: 0;
-}
-
-.scroll-story-panels .step-card,
-.scroll-story-panels .compare-item {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(2.5rem) scale(0.97);
-  pointer-events: none;
-  transition:
-    opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.55s cubic-bezier(0.22, 1, 0.36, 1),
-    visibility 0.5s;
-}
-
-.scroll-story-panels .step-card.is-active,
-.scroll-story-panels .compare-item.is-active {
-  position: relative;
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0) scale(1);
-  pointer-events: auto;
-  z-index: 1;
-}
-
-.why-section.scroll-story .container {
-  align-items: center;
-  text-align: center;
-}
-
-.why-section.scroll-story .section-header {
-  margin-bottom: 1.5rem;
-}
-
-.why-section.scroll-story .compare-list {
-  margin: 0;
-  max-width: none;
-}
-
-@media (max-width: 700px) {
-  .scroll-story-pin {
-    height: 280vh;
-  }
-
-  .scroll-story-stage {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-
-  .scroll-story-progress {
-    flex-direction: row;
-    justify-content: center;
-  }
-
-  .scroll-story-dot {
-    width: auto;
-    min-width: 2.5rem;
-    padding: 0.45rem 0.75rem;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .scroll-story-pin {
-    height: auto;
-  }
-
-  .scroll-story-sticky {
-    position: relative;
-    min-height: 0;
-    padding: 4rem 0;
-  }
-
-  .scroll-story-panels {
-    min-height: 0;
-  }
-
-  .scroll-story-panels .step-card,
-  .scroll-story-panels .compare-item {
-    position: relative;
+  .step-card.scroll-reveal,
+  .compare-item.scroll-reveal {
     opacity: 1;
-    visibility: visible;
     transform: none;
-    pointer-events: auto;
-    margin-bottom: 0.75rem;
-  }
-
-  .scroll-story-progress {
-    display: none;
+    transition: none;
   }
 }
 
@@ -6079,11 +5926,31 @@ section:nth-child(odd) {
   flex-direction: row;
   align-items: center;
   gap: 1.25rem;
-  transition: border-color 0.3s ease, transform 0.3s ease, opacity 0.45s ease;
+  transition: border-color 0.3s ease, transform 0.3s ease, opacity 0.65s ease;
+}
+
+.step-card.scroll-reveal,
+.compare-item.scroll-reveal {
+  opacity: 0;
+  transform: translateY(1.75rem);
+  transition:
+    opacity 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.3s ease;
+}
+
+.step-card.scroll-reveal.is-visible,
+.compare-item.scroll-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .step-card:hover {
   border-color: rgba(255, 255, 255, 0.28);
+  transform: translateY(-2px);
+}
+
+.step-card.scroll-reveal.is-visible:hover {
   transform: translateY(-2px);
 }
 

@@ -72,87 +72,31 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    initScrollStories();
-});
-
-function initScrollStories() {
+    const revealItems = document.querySelectorAll('.step-card, .compare-item');
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const stories = document.querySelectorAll('.scroll-story');
 
-    if (reduceMotion) {
-        stories.forEach(story => {
-            story.querySelectorAll('[data-story-panel]').forEach(panel => {
-                panel.classList.add('is-active');
-            });
-        });
-        return;
-    }
+    if (reduceMotion || !('IntersectionObserver' in window)) {
+        revealItems.forEach(item => item.classList.add('is-visible'));
+    } else {
+        revealItems.forEach(item => item.classList.add('scroll-reveal'));
 
-    stories.forEach(story => {
-        const pin = story.querySelector('.scroll-story-pin');
-        const panels = Array.from(story.querySelectorAll('[data-story-panel]'));
-        const dots = Array.from(story.querySelectorAll('[data-story-goto]'));
-        if (!pin || panels.length === 0) return;
-
-        let activeIndex = 0;
-
-        const setActive = (index) => {
-            const next = Math.max(0, Math.min(panels.length - 1, index));
-            if (next === activeIndex && panels[next].classList.contains('is-active')) return;
-            activeIndex = next;
-
-            panels.forEach((panel, i) => {
-                const on = i === activeIndex;
-                panel.classList.toggle('is-active', on);
-                if (!on && panel.classList.contains('is-open')) {
-                    panel.classList.remove('is-open');
-                    const toggle = panel.querySelector('.compare-toggle');
-                    const detail = panel.querySelector('.compare-panel');
-                    if (toggle) toggle.setAttribute('aria-expanded', 'false');
-                    if (detail) detail.hidden = true;
-                }
-            });
-
-            dots.forEach((dot, i) => {
-                dot.classList.toggle('is-active', i === activeIndex);
-            });
-        };
-
-        const updateFromScroll = () => {
-            const rect = pin.getBoundingClientRect();
-            const travel = pin.offsetHeight - window.innerHeight;
-            if (travel <= 0) {
-                setActive(0);
-                return;
+        const revealObserver = new IntersectionObserver(
+            (entries, observer) => {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) return;
+                    entry.target.classList.add('is-visible');
+                    observer.unobserve(entry.target);
+                });
+            },
+            {
+                threshold: 0.35,
+                rootMargin: '0px 0px -12% 0px'
             }
-            const scrolled = Math.min(Math.max(-rect.top, 0), travel);
-            const progress = scrolled / travel;
-            const index = Math.min(
-                panels.length - 1,
-                Math.floor(progress * panels.length)
-            );
-            setActive(index);
-        };
+        );
 
-        dots.forEach(dot => {
-            dot.addEventListener('click', () => {
-                const index = Number(dot.getAttribute('data-story-goto'));
-                if (Number.isNaN(index)) return;
-                const travel = pin.offsetHeight - window.innerHeight;
-                const target =
-                    pin.getBoundingClientRect().top +
-                    window.pageYOffset +
-                    (travel * (index + 0.5)) / panels.length;
-                window.scrollTo({ top: target - 1, behavior: 'smooth' });
-            });
-        });
-
-        window.addEventListener('scroll', updateFromScroll, { passive: true });
-        window.addEventListener('resize', updateFromScroll);
-        setActive(0);
-        updateFromScroll();
-    });
-}
+        revealItems.forEach(item => revealObserver.observe(item));
+    }
+});
 
 function toggleMobileMenu() {
     const mobileMenu = document.getElementById('mobileMenu');
