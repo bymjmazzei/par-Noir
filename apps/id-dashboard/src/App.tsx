@@ -1441,6 +1441,21 @@ function App() {
     }
   }, []);
 
+  // Deep link: open Create New pN when ?create=1 (or ?create)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const createParam = urlParams.get('create');
+    if (createParam === null) return;
+    if (createParam === '0' || createParam.toLowerCase() === 'false') return;
+
+    setShowCreateForm(true);
+
+    urlParams.delete('create');
+    const next = urlParams.toString();
+    const newUrl = `${window.location.pathname}${next ? `?${next}` : ''}${window.location.hash}`;
+    window.history.replaceState({}, document.title, newUrl);
+  }, [setShowCreateForm]);
+
   // Check for custodian invitation URL parameter
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
