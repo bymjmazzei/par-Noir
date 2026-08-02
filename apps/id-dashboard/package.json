@@ -38,7 +38,11 @@
     "audit": "npm run build && npm run lighthouse",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "build:e2e": "VITE_API_ENDPOINT=\"${VITE_API_ENDPOINT:-https://api.parnoir.com}\" npm run build",
+    "test:e2e": "playwright test",
+    "test:e2e:smoke": "npm run build:e2e && playwright test --project=chromium tests/unlock-smoke.spec.ts",
+    "test:e2e:smoke:prebuilt": "playwright test --project=chromium tests/unlock-smoke.spec.ts"
   },
   "dependencies": {
     "@bytetrade/capacitor-native-biometric": "^6.0.5",

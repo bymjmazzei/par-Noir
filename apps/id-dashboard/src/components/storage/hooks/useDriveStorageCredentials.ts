@@ -29,6 +29,10 @@ import {
   purgeDuplicateBackendsForEmail as purgeDuplicateBackendsForEmailInCache,
   resolveIdentifiersForEmail as resolveIdentifiersForEmailInCache,
 } from './driveCredentials/credentialCacheHelpers';
+import {
+  shouldRunServerDriveInit,
+  shouldSkipServerDriveInit,
+} from './driveCredentials/driveInitDecision';
 import { useDriveTokenRefresh } from './useDriveTokenRefresh';
 import { useDriveCredentialHydration } from './useDriveCredentialHydration';
 
@@ -375,11 +379,11 @@ export function useDriveStorageCredentials({
 
           // Device custody: API has no Google secrets — never POST /storage/initialize.
           // Client loadFiles discovers folders via GoogleDriveMetadataService.
-          if (result.clientSideLayoutRequired) {
+          if (shouldSkipServerDriveInit(result)) {
             console.log(
               '⏭️ [StorageCredentials] Client-side Drive layout required; skipping server initialize'
             );
-          } else if (result.initInProgress === true || result.directoryBuilt === false) {
+          } else if (shouldRunServerDriveInit(result)) {
             console.log('🔄 [StorageCredentials] Building Drive layout on server (may take a few minutes)...');
             setDriveSetupProgress({
               phase: 'starting',
