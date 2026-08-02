@@ -1,5 +1,5 @@
 import { EncryptedIdentity, AuthSession } from '@par-noir/identity-crypto';
-import { SecureCredentialManager } from './secureCredentialManager';
+import { SecureCredentialManager } from '@par-noir/identity-crypto';
 
 export interface StoredIdentity {
   publicKey: string;

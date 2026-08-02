@@ -6,7 +6,7 @@
  */
 
 import { VolumeIdGenerator } from '@par-noir/identity-crypto';
-import { SecureCredentialManager } from './secureCredentialManager';
+import { SecureCredentialManager } from '@par-noir/identity-crypto';
 
 /**
  * Verify which pN identifier is correct

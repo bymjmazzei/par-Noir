@@ -311,7 +311,7 @@ export function MultiCloudStoragePanel({
       }
       try {
         if (sessionId && localEnvelope) {
-          const { SecureCredentialManager } = await import('../../utils/secureCredentialManager');
+          const { SecureCredentialManager } = await import('@par-noir/identity-crypto');
           const { sealAndStoreCloudCredentials } = await import('../../services/deviceCloudCredentials');
           const creds = SecureCredentialManager.getCredentials(sessionId);
           if (creds) {

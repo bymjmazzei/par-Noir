@@ -11,7 +11,7 @@ import { GoogleDriveBackend } from '../../services/storage/GoogleDriveBackend';
 import { AggregatedFile, AuthSession, PublicMetadata, ShareToken, EncryptedFilePackage, FeedCategory } from '../../types/aggregator';
 import type { CompanionMetadata } from '../../services/storage/GoogleDriveMetadataService';
 import type { ThirdPartyIndexer, IndexingPermissions } from '../../types/indexers';
-import { SecureCredentialManager } from '../../utils/secureCredentialManager';
+import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
 import { ReportContentModal } from './ReportContentModal';
 import { API_ENDPOINT } from '../../config/api';

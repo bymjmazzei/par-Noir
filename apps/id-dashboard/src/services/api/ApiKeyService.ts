@@ -9,7 +9,7 @@
  */
 
 import { SecureMetadataStorage } from '../../utils/secureMetadataStorage';
-import { SecureCredentialManager } from '../../utils/secureCredentialManager';
+import { SecureCredentialManager } from '@par-noir/identity-crypto';
 
 export interface ApiKey {
   id: string;

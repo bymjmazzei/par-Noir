@@ -12,7 +12,7 @@ import { MigrationCustodianReinviteStep } from './MigrationCustodianReinviteStep
 import { fetchOwnedAssets } from '../../services/ownedAssetsApi';
 import { summarizeOwnedAssetsByKind } from '../../services/ownedAssetsManifestService';
 import { SimpleStorage } from '../../utils/simpleStorage';
-import { SecureCredentialManager } from '../../utils/secureCredentialManager';
+import { SecureCredentialManager } from '@par-noir/identity-crypto';
 
 interface IdentityRotationWizardProps {
   authToken: string;

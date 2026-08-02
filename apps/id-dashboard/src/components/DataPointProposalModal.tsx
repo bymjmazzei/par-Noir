@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SecureCredentialManager } from '../utils/secureCredentialManager';
+import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import { DATA_POINT_CATEGORIES } from '../types/standardDataPoints';
 
 interface DataPointProposalModalProps {

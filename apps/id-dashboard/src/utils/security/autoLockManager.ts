@@ -5,7 +5,7 @@
  * Clears credentials from memory and requires re-authentication.
  */
 
-import { SecureCredentialManager } from '../secureCredentialManager';
+import { SecureCredentialManager } from '@par-noir/identity-crypto';
 
 export class AutoLockManager {
   private timeoutId: number | null = null;

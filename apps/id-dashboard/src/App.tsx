@@ -44,7 +44,7 @@ import * as BiometricAdapter from './utils/biometricAdapter';
 import { cloudSyncManager } from './utils/cloudSync';
 import { SecureMetadataStorage } from './utils/secureMetadataStorage';
 import { notificationsService } from './utils/notificationsService';
-import { SecureCredentialManager } from './utils/secureCredentialManager';
+import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import { SessionDataMigration } from './utils/sessionDataMigration';
 import { IntegrationCredentialManager } from './utils/integrationCredentialManager';
 import { LicenseVerification } from './utils/licenseVerification';

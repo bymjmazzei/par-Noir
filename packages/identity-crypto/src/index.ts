@@ -3,7 +3,17 @@
  *
  * Canonical IdentityCrypto (create/unlock) plus VolumeIdGenerator, EncryptionManager,
  * cryptoWorkerManager, and SecureCredentialManager.
+ *
+ * Export leaf modules before IdentityCrypto to keep init order stable under bundlers.
  */
+
+export { MemorySecurity } from './memorySecurity';
+export { cryptoWorkerManager } from './cryptoWorkerManager';
+export { default } from './cryptoWorkerManager';
+export { SecureCredentialManager } from './secureCredentialManager';
+export { EncryptionManager } from './encryptionManager';
+export { VolumeIdGenerator } from './volumeIdGenerator';
+export type { VolumeIdParams } from './volumeIdGenerator';
 
 export { IdentityCrypto } from './identityCrypto';
 export type {
@@ -12,17 +22,7 @@ export type {
   EncryptedData,
   EncryptedIdentity,
   IdentityCreationResult,
-} from './identityCrypto';
-
-export { VolumeIdGenerator } from './volumeIdGenerator';
-export type { VolumeIdParams } from './volumeIdGenerator';
-
-export { EncryptionManager } from './encryptionManager';
-
-export { cryptoWorkerManager } from './cryptoWorkerManager';
-export { default } from './cryptoWorkerManager';
-export { SecureCredentialManager } from './secureCredentialManager';
-export { MemorySecurity } from './memorySecurity';
+} from './types';
 
 export type {
   KeyPair,

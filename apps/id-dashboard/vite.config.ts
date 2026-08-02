@@ -35,6 +35,8 @@ export default defineConfig(({ mode }) => ({
       '@par-noir/zk-protocol-v2': resolve(__dirname, '../../packages/zk-protocol-v2/src/index.ts'),
       // CJS dist breaks Vite named exports; bundle from source like pqc-crypto above
       '@par-noir/recovery-crypto': resolve(__dirname, '../../packages/recovery-crypto/src/index.ts'),
+      // CJS/dist + barrel re-exports caused TDZ ("Cannot access before initialization") in utils chunk
+      '@par-noir/identity-crypto': resolve(__dirname, '../../packages/identity-crypto/src/index.ts'),
       '@par-noir/device-auth': resolve(__dirname, '../../packages/device-auth/src/index.ts'),
       '@par-noir/device-client': resolve(__dirname, '../../packages/device-client/src/index.ts'),
       '@par-noir/identity-migration': resolve(__dirname, '../../packages/identity-migration/src/index.ts'),
@@ -99,6 +101,18 @@ export default defineConfig(({ mode }) => ({
             return 'vendor';
           }
           
+          // Keep identity crypto in one chunk so utils↔components re-exports cannot TDZ
+          {
+            const normalizedId = id.replace(/\\/g, '/')
+            if (
+              normalizedId.includes('/packages/identity-crypto/') ||
+              normalizedId.includes('/packages/pqc-crypto/') ||
+              normalizedId.includes('/packages/recovery-crypto/')
+            ) {
+              return 'crypto-utils'
+            }
+          }
+
           // Feature-based chunks
           if (id.includes('components/')) {
             if (id.includes('components/recovery/')) {
@@ -121,7 +135,13 @@ export default defineConfig(({ mode }) => ({
           
           // Utility chunks
           if (id.includes('utils/')) {
-            if (id.includes('crypto') || id.includes('security')) {
+            if (
+              id.includes('crypto') ||
+              id.includes('security') ||
+              id.includes('secureCredentialManager') ||
+              id.includes('secureMetadata') ||
+              id.includes('memorySecurity')
+            ) {
               return 'crypto-utils';
             }
             if (id.includes('storage') || id.includes('localStorage')) {

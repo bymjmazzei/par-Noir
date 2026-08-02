@@ -155,7 +155,7 @@ export class IntegrationCredentialManager {
     await this.initialize();
     
     // Get user credentials from SecureCredentialManager
-    const { SecureCredentialManager } = await import('./secureCredentialManager');
+    const { SecureCredentialManager } = await import('@par-noir/identity-crypto');
     const userCredentials = SecureCredentialManager.getCredentials(sessionId);
     
     if (!userCredentials) {
@@ -212,7 +212,7 @@ export class IntegrationCredentialManager {
     await this.initialize();
     
     // Get user credentials from SecureCredentialManager
-    const { SecureCredentialManager } = await import('./secureCredentialManager');
+    const { SecureCredentialManager } = await import('@par-noir/identity-crypto');
     const userCredentials = SecureCredentialManager.getCredentials(sessionId);
     
     if (!userCredentials) {
