@@ -45,10 +45,19 @@ export async function getUserDriveMetadataContext(
     account.keyPrefix ||
     account.accountId ||
     account.id;
-  const accessToken = await googleDriveProxyService.getAccessToken(
-    normalizedPnIdentifier,
-    accountId
-  );
+  let accessToken: string;
+  try {
+    accessToken = await googleDriveProxyService.getAccessToken(
+      normalizedPnIdentifier,
+      accountId
+    );
+  } catch {
+    // DEVICE_CLOUD_CUSTODY strips OAuth secrets — server cannot read Drive.
+    return null;
+  }
+  if (!accessToken) {
+    return null;
+  }
 
   const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
   const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;

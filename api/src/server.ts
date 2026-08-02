@@ -11888,7 +11888,21 @@ class ProductionServer {
 
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountId = account ? this.extractAccountId(account) : undefined;
-          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
+          let userAccessToken = '';
+          if (account) {
+            try {
+              userAccessToken = await googleDriveProxyService.getAccessToken(
+                normalizedPnIdentifier,
+                accountId
+              );
+            } catch {
+              // Device cloud custody: OAuth secrets are device-held.
+              return res.json({ success: true, permissions: {} });
+            }
+          }
+          if (!userAccessToken) {
+            return res.json({ success: true, permissions: {} });
+          }
 
         // Find pN folder and _metadata folder (same pattern as ZKP endpoints)
         const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
