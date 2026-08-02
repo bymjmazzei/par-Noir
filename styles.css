@@ -5849,11 +5849,12 @@ section:nth-child(odd) {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-glow);
   border-radius: 16px;
-  padding: 1.75rem 1.5rem;
+  padding: 1.5rem 1.5rem;
   text-align: left;
   display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 1.25rem;
   transition: border-color 0.3s ease, transform 0.3s ease;
 }
 
@@ -5862,36 +5863,38 @@ section:nth-child(odd) {
   transform: translateY(-2px);
 }
 
-.step-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  width: 100%;
-}
-
-.step-heading h3 {
-  margin: 0;
-  flex: 1;
-  min-width: 0;
-}
-
 .step-number {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  width: 2.25rem;
-  height: 2.25rem;
+  flex: 0 0 auto;
+  align-self: stretch;
+  aspect-ratio: 1;
+  width: auto;
+  min-width: 4.5rem;
+  height: auto;
+  padding: 0.35rem;
+  box-sizing: border-box;
   border-radius: 999px;
   border: 1px solid var(--border-glow);
   font-family: var(--font-display);
-  font-size: 1.1rem;
-  font-weight: 300;
+  font-size: clamp(2.25rem, 6vw, 3.25rem);
+  font-weight: 200;
   letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.step-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.55rem;
+  min-width: 0;
+  flex: 1;
 }
 
 .step-card h3 {
+  margin: 0;
   font-family: var(--font-display);
   font-size: 1.35rem;
   font-weight: 400;
@@ -5899,8 +5902,10 @@ section:nth-child(odd) {
 }
 
 .step-card p {
+  margin: 0;
   color: var(--text-secondary);
   font-size: 1rem;
+  line-height: 1.5;
 }
 
 .step-inline-link {
