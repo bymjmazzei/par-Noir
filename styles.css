@@ -463,6 +463,7 @@ body {
   border-radius: 12px;
   text-decoration: none;
   font-weight: 600;
+  text-transform: uppercase;
   transition: all 0.3s ease;
   border: none;
   cursor: pointer;
