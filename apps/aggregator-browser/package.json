@@ -11,7 +11,11 @@
     "build:mobile:messaging": "npm run build:messaging && cd capacitor-messaging && npx cap sync",
     "open:android": "npx cap open android",
     "open:ios": "npx cap open ios",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:e2e": "VITE_API_ENDPOINT=\"${VITE_API_ENDPOINT:-https://api.parnoir.com}\" npm run build",
+    "test:e2e": "playwright test",
+    "test:e2e:smoke": "npm run build:e2e && playwright test --project=chromium",
+    "test:e2e:smoke:prebuilt": "playwright test --project=chromium"
   },
   "dependencies": {
     "@capacitor/app": "^6.0.0",
@@ -47,6 +51,7 @@
     "@capacitor/android": "^6.0.0",
     "@capacitor/cli": "^6.0.0",
     "@capacitor/ios": "^6.0.0",
+    "@playwright/test": "^1.54.2",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^4.0.0",

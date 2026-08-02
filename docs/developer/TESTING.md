@@ -12,7 +12,8 @@ Automated tests for the par Noir monorepo: what exists, how to run it locally, a
 | Shared packages | `packages/*/src/**/*.test.ts` | Vitest |
 | API (L3) | `api/src/server/**/*.test.ts` | Jest (ts-jest) |
 | Dashboard (L2) | `apps/id-dashboard/src/__tests__` | Jest (ts-jest, jsdom) |
-| Aggregator browser (L4) | — | type-check only for now |
+| Dashboard E2E smoke (L2) | `apps/id-dashboard/tests` | Playwright |
+| Aggregator browser E2E smoke (L4) | `apps/aggregator-browser/tests` | Playwright |
 
 Packages currently covered by `test:packages`: `pqc-crypto`, `recovery-crypto`, `device-auth`,
 `dm-crypto`, `oauth-ui`, `device-cloud-credentials`, `user-owned-storage`, `storage-migration`,
@@ -54,6 +55,59 @@ cd apps/id-dashboard && npm run type-check
 cd apps/aggregator-browser && npm run type-check
 ```
 
+### E2E smoke suites
+
+Both suites run against a **production build** served by `vite preview`, never the dev server:
+chunk splitting, minification, and the `VITE_API_ENDPOINT` guard in `config/api.ts` only exist
+in a real build, and those are exactly what has broken boot before.
+
+Install the browser binary once per app, then run from the repo root:
+
+```bash
+cd apps/id-dashboard && npx playwright install --with-deps chromium
+cd apps/aggregator-browser && npx playwright install --with-deps chromium
+```
+
+```bash
+npm run test:e2e:smoke     # dashboard: builds, then runs the smoke suite (chromium)
+npm run test:e2e:browser   # aggregator browser: builds, then runs the smoke suite (chromium)
+```
+
+The `:prebuilt` variants skip the build and reuse whatever is in `dist/`, which is what CI uses
+so it does not build twice:
+
+```bash
+npm run test:e2e:smoke:prebuilt
+npm run test:e2e:browser:prebuilt
+```
+
+From inside an app you can run the full local browser matrix (chromium, firefox, webkit, and the
+two mobile emulations) with `npx playwright test`; CI is chromium-only, because these guard bundle
+boot rather than cross-browser rendering. The two suites use different preview ports — dashboard
+4173, browser 4174 — so they can run side by side. Override with `PW_PORT`, or point at an
+already-running server with `PW_BASE_URL` to skip the managed `vite preview` entirely. On a local
+failure Playwright opens the HTML report and keeps serving it until you interrupt it.
+
+What the suites cover:
+
+| Spec | Guards |
+|---|---|
+| `id-dashboard/tests/unlock-smoke.spec.ts` | Production bundle boots; the three unlock factors render, stay masked, and are never prefilled |
+| `id-dashboard/tests/create-modal-smoke.spec.ts` | `?create=1` deep link opens Create New pN, strips only that parameter, and starts both secrets masked and empty |
+| `id-dashboard/tests/storage-shell-smoke.spec.ts` | No Drive, storage, or API request happens before unlock; the gate survives a fully failing API |
+| `aggregator-browser/tests/browse-smoke.spec.ts` | Production bundle boots without hitting the ErrorBoundary; signed-out shell renders; storage is reached only through the par Noir API |
+
+Every smoke is hermetic. No identity is unlocked, no live Google or par Noir token is used, and
+outbound calls are intercepted by the test rather than answered by the network.
+
+**Known limitation — the storage shell is not mounted.** The Storage tab lives inside
+`AuthenticatedShell`, which renders only after a real three-factor unlock; `useAppBootstrapEffects`
+deliberately clears any restored session on boot, so no deep link or seeded `localStorage` can
+shortcut it, and driving a real unlock would mean committing a fixture pn name and passcode. The
+storage smoke therefore pins the invariant that makes the gate meaningful — nothing reaches Drive
+or the API before unlock — instead of exercising the storage UI itself. Covering that UI needs a
+test-only identity fixture with secrets supplied from CI, which is not in place.
+
 Guardrails (the same scripts the pre-commit hook and CI run):
 
 ```bash
@@ -65,13 +119,18 @@ bash scripts/check-quantum-imports.sh
 
 ## What CI runs
 
-`.github/workflows/test.yml` runs on every pull request and on pushes to `main`, in three
+`.github/workflows/test.yml` runs on every pull request and on pushes to `main`, in five
 parallel jobs. Any red job fails the run.
 
 1. **Guardrails** — secrets scan (strict), backup-file check, app→app import boundary, quantum
    import boundary.
 2. **Unit tests** — root `npm ci`, API `npm ci` + `npm run build:deps`, then `npm test`.
-3. **Type check** — `tsc --noEmit` for `apps/id-dashboard` and `apps/aggregator-browser`.
+3. **E2E smoke (dashboard)** — builds `apps/id-dashboard` with `VITE_API_ENDPOINT`, then runs the
+   Playwright smoke suite on chromium.
+4. **E2E smoke (aggregator browser)** — the same for `apps/aggregator-browser`.
+5. **Type check** — `tsc --noEmit` for `apps/id-dashboard` and `apps/aggregator-browser`.
+
+Both E2E jobs upload their Playwright HTML report as an artifact when they fail.
 
 `.github/workflows/deploy.yml` is separate and only publishes the static marketing site.
 
@@ -96,4 +155,6 @@ credentials and would make CI non-deterministic:
 - Veriff identity verification
 - Google Drive and Google Sheets round-trips (mocked at the service boundary instead)
 - PostgreSQL and Redis integration behavior
-- End-to-end browser flows — `npm run test:e2e:smoke` is a placeholder until Playwright lands
+- Authenticated end-to-end flows — unlocking an identity, the storage/Drive UI, and anything
+  behind `AuthenticatedShell`. These need a fixture identity and its secrets; the Playwright
+  suites cover the pre-auth surfaces and the gates around them instead.

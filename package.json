@@ -25,6 +25,8 @@
     "test:dashboard:unit": "cd apps/id-dashboard && npm test",
     "test:e2e:smoke": "cd apps/id-dashboard && npm run test:e2e:smoke",
     "test:e2e:smoke:prebuilt": "cd apps/id-dashboard && npm run test:e2e:smoke:prebuilt",
+    "test:e2e:browser": "cd apps/aggregator-browser && npm run test:e2e:smoke",
+    "test:e2e:browser:prebuilt": "cd apps/aggregator-browser && npm run test:e2e:smoke:prebuilt",
     "lint": "npm run lint:identity",
     "lint:identity": "cd core/identity-core && npm run lint",
     "clean": "npm run clean:identity",

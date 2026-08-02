@@ -68,7 +68,7 @@ jobs:
         run: npm test
 
   e2e-smoke:
-    name: E2E smoke (dashboard unlock)
+    name: E2E smoke (dashboard)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -94,7 +94,7 @@ jobs:
         env:
           VITE_API_ENDPOINT: https://api.parnoir.com
 
-      - name: Run unlock smoke
+      - name: Run dashboard smokes
         run: npm run test:e2e:smoke:prebuilt
         working-directory: apps/id-dashboard
 
@@ -102,8 +102,47 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-dashboard
           path: apps/id-dashboard/playwright-report
+          retention-days: 7
+
+  e2e-smoke-browser:
+    name: E2E smoke (aggregator browser)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      # Chromium only: the smoke suite guards bundle boot, not cross-browser rendering.
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/aggregator-browser
+
+      # VITE_API_ENDPOINT must be set at build time or the production bundle throws.
+      - name: Build aggregator browser
+        run: npm run build:e2e
+        working-directory: apps/aggregator-browser
+        env:
+          VITE_API_ENDPOINT: https://api.parnoir.com
+
+      - name: Run browser smokes
+        run: npm run test:e2e:smoke:prebuilt
+        working-directory: apps/aggregator-browser
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-browser
+          path: apps/aggregator-browser/playwright-report
           retention-days: 7
 
   type-check:
