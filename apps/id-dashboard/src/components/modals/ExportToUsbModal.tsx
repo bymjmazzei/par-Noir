@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Usb } from 'lucide-react';
-import { IdentityCrypto, EncryptedData } from '../../utils/crypto';
+import { IdentityCrypto, EncryptedData } from '@par-noir/identity-crypto';
 import {
   generateUid,
   uidToBase64,

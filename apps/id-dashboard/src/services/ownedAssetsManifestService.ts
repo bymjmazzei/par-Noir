@@ -1,50 +1,18 @@
 /**
- * Republish IPFS ownedAssets manifest for the current root pN.
+ * Owned-assets helpers for dashboard (API registry only — no IPFS manifest).
  */
 
-import { VolumeIdGenerator } from '@par-noir/aggregator-domain';
-import { ipfsMetadataService } from '../utils/ipfsMetadataService';
-import { fetchOwnedAssets, postIpfsManifestPointer, type OwnedAssetDto } from './ownedAssetsApi';
+import { fetchOwnedAssets, type OwnedAssetDto } from './ownedAssetsApi';
 
+/**
+ * Refresh count from the owned-assets API. IPFS republish was removed.
+ */
 export async function republishOwnedAssetsManifest(
   accessToken: string,
-  publicKey?: string
+  _publicKey?: string
 ): Promise<{ assetCount: number; cid?: string }> {
   const list = await fetchOwnedAssets(accessToken);
   const activeSubs = list.filter((a) => a.status === 'active' && a.kind !== 'human');
-
-  let pnId = 'pn-unknown';
-  if (publicKey) {
-    try {
-      pnId = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
-    } catch {
-      /* keep default */
-    }
-  }
-
-  if (!ipfsMetadataService.isAvailable()) {
-    return { assetCount: activeSubs.length };
-  }
-
-  const ownedAssets = activeSubs.map((a: OwnedAssetDto) => ({
-    assetId: a.id,
-    kind: a.kind,
-    subjectPnIdentifier: a.subjectPnIdentifier || undefined,
-    label: typeof a.metadata?.label === 'string' ? a.metadata.label : undefined,
-  }));
-
-  const res = await ipfsMetadataService.storePNMetadata({
-    pnId,
-    name: 'par Noir manifest',
-    ownedAssets,
-    updatedAt: new Date().toISOString(),
-  } as Parameters<typeof ipfsMetadataService.storePNMetadata>[0]);
-
-  if (res.success && res.cid) {
-    await postIpfsManifestPointer(accessToken, res.cid);
-    return { assetCount: activeSubs.length, cid: res.cid };
-  }
-
   return { assetCount: activeSubs.length };
 }
 

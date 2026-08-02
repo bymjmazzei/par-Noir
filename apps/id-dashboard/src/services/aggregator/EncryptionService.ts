@@ -4,8 +4,7 @@
  */
 
 import { ShareToken, EncryptedFilePackage, AuthSession } from '../../types/aggregator';
-import { EncryptionManager } from '../../utils/crypto/encryptionManager';
-import { cryptoWorkerManager } from '../../utils/crypto/cryptoWorkerManager';
+import { EncryptionManager, cryptoWorkerManager } from '@par-noir/identity-crypto';
 
 export class EncryptionService {
   /**

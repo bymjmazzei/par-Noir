@@ -1,4 +1,4 @@
-import { VolumeIdGenerator } from '../utils/crypto/volumeIdGenerator';
+import { VolumeIdGenerator } from '@par-noir/identity-crypto';
 
 /**
  * Returns the credential-bound volume id (pnName:passcode:publicKey).

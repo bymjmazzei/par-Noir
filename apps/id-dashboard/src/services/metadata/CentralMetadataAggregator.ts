@@ -1,53 +1,25 @@
 /**
  * Central Metadata Aggregator Service (Dashboard)
- * Submits and queries public metadata in the central aggregator API
+ * Submits and queries public metadata in the central aggregator API.
+ *
+ * Shared path constants and type shapes: @par-noir/aggregator-domain.
+ * Fetch/submit/retry behavior stays dashboard-specific (not merged with browser CMA).
  */
 
-import { PublicMetadata } from '../../types/aggregator';
+import {
+  CENTRAL_INDEX_PATH,
+  type CentralIndexEntry,
+  type CentralIndexResponse,
+  type PublicMetadataSubmission,
+} from '@par-noir/aggregator-domain';
 import { retry } from '../../utils/helpers';
 import { API_ENDPOINT } from '../../config/api';
 
-const CENTRAL_INDEX_PATH = '/api/aggregator/metadata-index';
-
-export interface PublicMetadataSubmission {
-  fileId: string;
-  backend: string;
-  backendFileId: string;
-  name: string;
-  description?: string;
-  tags?: string[];
-  fileType?: string;
-  creator?: any;
-  isPublic: boolean;
-  uploadDate: string;
-  publicToken?: string | any; // Can be string or ShareToken object
-  indexingPermissions?: {
-    mode?: 'all' | 'custom' | 'none';
-    allowed?: string[];
-    blocked?: string[];
-    updatedAt?: string;
-  };
-  pnIdentifier?: string;
-  // CRITICAL: Include textPost/thought for thoughts to render in feeds
-  textPost?: any;
-  thought?: any;
-  thumbnailFileId?: string;
-  subjects?: string[];
-  feedCategories?: string[];
-}
-
-export interface CentralIndexEntry {
-  fileId: string;
-  metadata: PublicMetadata;
-  submittedAt: string;
-  pnIdentifier?: string;
-}
-
-export interface CentralIndexResponse {
-  files: CentralIndexEntry[];
-  updatedAt: string;
-  totalFiles: number;
-}
+export type {
+  CentralIndexEntry,
+  CentralIndexResponse,
+  PublicMetadataSubmission,
+} from '@par-noir/aggregator-domain';
 
 export class CentralMetadataAggregator {
   /**

@@ -12,11 +12,14 @@ export interface ShareToken {
     description?: string;
   };
   shareKey?: string;
-  shareEncrypted?: {
-    encrypted: string;
-    iv: string;
-    salt: string;
-  };
+  /** Object form (browser decrypt) or JSON string (dashboard generateShareToken) */
+  shareEncrypted?:
+    | string
+    | {
+        encrypted: string;
+        iv: string;
+        salt: string;
+      };
 }
 
 export async function decryptWithToken(token: ShareToken): Promise<Blob> {
@@ -24,8 +27,13 @@ export async function decryptWithToken(token: ShareToken): Promise<Blob> {
     throw new Error('Share token missing share key or share-encrypted content');
   }
   if (!token.shareKey.trim()) throw new Error('Share key is empty or undefined');
-  if (!token.shareEncrypted.encrypted?.trim()) throw new Error('Share encrypted data is empty or undefined');
-  if (!token.shareEncrypted.iv?.trim()) throw new Error('Share IV is empty or undefined');
+
+  const shareEncrypted =
+    typeof token.shareEncrypted === 'string'
+      ? (JSON.parse(token.shareEncrypted) as { encrypted?: string; iv?: string; salt?: string })
+      : token.shareEncrypted;
+  if (!shareEncrypted.encrypted?.trim()) throw new Error('Share encrypted data is empty or undefined');
+  if (!shareEncrypted.iv?.trim()) throw new Error('Share IV is empty or undefined');
 
   const shareKey = await crypto.subtle.importKey(
     'raw',
@@ -36,9 +44,9 @@ export async function decryptWithToken(token: ShareToken): Promise<Blob> {
   );
 
   const decryptedBuffer = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: base64ToArrayBuffer(token.shareEncrypted.iv) },
+    { name: 'AES-GCM', iv: base64ToArrayBuffer(shareEncrypted.iv) },
     shareKey,
-    base64ToArrayBuffer(token.shareEncrypted.encrypted)
+    base64ToArrayBuffer(shareEncrypted.encrypted)
   );
 
   const bytes = new Uint8Array(decryptedBuffer);

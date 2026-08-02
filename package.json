@@ -9,8 +9,9 @@
     "dev:dashboard": "cd apps/id-dashboard && npm run dev",
     "dev:internal-dashboard": "cd apps/internal-dashboard && npm run dev",
     "dev:identity": "cd core/identity-core && npm run dev",
-    "dev:test-app": "cd apps/test-app && npm run dev",
     "build": "npm run build:identity && npm run build:dashboard",
+    "check:app-import-boundary": "bash scripts/check-app-import-boundary.sh",
+    "check:no-backup-files": "bash scripts/check-no-backup-files.sh",
     "build:identity": "cd core/identity-core && npm run build",
     "build:dashboard": "cd apps/id-dashboard && npm run build",
     "build:internal-dashboard": "cd apps/internal-dashboard && npm run build",
@@ -96,21 +97,6 @@
   "overrides": {
     "nanoid": "^5.1.5",
     "parse-duration": "^2.1.4",
-    "on-headers": "^1.1.0",
-    "ipfs-http-client": {
-      "nanoid": "^5.1.5",
-      "parse-duration": "^2.1.4"
-    },
-    "ipfs-core-utils": {
-      "nanoid": "^5.1.5",
-      "parse-duration": "^2.1.4"
-    },
-    "ipfs-core-types": {
-      "nanoid": "^5.1.5",
-      "parse-duration": "^2.1.4"
-    }
-  },
-  "dependencies": {
-    "ipfs-http-client": "^60.0.1"
+    "on-headers": "^1.1.0"
   }
 }

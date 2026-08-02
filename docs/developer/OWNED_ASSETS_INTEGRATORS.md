@@ -11,11 +11,9 @@ par Noir tracks **owned assets** in a server registry (`pn_owned_assets`): each 
 - **Subject succession**: when a sub subject is rekeyed, call `GET /api/v1/identity/successor?pn_identifier=` with the old subject to resolve the successor subject and refresh bindings.
 - **Delegations** (`pn_asset_delegations`): per-asset grants to another `pn-*` or OAuth `client_id` with a **scope** string. Future route handlers will enforce these alongside existing checks.
 
-## IPFS manifest
+## Authorization source of truth
 
-Users may publish a **non-sensitive** `ownedAssets` array in their IPFS `PNMetadata`. The API may store `latest_metadata_cid` in `pn_ipfs_manifest_pointers` for reconciliation.
-
-**Do not** treat IPFS as authoritative for authorization. Always use API state for allow/deny.
+Always use **API registry state** for allow/deny. There is no IPFS/OrbitDB manifest path in production; Google Drive + par Noir API own storage and metadata.
 
 ## Dashboard endpoints (OAuth Bearer)
 
@@ -28,7 +26,6 @@ Authenticated users (same Bearer token as other dashboard flows) may call:
 - `GET|POST /api/owned-assets/:id/delegations`
 - `DELETE /api/owned-assets/delegations/:delegationId`
 - `POST /api/owned-assets/:id/export-audit` — audit-only (no secrets)
-- `POST /api/owned-assets/ipfs-pointer` — store latest manifest CID
 
 Third-party apps should use their own OAuth integration; these routes expect a valid par Noir access token.
 

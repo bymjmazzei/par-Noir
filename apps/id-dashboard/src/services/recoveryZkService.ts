@@ -7,7 +7,7 @@ import {
   type RecoveryCustodianshipPublicInputs,
   type RecoveryApprovalPublicInputs,
 } from '@par-noir/recovery-crypto';
-import type { EncryptedIdentity } from '../utils/crypto';
+import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 import { loadMlDsaKeypairForZk } from '../utils/zkPqcSigning';
 
 async function generateZkEnvelope(params: Parameters<

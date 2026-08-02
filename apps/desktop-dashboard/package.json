@@ -18,7 +18,9 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@par-noir/desktop-ipc": "file:../../packages/desktop-ipc",
     "keytar": "^7.9.0",
+    "par-noir-dashboard": "file:../id-dashboard",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

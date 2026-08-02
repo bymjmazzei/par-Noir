@@ -3,21 +3,16 @@
  * Dashboard aggregator that collects files from all connected storage backends
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, File, RefreshCw, AlertCircle, Lock, Globe, Info, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Trash2, Minus, Flag } from 'lucide-react';
-import { DesktopSecureFolderPanel } from './DesktopSecureFolderPanel';
+import { AlertCircle, Lock, X, Cloud } from 'lucide-react';
 import { getFileAggregatorService } from '../../services/aggregator/FileAggregatorService';
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
 import { getMetadataIndexService } from '../../services/metadata/MetadataIndexService';
 import { GoogleDriveBackend } from '../../services/storage/GoogleDriveBackend';
 import { AggregatedFile, AuthSession, PublicMetadata, ShareToken, EncryptedFilePackage, FeedCategory } from '../../types/aggregator';
 import type { CompanionMetadata } from '../../services/storage/GoogleDriveMetadataService';
-import { AuthSession as CryptoAuthSession } from '../../types/crypto';
-import GoogleDriveIconUrl from '../../assets/icons/google-drive-logo.png?url';
 import type { ThirdPartyIndexer, IndexingPermissions } from '../../types/indexers';
 import { SecureCredentialManager } from '../../utils/secureCredentialManager';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
-import { LICENSE_TYPES } from '../../constants/licenses';
-import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../../constants/feedCategories';
 import { ReportContentModal } from './ReportContentModal';
 import { API_ENDPOINT } from '../../config/api';
 import { ownerFetch, ownerGet } from '../../services/ownerApiService';
@@ -26,100 +21,29 @@ import { getStoredToken, getStoredTokenForPn } from '../../services/parNoirOAuth
 import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 import { driveAccountTokens, normalizeVisibility } from './storageHelpers';
 import { MultiCloudStoragePanel } from './MultiCloudStoragePanel';
-
-const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
-const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
-const METADATA_SYNC_MIN_INTERVAL_MS = 90_000;
-const INDEXER_CACHE_TTL_MS = 5 * 60 * 1000;
-
-type DriveSetupProgress = {
-  phase: string;
-  stepLabel: string;
-  percent: number;
-  updatedAt?: number;
-};
-
-const DRIVE_INIT_POLL_TIMEOUT_MS = 12 * 60 * 1000;
-const DRIVE_INIT_POLL_INTERVAL_MS = 2000;
-
-function DriveLayoutSetupProgress({ progress }: { progress: DriveSetupProgress }) {
-  const [now, setNow] = React.useState(() => Date.now());
-  React.useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 5000);
-    return () => window.clearInterval(id);
-  }, []);
-  const staleMs = progress.updatedAt ? now - progress.updatedAt : 0;
-  const showSlowHint = staleMs > 20_000;
-
-  return (
-    <div className="text-center py-12 px-4">
-      <p className="text-text-primary font-medium mb-1">Setting up your storage</p>
-      <p className="text-text-secondary text-sm mb-4">{progress.stepLabel}</p>
-      <div className="w-full max-w-md mx-auto h-2.5 bg-neutral-800 rounded-full overflow-hidden relative overflow-hidden">
-        <div
-          className="h-full bg-blue-600 transition-all duration-500 ease-out rounded-full relative"
-          style={{ width: `${Math.max(4, progress.percent)}%` }}
-        >
-          {showSlowHint && (
-            <div className="absolute inset-0 bg-blue-400/40 animate-pulse rounded-full" />
-          )}
-        </div>
-      </div>
-      <p className="text-text-secondary text-xs mt-2">{progress.percent}%</p>
-      <p className="text-text-secondary text-xs mt-4 max-w-sm mx-auto">
-        {showSlowHint
-          ? 'Your cloud provider is responding slowly — setup is still running. This can take a few minutes.'
-          : 'This usually takes a few minutes. Your files will appear when setup finishes.'}
-      </p>
-    </div>
-  );
-}
-
-const isDesktopShell = typeof window !== 'undefined' && Boolean(window.parNoirDesktop);
-
-type DesktopUnlockPayload = {
-  pnName: string;
-  publicKey: string;
-  authToken: string;
-  pnIdentifier?: string;
-};
-
-type DesktopLockPayload = {
-  pnName?: string;
-  publicKey?: string;
-  pnIdentifier?: string;
-};
-
-interface DriveAccountState {
-  backendId: string;
-  keyPrefix: string;
-  // SECURITY: email removed - sensitive data should not be stored in localStorage
-  // email: string | null; // REMOVED - use encrypted storage instead
-}
-
-type StoredDriveCredential = {
-  backendId: string;
-  keyPrefix: string;
-  accessToken: string;
-  refreshToken?: string | null;
-  email?: string | null;
-  connectedAt?: string;
-  updatedAt?: string;
-};
-
-interface FileStorageAggregatorProps {
-  authenticatedUser?: AuthSession | CryptoAuthSession | any | null;
-  apiToken?: string | null;
-  /** Mint or refresh par Noir OAuth token for the active unlocked pN before owner API calls. */
-  ensureOwnerApiToken?: () => Promise<string | null>;
-  hideSecureFolderSection?: boolean;
-  deviceGate?: {
-    canDriveRead: boolean;
-    canDriveUpload: boolean;
-    canProfileWrite: boolean;
-    blockedMessage: string;
-  };
-}
+import {
+  DRIVE_ACCOUNTS_STORAGE_KEY,
+  METADATA_SYNC_MIN_INTERVAL_MS,
+  INDEXER_CACHE_TTL_MS,
+  DRIVE_INIT_POLL_TIMEOUT_MS,
+  DRIVE_INIT_POLL_INTERVAL_MS,
+  DRIVE_INIT_REBUILD_COOLDOWN_MS,
+  isDesktopShell,
+  EMPTY_EDIT_FORM,
+  type DriveSetupProgress,
+  type DesktopUnlockPayload,
+  type DesktopLockPayload,
+  type DriveAccountState,
+  type StoredDriveCredential,
+  type FileStorageAggregatorProps,
+  type EditFormState,
+} from './FileStorageAggregatorTypes';
+import { isImageFile, isVideoFile } from './FileStorageAggregatorHelpers';
+import { FileStorageFileViewer } from './FileStorageFileViewer';
+import { FileStorageEditMetadataModal } from './FileStorageEditMetadataModal';
+import { FileStorageShareSettingsModal } from './FileStorageShareSettingsModal';
+import { SecureFolderSection } from './SecureFolderSection';
+import { DriveFilesListSection } from './DriveFilesListSection';
 
 export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   authenticatedUser,
@@ -238,25 +162,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   
   const [showDesktopAppInfo, setShowDesktopAppInfo] = useState(false);
   const [editingFile, setEditingFile] = useState<AggregatedFile | null>(null);
-  const [editForm, setEditForm] = useState<{ 
-    name: string; 
-    description: string; 
-    tags: string;
-    genre: string;
-    category: FeedCategory | '';
-    locationName: string;
-    locationAddress: string;
-    license: string;
-  }>({ 
-    name: '', 
-    description: '', 
-    tags: '',
-    genre: '',
-    category: '',
-    locationName: '',
-    locationAddress: '',
-    license: 'all-rights-reserved'
-  });
+  const [editForm, setEditForm] = useState<EditFormState>({ ...EMPTY_EDIT_FORM });
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
   const actionMenuRef = React.useRef<HTMLDivElement | null>(null);
   const [sharingFile, setSharingFile] = useState<AggregatedFile | null>(null);
@@ -333,7 +239,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const driveLayoutInitInFlightRef = React.useRef<Set<string>>(new Set());
   /** Skip redundant rebuild for this long after a successful connect init. */
   const driveLayoutInitJustCompletedRef = React.useRef<Map<string, number>>(new Map());
-  const DRIVE_INIT_REBUILD_COOLDOWN_MS = 30_000;
 
   React.useEffect(() => {
     driveSetupProgressRef.current = driveSetupProgress;
@@ -368,7 +273,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       
       // STANDARDIZED: Use VolumeIdGenerator - the ONLY method for pN identifier generation
       try {
-        const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
         const sessionId = currentAuthenticatedUser?.id;
         // SECURITY: Get pnName and passcode from SecureCredentialManager (secrets)
         const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
@@ -425,7 +330,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     // SECURITY: Use credentials.pnName (from SecureCredentialManager), not from state
     if (credentials?.pnName && credentials?.passcode && publicKey) {
       try {
-        const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
         const identifier = await VolumeIdGenerator.generateVolumeId({
           pnName: credentials.pnName,
           passcode: credentials.passcode,
@@ -1308,7 +1213,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
 
       // Generate standardized pn identifier
-      const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+      const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
       const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
         pnName: credentials.pnName,
         passcode: credentials.passcode,
@@ -3049,7 +2954,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             
             // Use VolumeIdGenerator for consistent pnIdentifier generation (same as desktop app)
             try {
-              const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+              const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
               const sessionId = authenticatedUser?.id;
               const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
               
@@ -3382,7 +3287,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       let currentPnIdentifier: string | undefined = undefined;
       
       try {
-        const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
         
         // Get credentials (prioritize resolvedAuth, fallback to authenticatedUser + sessionStorage)
         let pnName: string | null = null;
@@ -4230,7 +4135,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Get pN identifier for metadata folder location (use VolumeIdGenerator for consistency)
         let metadataPnIdentifier: string | undefined = undefined;
         try {
-          const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+          const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
           const sessionId = authenticatedUser?.id;
           const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
           
@@ -5703,7 +5608,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       // Format: pn-{12-char-hex-hash} from pnName:passcode:publicKey
       let pnIdentifier: string;
       try {
-        const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
         const sessionId = authenticatedUser?.id;
         const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         
@@ -5918,7 +5823,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             // Generate stable pN identifier using VolumeIdGenerator for consistency
             let pnIdentifier: string | undefined;
             try {
-              const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+              const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
               const sessionId = authenticatedUser?.id;
               const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
               
@@ -6013,7 +5918,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               description: editForm.description,
               metadata: {},
               publicToken: currentMetadata.publicToken,
-              thumbnail: currentMetadata.thumbnail,
+              thumbnail:
+                typeof currentMetadata.thumbnail === 'string'
+                  ? currentMetadata.thumbnail
+                  : currentMetadata.thumbnail?.['@id'],
               inReplyTo: currentMetadata.inReplyTo,
               repostOf: currentMetadata.repostOf,
               isPartOf: currentMetadata.isPartOf,
@@ -6091,16 +5999,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
 
       setEditingFile(null);
-      setEditForm({ 
-        name: '', 
-        description: '', 
-        tags: '',
-        genre: '',
-        category: '',
-        locationName: '',
-        locationAddress: '',
-        license: 'all-rights-reserved'
-      });
+      setEditForm({ ...EMPTY_EDIT_FORM });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update metadata');
       console.error('Error updating metadata:', err);
@@ -6122,8 +6021,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     // Load previews for images, videos, and PDFs - check mimeType and file extension
     const mimeType = file.mimeType || '';
     const fileName = file.originalName || file.name || '';
-    const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
-    const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
+    const isImage = isImageFile(mimeType, fileName);
+    const isVideo = isVideoFile(mimeType, fileName);
     if (!isImage && !isVideo) {
       return;
     }
@@ -6351,8 +6250,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       files.forEach(file => {
         const mimeType = file.mimeType || '';
         const fileName = file.originalName || file.name || '';
-        const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
-        const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
+        const isImage = isImageFile(mimeType, fileName);
+        const isVideo = isVideoFile(mimeType, fileName);
         
         if ((isImage || isVideo) && !filePreviewUrls.has(file.id) && !loadingPreviews.has(file.id)) {
           console.log('🔄 [Auto-Preview] Loading preview for file:', file.id, file.name);
@@ -6568,7 +6467,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     // Check if file is an image
     const mimeType = file.mimeType || '';
     const fileName = file.originalName || file.name || '';
-    const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
+    const isImage = isImageFile(mimeType, fileName);
     
     if (!isImage) {
       setError('Only image files can be set as profile image');
@@ -6898,7 +6797,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       // STANDARDIZED: Use VolumeIdGenerator - the ONLY method for pN identifier
       // Formula: SHA256(pnName:passcode:publicKey) → first 12 hex chars → pn-{hash}
       try {
-        const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
         const sessionId = authenticatedUser?.id;
         const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         
@@ -6959,137 +6858,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   return (
     <div className="space-y-6 w-full min-w-0 max-w-full">
-      {/* Secure Folder / Desktop App Section */}
-      {!hideSecureFolderSection && (
-        isDesktopShell ? (
-          <DesktopSecureFolderPanel />
-        ) : (
-        <>
-      <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-4 sm:p-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center space-x-3 mb-4">
-            <Lock className="h-5 w-5 text-blue-400 shrink-0" />
-            <div className="min-w-0">
-              <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
-              <p className="text-text-secondary text-sm">
-                Access your encrypted files with the desktop app
-              </p>
-          </div>
-        </div>
-        
-            <button
-              onClick={() => setShowDesktopAppInfo(true)}
-              className="flex items-center space-x-2 text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <Info className="h-4 w-4" />
-              <span className="text-sm">About the Desktop App</span>
-            </button>
-        </div>
-
-        <button
-          onClick={async () => {
-            try {
-              // Fetch latest release from GitHub API
-              const response = await fetch('https://api.github.com/repos/bymjmazzei/par-Noir/releases/latest');
-              if (!response.ok) {
-                throw new Error('Failed to fetch release info');
-              }
-              
-              const release = await response.json();
-              const assets = release.assets || [];
-              
-              // Detect platform
-              const platform = navigator.platform.toLowerCase();
-              let downloadUrl: string | null = null;
-              
-              // Find appropriate asset based on platform
-              if (platform.includes('mac') || platform.includes('darwin')) {
-                // macOS - look for DMG file
-                const dmgAsset = assets.find((asset: any) => 
-                  asset.name.includes('.dmg') && !asset.name.includes('blockmap')
-                );
-                downloadUrl = dmgAsset?.browser_download_url || null;
-              } else if (platform.includes('win')) {
-                // Windows - look for exe file
-                const exeAsset = assets.find((asset: any) => 
-                  asset.name.includes('.exe') || asset.name.includes('win')
-                );
-                downloadUrl = exeAsset?.browser_download_url || null;
-              } else {
-                // Linux - look for AppImage or tar.gz
-                const linuxAsset = assets.find((asset: any) => 
-                  asset.name.includes('.AppImage') || 
-                  asset.name.includes('.tar.gz') || 
-                  asset.name.includes('linux')
-                );
-                downloadUrl = linuxAsset?.browser_download_url || null;
-              }
-              
-              if (downloadUrl) {
-                // Create a temporary anchor element to trigger download
-                const link = document.createElement('a');
-                link.href = downloadUrl;
-                link.download = downloadUrl.split('/').pop() || 'par-Noir-Desktop';
-                link.target = '_blank';
-                link.rel = 'noopener noreferrer';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-              } else {
-                // No matching asset found, open releases page
-                window.open(release.html_url, '_blank');
-              }
-            } catch (error) {
-              console.error('Failed to download desktop app:', error);
-              // Fallback to GitHub releases page
-              window.open('https://github.com/bymjmazzei/par-Noir/releases/latest', '_blank');
-            }
-          }}
-          className="inline-flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors w-full md:w-auto md:ml-4 shrink-0"
-        >
-          <Download className="h-4 w-4" />
-          <span>Download Desktop App</span>
-        </button>
-            </div>
-      </div>
-
-        {showDesktopAppInfo && (
-          <div 
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-            onClick={() => setShowDesktopAppInfo(false)}
-          >
-            <div 
-              className="bg-neutral-800 rounded-lg p-6 max-w-md w-full text-text-primary border border-neutral-700 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold">About the Desktop App</h3>
-          <button
-                  onClick={() => setShowDesktopAppInfo(false)}
-            className="text-text-secondary hover:text-text-primary transition-colors"
-          >
-                  <X className="h-5 w-5" />
-          </button>
-        </div>
-
-              <p className="text-text-secondary text-sm mb-4">
-            The par Noir Desktop App provides secure, local access to your encrypted files stored in Google Drive. 
-            Files are automatically synced and encrypted with your pN credentials.
-          </p>
-              
-          <div className="space-y-2 text-xs text-text-secondary">
-            <p>• Secure local file access</p>
-            <p>• Automatic encryption/decryption</p>
-            <p>• Works offline with cached files</p>
-            <p>• Native desktop integration</p>
-          </div>
-        </div>
-          </div>
-        )}
-        </>
-        )
-      )}
+      <SecureFolderSection
+        hideSecureFolderSection={hideSecureFolderSection}
+        showDesktopAppInfo={showDesktopAppInfo}
+        setShowDesktopAppInfo={setShowDesktopAppInfo}
+      />
 
       <MultiCloudStoragePanel
         pnIdentifier={cloudPnIdentifier}
@@ -7194,1121 +6967,83 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         </div>
       )}
 
-      {/* File List */}
       {hasConnectedBackends && (
-        <div className="space-y-6">
-          {driveAccounts.map((account, index) => {
-            const backendId = account.backendId;
-            // SECURITY: email removed from DriveAccountState - use userEmails map instead
-            const email = userEmails.get(backendId) || `Drive ${index + 1}`;
-            const accountFiles = filesByBackend.get(backendId) || [];
-            const quota = storageQuotas.get(backendId);
-            const percentUsed = quota && quota.totalBytes
-              ? Math.min(100, Math.round((quota.usedBytes / quota.totalBytes) * 100))
-              : null;
-
-            return (
-              <div key={backendId} className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <img src={GOOGLE_DRIVE_ICON_URL} alt="Google Drive" className="h-5 w-5" />
-                    <span className="text-white font-semibold truncate max-w-xs">
-                      {email}
-                    </span>
-                    {connectedBackends.has(backendId) && (
-                      <button
-                        onClick={() => handleDisconnect(backendId)}
-                        className="text-red-400 hover:text-red-300 text-sm"
-                      >
-                        Disconnect
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => {
-                        setActiveBackendId(backendId);
-                        loadFiles();
-                      }}
-                      disabled={isLoading || driveReadBlocked}
-                      className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-                      title={driveReadBlocked ? deviceGate?.blockedMessage : 'Refresh Files'}
-                    >
-                      <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                    </button>
-                    <input
-                      type="file"
-                      data-backend-id={backendId}
-                      className="hidden"
-                      disabled={isLoading || driveUploadBlocked}
-                      onChange={handleUpload}
-                      ref={(el) => {
-                        if (el) {
-                          fileInputRefs.current.set(backendId, el);
-                        } else {
-                          fileInputRefs.current.delete(backendId);
-                        }
-                      }}
-                    />
-                    <button
-                      onClick={() => {
-                        if (driveUploadBlocked) {
-                          setError(deviceGate?.blockedMessage ?? null);
-                          return;
-                        }
-                        setActiveBackendId(backendId);
-                        const input = fileInputRefs.current.get(backendId);
-                        input?.click();
-                      }}
-                      disabled={isLoading || driveUploadBlocked}
-                      className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-                      title={driveUploadBlocked ? deviceGate?.blockedMessage : 'Upload File'}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setIsBulkDeleteMode(!isBulkDeleteMode);
-                        if (isBulkDeleteMode) {
-                          setSelectedFiles(new Set());
-                        }
-                      }}
-                      disabled={isLoading}
-                      className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-                      title={isBulkDeleteMode ? "Cancel Bulk Delete" : "Bulk Delete"}
-                    >
-                      <Minus className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => setViewMode('list')}
-                      className={`p-2 rounded transition-colors ${
-                        viewMode === 'list'
-                          ? 'bg-blue-600 text-white'
-                          : 'text-text-secondary hover:text-text-primary'
-                      }`}
-                      title="List View"
-                    >
-                      <List className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => setViewMode('grid')}
-                      className={`p-2 rounded transition-colors ${
-                        viewMode === 'grid'
-                          ? 'bg-blue-600 text-white'
-                          : 'text-text-secondary hover:text-text-primary'
-                      }`}
-                      title="Grid View"
-                    >
-                      <Grid className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {quota && (
-                  <div className="flex items-center justify-between text-xs text-text-secondary bg-neutral-900 rounded-lg px-3 py-2 mb-4">
-                    <span>Used {(quota.usedBytes / (1024 * 1024)).toFixed(1)} MB of {(quota.totalBytes / (1024 * 1024)).toFixed(1)} MB</span>
-                    <span>{percentUsed ?? 0}% full</span>
-                  </div>
-                )}
-
-                {showDriveSetupProgress && driveSetupProgress ? (
-                  <DriveLayoutSetupProgress progress={driveSetupProgress} />
-                ) : isLoading && files.length === 0 ? (
-                  <div className="text-center py-12">
-                    <RefreshCw className="h-8 w-8 text-text-secondary animate-spin mx-auto mb-4" />
-                    <p className="text-text-secondary">Loading files...</p>
-                  </div>
-                ) : accountFiles.length === 0 ? (
-                  <div className="text-center py-12">
-                    <File className="h-12 w-12 text-text-secondary mx-auto mb-4" />
-                    <p className="text-text-secondary">No files found for this account</p>
-                  </div>
-                ) : viewMode === 'grid' ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {accountFiles.map((file) => {
-                      const metadata = fileMetadataMap.get(file.id);
-                      const previewUrl = filePreviewUrls.get(file.id);
-                      const isLoadingPreview = loadingPreviews.has(file.id);
-                      const mimeType = file.mimeType || '';
-                      const fileName = file.originalName || file.name || '';
-                      const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
-                      const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
-
-                      return (
-                        <div
-                          key={`${file.backend}-${file.backendFileId}`}
-                          className={`bg-neutral-900 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group ${
-                            isBulkDeleteMode ? 'cursor-default' : 'cursor-pointer'
-                          } ${selectedFiles.has(file.id) ? 'ring-2 ring-blue-500' : ''}`}
-                          onClick={(e) => {
-                            if (isBulkDeleteMode) {
-                              const target = e.target as HTMLElement;
-                              if (target.closest('input[type="checkbox"]') || target.closest('label')) {
-                                toggleFileSelection(file.id);
-                                return;
-                              }
-                              toggleFileSelection(file.id);
-                              return;
-                            }
-                            handleViewFile(file);
-                          }}
-                        >
-                          {/* Checkbox for bulk delete mode */}
-                          {isBulkDeleteMode && (
-                            <div className="absolute top-2 left-2 z-30" onClick={(e) => e.stopPropagation()}>
-                              <input
-                                type="checkbox"
-                                checked={selectedFiles.has(file.id)}
-                                onChange={() => toggleFileSelection(file.id)}
-                                className="w-5 h-5 rounded border-neutral-600 bg-neutral-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
-                              />
-                            </div>
-                          )}
-                          <div
-                            className="relative aspect-square bg-neutral-700/50 overflow-hidden"
-                            onMouseEnter={() => {
-                              if ((isImage || isVideo) && !previewUrl && !isLoadingPreview) {
-                                loadFilePreview(file);
-                              }
-                            }}
-                          >
-                            {previewUrl && isImage ? (
-                              <img
-                                src={previewUrl}
-                                alt={file.encrypted ? file.originalName : file.name}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : previewUrl && isVideo ? (
-                              <video
-                                src={previewUrl}
-                                className="w-full h-full object-cover"
-                                muted
-                                loop
-                              />
-                            ) : isLoadingPreview ? (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <RefreshCw className="h-6 w-6 text-text-secondary animate-spin" />
-                              </div>
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <Lock className="h-8 w-8 text-blue-400" />
-                              </div>
-                            )}
-                            {metadata?.isPublic && (
-                              <div className="absolute top-2 right-2 bg-green-500/80 rounded-full p-1">
-                                <Globe className="h-3 w-3 text-white" />
-                              </div>
-                            )}
-                            {(isImage || isVideo) && (
-                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                <Eye className="h-6 w-6 text-white" />
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="p-3">
-                            <p className="text-white text-xs truncate mb-1" title={file.encrypted ? file.originalName : file.name}>
-                              {file.encrypted ? file.originalName : file.name}
-                            </p>
-                            <p className="text-text-secondary text-xs">
-                              {(parseInt(file.size?.toString() || '0') / 1024).toFixed(1)} KB
-                            </p>
-
-                            {!isBulkDeleteMode && (
-                              <div className="flex items-center justify-end mt-2 pt-2 border-t border-neutral-700">
-                                <div className="relative">
-                                <button
-                                  ref={(btn) => {
-                                    if (btn && openMenuFor === file.backendFileId) {
-                                      // Store button ref for menu positioning
-                                      (btn as any).__menuButton = true;
-                                    }
-                                  }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                      setOpenMenuFor((prev) =>
-                                        prev === file.backendFileId ? null : file.backendFileId
-                                      );
-                                    }}
-                                    className="p-1.5 text-text-secondary hover:text-text-primary transition-colors rounded"
-                                    title="File actions"
-                                    disabled={isLoading}
-                                  >
-                                    <MoreVertical className="h-4 w-4" />
-                                  </button>
-                                {openMenuFor === file.backendFileId && (
-                                  <div
-                                    ref={(node) => {
-                                      if (node) {
-                                        actionMenuRef.current = node;
-                                        // Position menu directly over the tile container
-                                        // Use requestAnimationFrame to ensure node is rendered before calculating position
-                                        requestAnimationFrame(() => {
-                                          // Find the tile container (the parent div with the grid item)
-                                          const tileContainer = node.closest('[class*="bg-neutral-800"]') as HTMLElement;
-                                          if (tileContainer && node) {
-                                            const tileRect = tileContainer.getBoundingClientRect();
-                                            const menuWidth = 176; // w-44 = 11rem = 176px
-                                            
-                                            node.style.position = 'fixed';
-                                            
-                                            // Position menu OVER the tile: center it horizontally on the tile
-                                            // left = tile.left + (tile.width / 2) - (menu.width / 2)
-                                            const leftPosition = tileRect.left + (tileRect.width / 2) - (menuWidth / 2);
-                                            
-                                            // Ensure menu stays within viewport
-                                            const minLeft = 8; // Minimum 8px from left edge
-                                            const maxLeft = window.innerWidth - menuWidth - 8; // Maximum to keep menu on screen
-                                            node.style.left = `${Math.max(minLeft, Math.min(leftPosition, maxLeft))}px`;
-                                            
-                                            // Position menu OVER the tile: center it vertically on the tile
-                                            // top = tile.top + (tile.height / 2) - (menu.height / 2)
-                                            const menuHeight = node.offsetHeight || 200; // fallback estimate
-                                            const topPosition = tileRect.top + (tileRect.height / 2) - (menuHeight / 2);
-                                            
-                                            // Ensure menu stays within viewport
-                                            const minTop = 8; // Minimum 8px from top edge
-                                            const maxTop = window.innerHeight - menuHeight - 8; // Maximum to keep menu on screen
-                                            node.style.top = `${Math.max(minTop, Math.min(topPosition, maxTop))}px`;
-                                            
-                                            node.style.right = 'auto';
-                                            node.style.bottom = 'auto';
-                                          }
-                                        });
-                                      }
-                                    }}
-                                    className="w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-[100] py-1"
-                                  >
-                                    {/* Report option (all users) - only if not already NSFW/X-rated */}
-                                    {(() => {
-                                      const currentRating = metadata?.contentRating;
-                                      const canReportNSFW = currentRating !== 'nsfw' && currentRating !== 'x-rated';
-                                      
-                                      if (canReportNSFW) {
-                                        return (
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setOpenMenuFor(null);
-                                              actionMenuRef.current = null;
-                                              setReportingFile(file);
-                                              setShowReportModal(true);
-                                            }}
-                                            className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                                            disabled={isLoading}
-                                          >
-                                            <Flag className="h-4 w-4" />
-                                            <span>Report as NSFW</span>
-                                          </button>
-                                        );
-                                      }
-                                      return null;
-                                    })()}
-                                    
-                                    {/* Owner-only options */}
-                                    {(() => {
-                                      // Check if user is owner
-                                      const isOwner = authenticatedUser?.id && (
-                                        metadata?.owner?.did === authenticatedUser.id ||
-                                        metadata?.owner?.identifier === authenticatedUser.id ||
-                                        file.backendFileId?.includes(authenticatedUser.id)
-                                      );
-
-                                      if (isOwner) {
-                                        return (
-                                          <>
-                                            {(metadata?.contentRating !== 'nsfw' && metadata?.contentRating !== 'x-rated') && (
-                                              <div className="border-t border-neutral-700 my-1" />
-                                            )}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenMenuFor(null);
-                                        actionMenuRef.current = null;
-                                  handleEditMetadata(file);
-                                }}
-                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                                disabled={isLoading}
-                              >
-                                      <Edit className="h-4 w-4" />
-                                      <span>Edit metadata</span>
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                        setOpenMenuFor(null);
-                                        actionMenuRef.current = null;
-                                        handleDownload(file);
-                                }}
-                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                                disabled={isLoading}
-                                    >
-                                      <Download className="h-4 w-4" />
-                                      <span>Download</span>
-                                    </button>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                      }}
-                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                                      disabled={isLoading}
-                                      hidden
-                                    >
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                        setOpenMenuFor(null);
-                                        actionMenuRef.current = null;
-                                        openShareSettings(file);
-                                }}
-                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                                disabled={isLoading}
-                              >
-                                      <Share2 className="h-4 w-4" />
-                                      <span>Share settings</span>
-                              </button>
-                                            <div className="border-t border-neutral-700 my-1" />
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenMenuFor(null);
-                                        actionMenuRef.current = null;
-                                        handleDelete(file);
-                                      }}
-                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-950 transition-colors"
-                                      disabled={isLoading}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                      <span>Delete</span>
-                                    </button>
-                                          </>
-                                        );
-                                      }
-                                      return null;
-                                    })()}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {accountFiles.map((file) => {
-                      const metadata = fileMetadataMap.get(file.id);
-                      const previewUrl = filePreviewUrls.get(file.id);
-                      const isLoadingPreview = loadingPreviews.has(file.id);
-                      const mimeType = file.mimeType || '';
-                      const fileName = file.originalName || file.name || '';
-                      const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
-                      const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
-
-                      return (
-                        <div
-                          key={`${file.backend}-${file.backendFileId}`}
-                          className={`flex items-center justify-between p-3 bg-neutral-900 rounded-lg hover:bg-neutral-800 transition-colors ${
-                            isBulkDeleteMode ? 'cursor-default' : 'cursor-pointer'
-                          } ${selectedFiles.has(file.id) ? 'ring-2 ring-blue-500' : ''}`}
-                          onClick={(e) => {
-                            if (isBulkDeleteMode) {
-                              const target = e.target as HTMLElement;
-                              if (target.closest('input[type="checkbox"]') || target.closest('label')) {
-                                toggleFileSelection(file.id);
-                                return;
-                              }
-                              toggleFileSelection(file.id);
-                              return;
-                            }
-                            handleViewFile(file);
-                          }}
-                        >
-                          {/* Checkbox for bulk delete mode */}
-                          {isBulkDeleteMode && (
-                            <div className="flex-shrink-0 mr-3" onClick={(e) => e.stopPropagation()}>
-                              <input
-                                type="checkbox"
-                                checked={selectedFiles.has(file.id)}
-                                onChange={() => toggleFileSelection(file.id)}
-                                className="w-5 h-5 rounded border-neutral-600 bg-neutral-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
-                              />
-                            </div>
-                          )}
-                          <div className="flex items-center space-x-3 flex-1 min-w-0">
-                            {previewUrl && isImage ? (
-                              <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
-                                <img
-                                  src={previewUrl}
-                                  alt={file.encrypted ? file.originalName : file.name}
-                                  className="w-full h-full object-cover"
-                                />
-                              </div>
-                            ) : previewUrl && isVideo ? (
-                              <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
-                                <video
-                                  src={previewUrl}
-                                  className="w-full h-full object-cover"
-                                  muted
-                                />
-                              </div>
-                            ) : isImage || isVideo ? (
-                              <div
-                                className="w-12 h-12 flex-shrink-0 rounded bg-neutral-700 flex items-center justify-center cursor-pointer"
-                                onMouseEnter={() => {
-                                  if (!previewUrl && !isLoadingPreview) {
-                                    loadFilePreview(file);
-                                  }
-                                }}
-                              >
-                                {isLoadingPreview ? (
-                                  <RefreshCw className="h-5 w-5 text-text-secondary animate-spin" />
-                                ) : (
-                                  <Lock className="h-5 w-5 text-blue-400" />
-                                )}
-                              </div>
-                            ) : (
-                              <Lock className="h-4 w-4 text-blue-400 flex-shrink-0" />
-                            )}
-
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center space-x-2">
-                                <p className="text-white text-sm truncate">
-                                  {file.encrypted ? file.originalName : file.name}
-                                </p>
-                                {metadata?.isPublic && (
-                                  <Globe className="h-3 w-3 text-green-400 flex-shrink-0" aria-label="Public" />
-                                )}
-                              </div>
-                              <p className="text-text-secondary text-xs">
-                                {file.backend} • {(parseInt(file.size?.toString() || '0') / 1024).toFixed(2)} KB
-                              </p>
-                            </div>
-                          </div>
-                          {!isBulkDeleteMode && (
-                            <div className="flex items-center justify-end space-x-2">
-                              <div className="relative">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                    setOpenMenuFor((prev) =>
-                                      prev === file.backendFileId ? null : file.backendFileId
-                                    );
-                                }}
-                                className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 bg-neutral-800 hover:bg-neutral-700 text-text-secondary hover:text-text-primary"
-                                  title="File actions"
-                                  disabled={isLoading}
-                              >
-                                  <MoreVertical className="h-4 w-4" />
-                              </button>
-                              {openMenuFor === file.backendFileId && (
-                                <div
-                                  ref={(node) => {
-                                    if (node) {
-                                      actionMenuRef.current = node;
-                                    }
-                                  }}
-                                  className="absolute right-0 mt-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-[100] py-1"
-                                >
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                      setOpenMenuFor(null);
-                                      actionMenuRef.current = null;
-                                      handleEditMetadata(file);
-                              }}
-                                    className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                              disabled={isLoading}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                    <span>Edit metadata</span>
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                      setOpenMenuFor(null);
-                                      actionMenuRef.current = null;
-                                handleDownload(file);
-                              }}
-                                    className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                              disabled={isLoading}
-                            >
-                              <Download className="h-4 w-4" />
-                                    <span>Download</span>
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setOpenMenuFor(null);
-                                      actionMenuRef.current = null;
-                                      openShareSettings(file);
-                                    }}
-                                    className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                                    disabled={isLoading}
-                                  >
-                                    <Share2 className="h-4 w-4" />
-                                    <span>Share settings</span>
-                                  </button>
-                                  <div className="border-t border-neutral-700 my-1"></div>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setOpenMenuFor(null);
-                                      actionMenuRef.current = null;
-                                      handleDelete(file);
-                                    }}
-                                    className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-950 transition-colors"
-                                    disabled={isLoading}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                    <span>Delete</span>
-                                  </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                          )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            
-            {/* Bulk Delete Button */}
-            {isBulkDeleteMode && (() => {
-              const accountSelectedFiles = accountFiles.filter(f => selectedFiles.has(f.id));
-              const selectedCount = accountSelectedFiles.length;
-              
-              return (
-                <div className="mt-4 pt-4 border-t border-neutral-700 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        if (selectedCount === accountFiles.length) {
-                          // Deselect all files from this backend
-                          setSelectedFiles(prev => {
-                            const newSet = new Set(prev);
-                            accountFiles.forEach(f => newSet.delete(f.id));
-                            return newSet;
-                          });
-                        } else {
-                          selectAllFiles(backendId);
-                        }
-                      }}
-                      className="px-3 py-1.5 text-sm text-white hover:bg-neutral-700 rounded transition-colors"
-                    >
-                      {selectedCount === accountFiles.length ? 'Deselect All' : 'Select All'}
-                    </button>
-                    <span className="text-text-secondary text-sm">
-                      {selectedCount} file{selectedCount !== 1 ? 's' : ''} selected
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={moveDestKey}
-                      onChange={(e) => setMoveDestKey(e.target.value)}
-                      className="text-sm bg-neutral-800 border border-neutral-600 rounded px-2 py-1.5 text-white"
-                      disabled={selectedCount === 0 || isLoading}
-                    >
-                      <option value="">Move to cloud…</option>
-                      {portableCloudAccounts.map((a) => (
-                        <option
-                          key={`${a.provider}|||${a.accountId}`}
-                          value={`${a.provider}|||${a.accountId}`}
-                        >
-                          {a.displayName || a.provider}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={handleMoveToCloud}
-                      disabled={selectedCount === 0 || !moveDestKey || isLoading}
-                      className="px-3 py-2 bg-violet-600 text-white rounded hover:bg-violet-500 text-sm disabled:opacity-50"
-                    >
-                      Move
-                    </button>
-                    <button
-                      onClick={() => handleBulkDelete(backendId)}
-                      disabled={selectedCount === 0 || isLoading}
-                      className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Delete ({selectedCount})
-                    </button>
-                  </div>
-                </div>
-              );
-            })()}
-              </div>
-            );
-          })}
-          {portableCloudAccounts.map((acct) => {
-            const backendId = `${acct.provider}::${acct.accountId}`;
-            const accountFiles = filesByBackend.get(backendId) || [];
-            return (
-              <div key={backendId} className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <Cloud className="h-5 w-5 text-text-secondary" />
-                    <span className="text-white font-semibold truncate max-w-xs">
-                      {acct.displayName || acct.provider}
-                    </span>
-                    {acct.isSocialCloud && (
-                      <span className="text-xs px-2 py-0.5 rounded bg-blue-900/50 text-blue-300">Social cloud</span>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => {
-                        setActiveBackendId(backendId);
-                        loadFiles();
-                      }}
-                      disabled={isLoading || driveReadBlocked}
-                      className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-                      title="Refresh Files"
-                    >
-                      <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                    </button>
-                    <input
-                      type="file"
-                      data-backend-id={backendId}
-                      className="hidden"
-                      disabled={isLoading || driveUploadBlocked}
-                      onChange={handleUpload}
-                      ref={(el) => {
-                        if (el) fileInputRefs.current.set(backendId, el);
-                        else fileInputRefs.current.delete(backendId);
-                      }}
-                    />
-                    <button
-                      onClick={() => {
-                        if (driveUploadBlocked) {
-                          setError(deviceGate?.blockedMessage ?? null);
-                          return;
-                        }
-                        setActiveBackendId(backendId);
-                        fileInputRefs.current.get(backendId)?.click();
-                      }}
-                      disabled={isLoading || driveUploadBlocked}
-                      className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-                      title="Upload to this cloud"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-                <p className="text-text-secondary text-sm">
-                  {accountFiles.length === 0
-                    ? 'No files indexed for this backend yet'
-                    : `${accountFiles.length} file(s) — upload destination: ${acct.provider}`}
-                </p>
-              </div>
-            );
-          })}
-        </div>
+        <DriveFilesListSection
+          driveAccounts={driveAccounts}
+          userEmails={userEmails}
+          filesByBackend={filesByBackend}
+          storageQuotas={storageQuotas}
+          connectedBackends={connectedBackends}
+          files={files}
+          fileMetadataMap={fileMetadataMap}
+          filePreviewUrls={filePreviewUrls}
+          loadingPreviews={loadingPreviews}
+          selectedFiles={selectedFiles}
+          isBulkDeleteMode={isBulkDeleteMode}
+          viewMode={viewMode}
+          openMenuFor={openMenuFor}
+          isLoading={isLoading}
+          driveReadBlocked={driveReadBlocked}
+          driveUploadBlocked={driveUploadBlocked}
+          deviceGateBlockedMessage={deviceGate?.blockedMessage}
+          showDriveSetupProgress={showDriveSetupProgress}
+          driveSetupProgress={driveSetupProgress}
+          authenticatedUserId={authenticatedUser?.id ?? null}
+          portableCloudAccounts={portableCloudAccounts}
+          moveDestKey={moveDestKey}
+          fileInputRefs={fileInputRefs}
+          actionMenuRef={actionMenuRef}
+          setActiveBackendId={setActiveBackendId}
+          setError={setError}
+          setIsBulkDeleteMode={setIsBulkDeleteMode}
+          setSelectedFiles={setSelectedFiles}
+          setViewMode={setViewMode}
+          setOpenMenuFor={setOpenMenuFor}
+          setReportingFile={setReportingFile}
+          setShowReportModal={setShowReportModal}
+          setMoveDestKey={setMoveDestKey}
+          loadFiles={loadFiles}
+          handleDisconnect={handleDisconnect}
+          handleUpload={handleUpload}
+          toggleFileSelection={toggleFileSelection}
+          handleViewFile={handleViewFile}
+          loadFilePreview={loadFilePreview}
+          handleEditMetadata={handleEditMetadata}
+          handleDownload={handleDownload}
+          openShareSettings={openShareSettings}
+          handleDelete={handleDelete}
+          selectAllFiles={selectAllFiles}
+          handleMoveToCloud={handleMoveToCloud}
+          handleBulkDelete={handleBulkDelete}
+        />
       )}
 
-      {/* Edit Metadata Modal */}
       {editingFile && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => {
-            setEditingFile(null);
-            setEditForm({ 
-        name: '', 
-        description: '', 
-        tags: '',
-        genre: '',
-        category: '',
-        locationName: '',
-        locationAddress: '',
-        license: 'all-rights-reserved'
-      });
-          }}
-        >
-          <div 
-            className="bg-neutral-800 rounded-lg p-6 max-w-md w-full text-text-primary border border-neutral-700 shadow-2xl max-h-[85vh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center mb-4 flex-shrink-0">
-              <h3 className="text-lg font-semibold">Edit Metadata</h3>
-              <button
-                onClick={() => {
-                  setEditingFile(null);
-                  setEditForm({ 
-        name: '', 
-        description: '', 
-        tags: '',
-        genre: '',
-        category: '',
-        locationName: '',
-        locationAddress: '',
-        license: 'all-rights-reserved'
-      });
-                }}
-                className="text-text-secondary hover:text-text-primary transition-colors"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            
-            <div className="space-y-4 overflow-y-auto pr-2 -mr-2 flex-1">
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                  Name / Title
-                </label>
-                <input
-                  type="text"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="File name"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                  Description
-                </label>
-                <textarea
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                  placeholder="File description"
-                  rows={3}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                  Tags (comma-separated)
-                </label>
-                <input
-                  type="text"
-                  value={editForm.tags}
-                  onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
-                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="tag1, tag2, tag3"
-                />
-              </div>
-
-              <div className="border-t border-neutral-700 pt-4 mt-4">
-                <h4 className="text-sm font-semibold text-text-primary mb-3">Content Classification</h4>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                      Category <span className="text-red-400">*</span>
-                    </label>
-                    <select
-                      value={editForm.category}
-                      onChange={(e) => setEditForm({ ...editForm, category: e.target.value as FeedCategory | '' })}
-                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    >
-                      <option value="">Select a category</option>
-                      {FEED_CATEGORY_LIST.map(category => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
-                    </select>
-                    <p className="text-xs text-text-secondary mt-1">Required: Select the niche category for this content</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                      Genre (comma-separated)
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.genre}
-                      onChange={(e) => setEditForm({ ...editForm, genre: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="photography, art, documentation"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-neutral-700 pt-4 mt-4">
-                <h4 className="text-sm font-semibold text-text-primary mb-3">Location</h4>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                      Place Name
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.locationName}
-                      onChange={(e) => setEditForm({ ...editForm, locationName: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="e.g., Central Park, New York"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                      Address (City, State, Country)
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.locationAddress}
-                      onChange={(e) => setEditForm({ ...editForm, locationAddress: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="New York, NY, USA"
-                    />
-                  </div>
-
-                </div>
-              </div>
-
-              <div className="border-t border-neutral-700 pt-4 mt-4">
-                <h4 className="text-sm font-semibold text-text-primary mb-3">Rights & Licensing</h4>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                      License
-                    </label>
-                    <select
-                      value={editForm.license}
-                      onChange={(e) => setEditForm({ ...editForm, license: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Select a license</option>
-                      {LICENSE_TYPES.map(license => (
-                        <option key={license.value} value={license.value}>
-                          {license.label} - {license.description}
-                        </option>
-                      ))}
-                    </select>
-                    {editForm.license && (
-                      <p className="text-xs text-text-secondary mt-1">
-                        {LICENSE_TYPES.find(l => l.value === editForm.license)?.description}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-4 flex-shrink-0 border-t border-neutral-700 mt-4">
-                <button
-                  onClick={() => {
-                    setEditingFile(null);
-                    setEditForm({ 
-        name: '', 
-        description: '', 
-        tags: '',
-        genre: '',
-        category: '',
-        locationName: '',
-        locationAddress: '',
-        license: 'all-rights-reserved'
-      });
-                  }}
-                  className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
-                  disabled={isLoading}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveMetadata}
-                  disabled={isLoading}
-                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  {isLoading ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <FileStorageEditMetadataModal
+          editForm={editForm}
+          setEditForm={setEditForm}
+          isLoading={isLoading}
+          onSave={handleSaveMetadata}
+          onClose={() => setEditingFile(null)}
+        />
       )}
 
-      {/* Share Settings Modal */}
       {sharingFile && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4"
-          onClick={closeShareSettings}
-        >
-          <div
-            className="relative w-full max-w-3xl bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800">
-              <div>
-                <h2 className="text-xl font-semibold text-white uppercase tracking-wide">Share Settings</h2>
-                <p className="text-sm text-text-secondary mt-1 truncate max-w-xl">
-                  {sharingFile.encrypted ? sharingFile.originalName : sharingFile.name}
-                </p>
-              </div>
-              <button
-                onClick={closeShareSettings}
-                className="p-2 text-text-secondary hover:text-text-primary transition-colors rounded-lg"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="px-6 py-5 space-y-8 max-h-[70vh] overflow-y-auto">
-              <section>
-                <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wide mb-3">
-                  Visibility
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  {(['public', 'private'] as const).map((option) => {
-                    const isActive = shareVisibility === option;
-                    return (
-                      <button
-                        key={option}
-                        onClick={() => setShareVisibility(option)}
-                        className={`text-left px-4 py-3 rounded-xl border transition-colors ${
-                          isActive
-                            ? 'border-blue-500 bg-blue-600/20 text-white'
-                            : 'border-neutral-700 bg-neutral-800 text-text-secondary hover:text-text-primary hover:border-neutral-500'
-                        }`}
-                      >
-                        <span className="text-sm font-semibold uppercase tracking-wide block">
-                          {option === 'public' ? 'PUBLIC' : 'PRIVATE'}
-                        </span>
-                        <span className="mt-1 text-xs text-text-secondary">
-                          {option === 'public'
-                            ? 'Anyone with the public link can access this file.'
-                            : 'Only you (and collaborators you invite) can view this file.'}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
-              {shareVisibility === 'public' && (
-                <section>
-                  <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wide mb-3">
-                    Content Classification
-                  </h3>
-                  <div className="flex items-center justify-between border border-neutral-800 bg-neutral-900/70 rounded-lg px-4 py-3">
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-white uppercase tracking-wide mb-1">
-                        NSFW Content
-                      </p>
-                      <p className="text-xs text-text-secondary">
-                        Mark this content as Not Safe For Work (18+). This affects how it appears in public feeds.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={shareNSFW}
-                      onClick={() => setShareNSFW(!shareNSFW)}
-                      className={`
-                        relative inline-flex h-6 w-11 items-center rounded-full transition-colors
-                        ${shareNSFW ? 'bg-red-600' : 'bg-neutral-700'}
-                      `}
-                    >
-                      <span
-                        className={`
-                          inline-block h-4 w-4 transform rounded-full bg-white transition-transform
-                          ${shareNSFW ? 'translate-x-6' : 'translate-x-1'}
-                        `}
-                      />
-                    </button>
-                  </div>
-                </section>
-              )}
-
-              <section>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wide">
-                    Third-Party Indexing
-                  </h3>
-                  {shareVisibility === 'public' && (
-                    <span className="text-xs text-text-secondary">
-                      Choose which par Noir partners can surface this file.
-                    </span>
-                  )}
-                </div>
-
-                {shareVisibility !== 'public' ? (
-                  <div className="rounded-lg border border-neutral-700 bg-neutral-800/60 px-4 py-3 text-sm text-text-secondary">
-                    Make the file PUBLIC to manage third-party indexing visibility.
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {isLoadingIndexers ? (
-                      <div className="flex items-center space-x-2 text-text-secondary text-sm">
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                        <span>Loading partners...</span>
-                      </div>
-                    ) : indexerError ? (
-                      <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
-                        {indexerError}
-                      </div>
-                    ) : thirdPartyIndexers.length === 0 ? (
-                      <div className="rounded-lg border border-neutral-700 bg-neutral-800/60 px-4 py-3 text-sm text-text-secondary">
-                        No third-party indexers are currently available.
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {thirdPartyIndexers.map((indexer) => {
-                          const enabled = Boolean(indexerToggles[indexer.id]);
-                          return (
-                            <div
-                              key={indexer.id}
-                              className="flex items-center justify-between border border-neutral-800 bg-neutral-900/70 rounded-lg px-4 py-3"
-                            >
-                              <div className="mr-4">
-                                <p className="text-sm font-semibold text-white uppercase tracking-wide">
-                                  {indexer.name}
-                                </p>
-                                {indexer.description && (
-                                  <p className="text-xs text-text-secondary mt-1 max-w-md">
-                                    {indexer.description}
-                                  </p>
-                                )}
-                              </div>
-                              <button
-                                onClick={() => handleIndexerToggle(indexer.id)}
-                                className={`px-4 py-2 text-xs font-semibold uppercase tracking-widest rounded-md border transition-colors ${
-                                  enabled
-                                    ? 'bg-blue-600 border-blue-500 text-white'
-                                    : 'bg-neutral-800 border-neutral-600 text-text-secondary hover:text-text-primary'
-                                }`}
-                              >
-                                  {enabled ? 'ENABLED' : 'DISABLED'}
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </section>
-            </div>
-
-            <div className="flex items-center justify-end space-x-3 px-6 py-4 border-t border-neutral-800 bg-neutral-900/80">
-              <button
-                onClick={closeShareSettings}
-                className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-text-secondary hover:text-text-primary transition-colors"
-                disabled={isSavingShare}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveShareSettings}
-                disabled={isSavingShare || (shareVisibility === 'public' && isLoadingIndexers)}
-                className="px-5 py-2 text-sm font-semibold uppercase tracking-wide rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isSavingShare ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <FileStorageShareSettingsModal
+          sharingFile={sharingFile}
+          shareVisibility={shareVisibility}
+          setShareVisibility={setShareVisibility}
+          shareNSFW={shareNSFW}
+          setShareNSFW={setShareNSFW}
+          thirdPartyIndexers={thirdPartyIndexers}
+          indexerToggles={indexerToggles}
+          isLoadingIndexers={isLoadingIndexers}
+          indexerError={indexerError}
+          isSavingShare={isSavingShare}
+          onIndexerToggle={handleIndexerToggle}
+          onSave={handleSaveShareSettings}
+          onClose={closeShareSettings}
+        />
       )}
 
       {/* File Viewer Modal */}
@@ -8328,7 +7063,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               <X className="h-6 w-6" />
             </button>
             
-            <FileViewer 
+            <FileStorageFileViewer 
               file={viewingFile} 
               previewUrl={filePreviewUrls.get(viewingFile.id) || null}
               fileMetadata={fileMetadataMap.get(viewingFile.id)}
@@ -8361,149 +7096,3 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     </div>
   );
 };
-
-// File Viewer Component
-const FileViewer: React.FC<{ file: AggregatedFile; previewUrl: string | null; fileMetadata?: PublicMetadata; onClose: () => void }> = ({ file, previewUrl, fileMetadata, onClose }) => {
-  const [decryptedUrl, setDecryptedUrl] = useState<string | null>(previewUrl);
-  const [loading, setLoading] = useState(!previewUrl);
-  const [error, setError] = useState<string | null>(null);
-  const mimeType = file.mimeType || '';
-  const fileName = file.originalName || file.name || '';
-  // Check mimeType first, then fallback to file extension
-  const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
-  const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
-  const isAudio = mimeType.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac)$/i.test(fileName);
-
-  useEffect(() => {
-    // If preview URL already exists, use it (no need to decrypt again)
-    if (previewUrl) {
-      setDecryptedUrl(previewUrl);
-      setLoading(false);
-      return;
-    }
-
-    // SIMPLIFIED: Use token-based decryption (same as aggregator browser)
-    // Get token from fileMetadata prop (no credentials needed)
-    const loadFile = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        if (!fileMetadata?.publicToken) {
-          throw new Error('File token not found. Please reload the page.');
-        }
-
-        // Parse token and decrypt (SAME as aggregator browser)
-        const shareToken = typeof fileMetadata.publicToken === 'string'
-          ? JSON.parse(fileMetadata.publicToken)
-          : fileMetadata.publicToken;
-
-        const { decryptWithToken } = await import('../../utils/tokenDecryption');
-        const decryptedBlob = await decryptWithToken(shareToken);
-        const url = URL.createObjectURL(decryptedBlob);
-        setDecryptedUrl(url);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load file');
-        console.error('Error loading file:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadFile();
-
-    // Cleanup - only revoke if we created the URL (not the preview URL)
-    return () => {
-      if (decryptedUrl && decryptedUrl !== previewUrl) {
-        URL.revokeObjectURL(decryptedUrl);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file.id, previewUrl, fileMetadata]);
-
-  if (loading) {
-    return (
-      <div className="text-center">
-        <RefreshCw className="h-12 w-12 text-white animate-spin mx-auto mb-4" />
-        <p className="text-white">Loading file...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center">
-        <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
-        <p className="text-red-400">{error}</p>
-        <button
-          onClick={onClose}
-          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          Close
-        </button>
-      </div>
-    );
-  }
-
-  // Debug logging
-  console.log('🔍 [FileViewer] Render check:', {
-    hasDecryptedUrl: !!decryptedUrl,
-    mimeType,
-    fileName,
-    isImage,
-    isVideo,
-    isAudio,
-    hasFileMetadata: !!fileMetadata,
-    hasPublicToken: !!fileMetadata?.publicToken
-  });
-
-  if (!decryptedUrl) {
-    // Still loading or failed - loading/error states are handled above
-    return null;
-  }
-
-  return (
-    <div className="w-full h-full flex items-center justify-center">
-      {isImage && (
-        <img
-          src={decryptedUrl}
-          alt={file.encrypted ? file.originalName : file.name}
-          className="max-w-full max-h-full object-contain"
-        />
-      )}
-      {isVideo && (
-        <video
-          src={decryptedUrl}
-          controls
-          autoPlay
-          className="max-w-full max-h-full"
-        />
-      )}
-      {isAudio && (
-        <div className="bg-neutral-800 rounded-lg p-8">
-          <audio src={decryptedUrl} controls className="w-full" />
-          <p className="text-white mt-4 text-center">{file.encrypted ? file.originalName : file.name}</p>
-        </div>
-      )}
-      {!isImage && !isVideo && !isAudio && (
-        <div className="bg-neutral-800 rounded-lg p-8 max-w-2xl">
-          <p className="text-white text-center mb-4">{file.encrypted ? file.originalName : file.name}</p>
-          <p className="text-text-secondary text-center">
-            Preview not available for this file type. Please download to view.
-          </p>
-          <p className="text-text-secondary text-center text-xs mt-2">
-            Debug: mimeType={mimeType || 'none'}, fileName={fileName}
-          </p>
-          <button
-            onClick={onClose}
-            className="mt-6 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mx-auto block"
-          >
-            Close
-          </button>
-        </div>
-      )}
-    </div>
-  );
-};
-
-

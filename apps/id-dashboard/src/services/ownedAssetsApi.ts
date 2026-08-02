@@ -150,15 +150,3 @@ export async function revokeDelegation(accessToken: string, delegationId: string
   );
   if (!res.ok) throw new Error('Failed to revoke delegation');
 }
-
-export async function postIpfsManifestPointer(accessToken: string, cid: string): Promise<void> {
-  const res = await fetch(`${API_ENDPOINT}/api/owned-assets/ipfs-pointer`, {
-    method: 'POST',
-    headers: await authHeaders(accessToken),
-    body: JSON.stringify({ cid })
-  });
-  if (!res.ok) {
-    const j = await res.json().catch(() => ({}));
-    throw new Error((j as { error_description?: string }).error_description || res.statusText);
-  }
-}

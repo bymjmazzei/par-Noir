@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Layers, RefreshCw, Plus, Download, Shield, UserPlus, Trash2 } from 'lucide-react';
-import { IdentityCrypto, type EncryptedIdentity } from '../../utils/crypto';
-import { VolumeIdGenerator } from '../../utils/crypto/volumeIdGenerator';
+import { IdentityCrypto, VolumeIdGenerator, type EncryptedIdentity } from '@par-noir/identity-crypto';
 import { sealSubExportPayload, unsealSubExportPayload } from '../../utils/subIdentitySeal';
 import {
   fetchOwnedAssets,

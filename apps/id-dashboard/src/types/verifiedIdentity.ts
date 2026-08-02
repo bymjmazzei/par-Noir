@@ -1,7 +1,7 @@
 // Verified Identity Types
 // Defines the structure for verified identity data and ZKP proofs
 
-import type { EncryptedIdentity } from './crypto';
+import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 
 export interface VerifiedIdentityData {
   id: string;

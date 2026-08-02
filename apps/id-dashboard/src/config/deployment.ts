@@ -2,12 +2,10 @@
 export const deploymentConfig = {
   // Production API endpoints
   apiEndpoints: {
-    orbitDB: 'https://api.parnoir.com/orbitdb',
     websocket: 'wss://api.parnoir.com/socket.io',
     cloudSync: 'https://api.parnoir.com/sync',
     emailService: 'https://api.parnoir.com/email',
     smsService: 'https://api.parnoir.com/sms',
-    ipfsService: 'https://api.parnoir.com/ipfs',
   },
   
   // Production domain settings

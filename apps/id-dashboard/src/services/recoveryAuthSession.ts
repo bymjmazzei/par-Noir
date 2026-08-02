@@ -1,4 +1,4 @@
-import type { EncryptedIdentity } from '../utils/crypto';
+import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 
 const RECOVERY_AUTH_TTL_MS = 15 * 60 * 1000;
 

@@ -1,4 +1,4 @@
-import { IdentityCrypto } from './crypto';
+import { IdentityCrypto } from '@par-noir/identity-crypto';
 
 export interface NotificationEvent {
   id: string;
@@ -34,7 +34,6 @@ export interface SecureMetadata {
   updatedAt: string;
   timestamp?: string;
   lastSynced?: string;
-  orbitDBAddress?: string;
   notifications?: {
     unread: NotificationEvent[];
     read: NotificationEvent[];

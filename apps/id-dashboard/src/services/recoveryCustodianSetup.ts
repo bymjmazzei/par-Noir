@@ -3,7 +3,7 @@ import {
   serializeOwnerVaultShare,
   type ShamirShare,
 } from '@par-noir/recovery-crypto';
-import type { EncryptedIdentity } from '../utils/crypto';
+import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 import {
   assignRecoveryCustodian,
   resendRecoveryCustodianInvitation,
@@ -33,7 +33,7 @@ export async function assignCustodianVaultAndIssueCredential(params: {
   encryptedShare: string;
   share?: ShamirShare;
 }> {
-  const { VolumeIdGenerator } = await import('../utils/crypto/volumeIdGenerator');
+  const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
   const pnId =
     params.userPnIdentifier
     || (await VolumeIdGenerator.generateCanonicalVolumeId(params.encryptedIdentity.publicKey));

@@ -1,9 +1,11 @@
 import path from 'path';
 import { defineConfig } from 'vite';
+import { createRequire } from 'module';
 
+const require = createRequire(import.meta.url);
 const rendererRoot = path.resolve(__dirname, 'src/renderer');
 const outDir = path.resolve(__dirname, 'dist');
-const allowDir = path.resolve(__dirname, '../id-dashboard');
+const dashboardRoot = path.dirname(require.resolve('par-noir-dashboard/package.json'));
 
 export default defineConfig(async () => {
   const { default: react } = await import('@vitejs/plugin-react');
@@ -21,8 +23,7 @@ export default defineConfig(async () => {
     server: {
       port: 5173,
       fs: {
-        // Allow Vite to import shared code from the dashboard workspace.
-        allow: [rendererRoot, allowDir]
+        allow: [rendererRoot, dashboardRoot, path.resolve(__dirname, '../../packages')]
       }
     },
     resolve: {
@@ -35,4 +36,3 @@ export default defineConfig(async () => {
     }
   };
 });
-

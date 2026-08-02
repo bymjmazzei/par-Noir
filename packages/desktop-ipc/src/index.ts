@@ -1,0 +1,34 @@
+/** Secure volume / native IPC contracts shared by desktop shell and id-dashboard. */
+
+export interface SecureVolumeMountState {
+  mounted: boolean;
+  mountPoint: string | null;
+  lastMountedAt?: string;
+  platform: string;
+  driver: string;
+  bundleExists: boolean;
+}
+
+export interface SecureVolumeIdentity {
+  pnName: string;
+  publicKey: string;
+  pnIdentifier?: string;
+  authToken?: string;
+}
+
+export interface SecureVolumeUnlockPayload extends SecureVolumeIdentity {
+  authToken: string;
+}
+
+export const SECURE_VOLUME_IPC_CHANNEL = {
+  mount: 'secure-volume:mount',
+  unmount: 'secure-volume:unmount',
+  status: 'secure-volume:status',
+  unlock: 'secure-volume:unlock',
+  lock: 'secure-volume:lock',
+  hydrate: 'secure-volume:hydrate',
+} as const;
+
+export const NATIVE_IPC_CHANNEL = {
+  openPath: 'native:open-path',
+} as const;

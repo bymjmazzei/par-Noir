@@ -1,12 +1,34 @@
 {
   "name": "@par-noir/identity-crypto",
   "version": "0.1.0",
-  "description": "Shared pN identity create/unlock (PQC)",
+  "description": "Shared pN identity create/unlock (PQC) and related encryption helpers",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
-  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && mkdir -p dist/workers && cp src/workers/crypto.worker.js dist/workers/crypto.worker.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
   "dependencies": {
-    "@par-noir/pqc-crypto": "file:../pqc-crypto"
-  }
+    "@par-noir/pqc-crypto": "file:../pqc-crypto",
+    "@par-noir/recovery-crypto": "file:../recovery-crypto"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  },
+  "license": "UNLICENSED",
+  "private": true
 }

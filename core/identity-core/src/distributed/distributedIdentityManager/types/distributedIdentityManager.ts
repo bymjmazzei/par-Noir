@@ -5,7 +5,6 @@ import { ZKProof } from '../../../encryption/zk-proofs';
 export interface DistributedIdentityConfig {
   syncPassword?: string;
   deviceId?: string;
-  enableIPFS?: boolean;
   enableBlockchain?: boolean;
   enableZKProofs?: boolean;
 }

@@ -216,14 +216,6 @@ export async function registerSuccession(params: {
         `UPDATE feeds SET owner_pn_identifier = $2 WHERE owner_pn_identifier = $1`,
         [pred, succ]
       );
-      try {
-        await client.query(
-          `UPDATE pn_ipfs_manifest_pointers SET root_pn_identifier = $2, updated_at = NOW() WHERE root_pn_identifier = $1`,
-          [pred, succ]
-        );
-      } catch {
-        /* table may be missing on older DBs */
-      }
       const optionalMigrations: Array<{ sql: string; params: [string, string] }> = [
         {
           sql: `UPDATE verified_identities SET identity_id = $2 WHERE identity_id = $1`,

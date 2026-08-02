@@ -1,6 +1,6 @@
 import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
 import type { EncryptedIdentity } from '../types/crypto';
-import { IdentityCrypto } from './crypto';
+import { IdentityCrypto } from '@par-noir/identity-crypto';
 import { SecureCredentialManager } from './secureCredentialManager';
 
 /**

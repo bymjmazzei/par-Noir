@@ -1,9 +1,9 @@
 import React from 'react';
 
-import App from '../../../../../id-dashboard/src/App';
-import { OAuthHandler } from '../../../../../id-dashboard/src/components/OAuthHandler';
+import App from 'par-noir-dashboard/App';
+import { OAuthHandler } from 'par-noir-dashboard/OAuthHandler';
 
-import '../../../../../id-dashboard/src/index.css';
+import 'par-noir-dashboard/index.css';
 
 export const AppMain: React.FC = () => {
   React.useEffect(() => {
@@ -41,4 +41,3 @@ export const AppMain: React.FC = () => {
 };
 
 export default AppMain;
-

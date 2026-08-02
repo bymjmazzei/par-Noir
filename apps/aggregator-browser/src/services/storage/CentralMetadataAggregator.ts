@@ -1,29 +1,26 @@
 /**
  * Central Metadata Aggregator Client
  * Used by aggregator browsers to query the central index
- * NO Google Drive access needed - just queries the API
+ * NO Google Drive access needed - just queries the API.
+ *
+ * Shared path constants and type shapes: @par-noir/aggregator-domain.
+ * TTL/dedupe cache, pagination, and NSFW fetch stay browser-specific
+ * (not merged with dashboard CMA).
  */
 
-import { PublicMetadata } from '../../types/aggregator';
+import {
+  CENTRAL_INDEX_PATH,
+  NSFW_INDEX_PATH,
+  type CentralIndexEntry,
+  type CentralIndexResponse,
+} from '@par-noir/aggregator-domain';
 import { API_ENDPOINT } from '../../config/api';
 
-export interface CentralIndexEntry {
-  fileId: string;
-  metadata: PublicMetadata;
-  submittedAt: string;
-  pnIdentifier: string;
-}
-
-export interface CentralIndexResponse {
-  files: CentralIndexEntry[];
-  updatedAt: string;
-  totalFiles: number;
-}
+export type { CentralIndexEntry, CentralIndexResponse } from '@par-noir/aggregator-domain';
 
 const TTL_MS = 60_000; // 60 seconds
 
 export class CentralMetadataAggregator {
-  private static readonly CENTRAL_INDEX_PATH = '/api/aggregator/metadata-index';
   private static readonly CACHE_KEY = 'pn_central_metadata_index';
   private static readonly CACHE_VERSION_KEY = 'pn_central_metadata_index_version';
   private static pendingRequests = new Map<string, Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }>>();
@@ -122,7 +119,7 @@ export class CentralMetadataAggregator {
       // Removed verbose logging - only log errors
 
       const response = await fetch(
-        `${API_ENDPOINT}${this.CENTRAL_INDEX_PATH}?${params.toString()}`,
+        `${API_ENDPOINT}${CENTRAL_INDEX_PATH}?${params.toString()}`,
         {
           method: 'GET',
           headers: {
@@ -235,11 +232,8 @@ export class CentralMetadataAggregator {
       if (filters?.limit !== undefined) params.append('limit', filters.limit.toString());      // SCALABILITY: Pagination
       if (filters?.offset !== undefined) params.append('offset', filters.offset.toString());    // SCALABILITY: Pagination
 
-      const nsfwIndexPath = '/api/aggregator/nsfw-index';
-      // Removed verbose logging - only log errors
-
       const response = await fetch(
-        `${API_ENDPOINT}${nsfwIndexPath}?${params.toString()}`,
+        `${API_ENDPOINT}${NSFW_INDEX_PATH}?${params.toString()}`,
         {
           method: 'GET',
           headers: {

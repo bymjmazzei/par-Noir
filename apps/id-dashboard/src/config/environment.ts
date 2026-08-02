@@ -1,13 +1,11 @@
-// Environment configuration for development vs deployment mo
+// Environment configuration for development vs deployment
 export interface EnvironmentConfig {
   mode: 'development' | 'production';
   apiEndpoints: {
-    orbitDB: string;
     websocket: string;
     cloudSync: string;
     emailService: string;
     smsService: string;
-    ipfsService: string;
   };
   features: {
     enableWebSocket: boolean;
@@ -31,26 +29,23 @@ export interface EnvironmentConfig {
   };
 }
 
-// Development configuration
 const developmentConfig: EnvironmentConfig = {
   mode: 'development',
   apiEndpoints: {
-    orbitDB: 'http://localhost:3002/orbitdb',
     websocket: 'ws://localhost:3002/socket.io',
     cloudSync: 'http://localhost:3002/sync',
     emailService: 'http://localhost:3002/email',
     smsService: 'http://localhost:3002/sms',
-    ipfsService: 'http://localhost:3002/ipfs',
   },
   features: {
-    enableWebSocket: false, // Disabled in dev to avoid connection errors
-    enableCloudSync: false, // Disabled in dev to avoid API errors
-    enableRealTimeAlerts: false, // Disabled in dev
-    enableBiometricAuth: false, // Disabled in dev
+    enableWebSocket: false,
+    enableCloudSync: false,
+    enableRealTimeAlerts: false,
+    enableBiometricAuth: false,
     enablePWA: true,
     enableServiceWorker: true,
-    enableAnalytics: false, // Disabled in dev
-    enableErrorReporting: false, // Disabled in dev
+    enableAnalytics: false,
+    enableErrorReporting: false,
   },
   logging: {
     level: 'debug',
@@ -58,22 +53,19 @@ const developmentConfig: EnvironmentConfig = {
     enableNetworkLogs: true,
   },
   security: {
-    enableStrictCSP: false, // Relaxed in dev
-    enableHSTS: false, // Disabled in dev
-    enableSecureCookies: false, // Disabled in dev
+    enableStrictCSP: false,
+    enableHSTS: false,
+    enableSecureCookies: false,
   },
 };
 
-// Production configuration
 const productionConfig: EnvironmentConfig = {
   mode: 'production',
   apiEndpoints: {
-    orbitDB: 'https://pn.parnoir.com/api/orbitdb',
     websocket: 'wss://pn.parnoir.com/socket.io',
     cloudSync: 'https://pn.parnoir.com/api/sync',
     emailService: 'https://pn.parnoir.com/api/email',
     smsService: 'https://pn.parnoir.com/api/sms',
-    ipfsService: 'https://pn.parnoir.com/api/ipfs',
   },
   features: {
     enableWebSocket: true,
@@ -97,47 +89,48 @@ const productionConfig: EnvironmentConfig = {
   },
 };
 
-// Determine current environment
-const isDevelopment = process.env.NODE_ENV === 'development' || 
+const isDevelopment = process.env.NODE_ENV === 'development' ||
                      process.env.VITE_APP_ENV === 'development' ||
                      window.location.hostname === 'localhost' ||
                      window.location.hostname === '127.0.0.1';
 
-// Export the appropriate configuration
 export const config: EnvironmentConfig = isDevelopment ? developmentConfig : productionConfig;
 
-// Helper functions
 export const isDev = () => config.mode === 'development';
 export const isProd = () => config.mode === 'production';
 
-// Feature flags
 export const features = config.features;
 export const apiEndpoints = config.apiEndpoints;
 export const logging = config.logging;
 export const security = config.security;
 
-// Logging utility
 export const log = {
   debug: (message: string, ...args: any[]) => {
     if (config.logging.enableConsoleLogs && config.logging.level === 'debug') {
+      void message;
+      void args;
     }
   },
   info: (message: string, ...args: any[]) => {
     if (config.logging.enableConsoleLogs && ['debug', 'info'].includes(config.logging.level)) {
-      // Console statement removed for production
+      void message;
+      void args;
     }
   },
   warn: (message: string, ...args: any[]) => {
     if (config.logging.enableConsoleLogs && ['debug', 'info', 'warn'].includes(config.logging.level)) {
+      void message;
+      void args;
     }
   },
   error: (message: string, ...args: any[]) => {
     if (config.logging.enableConsoleLogs && ['debug', 'info', 'warn', 'error'].includes(config.logging.level)) {
+      void message;
+      void args;
     }
   },
 };
 
-// Environment detection
 export const getEnvironmentInfo = () => ({
   mode: config.mode,
   isDevelopment: isDev(),
@@ -147,4 +140,3 @@ export const getEnvironmentInfo = () => ({
   protocol: window.location.protocol,
   userAgent: navigator.userAgent,
 });
-

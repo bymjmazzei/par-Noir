@@ -37,7 +37,7 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
         const { SecureCredentialManager } = await import('../utils/secureCredentialManager');
         const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
         if (!credentials?.pnName || !credentials?.passcode || !authenticatedUser.publicKey) return;
-        const { VolumeIdGenerator } = await import('../utils/crypto/volumeIdGenerator');
+        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
         const id = await VolumeIdGenerator.generateVolumeId({
           pnName: credentials.pnName,
           passcode: credentials.passcode,

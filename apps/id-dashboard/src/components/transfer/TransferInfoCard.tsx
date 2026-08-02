@@ -6,7 +6,7 @@ interface TransferData {
   nickname: string;
   transferPasscode: string;
   expiresAt: string;
-  directData?: any;
+  directData?: unknown;
 }
 
 interface TransferInfoCardProps {
@@ -23,10 +23,7 @@ export const TransferInfoCard: React.FC<TransferInfoCardProps> = React.memo(({ t
         Expires: {new Date(transferData.expiresAt).toLocaleString()}
       </div>
       <div className="text-xs text-text-secondary mt-2">
-        {transferData.ipfsCid.startsWith('direct-transfer-') 
-          ? '📱 Direct Transfer (Data included in URL)'
-          : '🌐 IPFS Transfer (Decentralized storage)'
-        }
+        Direct transfer (payload included in link)
       </div>
     </div>
   );

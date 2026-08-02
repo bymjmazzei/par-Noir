@@ -1,6 +1,6 @@
 // Standardized Data Points System — shared catalog types from @par-noir/standard-data-points
 import type { StandardDataPoint, ZKPType } from '@par-noir/standard-data-points';
-import type { EncryptedIdentity } from './crypto';
+import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 export type { StandardDataPoint, ZKPType, EncryptedIdentity };
 
 /** Dashboard-only validation helpers (e.g. custom checks) layered on catalog rows */

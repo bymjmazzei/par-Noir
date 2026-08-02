@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 import { resolve, normalize } from 'path'
 
-/** Only our app config — NOT `node_modules/.../src/config/...` (e.g. ipfs-http-client), which would break the bundle with TDZ errors */
+/** Only our app config — NOT vendor `src/config/...` paths, which would break the bundle with TDZ errors */
 const APP_CONFIG_DIR = normalize(resolve(__dirname, 'src/config')).replace(/\\/g, '/')
 
 // https://vitejs.dev/config/
@@ -40,7 +40,6 @@ export default defineConfig(({ mode }) => ({
       '@par-noir/identity-migration': resolve(__dirname, '../../packages/identity-migration/src/index.ts'),
       '@par-noir/user-owned-storage/pn-layout': resolve(__dirname, '../../packages/user-owned-storage/src/pnLayout.ts'),
       'better-sqlite3': resolve(__dirname, 'src/shims/empty-node-module.ts'),
-      'ipfs-http-client': resolve(__dirname, 'src/shims/empty-node-module.ts'),
       twilio: resolve(__dirname, 'src/shims/empty-node-module.ts'),
       '@sendgrid/mail': resolve(__dirname, 'src/shims/empty-node-module.ts'),
     },
@@ -75,7 +74,7 @@ export default defineConfig(({ mode }) => ({
           if (id.includes('workers/') || id.includes('.worker.')) {
             return null;
           }
-          // App config only — `id.includes('config/')` also matches vendor paths like ipfs-http-client/src/config and corrupts the chunk
+          // App config only — avoid matching unrelated vendor `config/` paths
           {
             const normalizedId = id.replace(/\\/g, '/')
             if (normalizedId === APP_CONFIG_DIR || normalizedId.startsWith(`${APP_CONFIG_DIR}/`)) {

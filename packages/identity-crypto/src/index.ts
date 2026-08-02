@@ -1,22 +1,36 @@
 /**
  * @par-noir/identity-crypto
  *
- * Canonical implementation: apps/id-dashboard/src/utils/crypto.ts (IdentityCrypto).
- * Extraction into this package is in progress; import from dashboard until migration completes.
+ * Canonical IdentityCrypto (create/unlock) plus VolumeIdGenerator, EncryptionManager,
+ * cryptoWorkerManager, and SecureCredentialManager.
  */
 
-export type EncryptedIdentityPayload = {
-  publicKey: string;
-  mlKemPublicKey: string;
-  encryptedData: string;
-  iv: string;
-  salt: string;
-};
+export { IdentityCrypto } from './identityCrypto';
+export type {
+  AuthSession,
+  DIDKeyPair,
+  EncryptedData,
+  EncryptedIdentity,
+  IdentityCreationResult,
+} from './identityCrypto';
 
-export type IdentityCryptoModule = {
-  createIdentity: (...args: unknown[]) => Promise<EncryptedIdentityPayload>;
-  authenticateIdentity: (...args: unknown[]) => Promise<unknown>;
-};
+export { VolumeIdGenerator } from './volumeIdGenerator';
+export type { VolumeIdParams } from './volumeIdGenerator';
 
-/** Path to canonical implementation (dashboard L2). */
-export const IDENTITY_CRYPTO_MODULE = 'apps/id-dashboard/src/utils/crypto.ts';
+export { EncryptionManager } from './encryptionManager';
+
+export { cryptoWorkerManager } from './cryptoWorkerManager';
+export { default } from './cryptoWorkerManager';
+export { SecureCredentialManager } from './secureCredentialManager';
+export { MemorySecurity } from './memorySecurity';
+
+export type {
+  KeyPair,
+  DIDResult,
+  IdentityData,
+  AuthenticationResult,
+  RecoveryKeyData,
+  TokenPayload,
+  TokenHeader,
+  DecryptionParameters,
+} from './types';

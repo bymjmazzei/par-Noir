@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileStorageAggregator } from '../../../../../id-dashboard/src/components/storage/FileStorageAggregator';
+import { FileStorageAggregator } from 'par-noir-dashboard/FileStorageAggregator';
 
 interface CloudStoragePanelProps {
   authenticatedUser?: any;
@@ -7,13 +7,8 @@ interface CloudStoragePanelProps {
 
 /**
  * Desktop wrapper around the production FileStorageAggregator that powers the
- * web dashboard.  We deliberately reuse the upstream component so the desktop
- * app stays in lock-step with the browser experience (token persistence,
- * Google Drive multi-account support, metadata editing, etc).
- *
- * The wrapper only handles optional authenticated user plumbing – the
- * aggregator can still derive identity data from SecureStorage when the prop
- * is omitted (which mirrors the web unlock flow).
+ * web dashboard. Reuses the dashboard package export so the desktop app stays
+ * in lock-step without deep-importing another app's src tree.
  */
 export const CloudStoragePanel: React.FC<CloudStoragePanelProps> = ({
   authenticatedUser,
@@ -26,4 +21,3 @@ export const CloudStoragePanel: React.FC<CloudStoragePanelProps> = ({
 };
 
 export default CloudStoragePanel;
-

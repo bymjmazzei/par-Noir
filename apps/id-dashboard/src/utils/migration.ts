@@ -4,7 +4,7 @@
  */
 
 import { secureStorage } from './localStorage';
-import { EncryptedIdentity } from './crypto';
+import { EncryptedIdentity } from '@par-noir/identity-crypto';
 
 export interface WebIdentityData {
   id: string;

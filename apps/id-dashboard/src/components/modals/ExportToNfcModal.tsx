@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CreditCard, AlertTriangle } from 'lucide-react';
-import { IdentityCrypto } from '../../utils/crypto';
+import { IdentityCrypto } from '@par-noir/identity-crypto';
 import * as nfcAdapter from '../../utils/nfcAdapter';
 
 const PARNOIR_MIME_TYPE = 'application/x-parnoir-identity';

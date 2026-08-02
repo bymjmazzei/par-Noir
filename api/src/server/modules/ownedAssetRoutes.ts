@@ -229,26 +229,4 @@ export function registerOwnedAssetRoutes(app: Application): void {
       });
     }
   });
-
-  app.post('/api/owned-assets/ipfs-pointer', ...chain, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const pn = req.user?.pnIdentifier?.trim();
-      if (!pn) {
-        return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn identifier on token' });
-      }
-      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pn))) return;
-      const cid = String((req.body || {}).cid || '').trim();
-      if (!cid) {
-        return res.status(400).json({ error: 'invalid_request', error_description: 'cid required' });
-      }
-      await OwnedAssetService.setIpfsManifestPointer(pn, cid);
-      return res.json({ ok: true });
-    } catch (e: unknown) {
-      console.error('[owned-assets] ipfs-pointer:', e);
-      return res.status(500).json({
-        error: 'server_error',
-        error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
-      });
-    }
-  });
 }

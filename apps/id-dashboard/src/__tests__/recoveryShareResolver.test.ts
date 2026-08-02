@@ -35,7 +35,7 @@ import {
   RecoverySharesUnavailableError,
   resolveRecoveryShares,
 } from '../services/recoveryShareResolver';
-import type { EncryptedIdentity } from '../utils/crypto';
+import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 
 const PN_NAME = 'alice';
 const PASSCODE = 'SecretPass1!';

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AlertTriangle, KeyRound, Loader2 } from 'lucide-react';
 import type { EncryptedIdentity } from '../../types/crypto';
-import { IdentityCrypto } from '../../utils/crypto';
+import { IdentityCrypto } from '@par-noir/identity-crypto';
 import {
   runIdentityMigrationCore,
   finalizeIdentityMigration,

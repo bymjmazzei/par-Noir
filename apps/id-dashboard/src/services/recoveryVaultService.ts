@@ -6,7 +6,7 @@ import {
   reconcileRecoveryVault,
 } from './recoveryApiService';
 import { resolveRecoveryShares } from './recoveryShareResolver';
-import type { EncryptedIdentity } from '../utils/crypto';
+import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 
 const PENDING_SHARES_KEY = 'pn_pending_recovery_shares';
 const RECOVERY_REQUESTS_KEY = 'pn_recovery_requests';

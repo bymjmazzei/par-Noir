@@ -1,4 +1,4 @@
-import type { EncryptedIdentity } from './crypto';
+import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 
 type PortablePnRoot = {
   identities?: EncryptedIdentity[];

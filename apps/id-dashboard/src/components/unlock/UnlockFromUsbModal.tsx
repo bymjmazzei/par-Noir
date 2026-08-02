@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Usb } from 'lucide-react';
-import { IdentityCrypto, EncryptedData, AuthSession } from '../../utils/crypto';
+import { IdentityCrypto, EncryptedData, AuthSession } from '@par-noir/identity-crypto';
 import { decryptFromDrive, decryptUidFromDrive } from '../../utils/physicalKeyCrypto';
 
 export interface UnlockFromUsbResult {

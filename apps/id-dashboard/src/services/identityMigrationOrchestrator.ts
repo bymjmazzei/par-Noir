@@ -28,8 +28,8 @@ import {
   splitSecret,
   sealRecoveryShares,
 } from '@par-noir/recovery-crypto';
-import type { EncryptedIdentity } from '../utils/crypto';
-import { IdentityCrypto } from '../utils/crypto';
+import type { EncryptedIdentity } from '@par-noir/identity-crypto';
+import { IdentityCrypto } from '@par-noir/identity-crypto';
 import { loadMlDsaKeypairForZk } from '../utils/zkPqcSigning';
 import { LicenseManager } from '../utils/licenseVerification/licenseManager';
 import {

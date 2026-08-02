@@ -6,7 +6,7 @@ import {
   type RecoveryZkApprovalPayload,
   type ShamirShare
 } from '@par-noir/recovery-crypto';
-import type { EncryptedIdentity } from '../../utils/crypto';
+import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 import {
   appendApprovalToRecoveryRequest,
   completeRecoveryWithShares,
@@ -37,7 +37,7 @@ export async function initiateRecoveryFromPnFile(input: InitiateRecoveryFromPnIn
   const parsed = parseRecoveryPnFile(JSON.parse(text));
 
   if (input.authToken) {
-    const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+    const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
     const { fetchRecoveryCustodianSummary } = await import('../../services/recoveryApiService');
     const ownerPn = await VolumeIdGenerator.generateCanonicalVolumeId(parsed.publicKey);
     const summary = await fetchRecoveryCustodianSummary(ownerPn, input.authToken);
@@ -68,7 +68,7 @@ export async function initiateRecoveryFromPnFile(input: InitiateRecoveryFromPnIn
 
   if (input.authToken) {
     try {
-      const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+      const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
       const pnId = await VolumeIdGenerator.generateCanonicalVolumeId(parsed.publicKey);
       await persistRecoveryRequest(pnId, input.authToken, {
         requestId,

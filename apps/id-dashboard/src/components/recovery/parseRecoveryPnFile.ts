@@ -1,5 +1,5 @@
 import type { RecoveryEnvelope } from '@par-noir/recovery-crypto';
-import type { EncryptedIdentity } from '../../utils/crypto';
+import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 
 export interface ParsedRecoveryPnFile {
   identity: EncryptedIdentity;

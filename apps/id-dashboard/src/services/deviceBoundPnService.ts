@@ -4,7 +4,7 @@ import {
   type DeviceBoundPnBinding,
   type DeviceBoundPnEnvelope,
 } from '@par-noir/device-auth';
-import { IdentityCrypto, type AuthSession, type EncryptedData } from '../utils/crypto';
+import { IdentityCrypto, type AuthSession, type EncryptedData } from '@par-noir/identity-crypto';
 import {
   loadDeviceRegistration,
   loadDeviceRegistrationByDeviceId,

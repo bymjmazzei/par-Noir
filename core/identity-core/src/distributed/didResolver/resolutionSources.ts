@@ -32,67 +32,6 @@ export class ResolutionSources {
   }
 
   /**
-   * Resolve DID from IPFS with enhanced security
-   */
-  static async resolveFromIPFS(did: string): Promise<DIDResolutionResult | null> {
-    try {
-      // Extract IPFS CID from DID
-      const ipfsMatch = did.match(/did:ipfs:(.+)/);
-      if (!ipfsMatch) return null;
-
-      const cid = ipfsMatch[1];
-      
-      // Validate CID format
-      if (!FormatValidator.isValidCIDFormat(cid)) {
-        throw new Error('Invalid IPFS CID format');
-      }
-
-      const gateways = [
-        'https://ipfs.io',
-        'https://gateway.pinata.cloud',
-        'https://cloudflare-ipfs.com',
-        'https://dweb.link'
-      ];
-
-      for (const gateway of gateways) {
-        try {
-          const response = await fetch(`${gateway}/ipfs/${cid}`, {
-            headers: {
-              'Accept': 'application/did+json, application/json'
-            }
-          });
-          
-          if (!response.ok) {
-            continue;
-          }
-
-          const didDoc = await response.json();
-          
-          // Validate the downloaded document
-          if (!FormatValidator.isValidDIDFormat(didDoc.id)) {
-            continue;
-          }
-
-          return {
-            didDocument: didDoc,
-            metadata: {
-              created: didDoc.created || new Date().toISOString(),
-              updated: didDoc.updated || new Date().toISOString()
-            }
-          };
-        } catch (error) {
-          // IPFS gateway failed, continue to next
-          continue;
-        }
-      }
-
-      return null;
-    } catch (error) {
-      return null;
-    }
-  }
-
-  /**
    * Resolve DID from web with certificate pinning and enhanced security
    */
   static async resolveFromWeb(did: string): Promise<DIDResolutionResult | null> {

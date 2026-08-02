@@ -1,4 +1,4 @@
-import { EncryptedIdentity, AuthSession } from './crypto';
+import { EncryptedIdentity, AuthSession } from '@par-noir/identity-crypto';
 import { SecureCredentialManager } from './secureCredentialManager';
 
 export interface StoredIdentity {

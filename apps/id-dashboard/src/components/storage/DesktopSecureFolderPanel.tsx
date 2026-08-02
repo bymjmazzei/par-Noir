@@ -5,7 +5,7 @@ import type {
   SecureVolumeIdentity,
   SecureVolumeMountState,
   SecureVolumeUnlockPayload
-} from '../../../../desktop-dashboard/src/shared/ipcChannels';
+} from '@par-noir/desktop-ipc';
 
 interface DesktopAuthEventPayload extends SecureVolumeIdentity {
   authToken: string;

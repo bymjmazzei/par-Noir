@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { IdentityCrypto } from '../utils/crypto';
+import { IdentityCrypto } from '@par-noir/identity-crypto';
 import SimpleStorage from '../utils/simpleStorage';
 
 interface UnifiedAuthProps {

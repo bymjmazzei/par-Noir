@@ -1,6 +1,6 @@
 import type { ShamirShare, RecoverySharesSealed } from '@par-noir/recovery-crypto';
 import { unsealRecoveryShares } from '@par-noir/recovery-crypto';
-import type { EncryptedIdentity } from '../utils/crypto';
+import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 import { getPendingRecoverySharesBuffer } from './recoveryVaultService';
 
 export class RecoverySharesUnavailableError extends Error {

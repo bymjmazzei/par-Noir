@@ -9,6 +9,14 @@ if [ -f scripts/check-quantum-imports.sh ]; then
   bash scripts/check-quantum-imports.sh || { echo "❌ check-quantum-imports: do not import quarantined identity-core quantum path from apps/sdk/oauth-ui."; exit 1; }
 fi
 
+if [ -f scripts/check-no-backup-files.sh ]; then
+  bash scripts/check-no-backup-files.sh || { echo "❌ check-no-backup-files: delete *.backup/*.bak before committing."; exit 1; }
+fi
+
+if [ -f scripts/check-app-import-boundary.sh ]; then
+  bash scripts/check-app-import-boundary.sh || { echo "❌ check-app-import-boundary: apps must not import each other; use packages/core/sdk."; exit 1; }
+fi
+
 echo "🔒 Running security audit before commit..."
 
 # Run security audit

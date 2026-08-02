@@ -39,7 +39,6 @@ export class DIDResolver {
       // Try multiple resolution methods with validation
       const sources = [
         () => ResolutionSources.resolveFromLocalStorage(did),
-        () => ResolutionSources.resolveFromIPFS(did),
         () => DIDMethodResolvers.resolveFromBlockchain(did),
         () => ResolutionSources.resolveFromWeb(did)
       ];

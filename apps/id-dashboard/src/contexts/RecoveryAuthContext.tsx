@@ -48,7 +48,7 @@ export function RecoveryAuthProvider({ children }: { children: React.ReactNode }
 
   const authenticateFromFile = React.useCallback(async (file: File, pnName: string, passcode: string) => {
     const [{ IdentityCrypto }, { parsePortablePnBackup }] = await Promise.all([
-      import('../utils/crypto'),
+      import('@par-noir/identity-crypto'),
       import('../utils/parsePortablePnBackup'),
     ]);
     const text = await file.text();

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CreditCard, AlertTriangle } from 'lucide-react';
-import { IdentityCrypto, EncryptedData, AuthSession } from '../../utils/crypto';
+import { IdentityCrypto, EncryptedData, AuthSession } from '@par-noir/identity-crypto';
 import * as nfcAdapter from '../../utils/nfcAdapter';
 
 export interface UnlockFromNfcResult {

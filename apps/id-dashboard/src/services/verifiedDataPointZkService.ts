@@ -3,7 +3,7 @@
  * Issuance requires unlocked identity with ML-DSA keys.
  */
 
-import type { EncryptedIdentity } from '../utils/crypto';
+import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 import { loadMlDsaKeypairForZk } from '../utils/zkPqcSigning';
 
 const QUEUE_KEY = 'pn_verified_datapoint_zk_queue';

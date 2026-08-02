@@ -405,15 +405,4 @@ export class OwnedAssetService {
     }
   }
 
-  static async setIpfsManifestPointer(rootPn: string, cid: string): Promise<void> {
-    const pool = getDatabasePool();
-    await pool.query(
-      `INSERT INTO pn_ipfs_manifest_pointers (root_pn_identifier, latest_metadata_cid, updated_at)
-       VALUES ($1, $2, NOW())
-       ON CONFLICT (root_pn_identifier) DO UPDATE SET
-         latest_metadata_cid = EXCLUDED.latest_metadata_cid,
-         updated_at = NOW()`,
-      [normalizePn(rootPn), cid.slice(0, 255)]
-    );
-  }
 }

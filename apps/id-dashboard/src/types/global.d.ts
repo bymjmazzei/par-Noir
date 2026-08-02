@@ -1,4 +1,4 @@
-import type { SecureVolumeIdentity, SecureVolumeMountState, SecureVolumeUnlockPayload } from '../../desktop-dashboard/src/shared/ipcChannels';
+import type { SecureVolumeIdentity, SecureVolumeMountState, SecureVolumeUnlockPayload } from '@par-noir/desktop-ipc';
 
 declare global {
   interface Window {

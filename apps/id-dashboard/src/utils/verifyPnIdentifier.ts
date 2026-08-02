@@ -5,7 +5,7 @@
  * The correct identifier is generated using VolumeIdGenerator: pnName:passcode:publicKey
  */
 
-import { VolumeIdGenerator } from './crypto/volumeIdGenerator';
+import { VolumeIdGenerator } from '@par-noir/identity-crypto';
 import { SecureCredentialManager } from './secureCredentialManager';
 
 /**

@@ -4,3 +4,5 @@ export * from './subjectExtractor';
 export * from './tokenDecryption';
 export * from './volumeIdGenerator';
 export * from './contentNotices';
+export * from './types';
+export * from './centralMetadata';

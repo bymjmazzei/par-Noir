@@ -18,7 +18,6 @@ export class DistributedIdentityManager {
 
   constructor(config: DistributedIdentityConfig = {}) {
     this.config = {
-      enableIPFS: true,
       enableBlockchain: true,
       enableZKProofs: true,
       ...config

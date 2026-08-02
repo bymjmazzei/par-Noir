@@ -34,8 +34,3 @@ export interface EncryptedData {
   data: number[];
   iv: number[];
 }
-
-export interface IPFSGateway {
-  url: string;
-  name: string;
-}

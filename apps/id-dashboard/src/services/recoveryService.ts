@@ -7,7 +7,7 @@ import {
   type RecoveryEnvelope,
   type ShamirShare
 } from '@par-noir/recovery-crypto';
-import { IdentityCrypto, type EncryptedIdentity } from '../utils/crypto';
+import { IdentityCrypto, type EncryptedIdentity } from '@par-noir/identity-crypto';
 
 export interface RecoveryCompletionInput {
   envelope: RecoveryEnvelope;
