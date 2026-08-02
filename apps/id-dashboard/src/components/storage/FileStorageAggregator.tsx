@@ -237,6 +237,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const pendingRetryTimeoutRef = React.useRef<number | null>(null);
   /** Shared guard for POST /storage/initialize from persist, rebuild, and loadFiles. */
   const driveLayoutInitInFlightRef = React.useRef<Set<string>>(new Set());
+  /** pnIds where server initialize soft-failed (no secrets / custody) — never retry this session. */
+  const serverDriveInitUnsupportedRef = React.useRef<Set<string>>(new Set());
   /** Skip redundant rebuild for this long after a successful connect init. */
   const driveLayoutInitJustCompletedRef = React.useRef<Map<string, number>>(new Map());
 
@@ -951,6 +953,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       const maxAttempts = options?.maxAttempts ?? 3;
       const onProgress = options?.onProgress;
 
+      if (serverDriveInitUnsupportedRef.current.has(normalized)) {
+        console.log('⏭️ [Storage] Server Drive init unsupported this session; using client discovery');
+        return false;
+      }
       if (driveLayoutInitInFlightRef.current.has(normalized)) {
         console.log('⏭️ [Storage] Drive layout init already in flight');
         return false;
@@ -1070,48 +1076,41 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             void pollProgressTick();
           }, DRIVE_INIT_POLL_INTERVAL_MS);
 
-          let postError: Error | null = null;
-          const postPromise = ownerFetch(
-            accessToken,
-            'POST',
-            `/api/storage/initialize/${encodeURIComponent(normalized)}`
-          ).then(async (initRes) => {
-            if (!initRes.ok) {
-              const initErr = await initRes.text().catch(() => 'Unknown error');
-              // Device custody: API has no Google secrets → 400. Treat as non-fatal skip.
-              if (initRes.status === 400 || initRes.status === 403 || initRes.status === 404) {
-                console.warn(
-                  `⏭️ [Storage] Skipping server Drive init (${initRes.status}); client-side discovery will be used`
-                );
-                return initRes;
-              }
-              const err = new Error(
-                `Drive layout init failed (${initRes.status}): ${initErr.slice(0, 200)}`
+          // Await POST first so custody soft-skips (400) exit immediately instead of
+          // polling for minutes while loadFiles is blocked / setup UI spins.
+          let initRes: Response;
+          try {
+            initRes = await ownerFetch(
+              accessToken,
+              'POST',
+              `/api/storage/initialize/${encodeURIComponent(normalized)}`
+            );
+          } catch (err) {
+            throw err instanceof Error ? err : new Error(String(err));
+          }
+
+          if (!initRes.ok) {
+            const initErr = await initRes.text().catch(() => 'Unknown error');
+            if (initRes.status === 400 || initRes.status === 403 || initRes.status === 404) {
+              serverDriveInitUnsupportedRef.current.add(normalized);
+              console.warn(
+                `⏭️ [Storage] Skipping server Drive init (${initRes.status}); client-side discovery will be used`
               );
-              (err as { status?: number }).status = initRes.status;
-              throw err;
+              stopPolling();
+              clearDriveSetupProgress();
+              return true;
             }
-            return initRes;
-          }).catch((err) => {
-            postError = err instanceof Error ? err : new Error(String(err));
-            return null;
-          });
+            const err = new Error(
+              `Drive layout init failed (${initRes.status}): ${initErr.slice(0, 200)}`
+            );
+            (err as { status?: number }).status = initRes.status;
+            throw err;
+          }
 
           const serverOk = await waitForServerInit(postStartedAt);
-
           if (serverOk) {
             return true;
           }
-
-          await postPromise;
-          if (postError) {
-            const status = (postError as { status?: number }).status;
-            if (status === 400 || status === 403 || status === 404) {
-              return true; // skip without failing the connect flow
-            }
-            throw postError;
-          }
-          // Timed out waiting but POST may have been a custody skip — don't fail hard
           console.warn('⚠️ [Storage] Drive init wait finished without server confirmation');
           return true;
         }, maxAttempts, 2000);
@@ -1273,19 +1272,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const result = (await response.json().catch(() => ({}))) as {
             directoryBuilt?: boolean;
             initInProgress?: boolean;
+            clientSideLayoutRequired?: boolean;
             folderInitError?: string;
           };
           console.log('✅ [StorageCredentials] Credentials persisted to API', {
             accountsCount: payload.googleDriveAccounts.length,
             directoryBuilt: result.directoryBuilt,
             initInProgress: result.initInProgress,
+            clientSideLayoutRequired: result.clientSideLayoutRequired,
           });
 
-          // Only run server Drive layout init on first connect / incomplete layout.
-          // Under DEVICE_CLOUD_CUSTODY the API strips OAuth secrets, so initialize returns 400 —
-          // client-side folder discovery covers that case; do not show a full "cloud setup" UI.
-          const needsServerInit = result.initInProgress === true || result.directoryBuilt === false;
-          if (needsServerInit) {
+          // Device custody: API has no Google secrets — never POST /storage/initialize.
+          // Client loadFiles discovers folders via GoogleDriveMetadataService.
+          if (result.clientSideLayoutRequired) {
+            console.log(
+              '⏭️ [StorageCredentials] Client-side Drive layout required; skipping server initialize'
+            );
+          } else if (result.initInProgress === true || result.directoryBuilt === false) {
             console.log('🔄 [StorageCredentials] Building Drive layout on server (may take a few minutes)...');
             setDriveSetupProgress({
               phase: 'starting',
@@ -2099,21 +2102,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const DISCONNECT_BLOCK_DURATION_MS = 10000; // Block re-adding disconnected accounts for 10 seconds (reduced from 30s to not block unlock)
 
   const requestDriveLayoutRebuild = React.useCallback(async (pnId: string): Promise<boolean> => {
+    // Under DEVICE_CLOUD_CUSTODY the API strips Google OAuth secrets, so
+    // POST /storage/initialize returns 400. Layout rebuild must happen client-side
+    // via GoogleDriveMetadataService — never kick off the server setup UI from here.
     if (!pnId.startsWith('pn-')) return false;
-    if (driveLayoutInitInFlightRef.current.has(pnId)) {
-      console.log('⏭️ [Storage] Skipping layout rebuild — init already in flight');
-      return false;
-    }
-    const completedAt = driveLayoutInitJustCompletedRef.current.get(pnId);
-    if (completedAt && Date.now() - completedAt < DRIVE_INIT_REBUILD_COOLDOWN_MS) {
-      console.log('⏭️ [Storage] Skipping layout rebuild — init recently completed');
-      return false;
-    }
-    const accessToken = resolveOwnerApiToken();
-    if (!accessToken) return false;
-    console.log('🔄 [Storage] Rebuilding Google Drive layout via API (folders or index were stale)...');
-    return postDriveInitializeWithRetry(pnId, accessToken);
-  }, [resolveOwnerApiToken, postDriveInitializeWithRetry]);
+    console.debug(
+      'ℹ️ [Storage] Server Drive layout rebuild disabled; client discovery handles incomplete indexes'
+    );
+    return false;
+  }, []);
 
   const hydrateStorageCredentialsFromAPI = React.useCallback(async (forceRefresh?: boolean) => {
     if (hydrationInProgressRef.current) {
@@ -3473,9 +3470,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             const pnId = currentPnIdentifier.startsWith('pn-')
               ? currentPnIdentifier
               : `pn-${currentPnIdentifier}`;
-            if (driveLayoutInitInFlightRef.current.has(pnId)) {
-              skipClientDriveDiscovery = true;
-            }
+            // Do not block client discovery while a server init is in flight —
+            // under device custody that init often cannot succeed (400), and
+            // skipping discovery leaves the Storage UI empty / stuck on setup.
             const idxRes = await ownerGet(
               ownerApiToken,
               `/api/storage/owner-index/${encodeURIComponent(pnId)}`
@@ -3484,29 +3481,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               // Device policy / custody — fall through to client Drive discovery
               console.debug('ℹ️ [loadFiles] owner-index forbidden; using client Drive discovery');
             } else if (idxRes.status === 409) {
-              skipClientDriveDiscovery = true;
-              const completedAt = driveLayoutInitJustCompletedRef.current.get(pnId);
-              const recentlyCompleted =
-                completedAt != null && Date.now() - completedAt < DRIVE_INIT_REBUILD_COOLDOWN_MS;
-              if (!driveLayoutInitInFlightRef.current.has(pnId) && !recentlyCompleted) {
-                const rebuilt = await requestDriveLayoutRebuild(pnId);
-                if (rebuilt) {
-                  const retryRes = await ownerGet(
-                    ownerApiToken,
-                    `/api/storage/owner-index/${encodeURIComponent(pnId)}`
-                  );
-                  if (retryRes.ok) {
-                    const idxData = await retryRes.json();
-                    const provider = backendId.includes('::') ? backendId.split('::')[0] : backendId;
-                    const filteredFiles = (idxData.files || []).filter(
-                      (entry: any) => (entry.backend || 'google_drive') === provider
-                    );
-                    ownerIndex = { ...idxData, files: filteredFiles };
-                    ownerIndexFromApi = true;
-                    skipClientDriveDiscovery = true;
-                  }
-                }
-              }
+              // Server Drive index incomplete (common under device cloud custody where
+              // OAuth secrets are not on the API). Do NOT POST /storage/initialize —
+              // that returns 400 without server-held tokens and loops the "setup" UI.
+              // Fall through to client-side folder/index discovery with the local Google token.
+              console.debug(
+                'ℹ️ [loadFiles] owner-index incomplete (409); using client Drive discovery instead of server rebuild'
+              );
             } else if (idxRes.ok) {
               const idxData = await idxRes.json();
               const provider = backendId.includes('::') ? backendId.split('::')[0] : backendId;

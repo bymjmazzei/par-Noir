@@ -2202,22 +2202,31 @@ class ProductionServer {
 
         // Initialize Google Drive folder structure if this is a new Google Drive connection
         const hasGoogleDrive = credentials?.googleDriveAccounts?.length > 0 || credentials?.googleDrive;
+        const deviceCustody = isDeviceCloudCustodyEnabled();
+        let clientSideLayoutRequired = false;
         if (hasGoogleDrive) {
           try {
-            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-            
-            // Get the first Google Drive account
-            const googleDriveAccounts = credentials.googleDriveAccounts || 
+            const googleDriveAccounts = credentials.googleDriveAccounts ||
               (credentials.googleDrive ? [credentials.googleDrive] : []);
-            
+
             if (googleDriveAccounts.length > 0) {
-              // Credentials are saved. The full Drive layout build is a long, multi-minute
-              // operation that must run inside a request that is actually awaited by the client.
-              // The dashboard always calls POST /api/storage/initialize right after this PUT and
-              // awaits it, so we do NOT fire-and-forget here (that races and can be abandoned when
-              // the HTTP response returns). Just report that init still needs to run.
-              console.log(`[StorageCredentials PUT] Credentials saved; Drive layout build deferred to /storage/initialize for identityId: ${sanitizedIdentityId}`);
-              directoryBuilt = false;
+              if (deviceCustody) {
+                // OAuth secrets are device-held — server POST /storage/initialize cannot run.
+                // Dashboard must discover/build Drive layout with the local Google token.
+                clientSideLayoutRequired = true;
+                directoryBuilt = true;
+                console.log(
+                  `[StorageCredentials PUT] DEVICE_CLOUD_CUSTODY — client-side Drive layout required for identityId: ${sanitizedIdentityId}`
+                );
+              } else {
+                // Credentials are saved. The full Drive layout build is a long, multi-minute
+                // operation that must run inside a request that is actually awaited by the client.
+                // The dashboard always calls POST /api/storage/initialize right after this PUT and
+                // awaits it, so we do NOT fire-and-forget here (that races and can be abandoned when
+                // the HTTP response returns). Just report that init still needs to run.
+                console.log(`[StorageCredentials PUT] Credentials saved; Drive layout build deferred to /storage/initialize for identityId: ${sanitizedIdentityId}`);
+                directoryBuilt = false;
+              }
             }
           } catch (err: any) {
             directoryBuilt = false;
@@ -2232,7 +2241,8 @@ class ProductionServer {
           cid: record.cid ?? null,
           updatedAt: record.updatedAt,
           directoryBuilt,
-          initInProgress: hasGoogleDrive && !directoryBuilt,
+          initInProgress: hasGoogleDrive && !directoryBuilt && !clientSideLayoutRequired,
+          ...(clientSideLayoutRequired && { clientSideLayoutRequired: true }),
           ...(folderInitError != null && { folderInitError })
         });
       } catch (error: any) {
