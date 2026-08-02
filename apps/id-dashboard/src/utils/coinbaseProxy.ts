@@ -42,7 +42,11 @@ export interface CheckoutRequest {
 
 export class CoinbaseProxy {
   private static readonly API_BASE = 'https://api.commerce.coinbase.com';
-  private static readonly API_KEY = COINBASE_CONFIG.API_KEY;
+
+  /** Lazy — avoid reading COINBASE_CONFIG at module init (chunk TDZ if config↔utils cycle). */
+  private static get API_KEY(): string | undefined {
+    return COINBASE_CONFIG.API_KEY;
+  }
 
   /**
    * Create a checkout via direct API call (works without Firebase Functions)

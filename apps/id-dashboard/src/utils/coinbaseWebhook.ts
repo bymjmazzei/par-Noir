@@ -39,7 +39,10 @@ interface CoinbaseWebhookEvent {
 }
 
 export class CoinbaseWebhookHandler {
-  private static webhookSecret = COINBASE_CONFIG.WEBHOOK_SECRET;
+  /** Lazy — avoid reading COINBASE_CONFIG at module init (chunk TDZ if config↔utils cycle). */
+  private static get webhookSecret(): string | undefined {
+    return COINBASE_CONFIG.WEBHOOK_SECRET;
+  }
 
   /**
    * Verify webhook signature from Coinbase Commerce

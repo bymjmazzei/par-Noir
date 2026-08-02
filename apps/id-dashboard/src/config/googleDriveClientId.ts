@@ -1,5 +1,4 @@
 import { API_ENDPOINT } from './api';
-import { retry } from '../utils/helpers';
 
 const PUBLIC_CONFIG_CACHE_KEY = 'pn_public_config_v1';
 const PUBLIC_CONFIG_TTL_MS = 60 * 60 * 1000;
@@ -35,6 +34,27 @@ function writeCachedPublicConfig(googleDriveClientId: string): void {
   }
 }
 
+/** Local retry — do not import utils/helpers (config↔utils cycle causes TDZ in prod chunks). */
+async function retryPublicConfigFetch<T>(
+  fn: () => Promise<T>,
+  maxAttempts: number = 4,
+  baseDelay: number = 1500
+): Promise<T> {
+  let lastError: Error | undefined;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+      if (attempt === maxAttempts) throw lastError;
+      const retryAfter = (error as { retryAfter?: number })?.retryAfter;
+      const delay = retryAfter || baseDelay * Math.pow(2, attempt - 1);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw lastError!;
+}
+
 /**
  * Returns the Google Drive OAuth client ID for the dashboard.
  * Uses VITE_GOOGLE_DRIVE_CLIENT_ID at build time when set; otherwise
@@ -52,7 +72,7 @@ export async function getGoogleDriveClientId(): Promise<string> {
   }
 
   try {
-    const clientId = await retry(async () => {
+    const clientId = await retryPublicConfigFetch(async () => {
       const res = await fetch(`${API_ENDPOINT}/api/public-config`);
       if (res.status === 429) {
         const retryAfterHeader = res.headers.get('Retry-After');
@@ -66,7 +86,7 @@ export async function getGoogleDriveClientId(): Promise<string> {
       if (!res.ok) return '';
       const data = (await res.json()) as { googleDriveClientId?: string };
       return (data.googleDriveClientId && String(data.googleDriveClientId).trim()) || '';
-    }, 4, 1500);
+    });
 
     if (clientId) {
       writeCachedPublicConfig(clientId);
