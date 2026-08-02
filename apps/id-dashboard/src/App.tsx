@@ -1,13 +1,9 @@
 import React, { useState, useEffect, lazy, useRef, useCallback } from 'react';
-import { RefreshCw } from 'lucide-react';
-import Header from './components/Header';
 import { SecureStorage } from './utils/storage';
 import { UnifiedAuth } from './components/UnifiedAuth';
-import QRCode from 'qrcode';
 
 import { EncryptedIdentity } from '@par-noir/identity-crypto';
 
-import { analytics } from './utils/analytics';
 import usePWA from './hooks/usePWA';
 import { GlobalPrivacySettings } from './types/privacy';
 import { useRecoveryVaultState } from './hooks/useRecoveryVaultState';
@@ -16,13 +12,9 @@ import { DEVICE_CAPABILITIES } from '@par-noir/device-auth';
 import { ownerGet } from './services/ownerApiService';
 import { getRecoveryAuthSession } from './services/recoveryAuthSession';
 
-import { MigrationManager, WebIdentityData, MigrationResult } from './utils/migration';
+import { MigrationResult } from './utils/migration';
 
-import { cloudSyncManager } from './utils/cloudSync';
-import { SecureMetadataStorage } from './utils/secureMetadataStorage';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
-import { SessionDataMigration } from './utils/sessionDataMigration';
-import { IntegrationCredentialManager } from './utils/integrationCredentialManager';
 
 import { API_ENDPOINT } from './config/api';
 
@@ -33,17 +25,12 @@ import {
   revokeAssetDelegation,
   type AssetDelegation
 } from './services/ownedAssetService';
-import { ScreenProtection } from './utils/security/screenProtection';
-import { ExtensionDetector } from './utils/security/extensionDetector';
-import { ExtensionWarningBanner } from './components/security/ExtensionWarningBanner';
 import { AuthenticatedShell } from './App/AuthenticatedShell';
 import { AppModals } from './App/AppModals';
 import { UnlockGate } from './App/UnlockGate';
 import { CreateDidModal } from './App/CreateDidModal';
 import { ImportDidModal } from './App/ImportDidModal';
-import { SplashScreen } from '@capacitor/splash-screen';
-import { Capacitor } from '@capacitor/core';
-import { App as CapApp } from '@capacitor/app';
+import { AppChrome } from './App/AppChrome';
 
 // Custom hooks for state management
 import { useAppState } from './hooks/useAppState';
@@ -64,6 +51,8 @@ import {
   useRecoveryCustodianHandlers,
   type PendingRecoveryCompletion
 } from './hooks/useRecoveryCustodianHandlers';
+import { usePwaSyncHelpers } from './hooks/usePwaSyncHelpers';
+import { useAppBootstrapEffects } from './hooks/useAppBootstrapEffects';
 
 // Lazy load heavy components
 const BiometricSetup = lazy(() => import('./components/BiometricSetup').then(module => ({ default: module.BiometricSetup })));
@@ -71,23 +60,6 @@ const PWALockScreen = lazy(() => import('./components/PWALockScreen').then(modul
 
 
 function App() {
-  // Hide native splash screen when app is ready
-  React.useEffect(() => {
-    SplashScreen.hide().catch(() => {});
-  }, []);
-
-  // SECURITY: Migrate SimpleStorage from localStorage to IndexedDB on app start
-  React.useEffect(() => {
-    const migrateStorage = async () => {
-      try {
-        const simpleStorage = SimpleStorage.getInstance();
-        await simpleStorage.migrateFromLocalStorage();
-      } catch (error) {
-        console.warn('[App] Storage migration failed:', error);
-      }
-    };
-    migrateStorage();
-  }, []);
   // Production-safe logging utility
   const logDebug = (_message: string, ..._args: unknown[]) => {
     // Silent in production - no logging
@@ -861,228 +833,8 @@ function App() {
     return custodians.filter(c => c.type === 'person' && c.identityId !== authenticatedUser?.id).length;
   };
 
-  // Check for transfer route
-  useEffect(() => {
-    const pathname = window.location.pathname;
-    const transferMatch = pathname.match(/^\/transfer\/id=(.+)$/);
-    
-    if (transferMatch) {
-      const transferId = transferMatch[1];
-      // Handle transfer route - show transfer receiver
-      setShowTransferReceiver(true);
-      setTransferId(transferId);
-    }
-  }, []);
-
-  // Check for legal pages route
-  useEffect(() => {
-    const pathname = window.location.pathname;
-    
-    if (pathname === '/terms') {
-      setShowTermsOfService(true);
-    } else if (pathname === '/privacy') {
-      setShowPrivacyPolicy(true);
-    } else if (pathname === '/dmca') {
-      setShowDmcaPolicy(true);
-    }
-  }, []);
-
-  // Check for successful transfer completion
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const transferCompleted = urlParams.get('transferCompleted');
-    const autoLogin = urlParams.get('autoLogin');
-    
-    if (transferCompleted === 'true') {
-      // A transfer was just completed
-      if (autoLogin === 'true') {
-        // Auto-login the user with the transferred pN
-        const storedUser = localStorage.getItem('authenticatedUser');
-        const storedDID = localStorage.getItem('selectedDID');
-        
-        if (storedUser && storedDID) {
-          try {
-            const user = JSON.parse(storedUser);
-            const did = JSON.parse(storedDID);
-            setAuthenticatedUser(user);
-            setSelectedDID(did);
-            setSuccessWithTimeout('Transfer completed successfully! You are now logged in with the transferred pN.');
-          } catch (error) {
-            setSuccessWithTimeout('Transfer completed successfully! Your pN identity is now available.');
-          }
-        } else {
-          setSuccessWithTimeout('Transfer completed successfully! Your pN identity is now available.');
-        }
-      } else {
-        setSuccessWithTimeout('Transfer completed successfully! Your pN identity is now available.');
-      }
-      
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-      
-      // Clean up the URL
-      const newUrl = window.location.pathname;
-      window.history.replaceState({}, document.title, newUrl);
-    }
-  }, []);
-
-  // Deep link: open Create New pN when ?create=1 (or ?create)
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const createParam = urlParams.get('create');
-    if (createParam === null) return;
-    if (createParam === '0' || createParam.toLowerCase() === 'false') return;
-
-    setShowCreateForm(true);
-
-    urlParams.delete('create');
-    const next = urlParams.toString();
-    const newUrl = `${window.location.pathname}${next ? `?${next}` : ''}${window.location.hash}`;
-    window.history.replaceState({}, document.title, newUrl);
-  }, [setShowCreateForm]);
-
-  // Check for custodian invitation URL parameter
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const custodianInvitation = urlParams.get('custodian-invitation');
-    
-    if (custodianInvitation) {
-      try {
-        const invitationData = JSON.parse(decodeURIComponent(custodianInvitation));
-        
-        // Validate the invitation hasn't expired
-        if (invitationData.expiresAt && Date.now() > invitationData.expiresAt) {
-          setError('Custodian invitation has expired');
-          setTimeout(() => setError(null), 9000);
-          return;
-        }
-        
-        // Store the invitation data for later use
-        setPendingCustodianInvitationData(invitationData);
-        
-        // Clean up the URL
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, document.title, newUrl);
-        
-      } catch (error) {
-        setError('Invalid custodian invitation link');
-        setTimeout(() => setError(null), 9000);
-      }
-    }
-  }, []);
-
-  // Show custodian acceptance modal when user is authenticated and has pending invitation
-  useEffect(() => {
-    if (authenticatedUser && pendingCustodianInvitationData) {
-      setShowCustodianAcceptanceModal(true);
-    }
-  }, [authenticatedUser, pendingCustodianInvitationData]);
-
-  // Initialize systems
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      logDebug('App component initialized!');
-    }
-    const initializeSystems = async () => {
-      try {
-        // Initialize analytics
-        await analytics.initialize();
-        
-              // Initialize realtime manager (disabled in dev mode)
-      // await realtimeManager.connect();
-        
-        // Initialize notifications service
-        // notificationsService.initialize(); // Removed - no longer needed
-        
-
-        
-        // Track page view
-        analytics.trackPageView('dashboard');
-
-        // SECURITY: Enable screen protection (blur on tab switch)
-        try {
-          ScreenProtection.enable();
-          logDebug('[Security] Screen protection enabled');
-        } catch (screenProtectionError) {
-          logError('Failed to enable screen protection:', screenProtectionError);
-        }
-
-        // SECURITY: Start extension detection and warnings
-        try {
-          ExtensionDetector.startMonitoring();
-          // Check for warnings and show user notification if needed
-          setTimeout(() => {
-            if (ExtensionDetector.hasWarnings()) {
-              const warningMessage = ExtensionDetector.getWarningMessage();
-              if (warningMessage) {
-                // Show warning to user (non-blocking)
-                logDebug('[Security] Extension warning:', warningMessage);
-                // Note: Full UI integration for extension warnings will be in Phase 3
-              }
-            }
-          }, 2000); // Wait 2 seconds for page to fully load
-          logDebug('[Security] Extension detection started');
-        } catch (extensionError) {
-          logError('Failed to start extension detection:', extensionError);
-        }
-
-        // SECURITY: Run session data migration to remove pnName/passcode from IndexedDB
-        try {
-          const migrationResult = await SessionDataMigration.runMigration();
-          if (migrationResult.cleaned > 0) {
-            logDebug(`[Security] Cleaned ${migrationResult.cleaned} sessions with exposed credentials`);
-          }
-        } catch (migrationError) {
-          logError('Session data migration failed:', migrationError);
-        }
-
-        // SECURITY: Immediately clean up ALL plaintext Google Drive credentials
-        // This runs on every app load, even before user authentication
-        try {
-          const cleanupResult = await IntegrationCredentialManager.cleanupAllPlaintextCredentials();
-          if (cleanupResult.cleaned > 0) {
-            logDebug(`[Security] Cleaned ${cleanupResult.cleaned} plaintext integration credential keys from localStorage (Google Drive, Firebase, GitHub, etc.)`);
-          }
-        } catch (cleanupError) {
-          logError('Plaintext credential cleanup failed:', cleanupError);
-        }
-
-        // Check for migration needs (PWA only)
-        if (!migrationChecked) {
-          await checkForMigration();
-          setMigrationChecked(true);
-        }
-      } catch (error) {
-        logError('Failed to initialize systems:', error);
-      }
-    };
-
-    initializeSystems();
-
-    // Cleanup on unmount
-    return () => {
-      ScreenProtection.disable();
-      ExtensionDetector.stopMonitoring();
-    };
-  }, [migrationChecked]);
-
   const handleOfflineModeChange = () => {
     // This function is no longer needed since we removed the offline mode state
-  };
-
-  // Migration check function
-  const checkForMigration = async () => {
-    try {
-      if (await MigrationManager.isMigrationNeeded()) {
-        const pendingIdentities = await MigrationManager.getPendingMigrations();
-        if (pendingIdentities.length > 0) {
-          setPendingMigrations(pendingIdentities);
-          setShowMigrationModal(true);
-          logDebug(`Found ${pendingIdentities.length} identities to migrate`);
-        }
-      }
-    } catch (error) {
-              logError('Migration check failed:', error);
-    }
   };
 
   // Handle migration completion
@@ -1177,180 +929,18 @@ function App() {
 
 
 
-  // Device syncing utility functions
-  const generateDeviceFingerprint = () => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.font = '16px Arial';
-      ctx.fillText('Device Fingerprint', 10, 20);
-      return canvas.toDataURL().slice(0, 50) + Date.now().toString();
-    }
-    const randomBytes = crypto.getRandomValues(new Uint8Array(8));
-    const randomString = Array.from(randomBytes).map(b => b.toString(36)).join('').substring(0, 8);
-    return `device-${Date.now()}-${randomString}`;
-  };
-
-  // Generate QR code for transfer URL
-  const generateQRCode = async (url: string) => {
-    try {
-      const qrContainer = document.getElementById('qr-code-container');
-      if (qrContainer) {
-        // Clear QR container safely
-        while (qrContainer.firstChild) {
-          qrContainer.removeChild(qrContainer.firstChild);
-        }
-        const qrDataURL = await QRCode.toDataURL(url, {
-          width: 192,
-          margin: 2,
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-          }
-        });
-        
-        const img = document.createElement('img');
-        img.src = qrDataURL;
-        img.alt = 'Transfer QR Code';
-        img.className = 'w-full h-full';
-        qrContainer.appendChild(img);
-      }
-    } catch (error) {
-    }
-  };
-
-  // Check for cloud updates and sync them to PWA
-  const checkForCloudUpdates = async () => {
-    try {
-      logDebug('Checking for cloud updates...');
-      
-      // 🔄 SYNC PENDING METADATA: Sync offline changes to cloud
-      const pendingSync = SecureMetadataStorage.getPendingSync();
-      if (Object.keys(pendingSync).length > 0) {
-        logDebug('Found pending metadata sync items:', Object.keys(pendingSync).length);
-        const syncResult = await SecureMetadataStorage.syncPendingToCloud();
-        if (syncResult.synced > 0) {
-          setSuccessWithTimeout(`Synced ${syncResult.synced} offline changes to cloud`);
-          setTimeout(() => setSuccessWithTimeout(null), 3000);
-        }
-      }
-      
-      // Get stored identities from PWA localStorage
-      const storedIdentities = localStorage.getItem('pwa_stored_identities');
-      if (!storedIdentities) {
-        logDebug('No PWA identities to check for updates');
-        return;
-      }
-      
-      const stored = JSON.parse(storedIdentities);
-      
-      // Check each stored identity for cloud updates
-      for (const identity of stored) {
-        if (identity.publicKey) {
-          try {
-            const cloudUpdates = await cloudSyncManager.getUpdates(identity.publicKey);
-            
-            // Process each type of update
-            for (const update of cloudUpdates) {
-              // Check if this update is newer than our local version
-              const localLastUpdated = identity.lastAccessed || identity.createdAt;
-              const cloudLastUpdated = update.updatedAt;
-              
-              if (new Date(cloudLastUpdated) > new Date(localLastUpdated)) {
-                logDebug('Found cloud update for identity:', identity.publicKey, 'type:', update.type);
-                
-                switch (update.type) {
-                  case 'nickname':
-                    if (identity.nickname !== update.data.newNickname) {
-                      identity.nickname = update.data.newNickname;
-                      if (identity.idFile) {
-                        identity.idFile.nickname = update.data.newNickname;
-                      }
-                      logDebug('Updated local nickname from cloud:', update.data.newNickname);
-                    }
-                    break;
-                    
-                  case 'profile-picture':
-                    if (identity.profilePicture !== update.data.newProfilePicture) {
-                      identity.profilePicture = update.data.newProfilePicture;
-                      if (identity.idFile) {
-                        identity.idFile.profilePicture = update.data.newProfilePicture;
-                      }
-                      logDebug('Updated local profile picture from cloud:', update.data.newProfilePicture);
-                    }
-                    break;
-                    
-                  case 'custodian':
-                    // Note: Custodian updates would need to be handled by the main app state
-                    // This is just for logging - actual sync would happen in the main component
-                    logDebug('Found custodian update from cloud:', update.data.action, update.data.custodian?.name);
-                    break;
-                    
-                  case 'recovery-key':
-                    // Note: Recovery key updates would need to be handled by the main app state
-                    logDebug('Found recovery key update from cloud:', update.data.action);
-                    break;
-                    
-                  case 'device':
-                    // Note: Device updates would need to be handled by the main app state
-                    logDebug('Found device update from cloud:', update.data.action, update.data.device?.name);
-                    break;
-                    
-                  case 'privacy':
-                    // Note: Privacy updates would need to be handled by the main app state
-                    logDebug('Found privacy settings update from cloud:', update.data.action, update.data.toolId);
-                    break;
-                }
-              }
-            }
-          } catch (error) {
-            logError('Failed to check cloud updates for identity:', identity.publicKey, error);
-          }
-        }
-      }
-      
-      // Save updated identities back to localStorage
-      localStorage.setItem('pwa_stored_identities', JSON.stringify(stored));
-              logDebug('Cloud sync check completed');
-      
-    } catch (error) {
-              logError('Failed to check for cloud updates:', error);
-    }
-  };
-
-  // Helper function to get time ago string
-  const getTimeAgo = (date: Date) => {
-    const now = new Date();
-    const diffInMs = now.getTime() - date.getTime();
-    const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
-    const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
-    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-    
-    if (diffInMinutes < 1) return 'just now';
-    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
-    if (diffInHours < 24) return `${diffInHours}h ago`;
-    if (diffInDays < 7) return `${diffInDays}d ago`;
-    return `${Math.floor(diffInDays / 7)}w ago`;
-  };
-
-  // Get offline sync status
-  const getOfflineSyncStatus = () => {
-    const pendingSync = SecureMetadataStorage.getPendingSync();
-    const pendingCount = Object.keys(pendingSync).filter(key => !pendingSync[key].synced).length;
-    return {
-      hasPending: pendingCount > 0,
-      pendingCount,
-      lastSync: pendingCount > 0 ? 
-        getTimeAgo(new Date(Object.values(pendingSync)[0]?.timestamp || Date.now())) : 
-        'All synced'
-    };
-  };
-
-  const generateSyncKey = () => {
-    const array = new Uint8Array(32);
-    crypto.getRandomValues(array);
-    return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
-  };
+  const {
+    generateDeviceFingerprint,
+    generateQRCode,
+    checkForCloudUpdates,
+    getOfflineSyncStatus,
+    generateSyncKey,
+    syncFromWebappStorage
+  } = usePwaSyncHelpers({
+    setSuccessWithTimeout,
+    logDebug,
+    logError
+  });
 
   const {
     handleExportData,
@@ -1521,374 +1111,56 @@ function App() {
 
 
 
-  // Function to sync data from webapp storage to PWA
-  const syncFromWebappStorage = async (): Promise<{ identities: any[] } | null> => {
-    try {
-      // Try to access the webapp's IndexedDB storage
-      const webappDB = indexedDB.open('IdentityProtocolDB', 1);
-      
-      return new Promise((resolve) => { // @ts-ignore
-        webappDB.onsuccess = async () => {
-          try {
-            const db = webappDB.result;
-            const transaction = db.transaction(['identities'], 'readonly');
-            const store = transaction.objectStore('identities');
-            const request = store.getAll();
-            
-            request.onsuccess = () => {
-              const identities = request.result;
-              logDebug('Found', identities.length, 'identities in webapp storage');
-              resolve({ identities });
-            };
-            
-            request.onerror = () => {
-              logDebug('Could not read from webapp storage');
-              resolve(null);
-            };
-          } catch (error) {
-            logError('Error accessing webapp storage:', error);
-            resolve(null);
-          }
-        };
-        
-        webappDB.onerror = () => {
-          logDebug('Could not open webapp database');
-          resolve(null);
-        };
-      });
-    } catch (error) {
-      logError('Error in syncFromWebappStorage:', error);
-      return null;
-    }
-  };
-
-  // Initialize storage and load existing data
-  useEffect(() => {
-    const initializeApp = async () => {
-      try {
-        await storage.init();
-        logDebug('Storage initialized');
-        
-        // Load existing identities for debugging
-        const identities = await storage.getIdentities();
-        logDebug('Available identities:', identities);
-        
-        // Since all data is encrypted, we can't display identities without decrypting
-        // The user will need to enter pnName and passcode to unlock
-        logDebug('Found', identities.length, 'encrypted identities - user must unlock with credentials');
-        // Don't set dids here - let the other useEffect handle PWA identity loading
-        
-        // Check if we're in PWA mode
-        const isPWA = window.matchMedia('(display-mode: standalone)').matches;
-        logDebug('Is PWA:', isPWA);
-        
-        // If in PWA and no identities found, try to sync from webapp storage
-        if (isPWA && identities.length === 0) {
-                      logDebug('PWA detected with no identities, attempting to sync from webapp storage');
-          try {
-            // Try to access the webapp's storage context
-            const webappStorage = await syncFromWebappStorage();
-            if (webappStorage && webappStorage.identities.length > 0) {
-              logDebug('Found identities in webapp storage, syncing to PWA');
-              for (const identity of webappStorage.identities) {
-                await storage.storeIdentity(identity);
-              }
-                              logDebug('Synced', webappStorage.identities.length, 'identities to PWA');
-            }
-          } catch (error) {
-                          logError('Could not sync from webapp storage:', error);
-          }
-        }
-        
-        // Don't automatically restore sessions - user must unlock their ID each time
-                  logDebug('Not restoring session - user must unlock ID manually');
-        setAuthenticatedUser(null);
-        
-        // Recovery keys are now stored encrypted in the ID file
-        // They will be loaded when identities are decrypted
-        
-        // Set up realtime listeners for cross-device sync
-        try {
-                // const realtimeManager = RealtimeManager.getInstance();
-      // await realtimeManager.connect();
-          
-          // Subscribe to device sync updates for nickname changes (disabled in dev mode)
-          // realtimeManager.subscribe('device-sync', (message) => {
-          //   if (message.data.action === 'nickname-updated') {
-          //     const { identityId, newNickname } = message.data.data;
-          //     handleIncomingNicknameUpdate(identityId, newNickname);
-          //   }
-          // });
-          
-          logDebug('Realtime listeners set up for cross-device sync');
-        } catch (error) {
-          logError('Failed to set up realtime listeners:', error);
-        }
-
-        // Initialize cloud sync for cross-platform nickname updates
-        try {
-          await cloudSyncManager.initialize();
-          logDebug('Cloud sync initialized for cross-platform updates');
-          
-          // Check for cloud updates if in PWA mode
-          if (isPWA) {
-            await checkForCloudUpdates();
-          }
-        } catch (error) {
-          logError('Failed to initialize cloud sync:', error);
-          // Don't fail the entire initialization if cloud sync fails
-        }
-
-
-      } catch (error) {
-                  logError('Failed to initialize storage:', error);
-        setError('Failed to initialize storage');
-      } finally {
-        // Cleanup completed
-      }
-    };
-
-    initializeApp();
-  }, [storage]);
-
-
-
-  // PWA lock management with stable dependencies
-  useEffect(() => {
-    let lockTimeout: NodeJS.Timeout | null = null;
-    const capListenerRef = { current: null as { remove: () => Promise<void> } | null };
-
-    const checkInitialLock = () => {
-      if (pwaState.isInstalled && !authenticatedUser) {
-        const lastUnlockTime = localStorage.getItem('pwa-last-unlock-time');
-        if (lastUnlockTime) {
-          const unlockTime = parseInt(lastUnlockTime);
-          const now = Date.now();
-          const timeSinceUnlock = now - unlockTime;
-          
-          if (timeSinceUnlock > 5 * 60 * 1000) {
-            setIsPWALocked(true);
-          }
-        }
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.hidden && pwaState.isInstalled && authenticatedUser) {
-        if (lockTimeout) clearTimeout(lockTimeout);
-        lockTimeout = setTimeout(() => setIsPWALocked(true), 5 * 60 * 1000);
-      }
-    };
-
-    const handleUserActivity = () => {
-      if (lockTimeout) clearTimeout(lockTimeout);
-      if (document.hidden && pwaState.isInstalled && authenticatedUser) {
-        lockTimeout = setTimeout(() => setIsPWALocked(true), 5 * 60 * 1000);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    document.addEventListener('mousedown', handleUserActivity);
-    document.addEventListener('keydown', handleUserActivity);
-    document.addEventListener('touchstart', handleUserActivity);
-
-    void (async () => {
-      try {
-        if (Capacitor.isNativePlatform()) {
-          const listener = await CapApp.addListener('appStateChange', ({ isActive }) => {
-            if (pwaState.isInstalled && authenticatedUser) {
-              if (!isActive) {
-                if (lockTimeout) clearTimeout(lockTimeout);
-                lockTimeout = setTimeout(() => setIsPWALocked(true), 5 * 60 * 1000);
-              } else if (lockTimeout) {
-                clearTimeout(lockTimeout);
-                lockTimeout = null;
-              }
-            }
-          });
-          capListenerRef.current = listener;
-        }
-      } catch {
-        // CapApp not available
-      }
-    })();
-
-    checkInitialLock();
-
-    if (document.hidden && pwaState.isInstalled && authenticatedUser) {
-      lockTimeout = setTimeout(() => setIsPWALocked(true), 5 * 60 * 1000);
-    }
-
-    return () => {
-      if (lockTimeout) clearTimeout(lockTimeout);
-      capListenerRef.current?.remove?.();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      document.removeEventListener('mousedown', handleUserActivity);
-      document.removeEventListener('keydown', handleUserActivity);
-      document.removeEventListener('touchstart', handleUserActivity);
-    };
-  }, [pwaState.isInstalled]);
-
-  // Handle PWA unlock
-  const handlePWAUnlock = () => {
-    // Only show success message if this is actually an unlock action
-    // (i.e., if the PWA was previously locked)
-    const wasLocked = isPWALocked;
-    
-    setIsPWALocked(false);
-    // Store the unlock time
-    localStorage.setItem('pwa-last-unlock-time', Date.now().toString());
-    
-    // Only show success message if this was actually an unlock action
-    if (wasLocked) {
-      // Show appropriate message based on context with proper timeout management
-      if (authenticatedUser) {
-        // This is an ID unlock, not a PWA unlock
-        showSuccessMessage('Identity unlocked successfully');
-      } else {
-        // This is a PWA unlock
-        showSuccessMessage('PWA unlocked successfully');
-      }
-    }
-  };
-
-  // Handle PWA fallback to passcode (mobile only)
-  const handlePWAFallback = () => {
-    setIsPWALocked(false);
-  };
-
-  // Handle PWA unlock for desktop (no popup)
-  /*
-  const handlePWADesktopUnlock = () => {
-    setIsPWALocked(false);
-    // Store the unlock time
-    localStorage.setItem('pwa-last-unlock-time', Date.now().toString());
-    // Don't show any popup or success message - just unlock silently
-  };
-  */
-
-
-    
-
   // Note: Success notifications are now managed by showSuccessMessage() function
   // which properly handles timeout management with successTimeoutRef
 
-
-
-
-  useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => setError(null), 9000);
-      return () => clearTimeout(timer);
-    }
-  }, [error]);
-
-  useEffect(() => {
-    logDebug('PWA State:', pwaState);
-  }, [pwaState]);
+  useAppBootstrapEffects({
+    storage,
+    authenticatedUser,
+    setAuthenticatedUser,
+    setSelectedDID,
+    setShowTransferReceiver,
+    setTransferId,
+    setShowTermsOfService,
+    setShowPrivacyPolicy,
+    setShowDmcaPolicy,
+    setShowCreateForm,
+    pendingCustodianInvitationData,
+    setPendingCustodianInvitationData,
+    setShowCustodianAcceptanceModal,
+    migrationChecked,
+    setMigrationChecked,
+    setPendingMigrations,
+    setShowMigrationModal,
+    pwaState,
+    isPWALocked,
+    setIsPWALocked,
+    error,
+    setError,
+    setSuccessWithTimeout,
+    showSuccessMessage,
+    checkForCloudUpdates,
+    syncFromWebappStorage,
+    logDebug,
+    logError
+  });
 
   return (
-    <div className="min-h-screen text-text-primary flex flex-col">
-      {/* Extension Warning Banner */}
-      <ExtensionWarningBanner />
-
-      {networkIdentityRetired && (
-        <div
-          className="w-full z-30 px-4 py-2 text-sm text-center bg-red-950/95 text-red-100 border-b border-red-800 shrink-0"
-          role="alert"
-        >
-          This pN identifier is retired on the par Noir network. Use your current pN file for cloud storage, ZKPs, and
-          connected services. Decrypting an old backup may still work offline, but it no longer receives network-backed
-          state.
-        </div>
-      )}
-      
-      <Header
-        authenticatedUser={authenticatedUser}
-        onLogout={handleLogout}
-        onOfflineModeChange={handleOfflineModeChange}
-        isOnline={pwaState.isOnline}
-        pwaState={pwaState}
-        onPWAInstall={pwaHandlers?.install}
-        onPWACheckUpdate={pwaHandlers?.checkForUpdates}
-        onExport={handleExportData}
-
-      />
-
-
-
-
-      
-      {/* Success Display */}
-      {success && (
-        <div
-          className="fixed left-1/2 transform -translate-x-1/2 z-50 mb-4 p-3 bg-green-100 border border-green-200 rounded-lg shadow-lg"
-          style={{ top: 'calc(5rem + env(safe-area-inset-top, 0px))' }}
-        >
-          <p className="text-green-700 text-sm">{success}</p>
-          <button 
-            onClick={() => {
-              setSuccessWithTimeout(null);
-              if (successTimeoutRef.current) {
-                clearTimeout(successTimeoutRef.current);
-                successTimeoutRef.current = null;
-              }
-            }}
-            className="modal-close-button"
-          >
-            ×
-          </button>
-        </div>
-      )}
-
-      {/* Error Display */}
-      {error && authenticatedUser && (
-        <div
-          className="fixed left-1/2 transform -translate-x-1/2 z-50 mb-4 p-3 bg-red-100 border border-red-200 rounded-lg shadow-lg"
-          style={{ top: 'calc(5rem + env(safe-area-inset-top, 0px))' }}
-        >
-          <p className="text-red-700 text-sm">{error}</p>
-        </div>
-      )}
-
-      {/* Offline Sync Status */}
-      {authenticatedUser && pwaState.isInstalled && (
-        (() => {
-          const syncStatus = getOfflineSyncStatus();
-          if (syncStatus.hasPending) {
-            return (
-              <div
-                className="fixed right-4 z-50 mb-4 p-3 bg-yellow-100 border border-yellow-200 rounded-lg shadow-lg"
-                style={{ top: 'calc(4rem + env(safe-area-inset-top, 0px))' }}
-              >
-                <div className="flex items-center space-x-2">
-                  <span className="text-yellow-700 text-sm">
-                    <div className="flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4" />
-                  {syncStatus.pendingCount} offline change{syncStatus.pendingCount > 1 ? 's' : ''} pending sync
-                </div>
-                  </span>
-                  <button
-                    onClick={async () => {
-                      const result = await SecureMetadataStorage.syncPendingToCloud();
-                      if (result.synced > 0) {
-                        setSuccessWithTimeout(`Synced ${result.synced} changes to cloud`);
-                        setTimeout(() => setSuccessWithTimeout(null), 3000);
-                      }
-                    }}
-                    className="px-2 py-1 bg-yellow-600 text-white text-xs rounded hover:bg-yellow-700"
-                  >
-                    Sync Now
-                  </button>
-                </div>
-              </div>
-            );
-          }
-          return null;
-        })()
-      )}
-      
-      <main className="flex-1">
+    <AppChrome
+      networkIdentityRetired={networkIdentityRetired}
+      authenticatedUser={authenticatedUser}
+      pwaState={pwaState}
+      pwaHandlers={pwaHandlers}
+      handleLogout={handleLogout}
+      handleOfflineModeChange={handleOfflineModeChange}
+      handleExportData={handleExportData}
+      success={success}
+      setSuccessWithTimeout={setSuccessWithTimeout}
+      successTimeoutRef={successTimeoutRef}
+      error={error}
+      getOfflineSyncStatus={getOfflineSyncStatus}
+      setShowDmcaPolicy={setShowDmcaPolicy}
+    >
         <UnlockGate
           authenticatedUser={authenticatedUser}
           showTransferReceiver={showTransferReceiver}
@@ -2206,48 +1478,7 @@ function App() {
           setVerifiedDataPoints={setVerifiedDataPoints}
           mapDataPointIdToProofType={toolPrivacyHandlers.mapDataPointIdToProofType}
         />
-
-      </main>
-
-
-      {/* Footer */}
-      <footer className="mt-auto py-4 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex justify-center items-center space-x-6 text-sm">
-            <a 
-              href="https://parnoir.com/terms" 
-              className="text-text-secondary hover:text-primary transition-colors"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Terms of Service
-            </a>
-            <span className="text-text-secondary">•</span>
-            <a 
-              href="https://parnoir.com/privacy" 
-              className="text-text-secondary hover:text-primary transition-colors"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Privacy Policy
-            </a>
-            <span className="text-text-secondary">•</span>
-            <a 
-              href="/dmca" 
-              className="text-text-secondary hover:text-primary transition-colors"
-              onClick={(e) => {
-                e.preventDefault();
-                setShowDmcaPolicy(true);
-              }}
-            >
-              DMCA
-            </a>
-          </div>
-        </div>
-      </footer>
-
-
-    </div>
+    </AppChrome>
   );
 }
 
