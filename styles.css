@@ -5350,14 +5350,14 @@ section:nth-child(odd) {
 .hero-consumer .hero-title {
   font-family: var(--font-display);
   font-weight: 200;
-  font-size: clamp(1.85rem, 5.2vw, 3.35rem);
-  letter-spacing: 0.05em;
+  font-size: clamp(2.35rem, 6vw, 4rem);
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   margin-bottom: 1.25rem;
-  max-width: 22ch;
+  max-width: 14ch;
   margin-left: auto;
   margin-right: auto;
-  line-height: 1.15;
+  line-height: 1.12;
 }
 
 .hero-consumer .hero-title::before {
