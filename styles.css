@@ -4849,16 +4849,29 @@ section:nth-child(odd) {
   border-bottom: 1px solid var(--border-glow);
 }
 
+.faq-section .container {
+  text-align: left;
+  align-items: stretch;
+}
+
+.faq-section .section-header {
+  text-align: left;
+  align-items: flex-start;
+  width: 100%;
+}
+
 .faq-container {
   max-width: 1000px;
-  margin: 0 auto;
+  margin: 0;
+  width: 100%;
   position: relative;
   z-index: 2;
+  text-align: left;
 }
 
 .faq-tabs {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 1rem;
   margin-bottom: 3rem;
   flex-wrap: wrap;
@@ -5009,15 +5022,28 @@ section:nth-child(odd) {
 }
 
 .faq-item.active .faq-answer {
-  max-height: 640px;
+  max-height: 900px;
   padding: 0 2rem 1.5rem 2rem;
 }
 
 .faq-answer p {
   color: var(--text-secondary);
   line-height: 1.6;
-  margin: 0;
+  margin: 0 0 0.9rem;
+  text-align: left;
   text-shadow: 0 0 5px rgba(255, 255, 255, 0.05);
+}
+
+.faq-answer p:last-child {
+  margin-bottom: 0;
+}
+
+.faq-question {
+  text-align: left;
+}
+
+.faq-question h3 {
+  text-align: left;
 }
 
 .faq-intro {
@@ -5737,7 +5763,7 @@ section:nth-child(odd) {
 }
 
 .faq-item.active .faq-answer {
-  max-height: 640px;
+  max-height: 900px;
   padding: 0 2rem 1.5rem 2rem;
 }
 
