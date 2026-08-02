@@ -92,16 +92,16 @@ par-noir/
 ### **Testing**
 
 #### **Unit Tests**
-- Write tests for all new features
-- Maintain 80%+ code coverage
-- Use Jest for testing framework
-- Mock external dependencies
+- Add tests for new pure logic in `packages/`, `core/`, `sdk/`, or `api/`
+- Prefer hermetic tests (mock `fetch` / Drive; no live Stripe/Veriff/Google)
+- Run `npm test` locally before opening a PR
+- See [docs/developer/TESTING.md](docs/developer/TESTING.md) for commands and conventions
+- Coverage reports are informational when collected; there is no enforced 80% gate yet
 
-#### **Integration Tests**
-- Test component interactions
-- Test API integrations
-- Test user workflows
-- Use Playwright for E2E tests
+#### **E2E Smokes**
+- Playwright chromium smokes guard production-bundle boot (dashboard unlock gate, browser shell)
+- Run `npm run test:e2e:smoke` and/or `npm run test:e2e:browser` when touching unlock, storage gates, or browser shell
+- Authenticated Drive UI flows are out of scope for CI until a fixture identity exists
 
 ### **Documentation**
 

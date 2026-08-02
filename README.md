@@ -7,45 +7,43 @@ A decentralized identity management system built with React, TypeScript, and adv
 - 🔐 **Decentralized Identity Management**: Self-sovereign identity with DID support
 - 🛡️ **Advanced Security**: Quantum-resistant cryptography and zero-knowledge proofs
 - 🔒 **Privacy-First**: Granular privacy controls and data minimization
-- 🌐 **Cross-Platform**: PWA support with offline capabilities
-- ⚡ **High Performance**: Optimized with React.memo and code splitting
-- 🧪 **Comprehensive Testing**: 80%+ test coverage with Jest and Cypress
+- 🌐 **Cross-Platform**: Web + Capacitor mobile shells
+- ⚡ **High Performance**: Code splitting and production Vite builds
+- 🧪 **Automated testing**: Jest/Vitest unit suites + Playwright smokes on every push (see [docs/developer/TESTING.md](docs/developer/TESTING.md))
 
 ## Quick Start
 
 ```bash
-# Install dependencies
-npm install
+# Install dependencies (repo root)
+npm ci
 
-# Start development server
-npm start
+# Start dashboard development server
+npm run dev:dashboard
 
-# Run tests
+# Run unit tests (same set CI runs, minus E2E)
 npm test
 
-# Build for production
-npm run build
+# E2E smokes (production build + Playwright chromium)
+npm run test:e2e:smoke
+npm run test:e2e:browser
+
+# Production hosting deploy
+./deploy.sh
 ```
 
 ## Architecture
 
-The application follows modern React patterns with:
-
-- **Component-Based Architecture**: Modular, reusable components
-- **Performance Optimization**: React.memo, useCallback, useMemo
-- **Code Splitting**: Lazy loading for optimal bundle size
-- **Type Safety**: Full TypeScript implementation
-- **Testing**: Comprehensive test coverage
+par Noir is a monorepo: identity (L1) → dashboard (L2) → API (L3) → browser (L4) → third parties (L5). Shared logic lives in `packages/`, `core/`, and `sdk/`. Apps must not import each other.
 
 ## Documentation
 
-- [Component Documentation](./docs/COMPONENTS.md)
-- [API Documentation](./docs/API.md)
-- [Architecture Documentation](./docs/ARCHITECTURE.md)
+- [Testing (local + CI)](docs/developer/TESTING.md)
+- [Contributing](CONTRIBUTING.md)
+- Architecture notes under `docs/architecture/`
 
 ## Contributing
 
-Please read our contributing guidelines and ensure all tests pass before submitting PRs.
+Read [CONTRIBUTING.md](CONTRIBUTING.md). PRs must keep [`.github/workflows/test.yml`](.github/workflows/test.yml) green.
 
 ## License
 

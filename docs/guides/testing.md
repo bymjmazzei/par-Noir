@@ -303,7 +303,7 @@ Test under different network conditions:
 
 ### Success Metrics
 
-- [x] 100% test coverage for core functions
+- [ ] Expand automated coverage (see `docs/developer/TESTING.md`; CI runs unit + Playwright smokes)
 - [x] All authentication flows work
 - [x] Error handling is robust
 - [x] Performance is acceptable

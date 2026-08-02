@@ -146,6 +146,12 @@ Both E2E jobs upload their Playwright HTML report as an artifact when they fail.
   `api/jest.setup.cjs`. Add new placeholders there rather than sprinkling `process.env` writes
   across suites.
 
+## Coverage
+
+CI may upload an **informational** API Jest coverage artifact (`api-coverage-lcov`). There is
+**no enforced coverage percentage** (the old “80%+ / Cypress” claims in README were aspirational
+and incorrect). Prefer meaningful asserts on critical paths over chasing a number.
+
 ## Out of scope
 
 These are deliberately not covered by unit tests or CI, because they need live third-party

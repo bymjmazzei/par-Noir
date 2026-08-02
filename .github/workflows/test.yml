@@ -67,6 +67,22 @@ jobs:
       - name: Run tests
         run: npm test
 
+      # Informational only — does not fail the job. No coverage gate until baselines are real.
+      - name: API coverage report (informational)
+        continue-on-error: true
+        working-directory: api
+        run: npx jest --coverage --coverageReporters=text-summary --coverageReporters=lcov --passWithNoTests
+
+      - name: Upload API coverage (lcov)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-coverage-lcov
+          path: api/coverage/lcov.info
+          retention-days: 7
+          if-no-files-found: ignore
+
   e2e-smoke:
     name: E2E smoke (dashboard)
     runs-on: ubuntu-latest
