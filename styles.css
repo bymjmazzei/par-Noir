@@ -5913,7 +5913,7 @@ section:nth-child(odd) {
   text-align: left;
   display: flex;
   flex-direction: row;
-  align-items: stretch;
+  align-items: center;
   gap: 1.25rem;
   transition: border-color 0.3s ease, transform 0.3s ease;
 }
@@ -5927,18 +5927,14 @@ section:nth-child(odd) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
-  align-self: stretch;
-  aspect-ratio: 1;
-  width: auto;
-  min-width: 4.5rem;
-  height: auto;
-  padding: 0.35rem;
+  flex: 0 0 4.5rem;
+  width: 4.5rem;
+  height: 4.5rem;
   box-sizing: border-box;
   border-radius: 999px;
   border: 1px solid var(--border-glow);
   font-family: var(--font-display);
-  font-size: clamp(2.25rem, 6vw, 3.25rem);
+  font-size: 2.25rem;
   font-weight: 200;
   letter-spacing: 0.04em;
   line-height: 1;
