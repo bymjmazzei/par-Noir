@@ -550,7 +550,19 @@ class ProductionServer {
         },
         credentials: true,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-Admin-Key'],
+        allowedHeaders: [
+          'Content-Type',
+          'Authorization',
+          'X-Requested-With',
+          'Accept',
+          'X-Admin-Key',
+          'X-Request-Id',
+          // Device proof headers (see packages/device-client proofHeaders + DEVICE_AUTH.md)
+          'X-PN-Device-Id',
+          'X-PN-Device-Signature',
+          'X-PN-Device-Timestamp',
+          'X-PN-Device-Nonce',
+        ],
         exposedHeaders: ['Content-Type'],
         maxAge: 86400, // 24 hours
         preflightContinue: false, // Handle preflight immediately
