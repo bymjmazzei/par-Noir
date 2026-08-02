@@ -71,6 +71,31 @@ document.addEventListener('DOMContentLoaded', function() {
             panel.hidden = !willOpen;
         });
     });
+
+    const revealItems = document.querySelectorAll('.step-card, .compare-item');
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (reduceMotion || !('IntersectionObserver' in window)) {
+        revealItems.forEach(item => item.classList.add('is-visible'));
+    } else {
+        revealItems.forEach(item => item.classList.add('scroll-reveal'));
+
+        const revealObserver = new IntersectionObserver(
+            (entries, observer) => {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) return;
+                    entry.target.classList.add('is-visible');
+                    observer.unobserve(entry.target);
+                });
+            },
+            {
+                threshold: 0.35,
+                rootMargin: '0px 0px -12% 0px'
+            }
+        );
+
+        revealItems.forEach(item => revealObserver.observe(item));
+    }
 });
 
 function toggleMobileMenu() {

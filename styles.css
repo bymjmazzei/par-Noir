@@ -18,7 +18,7 @@
   --gradient-glow: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
   --gradient-card: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
   --gradient-text: linear-gradient(135deg, #ffffff 0%, #cccccc 50%, #ffffff 100%);
-  --font-display: 'Montserrat', Helvetica, Arial, sans-serif;
+  --font-display: 'Space Grotesk', 'Montserrat', Helvetica, Arial, sans-serif;
   --font-body: 'Montserrat', Helvetica, Arial, sans-serif;
 }
 
@@ -5543,6 +5543,10 @@ section:nth-child(odd) {
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.28);
   overflow: hidden;
+  transition:
+    opacity 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.3s ease;
 }
 
 .compare-toggle {
@@ -5885,6 +5889,13 @@ section:nth-child(odd) {
   .phone-stage {
     animation: none;
   }
+
+  .step-card.scroll-reveal,
+  .compare-item.scroll-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }
 
 .section-title {
@@ -5915,11 +5926,31 @@ section:nth-child(odd) {
   flex-direction: row;
   align-items: center;
   gap: 1.25rem;
-  transition: border-color 0.3s ease, transform 0.3s ease;
+  transition: border-color 0.3s ease, transform 0.3s ease, opacity 0.55s ease;
+}
+
+.step-card.scroll-reveal,
+.compare-item.scroll-reveal {
+  opacity: 0;
+  transform: translateY(1.75rem);
+  transition:
+    opacity 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.3s ease;
+}
+
+.step-card.scroll-reveal.is-visible,
+.compare-item.scroll-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .step-card:hover {
   border-color: rgba(255, 255, 255, 0.28);
+  transform: translateY(-2px);
+}
+
+.step-card.scroll-reveal.is-visible:hover {
   transform: translateY(-2px);
 }
 
