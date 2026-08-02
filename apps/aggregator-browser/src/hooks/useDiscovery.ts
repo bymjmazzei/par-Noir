@@ -15,6 +15,7 @@ import {
   contentClassToContentType,
   getContentTypesForFeed,
 } from '../utils/feedContentTypes';
+import { MESSAGING_ONLY } from '../config/buildFlags';
 
 const PAGE_SIZE = 50;
 
@@ -254,6 +255,8 @@ export function useDiscovery({
 
   const discoverFiles = useCallback(
     async (searchFilters?: MetadataFilters, forceRefresh: boolean = false, page: number = 0, append?: boolean) => {
+      // Messaging build must never hit aggregator discovery endpoints.
+      if (MESSAGING_ONLY) return;
       if (!discoveryEnabledRef.current && !forceRefresh) return;
       if (isDiscoveringRef.current && !forceRefresh && !append) return;
       isDiscoveringRef.current = true;
@@ -268,6 +271,7 @@ export function useDiscovery({
 
   const refreshContentType = useCallback(
     async (contentType: ContentType, forceRefresh = true) => {
+      if (MESSAGING_ONLY) return;
       if (isDiscoveringRef.current && !forceRefresh) return;
       isDiscoveringRef.current = true;
       try {

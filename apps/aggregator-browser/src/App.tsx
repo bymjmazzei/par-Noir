@@ -143,6 +143,7 @@ function App() {
 
   const discoveryEnabled = useMemo(
     () =>
+      !MESSAGING_ONLY &&
       !showUploadModal &&
       !showInbox &&
       !showSearch &&
@@ -216,8 +217,13 @@ function App() {
     // Removed auto-switch from public to curated - curated feed has been consolidated into public feed
   }, [userState.isUnlocked]); // Only depend on isUnlocked, not activeFeedId (to avoid interference with manual clicks)
 
-  // Fetch feeds from API - only once on mount
+  // Feed catalog is browse-only; messaging build must not hit /api/feeds.
   useEffect(() => {
+    if (MESSAGING_ONLY) {
+      setFeeds([]);
+      setFeedsCatalogReady(true);
+      return;
+    }
     let cancelled = false;
     const loadFeeds = async () => {
       try {

@@ -9,6 +9,7 @@ import { getCreatorIdentifier, normalizeId, isThought, isCollection, isMedia } f
 import { getSavedFeed } from '../services/savedFeedService';
 import { getMetadataIndexService } from '../services/metadata/MetadataIndexService';
 import { API_ENDPOINT } from '../config/api';
+import { MESSAGING_ONLY } from '../config/buildFlags';
 
 const EMPTY_ARRAY: IndexedFile[] = [];
 
@@ -140,7 +141,13 @@ export function useMePageData({
 
   // --- saved feed load (Me tab only) ---
   useEffect(() => {
-    if (!mePageActive || viewingCreatorId !== userState.pnIdentifier || !userState.isUnlocked || !userState.pnIdentifier) {
+    if (
+      MESSAGING_ONLY ||
+      !mePageActive ||
+      viewingCreatorId !== userState.pnIdentifier ||
+      !userState.isUnlocked ||
+      !userState.pnIdentifier
+    ) {
       setSavedFeedFileIds([]);
       setSavedFiles([]);
       savedFeedLoadingRef.current = false;
@@ -198,7 +205,8 @@ export function useMePageData({
 
   // --- fetch creator's files by authorDid when on Me page (covers discovery pagination / timing) ---
   useEffect(() => {
-    if (!viewingCreatorId) {
+    // Creator content index is browse-only.
+    if (MESSAGING_ONLY || !viewingCreatorId) {
       setCreatorOverrideFiles([]);
       return;
     }
@@ -219,7 +227,7 @@ export function useMePageData({
 
   // --- user engagement fileIds ---
   useEffect(() => {
-    if (!viewingCreatorId || !userState.isUnlocked || !userState.pnIdentifier) {
+    if (MESSAGING_ONLY || !viewingCreatorId || !userState.isUnlocked || !userState.pnIdentifier) {
       setUserLikedFileIds([]);
       setUserCommentedFileIds([]);
       setUserSharedFileIds([]);
@@ -293,7 +301,7 @@ export function useMePageData({
 
   // --- viewed user's liked/commented ---
   useEffect(() => {
-    if (!viewingCreatorId || viewingCreatorId === userState.pnIdentifier) {
+    if (MESSAGING_ONLY || !viewingCreatorId || viewingCreatorId === userState.pnIdentifier) {
       setViewedUserLikedFiles((p) => (p.length === 0 ? p : []));
       setViewedUserCommentedFiles((p) => (p.length === 0 ? p : []));
       return;

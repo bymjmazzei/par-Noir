@@ -34,6 +34,7 @@ import {
   restoreMessagingAfterOAuth,
   waitForAndApplyMessagingHandoff,
 } from '../services/messagingOAuthHandoff';
+import { MESSAGING_ONLY } from '../config/buildFlags';
 
 /**
  * oauth-callback.html may hand off via `opener.location.replace(/?oauth_resume=1&code=...)`.
@@ -210,7 +211,7 @@ export function useAuthAndSession({
           const pnId = session.pnIdentifier || session.did;
           setUnlocked(pnId);
           restoreMessagingAfterOAuth();
-          if (discoverFilesRef.current) {
+          if (!MESSAGING_ONLY && discoverFilesRef.current) {
             discoverFilesRef.current(undefined, true);
           }
         }
@@ -254,7 +255,7 @@ export function useAuthAndSession({
 
         let feedTokens: import('../services/pnOAuthService').FeedToken[] = [];
         try {
-          if (userInfo.pn_identifier) {
+          if (!MESSAGING_ONLY && userInfo.pn_identifier) {
             const feedTokensResponse = await fetch(`${API_ENDPOINT}/api/feeds/tokens`, {
               headers: {
                 Authorization: `Bearer ${tokenResponse.access_token}`,
@@ -800,7 +801,7 @@ export function useAuthAndSession({
             if (pnId && !pnId.startsWith('did:key:')) {
               setTimeout(() => loadUserDisplayName(pnId), 500);
             }
-            if (discoverFilesRef.current) {
+            if (!MESSAGING_ONLY && discoverFilesRef.current) {
               discoverFilesRef.current(undefined, true);
             }
             return;
