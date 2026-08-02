@@ -131,9 +131,9 @@
                     <button type="button" class="compare-toggle" aria-expanded="false" aria-controls="compare-account">
                         <span class="compare-topic">Account</span>
                         <span class="compare-teaser">
-                            <span class="compare-teaser-trad">They own the login</span>
+                            <span class="compare-teaser-trad">They issue the login</span>
                             <span class="compare-teaser-arrow" aria-hidden="true">→</span>
-                            <span class="compare-teaser-pn">You hold the key</span>
+                            <span class="compare-teaser-pn">You issue the key</span>
                         </span>
                         <span class="compare-chevron" aria-hidden="true"></span>
                     </button>
@@ -141,11 +141,11 @@
                         <div class="compare-pair">
                             <div class="compare-block compare-block-trad">
                                 <h3>Traditional apps</h3>
-                                <p>The company issues your account. They can suspend it, delete it, or change the rules overnight.</p>
+                                <p>The company creates your account. They can suspend it, delete it, or rewrite the rules overnight.</p>
                             </div>
                             <div class="compare-block compare-block-pn">
                                 <h3>par Noir</h3>
-                                <p>You create a pN (an encrypted key you keep). Apps unlock against it. They do not issue or revoke the identity itself.</p>
+                                <p>You create your identity. Apps unlock against it. They cannot suspend or delete the identity itself.</p>
                             </div>
                         </div>
                         <div class="compare-usecases">
@@ -163,7 +163,7 @@
                     <button type="button" class="compare-toggle" aria-expanded="false" aria-controls="compare-stuff">
                         <span class="compare-topic">Your stuff</span>
                         <span class="compare-teaser">
-                            <span class="compare-teaser-trad">Lives on their servers</span>
+                            <span class="compare-teaser-trad">Readable on their servers</span>
                             <span class="compare-teaser-arrow" aria-hidden="true">→</span>
                             <span class="compare-teaser-pn">Encrypted in your cloud</span>
                         </span>
@@ -173,18 +173,18 @@
                         <div class="compare-pair">
                             <div class="compare-block compare-block-trad">
                                 <h3>Traditional apps</h3>
-                                <p>Posts, photos, and messages sit on company infrastructure. They can read, monetize, or lose them when the product ends.</p>
+                                <p>Posts, photos, and messages sit in clear form on company servers. Staff, leaks, and hackers who breach the company can reach them.</p>
                             </div>
                             <div class="compare-block compare-block-pn">
                                 <h3>par Noir</h3>
-                                <p>Your content lives in your cloud, encrypted to you. The provider stores ciphertext. They cannot read it.</p>
+                                <p>Posts, photos, and messages sit encrypted in your cloud. The provider stores ciphertext. A breach of their systems does not hand over readable files.</p>
                             </div>
                         </div>
                         <div class="compare-usecases">
                             <h4>When this shows up</h4>
                             <ul>
+                                <li>A host gets breached and user uploads dump into the open.</li>
                                 <li>You want a feed or portfolio that still exists if the browsing app goes away.</li>
-                                <li>You do not want a host scanning private files for ads or training data.</li>
                                 <li>You move between tools and still point at the same files you already own.</li>
                             </ul>
                         </div>
@@ -195,9 +195,9 @@
                     <button type="button" class="compare-toggle" aria-expanded="false" aria-controls="compare-signin">
                         <span class="compare-topic">Sign-in</span>
                         <span class="compare-teaser">
-                            <span class="compare-teaser-trad">New password every site</span>
+                            <span class="compare-teaser-trad">A new login for every app</span>
                             <span class="compare-teaser-arrow" aria-hidden="true">→</span>
-                            <span class="compare-teaser-pn">One unlock you control</span>
+                            <span class="compare-teaser-pn">One unlock for every app</span>
                         </span>
                         <span class="compare-chevron" aria-hidden="true"></span>
                     </button>
@@ -205,11 +205,11 @@
                         <div class="compare-pair">
                             <div class="compare-block compare-block-trad">
                                 <h3>Traditional apps</h3>
-                                <p>Each product is another username, inbox, and recovery flow. Your graph resets when you switch.</p>
+                                <p>Each product means another username, password, and recovery flow. Switch apps and you start over as someone else’s user.</p>
                             </div>
                             <div class="compare-block compare-block-pn">
                                 <h3>par Noir</h3>
-                                <p>Same pN across the dashboard, browser, messaging, and partner apps. One unlock on phone or desktop.</p>
+                                <p>Each product unlocks with the same identity you already hold. Switch apps and you keep the same key on phone or desktop.</p>
                             </div>
                         </div>
                         <div class="compare-usecases">
@@ -217,7 +217,7 @@
                             <ul>
                                 <li>You are tired of password resets and “sign in with” that still traps you in each silo.</li>
                                 <li>You try a new pN app and already have an identity ready.</li>
-                                <li>You share a device pattern: unlock once, use the tools built on top.</li>
+                                <li>You unlock once, then use the dashboard, browser, messaging, and partner tools on top.</li>
                             </ul>
                         </div>
                     </div>
@@ -227,7 +227,7 @@
                     <button type="button" class="compare-toggle" aria-expanded="false" aria-controls="compare-data">
                         <span class="compare-topic">Your data</span>
                         <span class="compare-teaser">
-                            <span class="compare-teaser-trad">Sold as the product</span>
+                            <span class="compare-teaser-trad">Collected and sold by default</span>
                             <span class="compare-teaser-arrow" aria-hidden="true">→</span>
                             <span class="compare-teaser-pn">Shared only with permission</span>
                         </span>
@@ -237,19 +237,19 @@
                         <div class="compare-pair">
                             <div class="compare-block compare-block-trad">
                                 <h3>Traditional apps</h3>
-                                <p>Platforms harvest profiles, contacts, and behavior. Leaving rarely means taking that history with you.</p>
+                                <p>Platforms store profiles, contacts, and behavior in databases they own. That pile is what gets mined for ads, and what attackers target in a breach.</p>
                             </div>
                             <div class="compare-block compare-block-pn">
                                 <h3>par Noir</h3>
-                                <p>Apps request temporary permission for what you allow. They aggregate. They do not become the owner of your identity or files.</p>
+                                <p>Apps request temporary permission for what you allow. There is no central profile warehouse for them to sell or for hackers to empty in one hit.</p>
                             </div>
                         </div>
                         <div class="compare-usecases">
                             <h4>When this shows up</h4>
                             <ul>
-                                <li>You want to prove something (age, membership) without dumping raw personal details into every form.</li>
+                                <li>Another “we take privacy seriously” company announces that your personal data was exposed.</li>
+                                <li>You want to prove something (age, membership) without dumping raw details into every form.</li>
                                 <li>A third party needs access for a feature, then that access should end.</li>
-                                <li>You prefer products that compete on usefulness, not on locking up your graph.</li>
                             </ul>
                         </div>
                     </div>
@@ -332,34 +332,6 @@
             <div class="browser-proof-cta">
                 <a href="https://browse.parnoir.com" class="btn btn-primary btn-large" rel="noopener noreferrer">Open full screen</a>
                 <a href="https://messaging.parnoir.com" class="btn btn-secondary" rel="noopener noreferrer">Open messaging</a>
-            </div>
-        </div>
-    </section>
-
-    <section id="privacy" class="narrative-section encryption-section">
-        <div class="container">
-            <div class="section-header">
-                <h2 class="section-title">Locked to you</h2>
-                <p class="section-subtitle">Simple rules. Strong defaults.</p>
-            </div>
-
-            <div class="encrypt-grid">
-                <article class="encrypt-card">
-                    <h3>Your key</h3>
-                    <p>Encrypted file, name, and passcode. Like a digital keycard. Miss one and it stays locked.</p>
-                </article>
-                <article class="encrypt-card">
-                    <h3>Your cloud</h3>
-                    <p>Content is locked to you before it is stored where you already keep files.</p>
-                </article>
-                <article class="encrypt-card">
-                    <h3>Share on purpose</h3>
-                    <p>Apps can ask for temporary access. They don’t take ownership.</p>
-                </article>
-                <article class="encrypt-card">
-                    <h3>One unlock</h3>
-                    <p>Same identity across phone and desktop. Not a new login every time.</p>
-                </article>
             </div>
         </div>
     </section>
@@ -647,7 +619,7 @@
                     <h4>Learn</h4>
                     <a href="#why">Why pN</a>
                     <a href="#faq">FAQ</a>
-                    <a href="#privacy">Privacy</a>
+                    <a href="privacy.html">Privacy Policy</a>
                 </div>
                 <div class="footer-nav-column">
                     <h4>Use</h4>
