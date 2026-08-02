@@ -1055,8 +1055,9 @@ section:nth-child(odd) {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  text-align: center;
-  align-items: center;
+  text-align: left;
+  align-items: stretch;
+  min-width: 8.5rem;
 }
 
 .footer-nav-column h4 {
@@ -1066,6 +1067,8 @@ section:nth-child(odd) {
   margin-bottom: 0.5rem;
   text-transform: uppercase;
   letter-spacing: 1px;
+  text-align: center;
+  width: 100%;
 }
 
 .footer-nav-column a {
@@ -5243,8 +5246,12 @@ section:nth-child(odd) {
   
   .footer-nav-column {
     margin-bottom: 1rem;
+    text-align: left;
+    align-items: stretch;
+  }
+
+  .footer-nav-column h4 {
     text-align: center;
-    align-items: center;
   }
 }
 
