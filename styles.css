@@ -4851,9 +4851,36 @@ section:nth-child(odd) {
 }
 
 .faq-section.faq-page {
-  padding-top: calc(4rem + 5.5rem);
+  padding: calc(4rem + 5.5rem) 0 4rem;
   min-height: 70vh;
   border-top: none;
+}
+
+.faq-section.faq-page .container {
+  max-width: 820px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 clamp(1.25rem, 5vw, 2.5rem);
+  text-align: center;
+  align-items: center;
+}
+
+.faq-section.faq-page .faq-page-header {
+  text-align: center;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 2.5rem;
+}
+
+.faq-section.faq-page .faq-page-logo {
+  width: min(260px, 55vw);
+  margin-bottom: 1.25rem;
+}
+
+.faq-section.faq-page .section-title {
+  text-align: center;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .faq-section .container {
@@ -4876,12 +4903,21 @@ section:nth-child(odd) {
   text-align: left;
 }
 
+.faq-section.faq-page .faq-container {
+  max-width: 100%;
+  margin: 0 auto;
+}
+
 .faq-tabs {
   display: flex;
   justify-content: flex-start;
   gap: 1rem;
   margin-bottom: 3rem;
   flex-wrap: wrap;
+}
+
+.faq-section.faq-page .faq-tabs {
+  justify-content: center;
 }
 
 .faq-tab {
@@ -5097,6 +5133,10 @@ section:nth-child(odd) {
 @media (max-width: 768px) {
   .faq-section {
     padding: 2rem 0;
+  }
+
+  .faq-section.faq-page {
+    padding: calc(2rem + 4.5rem) 0 2rem;
   }
   
   .faq-tabs {
