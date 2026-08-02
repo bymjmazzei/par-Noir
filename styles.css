@@ -5590,6 +5590,8 @@ section:nth-child(odd) {
 
 .phone-screen {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
   border-radius: 32px;
@@ -5600,14 +5602,14 @@ section:nth-child(odd) {
 
 .phone-notch {
   position: absolute;
-  top: 10px;
+  top: 8px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
   width: 108px;
-  height: 28px;
+  height: 26px;
   border-radius: 999px;
-  background: #000;
+  background: #050505;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5631,22 +5633,25 @@ section:nth-child(odd) {
 
 .phone-iframe {
   display: block;
+  flex: 1 1 auto;
   width: 100%;
-  height: 100%;
+  /* Clear the decorative notch + home indicator so real app chrome isn’t covered */
+  margin-top: 38px;
+  margin-bottom: 18px;
+  height: calc(100% - 56px);
+  min-height: 0;
   border: 0;
   background: #000;
-  /* Let the embedded app scroll inside the phone */
   overflow: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  /* Mobile viewport so browse renders phone UI */
   color-scheme: dark;
 }
 
 .phone-home-bar {
   position: absolute;
   left: 50%;
-  bottom: 8px;
+  bottom: 7px;
   transform: translateX(-50%);
   width: 110px;
   height: 4px;
