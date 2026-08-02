@@ -1,7 +1,6 @@
 import React, { useState, useEffect, lazy, useRef, useCallback } from 'react';
 import { RefreshCw } from 'lucide-react';
 import Header from './components/Header';
-import { QRCodeManager } from './utils/qrCode';
 import { SecureStorage } from './utils/storage';
 import { UnifiedAuth } from './components/UnifiedAuth';
 import QRCode from 'qrcode';
@@ -13,29 +12,18 @@ import { security } from './utils/security';
 import usePWA from './hooks/usePWA';
 import { GlobalPrivacySettings } from './types/privacy';
 import { STANDARD_DATA_POINTS } from './types/standardDataPoints';
-import { completeRecoveryWithShares, setPendingRecoveryShares } from './services/recoveryService';
-import {
-  initializeRecoveryVaultOnDrive,
-  setPendingRecoverySharesBuffer,
-} from './services/recoveryVaultService';
-import { revokeRecoveryCustodian, acceptRecoveryCustodianship } from './services/recoveryApiService';
+import { setPendingRecoverySharesBuffer } from './services/recoveryVaultService';
 import { useRecoveryVaultState } from './hooks/useRecoveryVaultState';
 import { useDeviceAuthState } from './hooks/useDeviceAuthState';
 import { DEVICE_CAPABILITIES } from '@par-noir/device-auth';
 import {
   authenticateDeviceBoundPn,
   checkDeviceBoundPnUnlockAvailable,
-  createDeviceBoundPnExport,
   DEVICE_BOUND_PN_ERROR,
   isDeviceBoundPnEnvelope,
 } from './services/deviceBoundPnService';
 import { ownerFetch, ownerGet } from './services/ownerApiService';
-import {
-  getRecoveryAuthSession,
-  recoveryAuthRequiredMessage,
-} from './services/recoveryAuthSession';
-import { storeCustodianshipCredential } from './services/recoveryCredentialStorage';
-import type { RecoveryEnvelope } from '@par-noir/recovery-crypto';
+import { getRecoveryAuthSession } from './services/recoveryAuthSession';
 
 import { MigrationManager, WebIdentityData, MigrationResult } from './utils/migration';
 
@@ -47,7 +35,6 @@ import { notificationsService } from './utils/notificationsService';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import { SessionDataMigration } from './utils/sessionDataMigration';
 import { IntegrationCredentialManager } from './utils/integrationCredentialManager';
-import { LicenseVerification } from './utils/licenseVerification';
 
 import { InputValidator } from './utils/validation';
 import { downloadFile } from './utils/helpers';
@@ -82,90 +69,16 @@ import { useCustodianState } from './hooks/useCustodianState';
 import { useMigrationState } from './hooks/useMigrationState';
 import { usePushNotifications } from './hooks/usePushNotifications';
 import { useApiToken } from './hooks/useApiToken';
+import { useExportTransferHandlers } from './hooks/useExportTransferHandlers';
+import { useIdentityProfileHandlers } from './hooks/useIdentityProfileHandlers';
+import {
+  useRecoveryCustodianHandlers,
+  type PendingRecoveryCompletion
+} from './hooks/useRecoveryCustodianHandlers';
 
 // Lazy load heavy components
 const BiometricSetup = lazy(() => import('./components/BiometricSetup').then(module => ({ default: module.BiometricSetup })));
 const PWALockScreen = lazy(() => import('./components/PWALockScreen').then(module => ({ default: module.default })));
-
-interface RecoveryCustodian {
-  id: string;
-  identityId: string;
-  name: string;
-  type: 'person' | 'service' | 'self';
-  status: 'active' | 'pending' | 'inactive';
-  addedAt: string;
-  lastVerified?: string;
-  canApprove: boolean;
-  contactType: 'email' | 'phone';
-  contactValue: string;
-  publicKey: string; // Public key for ZK proof verification
-  recoveryKeyShare?: string; // Encrypted share of the recovery key (custodian doesn't know the full key)
-  trustLevel: 'high' | 'medium' | 'low';
-  passcode?: string; // 6-digit numeric passcode for custodian acceptance
-}
-
-interface RecoveryRequest {
-  id: string;
-  requestingDid: string;
-  requestingUser: string;
-  timestamp: string;
-  status: 'pending' | 'approved' | 'denied' | 'expired';
-  approvals: string[];
-  denials: string[];
-  signatures: string[]; // legacy alias; use proofs for Shamir approvals
-  proofs?: string[];
-  claimantContactType?: 'email' | 'phone';
-  claimantContactValue?: string;
-  expiresAt?: string;
-  requiredApprovals?: number;
-  currentApprovals?: number;
-  oldIdentityHash?: string; // Hash of the old identity for license transfer
-}
-
-interface RecoveryKey {
-  id: string;
-  identityId: string;
-  keyData: string;
-  createdAt: string;
-  lastUsed?: string;
-  purpose: 'personal' | 'legal' | 'insurance' | 'will';
-  description?: string;
-}
-
-interface SyncedDevice {
-  id: string;
-  name: string;
-  type: 'mobile' | 'desktop' | 'tablet' | 'other';
-  lastSync: string;
-  status: 'active' | 'inactive';
-  location?: string;
-  ipAddress?: string;
-  isPrimary: boolean; // New: marks the primary device
-  deviceFingerprint: string; // New: unique device identifier
-  syncKey: string; // New: encrypted key for device-to-device sync
-  pairedAt: string; // New: when device was paired
-}
-
-
-
-interface CustodianInvitationForm {
-  name: string;
-  contactType: 'email' | 'phone';
-  contactValue: string;
-  type: 'person' | 'service' | 'self';
-  passcode: string;
-  unrevokable?: boolean;
-}
-
-interface DeviceSyncData {
-  deviceId: string;
-  deviceName: string;
-  deviceType: 'mobile' | 'desktop' | 'tablet' | 'other';
-  syncKey: string;
-  identityId: string;
-  expiresAt: string;
-  qrCodeDataURL: string;
-}
 
 // Generate secure access token for authentication
 const generateSecureToken = async (identity: any): Promise<string> => {
@@ -232,12 +145,8 @@ function App() {
   const custodianState = useCustodianState();
   const migrationState = useMigrationState();
 
-  const [pendingRecoveryCompletion, setPendingRecoveryCompletion] = useState<{
-    requestId: string;
-    envelope: RecoveryEnvelope;
-    existingIdentity: EncryptedIdentity;
-    shares: import('@par-noir/recovery-crypto').ShamirShare[];
-  } | null>(null);
+  const [pendingRecoveryCompletion, setPendingRecoveryCompletion] =
+    useState<PendingRecoveryCompletion | null>(null);
   const [showRecoveryPasscodeModal, setShowRecoveryPasscodeModal] = useState(false);
   const [recoveredIdentityExport, setRecoveredIdentityExport] = useState<EncryptedIdentity | null>(null);
 
@@ -726,394 +635,6 @@ function App() {
 
   
 
-  
-  // Open export options directly (auth happens when user picks an option that needs it)
-  const handleExportData = async () => {
-    if (!canExportIdentity) {
-      setError(deviceAuth.deviceRequiredMessage);
-      setTimeout(() => setError(null), 9000);
-      return;
-    }
-    setShowExportOptionsModal(true);
-  };
-
-  // Handle export authentication (shown when user picks USB/NFC and we don't have creds)
-  const handleExportAuth = async () => {
-    try {
-      if (!authenticatedUser || !selectedDID) {
-        throw new Error('No identity is currently unlocked. Please unlock an identity first.');
-      }
-      
-      // Get the stored identity data that was used for unlock
-      const simpleStorage = SimpleStorage.getInstance();
-      const identityKey = authenticatedUser.publicKey || selectedDID?.publicKey || selectedDID?.id;
-      const currentIdentity = await simpleStorage.getIdentity(identityKey);
-      
-      if (!currentIdentity) {
-        throw new Error('Identity not found in storage. Please unlock your identity again.');
-      }
-
-      // Use the same authentication logic as the unlock function
-      // This re-authenticates using the stored encrypted identity data
-      const identityToUnlock = currentIdentity.encryptedData;
-      
-      if (!identityToUnlock.encryptedData || !identityToUnlock.iv || !identityToUnlock.salt) {
-        throw new Error('Invalid identity data structure');
-      }
-
-      // Authenticate using the same crypto function as unlock
-      const authSession = await IdentityCrypto.authenticateIdentity(
-        identityToUnlock as any,
-        exportAuthData.passcode,
-        exportAuthData.pnName
-      );
-
-      // Authentication successful
-      setShowExportAuthModal(false);
-      setExportAuthData(exportAuthData); // ensure state is updated
-      if (pendingExportAction === 'download') {
-        setPendingExportAction(null);
-        handleDownloadExport();
-      } else if (pendingExportAction === 'usb') {
-        setPendingExportAction(null);
-        handleExportToUsb();
-      } else if (pendingExportAction === 'nfc') {
-        setPendingExportAction(null);
-        handleExportToNfc();
-      } else if (pendingExportAction === 'device-bound') {
-        setPendingExportAction(null);
-        handleDeviceBoundDownload();
-      } else {
-        setShowExportOptionsModal(true);
-      }
-    } catch (error: any) {
-      setError(error.message || 'Authentication failed');
-      setTimeout(() => setError(null), 9000);
-    }
-  };
-
-  // Handle direct download export (always requires verification - never use cached creds)
-  const handleDownloadExport = async () => {
-    if (!canExportIdentity) {
-      setError(deviceAuth.deviceRequiredMessage);
-      setTimeout(() => setError(null), 9000);
-      return;
-    }
-    if (!exportAuthData.pnName || !exportAuthData.passcode) {
-      setPendingExportAction('download');
-      setShowExportOptionsModal(false);
-      setShowExportAuthModal(true);
-      return;
-    }
-    try {
-      await storage.init();
-      
-      if (!authenticatedUser || !selectedDID) {
-        throw new Error('No identity is currently unlocked.');
-      }
-      
-      const identityKey = authenticatedUser.publicKey || selectedDID?.publicKey || selectedDID?.id;
-      const simpleStorage = SimpleStorage.getInstance();
-      const currentIdentity = await simpleStorage.getIdentity(identityKey);
-      
-      if (!currentIdentity) {
-        throw new Error('Identity not found in storage.');
-      }
-      
-      const identityToExport = currentIdentity.encryptedData;
-      
-      if (!identityToExport.encryptedData || !identityToExport.iv || !identityToExport.salt) {
-        throw new Error('Invalid encrypted data structure');
-      }
-      
-      const exportData = {
-        version: '1.0',
-        timestamp: new Date().toISOString(),
-        identities: [identityToExport]
-      };
-      const exportedData = JSON.stringify(exportData, null, 2);
-      
-      let filename = 'identity-backup.pn';
-      try {
-        let nickname = 'identity';
-        if (authenticatedUser && authenticatedUser.nickname) {
-          nickname = authenticatedUser.nickname;
-        }
-        
-        const cleanNickname = nickname
-          .replace(/[^a-zA-Z0-9\s]/g, '')
-          .replace(/\s+/g, '-')
-          .toLowerCase()
-          .substring(0, 20);
-        
-        filename = `${cleanNickname}-backup.json`;
-      } catch (parseError) {
-        logError('Parse error:', parseError);
-      }
-      
-      const blob = new Blob([exportedData], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-      
-      setShowExportOptionsModal(false);
-      setShowExportAuthModal(false);
-      showSuccessMessage('pN file downloaded successfully');
-      
-    } catch (error: any) {
-      setError(error.message || 'Download failed');
-      setTimeout(() => setError(null), 9000);
-    }
-  };
-
-  const handleExportDeviceBound = async () => {
-    if (!canExportIdentity) {
-      setError(deviceAuth.deviceRequiredMessage);
-      setTimeout(() => setError(null), 9000);
-      return;
-    }
-    if (!deviceAuth.isKeyedSession || !deviceAuth.localDeviceId) {
-      setError('Device-bound export requires this browser to be keyed to your identity.');
-      setTimeout(() => setError(null), 9000);
-      return;
-    }
-    if (!exportAuthData.pnName || !exportAuthData.passcode) {
-      setPendingExportAction('device-bound');
-      setShowExportOptionsModal(false);
-      setShowExportAuthModal(true);
-      return;
-    }
-    await handleDeviceBoundDownload();
-  };
-
-  const handleDeviceBoundDownload = async () => {
-    if (!canExportIdentity || !deviceAuth.isKeyedSession || !deviceAuth.localDeviceId) {
-      setError(deviceAuth.deviceRequiredMessage);
-      setTimeout(() => setError(null), 9000);
-      return;
-    }
-    try {
-      await storage.init();
-
-      if (!authenticatedUser || !selectedDID || !recoveryVaultPnId) {
-        throw new Error('No identity is currently unlocked.');
-      }
-
-      const identityKey = authenticatedUser.publicKey || selectedDID?.publicKey || selectedDID?.id;
-      const simpleStorage = SimpleStorage.getInstance();
-      const currentIdentity = await simpleStorage.getIdentity(identityKey);
-
-      if (!currentIdentity) {
-        throw new Error('Identity not found in storage.');
-      }
-
-      const identityToExport = currentIdentity.encryptedData;
-
-      if (!identityToExport.encryptedData || !identityToExport.iv || !identityToExport.salt) {
-        throw new Error('Invalid encrypted data structure');
-      }
-
-      const exportData = await createDeviceBoundPnExport({
-        pnIdentifier: recoveryVaultPnId,
-        deviceId: deviceAuth.localDeviceId,
-        identityToExport: {
-          encryptedData: identityToExport.encryptedData,
-          iv: identityToExport.iv,
-          salt: identityToExport.salt,
-          publicKey: currentIdentity.publicKey ?? identityToExport.publicKey,
-        },
-        pnName: exportAuthData.pnName,
-        passcode: exportAuthData.passcode,
-        nickname: authenticatedUser.nickname,
-      });
-
-      const exportedData = JSON.stringify(exportData, null, 2);
-
-      let filename = 'identity-device-bound.pn.json';
-      try {
-        const nickname = authenticatedUser.nickname || 'identity';
-        const cleanNickname = nickname
-          .replace(/[^a-zA-Z0-9\s]/g, '')
-          .replace(/\s+/g, '-')
-          .toLowerCase()
-          .substring(0, 20);
-        filename = `${cleanNickname}-device-bound.pn.json`;
-      } catch {
-        // keep default filename
-      }
-
-      const blob = new Blob([exportedData], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-
-      setShowExportOptionsModal(false);
-      setShowExportAuthModal(false);
-      showSuccessMessage('Device-bound pN file downloaded successfully');
-    } catch (error: any) {
-      setError(error.message || 'Device-bound download failed');
-      setTimeout(() => setError(null), 9000);
-    }
-  };
-
-  // Handle export to NFC - open modal directly; pN + passcode collected as last step before write
-  const handleExportToNfc = async () => {
-    if (!canExportIdentity) {
-      setError(deviceAuth.deviceRequiredMessage);
-      setTimeout(() => setError(null), 9000);
-      return;
-    }
-    try {
-      if (!authenticatedUser || !selectedDID) {
-        throw new Error('No identity is currently unlocked.');
-      }
-      const identityKey = authenticatedUser.publicKey || selectedDID?.publicKey || selectedDID?.id;
-      const simpleStorage = SimpleStorage.getInstance();
-      const currentIdentity = await simpleStorage.getIdentity(identityKey);
-      if (!currentIdentity) {
-        throw new Error('Identity not found in storage.');
-      }
-      const identityToExport = currentIdentity.encryptedData;
-      if (!identityToExport?.encryptedData && !(identityToExport as any)?.encrypted) {
-        throw new Error('Invalid encrypted data structure');
-      }
-      setIdentityForNfcExport({
-        encryptedData: (identityToExport as any).encryptedData ?? (identityToExport as any).encrypted,
-        iv: (identityToExport as any).iv,
-        salt: (identityToExport as any).salt,
-        publicKey: currentIdentity.publicKey ?? (identityToExport as any).publicKey,
-      });
-      setShowExportOptionsModal(false);
-      setShowExportToNfcModal(true);
-    } catch (error: any) {
-      setError(error.message || 'Failed to prepare NFC export');
-      setTimeout(() => setError(null), 9000);
-    }
-  };
-
-  // Handle export to USB - open modal directly; pN + passcode collected as last step before write
-  const handleExportToUsb = async () => {
-    if (!canExportIdentity) {
-      setError(deviceAuth.deviceRequiredMessage);
-      setTimeout(() => setError(null), 9000);
-      return;
-    }
-    try {
-      if (!authenticatedUser || !selectedDID) {
-        throw new Error('No identity is currently unlocked.');
-      }
-      const identityKey = authenticatedUser.publicKey || selectedDID?.publicKey || selectedDID?.id;
-      const simpleStorage = SimpleStorage.getInstance();
-      const currentIdentity = await simpleStorage.getIdentity(identityKey);
-      if (!currentIdentity) {
-        throw new Error('Identity not found in storage.');
-      }
-      const identityToExport = currentIdentity.encryptedData;
-      if (!identityToExport?.encryptedData && !(identityToExport as any)?.encrypted) {
-        throw new Error('Invalid encrypted data structure');
-      }
-      setIdentityForUsbExport({
-        encryptedData: (identityToExport as any).encryptedData ?? (identityToExport as any).encrypted,
-        iv: (identityToExport as any).iv,
-        salt: (identityToExport as any).salt,
-        publicKey: currentIdentity.publicKey ?? (identityToExport as any).publicKey,
-      });
-      setShowExportOptionsModal(false);
-      setShowExportToUsbModal(true);
-    } catch (error: any) {
-      setError(error.message || 'Failed to prepare USB export');
-      setTimeout(() => setError(null), 9000);
-    }
-  };
-
-  // Handle Bluetooth transfer export
-  const handleTransfer = async () => {
-    try {
-      if (!authenticatedUser || !selectedDID) {
-        throw new Error('No identity is currently unlocked.');
-      }
-
-      // Show transfer setup modal to get transfer passcode
-      setShowTransferSetupModal(true);
-      
-    } catch (error: any) {
-      setError(error.message || 'Transfer failed to start');
-      setTimeout(() => setError(null), 9000);
-    }
-  };
-
-  const handleTransferSetup = async () => {
-    try {
-      if (!transferPasscode || transferPasscode.length < 4) {
-        throw new Error('Transfer passcode must be at least 4 characters.');
-      }
-
-      // Generate short transfer ID
-      // Generate secure random transfer ID
-      const randomArray = new Uint8Array(4);
-      crypto.getRandomValues(randomArray);
-      const transferId = Array.from(randomArray, byte => byte.toString(36)).join('').substring(0, 6).toUpperCase();
-      
-      // Get the current identity data for transfer
-      const simpleStorage = SimpleStorage.getInstance();
-      const identityKey = authenticatedUser.publicKey || selectedDID?.publicKey || selectedDID?.id;
-      const currentIdentity = await simpleStorage.getIdentity(identityKey);
-      
-      if (!currentIdentity) {
-        throw new Error('Identity not found in storage.');
-      }
-
-      // Get the encrypted identity data for transfer (same format as export)
-      const identityToTransfer = currentIdentity.encryptedData;
-      
-      if (!identityToTransfer.encryptedData || !identityToTransfer.iv || !identityToTransfer.salt) {
-        throw new Error('Invalid encrypted data structure');
-      }
-
-      // Create the proper backup format (same as export function) — embedded in URL (no IPFS)
-      const transferFileContent = {
-        version: '1.0',
-        timestamp: new Date().toISOString(),
-        identities: [identityToTransfer]
-      };
-
-      const transferData = {
-        id: transferId,
-        ipfsCid: `direct-transfer-${transferId}`,
-        nickname: authenticatedUser.nickname || 'Transferred pN',
-        transferPasscode: transferPasscode,
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes
-        directData: transferFileContent
-      };
-
-      // Encode transfer data for URL parameters (cross-device compatible)
-      const transferDataEncoded = btoa(JSON.stringify(transferData));
-
-      // Generate transfer URL with encoded data
-      const transferUrl = `${window.location.origin}/transfer/id=${transferId}?data=${transferDataEncoded}`;
-      
-      // Show transfer URL and QR code
-      setTransferUrl(transferUrl);
-      setTransferId(transferId);
-      setTransferPasscode('');
-      setTransferCreated(true);
-      
-      // Generate QR code
-      setTimeout(() => {
-        generateQRCode(transferUrl);
-      }, 100);
-      
-    } catch (error: any) {
-      setError(error.message || 'Transfer setup failed');
-      setTimeout(() => setError(null), 9000);
-    }
-  };
   
   // Load third-party permissions from Google Drive
   useEffect(() => {
@@ -2295,441 +1816,6 @@ function App() {
 
 
 
-  const handleIncomingNicknameUpdate = async (identityId: string, newNickname: string) => {
-    try {
-              logDebug('Received nickname update for identity:', identityId, 'new nickname:', newNickname);
-      
-      // Get the stored identity (identityId could be publicKey or ID)
-      let storedIdentity = await storage.getIdentity(identityId);
-      if (!storedIdentity) {
-        logDebug('Identity not found in local storage, skipping nickname update');
-        return;
-      }
-      
-      // Create an EncryptedIdentity from the StoredIdentity with updated nickname
-      const updatedIdentity: EncryptedIdentity = { 
-        publicKey: storedIdentity.publicKey,
-        encryptedData: storedIdentity.encryptedData,
-        iv: storedIdentity.iv,
-        salt: storedIdentity.salt
-      };
-      
-      // Store the updated identity
-      await storage.storeIdentity(updatedIdentity);
-      
-      // Update the authenticated user's nickname if this is the current user
-      if (authenticatedUser && authenticatedUser.id === identityId) {
-        const updatedUser = { ...authenticatedUser, nickname: newNickname };
-        setAuthenticatedUser(updatedUser);
-      }
-      
-      // Update the DID info
-      setDids(prev => prev.map(did => 
-        did.id === identityId 
-          ? { ...did, displayName: newNickname, nickname: newNickname }
-          : did
-      ));
-      
-      // Update selected DID if it's the current user
-      if (selectedDID?.id === identityId) {
-        setSelectedDID(prev => prev ? { ...prev, nickname: newNickname } : null);
-      }
-      
-      // Update the stored identity reference in localStorage
-      try {
-        const storedIdentities = localStorage.getItem('pwa_stored_identities');
-        if (storedIdentities) {
-          const stored = JSON.parse(storedIdentities);
-          const identityIndex = stored.findIndex((item: any) => 
-            item.publicKey === storedIdentity.publicKey || item.idFile?.id === identityId
-          );
-          
-          if (identityIndex >= 0) {
-            // Update the nickname in the stored reference
-            stored[identityIndex].nickname = newNickname;
-            localStorage.setItem('pwa_stored_identities', JSON.stringify(stored));
-            logDebug('Updated nickname in stored identity reference (incoming):', newNickname);
-          }
-        }
-      } catch (error) {
-        logError('Failed to update stored identity reference (incoming):', error);
-      }
-
-      // Update cloud database with the incoming nickname change
-      try {
-        await cloudSyncManager.initialize();
-        await cloudSyncManager.storeNicknameUpdate({
-          identityId,
-          publicKey: storedIdentity.publicKey,
-          oldNickname: authenticatedUser?.nickname || '',
-          newNickname,
-          updatedByDeviceId: currentDevice?.id || generateDeviceFingerprint()
-        });
-        logDebug('Incoming nickname update stored in cloud database');
-      } catch (error) {
-        logError('Failed to store incoming nickname update in cloud:', error);
-      }
-      
-              logDebug('Nickname updated from sync:', newNickname);
-    } catch (error) {
-              logError('Error handling incoming nickname update:', error);
-    }
-  };
-
-  const handleNicknameUpdate = async (newNickname: string) => {
-    if (!authenticatedUser) return;
-    
-    try {
-      setLoading(true);
-      
-      const isPWAMode = pwaState.isInstalled;
-      logDebug('Updating nickname for', isPWAMode ? 'PWA' : 'Web App', 'identity...');
-      
-      // 🔐 SECURE METADATA UPDATE: Update nickname in encrypted metadata
-      try {
-        const identityId = authenticatedUser.id || authenticatedUser.publicKey;
-        // SECURITY: Retrieve credentials from SecureCredentialManager
-        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-        if (!credentials) {
-          throw new Error('Credentials not available for metadata update');
-        }
-        
-        await SecureMetadataStorage.updateMetadataField(
-          identityId,
-          credentials.pnName,
-          credentials.passcode,
-          'nickname',
-          newNickname
-        );
-        logDebug('Nickname updated in secure metadata');
-      } catch (error) {
-        logError('Failed to update secure metadata:', error);
-        // Continue with local updates even if secure metadata fails
-      }
-      
-      // Update the authenticated user's nickname
-      const updatedUser = { ...authenticatedUser, nickname: newNickname };
-      setAuthenticatedUser(updatedUser);
-      
-      // Update the DID info in state
-      setDids(prev => prev.map(did => 
-        did.id === authenticatedUser.id 
-          ? { ...did, nickname: newNickname, displayName: newNickname }
-          : did
-      ));
-      
-      // Update selected DID if it's the current user
-      if (selectedDID?.id === authenticatedUser.id) {
-        setSelectedDID(prev => prev ? { ...prev, nickname: newNickname } : null);
-      }
-      
-      if (isPWAMode) {
-        // PWA: Update localStorage storage
-        try {
-          const storedIdentities = localStorage.getItem('pwa_stored_identities');
-          if (storedIdentities) {
-            const stored = JSON.parse(storedIdentities);
-            const identityIndex = stored.findIndex((item: any) => 
-              item.publicKey === authenticatedUser.publicKey || item.idFile?.id === authenticatedUser.id
-            );
-            
-            if (identityIndex >= 0) {
-              // Update the nickname in the stored reference
-              stored[identityIndex].nickname = newNickname;
-              
-              // Update the nickname in the actual ID file data
-              if (stored[identityIndex].idFile) {
-                stored[identityIndex].idFile.nickname = newNickname;
-              }
-              
-              localStorage.setItem('pwa_stored_identities', JSON.stringify(stored));
-              logDebug('Updated nickname in PWA localStorage:', newNickname);
-            } else {
-              logDebug('Identity not found in PWA localStorage');
-            }
-          } else {
-            logDebug('No PWA stored identities found');
-          }
-        } catch (error) {
-          logError('Failed to update PWA stored identity reference:', error);
-        }
-      } else {
-        // Web App: Update IndexedDB storage
-        try {
-          await storage.init();
-          const storedIdentity = await storage.getIdentity(authenticatedUser.publicKey);
-          if (storedIdentity) {
-            logDebug('Web app: Updated session nickname, user should re-upload ID file for permanent storage');
-          } else {
-            logDebug('Identity not found in web app storage');
-          }
-        } catch (error) {
-          logError('Failed to update web app storage:', error);
-        }
-      }
-
-      // Store nickname update in cloud database for cross-platform sync
-      try {
-        await cloudSyncManager.initialize();
-        await cloudSyncManager.storeUpdate({
-          type: 'nickname',
-          identityId: authenticatedUser.id,
-          publicKey: authenticatedUser.publicKey,
-          data: {
-            oldNickname: authenticatedUser.nickname || '',
-            newNickname
-          },
-          updatedByDeviceId: currentDevice?.id || generateDeviceFingerprint()
-        });
-        logDebug('Nickname update stored in cloud database for cross-platform sync');
-      } catch (error) {
-        logError('Failed to store nickname update in cloud:', error);
-        // Don't fail the entire operation if cloud sync fails
-      }
-      
-      setShowNicknameEditor(false);
-      const successMessage = pwaState.isInstalled 
-        ? 'Nickname updated successfully! Changes will sync across all PWA devices and platforms.'
-        : 'Nickname updated successfully! Changes will sync to cloud and other platforms. Re-upload your pN file to save changes permanently.';
-      showSuccessMessage(successMessage);
-    } catch (error) {
-      logError('Error updating nickname:', error);
-      showErrorMessage(`Failed to update nickname: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleProfilePictureUpdate = async (newProfilePicture: string) => {
-    if (!authenticatedUser) return;
-    if (!canProfileWrite) {
-      setError(deviceAuth.deviceRequiredMessage);
-      setTimeout(() => setError(null), 9000);
-      return;
-    }
-    
-    try {
-      setLoading(true);
-      
-      const isPWAMode = pwaState.isInstalled;
-              logDebug('Updating profile picture for', isPWAMode ? 'PWA' : 'Web App', 'identity...');
-      
-      // 🔐 SECURE METADATA UPDATE: Update profile picture in encrypted metadata
-      try {
-        const identityId = authenticatedUser.id || authenticatedUser.publicKey;
-        // SECURITY: Retrieve credentials from SecureCredentialManager
-        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-        if (!credentials) {
-          throw new Error('Credentials not available for metadata update');
-        }
-        
-        await SecureMetadataStorage.updateMetadataField(
-          identityId,
-          credentials.pnName,
-          credentials.passcode,
-          'profilePicture',
-          newProfilePicture
-        );
-        logDebug('Profile picture updated in secure metadata');
-      } catch (error) {
-        logError('Failed to update secure metadata:', error);
-        // Continue with local updates even if secure metadata fails
-      }
-      
-      // Update the authenticated user's profile picture
-      const updatedUser = { ...authenticatedUser, profilePicture: newProfilePicture };
-      setAuthenticatedUser(updatedUser);
-      
-      // Update the DID info in state
-      setDids(prev => prev.map(did => 
-        did.id === authenticatedUser.id 
-          ? { ...did, profilePicture: newProfilePicture }
-          : did
-      ));
-      
-      // Update selected DID if it's the current user
-      if (selectedDID?.id === authenticatedUser.id) {
-        setSelectedDID(prev => prev ? { ...prev, profilePicture: newProfilePicture } : null);
-      }
-      
-      if (isPWAMode) {
-        // PWA: Update localStorage storage
-        try {
-          const storedIdentities = localStorage.getItem('pwa_stored_identities');
-          if (storedIdentities) {
-            const stored = JSON.parse(storedIdentities);
-            const identityIndex = stored.findIndex((item: any) => 
-              item.publicKey === authenticatedUser.publicKey || item.idFile?.id === authenticatedUser.id
-            );
-            
-            if (identityIndex >= 0) {
-              // Update the profile picture in the stored reference
-              stored[identityIndex].profilePicture = newProfilePicture;
-              
-              // Update the profile picture in the actual ID file data
-              if (stored[identityIndex].idFile) {
-                stored[identityIndex].idFile.profilePicture = newProfilePicture;
-              }
-              
-              localStorage.setItem('pwa_stored_identities', JSON.stringify(stored));
-              logDebug('Updated profile picture in PWA localStorage:', newProfilePicture);
-            } else {
-              logDebug('Identity not found in PWA localStorage');
-            }
-          } else {
-            logDebug('No PWA stored identities found');
-          }
-        } catch (error) {
-          logError('Failed to update PWA stored identity reference:', error);
-        }
-      } else {
-        // Web App: Update IndexedDB storage
-        try {
-          await storage.init();
-          const storedIdentity = await storage.getIdentity(authenticatedUser.publicKey);
-          if (storedIdentity) {
-            logDebug('Web app: Updated session profile picture, user should re-upload ID file for permanent storage');
-          } else {
-            logDebug('Identity not found in web app storage');
-          }
-        } catch (error) {
-          logError('Failed to update web app storage:', error);
-        }
-      }
-
-      // Store profile picture update in cloud database for cross-platform sync
-      try {
-        await cloudSyncManager.initialize();
-        await cloudSyncManager.storeUpdate({
-          type: 'profile-picture',
-          identityId: authenticatedUser.id,
-          publicKey: authenticatedUser.publicKey,
-          data: {
-            oldProfilePicture: authenticatedUser.profilePicture || '',
-            newProfilePicture
-          },
-          updatedByDeviceId: currentDevice?.id || generateDeviceFingerprint()
-        });
-        logDebug('Profile picture update stored in cloud database for cross-platform sync');
-      } catch (error) {
-        logError('Failed to store profile picture update in cloud:', error);
-        // Don't fail the entire operation if cloud sync fails
-      }
-      
-      setShowProfilePictureEditor(false);
-      const successMessage = pwaState.isInstalled 
-        ? 'Profile picture updated successfully! Changes will sync across all PWA devices and platforms.'
-        : 'Profile picture updated successfully! Changes will sync to cloud and other platforms. Re-upload your pN file to save changes permanently.';
-      showSuccessMessage(successMessage);
-    } catch (error) {
-      logError('Profile picture update error:', error);
-      setError('Failed to update profile picture');
-      setTimeout(() => setError(null), 3000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUpdateNickname = async (newNickname: string) => {
-    if (!authenticatedUser) return;
-    if (!canProfileWrite) {
-      setError(deviceAuth.deviceRequiredMessage);
-      setTimeout(() => setError(null), 9000);
-      return;
-    }
-    
-    try {
-      setLoading(true);
-      
-      const isPWAMode = pwaState.isInstalled;
-      logDebug('Updating nickname for', isPWAMode ? 'PWA' : 'Web App', 'identity...');
-      
-      // Update the authenticated user's nickname
-      const updatedUser = { ...authenticatedUser, nickname: newNickname };
-      setAuthenticatedUser(updatedUser);
-      
-      // Update the DID info in state
-      setDids(prev => prev.map(did => 
-        did.id === authenticatedUser.id 
-          ? { ...did, nickname: newNickname }
-          : did
-      ));
-      
-      // Update selected DID if it's the current user
-      if (selectedDID?.id === authenticatedUser.id) {
-        setSelectedDID(prev => prev ? { ...prev, nickname: newNickname } : null);
-      }
-      
-      if (isPWAMode) {
-        // PWA: Update localStorage storage
-        try {
-          const storedIdentities = localStorage.getItem('pwa_stored_identities');
-          if (storedIdentities) {
-            const stored = JSON.parse(storedIdentities);
-            const identityIndex = stored.findIndex((item: any) => 
-              item.publicKey === authenticatedUser.publicKey || item.idFile?.id === authenticatedUser.id
-            );
-            
-            if (identityIndex >= 0) {
-              // Update the nickname in the stored reference
-              stored[identityIndex].nickname = newNickname;
-              
-              // Update the nickname in the actual ID file data
-              if (stored[identityIndex].idFile) {
-                stored[identityIndex].idFile.nickname = newNickname;
-              }
-              
-              localStorage.setItem('pwa_stored_identities', JSON.stringify(stored));
-              logDebug('Updated nickname in PWA localStorage:', newNickname);
-            }
-          }
-        } catch (error) {
-          logError('Failed to update PWA stored identity reference:', error);
-        }
-      } else {
-        // Web App: Update IndexedDB storage
-        try {
-          await storage.init();
-          const storedIdentity = await storage.getIdentity(authenticatedUser.publicKey);
-          if (storedIdentity) {
-            logDebug('Web app: Updated session nickname, user should re-upload ID file for permanent storage');
-          }
-        } catch (error) {
-          logError('Failed to update web app storage:', error);
-        }
-      }
-
-      // Store nickname update in cloud database for cross-platform sync
-      try {
-        await cloudSyncManager.initialize();
-        await cloudSyncManager.storeUpdate({
-          type: 'nickname',
-          identityId: authenticatedUser.id,
-          publicKey: authenticatedUser.publicKey,
-          data: {
-            oldNickname: authenticatedUser.nickname || '',
-            newNickname
-          },
-          updatedByDeviceId: currentDevice?.id || generateDeviceFingerprint()
-        });
-        logDebug('Nickname update stored in cloud database for cross-platform sync');
-      } catch (error) {
-        logError('Failed to store nickname update in cloud:', error);
-      }
-      
-      const successMessage = pwaState.isInstalled 
-        ? 'Nickname updated successfully! Changes will sync across all PWA devices and platforms.'
-        : 'Nickname updated successfully! Changes will sync to cloud and other platforms. Re-upload your pN file to save changes permanently.';
-      showSuccessMessage(successMessage);
-    } catch (error) {
-      logError('Nickname update error:', error);
-      setError('Failed to update nickname');
-      setTimeout(() => setError(null), 3000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // State for biometric passcode modal
   const [showBiometricPasscodeModal, setShowBiometricPasscodeModal] = React.useState(false);
   const [pendingBiometricIdentity, setPendingBiometricIdentity] = React.useState<DIDInfo | null>(null);
@@ -3256,814 +2342,6 @@ function App() {
     } finally {
       setLoading(false);
     }
-  };
-
-  // Recovery functions
-  const handleInitiateRecovery = async (recoveryData: {
-    pnName: string;
-    passcode: string;
-    nickname: string;
-    emailOrPhone: string;
-  }) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Initialize storage if not already done
-      await storage.init();
-
-      // Get stored identities
-      const storedIdentities = await storage.getIdentities();
-      
-      // Find the identity to recover
-      const foundIdentity = storedIdentities.find(stored => {
-        try {
-          // Try to decrypt and verify the identity
-          const decryptedData = JSON.parse(stored.encryptedData);
-          return (
-            decryptedData.pnName === recoveryData.pnName &&
-            decryptedData.nickname === recoveryData.nickname &&
-            (decryptedData.recoveryEmail === recoveryData.emailOrPhone || 
-             decryptedData.recoveryPhone === recoveryData.emailOrPhone)
-          );
-        } catch {
-          return false;
-        }
-      });
-
-      if (!foundIdentity) {
-        throw new Error('No matching PN found. Please check your information.');
-      }
-
-      // Verify passcode cryptographically
-      const isValidPasscode = await IdentityCrypto.verifyPasscode(
-        recoveryData.passcode,
-        foundIdentity.encryptedData,
-        foundIdentity.salt
-      );
-
-      if (!isValidPasscode) {
-        throw new Error('Invalid passcode. Please check your information.');
-      }
-
-      // Create recovery request with old identity hash for license transfer
-      const recoveryRequest: RecoveryRequest = {
-        id: `recovery-${Date.now()}`,
-        requestingDid: foundIdentity.publicKey, // Use public key since ID is encrypted
-        requestingUser: recoveryData.pnName,
-        timestamp: new Date().toISOString(),
-        status: 'pending',
-        approvals: [],
-        denials: [],
-        signatures: [], // ZK proof signatures will be added here
-        expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(), // 72 hours
-        requiredApprovals: recoveryThreshold,
-        currentApprovals: 0,
-        oldIdentityHash: foundIdentity.publicKey // In real implementation, this would be the actual old identity hash
-      };
-
-      setRecoveryRequests(prev => [...prev, recoveryRequest]);
-      setShowRecoveryModal(false);
-      setSuccessWithTimeout('Recovery request initiated! Notifying custodians...');
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-    } catch (error: any) {
-      setError(error.message || 'Failed to initiate recovery');
-      setTimeout(() => setError(null), 9000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const generateCustodianQRCode = async (custodianData: CustodianInvitationForm & { id?: string }) => {
-    try {
-      const recoveryAuth = getRecoveryAuthSession();
-      if (!recoveryAuth) {
-        throw new Error(recoveryAuthRequiredMessage());
-      }
-      if (!canManageCustodians) {
-        throw new Error(deviceAuth.deviceRequiredMessage);
-      }
-      const custodianId = custodianData.id || selectedCustodianForInvitation?.id;
-      if (!custodianId || !authenticatedUser?.id) {
-        throw new Error('Select a custodian and unlock your identity first');
-      }
-      const encryptedIdentity = recoveryAuth.encryptedIdentity;
-      const invitationId = `inv-${Date.now()}`;
-      const existingCustodian = custodians.find((c) => c.id === custodianId);
-      const vaultInvited = recoveryVaultSummary?.custodians.some(
-        (c) =>
-          c.custodianId === custodianId
-          && c.status !== 'revoked'
-          && c.status !== 'accepted'
-      );
-      const pnId = recoveryVaultPnId || authenticatedUser.id;
-      const { assignCustodianVaultAndIssueCredential } = await import('./services/recoveryCustodianSetup');
-      const vault = await assignCustodianVaultAndIssueCredential({
-        custodianId,
-        custodianName: custodianData.name,
-        custodianType: custodianData.type,
-        identityId: authenticatedUser.id,
-        encryptedIdentity,
-        invitationId,
-        threshold: recoveryThreshold,
-        apiToken,
-        userPnIdentifier: pnId,
-        pnName: recoveryAuth.pnName,
-        passcode: recoveryAuth.passcode,
-        unrevokable: custodianData.unrevokable === true,
-        resendExisting: Boolean(vaultInvited || existingCustodian?.status === 'pending'),
-      });
-
-      const invitationData = {
-        invitationId,
-        custodianId,
-        custodianName: custodianData.name,
-        custodianType: custodianData.type === 'self' ? 'self-recovery' : custodianData.type,
-        contactType: custodianData.contactType,
-        contactValue: custodianData.contactValue,
-        expiresAt: Date.now() + (24 * 60 * 60 * 1000),
-        identityName: authenticatedUser?.nickname || 'Unknown Identity',
-        identityUsername: authenticatedUser?.nickname || authenticatedUser?.id || 'unknown',
-        identityPublicKey: encryptedIdentity.publicKey,
-        shareIndex: vault.shareIndex,
-        custodianshipZkp: vault.custodianshipZkp
-      };
-
-      const deepLinkData = {
-        invitationId: invitationData.invitationId,
-        custodianId: invitationData.custodianId,
-        custodianName: invitationData.custodianName,
-        custodianType: invitationData.custodianType,
-        contactType: invitationData.contactType,
-        contactValue: invitationData.contactValue,
-        identityName: invitationData.identityName,
-        identityUsername: invitationData.identityUsername,
-        identityPublicKey: invitationData.identityPublicKey,
-        shareIndex: invitationData.shareIndex,
-        custodianshipZkp: invitationData.custodianshipZkp
-      };
-
-      setCustodians(prev => prev.map(c =>
-        c.id === custodianId
-          ? { ...c, status: 'pending' as const, canApprove: false, lastVerified: new Date().toISOString() }
-          : c
-      ));
-
-      void refreshRecoveryVault();
-
-      const deepLink = `${window.location.origin}?custodian-invitation=${encodeURIComponent(JSON.stringify(deepLinkData))}`;
-      
-      // Generate QR code with deep link
-      const qrCodeDataURL = await QRCode.toDataURL(deepLink, {
-        width: 256,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      });
-      
-      setCustodianQRCode(qrCodeDataURL);
-      setCustodianContactInfo(custodianData);
-    } catch (error) {
-              logError('Failed to generate QR code:', error);
-    }
-  };
-
-  const handleContactAction = (contactType: 'email' | 'phone', contactValue: string) => {
-    // Generate the direct link for custodian invitation
-    const invitationData = {
-      invitationId: `inv-${Date.now()}`,
-      custodianName: custodianContactInfo.name,
-      custodianType: custodianContactInfo.type === 'self' ? 'self-recovery' : custodianContactInfo.type,
-      contactType: custodianContactInfo.contactType,
-      contactValue: custodianContactInfo.contactValue,
-      identityName: authenticatedUser?.nickname || 'Unknown Identity',
-      identityUsername: authenticatedUser?.pnName || 'unknown',
-      expiresAt: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
-    };
-    
-    const directLink = `${window.location.origin}?custodian-invitation=${encodeURIComponent(JSON.stringify(invitationData))}`;
-    
-    if (contactType === 'email') {
-      const subject = 'Identity Protocol - Custodian Invitation';
-      const body = `You have been invited to be a recovery custodian for ${authenticatedUser?.nickname || 'an identity'}.
-
-To accept this custodianship:
-1. Click this link: ${directLink}
-2. Unlock your pN identity
-3. Enter the passcode provided by the identity owner
-4. Confirm the custodianship
-
-This invitation expires in 24 hours.`;
-      window.open(`mailto:${contactValue}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
-    } else if (contactType === 'phone') {
-      const message = `You've been invited as a custodian for ${authenticatedUser?.nickname || 'an identity'}. Click: ${directLink} (Passcode required)`;
-      window.open(`sms:${contactValue}?body=${encodeURIComponent(message)}`);
-    }
-  };
-
-  const handleAddCustodian = async (custodianData: CustodianInvitationForm) => {
-    try {
-      if (!getRecoveryAuthSession()) {
-        throw new Error(recoveryAuthRequiredMessage());
-      }
-      if (!canManageCustodians) {
-        throw new Error(deviceAuth.deviceRequiredMessage);
-      }
-      // Validate contact information
-      if (!custodianData.name.trim() || !custodianData.contactValue.trim()) {
-        throw new Error('Name and contact information are required');
-      }
-
-      // Check if we already have 5 custodians (maximum)
-      if (custodians.length >= 5) {
-        throw new Error('You can only have up to 5 custodians');
-      }
-
-      // Add custodian as pending
-      const newCustodian: RecoveryCustodian = {
-        id: `custodian-${Date.now()}`,
-        identityId: authenticatedUser?.id || selectedDID?.id || 'temp-identity',
-        name: custodianData.name,
-        type: custodianData.type,
-        status: 'pending', // Start as pending
-        addedAt: new Date().toISOString(),
-        canApprove: false, // Cannot approve until validated
-        contactType: custodianData.contactType,
-        contactValue: custodianData.contactValue,
-        publicKey: crypto.randomUUID(), // Generate a unique public key
-        trustLevel: 'medium', // Default trust level
-        passcode: custodianData.passcode // Store the 6-digit passcode
-      };
-
-      setCustodians(prev => [...prev, newCustodian]);
-      setShowAddCustodianModal(false);
-
-      // Store custodian update in cloud database for cross-platform sync
-      try {
-        await cloudSyncManager.initialize();
-        await cloudSyncManager.storeUpdate({
-          type: 'custodian',
-          identityId: authenticatedUser?.id || selectedDID?.id || 'temp-identity',
-          publicKey: authenticatedUser?.publicKey || '',
-          data: {
-            action: 'add',
-            custodian: newCustodian
-          },
-          updatedByDeviceId: currentDevice?.id || generateDeviceFingerprint()
-        });
-        logDebug('Custodian update stored in cloud database for cross-platform sync');
-      } catch (error) {
-                  logError('Failed to store custodian update in cloud:', error);
-        // Don't fail the entire operation if cloud sync fails
-      }
-
-      setSuccessWithTimeout('Custodian added as pending! Use the "Send Invitation" button to generate and send the QR code. Changes will sync across platforms.');
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-    } catch (error: any) {
-      setError(error.message || 'Failed to add custodian');
-      setTimeout(() => setError(null), 9000);
-    }
-  };
-
-
-
-  // Handle custodian invitation acceptance — store ZK custodianship credential only (no share bytes)
-  const handleCustodianAcceptance = async () => {
-    try {
-      if (!pendingCustodianInvitationData) {
-        throw new Error('No pending invitation found');
-      }
-
-      if (!custodianAcceptanceData.contactValue.trim() || !custodianAcceptanceData.passcode.trim()) {
-        throw new Error('Please enter your contact information and the passcode');
-      }
-
-      if (custodianAcceptanceData.contactValue !== pendingCustodianInvitationData.contactValue) {
-        throw new Error('Contact information does not match the invitation');
-      }
-
-      const acceptancePasscode = custodianAcceptanceData.passcode.trim();
-      const isValidPasscode = /^\d{6}$/.test(acceptancePasscode);
-      if (!isValidPasscode) {
-        throw new Error('Invalid passcode. Enter the 6-digit code from the identity owner.');
-      }
-
-      const invitation = pendingCustodianInvitationData as {
-        custodianId?: string;
-        identityPublicKey?: string;
-        shareIndex?: number;
-        custodianshipZkp?: string;
-        identityName?: string;
-        identityUsername?: string;
-        invitationId?: string;
-      };
-
-      if (!invitation.custodianshipZkp || !invitation.custodianId || !invitation.identityPublicKey) {
-        throw new Error('Invitation is missing custodianship credential. Ask the owner to resend the invitation.');
-      }
-
-      storeCustodianshipCredential({
-        custodianId: invitation.custodianId,
-        identityPublicKey: invitation.identityPublicKey,
-        identityName: invitation.identityName || 'Identity',
-        identityUsername: invitation.identityUsername || '',
-        shareIndex: invitation.shareIndex || 0,
-        custodianshipZkp: invitation.custodianshipZkp,
-        custodianPasscode: acceptancePasscode,
-        acceptedAt: new Date().toISOString()
-      });
-
-      if (apiToken && invitation.identityPublicKey) {
-        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-        const ownerPn = await VolumeIdGenerator.generateCanonicalVolumeId(invitation.identityPublicKey);
-        await acceptRecoveryCustodianship(ownerPn, apiToken, invitation.custodianId, invitation.custodianshipZkp);
-      }
-
-      const newCustodianship = {
-        id: `custodianship-${invitation.custodianId}`,
-        identityId: invitation.invitationId || invitation.custodianId,
-        identityName: invitation.identityName || 'Identity',
-        identityUsername: invitation.identityUsername || '',
-        identityPublicKey: invitation.identityPublicKey,
-        status: 'active' as const,
-        canApprove: true
-      };
-
-      setCustodianships(prev => {
-        const filtered = prev.filter(
-          (c) => c.identityPublicKey !== invitation.identityPublicKey
-        );
-        return [...filtered, newCustodianship];
-      });
-
-      setShowCustodianAcceptanceModal(false);
-      setPendingCustodianInvitationData(null);
-      setCustodianAcceptanceData({ contactType: 'email', contactValue: '', passcode: '' });
-
-      setSuccessWithTimeout('Custodianship accepted. You hold an authorization credential only — no secret shares.');
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-    } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : 'Failed to accept custodianship');
-      setTimeout(() => setError(null), 9000);
-    }
-  };
-
-  // ZK authorization recovery approval (custodian never submits share bytes)
-  const handleApproveRecovery = async (requestId: string, custodianshipId: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const recoveryRequest = recoveryRequests.find((req) => req.id === requestId);
-      const custodianship = custodianships.find((c) => c.id === custodianshipId);
-      const identityPublicKey =
-        custodianship?.identityPublicKey || recoveryRequest?.requestingDid || '';
-
-      if (!recoveryRequest && !custodianship) {
-        throw new Error('Recovery request not found');
-      }
-
-      const cred = (await import('./services/recoveryCredentialStorage')).getCustodianshipCredential(
-        identityPublicKey,
-        custodianshipId.replace('custodianship-', '')
-      ) || (await import('./services/recoveryCredentialStorage')).getCustodianshipCredential(
-        identityPublicKey,
-        custodianship?.identityId || ''
-      );
-
-      const custodianId = cred?.custodianId || custodianshipId.replace('custodianship-', '');
-      const custodianPasscode = cred?.custodianPasscode || '';
-
-      const { approveRecoveryWithZkp } = await import('./components/recovery/useRecoveryHandlers');
-      let userPnIdentifier = identityPublicKey;
-      if (apiToken && identityPublicKey) {
-        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-        userPnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(identityPublicKey);
-      }
-
-      let custodianEncryptedIdentity: EncryptedIdentity | undefined;
-      if (authenticatedUser?.id) {
-        const encPartial = await getEncryptedIdentityForApiToken(authenticatedUser.publicKey || authenticatedUser.id);
-        if (encPartial) {
-          custodianEncryptedIdentity = {
-            publicKey: authenticatedUser.publicKey || authenticatedUser.id,
-            encryptedData: encPartial.encryptedData,
-            iv: encPartial.iv,
-            salt: encPartial.salt
-          };
-        }
-      }
-
-      const { stored, thresholdMet } = await approveRecoveryWithZkp({
-        requestId,
-        custodianId,
-        identityPublicKey,
-        custodianPasscode,
-        threshold: recoveryThreshold,
-        authToken: apiToken || undefined,
-        userPnIdentifier,
-        custodianIdentityId: authenticatedUser?.id,
-        custodianEncryptedIdentity
-      });
-
-      setRecoveryRequests((prev) =>
-        prev.map((req) =>
-          req.id === requestId
-            ? {
-                ...req,
-                approvals: [...req.approvals, custodianId],
-                proofs: [...(req.proofs || []), custodianId],
-                signatures: [...req.signatures, custodianId]
-              }
-            : req
-        )
-      );
-
-      if (thresholdMet) {
-        const envelopeRaw = sessionStorage.getItem(`pn_recovery_envelope_${requestId}`);
-        const identityRaw = sessionStorage.getItem(`pn_recovery_identity_${requestId}`);
-        if (envelopeRaw && identityRaw && apiToken) {
-          const { fetchSharesAfterThreshold } = await import('./components/recovery/useRecoveryHandlers');
-          const shares = await fetchSharesAfterThreshold({
-            userPnIdentifier,
-            authToken: apiToken,
-            requestId,
-            identityPublicKey
-          });
-          setPendingRecoveryCompletion({
-            requestId,
-            envelope: JSON.parse(envelopeRaw),
-            existingIdentity: JSON.parse(identityRaw),
-            shares
-          });
-          setShowRecoveryPasscodeModal(true);
-        } else {
-          setSuccessWithTimeout('Threshold met. Open recovery on the device with your .pn file to set a new passcode.');
-        }
-      } else {
-        setSuccessWithTimeout('Recovery authorization submitted. Waiting for more custodians…');
-        setTimeout(() => setSuccessWithTimeout(null), 5000);
-      }
-    } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : 'Recovery approval failed');
-      setTimeout(() => setError(null), 9000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleInitiateRecoveryFromPn = async (file: File, claimantName: string, emailOrPhone: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const { initiateRecoveryFromPnFile } = await import('./components/recovery/useRecoveryHandlers');
-      const req = await initiateRecoveryFromPnFile({
-        file,
-        claimantName,
-        emailOrPhone,
-        threshold: recoveryThreshold,
-        authToken: apiToken
-      });
-      setRecoveryRequests((prev) => [
-        ...prev,
-        {
-          id: req.id,
-          requestingDid: req.publicKey,
-          requestingUser: claimantName,
-          timestamp: new Date().toISOString(),
-          status: 'pending',
-          approvals: [],
-          denials: [],
-          signatures: [],
-          proofs: [],
-          expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
-          requiredApprovals: recoveryThreshold,
-          currentApprovals: 0,
-          oldIdentityHash: req.publicKey,
-          claimantContactValue: emailOrPhone
-        }
-      ]);
-      setShowRecoveryModal(false);
-      setSuccessWithTimeout('Recovery started. Custodians will submit authorization proofs.');
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-    } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : 'Failed to start recovery');
-      setTimeout(() => setError(null), 9000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRecoveryPasscodeSubmit = async (newPasscode: string) => {
-    if (!pendingRecoveryCompletion) return;
-    setLoading(true);
-    try {
-      const result = await completeRecoveryWithShares({
-        envelope: pendingRecoveryCompletion.envelope,
-        shares: pendingRecoveryCompletion.shares,
-        newPasscode,
-        existingIdentity: pendingRecoveryCompletion.existingIdentity
-      });
-
-      const simpleStorage = (await import('./utils/simpleStorage')).SimpleStorage.getInstance();
-      const { PNNameHash } = await import('./utils/security/pnNameHash');
-      const pnNameHash = await PNNameHash.getLookupKey(result.pnName);
-      await simpleStorage.storeIdentity({
-        id: result.identity.publicKey,
-        nickname: result.pnName,
-        pnNameHash,
-        publicKey: result.identity.publicKey,
-        encryptedData: result.identity,
-        createdAt: new Date().toISOString(),
-        lastAccessed: new Date().toISOString()
-      });
-
-      const authSession = await IdentityCrypto.authenticateIdentity(
-        result.identity,
-        newPasscode,
-        result.pnName
-      );
-      setAuthenticatedUser(authSession);
-      setRecoveredIdentityExport(result.identity);
-      setShowRecoveryPasscodeModal(false);
-      setPendingRecoveryCompletion(null);
-      setRecoveredDID({
-        id: authSession.id,
-        pnName: result.pnName,
-        nickname: authSession.nickname || result.pnName,
-        email: '',
-        phone: '',
-        recoveryEmail: '',
-        recoveryPhone: '',
-        createdAt: new Date().toISOString(),
-        status: 'active',
-        custodiansRequired: true,
-        custodiansSetup: true,
-        isEncrypted: true,
-        displayName: authSession.nickname || result.pnName,
-        publicKey: result.identity.publicKey
-      });
-      setShowRecoveryCompleteModal(true);
-      setSuccessWithTimeout('Recovery complete. Download your updated .pn file and reconnect Google Drive.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Recovery denial handler (currently unused but available for future use)
-  const handleDenyRecovery = (requestId: string, custodianId: string) => {
-    setRecoveryRequests(prev => {
-      const updatedRequests = prev.map(req => 
-        req.id === requestId 
-          ? { ...req, denials: [...req.denials, custodianId] }
-          : req
-      );
-      
-      // Check if enough denials to reject the recovery
-      const updatedRequest = updatedRequests.find(req => req.id === requestId);
-      if (updatedRequest && updatedRequest.denials.length >= recoveryThreshold) {
-        // Recovery denied - update status
-        const finalUpdatedRequests = updatedRequests.map(req => 
-          req.id === requestId 
-            ? { ...req, status: 'denied' as const }
-            : req
-        );
-        return finalUpdatedRequests;
-      }
-      
-      return updatedRequests;
-    });
-    
-    setSuccessWithTimeout('Recovery denied.');
-    setTimeout(() => setSuccessWithTimeout(null), 5000);
-  };
-
-  const handleGenerateRecoveryKey = async (purpose: RecoveryKey['purpose'], description?: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Initialize storage if not already done
-      await storage.init();
-
-      // Generate a cryptographically secure recovery key
-      const keyData = await IdentityCrypto.generateRecoveryKey(
-        authenticatedUser?.id || 'unknown',
-        purpose
-      );
-      
-      const recoveryKey: RecoveryKey = {
-        id: `key-${Date.now()}`,
-        identityId: authenticatedUser?.id || selectedDID?.id || 'unknown',
-        keyData,
-        createdAt: new Date().toISOString(),
-        purpose,
-        description
-      };
-
-      setRecoveryKeys(prev => [...prev, recoveryKey]);
-      setShowRecoveryKeyModal(false);
-
-      // Store recovery key update in cloud database for cross-platform sync
-      try {
-        await cloudSyncManager.initialize();
-        await cloudSyncManager.storeUpdate({
-          type: 'recovery-key',
-          identityId: authenticatedUser?.id || selectedDID?.id || 'unknown',
-          publicKey: authenticatedUser?.publicKey || '',
-          data: {
-            action: 'generate',
-            recoveryKey
-          },
-          updatedByDeviceId: currentDevice?.id || generateDeviceFingerprint()
-        });
-        logDebug('Recovery key update stored in cloud database for cross-platform sync');
-      } catch (error) {
-                  logError('Failed to store recovery key update in cloud:', error);
-        // Don't fail the entire operation if cloud sync fails
-      }
-
-      setSuccessWithTimeout('Recovery key generated successfully! Download and store it securely. Changes will sync across platforms.');
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-    } catch (error: any) {
-      setError(error.message || 'Failed to generate recovery key');
-      setTimeout(() => setError(null), 9000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDownloadRecoveryKey = (keyId: string) => {
-    const key = recoveryKeys.find(k => k.id === keyId);
-    if (!key) return;
-
-    const keyData = {
-      recoveryKey: key.keyData,
-      identityId: key.identityId,
-      purpose: key.purpose,
-      description: key.description,
-      createdAt: key.createdAt,
-      instructions: `
-        RECOVERY KEY INSTRUCTIONS:
-        
-        This recovery key is for triggering the recovery system for your Identity Protocol ID.
-        It does NOT unlock your identity directly - it only initiates the recovery process.
-        
-        To use this key:
-        1. Go to the Identity Protocol dashboard
-        2. Click "Recover Access"
-        3. Enter your recovery key
-        4. Your custodians will be notified to approve the recovery
-        
-        Store this key securely:
-        - Keep it in a safe location
-        - Consider giving copies to trusted individuals
-        - You can provide this to legal entities (will, insurance, etc.)
-        
-        Purpose: ${key.purpose}
-        Description: ${key.description || 'No description provided'}
-        Created: ${key.createdAt}
-      `
-    };
-
-    const blob = new Blob([JSON.stringify(keyData, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-    a.download = `recovery-key-${key.purpose}-${key.id}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-    setSuccessWithTimeout('Recovery key downloaded successfully!');
-    setTimeout(() => setSuccessWithTimeout(null), 5000);
-  };
-
-  const handleInitiateRecoveryWithKey = async (recoveryKey: string, contactInfo: {
-    contactType: 'email' | 'phone';
-    contactValue: string;
-    claimantName: string;
-  }) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Validate contact information
-      if (!contactInfo.claimantName.trim() || !contactInfo.contactValue.trim()) {
-        throw new Error('Please provide claimant name and contact information.');
-      }
-
-      // Find the recovery key
-      const key = recoveryKeys.find(k => k.keyData === recoveryKey);
-      if (!key) {
-        throw new Error('Invalid recovery key. Please check and try again.');
-      }
-
-      // Find the associated identity
-      const foundDID = dids.find(did => did.id === key.identityId);
-      if (!foundDID) {
-        throw new Error('Identity not found for this recovery key.');
-      }
-
-      // Create recovery request with claimant details
-      const recoveryRequest: RecoveryRequest = {
-        id: `recovery-${Date.now()}`,
-        requestingDid: foundDID.id,
-        requestingUser: contactInfo.claimantName,
-        timestamp: new Date().toISOString(),
-        status: 'pending',
-        approvals: [],
-        denials: [],
-        signatures: [], // ZK proof signatures will be added here
-        claimantContactType: contactInfo.contactType,
-        claimantContactValue: contactInfo.contactValue
-      };
-
-      setRecoveryRequests(prev => [...prev, recoveryRequest]);
-      setShowRecoveryKeyInputModal(false);
-      setRecoveryKeyInput('');
-      setRecoveryKeyContactInfo({
-        contactType: 'email',
-        contactValue: '',
-        claimantName: ''
-      });
-      setSuccessWithTimeout(`Recovery initiated by ${contactInfo.claimantName}! Notifying custodians...`);
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-    } catch (error: any) {
-      setError(error.message || 'Failed to initiate recovery with key');
-      setTimeout(() => setError(null), 9000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRemoveCustodian = (custodianId: string) => {
-    if (!getRecoveryAuthSession()) {
-      setError(recoveryAuthRequiredMessage());
-      setTimeout(() => setError(null), 9000);
-      return;
-    }
-    if (!canManageCustodians) {
-      setError(deviceAuth.deviceRequiredMessage);
-      setTimeout(() => setError(null), 9000);
-      return;
-    }
-    const vaultRow = recoveryVaultSummary?.custodians.find((c) => c.custodianId === custodianId);
-    if (vaultRow?.unrevokable) {
-      setError('Protected custodians cannot be revoked. Use an alternative pN you control as a protected anchor.');
-      setTimeout(() => setError(null), 9000);
-      return;
-    }
-
-    if (
-      vaultRow
-      && vaultRow.status === 'accepted'
-      && (recoveryVaultSummary?.counts.acceptedUnrevokable ?? 0) < 1
-    ) {
-      const proceed = window.confirm(
-        'Recovery cannot complete without at least one accepted protected custodian. Add and accept a protected custodian (e.g. your own alt pN) before removing operational custodians. Revoke anyway?'
-      );
-      if (!proceed) return;
-    }
-
-    const removedCustodian = custodians.find(c => c.id === custodianId);
-    setCustodians(prev => prev.filter(c => c.id !== custodianId));
-
-    if (removedCustodian && apiToken && recoveryVaultPnId) {
-      void revokeRecoveryCustodian(recoveryVaultPnId, apiToken, custodianId, recoveryThreshold)
-        .then(() => refreshRecoveryVault())
-        .catch((error) => {
-          logError('Failed to revoke custodian on vault:', error);
-        });
-    }
-
-    // Store custodian removal in cloud database for cross-platform sync
-    if (removedCustodian) {
-      cloudSyncManager.initialize().then(() => {
-        return cloudSyncManager.storeUpdate({
-          type: 'custodian',
-          identityId: authenticatedUser?.id || selectedDID?.id || 'temp-identity',
-          publicKey: authenticatedUser?.publicKey || '',
-          data: {
-            action: 'remove',
-            custodianId,
-            custodian: removedCustodian
-          },
-          updatedByDeviceId: currentDevice?.id || generateDeviceFingerprint()
-        });
-      }).then(() => {
-        logDebug('Custodian removal stored in cloud database for cross-platform sync');
-      }).catch((error) => {
-                  logError('Failed to store custodian removal in cloud:', error);
-        // Don't fail the entire operation if cloud sync fails
-      });
-    }
-
-    setSuccessWithTimeout('Custodian removed successfully. Changes will sync across platforms.');
-    setTimeout(() => setSuccessWithTimeout(null), 5000);
   };
 
   // Tool Settings Handlers
@@ -4610,6 +2888,151 @@ This invitation expires in 24 hours.`;
     return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
   };
 
+  const {
+    handleExportData,
+    handleExportAuth,
+    handleDownloadExport,
+    handleExportDeviceBound,
+    handleExportToNfc,
+    handleExportToUsb,
+    handleTransfer,
+    handleTransferSetup
+  } = useExportTransferHandlers({
+    storage,
+    authenticatedUser,
+    selectedDID,
+    recoveryVaultPnId,
+    canExportIdentity,
+    deviceAuth,
+    exportAuthData,
+    setExportAuthData,
+    pendingExportAction,
+    setPendingExportAction,
+    setShowExportAuthModal,
+    setShowExportOptionsModal,
+    setShowExportToUsbModal,
+    setShowExportToNfcModal,
+    setIdentityForUsbExport,
+    setIdentityForNfcExport,
+    setShowTransferSetupModal,
+    transferPasscode,
+    setTransferUrl,
+    setTransferId,
+    setTransferPasscode,
+    setTransferCreated,
+    generateQRCode,
+    setError,
+    showSuccessMessage,
+    logError
+  });
+
+  const {
+    handleNicknameUpdate,
+    handleProfilePictureUpdate,
+    handleUpdateNickname
+  } = useIdentityProfileHandlers({
+    storage,
+    authenticatedUser,
+    setAuthenticatedUser,
+    setDids,
+    selectedDID,
+    setSelectedDID,
+    currentDevice,
+    generateDeviceFingerprint,
+    pwaState,
+    canProfileWrite,
+    deviceAuth,
+    setLoading,
+    setError,
+    setShowNicknameEditor,
+    setShowProfilePictureEditor,
+    showSuccessMessage,
+    showErrorMessage,
+    logDebug,
+    logError
+  });
+
+  const {
+    generateCustodianQRCode,
+    handleContactAction,
+    handleAddCustodian,
+    handleCustodianAcceptance,
+    handleApproveRecovery,
+    handleInitiateRecoveryFromPn,
+    handleRecoveryPasscodeSubmit,
+    handleGenerateRecoveryKey,
+    handleDownloadRecoveryKey,
+    handleInitiateRecoveryWithKey,
+    handleRemoveCustodian,
+    handleDownloadRecoveredPn,
+    handleRecoveryComplete,
+    handleOpenCustodianApprovalModal,
+    handleCustodianInvitationAcceptance
+  } = useRecoveryCustodianHandlers({
+    storage,
+    apiToken,
+    authenticatedUser,
+    setAuthenticatedUser,
+    selectedDID,
+    dids,
+    recoveryVaultPnId,
+    recoveryVaultSummary,
+    refreshRecoveryVault,
+    getEncryptedIdentityForApiToken,
+    canManageCustodians,
+    canExportIdentity,
+    deviceAuth,
+    recoveryThreshold,
+    custodians,
+    setCustodians,
+    recoveryRequests,
+    setRecoveryRequests,
+    recoveryKeys,
+    setRecoveryKeys,
+    custodianships,
+    setCustodianships,
+    custodianContactInfo,
+    setCustodianContactInfo,
+    setCustodianQRCode,
+    selectedCustodianForInvitation,
+    custodianAcceptanceData,
+    setCustodianAcceptanceData,
+    pendingCustodianInvitationData,
+    setPendingCustodianInvitationData,
+    setShowCustodianAcceptanceModal,
+    setShowCustodianInvitationModal,
+    setPendingCustodianInvitation,
+    setShowAddCustodianModal,
+    setShowRecoveryModal,
+    setShowRecoveryKeyModal,
+    setShowRecoveryKeyInputModal,
+    setRecoveryKeyInput,
+    setRecoveryKeyContactInfo,
+    pendingRecoveryCompletion,
+    setPendingRecoveryCompletion,
+    setShowRecoveryPasscodeModal,
+    recoveredIdentityExport,
+    setRecoveredIdentityExport,
+    recoveredDID,
+    setRecoveredDID,
+    setShowRecoveryCompleteModal,
+    setSelectedRecoveryRequest,
+    setSelectedCustodianship,
+    setShowCustodianApprovalModal,
+    currentDevice,
+    setCurrentDevice,
+    generateDeviceFingerprint,
+    generateSyncKey,
+    setLicenseKey,
+    setLicenseInfo,
+    setLicenseProof,
+    setLoading,
+    setError,
+    setSuccessWithTimeout,
+    logDebug,
+    logError
+  });
+
 
 
 
@@ -4862,249 +3285,6 @@ This invitation expires in 24 hours.`;
 
 
     
-
-  const handleDownloadRecoveredPn = () => {
-    if (!recoveredIdentityExport) return;
-    if (!canExportIdentity) {
-      setError(deviceAuth.deviceRequiredMessage);
-      setTimeout(() => setError(null), 9000);
-      return;
-    }
-    const blob = new Blob([JSON.stringify(recoveredIdentityExport, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'recovered-identity.pn';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Handle recovery completion with automatic license transfer
-  const handleRecoveryComplete = async (recovered: { nickname: string }) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      if (!authenticatedUser?.id) {
-        setAuthenticatedUser({
-          id: recoveredDID?.id || `recovered-${Date.now()}`,
-          nickname: recovered.nickname,
-          accessToken: `recovered-token-${Date.now()}`,
-          expiresIn: 3600,
-          authenticatedAt: new Date().toISOString(),
-          publicKey: recoveredDID?.id || ''
-        });
-      }
-
-      // Create a new primary device for the recovered identity
-      const recoveredPrimaryDevice: SyncedDevice = {
-        id: `recovered-primary-${Date.now()}`,
-        name: `${navigator.platform} - ${navigator.userAgent.split(' ').pop()?.split('/')[0] || 'Unknown'}`,
-        type: 'desktop', // Default to desktop, could be enhanced with better detection
-        lastSync: new Date().toISOString(),
-        status: 'active',
-        location: 'Recovered Location',
-        ipAddress: 'Recovered IP',
-        isPrimary: true, // This becomes the new primary device
-        deviceFingerprint: generateDeviceFingerprint(),
-        syncKey: generateSyncKey(),
-        pairedAt: new Date().toISOString()
-      };
-      
-      setCurrentDevice(recoveredPrimaryDevice);
-      
-      // Update recovery request status
-      setRecoveryRequests(prev => prev.map(req => 
-        req.requestingDid === (recoveredDID?.id || authenticatedUser?.publicKey)
-          ? { ...req, status: 'approved' as const }
-          : req
-      ));
-
-      // AUTOMATIC LICENSE TRANSFER - Transfer all licenses from old identity to new identity
-      try {
-        if (!recoveredDID) {
-          throw new Error('Recovered identity details are unavailable');
-        }
-        // Find the old identity hash (from the recovery request)
-        const recoveryRequest = recoveryRequests.find(req => req.requestingDid === recoveredDID.id);
-        if (recoveryRequest) {
-          // Get the old identity hash (in real implementation, this would be extracted from recovery data)
-          const oldIdentityHash = recoveryRequest.oldIdentityHash || `old-${recoveredDID.id}`;
-          const newIdentityHash = recoveredDID.id;
-
-          // Transfer all licenses automatically
-          const transferredLicenses = await LicenseVerification.transferLicense(oldIdentityHash, newIdentityHash);
-          
-          if (transferredLicenses) {
-            // Update license info in the UI
-            setLicenseKey(transferredLicenses.licenseKey);
-            setLicenseInfo(transferredLicenses);
-
-            // Generate new ZK proof for the transferred license
-            const newLicenseProof = await LicenseVerification.generateLicenseProof(transferredLicenses, {});
-            setLicenseProof(newLicenseProof);
-
-            // Store license transfer in cloud database for cross-platform sync
-            try {
-              await cloudSyncManager.initialize();
-              await cloudSyncManager.storeUpdate({
-                type: 'license-transfer',
-                identityId: recoveredDID.id,
-                publicKey: authenticatedUser?.publicKey || '',
-                data: {
-                  action: 'transfer',
-                  oldIdentityHash,
-                  newIdentityHash,
-                  transferredLicense: transferredLicenses
-                },
-                updatedByDeviceId: currentDevice?.id || generateDeviceFingerprint()
-              });
-              logDebug('License transfer stored in cloud database for cross-platform sync');
-            } catch (error) {
-              logError('Failed to store license transfer in cloud:', error);
-              // Don't fail the entire operation if cloud sync fails
-            }
-
-            setSuccessWithTimeout('Identity recovered successfully with automatic license transfer! This device is now your primary device.');
-          } else {
-            setSuccessWithTimeout('Identity recovered successfully! This device is now your primary device.');
-          }
-        } else {
-          setSuccessWithTimeout('Identity recovered successfully! This device is now your primary device.');
-        }
-      } catch (licenseError: any) {
-        // Log license transfer error but don't fail the recovery
-        logError('License transfer failed during recovery:', licenseError);
-        setSuccessWithTimeout('Identity recovered successfully! License transfer will be completed separately.');
-      }
-
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-    } catch (error: any) {
-      setError(error.message || 'Failed to complete recovery');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle opening custodian approval modal
-  const handleOpenCustodianApprovalModal = (custodianship: {
-    id: string;
-    identityId: string;
-    identityName: string;
-    identityUsername: string;
-    identityPublicKey?: string;
-    status: 'active' | 'pending';
-    canApprove: boolean;
-  }) => {
-    const pk = custodianship.identityPublicKey || custodianship.identityId;
-    const pendingRequest = recoveryRequests.find(
-      (r) => (r.requestingDid === pk || r.requestingDid === custodianship.identityId) && r.status === 'pending'
-    );
-    if (pendingRequest && custodianship.canApprove) {
-      setSelectedRecoveryRequest(pendingRequest);
-      setSelectedCustodianship(custodianship);
-      setShowCustodianApprovalModal(true);
-    }
-  };
-
-  // Handle custodian invitation acceptance
-  const handleCustodianInvitationAcceptance = async (invitationData: {
-    invitationId: string;
-    custodianName: string;
-    custodianType: 'self-recovery' | 'person' | 'service';
-    contactType: 'email' | 'phone';
-    contactValue: string;
-    identityName: string;
-    identityUsername: string;
-  }) => {
-    try {
-      // Check if user is authenticated
-      if (!authenticatedUser) {
-        setError('You must unlock your identity first to accept custodianship');
-        setTimeout(() => setError(null), 9000);
-        return;
-      }
-
-      // Create new custodianship
-      const newCustodianship = {
-        id: `custodianship-${Date.now()}`,
-        identityId: invitationData.invitationId.split('-')[0], // Extract identity ID from invitation
-        identityName: invitationData.identityName,
-        identityUsername: invitationData.identityUsername,
-        status: 'active' as const,
-        canApprove: true
-      };
-
-      // Add to custodianships
-      setCustodianships(prev => [...prev, newCustodianship]);
-
-      // Update custodian status on the identity owner's side (in real app, this would be a server call)
-      // For now, we'll simulate this by updating the local state
-      setSuccessWithTimeout(`Custodianship accepted! You are now a custodian for ${invitationData.identityName}`);
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-
-      // Close the invitation modal
-      setShowCustodianInvitationModal(false);
-      setPendingCustodianInvitation(null);
-
-    } catch (error: any) {
-      setError(error.message || 'Failed to accept custodianship');
-      setTimeout(() => setError(null), 9000);
-    }
-  };
-
-  // Handle custodian invitation QR code acceptance
-  // @ts-ignore
-  // Custodian invitation QR code handler (currently unused but available for future use)
-  const handleCustodianInvitationQRCode = async (qrData: string) => {
-    try {
-      // Parse and validate QR code data
-      const parsedData = await QRCodeManager.parseQRCode(qrData);
-      
-      if (parsedData.type !== 'custodian-invitation') {
-        throw new Error('Invalid QR code type - expected custodian invitation');
-      }
-      
-      const invitationData = parsedData.data;
-      
-      // Validate the invitation hasn't expired
-      if (invitationData.expiresAt && Date.now() > invitationData.expiresAt) {
-        throw new Error('Custodian invitation has expired');
-      }
-      
-      // Create new custodianship
-      const newCustodianship = {
-        id: `custodianship-${Date.now()}`,
-        identityId: invitationData.invitationId,
-        identityName: invitationData.custodianName,
-        identityUsername: invitationData.custodianName.split(' ')[0].toLowerCase(),
-        status: 'active' as const,
-        canApprove: true
-      };
-      
-      // Add to custodianships list
-      setCustodianships(prev => [...prev, newCustodianship]);
-      
-      // Update any existing pending custodians to active
-      setCustodians(prev => prev.map(custodian => 
-        custodian.contactValue === invitationData.contactValue &&
-        custodian.contactType === invitationData.contactType
-          ? { 
-              ...custodian, 
-              status: 'active' as const,
-              canApprove: true,
-              lastVerified: new Date().toISOString()
-            }
-          : custodian
-      ));
-      
-      setSuccessWithTimeout('Custodianship accepted successfully! You can now approve recovery requests for this identity.');
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-    } catch (error: any) {
-      setError(error.message || 'Failed to accept custodian invitation');
-      setTimeout(() => setError(null), 9000);
-    }
-  };
 
   // Note: Success notifications are now managed by showSuccessMessage() function
   // which properly handles timeout management with successTimeoutRef
@@ -5418,137 +3598,6 @@ This invitation expires in 24 hours.`;
       return () => clearTimeout(timer);
     }
   }, [error]);
-
-  /*
-  // Input validation and sanitization using comprehensive framework
-  const sanitizeInput = (input: string): string => {
-    const validation = InputValidator.validateDisplayName(input);
-    return validation.sanitizedValue || input.trim();
-  };
-
-  const validateDisplayName = (name: string): boolean => {
-    const validation = InputValidator.validateDisplayName(name);
-    return validation.isValid;
-  };
-  */
-
-  /*
-  const handleCreateIdentity = async () => {
-    try {
-      if (!newIdentityName.trim()) {
-        setError('Identity name is required');
-        return;
-      }
-
-      const sanitizedName = sanitizeInput(newIdentityName.trim());
-      
-      if (!validateDisplayName(sanitizedName)) {
-        setError('Invalid identity name format');
-        return;
-      }
-
-      if (sanitizedName.length > 50) {
-        setError('Identity name must be 50 characters or less');
-        return;
-      }
-
-      // Check for duplicate names
-      const existingNames = identities.map(id => id.displayName?.toLowerCase() || '');
-      if (existingNames.includes(sanitizedName.toLowerCase())) {
-        setError('An identity with this name already exists');
-        return;
-      }
-
-      setLoading(true);
-      setError('');
-
-      const newIdentity = await identityManager.createIdentity(sanitizedName);
-      
-      if (newIdentity) {
-        setIdentities(prev => [...prev, {
-          id: newIdentity.id || `id-${Date.now()}`,
-          pnName: newIdentity.pnName || 'unknown',
-          nickname: newIdentity.nickname || 'Unknown User',
-          email: '',
-          phone: '',
-          recoveryEmail: '',
-          recoveryPhone: '',
-          createdAt: newIdentity.createdAt || new Date().toISOString(),
-          status: 'active',
-          custodiansRequired: false,
-          custodiansSetup: false,
-          profilePicture: newIdentity.profilePicture
-        }]);
-        setNewIdentityName('');
-        setShowCreateForm(false);
-        setSuccessWithTimeout(`Identity "${sanitizedName}" created successfully!`);
-        
-        // Clear success message after 3 seconds
-        setTimeout(() => setSuccessWithTimeout(null), 3000);
-      }
-    } catch (error) {
-      setError('Failed to create identity. Please try again.');
-      logError('Create identity error:', error);
-    } finally {
-      // setIsLoading(false);
-    }
-  };
-
-  /*
-  const handleUpdateIdentity = async (id: string, newName: string) => {
-    try {
-      if (!newName.trim()) {
-        setError('Identity name is required');
-        return;
-      }
-
-      const sanitizedName = sanitizeInput(newName.trim());
-      
-      if (!validateDisplayName(sanitizedName)) {
-        setError('Invalid identity name format');
-        return;
-      }
-
-      if (sanitizedName.length > 50) {
-        setError('Identity name must be 50 characters or less');
-        return;
-      }
-
-      // Check for duplicate names (excluding current identity)
-      const existingNames = identities
-        .filter(identity => identity.id !== id)
-        .map(identity => identity.displayName?.toLowerCase() || '');
-      
-      if (existingNames.includes(sanitizedName.toLowerCase())) {
-        setError('An identity with this name already exists');
-        return;
-      }
-
-      // setIsLoading(true);
-      setError('');
-
-      const updatedIdentity = await identityManager.updateIdentity(id, sanitizedName);
-      
-      if (updatedIdentity) {
-        setIdentities(prev => 
-          prev.map(identity => 
-            identity.id === id ? { ...identity, displayName: sanitizedName } : identity
-          )
-        );
-        // setEditingId(null);
-        // setSuccessMessage(`Identity renamed to "${sanitizedName}" successfully!`);
-        
-        // Clear success message after 3 seconds
-        // setTimeout(() => setSuccessMessage(''), 3000);
-      }
-    } catch (error) {
-      setError('Failed to update identity. Please try again.');
-      logError('Edit identity error:', error);
-    } finally {
-      // setIsLoading(false);
-    }
-  };
-  */
 
   useEffect(() => {
     logDebug('PWA State:', pwaState);

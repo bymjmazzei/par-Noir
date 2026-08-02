@@ -85,6 +85,7 @@ export interface CustodianInvitationForm {
   contactValue: string;
   type: 'person' | 'service' | 'self';
   passcode: string;
+  unrevokable?: boolean;
 }
 
 export interface DeviceSyncData {
