@@ -5523,22 +5523,15 @@ section:nth-child(odd) {
 }
 
 .layer-band-5 {
-  width: 88%;
-  margin-left: auto;
-  margin-right: auto;
-  opacity: 0.88;
+  width: 100%;
 }
 
 .layer-band-4 {
-  width: 92%;
-  margin-left: auto;
-  margin-right: auto;
+  width: 100%;
 }
 
 .layer-band-3 {
-  width: 96%;
-  margin-left: auto;
-  margin-right: auto;
+  width: 100%;
 }
 
 .layer-band-2 {
@@ -5550,7 +5543,7 @@ section:nth-child(odd) {
   padding: 1.45rem 1.35rem;
   border-width: 1px;
   border-color: rgba(255, 255, 255, 0.55);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.04) 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 12px 40px rgba(0, 0, 0, 0.35);
 }
 
@@ -5565,14 +5558,6 @@ section:nth-child(odd) {
   font-size: 0.9rem;
   font-weight: 300;
   letter-spacing: 0.03em;
-}
-
-@media (max-width: 600px) {
-  .layer-band-5,
-  .layer-band-4,
-  .layer-band-3 {
-    width: 100%;
-  }
 }
 
 .eco-piece {
