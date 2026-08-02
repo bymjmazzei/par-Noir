@@ -5382,12 +5382,23 @@ section:nth-child(odd) {
   padding-top: 2rem;
 }
 
-.compare-list {
-  /* Fixed to expanded width so collapse only changes height, not width */
-  width: min(100%, 760px);
+.why-section .container {
+  /* Override global .container align-items:center so children can take full width */
+  align-items: stretch;
+}
+
+.why-section .section-header {
+  width: 100%;
   max-width: 760px;
-  flex: 0 0 auto;
-  align-self: center;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
+
+.compare-list {
+  /* Always the expanded width; collapse only changes height */
+  width: 100%;
+  max-width: 760px;
   margin-left: auto;
   margin-right: auto;
   display: flex;
@@ -5398,7 +5409,10 @@ section:nth-child(odd) {
 }
 
 .compare-item {
+  display: block;
   width: 100%;
+  min-width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--border-glow);
   border-radius: 12px;
