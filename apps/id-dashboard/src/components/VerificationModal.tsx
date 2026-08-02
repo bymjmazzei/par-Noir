@@ -189,7 +189,7 @@ export const VerificationModal: React.FC<VerificationModalProps> = ({
                 <button
                   onClick={handleRequestVerification}
                   disabled={loading}
-                  className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/80 disabled:opacity-50 font-medium transition-colors border border-primary"
+                  className="px-4 py-2 bg-primary text-bg-primary rounded-md hover:bg-primary/80 disabled:opacity-50 font-medium transition-colors border border-primary"
                 >
                   {loading ? 'Sending...' : 'Send Verification Code'}
                 </button>
@@ -252,7 +252,7 @@ export const VerificationModal: React.FC<VerificationModalProps> = ({
                   <button
                     onClick={handleVerifyCode}
                     disabled={loading || !verificationCode.trim()}
-                    className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/80 disabled:opacity-50 font-medium transition-colors border border-primary"
+                    className="px-4 py-2 bg-primary text-bg-primary rounded-md hover:bg-primary/80 disabled:opacity-50 font-medium transition-colors border border-primary"
                   >
                     {loading ? 'Verifying...' : 'Verify Code'}
                   </button>

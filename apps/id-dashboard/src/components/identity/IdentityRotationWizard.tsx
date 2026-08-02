@@ -302,7 +302,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
       {step === 'intro' && (
         <button
           type="button"
-          className="px-4 py-2 bg-primary text-white rounded-lg text-sm"
+          className="px-4 py-2 bg-primary text-bg-primary rounded-lg text-sm"
           onClick={handleStart}
         >
           Start rotation
@@ -333,7 +333,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
             className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
             autoComplete="off"
           />
-          <button type="button" className="px-4 py-2 bg-primary text-white rounded-lg text-sm" onClick={handleUnlockOld}>
+          <button type="button" className="px-4 py-2 bg-primary text-bg-primary rounded-lg text-sm" onClick={handleUnlockOld}>
             Continue
           </button>
         </div>
@@ -367,7 +367,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
             className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
             autoComplete="new-password"
           />
-          <button type="button" className="px-4 py-2 bg-primary text-white rounded-lg text-sm" onClick={handleMigrate}>
+          <button type="button" className="px-4 py-2 bg-primary text-bg-primary rounded-lg text-sm" onClick={handleMigrate}>
             Run migration
           </button>
         </div>
@@ -399,7 +399,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
           </ul>
           <button
             type="button"
-            className="px-4 py-2 bg-primary text-white rounded-lg text-sm"
+            className="px-4 py-2 bg-primary text-bg-primary rounded-lg text-sm"
             onClick={() => {
               void (async () => {
                 try {
@@ -480,7 +480,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
           </label>
           <button
             type="button"
-            className="px-4 py-2 bg-primary text-white rounded-lg text-sm disabled:opacity-50"
+            className="px-4 py-2 bg-primary text-bg-primary rounded-lg text-sm disabled:opacity-50"
             disabled={!subsBackupAck}
             onClick={() => {
               onComplete?.(resultIdentity!);
@@ -497,7 +497,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
           <p className="text-sm text-green-600">
             Migration complete. Download your new .pn file and unlock with the new passcode.
           </p>
-          <button type="button" className="px-4 py-2 bg-primary text-white rounded-lg text-sm" onClick={downloadNewPn}>
+          <button type="button" className="px-4 py-2 bg-primary text-bg-primary rounded-lg text-sm" onClick={downloadNewPn}>
             Download new .pn
           </button>
         </div>

@@ -67,7 +67,7 @@ export const WizardStepContent: React.FC<WizardStepContentProps> = ({
           <button
             onClick={onStepAction}
             disabled={!nickname.trim()}
-            className="w-full bg-blue-600 dark:bg-primary text-white py-2 px-4 rounded-md hover:bg-blue-700 dark:hover:bg-primary-dark disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+            className="w-full bg-primary text-bg-primary py-2 px-4 rounded-md hover:bg-hover disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
           >
             Set Nickname
           </button>

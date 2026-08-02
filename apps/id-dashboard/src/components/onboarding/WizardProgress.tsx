@@ -30,7 +30,7 @@ export const WizardProgress: React.FC<WizardProgressProps> = ({
             <div
               className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-medium flex-shrink-0 ${
                 index <= currentStep
-                  ? 'bg-blue-600 dark:bg-primary text-white'
+                  ? 'bg-primary text-bg-primary'
                   : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
               }`}
             >

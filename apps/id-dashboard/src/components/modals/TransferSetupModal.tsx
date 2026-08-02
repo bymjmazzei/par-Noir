@@ -79,7 +79,7 @@ export function TransferSetupModal({
               <button
                 onClick={onTransferSetup}
                 disabled={!transferPasscode || transferPasscode.length < 4}
-                className="flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-2 bg-primary text-bg-primary rounded-md hover:bg-hover disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Create Transfer
               </button>
@@ -120,7 +120,7 @@ export function TransferSetupModal({
             <div className="flex space-x-3 pt-4">
               <button
                 onClick={onCopyUrl}
-                className="flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
+                className="flex-1 px-4 py-2 bg-primary text-bg-primary rounded-md hover:bg-hover"
               >
                 Copy URL
               </button>

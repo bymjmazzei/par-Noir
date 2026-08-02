@@ -491,7 +491,7 @@ export const ProfilePictureEditor: React.FC<ProfilePictureEditorProps> = ({
               onClick={() => setInputMethod('emoji')}
               className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors border-2 ${
                 inputMethod === 'emoji'
-                  ? 'bg-blue-600 dark:bg-primary text-white border-green-500'
+                  ? 'bg-primary text-bg-primary border-green-500'
                   : 'bg-gray-100 dark:bg-secondary text-gray-700 dark:text-text-primary hover:bg-gray-200 dark:hover:bg-border border-transparent'
               }`}
             >
@@ -502,7 +502,7 @@ export const ProfilePictureEditor: React.FC<ProfilePictureEditorProps> = ({
               onClick={() => setInputMethod('url')}
               className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors border-2 ${
                 inputMethod === 'url'
-                  ? 'bg-blue-600 dark:bg-primary text-white border-green-500'
+                  ? 'bg-primary text-bg-primary border-green-500'
                   : 'bg-gray-100 dark:bg-secondary text-gray-700 dark:text-text-primary hover:bg-gray-200 dark:hover:bg-border border-transparent'
               }`}
             >
@@ -513,7 +513,7 @@ export const ProfilePictureEditor: React.FC<ProfilePictureEditorProps> = ({
               onClick={() => setInputMethod('file')}
               className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors border-2 ${
                 inputMethod === 'file'
-                  ? 'bg-blue-600 dark:bg-primary text-white border-green-500'
+                  ? 'bg-primary text-bg-primary border-green-500'
                   : 'bg-gray-100 dark:bg-secondary text-gray-700 dark:text-text-primary hover:bg-gray-200 dark:hover:bg-border border-transparent'
               }`}
             >
@@ -687,7 +687,7 @@ export const ProfilePictureEditor: React.FC<ProfilePictureEditorProps> = ({
               (inputMethod === 'emoji' && !selectedEmoji) ||
               (inputMethod === 'url' && !pictureUrl.trim()) || 
               (inputMethod === 'file' && !uploadedFile)}
-            className="flex-1 px-4 py-2 bg-blue-600 dark:bg-primary text-white rounded-lg hover:bg-blue-700 dark:hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 px-4 py-2 bg-primary text-bg-primary rounded-lg hover:bg-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? 'Saving...' : 'Save'}
           </button>

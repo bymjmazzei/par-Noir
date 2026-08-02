@@ -166,7 +166,7 @@ export const BiometricSetup: React.FC<BiometricSetupProps> = ({
             <button
               onClick={handleSetupBiometric}
               disabled={isLoading}
-              className="w-full px-4 py-3 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              className="w-full px-4 py-3 bg-primary text-bg-primary rounded-lg hover:bg-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
               {isLoading ? 'Setting up...' : `Set Up ${getBiometricName()}`}
             </button>

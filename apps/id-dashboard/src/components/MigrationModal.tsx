@@ -199,7 +199,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
               <button
                 onClick={handleMigrate}
                 disabled={selectedIdentities.length === 0}
-                className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-2 bg-primary text-bg-primary rounded-lg hover:bg-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Migrate {selectedIdentities.length} pN(s)
               </button>
@@ -289,7 +289,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
             <div className="flex justify-center">
               <button
                 onClick={handleClose}
-                className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
+                className="px-6 py-2 bg-primary text-bg-primary rounded-lg hover:bg-hover transition-colors"
               >
                 {migrationResult.success ? 'Continue to Dashboard' : 'Close'}
               </button>

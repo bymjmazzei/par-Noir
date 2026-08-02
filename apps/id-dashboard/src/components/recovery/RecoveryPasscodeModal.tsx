@@ -76,7 +76,7 @@ export function RecoveryPasscodeModal({
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded disabled:opacity-50"
+              className="flex-1 px-4 py-2 bg-primary text-bg-primary rounded disabled:opacity-50"
             >
               {loading ? 'Recovering…' : 'Complete recovery'}
             </button>

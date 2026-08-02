@@ -221,6 +221,25 @@ body {
   color: var(--text-primary) !important;
 }
 
+/*
+ * Primary filled CTAs: in dark theme --primary is #ffffff.
+ * Force foreground to --bg-primary so text/icons stay visible
+ * even when a component forgets text-bg-primary.
+ */
+button.bg-primary,
+a.bg-primary,
+[role="button"].bg-primary,
+.btn-primary {
+  color: var(--bg-primary) !important;
+}
+button.bg-primary svg,
+a.bg-primary svg,
+[role="button"].bg-primary svg,
+.btn-primary svg {
+  color: inherit;
+  stroke: currentColor;
+}
+
 /* Theme-aware placeholder */
 .theme-light input::placeholder,
 .theme-light textarea::placeholder {

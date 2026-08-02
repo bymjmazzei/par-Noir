@@ -149,7 +149,7 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
             <button
               type="button"
               disabled={busyId === req.requestId}
-              className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground disabled:opacity-50"
+              className="px-3 py-1.5 text-xs rounded bg-primary text-bg-primary disabled:opacity-50"
               onClick={() => respond(req.requestId, 'approve')}
             >
               Approve

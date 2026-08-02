@@ -185,7 +185,7 @@ export const MigrationCustodianReinviteStep: React.FC<MigrationCustodianReinvite
         <button
           type="button"
           disabled={busy || !form.name.trim()}
-          className="px-3 py-2 bg-primary text-white rounded text-sm flex items-center gap-2"
+          className="px-3 py-2 bg-primary text-bg-primary rounded text-sm flex items-center gap-2"
           onClick={() => void sendInvitation(form)}
         >
           <Mail className="w-4 h-4" />
@@ -205,7 +205,7 @@ export const MigrationCustodianReinviteStep: React.FC<MigrationCustodianReinvite
       <button
         type="button"
         disabled={!canContinue || busy}
-        className="px-4 py-2 bg-primary text-white rounded-lg text-sm disabled:opacity-50"
+        className="px-4 py-2 bg-primary text-bg-primary rounded-lg text-sm disabled:opacity-50"
         onClick={onComplete}
       >
         Continue ({invitedCount}/{recoveryThreshold} invitations sent)

@@ -115,7 +115,7 @@ export function ExportAuthModal({
             </button>
             <button
               onClick={onAuth}
-              className="flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
+              className="flex-1 px-4 py-2 bg-primary text-bg-primary rounded-md hover:bg-hover"
             >
               Verify
             </button>

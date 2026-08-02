@@ -188,7 +188,7 @@ export const SyncReceiver: React.FC<SyncReceiverProps> = ({ syncCode }) => {
           <p className="text-text-secondary mb-6">{error}</p>
           <button
             onClick={handleBackToApp}
-            className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary-dark transition-colors"
+            className="px-6 py-2 bg-primary text-bg-primary rounded-md hover:bg-hover transition-colors"
           >
             Back to pN App
           </button>
@@ -209,7 +209,7 @@ export const SyncReceiver: React.FC<SyncReceiverProps> = ({ syncCode }) => {
           </p>
           <button
             onClick={handleBackToApp}
-            className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary-dark transition-colors"
+            className="px-6 py-2 bg-primary text-bg-primary rounded-md hover:bg-hover transition-colors"
           >
             Open pN App
           </button>
@@ -268,7 +268,7 @@ export const SyncReceiver: React.FC<SyncReceiverProps> = ({ syncCode }) => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+              className="w-full px-4 py-2 bg-primary text-bg-primary rounded-md hover:bg-hover transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
               <Download className="w-4 h-4" />
               <span>{isLoading ? 'Verifying...' : 'Receive pN File'}</span>

@@ -6534,7 +6534,7 @@ This invitation expires in 24 hours.`;
                       {/* Edit Profile Picture Button for Default Avatar */}
                       <button
                         onClick={() => setShowProfilePictureEditor(true)}
-                        className="absolute -bottom-1 -right-1 w-7 h-7 bg-blue-600 dark:bg-primary text-white rounded-full flex items-center justify-center hover:bg-blue-700 dark:hover:bg-primary-dark transition-colors shadow-lg hover:shadow-xl"
+                        className="absolute -bottom-1 -right-1 w-7 h-7 bg-primary text-bg-primary rounded-full flex items-center justify-center hover:bg-hover transition-colors shadow-lg hover:shadow-xl"
                         title="Edit profile picture"
                       >
                         <Edit3 className="w-3 h-3" />
@@ -6543,7 +6543,7 @@ This invitation expires in 24 hours.`;
                     {/* Edit Profile Picture Button */}
                     <button
                       onClick={() => setShowProfilePictureEditor(true)}
-                      className="absolute -bottom-1 -right-1 w-7 h-7 bg-blue-600 dark:bg-primary text-white rounded-full flex items-center justify-center hover:bg-blue-700 dark:hover:bg-primary-dark transition-colors shadow-lg hover:shadow-xl"
+                      className="absolute -bottom-1 -right-1 w-7 h-7 bg-primary text-bg-primary rounded-full flex items-center justify-center hover:bg-hover transition-colors shadow-lg hover:shadow-xl"
                       title="Edit profile picture"
                     >
                       <Edit3 className="w-3 h-3" />

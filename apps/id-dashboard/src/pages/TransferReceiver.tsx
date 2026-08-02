@@ -184,7 +184,7 @@ const TransferReceiver: React.FC<TransferReceiverProps> = ({ transferId, onClose
         <div className="space-y-4">
           <button
             onClick={() => setShowTransferModal(true)}
-            className="w-full px-4 py-3 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
+            className="w-full px-4 py-3 bg-primary text-bg-primary rounded-lg hover:bg-hover transition-colors"
           >
             Download pN File
           </button>
@@ -272,7 +272,7 @@ const TransferReceiver: React.FC<TransferReceiverProps> = ({ transferId, onClose
                 <button
                   onClick={handleVerifyTransferPasscode}
                   disabled={loading || !transferPasscode}
-                  className="flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-2 bg-primary text-bg-primary rounded-md hover:bg-hover disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? (
                     <div className="flex items-center justify-center">

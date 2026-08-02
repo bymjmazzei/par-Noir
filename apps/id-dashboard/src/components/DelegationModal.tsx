@@ -184,11 +184,11 @@ export const DelegationModal: React.FC<DelegationModalProps> = ({
             <button
               type="submit"
               disabled={loading || !accessToken}
-              className="flex-1 px-4 py-2 bg-primary text-text-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2 bg-primary text-bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                   Creating…
                 </>
               ) : (

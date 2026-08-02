@@ -224,7 +224,7 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
                   type="button"
                   disabled={busy}
                   onClick={() => void onSubscribe()}
-                  className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg bg-primary text-bg-primary text-sm font-medium hover:opacity-90 disabled:opacity-50"
                 >
                   {status.maintenanceActive ? 'Update payment (Checkout)' : 'Subscribe (Stripe Checkout)'}
                 </button>
@@ -277,7 +277,7 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
                   type="button"
                   disabled={busy}
                   onClick={() => void onRequestPayout()}
-                  className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg bg-primary text-bg-primary text-sm font-medium hover:opacity-90 disabled:opacity-50"
                 >
                   Request bounty payout
                 </button>

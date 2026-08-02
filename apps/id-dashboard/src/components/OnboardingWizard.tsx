@@ -356,7 +356,7 @@ You can always return to this wizard or access any feature from the main dashboa
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                     index <= currentStep
-                      ? 'bg-blue-600 dark:bg-primary text-white'
+                      ? 'bg-primary text-bg-primary'
                       : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
                   }`}
                 >
@@ -414,7 +414,7 @@ You can always return to this wizard or access any feature from the main dashboa
                   <button
                     onClick={handleStepAction}
                     disabled={!nickname.trim()}
-                    className="w-full bg-blue-600 dark:bg-primary text-white py-2 px-4 rounded-md hover:bg-blue-700 dark:hover:bg-primary-dark disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+                    className="w-full bg-primary text-bg-primary py-2 px-4 rounded-md hover:bg-hover disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
                   >
                     Set Nickname
                   </button>
@@ -580,7 +580,7 @@ You can always return to this wizard or access any feature from the main dashboa
             
             <button
               onClick={handleNext}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 dark:bg-primary text-white rounded-md hover:bg-blue-700 dark:hover:bg-primary-dark transition-colors"
+              className="flex items-center space-x-2 px-4 py-2 bg-primary text-bg-primary rounded-md hover:bg-hover transition-colors"
             >
               <span>{isLastStep ? 'Finish' : 'Next'}</span>
               {!isLastStep && <ChevronRight className="w-4 h-4" />}

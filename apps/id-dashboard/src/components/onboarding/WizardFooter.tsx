@@ -40,7 +40,7 @@ export const WizardFooter: React.FC<WizardFooterProps> = ({
         
         <button
           onClick={onNext}
-          className="flex items-center space-x-1 sm:space-x-2 px-3 sm:px-4 py-2 bg-blue-600 dark:bg-primary text-white rounded-md hover:bg-blue-700 dark:hover:bg-primary-dark transition-colors text-sm sm:text-base"
+          className="flex items-center space-x-1 sm:space-x-2 px-3 sm:px-4 py-2 bg-primary text-bg-primary rounded-md hover:bg-hover transition-colors text-sm sm:text-base"
         >
           <span>{isLastStep ? 'Finish' : 'Next'}</span>
           {!isLastStep && <ChevronRight className="w-4 h-4" />}
