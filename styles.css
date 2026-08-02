@@ -5463,6 +5463,118 @@ section:nth-child(odd) {
   flex-wrap: wrap;
 }
 
+/* Ecosystem layer stack graphic */
+.layer-stack {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto 3rem;
+  padding: 0;
+}
+
+.layer-stack-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.layer-band {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
+  text-align: left;
+  padding: 1.1rem 1.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  position: relative;
+  transition: border-color 0.25s ease, background 0.25s ease, transform 0.25s ease;
+}
+
+.layer-band:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.layer-band-label {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.layer-band-desc {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  line-height: 1.45;
+}
+
+.layer-band-kicker {
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.layer-band-5 {
+  width: 88%;
+  margin-left: auto;
+  margin-right: auto;
+  opacity: 0.88;
+}
+
+.layer-band-4 {
+  width: 92%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.layer-band-3 {
+  width: 96%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.layer-band-2 {
+  width: 100%;
+}
+
+.layer-band-1 {
+  width: 100%;
+  padding: 1.45rem 1.35rem;
+  border-width: 1px;
+  border-color: rgba(255, 255, 255, 0.55);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.04) 100%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.layer-band-1 .layer-band-label {
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.layer-stack-caption {
+  margin-top: 1.25rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 300;
+  letter-spacing: 0.03em;
+}
+
+@media (max-width: 600px) {
+  .layer-band-5,
+  .layer-band-4,
+  .layer-band-3 {
+    width: 100%;
+  }
+}
+
 .eco-piece {
   flex: 1 1 220px;
   background: rgba(255, 255, 255, 0.03);
