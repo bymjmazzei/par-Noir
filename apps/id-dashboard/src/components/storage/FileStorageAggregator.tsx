@@ -2428,7 +2428,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             : resolveIdentifiersForEmail(email);
 
           try {
-            await upsertDriveAccount({
+            const backend = await upsertDriveAccount({
               backendId: identifiers.backendId,
               keyPrefix: identifiers.keyPrefix,
               token,
@@ -2437,6 +2437,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               connectedAt: account?.connectedAt,
               updatedAt: account?.updatedAt
             });
+            // Hydrated access tokens are often stale — refresh before Drive calls.
+            if (backend && typeof (backend as GoogleDriveBackend).ensureAccessToken === 'function') {
+              await (backend as GoogleDriveBackend).ensureAccessToken();
+            }
           } catch (upsertError) {
             console.warn('⚠️ [StorageCredentials] Failed to reconnect Google Drive account from API payload', {
               email,
@@ -2725,6 +2729,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
           if (backend) {
             try {
+              if (typeof (backend as GoogleDriveBackend).ensureAccessToken === 'function') {
+                await (backend as GoogleDriveBackend).ensureAccessToken();
+              }
               await loadFiles();
             } catch (loadErr) {
               console.warn('⚠️ [loadTokenFromMetadata] Failed to load files for restored account', loadErr);

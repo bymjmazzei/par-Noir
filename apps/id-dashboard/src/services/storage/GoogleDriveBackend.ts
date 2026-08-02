@@ -23,6 +23,8 @@ export interface DriveInventoryItem {
 export class GoogleDriveBackend extends AbstractStorageBackend {
   private token: string | null = null;
   private refreshToken: string | null = null;
+  /** Epoch ms when access token should be treated as expired (with skew). */
+  private tokenExpiresAt: number | null = null;
   private userEmail: string | null = null;
   private parNoirFolderId: string | null = null;
   private pnFolderCache: Map<string, string> = new Map(); // Cache pN-specific folders
@@ -139,10 +141,15 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     }
   }
 
-  async connect(credentials: { token: string; email?: string; refreshToken?: string; sessionId?: string }): Promise<void> {
+  async connect(credentials: { token: string; email?: string; refreshToken?: string; sessionId?: string; expiresAt?: number }): Promise<void> {
     this.token = credentials.token;
     this.refreshToken = credentials.refreshToken || null;
     this.userEmail = credentials.email || null;
+    this.tokenExpiresAt =
+      typeof credentials.expiresAt === 'number' && Number.isFinite(credentials.expiresAt)
+        ? credentials.expiresAt
+        : // Unknown age (e.g. hydrated from API) — force refresh on next ensureAccessToken
+          null;
     
     // SECURITY: Store credentials encrypted, not in plaintext localStorage
     if (credentials.sessionId) {
@@ -153,7 +160,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
             accessToken: credentials.token,
             refreshToken: credentials.refreshToken || undefined,
             email: credentials.email,
-            expiresAt: Date.now() + (3600 * 1000) // Default 1 hour expiry
+            expiresAt: this.tokenExpiresAt ?? Date.now() + 55 * 60 * 1000,
           },
           credentials.sessionId
         );
@@ -179,6 +186,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
   async disconnect(): Promise<void> {
     this.token = null;
     this.refreshToken = null;
+    this.tokenExpiresAt = null;
     this.userEmail = null;
     this.parNoirFolderId = null;
     this.clearAllFolderCache();
@@ -220,6 +228,43 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
   }
 
   /**
+   * Return a usable Google access token, refreshing via the par Noir API when
+   * the current token is missing or near expiry.
+   */
+  async ensureAccessToken(): Promise<string | null> {
+    if (!this.connected) {
+      return null;
+    }
+
+    const skewMs = 60_000;
+    const stillValid =
+      !!this.token &&
+      this.tokenExpiresAt != null &&
+      Date.now() < this.tokenExpiresAt - skewMs;
+
+    if (stillValid) {
+      return this.token;
+    }
+
+    const refreshToken = this.getRefreshToken();
+    if (refreshToken) {
+      try {
+        const refreshed = await this.refreshAccessToken(refreshToken);
+        if (refreshed) {
+          this.token = refreshed;
+          return refreshed;
+        }
+      } catch (error) {
+        console.warn('[GoogleDriveBackend] ensureAccessToken refresh failed:', error);
+      }
+    }
+
+    // No refresh available or refresh failed — return whatever we still have
+    // (callers / makeRequest will surface 401 and run recovery).
+    return this.token;
+  }
+
+  /**
    * Load credentials from encrypted storage (requires authenticated session)
    */
   async loadEncryptedCredentials(sessionId: string): Promise<boolean> {
@@ -233,6 +278,10 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         this.token = credentials.accessToken;
         this.refreshToken = credentials.refreshToken || null;
         this.userEmail = credentials.email || null;
+        this.tokenExpiresAt =
+          typeof credentials.expiresAt === 'number' && Number.isFinite(credentials.expiresAt)
+            ? credentials.expiresAt
+            : null;
         this.connected = true;
         return true;
       }
@@ -384,6 +433,11 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           }
 
           if (tokenData.access_token) {
+            if (typeof tokenData.expires_in === 'number' && tokenData.expires_in > 0) {
+              this.tokenExpiresAt = Date.now() + tokenData.expires_in * 1000;
+            } else {
+              this.tokenExpiresAt = Date.now() + 55 * 60 * 1000;
+            }
             window.dispatchEvent(
               new CustomEvent('google-drive-token-refreshed', {
                 detail: {
