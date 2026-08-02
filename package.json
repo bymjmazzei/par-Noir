@@ -20,7 +20,7 @@
     "test:sdk": "cd sdk/identity-sdk && npm test",
     "test:pqc": "cd packages/pqc-crypto && npm test",
     "test:zk": "cd packages/zk-protocol-v1 && npm test && cd ../zk-protocol-v2 && npm test",
-    "test:packages": "for p in pqc-crypto identity-crypto recovery-crypto device-auth dm-crypto oauth-ui device-cloud-credentials user-owned-storage storage-migration identity-migration; do (cd packages/$p && npm test) || exit 1; done",
+    "test:packages": "for p in pqc-crypto identity-crypto recovery-crypto device-auth dm-crypto oauth-ui device-cloud-credentials user-owned-storage storage-migration identity-migration aggregator-domain standard-data-points; do (cd packages/$p && npm test) || exit 1; done",
     "test:api": "cd api && npm test",
     "test:dashboard:unit": "cd apps/id-dashboard && npm test",
     "test:e2e:smoke": "cd apps/id-dashboard && npm run test:e2e:smoke",

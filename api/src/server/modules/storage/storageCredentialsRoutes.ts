@@ -126,7 +126,7 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
         }
 
         // Initialize Google Drive folder structure if this is a new Google Drive connection
-        const hasGoogleDrive = credentials?.googleDriveAccounts?.length > 0 || credentials?.googleDrive;
+        const hasGoogleDrive = !!(credentials?.googleDriveAccounts?.length > 0 || credentials?.googleDrive);
         const deviceCustody = isDeviceCloudCustodyEnabled();
         let clientSideLayoutRequired = false;
         if (hasGoogleDrive) {
