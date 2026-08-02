@@ -3,12 +3,15 @@
  * Handles feed CRUD, subscriptions, posts, and payment webhooks
  */
 
-import { Request, Response } from 'express';
+import { Application, Request, Response } from 'express';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { FeedService, Feed, FeedRow } from './feedService';
 import { getDatabasePool } from '../utils/database';
 import { feedPlatformSubscriptionsDisabledPayload } from '../utils/feedSubscriptionPolicy';
 import { gateOwnerRoute, DEVICE_CAPABILITIES } from './deviceCapabilityService';
+import { safeClientErrorMessage } from '../utils/safeError';
+
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
 export interface FeedPost {
   id: string;
@@ -46,7 +49,7 @@ export interface FeedPost {
 /**
  * Setup feed routes
  */
-export function setupFeedRoutes(app: any) {
+export function setupFeedRoutes(app: Application) {
   const db = getDatabasePool();
 
   /**
@@ -856,5 +859,583 @@ export function setupFeedRoutes(app: any) {
       return res.status(500).json({ error: 'Failed to activate feed' });
     }
   });
-}
 
+    // ============================================================================
+    // Feed Management APIs
+    // ============================================================================
+
+    // POST /api/feeds - Create a new feed
+    app.post('/api/feeds', async (req, res) => {
+      try {
+        const tokenPayload = getBearerTokenPayload(req);
+        if (tokenPayload?.pnIdentifier) {
+          if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite))) return;
+        }
+
+        const { FeedService } = await import('./feedService');
+        const {
+          feedName,
+          feedCategory,
+          feedDescription,
+          creatorDid,
+          creatorTier,
+          branding,
+          isPaid,
+          monthlyPrice,
+          annualPrice,
+          subdomain,
+        } = req.body;
+
+        if (!feedName || !creatorDid) {
+          return res.status(400).json({ error: 'feedName and creatorDid are required' });
+        }
+
+        // Only paid tiers can create feeds
+        if (creatorTier === 'free') {
+          return res.status(403).json({ error: 'Free tier cannot create feeds. Upgrade to feed or self-hosted tier.' });
+        }
+
+        const { isDidRevokedForNetwork } = await import('./identitySuccessionService');
+        if (isDidRevokedForNetwork(creatorDid)) {
+          return res.status(403).json({
+            error: 'identity_superseded',
+            error_description: 'This creator DID is retired on the par Noir network. Create feeds with your successor identity.'
+          });
+        }
+
+        const feed = await FeedService.createFeed({
+          feedName,
+          feedCategory,
+          feedDescription,
+          creatorDid,
+          creatorTier: creatorTier || 'feed',
+          // feedRatingRange removed - feeds accept all content
+          branding
+        });
+
+        // Optional feed plan metadata (owner paid tier / list pricing). Platform does not
+        // process viewer subscriptions to feeds; see feedSubscriptionPolicy.
+        if (isPaid !== undefined || monthlyPrice !== undefined || annualPrice !== undefined || subdomain) {
+          const db = (await import('../utils/database')).getDatabasePool();
+          const updates: string[] = [];
+          const params: any[] = [];
+          let paramCount = 0;
+
+          if (isPaid !== undefined) {
+            paramCount++;
+            updates.push(`is_paid = $${paramCount}`);
+            params.push(isPaid);
+          }
+          if (monthlyPrice !== undefined) {
+            paramCount++;
+            updates.push(`monthly_price = $${paramCount}`);
+            params.push(monthlyPrice);
+          }
+          if (annualPrice !== undefined) {
+            paramCount++;
+            updates.push(`annual_price = $${paramCount}`);
+            params.push(annualPrice);
+          }
+          if (subdomain !== undefined) {
+            paramCount++;
+            updates.push(`subdomain = $${paramCount}`);
+            params.push(subdomain || null);
+          }
+
+          if (updates.length > 0) {
+            paramCount++;
+            updates.push(`updated_at = NOW()`);
+            paramCount++;
+            params.push(feed.feedId);
+
+            await db.query(
+              `UPDATE feeds SET ${updates.join(', ')} WHERE feed_id = $${paramCount}`,
+              params
+            );
+
+            const updatedFeed = await FeedService.getFeedById(feed.feedId);
+            if (updatedFeed) {
+              return res.status(201).json({
+                ...updatedFeed,
+                isPaid: isPaid !== undefined ? isPaid : updatedFeed.isPaid,
+                monthlyPrice: monthlyPrice !== undefined ? monthlyPrice : updatedFeed.monthlyPrice,
+                annualPrice: annualPrice !== undefined ? annualPrice : updatedFeed.annualPrice,
+                subdomain: subdomain !== undefined ? subdomain : updatedFeed.subdomain,
+              });
+            }
+          }
+        }
+
+        return res.status(201).json(feed);
+      } catch (error: any) {
+        console.error('Error creating feed:', error);
+        return res.status(500).json({ error: 'Failed to create feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+      }
+    });
+
+    // ============================================================================
+    // Saved Feed APIs (Private curated feed for each user)
+    // MUST come before /api/feeds/:feedId to avoid route conflict
+    // ============================================================================
+
+    // GET /api/feeds/saved?userPnIdentifier=... - Get user's saved posts (index query, not a feed)
+    app.get('/api/feeds/saved', async (req, res) => {
+      try {
+        const { userPnIdentifier } = req.query;
+        const db = (await import('../utils/database')).getDatabasePool();
+
+        if (!userPnIdentifier || typeof userPnIdentifier !== 'string') {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
+        }
+
+        // Saved posts use feed_id format: "saved-{userPnIdentifier}"
+        const savedFeedId = `saved-${userPnIdentifier}`;
+
+        // Query saved posts directly - no need to create a feed entry
+        const postsResult = await db.query(`
+          SELECT file_id, added_at
+          FROM feed_posts
+          WHERE feed_id = $1
+          ORDER BY added_at DESC
+        `, [savedFeedId]);
+
+        const fileIds = postsResult.rows.map(row => row.file_id);
+        const latestAddedAt = postsResult.rows.length > 0 ? postsResult.rows[0].added_at : null;
+
+        return res.json({
+          feed: {
+            feedId: savedFeedId,
+            feedName: 'Saved',
+            fileIds,
+            createdAt: latestAddedAt || new Date().toISOString(),
+            updatedAt: latestAddedAt || new Date().toISOString()
+          }
+        });
+      } catch (error: any) {
+        console.error('Error getting saved feed:', error);
+        return res.status(500).json({ error: 'Failed to get saved feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+      }
+    });
+
+    // GET /api/feeds - List feeds with filters
+    app.get('/api/feeds', async (req, res) => {
+      try {
+        const { FeedService } = await import('./feedService');
+        const { category, creatorDid, creatorTier, search, limit, offset } = req.query;
+
+        const result = await FeedService.listFeeds({
+          category: category as any,
+          creatorDid: creatorDid as string,
+          creatorTier: creatorTier as any,
+          search: search as string,
+          limit: limit ? parseInt(limit as string, 10) : undefined,
+          offset: offset ? parseInt(offset as string, 10) : undefined
+        });
+
+        return res.json({
+          feeds: result.feeds,
+          total: result.total,
+          limit: limit ? parseInt(limit as string, 10) : undefined,
+          offset: offset ? parseInt(offset as string, 10) : undefined
+        });
+      } catch (error: any) {
+        console.error('Error listing feeds:', error);
+        return res.status(500).json({ error: 'Failed to list feeds', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+      }
+    });
+
+    // GET /api/feeds/:feedId - Get feed by ID
+    app.get('/api/feeds/:feedId', async (req, res) => {
+      try {
+        const { FeedService } = await import('./feedService');
+        const { feedId } = req.params;
+
+        const feed = await FeedService.getFeedById(feedId);
+
+        if (!feed) {
+          return res.status(404).json({ error: 'Feed not found' });
+        }
+
+        return res.json(feed);
+      } catch (error: any) {
+        console.error('Error getting feed:', error);
+        return res.status(500).json({ error: 'Failed to get feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+      }
+    });
+
+    // PUT /api/feeds/:feedId - Update feed
+    app.put('/api/feeds/:feedId', async (req, res) => {
+      try {
+        const tokenPayload = getBearerTokenPayload(req);
+        if (tokenPayload?.pnIdentifier) {
+          if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite))) return;
+        }
+
+        const { FeedService } = await import('./feedService');
+        const { feedId } = req.params;
+        const { feedName, feedDescription, feedCategory, branding, creatorDid } = req.body;
+
+        // Verify creator owns the feed
+        const existingFeed = await FeedService.getFeedById(feedId);
+        if (!existingFeed) {
+          return res.status(404).json({ error: 'Feed not found' });
+        }
+
+        if (existingFeed.creatorId !== creatorDid) {
+          return res.status(403).json({ error: 'Only feed creator can update feed' });
+        }
+
+        const feed = await FeedService.updateFeed(feedId, {
+          feedName,
+          feedDescription,
+          feedCategory,
+          branding
+        });
+
+        if (!feed) {
+          return res.status(404).json({ error: 'Feed not found' });
+        }
+
+        return res.json(feed);
+      } catch (error: any) {
+        console.error('Error updating feed:', error);
+        return res.status(500).json({ error: 'Failed to update feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+      }
+    });
+
+    // DELETE /api/feeds/:feedId - Delete feed
+    app.delete('/api/feeds/:feedId', async (req, res) => {
+      try {
+        const tokenPayload = getBearerTokenPayload(req);
+        if (tokenPayload?.pnIdentifier) {
+          if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite))) return;
+        }
+
+        const { FeedService } = await import('./feedService');
+        const { feedId } = req.params;
+        const { creatorDid } = req.body;
+
+        if (!creatorDid) {
+          return res.status(400).json({ error: 'creatorDid is required' });
+        }
+
+        const deleted = await FeedService.deleteFeed(feedId, creatorDid);
+
+        if (!deleted) {
+          return res.status(404).json({ error: 'Feed not found or unauthorized' });
+        }
+
+        return res.json({ success: true, message: 'Feed deleted' });
+      } catch (error: any) {
+        console.error('Error deleting feed:', error);
+        return res.status(500).json({ error: 'Failed to delete feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+      }
+    });
+
+    // GET/POST/DELETE /api/feeds/:feedId/posts are handled by feedRoutes (registered first)
+
+    // ============================================================================
+    // Feed Subscription APIs
+    // ============================================================================
+
+    // POST /api/feeds/:feedId/subscribe - Subscribe to feed
+    // Creator stores subscriber info on their Google Drive
+    // Subscriber stores local reference (handled by frontend)
+    app.post('/api/feeds/:feedId/subscribe', async (req, res) => {
+      try {
+        const { FeedService } = await import('./feedService');
+        const { feedId } = req.params;
+        const { userPnIdentifier, creatorGoogleTokens } = req.body;
+
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
+        }
+
+        // Note: creatorGoogleTokens is optional - if creator doesn't have Drive connected,
+        // subscription is stored in database only and can sync to Drive later
+
+        const success = await FeedService.subscribeToFeed(feedId, userPnIdentifier, creatorGoogleTokens);
+
+        if (!success) {
+          return res.status(500).json({ error: 'Failed to subscribe to feed' });
+        }
+
+        return res.json({ 
+          success: true, 
+          message: 'Subscribed to feed',
+          note: 'Subscription stored in database and creator Google Drive (if connected)'
+        });
+      } catch (error: any) {
+        console.error('Error subscribing to feed:', error);
+        return res.status(500).json({ error: 'Failed to subscribe to feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+      }
+    });
+
+    // DELETE /api/feeds/:feedId/subscribe - Unsubscribe from feed
+    app.delete('/api/feeds/:feedId/subscribe', async (req, res) => {
+      try {
+        const { FeedService } = await import('./feedService');
+        const { feedId } = req.params;
+        const { userPnIdentifier } = req.body;
+
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
+        }
+
+        const success = await FeedService.unsubscribeFromFeed(feedId, userPnIdentifier);
+
+        if (!success) {
+          return res.status(500).json({ error: 'Failed to unsubscribe from feed' });
+        }
+
+        return res.json({ success: true, message: 'Unsubscribed from feed' });
+      } catch (error: any) {
+        console.error('Error unsubscribing from feed:', error);
+        return res.status(500).json({ error: 'Failed to unsubscribe from feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+      }
+    });
+    // GET /api/feeds/:feedId/subscribers - Get feed subscribers count
+    app.get('/api/feeds/:feedId/subscribers', async (req, res) => {
+      try {
+        const { FeedService } = await import('./feedService');
+        const { feedId } = req.params;
+
+        const feed = await FeedService.getFeedById(feedId);
+
+        if (!feed) {
+          return res.status(404).json({ error: 'Feed not found' });
+        }
+
+        return res.json({
+          feedId,
+          subscriberCount: feed.subscriberCount || 0
+        });
+      } catch (error: any) {
+        console.error('Error getting feed subscribers:', error);
+        return res.status(500).json({ error: 'Failed to get subscribers', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+      }
+    });
+    // POST /api/feeds/saved - Add file to saved feed
+    app.post('/api/feeds/saved', async (req, res) => {
+      try {
+        const { userPnIdentifier, fileId } = req.body;
+        const db = (await import('../utils/database')).getDatabasePool();
+
+        if (!userPnIdentifier || !fileId) {
+          return res.status(400).json({ error: 'userPnIdentifier and fileId are required' });
+        }
+
+        const savedFeedId = `saved-${userPnIdentifier}`;
+
+        // Check if saved feed exists, create if not
+        let feedResult = await db.query(`
+          SELECT feed_id, feed_name, created_at, updated_at
+          FROM feeds
+          WHERE feed_id = $1
+        `, [savedFeedId]);
+
+        if (feedResult.rows.length === 0) {
+          // Create saved feed - rating_range must be JSON string for PostgreSQL JSON column
+          await db.query(`
+            INSERT INTO feeds (feed_id, feed_name, creator_did, creator_tier, rating_range)
+            VALUES ($1, $2, $3, $4, $5::jsonb)
+          `, [savedFeedId, 'Saved', userPnIdentifier, 'free', JSON.stringify(['GA', 'FF', 'T13+', 'YA16+', 'M18+', 'NSFW', 'X18+'])]);
+
+          feedResult = await db.query(`
+            SELECT feed_id, feed_name, created_at, updated_at
+            FROM feeds
+            WHERE feed_id = $1
+          `, [savedFeedId]);
+        }
+
+        // Check if file is already in saved feed
+        const existingPost = await db.query(`
+          SELECT file_id
+          FROM feed_posts
+          WHERE feed_id = $1 AND file_id = $2
+        `, [savedFeedId, fileId]);
+
+        if (existingPost.rows.length > 0) {
+          // File already saved, return existing feed
+          const postsResult = await db.query(`
+            SELECT file_id
+            FROM feed_posts
+            WHERE feed_id = $1
+            ORDER BY added_at DESC
+          `, [savedFeedId]);
+
+          const fileIds = postsResult.rows.map(row => row.file_id);
+
+          return res.json({
+            feed: {
+              feedId: feedResult.rows[0].feed_id,
+              feedName: feedResult.rows[0].feed_name,
+              fileIds,
+              createdAt: feedResult.rows[0].created_at,
+              updatedAt: feedResult.rows[0].updated_at
+            }
+          });
+        }
+
+        // Add file to saved feed
+        await db.query(`
+          INSERT INTO feed_posts (feed_id, file_id, added_by)
+          VALUES ($1, $2, $3)
+        `, [savedFeedId, fileId, userPnIdentifier]);
+
+        // Update feed updated_at
+        await db.query(`
+          UPDATE feeds
+          SET updated_at = NOW()
+          WHERE feed_id = $1
+        `, [savedFeedId]);
+
+        // Get all file IDs
+        const postsResult = await db.query(`
+          SELECT file_id
+          FROM feed_posts
+          WHERE feed_id = $1
+          ORDER BY added_at DESC
+        `, [savedFeedId]);
+
+        const fileIds = postsResult.rows.map(row => row.file_id);
+
+        return res.json({
+          feed: {
+            feedId: feedResult.rows[0].feed_id,
+            feedName: feedResult.rows[0].feed_name,
+            fileIds,
+            createdAt: feedResult.rows[0].created_at,
+            updatedAt: new Date().toISOString()
+          }
+        });
+      } catch (error: any) {
+        console.error('Error saving to feed:', error);
+        return res.status(500).json({ error: 'Failed to save to feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+      }
+    });
+
+    // DELETE /api/feeds/saved - Remove file from saved feed
+    app.delete('/api/feeds/saved', async (req, res) => {
+      try {
+        const { userPnIdentifier, fileId } = req.body;
+        const db = (await import('../utils/database')).getDatabasePool();
+
+        if (!userPnIdentifier || !fileId) {
+          return res.status(400).json({ error: 'userPnIdentifier and fileId are required' });
+        }
+
+        const savedFeedId = `saved-${userPnIdentifier}`;
+
+        // Remove file from saved feed
+        const result = await db.query(`
+          DELETE FROM feed_posts
+          WHERE feed_id = $1 AND file_id = $2
+        `, [savedFeedId, fileId]);
+
+        if (result.rowCount === 0) {
+          return res.status(404).json({ error: 'File not found in saved feed' });
+        }
+
+        // Update feed updated_at
+        await db.query(`
+          UPDATE feeds
+          SET updated_at = NOW()
+          WHERE feed_id = $1
+        `, [savedFeedId]);
+
+        return res.json({ success: true, message: 'File removed from saved feed' });
+      } catch (error: any) {
+        console.error('Error removing from saved feed:', error);
+        return res.status(500).json({ error: 'Failed to remove from saved feed', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+      }
+    });
+
+    // ============================================================================
+    // Feed Discovery APIs (Catalogue/Store Interface)
+    // ============================================================================
+
+    // GET /api/feeds/discover - Discover feeds with filters (categories, trending, new)
+    app.get('/api/feeds/discover', async (req, res) => {
+      try {
+        const { FeedService } = await import('./feedService');
+        const { category, sort = 'new', limit = 20, offset = 0 } = req.query;
+
+        const result = await FeedService.discoverFeeds({
+          category: category as any,
+          sort: sort as 'new' | 'trending' | 'popular',
+          limit: limit ? parseInt(limit as string, 10) : 20,
+          offset: offset ? parseInt(offset as string, 10) : 0
+        });
+
+        return res.json(result);
+      } catch (error: any) {
+        console.error('Error discovering feeds:', error);
+        return res.status(500).json({ error: 'Failed to discover feeds', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+      }
+    });
+
+    // GET /api/feeds/categories - List all feed categories with counts
+    app.get('/api/feeds/categories', async (req, res) => {
+      try {
+        const { FeedService } = await import('./feedService');
+        const categories = await FeedService.getFeedCategories();
+
+        return res.json({
+          categories,
+          total: categories.reduce((sum, cat) => sum + cat.count, 0)
+        });
+      } catch (error: any) {
+        console.error('Error getting feed categories:', error);
+        return res.status(500).json({ error: 'Failed to get categories', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+      }
+    });
+
+    // GET /api/feeds/trending - Get trending feeds
+    app.get('/api/feeds/trending', async (req, res) => {
+      try {
+        const { FeedService } = await import('./feedService');
+        const { limit = 20, category } = req.query;
+
+        const feeds = await FeedService.getTrendingFeeds({
+          limit: limit ? parseInt(limit as string, 10) : 20,
+          category: category as any
+        });
+
+        return res.json({
+          feeds,
+          count: feeds.length,
+          period: '7d' // Last 7 days
+        });
+      } catch (error: any) {
+        console.error('Error getting trending feeds:', error);
+        return res.status(500).json({ error: 'Failed to get trending feeds', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+      }
+    });
+
+    // GET /api/feeds/recommended - Get recommended feeds for user
+    app.get('/api/feeds/recommended', async (req, res) => {
+      try {
+        const { FeedService } = await import('./feedService');
+        const { userPnIdentifier, limit = 10 } = req.query;
+
+        if (!userPnIdentifier) {
+          return res.status(400).json({ error: 'userPnIdentifier is required' });
+        }
+
+        const feeds = await FeedService.getRecommendedFeeds({
+          userPnIdentifier: userPnIdentifier as string,
+          limit: limit ? parseInt(limit as string, 10) : 10
+        });
+
+        return res.json({
+          feeds,
+          count: feeds.length,
+          userPnIdentifier
+        });
+      } catch (error: any) {
+        console.error('Error getting recommended feeds:', error);
+        return res.status(500).json({ error: 'Failed to get recommended feeds', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+      }
+    });
+}
