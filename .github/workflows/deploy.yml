@@ -37,7 +37,7 @@ jobs:
           mkdir -p site
           cp index.html styles.css script.js CNAME .nojekyll site/
           cp manifest.json browserconfig.xml sitemap.xml site/ 2>/dev/null || true
-          cp robots.txt developer-portal.html whitepaper.html privacy.html terms.html payment-gateway.html test.html offline.html site/ 2>/dev/null || true
+          cp robots.txt developer-portal.html whitepaper.html privacy.html terms.html faq.html payment-gateway.html test.html offline.html site/ 2>/dev/null || true
           cp "parNoir Promo.mp4" site/ 2>/dev/null || true
           cp -r branding icons site/
           cp -r screenshots site/ 2>/dev/null || true

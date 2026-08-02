@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>FAQ: par Noir</title>
+    <meta name="title" content="FAQ: par Noir">
+    <meta name="description" content="Answers about pN identity, your key, privacy, getting started, and building on par Noir.">
+    <meta name="keywords" content="digital identity, portable identity, privacy, par noir, pn, user-owned data">
+    <meta name="author" content="par Noir">
+    <meta name="robots" content="index, follow">
+    <meta name="language" content="English">
+
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://parnoir.com/faq.html">
+    <meta property="og:title" content="FAQ: par Noir">
+    <meta property="og:description" content="Answers about pN identity, your key, privacy, getting started, and building on par Noir.">
+    <meta property="og:image" content="https://parnoir.com/branding/Par-Noir-Logo-White.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="par Noir">
+    <meta property="og:locale" content="en_US">
+
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://parnoir.com/faq.html">
+    <meta property="twitter:title" content="FAQ: par Noir">
+    <meta property="twitter:description" content="Answers about pN identity, your key, privacy, getting started, and building on par Noir.">
+    <meta property="twitter:image" content="https://parnoir.com/branding/Par-Noir-Logo-White.png">
+
+    <meta name="theme-color" content="#000000">
+    <meta name="msapplication-TileColor" content="#000000">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="par Noir">
+
+    <link rel="canonical" href="https://parnoir.com/faq.html">
+
+    <link rel="icon" type="image/png" href="branding/Par-Noir-Icon-White.png">
+    <link rel="apple-touch-icon" href="branding/Par-Noir-Icon-White.png">
+    <link rel="manifest" href="manifest.json">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=20260802-no-key-aside">
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "par Noir",
+      "url": "https://parnoir.com",
+      "logo": "https://parnoir.com/branding/Par-Noir-Logo-White.png",
+      "description": "Identity you unlock yourself. Content stays in your cloud. Apps use what you allow.",
+      "foundingDate": "2024",
+      "sameAs": ["https://github.com/bymjmazzei/par-Noir"]
+    }
+    </script>
+</head>
+<body>
+    <div class="background"></div>
+
+    <nav class="site-navigation">
+        <div class="nav-wrapper">
+            <div class="nav-brand-section">
+                <a href="/" aria-label="par Noir home">
+                    <img src="branding/Par-Noir-Logo-White.png" alt="par Noir" class="nav-logo">
+                </a>
+            </div>
+            <div class="nav-menu-section">
+                <a href="/#why" class="nav-menu-link">Why pN</a>
+                <a href="/#get-started" class="nav-menu-link">How it works</a>
+                <a href="faq.html" class="nav-menu-link">FAQ</a>
+                <a href="https://developers.parnoir.com" class="nav-menu-link nav-developers" rel="noopener noreferrer">Developers</a>
+            </div>
+            <button class="nav-mobile-toggle" onclick="toggleMobileMenu()" aria-label="Open menu">
+                <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+                    <path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+                </svg>
+            </button>
+        </div>
+    </nav>
+
+    <div class="nav-mobile-menu" id="mobileMenu">
+        <button class="nav-mobile-close" onclick="toggleMobileMenu()" aria-label="Close menu">×</button>
+        <a href="/#why" onclick="toggleMobileMenu()">Why pN</a>
+        <a href="/#get-started" onclick="toggleMobileMenu()">How it works</a>
+        <a href="faq.html" onclick="toggleMobileMenu()">FAQ</a>
+        <a href="https://developers.parnoir.com" rel="noopener noreferrer" onclick="toggleMobileMenu()">Developers</a>
+    </div>
+
+    <section id="faq" class="faq-section faq-page">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">FAQ</h2>
+            </div>
+
+            <div class="faq-container">
+                <div class="faq-tabs" role="tablist">
+                    <button class="faq-tab active" data-tab="philosophy" type="button">Basics</button>
+                    <button class="faq-tab" data-tab="pieces" type="button">Your key</button>
+                    <button class="faq-tab" data-tab="privacy-faq" type="button">Privacy</button>
+                    <button class="faq-tab" data-tab="getting-started" type="button">Getting started</button>
+                    <button class="faq-tab" data-tab="platforms-faq" type="button">For builders</button>
+                </div>
+
+                <div class="faq-content">
+                    <div class="faq-tab-content active" id="philosophy">
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>What does pN mean?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>pN stands for par Noir. It’s your digital identity: something you create and hold, not an account a company issues to you.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>What is par Noir?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>A system built around identity you own. You create a pN. Your content stays in your cloud. Tools and platforms sit on top of that. They aggregate what you allow. They don’t host or own your data.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>What does “own what you create” mean?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>If an app shuts down or bans you, your identity and files still sit with you. Apps can use what you share. They don’t keep ownership of it.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>What does portable mean?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Your pN and your stuff can move across tools built on it. Switching apps doesn’t mean starting over as someone else’s user.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>Why not just another login?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Most logins are accounts the product owns. A pN is identity you hold. Products recognize you through it instead of owning you as a user.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="faq-tab-content" id="pieces">
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>What’s in a pN?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Think of it as a keycard that needs two secrets to work: an encrypted identity file, plus a name and a passcode you keep private. All three unlock it. Nobody else issues it.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>What if I delete the identity file by accident?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Keep a copy somewhere safe (Downloads, Drive, or a USB) when you create your pN. Set up recovery in the dashboard so losing one copy or one phone is not the end. If every copy is gone and recovery was not set up, you cannot unlock that pN the usual way.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>What’s the dashboard vs the browser?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>The dashboard (<a href="https://pn.parnoir.com" rel="noopener noreferrer">pn.parnoir.com</a>) is where you create and manage your pN. The browser (<a href="https://browse.parnoir.com" rel="noopener noreferrer">browse.parnoir.com</a>) is where you browse feeds from people’s own storage.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>Why connect a cloud?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>So your content lives with you, not on each product’s servers. Apps can aggregate what you share. They don’t host or own it.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>Where does my content live?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>In your cloud. Tools pull what you allow. They don’t take ownership by hosting your files.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="faq-tab-content" id="privacy-faq">
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>How do I unlock my pN?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Your identity file, plus your name and passcode (both secrets). All three. Same pieces on phone or desktop. Don’t share them.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>Can I use my pN on another phone or computer?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Yes. Unlock with the same file, name, and passcode on another device.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>What if I lose my device or identity file?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Set up recovery in the dashboard when you create your pN. Losing a phone alone isn’t the end if recovery is ready. If you skip it and every copy of the identity file is gone, you can’t unlock that pN the usual way.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>Can tools read everything in my cloud?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>No. Tools get what you approve.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>What about my name, passcode, age, or email?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Those stay private. Share only what you choose.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="faq-tab-content" id="platforms-faq">
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>Can my product use pN instead of building accounts?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Yes. People unlock with their pN. You aggregate with permission. You don’t host or own their data. Start at <a href="https://developers.parnoir.com" rel="noopener noreferrer">developers.parnoir.com</a>.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>Where does user data live if I integrate?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>In the user’s cloud. Your product aggregates what they approve. You don’t host or own it.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>Do I store passwords or identity files?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>No. File, name, and passcode stay with the person. Crypto details (ML-DSA, ML-KEM, PBKDF2, AES-GCM) are in the <a href="https://developers.parnoir.com" rel="noopener noreferrer">developer console</a>.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>What’s free vs needs a commercial license?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Non-commercial use is free. A commercial product built on pN needs a <a href="https://licensing.parnoir.com" rel="noopener noreferrer">commercial license</a>. Creating your own pN is free.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="faq-tab-content" id="getting-started">
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>What are the three steps?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>1) Create your key at <a href="https://pn.parnoir.com" rel="noopener noreferrer">pn.parnoir.com</a>. 2) Attach your Google Drive or cloud, and set up recovery. 3) Unlock tools on top of it, starting with the browser at <a href="https://browse.parnoir.com" rel="noopener noreferrer">browse.parnoir.com</a>.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>Do I need to buy anything?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>No. Creating and using your own pN for personal, non-commercial use is free. Commercial products built on pN need a license.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>Phone and desktop?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Yes. Use a modern browser on the device you have. The same identity key unlocks on more than one device.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>Where do I go next?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p><a href="https://pn.parnoir.com" rel="noopener noreferrer">Create your identity</a>, then open <a href="https://browse.parnoir.com" rel="noopener noreferrer">the browser</a>. Building on pN? <a href="https://developers.parnoir.com" rel="noopener noreferrer">Developer console</a>.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="site-footer">
+        <div class="footer-wrapper">
+            <div class="footer-main">
+                <div class="footer-logo-section">
+                    <img src="branding/Par-Noir-Logo-White.png" alt="par Noir" class="footer-logo">
+                </div>
+            </div>
+            <div class="footer-navigation">
+                <div class="footer-nav-column">
+                    <h4>Learn</h4>
+                    <a href="/#why">Why pN</a>
+                    <a href="faq.html">FAQ</a>
+                    <a href="privacy.html">Privacy Policy</a>
+                </div>
+                <div class="footer-nav-column">
+                    <h4>Use</h4>
+                    <a href="https://pn.parnoir.com" rel="noopener noreferrer">Dashboard</a>
+                    <a href="https://browse.parnoir.com" rel="noopener noreferrer">Browser</a>
+                    <a href="https://messaging.parnoir.com" rel="noopener noreferrer">Messaging</a>
+                </div>
+                <div class="footer-nav-column">
+                    <h4>Build</h4>
+                    <a href="https://developers.parnoir.com" rel="noopener noreferrer">Developers</a>
+                    <a href="https://licensing.parnoir.com" rel="noopener noreferrer">Licensing</a>
+                </div>
+                <div class="footer-nav-column">
+                    <h4>Legal</h4>
+                    <a href="terms.html">Terms of Service</a>
+                    <a href="privacy.html">Privacy Policy</a>
+                </div>
+            </div>
+            <div class="footer-copyright">
+                <p>&copy; 2026 par Noir.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
