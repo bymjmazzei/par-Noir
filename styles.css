@@ -74,6 +74,13 @@ body {
   text-transform: none;
 }
 
+.section-title .pn-mark {
+  background: inherit;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
 /* Site Navigation - Independent Component */
 .site-navigation {
   position: fixed;
