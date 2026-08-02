@@ -5635,10 +5635,10 @@ section:nth-child(odd) {
   display: block;
   flex: 1 1 auto;
   width: 100%;
-  /* Clear the decorative notch + home indicator so real app chrome isn’t covered */
+  /* Clear only the decorative notch — bottom stays flush with the app nav */
   margin-top: 38px;
-  margin-bottom: 18px;
-  height: calc(100% - 56px);
+  margin-bottom: 0;
+  height: calc(100% - 38px);
   min-height: 0;
   border: 0;
   background: #000;
@@ -5646,19 +5646,6 @@ section:nth-child(odd) {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   color-scheme: dark;
-}
-
-.phone-home-bar {
-  position: absolute;
-  left: 50%;
-  bottom: 7px;
-  transform: translateX(-50%);
-  width: 110px;
-  height: 4px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.35);
-  z-index: 2;
-  pointer-events: none;
 }
 
 .phone-caption {
