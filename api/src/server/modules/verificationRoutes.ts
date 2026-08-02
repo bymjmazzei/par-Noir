@@ -72,3 +72,24 @@ export function registerVerificationRoutes(app: Application): void {
     }
   });
 }
+
+/** POST /api/verification/sync - Sync verification status to engagement system */
+export function registerVerificationSyncRoute(app: Application): void {
+  app.post('/api/verification/sync', async (req: Request, res: Response) => {
+    try {
+      const { VerificationIntegrationService } = await import('./verificationIntegrationService');
+      const { identityId, verificationId, verifiedAt } = req.body;
+
+      if (!identityId || !verificationId || !verifiedAt) {
+        return res.status(400).json({ error: 'identityId, verificationId, and verifiedAt are required' });
+      }
+
+      await VerificationIntegrationService.syncVerificationStatus(identityId, verificationId, verifiedAt);
+
+      return res.json({ success: true, message: 'Verification status synced' });
+    } catch (error: any) {
+      console.error('Error syncing verification status:', error);
+      return res.status(500).json({ error: 'Failed to sync verification status', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+    }
+  });
+}
