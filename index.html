@@ -42,8 +42,8 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@200;300;400;500;600&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260802-scroll-type">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@200;300;400;500;600&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=20260802-scroll-story">
 
     <script type="application/ld+json">
     {
@@ -119,15 +119,23 @@
     </section>
 
 
-    <section id="get-started" class="narrative-section get-started-section">
-        <div class="container">
-            <div class="section-header">
-                <h2 class="section-title">How it works</h2>
-                <p class="section-subtitle">Create once. Carry the same identity into every app built on it.</p>
-            </div>
+    <section id="get-started" class="narrative-section get-started-section scroll-story" data-story-steps="3">
+        <div class="scroll-story-pin">
+            <div class="scroll-story-sticky">
+                <div class="container">
+                    <div class="section-header">
+                        <h2 class="section-title">How it works</h2>
+                        <p class="section-subtitle">Create once. Carry the same identity into every app built on it.</p>
+                    </div>
 
-            <ol class="steps-grid">
-                <li class="step-card">
+                    <div class="scroll-story-stage">
+                        <div class="scroll-story-progress" aria-hidden="true">
+                            <button type="button" class="scroll-story-dot is-active" data-story-goto="0" aria-label="Step 1">1</button>
+                            <button type="button" class="scroll-story-dot" data-story-goto="1" aria-label="Step 2">2</button>
+                            <button type="button" class="scroll-story-dot" data-story-goto="2" aria-label="Step 3">3</button>
+                        </div>
+<ol class="steps-grid scroll-story-panels">
+                <li class="step-card is-active" data-story-panel>
                     <span class="step-number" aria-hidden="true">1</span>
                     <div class="step-body">
                         <h3>Create your key</h3>
@@ -137,14 +145,14 @@
                         </p>
                     </div>
                 </li>
-                <li class="step-card">
+                <li class="step-card" data-story-panel>
                     <span class="step-number" aria-hidden="true">2</span>
                     <div class="step-body">
                         <h3>Connect your cloud</h3>
                         <p>Connect a cloud you already trust.</p>
                     </div>
                 </li>
-                <li class="step-card">
+                <li class="step-card" data-story-panel>
                     <span class="step-number" aria-hidden="true">3</span>
                     <div class="step-body">
                         <h3>Use apps and feeds</h3>
@@ -152,6 +160,9 @@
                     </div>
                 </li>
             </ol>
+                    </div>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -188,8 +199,11 @@
         </div>
     </section>
 
-    <section id="why" class="narrative-section why-section">
-        <div class="container">
+    <section id="why" class="narrative-section why-section scroll-story" data-story-steps="3">
+        <div class="scroll-story-pin">
+            <div class="scroll-story-sticky">
+                <div class="container">
+
             <div class="section-header">
                 <h2 class="section-title">Why this matters</h2>
                 <p class="section-subtitle">
@@ -203,8 +217,14 @@
                 </p>
             </div>
 
-            <div class="compare-list" role="list">
-                <article class="compare-item" role="listitem">
+                                <div class="scroll-story-stage">
+                        <div class="scroll-story-progress" aria-hidden="true">
+                            <button type="button" class="scroll-story-dot is-active" data-story-goto="0" aria-label="Identity">1</button>
+                            <button type="button" class="scroll-story-dot" data-story-goto="1" aria-label="Files">2</button>
+                            <button type="button" class="scroll-story-dot" data-story-goto="2" aria-label="Personal data">3</button>
+                        </div>
+<div class="compare-list scroll-story-panels" role="list">
+                <article class="compare-item is-active" role="listitem" data-story-panel>
                     <button type="button" class="compare-toggle" aria-expanded="false" aria-controls="compare-identity">
                         <span class="compare-topic">Identity</span>
                         <span class="compare-teaser">
@@ -247,7 +267,7 @@
                     </div>
                 </article>
 
-                <article class="compare-item" role="listitem">
+                <article class="compare-item" role="listitem" data-story-panel>
                     <button type="button" class="compare-toggle" aria-expanded="false" aria-controls="compare-files">
                         <span class="compare-topic">Files</span>
                         <span class="compare-teaser">
@@ -290,7 +310,7 @@
                     </div>
                 </article>
 
-                <article class="compare-item" role="listitem">
+                <article class="compare-item" role="listitem" data-story-panel>
                     <button type="button" class="compare-toggle" aria-expanded="false" aria-controls="compare-permission">
                         <span class="compare-topic">Personal data</span>
                         <span class="compare-teaser">
@@ -332,6 +352,10 @@
                         </div>
                     </div>
                 </article>
+            </div>
+        
+                    </div>
+                </div>
             </div>
         </div>
     </section>
@@ -381,6 +405,6 @@
         </div>
     </footer>
 
-    <script src="script.js?v=20260802-scroll-type"></script>
+    <script src="script.js?v=20260802-scroll-story"></script>
 </body>
 </html>
