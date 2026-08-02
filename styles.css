@@ -5539,12 +5539,14 @@ section:nth-child(odd) {
 .phone-frame {
   position: relative;
   box-sizing: border-box;
-  /* Height-first 9:16: width is derived so max-height never squashes the ratio */
-  width: min(100%, calc(min(85vh, 760px) * 9 / 16));
-  aspect-ratio: 9 / 16;
-  height: auto;
-  padding: 12px;
-  border-radius: 42px;
+  /* Explicit 9:16 — size from width, never clamp height (that was squashing it before) */
+  width: min(430px, calc(100vw - 2.5rem));
+  height: calc(min(430px, calc(100vw - 2.5rem)) * 16 / 9);
+  max-width: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+  padding: 10px;
+  border-radius: 44px;
   background:
     linear-gradient(160deg, #2a2a2a 0%, #0c0c0c 45%, #1a1a1a 100%);
   box-shadow:
@@ -6146,11 +6148,10 @@ section:nth-child(odd) {
   }
 
   .phone-frame {
-    width: min(100%, calc(min(80vh, 700px) * 9 / 16));
-    aspect-ratio: 9 / 16;
-    height: auto;
-    border-radius: 36px;
-    padding: 10px;
+    width: min(360px, calc(100vw - 2rem));
+    height: calc(min(360px, calc(100vw - 2rem)) * 16 / 9);
+    border-radius: 38px;
+    padding: 9px;
   }
 
   .phone-screen {
