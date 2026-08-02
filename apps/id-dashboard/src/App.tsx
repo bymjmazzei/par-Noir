@@ -5,24 +5,15 @@ import { SecureStorage } from './utils/storage';
 import { UnifiedAuth } from './components/UnifiedAuth';
 import QRCode from 'qrcode';
 
-import { IdentityCrypto, AuthSession, EncryptedIdentity } from '@par-noir/identity-crypto';
+import { EncryptedIdentity } from '@par-noir/identity-crypto';
 
 import { analytics } from './utils/analytics';
-import { security } from './utils/security';
 import usePWA from './hooks/usePWA';
 import { GlobalPrivacySettings } from './types/privacy';
-import { STANDARD_DATA_POINTS } from './types/standardDataPoints';
-import { setPendingRecoverySharesBuffer } from './services/recoveryVaultService';
 import { useRecoveryVaultState } from './hooks/useRecoveryVaultState';
 import { useDeviceAuthState } from './hooks/useDeviceAuthState';
 import { DEVICE_CAPABILITIES } from '@par-noir/device-auth';
-import {
-  authenticateDeviceBoundPn,
-  checkDeviceBoundPnUnlockAvailable,
-  DEVICE_BOUND_PN_ERROR,
-  isDeviceBoundPnEnvelope,
-} from './services/deviceBoundPnService';
-import { ownerFetch, ownerGet } from './services/ownerApiService';
+import { ownerGet } from './services/ownerApiService';
 import { getRecoveryAuthSession } from './services/recoveryAuthSession';
 
 import { MigrationManager, WebIdentityData, MigrationResult } from './utils/migration';
@@ -33,12 +24,9 @@ import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import { SessionDataMigration } from './utils/sessionDataMigration';
 import { IntegrationCredentialManager } from './utils/integrationCredentialManager';
 
-import { InputValidator } from './utils/validation';
-import { downloadFile } from './utils/helpers';
-import { parsePortablePnBackup } from './utils/parsePortablePnBackup';
 import { API_ENDPOINT } from './config/api';
 
-import SimpleStorage, { SimpleIdentity } from './utils/simpleStorage';
+import SimpleStorage from './utils/simpleStorage';
 
 import {
   listAllDelegations,
@@ -53,7 +41,6 @@ import { AppModals } from './App/AppModals';
 import { UnlockGate } from './App/UnlockGate';
 import { CreateDidModal } from './App/CreateDidModal';
 import { ImportDidModal } from './App/ImportDidModal';
-import { generateRandomNickname } from './utils/randomNickname';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -70,7 +57,9 @@ import { usePushNotifications } from './hooks/usePushNotifications';
 import { useApiToken } from './hooks/useApiToken';
 import { useExportTransferHandlers } from './hooks/useExportTransferHandlers';
 import { useAuthUnlockHandlers } from './hooks/useAuthUnlockHandlers';
+import { useCreateImportHandlers } from './hooks/useCreateImportHandlers';
 import { useIdentityProfileHandlers } from './hooks/useIdentityProfileHandlers';
+import { useToolPrivacyHandlers } from './hooks/useToolPrivacyHandlers';
 import {
   useRecoveryCustodianHandlers,
   type PendingRecoveryCompletion
@@ -1114,366 +1103,29 @@ function App() {
     setShowMigrationModal(false);
   };
 
-  const handleCreateDID = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    console.log('handleCreateDID called', { createForm, createStep });
-    
-    try {
-      logDebug('Starting identity creation...');
-      setLoading(true);
-      setError(null);
-      
-      console.log('Validation starting...', {
-        pnName: createForm.pnName,
-        confirmPNName: createForm.confirmPNName,
-        passcode: createForm.passcode ? '***' : '',
-        confirmPasscode: createForm.confirmPasscode ? '***' : '',
-        recoveryContactType: createForm.recoveryContactType,
-        recoveryEmail: createForm.recoveryEmail,
-        confirmRecoveryEmail: createForm.confirmRecoveryEmail
-      });
-
-      // Comprehensive input validation
-      const pnNameValidation = InputValidator.validatePNName(createForm.pnName);
-      if (!pnNameValidation.isValid) {
-        const errorMsg = `pN Name validation failed: ${pnNameValidation.errors.join(', ')}`;
-        setError(errorMsg);
-        setLoading(false);
-        analytics.trackError(new Error(errorMsg), 'create-form', 'high');
-        setTimeout(() => setError(null), 9000);
-        return;
-      }
-
-      const passcodeValidation = InputValidator.validatePasscode(createForm.passcode);
-      if (!passcodeValidation.isValid) {
-        const errorMsg = `Passcode validation failed: ${passcodeValidation.errors.join(', ')}`;
-        setError(errorMsg);
-        setLoading(false);
-        analytics.trackError(new Error(errorMsg), 'create-form', 'high');
-        setTimeout(() => setError(null), 9000);
-        return;
-      }
-
-      // Validate optional fields
-      if (createForm.recoveryEmail) {
-        const emailValidation = InputValidator.validateEmail(createForm.recoveryEmail);
-        if (!emailValidation.isValid) {
-          const errorMsg = `Email validation failed: ${emailValidation.errors.join(', ')}`;
-          setError(errorMsg);
-          setLoading(false);
-          setTimeout(() => setError(null), 9000);
-          return;
-        }
-      }
-
-      if (createForm.recoveryPhone) {
-        const phoneValidation = InputValidator.validatePhone(createForm.recoveryPhone);
-        if (!phoneValidation.isValid) {
-          const errorMsg = `Phone validation failed: ${phoneValidation.errors.join(', ')}`;
-          setError(errorMsg);
-          setLoading(false);
-          setTimeout(() => setError(null), 9000);
-          return;
-        }
-      }
-
-      // Rate limiting check
-      const rateLimitConfig = {
-        maxRequests: 5,
-        windowMs: 60000, // 1 minute
-        keyGenerator: (userId?: string) => `create_identity_${userId || 'anonymous'}`
-      };
-
-      if (!security.checkRateLimit(rateLimitConfig)) {
-        setError('Too many requests. Please wait a moment and try again.');
-        setLoading(false);
-        setTimeout(() => setError(null), 9000);
-        return;
-      }
-
-      // Initialize storage if not already done
-      try {
-        await storage.init();
-      } catch (error) {
-        logError('Storage initialization error:', error);
-        // Try to clear and reinitialize storage
-        try {
-          await storage.clearAllData();
-          await storage.init();
-        } catch (retryError) {
-          logError('Storage retry failed:', retryError);
-          throw new Error('Storage system error. Please clear your browser data and try again.');
-        }
-      }
-
-      // Validate passcode confirmation
-      if (createForm.passcode !== createForm.confirmPasscode) {
-        throw new Error('Passcodes do not match');
-      }
-
-      // Validate recovery contact is provided
-      if (createForm.recoveryContactType === 'email' && !createForm.recoveryEmail) {
-        throw new Error('Recovery email is required');
-      }
-      if (createForm.recoveryContactType === 'phone' && !createForm.recoveryPhone) {
-        throw new Error('Recovery phone is required');
-      }
-
-      // Validate confirmation fields match
-      if (createForm.pnName !== createForm.confirmPNName) {
-        throw new Error('pN Names do not match');
-      }
-      
-
-      
-      if (createForm.recoveryContactType === 'email' && createForm.recoveryEmail !== createForm.confirmRecoveryEmail) {
-        throw new Error('Recovery emails do not match');
-      }
-      
-      if (createForm.recoveryContactType === 'phone' && createForm.recoveryPhone !== createForm.confirmRecoveryPhone) {
-        throw new Error('Recovery phone numbers do not match');
-      }
-
-      // Generate random nickname
-      const randomNickname = generateRandomNickname();
-      
-      // Create real identity with cryptography
-      logDebug('Creating encrypted identity...');
-      const creation = await IdentityCrypto.createIdentity(
-        createForm.pnName,
-        randomNickname,
-        createForm.passcode,
-        createForm.recoveryEmail ? createForm.recoveryEmail : undefined,
-        createForm.recoveryPhone ? createForm.recoveryPhone : undefined
-      );
-      const encryptedIdentity = creation.identity;
-      try {
-        setPendingRecoverySharesBuffer({
-          publicKey: encryptedIdentity.publicKey,
-          shares: creation.recoveryShares,
-          threshold: creation.recoveryConfig.threshold,
-        });
-      } catch {
-        /* optional */
-      }
-      logDebug('Encrypted identity created successfully');
-
-      // Portable .pn file is the identity — required for every unlock (file + pN name + passcode).
-      const pnExport = {
-        version: '1.0',
-        timestamp: new Date().toISOString(),
-        identities: [encryptedIdentity],
-      };
-      const pnFilename = `${randomNickname
-        .replace(/[^a-zA-Z0-9\s]/g, '')
-        .replace(/\s+/g, '-')
-        .toLowerCase()
-        .substring(0, 20)}.pn`;
-      downloadFile(JSON.stringify(pnExport, null, 2), pnFilename);
-
-      // Optional PWA browser cache only — unlock always requires the .pn file.
-      try {
-        const simpleStorage = SimpleStorage.getInstance();
-        const { PNNameHash } = await import('./utils/security/pnNameHash');
-        const pnNameHash = await PNNameHash.getLookupKey(createForm.pnName);
-
-        const simpleIdentity: SimpleIdentity = {
-          id: encryptedIdentity.publicKey,
-          nickname: randomNickname,
-          pnNameHash,
-          publicKey: encryptedIdentity.publicKey,
-          encryptedData: encryptedIdentity,
-          createdAt: new Date().toISOString(),
-          lastAccessed: new Date().toISOString(),
-        };
-
-        await simpleStorage.storeIdentity(simpleIdentity);
-        MigrationManager.storeForMigration(encryptedIdentity);
-      } catch (error) {
-        logError('Optional PWA browser cache failed (your .pn file is what matters):', error);
-      }
-
-      // Recovery keys are now automatically generated and encrypted in the ID file
-      // They will be available after decryption and can be linked to custodians in dashboard metadata
-
-      // Create DID info for UI (all data is encrypted except public key)
-      const didInfo: DIDInfo = {
-        id: '', // ID is encrypted - will be filled after decryption
-        pnName: '', // pN Name is encrypted - user must enter it
-        email: '', // Email is encrypted
-        nickname: '', // Nickname is encrypted
-        phone: '', // Phone is encrypted
-        recoveryEmail: '', // Recovery email is encrypted
-        recoveryPhone: '', // Recovery phone is encrypted
-        createdAt: '', // Created at is encrypted
-        status: 'active', // Default status
-        custodiansRequired: false, // Default value
-        custodiansSetup: false // Default value
-      };
-
-
-
-      // Update the UI with the new identity
-      setDids(prev => {
-        const newDids = [...prev, didInfo];
-        return newDids;
-      });
-      setSelectedDID(didInfo);
-      
-      // Authenticate the user using the existing system (which is already decentralized)
-      try {
-        const authSession = await IdentityCrypto.authenticateIdentity(encryptedIdentity, createForm.passcode, createForm.pnName);
-        setAuthenticatedUser(authSession);
-        
-
-        
-        showSuccessMessage(
-          `pN created! Your .pn file was downloaded — keep it safe; you need it with your pN name and passcode to unlock. Nickname: ${randomNickname}.`
-        );
-        
-        // Trigger onboarding wizard for new users
-        setIsNewUser(true);
-        setShowOnboardingWizard(true);
-      } catch (authError) {
-        logError('Authentication error after creation:', authError);
-        setError('pN created but authentication failed. Please try logging in.');
-      }
-      
-      // Reset form
-      setCreateForm({
-        pnName: '',
-        confirmPNName: '',
-        passcode: '',
-        confirmPasscode: '',
-        nickname: '',
-        email: '',
-        phone: '',
-        recoveryEmail: '',
-        confirmRecoveryEmail: '',
-        recoveryPhone: '',
-        confirmRecoveryPhone: '',
-        recoveryContactType: 'email'
-      });
-      setCreateStep(1);
-      setShowCreateForm(false);
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-      
-      // Track successful identity creation
-      analytics.trackEvent('identity', 'created', 'success');
-      analytics.trackFeatureUsage('identity_creation', 'completed');
-    } catch (error: any) {
-      logError('Create DID error:', error);
-      setError(error.message || 'Failed to create DID');
-      setTimeout(() => setError(null), 9000);
-      
-      // Track error
-      analytics.trackError(error, 'create-form', 'medium');
-      security.monitorAuthentication(false, createForm.pnName, 'identity_creation');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleImportDID = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Initialize storage if not already done
-      await storage.init();
-
-      // Validate backup file
-      if (!importForm.backupFile) {
-        throw new Error('Please select a backup file to import');
-      }
-
-      // Read and parse backup file
-      const backupData = await importForm.backupFile.text();
-      const backup = JSON.parse(backupData);
-
-      // Validate backup structure
-      if (!backup.identities || !Array.isArray(backup.identities)) {
-        throw new Error('Invalid backup file format');
-      }
-
-      let authSession: AuthSession;
-      let importedIdentity: Record<string, unknown>;
-
-      if (isDeviceBoundPnEnvelope(backup)) {
-        if (!(await checkDeviceBoundPnUnlockAvailable(backup, recoveryVaultPnId))) {
-          throw new Error(DEVICE_BOUND_PN_ERROR);
-        }
-        if (backup.identities.length !== 1) {
-          throw new Error('Invalid device-bound pN file: expected a single identity');
-        }
-        const result = await authenticateDeviceBoundPn({
-          envelope: backup,
-          pnName: importForm.pnName,
-          passcode: importForm.passcode,
-          pnIdentifier: recoveryVaultPnId,
-        });
-        authSession = result.authSession;
-        importedIdentity = result.identity;
-      } else {
-        if (backup.identities.length !== 1) {
-          throw new Error('Invalid pN file: Multiple identities found. Each pN file should contain only one identity.');
-        }
-        const identityToImport = parsePortablePnBackup(backup);
-
-        authSession = await IdentityCrypto.authenticateIdentity(
-          identityToImport,
-          importForm.passcode,
-          importForm.pnName
-        );
-        importedIdentity = { ...identityToImport };
-      }
-
-      // Store the session
-      await storage.storeSession(authSession);
-
-      // Create DID info for UI
-      const didInfo: DIDInfo = {
-        id: authSession.id,
-        pnName: '',
-        nickname: authSession.nickname,
-        email: '',
-        phone: '',
-        recoveryEmail: '',
-        recoveryPhone: '',
-        createdAt: authSession.authenticatedAt,
-        status: 'active',
-        custodiansRequired: true,
-        custodiansSetup: false
-      };
-
-      setDids(prev => {
-        const newDids = [...prev, didInfo];
-        return newDids;
-      });
-      setSelectedDID(didInfo);
-      
-      // Set authenticated user
-      setAuthenticatedUser(authSession);
-      
-      // Reset form
-      setImportForm({
-        pnName: '',
-        passcode: '',
-        backupFile: null
-      });
-      setShowImportForm(false);
-      setSuccessWithTimeout('pN imported and authenticated successfully!');
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-    } catch (error: any) {
-      setError(error.message || 'Failed to import DID');
-      setTimeout(() => setError(null), 9000);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { handleCreateDID, handleImportDID } = useCreateImportHandlers({
+    storage,
+    recoveryVaultPnId,
+    createForm,
+    setCreateForm,
+    createStep,
+    setCreateStep,
+    setShowCreateForm,
+    importForm,
+    setImportForm,
+    setShowImportForm,
+    setDids,
+    setSelectedDID,
+    setAuthenticatedUser,
+    setIsNewUser,
+    setShowOnboardingWizard,
+    setLoading,
+    setError,
+    setSuccessWithTimeout,
+    showSuccessMessage,
+    logDebug,
+    logError
+  });
 
   const {
     handleAuthSuccess,
@@ -1518,368 +1170,6 @@ function App() {
     logError
   });
 
-  // Tool Settings Handlers
-  const handleOpenToolSettings = (toolId: string) => {
-    setSelectedToolId(toolId);
-    setShowToolSettingsModal(true);
-  };
-
-  const handleToggleToolDataPoint = async (toolId: string, dataPointId: string, enabled: boolean) => {
-    const tool = privacySettings.toolPermissions[toolId];
-    if (!tool) return;
-
-    // Required data points must always be included
-    const requiredDataPoints = tool.requiredDataPoints || [];
-    
-    // For optional data points, add/remove based on enabled flag
-    // For required data points, always include them
-    const newDataPoints = enabled
-      ? [...new Set([...tool.dataPoints, dataPointId])] // Ensure no duplicates
-      : tool.dataPoints.filter(dp => dp !== dataPointId && !requiredDataPoints.includes(dp)); // Don't remove required
-    
-    // Always include required data points
-    const finalDataPoints = [...new Set([...newDataPoints, ...requiredDataPoints])];
-
-    const newSettings = {
-      ...privacySettings,
-      toolPermissions: {
-        ...privacySettings.toolPermissions,
-        [toolId]: {
-          ...tool,
-          dataPoints: finalDataPoints,
-          requiredDataPoints: tool.requiredDataPoints || [],
-          optionalDataPoints: tool.optionalDataPoints || []
-        }
-      }
-    };
-    setPrivacySettings(newSettings);
-
-    // Persist to Google Drive via API
-    try {
-      const credentials = SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
-      if (!credentials || !authenticatedUser?.id) {
-        console.warn('[App] Cannot persist permissions - credentials not available');
-        return;
-      }
-
-      const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
-      if (!authToken) {
-        console.warn('[App] Cannot persist permissions - no auth token');
-        return;
-      }
-
-      // Get pN identifier
-      const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-      const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-        pnName: credentials.pnName,
-        passcode: credentials.passcode,
-        publicKey: authenticatedUser.publicKey || ''
-      });
-
-      // Store permissions via API (will be saved to Google Drive)
-      const path = `/api/users/${pnIdentifier}/third-party-permissions`;
-      const response = await ownerFetch(authToken, 'PUT', path, {
-        toolId,
-        permission: newSettings.toolPermissions[toolId],
-      });
-
-      if (!response.ok) {
-        console.error('Failed to persist permissions:', response.status);
-      } else {
-        console.log('✅ Permissions persisted to Google Drive');
-      }
-    } catch (error) {
-      console.error('Error persisting permissions:', error);
-    }
-  };
-
-  const handleSetToolDataPointRequired = (toolId: string, dataPointId: string, required: boolean) => {
-    const tool = privacySettings.toolPermissions[toolId];
-    if (!tool) return;
-
-    const currentRequired = tool.requiredDataPoints || [];
-    const currentOptional = tool.optionalDataPoints || [];
-
-    const newRequiredDataPoints = required
-      ? [...currentRequired.filter(dp => dp !== dataPointId), dataPointId]
-      : currentRequired.filter(dp => dp !== dataPointId);
-    
-    const newOptionalDataPoints = required
-      ? currentOptional.filter(dp => dp !== dataPointId)
-      : [...currentOptional.filter(dp => dp !== dataPointId), dataPointId];
-
-    const newSettings = {
-      ...privacySettings,
-      toolPermissions: {
-        ...privacySettings.toolPermissions,
-        [toolId]: {
-          ...tool,
-          requiredDataPoints: newRequiredDataPoints,
-          optionalDataPoints: newOptionalDataPoints
-        }
-      }
-    };
-    setPrivacySettings(newSettings);
-  };
-
-  const handleDeactivateTool = (toolId: string) => {
-    const newSettings = {
-      ...privacySettings,
-      toolPermissions: {
-        ...privacySettings.toolPermissions,
-        [toolId]: {
-          ...privacySettings.toolPermissions[toolId],
-          status: privacySettings.toolPermissions[toolId].status === 'active' ? 'revoked' as const : 'revoked' as const
-        }
-      }
-    };
-    setPrivacySettings(newSettings);
-
-    // Store privacy settings update in cloud database for cross-platform sync
-    cloudSyncManager.initialize().then(() => {
-      return cloudSyncManager.storeUpdate({
-        type: 'privacy',
-        identityId: authenticatedUser?.id || selectedDID?.id || 'temp-identity',
-        publicKey: authenticatedUser?.publicKey || '',
-        data: {
-          action: 'update',
-          toolId,
-          newSettings
-        },
-        updatedByDeviceId: currentDevice?.id || generateDeviceFingerprint()
-      });
-    }).then(() => {
-              logDebug('Privacy settings update stored in cloud database for cross-platform sync');
-    }).catch((error) => {
-                logError('Failed to store privacy settings update in cloud:', error);
-      // Don't fail the entire operation if cloud sync fails
-    });
-
-    setSuccessWithTimeout('Tool status updated successfully. Changes will sync across platforms.');
-    setTimeout(() => setSuccessWithTimeout(null), 5000);
-  };
-
-  // Helper function to map data point ID to proof type for ZKP API
-  const mapDataPointIdToProofType = (dataPointId: string): 'age_verification' | 'identity_verification' | 'location_verification' | 'document_verification' => {
-    switch (dataPointId) {
-      case 'age_attestation':
-        return 'age_verification';
-      case 'identity_attestation':
-        return 'identity_verification';
-      case 'location_verification':
-        return 'location_verification';
-      case 'document_verification':
-        return 'document_verification';
-      default:
-        // Default to identity_verification for unknown data points
-        return 'identity_verification';
-    }
-  };
-
-  const handleRequestDataPoint = async (dataPointId: string) => {
-    try {
-      const dataPoint = STANDARD_DATA_POINTS[dataPointId];
-      if (!dataPoint) {
-        setError('Unknown data point');
-        return;
-      }
-
-      // Check if user has already attested this data point - from API server (Google Drive)
-      let existingData = null;
-      
-        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-        if (!credentials) {
-        console.warn('[App] Credentials not available for checking existing data point');
-      } else {
-        const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
-        if (authToken) {
-          try {
-            // Check API server (Google Drive) for existing data point - NO localStorage
-            const { ZKPDataPointsService } = await import('./utils/zkpDataPointsService');
-            const existingDataPoint = await ZKPDataPointsService.getDataPoint(
-              authenticatedUser.id,
-              credentials,
-              authToken,
-              dataPointId,
-              authenticatedUser.publicKey
-            );
-            
-            if (existingDataPoint) {
-              console.log('[App] Found existing data point in API:', existingDataPoint.dataPointId);
-              
-              // Decrypt userData if available for editing
-              if (existingDataPoint.encryptedUserData) {
-                try {
-                  // SECURITY: Decryption requires BOTH pnName and passcode
-                  // encryptedUserData is stored as JSON string of EncryptedData object
-                  // Handle both string and object cases (API might return object directly)
-                  let encryptedDataObj;
-                  if (typeof existingDataPoint.encryptedUserData === 'string') {
-                    try {
-                      encryptedDataObj = JSON.parse(existingDataPoint.encryptedUserData);
-                    } catch (parseError) {
-                      // If parsing fails, it might be "[object Object]" string or invalid format
-                      console.warn('[App] Failed to parse encryptedUserData string:', parseError);
-                      throw new Error('Invalid encryptedUserData format');
-                    }
-                  } else if (typeof existingDataPoint.encryptedUserData === 'object' && existingDataPoint.encryptedUserData !== null) {
-                    // Already an object (from API JSON response)
-                    encryptedDataObj = existingDataPoint.encryptedUserData;
-                  } else {
-                    throw new Error('encryptedUserData is neither string nor object');
-                  }
-                  
-                  const decryptedUserDataJson = await IdentityCrypto.decryptData(
-                    encryptedDataObj,
-                    credentials.pnName,
-                    credentials.passcode
-                  );
-                  existingData = JSON.parse(decryptedUserDataJson);
-                  console.log('[App] Decrypted existing userData for editing:', existingData);
-                } catch (error) {
-                  console.warn('[App] Failed to decrypt userData, will show empty form:', error);
-                  existingData = null;
-                }
-              }
-            }
-          } catch (error) {
-            console.warn('[App] Error checking for existing data point:', error);
-            // Continue without existing data
-          }
-        }
-      }
-      
-      setCurrentDataPoint(dataPoint);
-      setCurrentDataPointExistingData(existingData);
-      console.log('🔄 [App] Opening DataPointInputModal', {
-        dataPointId,
-        dataPointName: dataPoint.name,
-        hasExistingData: !!existingData
-      });
-      setShowDataPointInputModal(true);
-    } catch (error) {
-      console.error('❌ [App] Error loading existing data, using fallback:', error);
-      // Fallback to new data collection
-      const dataPoint = STANDARD_DATA_POINTS[dataPointId];
-      setCurrentDataPoint(dataPoint);
-      setCurrentDataPointExistingData(null);
-      console.log('🔄 [App] Opening DataPointInputModal (fallback)', {
-        dataPointId,
-        dataPointName: dataPoint.name
-      });
-      setShowDataPointInputModal(true);
-    }
-  };
-
-    const handleDataPointInputComplete = async (proofs: any[], userData: any) => {
-    console.log('🔄 [DataPointInput] handleDataPointInputComplete called', { 
-      proofsCount: proofs.length, 
-      dataPointId: currentDataPoint?.id,
-      hasUserData: !!userData 
-    });
-      
-    try {
-      const dataPointId = currentDataPoint?.id;
-      if (!dataPointId || proofs.length === 0) {
-        throw new Error('Invalid data point or proof');
-      }
-
-      const proof = proofs[0];
-        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-        if (!credentials) {
-        throw new Error('Credentials not available');
-        }
-        
-      const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
-      if (!authToken) {
-        throw new Error('No access token available. Please re-authenticate.');
-        }
-        
-      // Convert to API format
-      const { ZKPDataPointsService } = await import('./utils/zkpDataPointsService');
-        
-      // Encrypt userData for storage (so it can be retrieved for editing)
-      let encryptedUserData: string | undefined;
-      if (userData && Object.keys(userData).length > 0) {
-        try {
-          const userDataJson = JSON.stringify(userData);
-          // SECURITY: Encryption requires BOTH pnName and passcode
-          const encryptedDataObj = await IdentityCrypto.encryptData(
-            userDataJson,
-            credentials.pnName,
-            credentials.passcode
-          );
-          // Serialize EncryptedData object to string for storage
-          encryptedUserData = JSON.stringify(encryptedDataObj);
-        } catch (error) {
-          console.warn('Failed to encrypt userData, continuing without it:', error);
-        }
-      }
-      
-            const zkpDataPoint = {
-              dataPointId: dataPointId,
-              proofType: mapDataPointIdToProofType(dataPointId),
-              zkpProof: proof.proof,
-        signature: proof.signature || proof.proof,
-              verifiedAt: proof.timestamp || new Date().toISOString(),
-        expiresAt: proof.expiresAt || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-              verificationLevel: proof.verificationLevel || 'basic',
-              metadata: {
-                provider: 'user_attested',
-                fraudPreventionScore: undefined
-        },
-        encryptedUserData: encryptedUserData
-      };
-
-      // Save directly to API server (Google Drive) - NO localStorage
-      console.log('🔄 [ZKP Save] Saving directly to API server (Google Drive)...');
-      await ZKPDataPointsService.saveDataPoint(
-        authenticatedUser.id,
-        credentials,
-        authToken,
-        zkpDataPoint,
-        authenticatedUser.publicKey
-      );
-
-      // Wait for Google Drive to sync
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Verify by reading back from API
-      console.log('🔄 [ZKP Verify] Verifying save...');
-      const verified = await ZKPDataPointsService.hasDataPoint(
-        authenticatedUser.id,
-        credentials,
-        authToken,
-        dataPointId,
-        authenticatedUser.publicKey
-      );
-              
-      if (!verified) {
-        throw new Error('Verification failed - data point not found after save');
-      }
-
-      // Reload all data points from API
-      const allDataPointIds = await ZKPDataPointsService.getAllDataPoints(
-        authenticatedUser.id,
-        credentials,
-        authToken,
-        authenticatedUser.publicKey
-      );
-      
-      console.log('✅ [ZKP] Successfully saved and verified. All data points:', allDataPointIds);
-      setAttestedDataPoints(new Set(allDataPointIds));
-      
-      setSuccessWithTimeout(`Successfully attested ${currentDataPoint?.name}!`);
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
-      setShowDataPointInputModal(false);
-      setCurrentDataPoint(null);
-      setCurrentDataPointExistingData(null);
-    } catch (error) {
-      console.error('❌ [DataPointInput] Error:', error);
-      setError(`Failed to save data point: ${error instanceof Error ? error.message : String(error)}`);
-      setTimeout(() => setError(null), 9000);
-    }
-  };
 
 
 
@@ -2122,6 +1412,26 @@ function App() {
     setShowProfilePictureEditor,
     showSuccessMessage,
     showErrorMessage,
+    logDebug,
+    logError
+  });
+
+  const toolPrivacyHandlers = useToolPrivacyHandlers({
+    authenticatedUser,
+    selectedDID,
+    currentDevice,
+    generateDeviceFingerprint,
+    privacySettings,
+    setPrivacySettings,
+    setSelectedToolId,
+    setShowToolSettingsModal,
+    currentDataPoint,
+    setCurrentDataPoint,
+    setCurrentDataPointExistingData,
+    setShowDataPointInputModal,
+    setAttestedDataPoints,
+    setError,
+    setSuccessWithTimeout,
     logDebug,
     logError
   });
@@ -2703,9 +2013,9 @@ function App() {
           handleNicknameUpdate={handleNicknameUpdate}
           handleExportData={handleExportData}
           handleLogout={handleLogout}
-          handleRequestDataPoint={handleRequestDataPoint}
-          handleToggleToolDataPoint={handleToggleToolDataPoint}
-          handleOpenToolSettings={handleOpenToolSettings}
+          handleRequestDataPoint={toolPrivacyHandlers.handleRequestDataPoint}
+          handleToggleToolDataPoint={toolPrivacyHandlers.handleToggleToolDataPoint}
+          handleOpenToolSettings={toolPrivacyHandlers.handleOpenToolSettings}
           bumpRecoveryAuthUi={bumpRecoveryAuthUi}
           refreshRecoveryVault={refreshRecoveryVault}
           handleRemoveCustodian={handleRemoveCustodian}
@@ -2873,7 +2183,7 @@ function App() {
           currentDataPoint={currentDataPoint}
           setShowDataPointInputModal={setShowDataPointInputModal}
           currentDataPointExistingData={currentDataPointExistingData}
-          handleDataPointInputComplete={handleDataPointInputComplete}
+          handleDataPointInputComplete={toolPrivacyHandlers.handleDataPointInputComplete}
           selectedStoredIdentity={selectedStoredIdentity}
           showBiometricPasscodeModal={showBiometricPasscodeModal}
           pendingBiometricIdentity={pendingBiometricIdentity}
@@ -2894,7 +2204,7 @@ function App() {
           verifiedDataPoints={verifiedDataPoints}
           setAttestedDataPoints={setAttestedDataPoints}
           setVerifiedDataPoints={setVerifiedDataPoints}
-          mapDataPointIdToProofType={mapDataPointIdToProofType}
+          mapDataPointIdToProofType={toolPrivacyHandlers.mapDataPointIdToProofType}
         />
 
       </main>
