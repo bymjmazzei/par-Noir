@@ -220,6 +220,7 @@
                     <button class="faq-tab" data-tab="pieces" type="button">Pieces</button>
                     <button class="faq-tab" data-tab="privacy-faq" type="button">Privacy</button>
                     <button class="faq-tab" data-tab="platforms-faq" type="button">Platforms</button>
+                    <button class="faq-tab" data-tab="developers-faq" type="button">Developers</button>
                     <button class="faq-tab" data-tab="getting-started" type="button">Getting started</button>
                 </div>
 
@@ -403,6 +404,57 @@
                             </button>
                             <div class="faq-answer">
                                 <p>Non-commercial use is free. A commercial product built on pN needs a <a href="https://licensing.parnoir.com" rel="noopener noreferrer">commercial license</a>. Creating your own pN is free.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="faq-tab-content" id="developers-faq">
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>What algorithms does a pN use?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Signing: <strong>ML-DSA-65</strong> (FIPS 204). Key encapsulation: <strong>ML-KEM-768</strong> (FIPS 203). Those post-quantum keypairs are generated with a CSPRNG at create time.</p>
+                                <p>Sealing the identity file: <strong>PBKDF2-HMAC-SHA-512</strong> (1,000,000 iterations) derives an <strong>AES-256-GCM</strong> key from the credentials. Protocol digests use <strong>SHA3-384</strong>.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>How do file, name, and passcode unlock it?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>The <code>.pn</code> file holds ciphertext, salt, IV, and public keys. Unlock concatenates <code>pnName:passcode</code>, runs PBKDF2 with the file’s salt (1M iterations, SHA-512), then AES-256-GCM decrypts the payload. Wrong credentials fail decryption. Name and passcode do not derive the ML-DSA / ML-KEM secret keys; those stay random and sealed inside the file.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>How big is the credential space?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Names: letters, numbers, hyphens; length 3–20. That is 63 symbols, so about <strong>10<sup>36</sup></strong> possible names at length 20 alone.</p>
+                                <p>Passcodes: length 12–128, and must include upper, lower, digit, and a special character. Even a rough lower bound for length-12 printable ASCII is on the order of <strong>10<sup>23</sup></strong> strings before class rules; longer passcodes grow that space fast.</p>
+                                <p>Offline guessing only works if someone already has the identity file. Each guess still costs 1,000,000 PBKDF2-SHA-512 iterations. Without the file, there is no ciphertext to attack.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>What should my product never store?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Do not collect or log the identity file, pN name, or passcode. People unlock on their side. Your product verifies or aggregates through the APIs; it does not host or own their content. Start at <a href="https://developers.parnoir.com" rel="noopener noreferrer">developers.parnoir.com</a>.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question" type="button">
+                                <h3>Is this blockchain mining or hashcash?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>No. “Proof of work” here means credential-driven self-issuance: the client generates the PQC keys and seals them locally. There is no difficulty target, nonce grind, or chain.</p>
                             </div>
                         </div>
                     </div>
