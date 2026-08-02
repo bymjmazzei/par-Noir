@@ -5826,11 +5826,11 @@ section:nth-child(odd) {
 
 .steps-grid {
   list-style: none;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
   width: 100%;
-  max-width: 1100px;
+  max-width: 640px;
   margin: 0 auto 2.5rem;
   padding: 0;
 }
@@ -5875,13 +5875,24 @@ section:nth-child(odd) {
 
 .step-card p {
   color: var(--text-secondary);
-  flex: 1;
   font-size: 1rem;
 }
 
-.step-card .btn {
+.step-inline-link {
   align-self: flex-start;
-  margin-top: 0.5rem;
+  margin-top: 0.15rem;
+  color: var(--text-primary);
+  text-decoration: none;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.35);
+  padding-bottom: 0.1rem;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.step-inline-link:hover {
+  color: #fff;
+  border-bottom-color: rgba(255, 255, 255, 0.85);
 }
 
 .story-video {
@@ -6229,7 +6240,6 @@ section:nth-child(odd) {
 }
 
 @media (max-width: 900px) {
-  .steps-grid,
   .offload-grid {
     grid-template-columns: 1fr;
   }
