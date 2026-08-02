@@ -5722,14 +5722,14 @@ section:nth-child(odd) {
 .phone-frame {
   position: relative;
   box-sizing: border-box;
-  /* Explicit 9:16 — size from width, never clamp height (that was squashing it before) */
-  width: min(430px, calc(100vw - 2.5rem));
-  height: calc(min(430px, calc(100vw - 2.5rem)) * 16 / 9);
+  /* Explicit 9:16 — keep the same compact size on desktop and mobile */
+  width: min(360px, calc(100vw - 2rem));
+  height: calc(min(360px, calc(100vw - 2rem)) * 16 / 9);
   max-width: 100%;
   max-height: none;
   aspect-ratio: auto;
-  padding: 10px;
-  border-radius: 44px;
+  padding: 9px;
+  border-radius: 38px;
   background:
     linear-gradient(160deg, #2a2a2a 0%, #0c0c0c 45%, #1a1a1a 100%);
   box-shadow:
@@ -5779,7 +5779,7 @@ section:nth-child(odd) {
   flex-direction: column;
   width: 100%;
   height: 100%;
-  border-radius: 32px;
+  border-radius: 28px;
   overflow: hidden;
   background: #000;
   isolation: isolate;
@@ -6327,17 +6327,6 @@ section:nth-child(odd) {
 
   .compare-pair {
     grid-template-columns: 1fr;
-  }
-
-  .phone-frame {
-    width: min(360px, calc(100vw - 2rem));
-    height: calc(min(360px, calc(100vw - 2rem)) * 16 / 9);
-    border-radius: 38px;
-    padding: 9px;
-  }
-
-  .phone-screen {
-    border-radius: 28px;
   }
 
   .hero-consumer {
