@@ -1078,6 +1078,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           ).then(async (initRes) => {
             if (!initRes.ok) {
               const initErr = await initRes.text().catch(() => 'Unknown error');
+              // Device custody: API has no Google secrets → 400. Treat as non-fatal skip.
+              if (initRes.status === 400 || initRes.status === 403 || initRes.status === 404) {
+                console.warn(
+                  `⏭️ [Storage] Skipping server Drive init (${initRes.status}); client-side discovery will be used`
+                );
+                return initRes;
+              }
               const err = new Error(
                 `Drive layout init failed (${initRes.status}): ${initErr.slice(0, 200)}`
               );
@@ -1098,9 +1105,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
           await postPromise;
           if (postError) {
+            const status = (postError as { status?: number }).status;
+            if (status === 400 || status === 403 || status === 404) {
+              return true; // skip without failing the connect flow
+            }
             throw postError;
           }
-          throw new Error('Drive layout init timed out waiting for server');
+          // Timed out waiting but POST may have been a custody skip — don't fail hard
+          console.warn('⚠️ [Storage] Drive init wait finished without server confirmation');
+          return true;
         }, maxAttempts, 2000);
 
         if (!result) {
@@ -1267,19 +1280,31 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             directoryBuilt: result.directoryBuilt,
             initInProgress: result.initInProgress,
           });
-        }
 
-        // Always await server-side layout build (PUT returns immediately; init can take several minutes).
-        console.log('🔄 [StorageCredentials] Building Drive layout on server (may take a few minutes)...');
-        setDriveSetupProgress({
-          phase: 'starting',
-          stepLabel: 'Preparing your par Noir storage…',
-          percent: 0,
-        });
-        await postDriveInitializeWithRetry(pnIdentifier, accessToken, {
-          onProgress: setDriveSetupProgress,
-        });
-        clearDriveSetupProgress();
+          // Only run server Drive layout init on first connect / incomplete layout.
+          // Under DEVICE_CLOUD_CUSTODY the API strips OAuth secrets, so initialize returns 400 —
+          // client-side folder discovery covers that case; do not show a full "cloud setup" UI.
+          const needsServerInit = result.initInProgress === true || result.directoryBuilt === false;
+          if (needsServerInit) {
+            console.log('🔄 [StorageCredentials] Building Drive layout on server (may take a few minutes)...');
+            setDriveSetupProgress({
+              phase: 'starting',
+              stepLabel: 'Preparing your par Noir storage…',
+              percent: 0,
+            });
+            const ok = await postDriveInitializeWithRetry(pnIdentifier, accessToken, {
+              onProgress: setDriveSetupProgress,
+            });
+            clearDriveSetupProgress();
+            if (!ok) {
+              console.warn(
+                '⚠️ [StorageCredentials] Server Drive init skipped or failed; using client-side Drive discovery'
+              );
+            }
+          } else {
+            console.log('⏭️ [StorageCredentials] Drive layout already built; skipping initialize');
+          }
+        }
         if (loadFilesRef.current) {
           void loadFilesRef.current();
         }
@@ -1293,7 +1318,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       globalPersistenceLockRef.current = false;
       persistenceInProgressRef.current = false;
     }
-  }, [buildStorageCredentialPayload, persistCredentialsToSecureMetadata, API_ENDPOINT, driveAccounts.length, waitForOwnerApiToken, ensureOwnerApiToken, postDriveInitializeWithRetry]);
+  }, [buildStorageCredentialPayload, persistCredentialsToSecureMetadata, API_ENDPOINT, driveAccounts.length, waitForOwnerApiToken, ensureOwnerApiToken, postDriveInitializeWithRetry, clearDriveSetupProgress]);
 
   // Token refresh handler - moved here after persistStorageCredentialsToAPI is declared
   // CRITICAL: Use refs for driveAccounts and userEmails to avoid re-registering event listener
@@ -1384,7 +1409,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             const sessionCreds = SecureCredentialManager.getCredentials(authenticatedUser.id);
             const pnId = pnIdentifierRef.current;
             if (sessionCreds && pnId && nextAccessToken) {
-              const { sealAndStoreCloudCredentials, publishStorageLayout } = await import(
+              // Device custody: update sealed local credentials only.
+              // Do not publish layout or persist/initialize on the API for a routine token refresh —
+              // that re-triggers multi-minute Drive setup and fails when secrets are device-held.
+              const { sealAndStoreCloudCredentials } = await import(
                 '../../services/deviceCloudCredentials'
               );
               await sealAndStoreCloudCredentials({
@@ -1408,17 +1436,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   passcode: sessionCreds.passcode
                 }
               });
-              const token = resolveOwnerApiToken(pnId);
-              if (token) {
-                await publishStorageLayout({
-                  identityId: pnId,
-                  authToken: token,
-                  layout: {
-                    socialCloudProvider: 'google_drive',
-                    socialCloudAccountId: backendId
-                  }
-                }).catch(() => undefined);
-              }
             }
           } catch (deviceSealErr) {
             console.warn('[FileStorageAggregator] Device cloud seal skipped:', deviceSealErr);
@@ -1439,6 +1456,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             refreshToken: nextRefreshToken ?? undefined,
             email: resolvedEmail ?? undefined,
             sessionId: authenticatedUser?.id || authenticatedUser?.publicKey || undefined,
+            expiresAt: Date.now() + 55 * 60 * 1000,
           })
           .catch((connectError) => {
             console.warn('⚠️ [StorageCredentials] Failed to apply refreshed token to backend', connectError);
@@ -1471,23 +1489,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         });
       }
 
-      // CRITICAL: Persist on token refresh - auto-persist is disabled
-      // Only persist if not already persisted recently (debounce)
-      const timeSinceLastPersistence = Date.now() - lastPersistenceTimeRef.current;
-      if (timeSinceLastPersistence > PERSISTENCE_DEBOUNCE_MS) {
-        try {
-          const payload = buildStorageCredentialPayload();
-          if (payload && payload.googleDriveAccounts && payload.googleDriveAccounts.length > 0) {
-            await persistStorageCredentialsToAPI(payload);
-            console.log('✅ [handleTokenRefreshed] Credentials persisted to API after token refresh');
-          }
-        } catch (persistError) {
-          console.warn('⚠️ [handleTokenRefreshed] Failed to persist credentials to API (non-critical):', persistError);
-        }
-      } else {
-        console.log(`⏭️ [handleTokenRefreshed] Skipping persistence (debounced, ${timeSinceLastPersistence}ms < ${PERSISTENCE_DEBOUNCE_MS}ms)`);
-      }
-
+      // Token refresh is not a reconnect — never PUT credentials / POST initialize here.
       ownerIndexRetryCountsRef.current.delete(backendId);
       ownerIndexWarningLoggedRef.current.delete(backendId);
       rateLimitedBackendsRef.current.delete(backendId);
@@ -1501,14 +1503,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     return () => {
       window.removeEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
     };
-  }, [aggregatorService, persistStorageCredentialsToAPI, authenticatedUser?.id]); // Removed driveAccounts and userEmails from dependencies
+  }, [aggregatorService, authenticatedUser?.id]); // Removed driveAccounts and userEmails from dependencies
 
   // CRITICAL: DISABLED auto-persist effect - only persist on explicit user actions
   // The auto-persist was causing 8+ PUT requests because authenticatedUser.id was changing
   // Now we only persist when:
   // 1. User connects a Google Drive account (handleConnectGoogleDrive)
   // 2. User disconnects a Google Drive account (handleDisconnect)
-  // 3. Token is refreshed (handleTokenRefreshed) - but only if not already persisted recently
+  // Token refresh updates local/sealed credentials only (no API init).
   // This prevents the 8+ duplicate persistence calls
 
   const resolveShareVisibility = React.useCallback(
@@ -2198,9 +2200,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           hydrationMissingCandidatesRef.current.add(candidateId);
           continue;
         }
-        const hydrationToken = resolveOwnerApiToken();
+        const hydrationToken = resolveOwnerApiToken(pnId);
         if (!hydrationToken) {
-          console.debug('ℹ️ [StorageCredentials] No OAuth token yet; deferring hydration');
+          console.debug('ℹ️ [StorageCredentials] No OAuth token yet for this pN; deferring hydration');
           continue;
         }
         const response = await ownerGet(
@@ -2213,6 +2215,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           // 404 is expected if credentials haven't been stored yet (e.g., user connected before persistence was implemented)
           // User will need to reconnect to store credentials properly
           console.debug('ℹ️ [StorageCredentials] No stored credentials found for identity (404) - user may need to reconnect');
+          continue;
+        }
+
+        if (response.status === 403) {
+          // Common under device policy (keyed device required) or custody — keep local credentials.
+          console.debug(
+            'ℹ️ [StorageCredentials] Credential hydrate forbidden (403); using local/sealed Drive credentials'
+          );
           continue;
         }
 
@@ -3451,7 +3461,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         let ownerIndexFromApi = false;
         let skipClientDriveDiscovery = false;
 
-        const ownerApiToken = resolveOwnerApiToken();
+        const ownerApiToken = currentPnIdentifier
+          ? resolveOwnerApiToken(
+              currentPnIdentifier.startsWith('pn-')
+                ? currentPnIdentifier
+                : `pn-${currentPnIdentifier}`
+            )
+          : resolveOwnerApiToken();
         if (!ownerIndex && currentPnIdentifier && ownerApiToken) {
           try {
             const pnId = currentPnIdentifier.startsWith('pn-')
@@ -3464,7 +3480,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               ownerApiToken,
               `/api/storage/owner-index/${encodeURIComponent(pnId)}`
             );
-            if (idxRes.status === 409) {
+            if (idxRes.status === 403) {
+              // Device policy / custody — fall through to client Drive discovery
+              console.debug('ℹ️ [loadFiles] owner-index forbidden; using client Drive discovery');
+            } else if (idxRes.status === 409) {
               skipClientDriveDiscovery = true;
               const completedAt = driveLayoutInitJustCompletedRef.current.get(pnId);
               const recentlyCompleted =
