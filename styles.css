@@ -5879,14 +5879,13 @@ section:nth-child(odd) {
 }
 
 .step-inline-link {
-  align-self: flex-start;
-  margin-top: 0.15rem;
   color: var(--text-primary);
   text-decoration: none;
   font-weight: 400;
   letter-spacing: 0.02em;
   border-bottom: 1px solid rgba(255, 255, 255, 0.35);
-  padding-bottom: 0.1rem;
+  padding-bottom: 0.05rem;
+  white-space: nowrap;
   transition: border-color 0.2s ease, color 0.2s ease;
 }
 
