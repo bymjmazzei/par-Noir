@@ -69,6 +69,11 @@ body {
   text-align: center;
 }
 
+/* Keep brand casing when parents use text-transform: uppercase */
+.pn-mark {
+  text-transform: none;
+}
+
 /* Site Navigation - Independent Component */
 .site-navigation {
   position: fixed;
