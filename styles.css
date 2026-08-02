@@ -515,6 +515,20 @@ body {
   transform: translateY(-2px);
 }
 
+.btn-inverted {
+  background: #ffffff;
+  color: #000000;
+  border: 2px solid #ffffff;
+  box-shadow: none;
+}
+
+.btn-inverted:hover {
+  background: #f0f0f0;
+  color: #000000;
+  border-color: #f0f0f0;
+  transform: translateY(-2px);
+}
+
 .btn-large {
   padding: 1.25rem 2.5rem;
   font-size: 1.1rem;
