@@ -17,8 +17,11 @@ jest.mock('./database', () => {
 });
 
 describe('PNOAuthService PQC public key (ML-DSA-65)', () => {
-  it('rejects base64 public key when decoded length is not 1952 bytes', () => {
-    const short = Buffer.from('not-a-real-key').toString('base64');
+  // The OAuth `public_key` is opaque to the API: it is stored for client-side file decryption
+  // and is not guaranteed to be an ML-DSA-65 key, so authorize must not enforce key length.
+  it('does not reject a public key whose decoded length is not 1952 bytes', () => {
+    const short = Buffer.from('not-an-ml-dsa-65-key').toString('base64');
+    expect(short.length).not.toBe(ML_DSA_65_PUBLIC_KEY_LENGTH);
     expect(() =>
       PNOAuthService.generateAuthorizationCode({
         clientId: 'browser-app',
@@ -27,7 +30,7 @@ describe('PNOAuthService PQC public key (ML-DSA-65)', () => {
         did: 'did:key:test',
         publicKey: short,
       })
-    ).toThrow(/invalid_public_key/);
+    ).not.toThrow();
   });
 
   it('accepts ML-DSA-65 public key and completes authorize → token → validateAccessToken', async () => {

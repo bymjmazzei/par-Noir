@@ -29,11 +29,5 @@ module.exports = {
         jsx: 'react-jsx'
       }
     }]
-  },
-  extensionsToTreatAsEsm: ['.ts', '.tsx'],
-  globals: {
-    'ts-jest': {
-      useESM: true
-    }
   }
 };

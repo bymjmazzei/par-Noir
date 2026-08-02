@@ -64,8 +64,28 @@ function serviceMock(overrides: Partial<AggregatorMetadataServiceDB> = {}) {
 }
 
 describe('aggregatorReconcileService', () => {
+  const originalCustody = process.env.DEVICE_CLOUD_CUSTODY;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    // Credential crawling only runs when the operator opts out of device cloud custody.
+    process.env.DEVICE_CLOUD_CUSTODY = '0';
+  });
+
+  afterEach(() => {
+    if (originalCustody === undefined) delete process.env.DEVICE_CLOUD_CUSTODY;
+    else process.env.DEVICE_CLOUD_CUSTODY = originalCustody;
+  });
+
+  it('skips the credential crawl entirely under device cloud custody', async () => {
+    delete process.env.DEVICE_CLOUD_CUSTODY;
+    const svc = serviceMock();
+
+    const result = await reconcilePublicAggregator();
+
+    expect(mockGetCredentials).not.toHaveBeenCalled();
+    expect(svc.removeAllMetadataForUser).not.toHaveBeenCalled();
+    expect(result.usersSkipped).toBe(1);
   });
 
   it('purges user when storage credentials are missing', async () => {
