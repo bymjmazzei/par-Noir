@@ -497,6 +497,8 @@ class ProductionServer {
           'X-PN-Device-Signature',
           'X-PN-Device-Timestamp',
           'X-PN-Device-Nonce',
+          // Ephemeral Drive token under device cloud custody (reconnect / device register)
+          'X-PN-Cloud-Access-Token',
         ],
         exposedHeaders: ['Content-Type'],
         maxAge: 86400, // 24 hours
