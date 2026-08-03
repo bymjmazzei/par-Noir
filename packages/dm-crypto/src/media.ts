@@ -1,5 +1,5 @@
-import { encryptDmMessage, decryptDmMessage } from './message';
-import { base64ToBytes, bytesToBase64 } from './encoding';
+import { encryptDmMessage, decryptDmMessage } from './message.js';
+import { base64ToBytes, bytesToBase64 } from './encoding.js';
 
 /** Encrypt binary media with a 32-byte key (base64). */
 export async function encryptMediaBytes(data: Uint8Array, keyB64: string): Promise<string> {

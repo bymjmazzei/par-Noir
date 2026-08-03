@@ -1,6 +1,6 @@
-import { hkdfSha3_384 } from './hkdf';
-import { aesGcmEncrypt, aesGcmDecrypt, isDmEnvelope, DM_CRYPTO_VERSION } from './aes';
-import { base64ToBytes, utf8ToBytes, bytesToUtf8 } from './encoding';
+import { hkdfSha3_384 } from './hkdf.js';
+import { aesGcmEncrypt, aesGcmDecrypt, isDmEnvelope, DM_CRYPTO_VERSION } from './aes.js';
+import { base64ToBytes, utf8ToBytes, bytesToUtf8 } from './encoding.js';
 
 export { DM_CRYPTO_VERSION, isDmEnvelope as isDmCiphertext };
 

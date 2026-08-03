@@ -1,7 +1,7 @@
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
-import { hkdfSha3_384 } from './hkdf';
-import { aesGcmEncrypt, aesGcmDecrypt } from './aes';
-import { base64ToBytes, bytesToBase64, utf8ToBytes, bytesToUtf8 } from './encoding';
+import { hkdfSha3_384 } from './hkdf.js';
+import { aesGcmEncrypt, aesGcmDecrypt } from './aes.js';
+import { base64ToBytes, bytesToBase64, utf8ToBytes, bytesToUtf8 } from './encoding.js';
 
 /** One-shot encrypt a cold message request to recipient ML-KEM public key. */
 export async function encryptMessageRequest(

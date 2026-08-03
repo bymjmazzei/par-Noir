@@ -1,4 +1,4 @@
-import { bytesToBase64, base64ToBytes, bytesToUtf8 } from './encoding';
+import { bytesToBase64, base64ToBytes, bytesToUtf8 } from './encoding.js';
 
 export const DM_CRYPTO_VERSION = 2;
 

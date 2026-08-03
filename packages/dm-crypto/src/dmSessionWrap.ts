@@ -1,7 +1,7 @@
-import { hkdfSha3_384 } from './hkdf';
-import { aesGcmEncrypt, aesGcmDecrypt } from './aes';
-import { base64ToBytes, bytesToBase64, utf8ToBytes } from './encoding';
-import { openDmSession } from './session';
+import { hkdfSha3_384 } from './hkdf.js';
+import { aesGcmEncrypt, aesGcmDecrypt } from './aes.js';
+import { base64ToBytes, bytesToBase64, utf8ToBytes } from './encoding.js';
+import { openDmSession } from './session.js';
 
 /** Wrap key for acceptor-side messageRootKey persistence on user Drive. */
 export function deriveDmSessionWrapKey(

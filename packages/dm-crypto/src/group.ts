@@ -1,6 +1,6 @@
-import { hkdfSha3_384 } from './hkdf';
-import { aesGcmEncrypt, aesGcmDecrypt } from './aes';
-import { base64ToBytes, bytesToBase64, utf8ToBytes } from './encoding';
+import { hkdfSha3_384 } from './hkdf.js';
+import { aesGcmEncrypt, aesGcmDecrypt } from './aes.js';
+import { base64ToBytes, bytesToBase64, utf8ToBytes } from './encoding.js';
 
 /** Wrap key for distributing chatKey to a member (owner + pairwise connection). */
 export function deriveGroupWrapKey(

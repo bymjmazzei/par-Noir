@@ -4,13 +4,13 @@ export {
   deriveMlKemPublicKeyFromSecretKey,
   KEM_ALG_ID,
   type DmSessionMaterial
-} from './session';
+} from './session.js';
 export {
   deriveMessageKey,
   encryptDmMessage,
   decryptDmMessage,
   isDmCiphertext
-} from './message';
+} from './message.js';
 export {
   deriveGroupWrapKey,
   wrapChatKey,
@@ -20,26 +20,26 @@ export {
   unwrapChatKeyForOwner,
   generateChatKey,
   generateGroupId
-} from './group';
+} from './group.js';
 export {
   encryptMessageRequest,
   decryptMessageRequest
-} from './messageRequest';
+} from './messageRequest.js';
 export {
   deriveDmSessionWrapKey,
   wrapMessageRootKey,
   unwrapMessageRootKey,
   resolveMessageRootKey,
   type ResolveMessageRootKeyOpts
-} from './dmSessionWrap';
-export { encryptMediaBytes, decryptMediaBytes } from './media';
-export { bytesToBase64, base64ToBytes } from './encoding';
+} from './dmSessionWrap.js';
+export { encryptMediaBytes, decryptMediaBytes } from './media.js';
+export { bytesToBase64, base64ToBytes } from './encoding.js';
 export {
   unlockIdentityMlKemSecret,
   type EncryptedIdentityPayload,
   type DecryptedIdentitySecrets
-} from './identity';
-export { DM_CRYPTO_VERSION, isDmEnvelope } from './aes';
+} from './identity.js';
+export { DM_CRYPTO_VERSION, isDmEnvelope } from './aes.js';
 export {
   FROM_SELF,
   FROM_PEER,
@@ -60,4 +60,4 @@ export {
   legacyPortableConversationBlobId,
   genericAttachmentFileName,
   type RelativeFromMarker
-} from './opaquePeer';
+} from './opaquePeer.js';

@@ -1,5 +1,5 @@
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
-import { bytesToBase64, base64ToBytes } from './encoding';
+import { bytesToBase64, base64ToBytes } from './encoding.js';
 
 export const KEM_ALG_ID = 'ML-KEM-768';
 

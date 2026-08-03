@@ -3,8 +3,8 @@
  * Browser-only; requires Web Crypto.
  */
 
-import { base64ToBytes, bytesToUtf8 } from './encoding';
-import { deriveMlKemPublicKeyFromSecretKey } from './session';
+import { base64ToBytes, bytesToUtf8 } from './encoding.js';
+import { deriveMlKemPublicKeyFromSecretKey } from './session.js';
 
 export interface EncryptedIdentityPayload {
   encryptedData: string;
