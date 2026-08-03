@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   CloudReconnectPanel,
   CloudReconnectPrompt,
+  PN_CLOUD_CREDENTIALS_READY_EVENT,
   useCloudReconnectGate
 } from '@par-noir/oauth-ui';
 import {
@@ -59,6 +60,11 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
       if (!pnIdentifier) return;
       setSessionCloudCredentials(pnIdentifier, envelope);
       gate.markReady();
+      try {
+        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+      } catch {
+        /* non-DOM */
+      }
     },
     [pnIdentifier, gate]
   );

@@ -603,9 +603,10 @@ export function useDriveStorageCredentials({
           for (const account of driveAccounts) {
             // SECURITY: email removed from DriveAccountState - use userEmails map instead
             const accountEmail = userEmails.get(account.backendId);
+            if (account.backendId === params.backendId) continue;
+            // One Drive account per pN: drop same-email duplicates and unlabeled "Drive N" placeholders
             if (
-              account.backendId !== params.backendId &&
-              accountEmail &&
+              !accountEmail ||
               accountEmail.toLowerCase() === normalizedEmailForCleanup
             ) {
               staleBackends.push(account.backendId);

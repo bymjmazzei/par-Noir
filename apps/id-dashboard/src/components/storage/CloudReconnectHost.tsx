@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   CloudReconnectPanel,
   CloudReconnectPrompt,
+  PN_CLOUD_CREDENTIALS_READY_EVENT,
   useCloudReconnectGate
 } from '@par-noir/oauth-ui';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
@@ -110,6 +111,11 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         }
       }
       markReady();
+      try {
+        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+      } catch {
+        /* non-DOM */
+      }
       onCloudReady?.();
     },
     [pnIdentifier, sessionId, persistMode, isKeyedSession, markReady, onCloudReady]

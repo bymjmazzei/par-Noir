@@ -1,6 +1,9 @@
 export { CloudReconnectPrompt } from './CloudReconnectPrompt';
 export type { CloudReconnectPromptProps } from './CloudReconnectPrompt';
-export { CloudReconnectPanel } from './CloudReconnectPanel';
+export {
+  CloudReconnectPanel,
+  PN_CLOUD_CREDENTIALS_READY_EVENT
+} from './CloudReconnectPanel';
 export type { CloudReconnectPanelProps } from './CloudReconnectPanel';
 export { useCloudReconnectGate } from './useCloudReconnectGate';
 export { waitForOAuthPopupCode, exchangeGoogleOAuthCode } from './oauthPopup';

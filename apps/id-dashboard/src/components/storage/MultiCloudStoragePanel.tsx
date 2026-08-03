@@ -3,6 +3,7 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { Cloud, ExternalLink, Loader2 } from 'lucide-react';
+import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import { ownerFetch, ownerGet } from '../../services/ownerApiService';
 import { API_ENDPOINT } from '../../config/api';
 import { SocialCloudMigrationWizard } from './SocialCloudMigrationWizard';
@@ -118,6 +119,14 @@ export function MultiCloudStoragePanel({
 
   useEffect(() => {
     void refreshAccounts();
+  }, [refreshAccounts]);
+
+  useEffect(() => {
+    const onReady = () => {
+      void refreshAccounts();
+    };
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
   }, [refreshAccounts]);
 
   const disconnectAccount = async (provider: string, accountId: string) => {

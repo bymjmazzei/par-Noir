@@ -161,7 +161,22 @@ export function useDriveCredentialHydration({
           const token = account.accessToken || account.access_token;
           if (!token) continue;
           const email = account.email || null;
-          const identifiers = resolveIdentifiersForEmail(email);
+          // Prefer sealed account ids so reconnect keeps the same Drive row / title.
+          const sealedBackendId = account.backendId || account.accountId || null;
+          const identifiers =
+            sealedBackendId &&
+            (sealedBackendId.startsWith('google_drive::') || account.backendId)
+              ? {
+                  backendId: account.backendId || sealedBackendId,
+                  keyPrefix:
+                    account.keyPrefix ||
+                    `google_drive_${(account.backendId || sealedBackendId)
+                      .replace(/^google_drive::/, '')
+                      .replace(/[^a-zA-Z0-9_-]/g, '_')
+                      .slice(0, 64)}`,
+                  isNew: false
+                }
+              : resolveIdentifiersForEmail(email);
           try {
             const backend = await upsertDriveAccount({
               backendId: identifiers.backendId,

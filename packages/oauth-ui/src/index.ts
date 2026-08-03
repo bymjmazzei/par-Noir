@@ -66,6 +66,7 @@ export type {
 export {
   CloudReconnectPrompt,
   CloudReconnectPanel,
+  PN_CLOUD_CREDENTIALS_READY_EVENT,
   useCloudReconnectGate,
   waitForOAuthPopupCode,
   exchangeGoogleOAuthCode,

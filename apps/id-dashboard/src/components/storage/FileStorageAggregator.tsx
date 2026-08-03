@@ -10,6 +10,7 @@ import { getMetadataIndexService } from '../../services/metadata/MetadataIndexSe
 import { GoogleDriveBackend } from '../../services/storage/GoogleDriveBackend';
 import { AggregatedFile, PublicMetadata, ShareToken } from '../../types/aggregator';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
+import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import { ReportContentModal } from './ReportContentModal';
 import { ownerGet } from '../../services/ownerApiService';
 import { getStoredToken, getStoredTokenForPn } from '../../services/parNoirOAuthInline';
@@ -347,6 +348,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     ownerIndexRetryCountsRef,
     rateLimitedBackendsRef,
   });
+
+  React.useEffect(() => {
+    const onReady = () => {
+      void hydrateStorageCredentialsFromAPI(true);
+      void registerPortableCloudBackends();
+    };
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+  }, [hydrateStorageCredentialsFromAPI, registerPortableCloudBackends]);
 
   function getDriveAccountByBackendId(backendId: string | null | undefined) {
       if (!backendId) {

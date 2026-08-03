@@ -108,6 +108,9 @@ const emptyForms = (): PortableConnectForms => ({
   }
 });
 
+/** Dispatched after cloud secrets are sealed on-device so Storage UIs can rehydrate. */
+export const PN_CLOUD_CREDENTIALS_READY_EVENT = 'pn-cloud-credentials-ready';
+
 async function ownerFetch(
   apiEndpoint: string,
   authToken: string,
@@ -123,6 +126,56 @@ async function ownerFetch(
     },
     body: body === undefined ? undefined : JSON.stringify(body)
   });
+}
+
+async function fetchGoogleUserEmail(accessToken: string): Promise<string | null> {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { email?: string };
+    return typeof data.email === 'string' && data.email.includes('@') ? data.email : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Prefer existing linked Google account ids so reconnect does not create a second layout row. */
+async function resolveExistingGoogleLayout(
+  apiEndpoint: string,
+  authToken: string,
+  pnIdentifier: string
+): Promise<{
+  envelope: StorageCredentialsEnvelope;
+  accountId: string | null;
+  backendId: string | null;
+  keyPrefix: string | null;
+}> {
+  const empty = {
+    envelope: {} as StorageCredentialsEnvelope,
+    accountId: null as string | null,
+    backendId: null as string | null,
+    keyPrefix: null as string | null
+  };
+  try {
+    const res = await ownerFetch(
+      apiEndpoint,
+      authToken,
+      'GET',
+      `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`
+    );
+    if (!res.ok) return empty;
+    const data = (await res.json()) as { credentials?: StorageCredentialsEnvelope };
+    const envelope = data.credentials ?? {};
+    const prev = envelope.googleDriveAccounts?.[0];
+    const accountId = prev?.accountId || prev?.backendId || null;
+    const backendId = prev?.backendId || prev?.accountId || null;
+    const keyPrefix = prev?.keyPrefix || null;
+    return { envelope, accountId, backendId, keyPrefix };
+  } catch {
+    return empty;
+  }
 }
 
 /**
@@ -171,27 +224,66 @@ export function CloudReconnectPanel({
     if (!popup) throw new Error('Popup blocked — allow popups for OAuth.');
     const code = await waitForOAuthPopupCode();
     const tokens = await exchangeGoogleOAuthCode({ apiEndpoint, code, redirectUri });
-    const accountId = buildAccountId('google_drive', pnIdentifier, 'reconnect');
+    const email = await fetchGoogleUserEmail(tokens.accessToken);
+    const existing = await resolveExistingGoogleLayout(apiEndpoint, authToken, pnIdentifier);
+    const slug =
+      email?.split('@')[0]?.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 48) || 'default';
+    const accountId =
+      existing.accountId || buildAccountId('google_drive', pnIdentifier, slug);
+    // Dashboard Drive backends use `google_drive::<slug>` ids; keep layout accountId separate when already linked.
+    const backendId =
+      existing.backendId ||
+      (accountId.startsWith('google_drive::') ? accountId : `google_drive::${slug}`);
+    const keyPrefix =
+      existing.keyPrefix ||
+      `google_drive_${backendId.replace(/^google_drive::/, '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64)}`;
+    const nowIso = new Date().toISOString();
+    const prevAccount = existing.envelope.googleDriveAccounts?.[0] ?? {};
+    const layoutAccount = {
+      ...prevAccount,
+      accountId,
+      backendId,
+      keyPrefix,
+      ...(email ? { email } : {}),
+      connectedAt: prevAccount.connectedAt || nowIso,
+      updatedAt: nowIso
+    };
+    // Drop any secrets that may still be present on a legacy GET before writing layout.
+    delete (layoutAccount as { accessToken?: string }).accessToken;
+    delete (layoutAccount as { access_token?: string }).access_token;
+    delete (layoutAccount as { refreshToken?: string }).refreshToken;
+    delete (layoutAccount as { refresh_token?: string }).refresh_token;
+
+    const layoutEnvelope: StorageCredentialsEnvelope = {
+      ...existing.envelope,
+      socialCloudProvider: existing.envelope.socialCloudProvider || 'google_drive',
+      socialCloudAccountId: existing.envelope.socialCloudAccountId || accountId,
+      googleDriveAccounts: [layoutAccount]
+    };
+    // /provider only accepts aws_s3 / azure_blob / ftp — Google layout goes on the credentials PUT.
+    const putRes = await ownerFetch(
+      apiEndpoint,
+      authToken,
+      'PUT',
+      `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`,
+      { credentials: layoutEnvelope }
+    );
+    if (!putRes.ok) {
+      const err = (await putRes.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || 'Failed to update Drive layout on API');
+    }
+
     const envelope: StorageCredentialsEnvelope = {
-      socialCloudProvider: 'google_drive',
-      socialCloudAccountId: accountId,
+      ...layoutEnvelope,
       googleDriveAccounts: [
         {
-          accountId,
+          ...layoutAccount,
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
-          connectedAt: new Date().toISOString()
+          email: email || undefined
         }
       ]
     };
-    await ownerFetch(apiEndpoint, authToken, 'PUT', `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/provider`, {
-      provider: 'google_drive',
-      googleDrive: {
-        accountId,
-        // layout-only fields; secrets sealed on device by caller
-        connectedAt: new Date().toISOString()
-      }
-    }).catch(() => undefined);
     await onConnected(envelope);
   };
 

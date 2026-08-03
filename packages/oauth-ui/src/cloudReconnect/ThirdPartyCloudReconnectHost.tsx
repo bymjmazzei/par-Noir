@@ -1,15 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  CloudReconnectPanel,
-  CloudReconnectPrompt,
-  useCloudReconnectGate
-} from '@par-noir/oauth-ui';
-import {
   clearCloudCredentialsOnLock,
   getSessionCloudCredentials,
   setSessionCloudCredentials
 } from '@par-noir/device-cloud-credentials';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
+import { CloudReconnectPanel, PN_CLOUD_CREDENTIALS_READY_EVENT } from './CloudReconnectPanel';
+import { CloudReconnectPrompt } from './CloudReconnectPrompt';
+import { useCloudReconnectGate } from './useCloudReconnectGate';
 
 export interface ThirdPartyCloudReconnectHostProps {
   apiEndpoint: string;
@@ -69,15 +67,14 @@ export function ThirdPartyCloudReconnectHost({
       if (!pnIdentifier) return;
       setSessionCloudCredentials(pnIdentifier, envelope);
       gate.markReady();
+      try {
+        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+      } catch {
+        /* non-DOM */
+      }
     },
     [pnIdentifier, gate]
   );
-
-  useEffect(() => {
-    return () => {
-      /* host unmount does not wipe — lock/signOut must call wipe explicitly */
-    };
-  }, []);
 
   if (!authToken || !pnIdentifier) return null;
 
