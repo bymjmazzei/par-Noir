@@ -126,7 +126,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         (envelope.googleDriveAccounts?.[0] as { access_token?: string } | undefined)?.access_token;
       if (apiToken && typeof googleTok === 'string' && googleTok.trim()) {
         try {
-          await fetch(
+          const initRes = await fetch(
             `${API_ENDPOINT.replace(/\/$/, '')}/api/storage/initialize/${encodeURIComponent(pnIdentifier)}`,
             {
               method: 'POST',
@@ -137,8 +137,17 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
               }
             }
           );
-        } catch {
-          /* best-effort; keying will surface a clearer error if index still missing */
+          if (!initRes.ok) {
+            const text = await initRes.text().catch(() => '');
+            throw new Error(
+              `Drive layout init failed (${initRes.status})${text ? `: ${text.slice(0, 160)}` : ''}`
+            );
+          }
+        } catch (err) {
+          setOauthError(
+            err instanceof Error ? err.message : 'Drive layout setup failed after reconnect'
+          );
+          return;
         }
       }
 

@@ -9,19 +9,25 @@ function authHeaders(authToken: string, extra?: Record<string, string>) {
   };
 }
 
+export type OwnerFetchInit = Omit<RequestInit, 'method' | 'headers' | 'body'> & {
+  /** Merged into request headers after device proof (e.g. X-PN-Cloud-Access-Token). */
+  extraHeaders?: Record<string, string>;
+};
+
 /** Owner API fetch with device proof headers when a local device key is registered. */
 export async function ownerFetch(
   authToken: string,
   method: string,
   path: string,
   body?: unknown,
-  init?: Omit<RequestInit, 'method' | 'headers' | 'body'>
+  init?: OwnerFetchInit
 ): Promise<Response> {
+  const { extraHeaders, ...rest } = init ?? {};
   const proof = await deviceProofHeaders(method, path, body);
   return fetch(`${API_ENDPOINT}${path}`, {
-    ...init,
+    ...rest,
     method,
-    headers: authHeaders(authToken, proof),
+    headers: authHeaders(authToken, { ...proof, ...extraHeaders }),
     body: body != null ? JSON.stringify(body) : undefined,
   });
 }
@@ -30,12 +36,13 @@ export async function ownerFetch(
 export async function ownerGet(
   authToken: string,
   path: string,
-  init?: Omit<RequestInit, 'method' | 'headers'>
+  init?: OwnerFetchInit
 ): Promise<Response> {
+  const { extraHeaders, ...rest } = init ?? {};
   const proof = await deviceProofHeaders('GET', path);
   return fetch(`${API_ENDPOINT}${path}`, {
-    ...init,
+    ...rest,
     method: 'GET',
-    headers: authHeaders(authToken, proof),
+    headers: authHeaders(authToken, { ...proof, ...extraHeaders }),
   });
 }

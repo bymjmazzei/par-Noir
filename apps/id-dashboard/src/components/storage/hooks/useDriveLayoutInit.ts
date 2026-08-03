@@ -2,9 +2,9 @@
  * Drive layout initialization state and helpers for FileStorageAggregator.
  *
  * Owns the server-side `/storage/initialize` lifecycle: the shared in-flight guards,
- * the setup-progress state shown while the layout is being built, and the soft-skip
- * behavior required under device cloud custody (the API has no Google OAuth secrets,
- * so 400/403/404 must fall back to client-side Drive discovery instead of retrying).
+ * the setup-progress state shown while the layout is being built, and soft-skip
+ * when the API has no Google secrets *and* no forwarded token. With
+ * `googleAccessToken` (device custody), initialize is required and failures surface.
  */
 import React, { useState } from 'react';
 import { ownerFetch, ownerGet } from '../../../services/ownerApiService';
@@ -48,11 +48,22 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
     async (
       pnId: string,
       accessToken: string,
-      options?: { onProgress?: (progress: DriveSetupProgress) => void; maxAttempts?: number }
+      options?: {
+        onProgress?: (progress: DriveSetupProgress) => void;
+        maxAttempts?: number;
+        /** Ephemeral Google token for device custody (X-PN-Cloud-Access-Token). */
+        googleAccessToken?: string;
+      }
     ): Promise<boolean> => {
       const normalized = pnId.startsWith('pn-') ? pnId : `pn-${pnId}`;
       const maxAttempts = options?.maxAttempts ?? 3;
       const onProgress = options?.onProgress;
+      const googleAccessToken = options?.googleAccessToken?.trim() || '';
+
+      // Custody with a forwarded Google token can recover from a prior soft-skip this session.
+      if (googleAccessToken) {
+        serverDriveInitUnsupportedRef.current.delete(normalized);
+      }
 
       if (serverDriveInitUnsupportedRef.current.has(normalized)) {
         console.log('⏭️ [Storage] Server Drive init unsupported this session; using client discovery');
@@ -184,7 +195,11 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
             initRes = await ownerFetch(
               accessToken,
               'POST',
-              `/api/storage/initialize/${encodeURIComponent(normalized)}`
+              `/api/storage/initialize/${encodeURIComponent(normalized)}`,
+              undefined,
+              googleAccessToken
+                ? { extraHeaders: { 'X-PN-Cloud-Access-Token': googleAccessToken } }
+                : undefined
             );
           } catch (err) {
             throw err instanceof Error ? err : new Error(String(err));
@@ -192,7 +207,12 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
 
           if (!initRes.ok) {
             const initErr = await initRes.text().catch(() => 'Unknown error');
-            if (initRes.status === 400 || initRes.status === 403 || initRes.status === 404) {
+            // Soft-skip only when we have no Google token to forward (legacy / no secrets on API).
+            // With a forwarded token, 400/403/404 are real failures that block device keying.
+            if (
+              !googleAccessToken &&
+              (initRes.status === 400 || initRes.status === 403 || initRes.status === 404)
+            ) {
               serverDriveInitUnsupportedRef.current.add(normalized);
               console.warn(
                 `⏭️ [Storage] Skipping server Drive init (${initRes.status}); client-side discovery will be used`

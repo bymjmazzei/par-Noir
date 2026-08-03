@@ -6,10 +6,11 @@
  * refresh listener (`useDriveTokenRefresh`) and the hydrate/restore/401 recovery
  * effects (`useDriveCredentialHydration`) on top of it.
  *
- * Device custody note: the API does not hold Google OAuth secrets, so
- * `clientSideLayoutRequired` responses and routine token refreshes must never
- * trigger POST /storage/initialize — doing so re-runs multi-minute Drive setup
- * and loops. That behavior is preserved exactly as written here.
+ * Device custody note: the API does not hold Google OAuth secrets. When
+ * `clientSideLayoutRequired` is set, the dashboard must POST /storage/initialize
+ * with `X-PN-Cloud-Access-Token` (ephemeral Google token) so `pnDriveIndex` is
+ * persisted — required for device keying and owner-index. Routine token refreshes
+ * still must not re-run initialize.
  */
 import React from 'react';
 import type { FileAggregatorService } from '../../../services/aggregator/FileAggregatorService';
@@ -55,7 +56,11 @@ export interface UseDriveStorageCredentialsParams {
   postDriveInitializeWithRetry: (
     pnId: string,
     accessToken: string,
-    options?: { onProgress?: (progress: DriveSetupProgress) => void; maxAttempts?: number }
+    options?: {
+      onProgress?: (progress: DriveSetupProgress) => void;
+      maxAttempts?: number;
+      googleAccessToken?: string;
+    }
   ) => Promise<boolean>;
   resolveOwnerApiToken: (wantedPn?: string | null) => string | null;
   waitForOwnerApiToken: (wantedPn?: string | null, maxMs?: number) => Promise<string | null>;
@@ -377,11 +382,35 @@ export function useDriveStorageCredentials({
             clientSideLayoutRequired: result.clientSideLayoutRequired,
           });
 
-          // Device custody: API has no Google secrets — never POST /storage/initialize.
-          // Client loadFiles discovers folders via GoogleDriveMetadataService.
-          if (shouldSkipServerDriveInit(result)) {
+          const googleTok =
+            (payload.googleDriveAccounts?.[0] as { accessToken?: string; access_token?: string } | undefined)
+              ?.accessToken ||
+            (payload.googleDriveAccounts?.[0] as { access_token?: string } | undefined)?.access_token;
+
+          // Device custody: API has no Google secrets — forward ephemeral token and
+          // run initialize so pnDriveIndex is written (needed for device keying).
+          if (shouldSkipServerDriveInit(result) && typeof googleTok === 'string' && googleTok.trim()) {
             console.log(
-              '⏭️ [StorageCredentials] Client-side Drive layout required; skipping server initialize'
+              '🔄 [StorageCredentials] Device custody — building Drive layout with forwarded Google token…'
+            );
+            setDriveSetupProgress({
+              phase: 'starting',
+              stepLabel: 'Preparing your par Noir storage…',
+              percent: 0,
+            });
+            const ok = await postDriveInitializeWithRetry(pnIdentifier, accessToken, {
+              onProgress: setDriveSetupProgress,
+              googleAccessToken: googleTok.trim(),
+            });
+            clearDriveSetupProgress();
+            if (!ok) {
+              console.warn(
+                '⚠️ [StorageCredentials] Custody Drive init failed; owner-index / device keying may not work until retry'
+              );
+            }
+          } else if (shouldSkipServerDriveInit(result)) {
+            console.warn(
+              '⏭️ [StorageCredentials] clientSideLayoutRequired but no local Google token — cannot build server index'
             );
           } else if (shouldRunServerDriveInit(result)) {
             console.log('🔄 [StorageCredentials] Building Drive layout on server (may take a few minutes)...');
@@ -392,6 +421,9 @@ export function useDriveStorageCredentials({
             });
             const ok = await postDriveInitializeWithRetry(pnIdentifier, accessToken, {
               onProgress: setDriveSetupProgress,
+              ...(typeof googleTok === 'string' && googleTok.trim()
+                ? { googleAccessToken: googleTok.trim() }
+                : {}),
             });
             clearDriveSetupProgress();
             if (!ok) {

@@ -212,11 +212,11 @@ describe('fetchOwnerIndex owner-index fallthrough', () => {
 });
 
 describe('shouldSkipServerDriveInit', () => {
-  it('skips server init when the client owns the Drive layout', () => {
+  it('flags custody when the client must forward a Google token for init', () => {
     expect(shouldSkipServerDriveInit({ clientSideLayoutRequired: true })).toBe(true);
   });
 
-  it('wins over initInProgress and directoryBuilt', () => {
+  it('wins over initInProgress and directoryBuilt for secretless init', () => {
     const result = {
       clientSideLayoutRequired: true,
       initInProgress: true,
